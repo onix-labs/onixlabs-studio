@@ -1,8 +1,21 @@
 // The active environment's variable editor.
 
+// The strip stays put while the variables beneath it scroll.
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
+  min-block-size: 0;
+}
+
+.environment__switcher {
+  inline-size: 12rem;
+}
+
+.environment,
+:host > .environment__hint {
+  flex: 1 1 auto;
+  min-block-size: 0;
   overflow-y: auto;
 }
 

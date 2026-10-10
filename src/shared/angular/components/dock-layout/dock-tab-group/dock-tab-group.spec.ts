@@ -177,38 +177,31 @@ describe('DockTabGroup', () => {
     document.dispatchEvent(new MouseEvent('mouseup'));
   });
 
-  it('render_whenTheActiveDocumentOwnsItsToolStrip_theWellRendersNone', () => {
-    // A request in the API well puts its own name and Send in the strip, so the dock must not draw
-    // the editor-flavoured one above it.
-    TestBed.inject(DockPanelRegistry).register({
-      id: 'doc-with-strip',
-      title: 'Request',
-      icon: Icon.CODE,
-      role: 'document',
-      component: DockPanelPlaceholder,
-      ownsToolStrip: true,
-    });
-    render(mkStack('document', ['doc-with-strip']));
-
-    const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('app-dock-tool-strip')).toBeNull();
-    // The frame's top edge moves onto the body, which would otherwise be drawn by that strip.
-    expect(element.classList.contains('dock-tab-group--panel-strip')).toBe(true);
-  });
-
-  it('render_whenTheActiveDocumentHasNoStripOfItsOwn_theWellRendersOne', () => {
-    TestBed.inject(DockPanelRegistry).register({
+  it('render_drawsNoToolStripOfItsOwn_forADocumentOrAToolPanel (#882)', () => {
+    // The dock once drew a strip of placeholder buttons for any panel without one of its own. A panel
+    // with tools now draws its own strip in its body; one without shows none, rather than inert
+    // buttons.
+    const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+    registry.register({
       id: 'plain-doc',
       title: 'File',
       icon: Icon.CODE,
       role: 'document',
       component: DockPanelPlaceholder,
     });
-    render(mkStack('document', ['plain-doc']));
+    registry.register({
+      id: 'plain-tool',
+      title: 'Tool',
+      icon: Icon.CODE,
+      role: 'tool',
+      component: DockPanelPlaceholder,
+    });
 
-    const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('app-dock-tool-strip')).not.toBeNull();
-    expect(element.classList.contains('dock-tab-group--panel-strip')).toBe(false);
+    for (const stack of [mkStack('document', ['plain-doc']), mkStack('tool', ['plain-tool'])]) {
+      render(stack);
+      const element: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(element.querySelector('[class*="tool-strip"]')).toBeNull();
+    }
   });
 
   it('closeAll_whenCloseAllClicked_closesEveryDocumentInTheWellInTabOrder', () => {

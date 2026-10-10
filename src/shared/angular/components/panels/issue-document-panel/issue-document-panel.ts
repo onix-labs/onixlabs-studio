@@ -22,7 +22,6 @@ const MENU_OPEN_IN_BROWSER: string = 'issue.openInBrowser';
 const MENU_COPY_LINK: string = 'issue.copyLink';
 import { ForgeIssue, ForgeIssueComment } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
@@ -45,15 +44,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [
-    AppIcon,
-    Button,
-    CdkMenuTrigger,
-    IssueAgentConfirm,
-    MarkdownRenderer,
-    Menu,
-    PanelToolbar,
-  ],
+  imports: [Button, CdkMenuTrigger, IssueAgentConfirm, MarkdownRenderer, Menu, PanelToolbar],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

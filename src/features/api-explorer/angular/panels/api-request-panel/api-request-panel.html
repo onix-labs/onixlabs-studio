@@ -1,7 +1,8 @@
 @if (request(); as request) {
-  <!-- This request's tool strip, in the well's chrome where an editor's would be (the panel declares
-       `ownsToolStrip`, so the dock renders none of its own). It carries the two things that belong to
-       the request as a whole: its name — which doubles as the tab title — and Send. -->
+  <!-- This request's tool strip, at the top of the panel as every panel's is (the dock draws none of
+       its own). It carries the request as a whole
+       (#882): its name — which doubles as the tab title — then the method, the address it is sent
+       to, and Send. -->
   <app-panel-toolbar role="group" aria-label="Request">
     <app-text-field
       class="request__name"
@@ -10,9 +11,24 @@
       ariaLabel="Request name"
       (valueChange)="rename($event)"
     />
-    <span class="panel-toolbar__spacer"></span>
+    <app-dropdown
+      class="request__method"
+      [options]="methodOptions"
+      [value]="request.method"
+      [fullWidth]="true"
+      ariaLabel="HTTP method"
+      (valueChange)="update({ method: $any($event) })"
+    />
+    <app-text-field
+      class="request__url"
+      [value]="request.url"
+      placeholder="https://api.example.com/resource"
+      ariaLabel="Request URL"
+      (valueChange)="update({ url: $event })"
+      (enter)="send()"
+    />
     <app-button
-      variant="none"
+      variant="solid"
       [icon]="sending() ? Icon.STOP : Icon.SEND"
       [label]="sending() ? 'Cancel' : 'Send'"
       [tooltip]="sending() ? 'Cancel this request' : 'Send this request'"
@@ -27,25 +43,6 @@
   @if (responseDefaultSize(); as responseSize) {
     <app-panel-layout class="request" layoutKey="api-request">
       <div main class="request__editor">
-        <!-- The send bar: the method and the address it is sent to. -->
-        <div class="request__bar">
-          <app-dropdown
-            class="request__method"
-            [options]="methodOptions"
-            [value]="request.method"
-            ariaLabel="HTTP method"
-            (valueChange)="update({ method: $any($event) })"
-          />
-          <app-text-field
-            class="request__url"
-            [value]="request.url"
-            placeholder="https://api.example.com/resource"
-            ariaLabel="Request URL"
-            (valueChange)="update({ url: $event })"
-            (enter)="send()"
-          />
-        </div>
-
         @if (resolvedUrl(); as resolved) {
           <p class="request__resolved" title="The URL after variable substitution">
             → {{ resolved }}

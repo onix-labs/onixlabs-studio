@@ -35,12 +35,6 @@ export interface DockPanel {
   readonly component: Type<unknown>;
 
   /**
-   * Gets a value indicating whether the panel renders its own tool strip in its body, so the dock
-   * chrome omits the default strip for it. Defaults to false (the panel uses the shared strip).
-   */
-  readonly ownsToolStrip?: boolean;
-
-  /**
    * Gets whether the panel's document has unsaved changes, driving the tab's dirty marker. Present
    * only for panels backed by an editable document; absent for tool panels.
    */

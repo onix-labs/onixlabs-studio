@@ -27,16 +27,11 @@
   overflow: hidden;
 }
 
-// The request's name lives in the tool strip, sized so a long name has room without crowding Send.
+// The tool strip: the name and method at set widths (the name giving way first when the well is
+// narrow), and the address taking the rest.
 .request__name {
-  flex: 0 1 22rem;
-  min-inline-size: 8rem;
-}
-
-.request__bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex: 0 1 14rem;
+  min-inline-size: 6rem;
 }
 
 .request__method {

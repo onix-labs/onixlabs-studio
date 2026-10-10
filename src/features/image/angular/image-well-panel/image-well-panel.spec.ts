@@ -74,11 +74,10 @@ describe('ImageWellPanel', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
-  it('describesItselfAsAnImageDocumentThatOwnsItsToolStrip', () => {
+  it('describesItselfAsAnImageDocument', () => {
     expect(panel.id).toBe('image-well:workspace-tab:/ws/art/logo.gif');
     expect(panel.title).toBe('logo.gif');
     expect(panel.role).toBe('document');
-    expect(panel.ownsToolStrip).toBe(true);
     expect(panel.dirty?.()).toBe(false);
   });
 

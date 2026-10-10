@@ -1,3 +1,5 @@
+@use '../../api-dialog';
+
 // The API Explorer tree: the shared explorer tool strip above the shared tree view. Neither carries
 // any styling here — the strip is the same `app-explorer-toolbar` the Solution and File Explorers
 // wear, and the tree's rows, indentation, hover and selection are the shared `app-tree-view`'s.
@@ -7,35 +9,9 @@
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-}
-
-// The dialogs that name a new collection or environment. Layout only: how a field or button is drawn
-// belongs to its atom.
-.api-explorer__dialog-title {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.api-explorer__dialog-message {
-  margin: 0 0 1.1rem;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--form-muted-foreground-color);
-}
-
-.api-explorer__dialog-field {
-  display: block;
-  inline-size: 100%;
-  margin-block-end: 0.75rem;
-}
-
-.api-explorer__dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-  margin-block-start: 0.4rem;
+  // The explorers' tree text colour, and nothing bold (#882): a collection reads as a heading by its
+  // folder icon and its level, as a folder does in the Solution Explorer.
+  color: var(--dock-tab-foreground-color);
 }
 
 // The method badge on a request row. Colour carries the method at a glance, which is the one piece of
@@ -76,33 +52,4 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent-color);
-}
-
-// The row commands' two dialogs — rename and delete confirmation. Matches the shape the workspace
-// panels use for a destructive prompt in a dock panel.
-.api-explorer__dialog-title {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.api-explorer__dialog-message {
-  margin: 0 0 1.3rem;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--form-muted-foreground-color);
-}
-
-.api-explorer__dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-}
-
-// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
-.api-explorer__dialog-input {
-  display: block;
-  inline-size: 100%;
-  margin-block: 0 1rem;
 }

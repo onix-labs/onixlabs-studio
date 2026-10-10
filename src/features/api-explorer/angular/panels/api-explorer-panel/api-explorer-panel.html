@@ -34,9 +34,7 @@
       }
     }
 
-    <span class="tree-name" [class.bold]="data.kind === 'collection' || data.kind === 'group'">
-      {{ data.label }}
-    </span>
+    <span class="tree-name">{{ data.label }}</span>
 
     @if (data.active) {
       <span class="api-explorer__active" title="The active environment">active</span>

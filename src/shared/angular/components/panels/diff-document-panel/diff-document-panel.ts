@@ -58,10 +58,8 @@ const REVEAL_POLL_ATTEMPTS: number = 25;
  * shared {@link DiffView}. The dock keeps every well panel mounted, so the Monaco diff survives tab
  * switches and relays out on show through its automatic layout.
  *
- * The panel owns its tool strip (`ownsToolStrip`), which is why the dock's stubbed editor tools no
- * longer appear above it: a diff is not a text editor, and Split Editor and Find in File were
- * offering things this tab cannot do. What it can do is change how the comparison is laid out and
- * walk the changes, so that is what the strip carries.
+ * The panel draws its own tool strip, carrying what a diff can do: change how the comparison is laid
+ * out and walk the changes.
  */
 @Component({
   selector: 'app-diff-document-panel',

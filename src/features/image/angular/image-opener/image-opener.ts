@@ -42,8 +42,6 @@ export class ImageOpener implements ImageFileOpener {
       icon: Icon.IMAGE_FILE,
       role: 'document',
       component: ImageWellPanel,
-      // The panel carries the image's own strip; the dock's stub strip would only duplicate it.
-      ownsToolStrip: true,
       dirty: document.dirty,
       confirmClose: (): Promise<boolean> => this.documents.confirmClose(id),
       // The workspace's Save and Save All reach the image through this; its text documents do not
