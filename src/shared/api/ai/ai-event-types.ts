@@ -371,6 +371,12 @@ export interface AiUsageEvent extends AiEventBase {
    * AI-SDK providers do not), or null when unknown.
    */
   readonly costUsd: number | null;
+
+  /**
+   * Gets the context window the model ran with, in tokens, when the provider reports one (protocol
+   * 1.12.0). It outranks the model list's figure, which a provider can only guess before a turn runs.
+   */
+  readonly contextWindow?: number;
 }
 
 /**

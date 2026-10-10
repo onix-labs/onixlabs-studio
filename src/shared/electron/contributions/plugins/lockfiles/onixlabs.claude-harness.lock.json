@@ -8,7 +8,7 @@
       "name": "claude-harness",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/claude-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.7.0/onixlabs-claude-harness-0.7.0.tgz"
+        "@onixlabs/claude-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.8.0/onixlabs-claude-harness-0.8.0.tgz"
       }
     },
     "node_modules/@anthropic-ai/claude-agent-sdk": {
@@ -156,9 +156,9 @@
       }
     },
     "node_modules/@modelcontextprotocol/sdk": {
-      "version": "1.30.0",
-      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.30.0.tgz",
-      "integrity": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==",
+      "version": "1.31.0",
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.31.0.tgz",
+      "integrity": "sha512-UvTMgnNlnIBO/22ob2RcVGDlcvOslQs8T59+FTGdA0L27a39fdGF/EDETNtDVK4DZGpwomlsYpRdA8UXcVL/pw==",
       "license": "MIT",
       "dependencies": {
         "@hono/node-server": "^1.19.9 || ^2.0.5",
@@ -196,12 +196,12 @@
       }
     },
     "node_modules/@onixlabs/claude-harness": {
-      "version": "0.7.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.7.0/onixlabs-claude-harness-0.7.0.tgz",
-      "integrity": "sha512-UkNzNVmwTingKFAmp4/5mu0cDxbr185xdTZYlfZI4WvXQEe9LRsCduhTbg6QD2p/AiQhUIDLQjAzdXh3Zg2EgA==",
+      "version": "0.8.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.8.0/onixlabs-claude-harness-0.8.0.tgz",
+      "integrity": "sha512-LfWamm/RntUBNJsZb5thSXRp0DxgdaE/kt6eEbh+2O1NpeRQ3qihJ69YJh9lRxxv/qD6N75k1XhfNkR1XKU5eg==",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.261",
-        "@modelcontextprotocol/sdk": "1.30.0",
+        "@modelcontextprotocol/sdk": "1.31.0",
         "zod": "4.5.4"
       }
     },

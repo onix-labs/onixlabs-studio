@@ -26,6 +26,7 @@ import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine'
 import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
 import { Search } from '@shared/angular/services/search/search';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { FakeIntersectionObserver } from '@shared/angular/testing/fake-intersection-observer';
 import { AgentComposer } from './agent-composer';
 
 /**
@@ -783,6 +784,32 @@ describe('AgentComposer', () => {
       expect(host.querySelector('.agent__elapsed')).toBeNull();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('elapsed_watchesTheFormNotTheBoxlessHost_soTheClockShowsOnScreen', () => {
+    const observers: FakeIntersectionObserver = FakeIntersectionObserver.install();
+    vi.useFakeTimers();
+    try {
+      const watched: ComponentFixture<AgentComposer> = TestBed.createComponent(AgentComposer);
+      watched.componentRef.setInput('tabId', undefined);
+      watched.componentRef.setInput('surface', 'editor');
+      watched.detectChanges();
+      const host: HTMLElement = watched.nativeElement as HTMLElement;
+      const form: HTMLElement = host.querySelector<HTMLElement>('.agent__composer')!;
+
+      // The host is display: contents and has no box, so it would never intersect.
+      expect(observers.observed()).toEqual([form]);
+
+      observers.report(form, true);
+      running.set(true);
+      watched.detectChanges();
+      vi.advanceTimersByTime(2000);
+      watched.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toBe('0:02');
+    } finally {
+      vi.useRealTimers();
+      observers.uninstall();
     }
   });
 

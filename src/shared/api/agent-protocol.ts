@@ -205,8 +205,13 @@ import { AiEvent } from './ai/ai-event-types';
  *
  * `1.11.0` adds a turn's optional `blockedCommands` (#853): commands the agent may not run, which a
  * harness enforces as its runtime allows. Optional, so every published harness is unaffected.
+ *
+ * `1.12.0` adds a `usage` event's optional `contextWindow`: the window the model actually ran with. A
+ * model's listed window is the harness's guess before any turn runs, and a guess can be wrong. The
+ * Claude CLI lists Opus 5.5 as plain `opus`, with nothing to say it runs with a 1M window, while each
+ * turn's result reports the real figure. Optional, so every published harness is unaffected.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.11.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.12.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
