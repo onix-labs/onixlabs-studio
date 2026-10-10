@@ -1619,6 +1619,40 @@ describe('Agent', () => {
     expect(agent.contextTokens()).toBe(12_500);
   });
 
+  it('contextWindow_whenATurnReportsOne_outranksTheListedWindow_forThatModelOnly', async () => {
+    await TestBed.inject(AgentEngine).loadProviders();
+    expect(agent.contextWindow()).toBe(1_000_000);
+    agent.send('hi');
+
+    // A sub-agent's window is its own and never becomes the conversation's.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      parentToolId: 'task-1',
+      inputTokens: 100,
+      outputTokens: 10,
+      costUsd: null,
+      contextWindow: 200_000,
+    });
+    expect(agent.contextWindow()).toBe(1_000_000);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 12_000,
+      outputTokens: 500,
+      costUsd: null,
+      contextWindow: 400_000,
+    });
+    expect(agent.contextWindow()).toBe(400_000);
+
+    // Another model falls back to its listed window, and the reported one returns with its model.
+    agent.setModel('claude-sonnet-4-6');
+    expect(agent.contextWindow()).toBe(1_000_000);
+    agent.setModel('claude-opus-4-8');
+    expect(agent.contextWindow()).toBe(400_000);
+  });
+
   it('editDecision_whenRaisedThenApplied_repliesAndSettlesTheItem', () => {
     agent.send('hi');
     fireEvent({

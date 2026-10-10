@@ -71,13 +71,23 @@ interface TokenUsage {
 }
 
 /**
+ * One model's usage in a terminal result, as far as it is read here: the context window the CLI ran
+ * that model with.
+ */
+interface ModelUsage {
+  readonly contextWindow?: number;
+}
+
+/**
  * Per-turn state threaded through the message loop: the last cumulative cost reported, so each result
- * carries only its own turn's delta, and the last top-level assistant usage, which is the true
- * context-occupancy snapshot the meter reads instead of the inflated result aggregate.
+ * carries only its own turn's delta; the last top-level assistant usage, which is the true
+ * context-occupancy snapshot the meter reads instead of the inflated result aggregate; and the model
+ * that top-level message came from, whose window the result reports.
  */
 export interface UsageState {
   lastCostUsd: number;
   lastAssistantUsage: TokenUsage | null;
+  lastAssistantModel: string | null;
 }
 
 /**
@@ -85,7 +95,7 @@ export interface UsageState {
  * @returns Returns a fresh usage state.
  */
 export function newUsageState(): UsageState {
-  return { lastCostUsd: 0, lastAssistantUsage: null };
+  return { lastCostUsd: 0, lastAssistantUsage: null, lastAssistantModel: null };
 }
 
 /**
@@ -116,6 +126,40 @@ function parentToolIdOf(message: SDKMessage): string | null {
  */
 function usageOf(message: SDKMessage): TokenUsage | undefined {
   return (message as { message?: { usage?: TokenUsage } }).message?.usage;
+}
+
+/**
+ * Reads the model an assistant message came from.
+ * @param message The SDK message.
+ * @returns Returns the model, or null.
+ */
+function modelOf(message: SDKMessage): string | null {
+  const value: unknown = (message as { message?: { model?: unknown } }).message?.model;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Reads the context window the CLI ran the turn's model with, from the result's per-model usage.
+ *
+ * This is the only place the SDK states a model's capacity. The model list says nothing about it, and
+ * an id's `[1m]` hint is not always there: Opus 5.5 is reported as plain `opus`, though it runs with a
+ * 1M window. So the window reported here is the one the meter should trust. The entry is the turn's
+ * own top-level model; a result whose per-model usage names only one model is read as that model's.
+ * Sub-agents and auxiliary calls have entries of their own, which is why any other entry is not.
+ * @param result The terminal result.
+ * @param model The model the turn's top-level messages came from, or null if unknown.
+ * @returns Returns the window in tokens, or undefined when the result does not say.
+ */
+function contextWindowOf(
+  result: { modelUsage?: Record<string, ModelUsage> },
+  model: string | null,
+): number | undefined {
+  const entries: Record<string, ModelUsage> = result.modelUsage ?? {};
+  const keys: readonly string[] = Object.keys(entries);
+  const key: string | undefined =
+    model !== null && model in entries ? model : keys.length === 1 ? keys[0] : undefined;
+  const window: unknown = key === undefined ? undefined : entries[key].contextWindow;
+  return typeof window === 'number' && window > 0 ? window : undefined;
 }
 
 /**
@@ -223,7 +267,11 @@ function handleToolResults(sink: EventSink, message: SDKMessage, parent: string 
  * @param usage The per-session usage state.
  */
 function handleResult(sink: EventSink, message: SDKMessage, usage: UsageState): void {
-  const result: { usage?: TokenUsage; total_cost_usd?: number } = message as never;
+  const result: {
+    usage?: TokenUsage;
+    total_cost_usd?: number;
+    modelUsage?: Record<string, ModelUsage>;
+  } = message as never;
   const occupancy: TokenUsage | undefined = usage.lastAssistantUsage ?? result.usage;
   if (occupancy === undefined) {
     return;
@@ -238,12 +286,15 @@ function handleResult(sink: EventSink, message: SDKMessage, usage: UsageState): 
         : result.total_cost_usd;
     usage.lastCostUsd = result.total_cost_usd;
   }
+  const contextWindow: number | undefined = contextWindowOf(result, usage.lastAssistantModel);
   sink.emit({
     requestId: sink.requestId(),
     kind: 'usage',
     inputTokens: contextInputOf(occupancy),
     outputTokens: occupancy.output_tokens ?? 0,
     costUsd,
+    // Optional on the wire (protocol 1.12.0): an older Studio ignores it.
+    ...(contextWindow === undefined ? {} : { contextWindow }),
   });
 }
 
@@ -284,6 +335,7 @@ export function translate(sink: EventSink, message: SDKMessage, usage: UsageStat
       if (own !== undefined) {
         usage.lastAssistantUsage = own;
       }
+      usage.lastAssistantModel = modelOf(message) ?? usage.lastAssistantModel;
     }
   } else if (message.type === 'user') {
     handleToolResults(sink, message, parent);

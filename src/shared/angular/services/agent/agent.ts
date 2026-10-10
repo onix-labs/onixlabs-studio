@@ -869,6 +869,16 @@ export class Agent {
   private readonly contextTokensState: WritableSignal<number> = signal<number>(0);
 
   /**
+   * Holds the context window each model actually ran with, by model id, as the provider reported it
+   * with a turn's usage. A fact about the model rather than the conversation, so it survives clearing
+   * and restoring; and it outranks the model list's figure, which a provider can only guess before a
+   * turn runs (Opus 5.5 is listed as plain `opus`, with nothing to say it has a 1M window).
+   */
+  private readonly reportedWindowsState: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
+
+  /**
    * Accumulates the conversation's cost in US dollars across its turns, when the provider reports it
    * (the Claude Agent SDK does; the AI-SDK providers do not, leaving this at zero).
    */
@@ -1017,11 +1027,16 @@ export class Agent {
 
   /**
    * Gets the selected model's context window in tokens (the readout's denominator), or zero when it is
-   * unknown. Sourced from this conversation's own effective model.
+   * unknown. Sourced from this conversation's own effective model: the window it last reported running
+   * with, else the model list's figure.
    */
   public readonly contextWindow: Signal<number> = computed((): number => {
     const id: string = this.model();
-    return this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0;
+    return (
+      this.reportedWindowsState().get(id) ??
+      this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ??
+      0
+    );
   });
 
   /**
@@ -2018,6 +2033,7 @@ export class Agent {
         // size rather than adding to a running total. Cost, in contrast, accumulates. Compaction-run
         // usage never reaches here (handled and returned above), so the meter is not spiked by it.
         this.contextTokensState.set(event.inputTokens + event.outputTokens);
+        this.noteReportedWindow(event.contextWindow);
         const cost: number | null = event.costUsd;
         if (cost !== null) {
           this.costUsdState.update((total: number): number => total + cost);
@@ -2031,6 +2047,21 @@ export class Agent {
       default:
         break;
     }
+  }
+
+  /**
+   * Records the context window the current model reported running with, when it reported one.
+   * @param window The reported window in tokens, or undefined.
+   */
+  private noteReportedWindow(window: number | undefined): void {
+    const id: string = this.model();
+    if (window === undefined || window <= 0 || this.reportedWindowsState().get(id) === window) {
+      return;
+    }
+    this.reportedWindowsState.update(
+      (windows: ReadonlyMap<string, number>): ReadonlyMap<string, number> =>
+        new Map<string, number>(windows).set(id, window),
+    );
   }
 
   /**

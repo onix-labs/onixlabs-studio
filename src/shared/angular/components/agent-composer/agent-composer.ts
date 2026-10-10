@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -677,10 +678,14 @@ export class AgentComposer {
   }
 
   /**
-   * Watches this composer's own host element and records whether it is on screen, mirroring the
-   * transcript's gate: a hidden tab, an inactive dock stack and an off-viewport tile all report the
-   * same way, and none needs a host to say so. Where there is no observer the composer simply stays
-   * "shown" and ticks as it always did.
+   * Watches this composer and records whether it is on screen, mirroring the transcript's gate: a
+   * hidden tab, an inactive dock stack and an off-viewport tile all report the same way, and none needs
+   * a host to say so. Where there is no observer the composer simply stays "shown" and ticks as it
+   * always did.
+   *
+   * ⛔ The form is watched, not the host. The host is `display: contents`, so it has no box, and an
+   * element with no box never intersects anything: watching it read the composer as always off screen,
+   * and the run clock banked every second without ever showing one (it sat at 0:00).
    */
   private watchOnScreen(): void {
     if (typeof IntersectionObserver === 'undefined') {
@@ -694,7 +699,9 @@ export class AgentComposer {
         }
       },
     );
-    observer.observe(this.host.nativeElement);
+    afterNextRender((): void => {
+      observer.observe(this.host.nativeElement.firstElementChild ?? this.host.nativeElement);
+    });
     inject(DestroyRef).onDestroy((): void => observer.disconnect());
   }
 
