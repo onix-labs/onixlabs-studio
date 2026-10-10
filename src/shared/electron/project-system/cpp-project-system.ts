@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { promisify } from 'node:util';
 import {
   ProjectCapabilities,
   ProjectEntry,
@@ -9,6 +11,8 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { cmakeFromCache, CmakeTarget, readTargets, writeCodeModelQuery } from './cmake-file-api';
+import { buildItemTree, EvaluatedItem } from './item-tree';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -75,6 +79,98 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * The file extensions a C/C++ build is made of, which a project without a build model (a Make project,
+ * or a CMake one not yet configured) is listed by: sources, headers, assembly, Objective-C, Windows
+ * resource and module-definition files, and CMake scripts. Anything else in the tree — outputs, assets,
+ * disk images, logs — is not part of the build, and is left to the File Explorer.
+ */
+const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set<string>([
+  '.c',
+  '.cc',
+  '.cpp',
+  '.cxx',
+  '.c++',
+  '.h',
+  '.hh',
+  '.hpp',
+  '.hxx',
+  '.h++',
+  '.inl',
+  '.ipp',
+  '.tpp',
+  '.ixx',
+  '.cppm',
+  '.m',
+  '.mm',
+  '.s',
+  '.asm',
+  '.rc',
+  '.def',
+  '.cmake',
+]);
+
+/**
+ * Bounds how long configuring a CMake build tree may take, so a configure that hangs cannot hold the
+ * Solution Explorer forever.
+ */
+const CONFIGURE_TIMEOUT_MS: number = 120_000;
+
+/**
+ * The words each kind of CMake target is described in.
+ */
+const TARGET_KINDS: Readonly<Record<string, string>> = {
+  EXECUTABLE: 'executable',
+  STATIC_LIBRARY: 'static library',
+  SHARED_LIBRARY: 'shared library',
+  MODULE_LIBRARY: 'module library',
+  OBJECT_LIBRARY: 'object library',
+};
+
+/**
+ * Runs a process, resolving with its outcome rather than throwing.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+  options: { timeout: number; killSignal: NodeJS.Signals },
+) => Promise<unknown> = promisify(execFile);
+
+/**
+ * Builds a CMake project's contents from its build model: one group per target that compiles anything
+ * — "ntvdmex (executable)" — holding its sources in their folders, then the project's own
+ * `CMakeLists.txt`. A source outside the project is placed by its file name, as linked items are.
+ * @param projectPath The absolute path of the project's `CMakeLists.txt`.
+ * @param targets The targets CMake's code model names.
+ * @returns Returns the contents tree.
+ */
+export function buildTargetTree(
+  projectPath: string,
+  targets: readonly CmakeTarget[],
+): readonly ProjectItemNode[] {
+  const root: string = path.dirname(projectPath);
+  const nodes: ProjectItemNode[] = [];
+  for (const target of targets) {
+    if (target.sources.length === 0) {
+      continue;
+    }
+    const items: EvaluatedItem[] = target.sources.map((source: string): EvaluatedItem => ({
+      identity: path.isAbsolute(source) ? path.relative(root, source) : source,
+      link: '',
+    }));
+    const kind: string | undefined = TARGET_KINDS[target.type];
+    nodes.push({
+      type: 'folder',
+      name: kind === undefined ? target.name : `${target.name} (${kind})`,
+      // A target is a grouping of the build, not a directory.
+      path: null,
+      children: buildItemTree(projectPath, items),
+    });
+  }
+  nodes.push({ type: 'file', name: path.basename(projectPath), path: projectPath });
+  return nodes;
+}
 
 /**
  * Reads a CMake project's name from the `project(<name> ...)` command of a `CMakeLists.txt`.
@@ -157,16 +253,71 @@ export class CppProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists the project's files straight from the root directory, skipping build-output and metadata
-   * folders.
+   * Loads what the project's build is made of (#882 follow-up): for a configured CMake project, its
+   * targets and the sources each compiles, from CMake's File API; otherwise — a Make project, or CMake
+   * not yet configured — the C/C++ source files under the root, skipping build-output and metadata
+   * folders. Either way, outputs and assets that share the tree stay out of the Solution Explorer; the
+   * File Explorer shows everything.
    * @param projectPath The absolute path of the project manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
+    if (path.basename(projectPath) === CMAKE_MANIFEST) {
+      const targets: readonly CmakeTarget[] | null = await this.cmakeTargets(directory);
+      if (targets?.some((target: CmakeTarget): boolean => target.sources.length > 0) === true) {
+        logger.debug(
+          'CppProjectSystem',
+          `Listed ${targets.length} CMake target(s) for '${projectPath}' from the File API.`,
+        );
+        return { projectPath, tree: buildTargetTree(projectPath, targets) };
+      }
+    }
     const budget: { remaining: number } = { remaining: MAX_ITEMS };
     const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Reads a CMake project's targets from its build tree's File API reply. The tree must already be
+   * configured — Studio never creates one — and Studio's code-model query is put in place on first
+   * read; when no configure has answered it yet, the tree is reconfigured once (which regenerates the
+   * build files and builds nothing). After that, CMake answers on every configure, including the ones a
+   * build runs when a `CMakeLists.txt` changes, so the reply stays current without Studio's help.
+   * @param root The project's top-level source directory.
+   * @returns Returns the targets, or null when the project has no configured build tree, or CMake
+   * cannot be run to answer.
+   */
+  private async cmakeTargets(root: string): Promise<readonly CmakeTarget[] | null> {
+    const buildDir: string = path.join(root, BUILD_DIR);
+    const cache: string | null = await this.readFile(path.join(buildDir, 'CMakeCache.txt'));
+    if (cache === null) {
+      logger.debug('CppProjectSystem', `No configured CMake build tree at '${buildDir}'.`);
+      return null;
+    }
+    const existing: readonly CmakeTarget[] | null = await readTargets(buildDir);
+    if (existing !== null) {
+      return existing;
+    }
+    if (!(await writeCodeModelQuery(buildDir))) {
+      return null;
+    }
+    const cmake: string = cmakeFromCache(cache) ?? 'cmake';
+    logger.info('CppProjectSystem', `Configuring '${buildDir}' to read its CMake targets.`);
+    try {
+      await execFileAsync(cmake, ['-S', root, '-B', buildDir], {
+        timeout: CONFIGURE_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      });
+    } catch (error: unknown) {
+      logger.warn(
+        'CppProjectSystem',
+        `Configuring '${buildDir}' failed; listing sources instead.`,
+        error,
+      );
+      return null;
+    }
+    return readTargets(buildDir);
   }
 
   /**
@@ -212,7 +363,7 @@ export class CppProjectSystem implements ProjectSystem {
       .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const files: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isFile())
+      .filter((entry: Dirent): boolean => entry.isFile() && this.isBuildFile(entry.name))
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const nodes: ProjectItemNode[] = [];
     for (const child of directories) {
@@ -265,6 +416,16 @@ export class CppProjectSystem implements ProjectSystem {
    */
   private isManifest(name: string): boolean {
     return name === CMAKE_MANIFEST || MAKEFILE_PATTERN.test(name);
+  }
+
+  /**
+   * Determines whether a file is part of a C/C++ build: a source, header or build script by its
+   * extension, or a CMake or Make manifest.
+   * @param name The file name.
+   * @returns Returns true when the file belongs in the project listing.
+   */
+  private isBuildFile(name: string): boolean {
+    return this.isManifest(name) || SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase());
   }
 
   /**
