@@ -162,54 +162,16 @@
   overflow: hidden;
 }
 
-.graph__ref app-icon {
-  flex: 0 0 auto;
-}
-
-.graph__ref-name {
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.graph__ref {
-  display: inline-flex;
-  // A label shortens its name to share the room, but no further than its icon and a little of it.
-  flex: 0 1 auto;
+// Each label is an `app-chip`, toned by the kind of ref (see `refTone`). The labels share the room
+// equally rather than in proportion to their names: each grows from nothing towards the width of its
+// own name (11rem at most), and one that reaches it hands what is left to the others. Labels that fit
+// show their names whole; when they do not, they shorten to the same width instead of the longest
+// losing the most. None shrinks past its icon and a little of its name.
+.graph__refs > .graph__ref {
+  flex: 1 1 0;
   min-inline-size: 2.75rem;
-  align-items: center;
-  gap: 0.2rem;
   max-inline-size: 11rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  &--head {
-    color: var(--form-on-accent-color);
-    background: var(--accent-color);
-  }
-
-  &--branch {
-    color: var(--accent-surface-foreground-color);
-    background: var(--accent-surface-background-color);
-    border: 0.0625rem solid var(--accent-surface-border-color);
-  }
-
-  &--remote {
-    color: var(--form-muted-foreground-color);
-    background: color-mix(in srgb, var(--form-muted-foreground-color) 14%, transparent);
-  }
-
-  &--tag {
-    color: var(--change-margin-unsaved);
-    background: color-mix(in srgb, var(--change-margin-unsaved) 16%, transparent);
-  }
+  max-inline-size: calc-size(max-content, min(size, 11rem));
 }
 
 .graph__summary {

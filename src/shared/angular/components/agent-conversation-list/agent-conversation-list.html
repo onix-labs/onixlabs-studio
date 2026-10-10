@@ -89,7 +89,7 @@
             (click)="$event.stopPropagation()"
           />
           <span class="history__node-name">{{ data.node.name }}</span>
-          <span class="history__count">{{ data.node.items.length }}</span>
+          <app-chip class="history__count">{{ data.node.items.length }}</app-chip>
         </span>
       } @else if (editing) {
         <!-- A conversation being retitled keeps its checkbox; the tree's field takes the place of its
@@ -121,9 +121,9 @@
               <span class="history__leaf-when">{{ formatWhen(data.item.summary.updatedAt) }}</span>
             </span>
             <span class="history__chips">
-              <span class="history__chip">{{ agentTypeLabels[data.item.agentType] }}</span>
+              <app-chip tone="accent">{{ agentTypeLabels[data.item.agentType] }}</app-chip>
               @if (data.item.summary.contextLabel; as label) {
-                <span class="history__chip history__chip--context">{{ label }}</span>
+                <app-chip [title]="label">{{ label }}</app-chip>
               }
             </span>
           </span>

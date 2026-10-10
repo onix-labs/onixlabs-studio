@@ -120,14 +120,13 @@
           <span class="graph__line">
             <span class="graph__refs">
               @for (ref of node.refs; track ref.name) {
-                <span class="graph__ref" [class]="'graph__ref--' + refKind(ref)">
-                  @if (ref.kind === 'tag') {
-                    <app-icon [icon]="Icon.TAG" />
-                  } @else {
-                    <app-icon [icon]="Icon.SOURCE_CONTROL" />
-                  }
-                  <span class="graph__ref-name">{{ ref.name }}</span>
-                </span>
+                <app-chip
+                  class="graph__ref"
+                  [tone]="refTone(ref)"
+                  [icon]="ref.kind === 'tag' ? Icon.TAG : Icon.SOURCE_CONTROL"
+                  [title]="ref.name"
+                  >{{ ref.name }}</app-chip
+                >
               }
             </span>
             <span class="graph__meta">

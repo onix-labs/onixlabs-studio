@@ -30,6 +30,7 @@ import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore, OpenIssue } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Chip } from '@shared/angular/components/chip/chip';
 
 /**
  * Hosts one issue as a document in the well.
@@ -44,7 +45,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [Button, CdkMenuTrigger, IssueAgentConfirm, MarkdownRenderer, Menu, PanelToolbar],
+  imports: [Chip, Button, CdkMenuTrigger, IssueAgentConfirm, MarkdownRenderer, Menu, PanelToolbar],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

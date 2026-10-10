@@ -39,6 +39,7 @@ import {
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
 import { ModelRuntimes } from '../model-runtime/model-runtimes';
+import { Chip } from '@shared/angular/components/chip/chip';
 
 /**
  * The installed-models table's columns.
@@ -132,7 +133,7 @@ export interface ModelManagerSummary {
  */
 @Component({
   selector: 'app-model-manager-view',
-  imports: [Button, TextField, AppIcon, Table, TableRowDef],
+  imports: [Chip, Button, TextField, AppIcon, Table, TableRowDef],
   templateUrl: './model-manager-view.html',
   styleUrl: './model-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -389,27 +389,12 @@
   color: var(--wl-muted);
 }
 
-// Fork, Archived, Starred: small, quiet facts about what kind of repository it is.
+// Starred, Fork, Archived: neutral chips stating what kind of repository it is; Archived is a warning,
+// since it is read-only and worth noticing before cloning to work on it.
 .source__badges {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-}
-
-.source__badge {
-  padding: 0.1rem 0.45rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--wl-muted);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-// Archived is read-only: worth noticing before cloning to work on it.
-.source__badge--warning {
-  color: var(--warning-color);
-  border-color: rgba(var(--warning-color-rgb), 0.5);
 }
 
 .source__topics {
@@ -421,12 +406,9 @@
   list-style: none;
 }
 
+// Each topic, as an accent chip.
 .source__topic {
-  padding: 0.1rem 0.5rem;
-  font-size: 0.7rem;
-  color: var(--accent-color);
-  background: rgba(var(--accent-color-rgb), 0.12);
-  border-radius: 999px;
+  display: flex;
 }
 
 // The homepage, as a link-styled button: it opens in the browser.
@@ -500,6 +482,11 @@
 
 .source__empty-hint {
   @include empty-hint;
+}
+
+// The indeterminate sweep under "Reading your repositories…", as wide as a line of the hint.
+.source__empty-progress {
+  inline-size: min(14rem, 100%);
 }
 
 // A narrow window stacks the side above the browser and drops the detail panel beneath the list.

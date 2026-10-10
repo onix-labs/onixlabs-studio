@@ -140,7 +140,7 @@
     <div class="detail__files">
       <header class="detail__files-header">
         <span>Changed files</span>
-        <span class="tree-count">{{ repository.selectedFiles().length }}</span>
+        <app-chip class="tree-count">{{ repository.selectedFiles().length }}</app-chip>
       </header>
       @if (repository.selectedFiles().length > 0) {
         <app-tree-view
@@ -194,7 +194,7 @@
               />
             }
             <span class="tree-name detail__group-name">{{ groupLabel(entry.group) }}</span>
-            <span class="tree-count">{{ groupFiles(entry.group).length }}</span>
+            <app-chip class="tree-count">{{ groupFiles(entry.group).length }}</app-chip>
           } @else if (entry.file.status === 'conflicted') {
             <span class="detail__status detail__status--conflicted">
               {{ statusLetter(entry.file.status) }}

@@ -29,6 +29,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TreeEdit, TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Chip } from '@shared/angular/components/chip/chip';
 
 /**
  * The identifier of the always-present All Conversations root node.
@@ -134,6 +135,7 @@ type HistoryRowData =
 @Component({
   selector: 'app-agent-conversation-list',
   imports: [
+    Chip,
     TextField,
     Button,
     AppIcon,

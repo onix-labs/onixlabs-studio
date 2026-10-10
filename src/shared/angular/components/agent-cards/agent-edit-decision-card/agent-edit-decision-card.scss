@@ -32,25 +32,8 @@
   opacity: 0.7;
 }
 
-// The summary's counts as chips, drawn as the diff panel's badge is and in the change-margin colours,
-// so the card agrees with the diff it asks the user to review: added green, removed red.
-.agent__detail-added,
-.agent__detail-removed {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+// The summary's counts as chips: added in the success tone, removed in the danger tone, with figures
+// that line up.
+.agent__detail-count {
   font-variant-numeric: tabular-nums;
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.agent__detail-added {
-  color: var(--change-margin-saved);
-  background: color-mix(in srgb, var(--change-margin-saved) 18%, transparent);
-}
-
-.agent__detail-removed {
-  color: var(--change-margin-deleted);
-  background: color-mix(in srgb, var(--change-margin-deleted) 18%, transparent);
 }

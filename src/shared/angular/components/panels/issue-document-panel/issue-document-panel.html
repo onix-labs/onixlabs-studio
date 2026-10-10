@@ -44,7 +44,7 @@
           <dt>Labels</dt>
           <dd>
             @for (label of issue.labels; track label) {
-              <span class="issue__label">{{ label }}</span>
+              <app-chip class="issue__label">{{ label }}</app-chip>
             }
           </dd>
         </div>

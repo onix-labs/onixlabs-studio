@@ -101,6 +101,20 @@ describe('TerminalPanel', () => {
     expect(host.querySelector('.terminal-panel__tabs')).not.toBeNull();
   });
 
+  it('status_leadsWithThePath_andTrailsWithTheShell_asATerminalTabDoes', async () => {
+    context.setTabId('tab-1');
+    announceRoot('/repo');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const items: string[] = [...host.querySelectorAll<HTMLElement>('.panel-status__item')].map(
+      (item: HTMLElement): string => (item.textContent ?? '').trim(),
+    );
+    expect(items[0]).toBe('/repo');
+    expect(host.querySelector('.panel-status__item--push app-icon')).not.toBeNull();
+    expect(items[1]).not.toBe('/repo');
+  });
+
   it('newTerminal_mountsAnAdditionalConcurrentTerminalWithADistinctSession', async () => {
     context.setTabId('tab-1');
     announceRoot('/repo');

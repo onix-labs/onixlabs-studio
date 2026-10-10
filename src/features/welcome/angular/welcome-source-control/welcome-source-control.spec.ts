@@ -354,6 +354,19 @@ describe('WelcomeSourceControl', () => {
     expect(tabs).toEqual(['plugin-manager']);
   });
 
+  it('whileReadingRepositories_showsAProgressBarUnderTheMessage', async () => {
+    hosts = [];
+    await render();
+    (
+      fixture.componentInstance as unknown as { loading: { set(value: boolean): void } }
+    ).loading.set(true);
+    fixture.detectChanges();
+
+    const title: Element | null = host.querySelector('.source__empty-title');
+    expect(title?.textContent).toContain('Reading your repositories…');
+    expect(title?.nextElementSibling?.tagName.toLowerCase()).toBe('app-progress-bar');
+  });
+
   it('withNoVersionControlPlugin_saysCloningNeedsOne', async () => {
     plugins.set([installed('hosting')]);
     await render();
@@ -650,10 +663,16 @@ describe('WelcomeSourceControl', () => {
 
       await select('aero');
       expect(
-        Array.from(host.querySelectorAll('.source__badge')).map((badge: Element): string =>
-          badge.textContent.trim(),
+        Array.from(host.querySelectorAll('.source__badges app-chip')).map(
+          (badge: Element): string => badge.textContent.trim(),
         ),
       ).toEqual(['Starred', 'Fork', 'Archived']);
+      // Archived is read-only, so it is the one fact flagged as a warning.
+      expect(
+        Array.from(host.querySelectorAll('.source__badges app-chip.chip--warning')).map(
+          (badge: Element): string => badge.textContent.trim(),
+        ),
+      ).toEqual(['Archived']);
       expect(
         Array.from(host.querySelectorAll('.source__topic')).map((topic: Element): string =>
           topic.textContent.trim(),

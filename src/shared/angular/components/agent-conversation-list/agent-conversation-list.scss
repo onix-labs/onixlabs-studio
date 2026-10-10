@@ -113,16 +113,10 @@
   text-overflow: ellipsis;
 }
 
-// The count pill carries lowest emphasis: small and muted.
+// A category's count, as a neutral chip: the lowest emphasis on the row.
 .history__count {
-  flex: 0 0 auto;
   min-inline-size: 1.25rem;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.7rem;
-  text-align: center;
-  color: var(--form-muted-foreground-color);
-  background: var(--form-control-background-color);
-  border-radius: 0.75rem;
+  justify-content: center;
 }
 
 // A conversation leaf's projected content: a checkbox vertically centred against the two-line body,
@@ -175,26 +169,12 @@
   white-space: nowrap;
 }
 
-// --- Chips: every chip reads as a subtle accent-surface pill with a border, like the app's buttons.
+// A conversation's chips: its agent type in the accent, then its context, neutral.
 .history__chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
-}
-
-.history__chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--accent-surface-foreground-color);
-  background: var(--accent-surface-background-color);
-  border: 0.0625rem solid var(--accent-surface-border-color);
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  white-space: nowrap;
 }
 
 // The overflow trigger reveals on row hover/focus via the shared `.tree-row-action`; this is its look.

@@ -261,8 +261,16 @@ describe('ModelManagerView', () => {
     expect(text).toContain('Available');
     expect(text).toContain('Llama 3.2 3B');
     expect(text).toContain('A compact general-purpose model.');
-    expect(text).toContain('Ollama');
-    expect(text).toContain('Hugging Face');
+    const sources: string[] = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('td app-chip'),
+    ].map((chip: HTMLElement): string => `${chip.textContent?.trim()} ${chip.className}`);
+    // The curated source is the accent chip; a Hugging Face result is neutral.
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^Ollama .*chip--accent/),
+        expect.stringMatching(/^Hugging Face .*chip--neutral/),
+      ]),
+    );
   });
 
   it('shows a dash for a catalogue entry with no known size', async () => {

@@ -194,9 +194,9 @@
             }
           </td>
           <td>
-            <span class="model-manager__badge model-manager__badge--{{ cat(row).source }}">
+            <app-chip [tone]="cat(row).source === 'curated' ? 'accent' : 'neutral'">
               {{ cat(row).source === 'curated' ? 'Ollama' : 'Hugging Face' }}
-            </span>
+            </app-chip>
           </td>
           <td>{{ cat(row).parameterSize || '—' }}</td>
           <td class="model-manager__numeric">

@@ -80,32 +80,9 @@
   min-block-size: 0;
 }
 
-// The severity badge: a small, colour-coded pill.
+// The severity, as a chip toned by how severe it is (see `severityTone`).
 .system-monitor__badge {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 600;
   letter-spacing: 0.03em;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier, 1));
-  color: #fff;
-  background-color: var(--form-muted-foreground-color);
-
-  &--trace {
-    background-color: color-mix(in srgb, var(--form-muted-foreground-color) 70%, transparent);
-  }
-  &--debug {
-    background-color: var(--info-color, #4a90d9);
-  }
-  &--info {
-    background-color: var(--accent-color);
-  }
-  &--warning {
-    background-color: var(--warning-color, #d99e2b);
-  }
-  &--error {
-    background-color: var(--danger-color, #e5484d);
-  }
 }
 
 .system-monitor__where {
