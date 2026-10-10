@@ -574,6 +574,11 @@ $agent-node-size: 1.75rem;
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation
 // attribute, so style them through ::ng-deep.
 :host ::ng-deep .agent__markdown {
+  // A run with no break in it — a path, a URL, a long identifier in inline code — wraps rather than
+  // bleeding out of the bubble. Only as a last resort: text still wraps between words where it can,
+  // and a code block keeps its own lines and scrolls.
+  overflow-wrap: anywhere;
+
   p {
     margin: 0 0 0.6rem;
   }
