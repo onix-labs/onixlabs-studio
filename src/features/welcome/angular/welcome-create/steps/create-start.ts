@@ -8,7 +8,6 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ProjectDraft } from '../project-draft';
 import {
@@ -28,7 +27,7 @@ import {
  */
 @Component({
   selector: 'app-create-start',
-  imports: [AppIcon, OverlayScrollbar],
+  imports: [AppIcon],
   templateUrl: './create-start.html',
   styleUrl: './create-steps.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -60,71 +60,49 @@ select:focus-visible {
   border-color: var(--accent-color) !important;
 }
 
-// Custom, reveal-on-interaction scrollbars, app-wide. Without these Chromium falls back to the native
-// macOS scrollbar, which flips between a thin auto-hiding overlay bar and a wide persistent gutter
-// depending on the "Show scroll bars" system setting and whether a mouse is attached — the source of
-// the inconsistent, chunky bars. Giving `::-webkit-scrollbar` a fixed size takes every scroll
-// container off that native path onto a single custom-drawn bar; the thumb stays transparent until the
-// area is interacted with, so it reads like the macOS overlay: hidden at rest, shown while the pointer
-// is over the area (`:hover`) or while it is actively scrolling (`[data-app-scrolling]`, toggled by the
-// ScrollReveal service so wheel, keyboard, and programmatic scrolls flash it too). The track reserves
-// its width only while a container actually overflows, so there is no empty channel and no shift when
-// the thumb reveals. Monaco and xterm paint their own scrollbars (not native overflow), so none of this
-// reaches editor or terminal content.
-::-webkit-scrollbar {
-  width: 0.625rem;
-  height: 0.625rem;
-}
-
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-// Inset the thumb with a transparent border (clipped to the padding box) so it reads as a slim pill
-// floating in the wider hit area rather than filling the gutter edge to edge.
-::-webkit-scrollbar-thumb {
-  background: transparent;
-  border: 0.1875rem solid transparent;
-  border-radius: 1rem;
-  background-clip: padding-box;
-}
-
-// Reveal: the pointer is anywhere within the scroll container, or it is mid-scroll.
-:hover::-webkit-scrollbar-thumb,
-[data-app-scrolling]::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb-color);
-  background-clip: padding-box;
-}
-
-// Emphasis while the pointer rests on the thumb itself. Ordered last so it wins over the reveal rule
-// at equal specificity.
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover-color);
-  background-clip: padding-box;
-}
-
-// The overlay scrollbar (`appOverlayScrollbar`): where a row's full-width fill has to reach the edge,
-// the native bar is hidden — it would take its width out of the content — and a thumb of the same
-// look floats over the content instead, revealed the same way. Global because the thumb is added to
-// the host by a directive, outside any component's style scope.
-.overlay-scrollbar {
-  position: relative;
-}
-
-.overlay-scrollbar__scroller {
+// Scroll bars float over the content, app-wide, rather than taking a channel beside it. Any native bar,
+// however it is styled, takes its width out of the content box, so a selected row's fill would stop
+// short of the area's edge. So every native bar is hidden here, from the first paint, and the
+// OverlayScrollbars service draws slim thumbs in a layer over the document instead (below). They are
+// hidden at rest and shown while the pointer is over the area or while it scrolls, as the macOS overlay
+// bars are. Monaco and xterm draw their own bars, so none of this reaches editor or terminal content.
+* {
   scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
-.overlay-scrollbar__thumb {
+::-webkit-scrollbar {
+  display: none;
+}
+
+// A scroll area that sets this to `none` gets no bar at all (a tab strip with no room for one, say).
+// Not inherited, so an area inside one still gets its own.
+@property --app-scrollbar {
+  syntax: '*';
+  inherits: false;
+}
+
+// The layer the bars are drawn in, over the whole document. It takes no pointer events itself; only a
+// shown thumb does.
+.app-scrollbars {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
+// The part of one scroll area that can be seen, clipping its thumbs to it.
+.app-scrollbars__frame {
   position: absolute;
-  inset-inline-end: 0.1875rem;
-  z-index: 1;
-  inline-size: 0.25rem;
+  overflow: hidden;
+}
+
+// The scroll area's padding box, the thumbs' positioning context.
+.app-scrollbars__box {
+  position: absolute;
+}
+
+.app-scrollbars__thumb {
+  position: absolute;
   border-radius: 1rem;
   background: var(--scrollbar-thumb-color);
   opacity: 0;
@@ -138,10 +116,21 @@ select:focus-visible {
   &::before {
     content: '';
     position: absolute;
-    inset: 0 -0.25rem;
+    inset: -0.25rem;
   }
 }
 
-.overlay-scrollbar__thumb--shown {
+.app-scrollbars__thumb--vertical {
+  inset-inline-end: 0.1875rem;
+  inline-size: 0.25rem;
+}
+
+.app-scrollbars__thumb--horizontal {
+  inset-block-end: 0.1875rem;
+  block-size: 0.25rem;
+}
+
+.app-scrollbars__frame--shown .app-scrollbars__thumb {
   opacity: 1;
+  pointer-events: auto;
 }

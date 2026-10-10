@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import type { Skill } from '@shared/api/skill-channels';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ProjectDraft } from '../project-draft';
 
@@ -20,7 +19,7 @@ import { ProjectDraft } from '../project-draft';
  */
 @Component({
   selector: 'app-create-skills',
-  imports: [AppIcon, OverlayScrollbar],
+  imports: [AppIcon],
   templateUrl: './create-skills.html',
   styleUrl: './create-steps.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

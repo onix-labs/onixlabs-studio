@@ -1,5 +1,6 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/overlay-scrollbars';
 
 /**
  * Holds the document-root attributes mirrored into child windows, so their stylesheets resolve the
@@ -20,7 +21,8 @@ const MIRRORED_ROOT_ATTRIBUTES: readonly string[] = [
  * clones the application's stylesheets into it and copies the document-root theme attributes
  * (mode, accent variables, corner policy) across, then keeps both mirrors live: head mutations are
  * observed, so styles Angular injects for lazily-created components arrive in every open child, and
- * root-attribute changes (a theme switch, a new accent) are re-applied.
+ * root-attribute changes (a theme switch, a new accent) are re-applied. Its scroll areas get the same
+ * overlay scroll bars as the opener's.
  */
 @Service()
 export class ChildWindowStyling implements OnDestroy {
@@ -33,6 +35,11 @@ export class ChildWindowStyling implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the overlay scroll bars, drawn over each child's scroll areas as over the opener's.
+   */
+  private readonly scrollbars: OverlayScrollbars = inject(OverlayScrollbars);
 
   /**
    * Holds the observer mirroring theme attributes from this document's root into the children, or
@@ -56,6 +63,7 @@ export class ChildWindowStyling implements OnDestroy {
       doc.head.appendChild(this.cloneStyleNode(node, doc));
     }
     this.applyRootAttributes(doc);
+    this.scrollbars.attach(doc);
     this.children.add(child);
     this.ensureObservers();
     this.log.trace('ChildWindowStyling', 'Adopted child window for styling', this.children.size);
@@ -66,7 +74,9 @@ export class ChildWindowStyling implements OnDestroy {
    * @param child The child window to release.
    */
   public release(child: Window): void {
-    this.children.delete(child);
+    if (this.children.delete(child)) {
+      this.scrollbars.detach(child.document);
+    }
   }
 
   /**
