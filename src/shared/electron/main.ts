@@ -20,6 +20,7 @@ import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
+import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
 import { SkillHandlers } from './ai/skills/skill-handlers';
@@ -126,6 +127,10 @@ import { WorkspaceManager } from './workspace-manager';
 const userDataOverride: string | undefined = process.env['STUDIO_USER_DATA_DIR'];
 if (userDataOverride !== undefined) {
   app.setPath('userData', userDataOverride);
+} else if (process.env['ELECTRON_START_URL'] !== undefined) {
+  // A development build keeps a profile of its own, so an installed Studio holding the shared one's
+  // storage lock cannot make it forget everything it saves (see development-user-data.ts).
+  app.setPath('userData', useDevelopmentUserData(app.getPath('userData')).directory);
 }
 
 /**
@@ -702,9 +707,9 @@ class Program {
     // of silently quitting on the lock.
     // Whether this instance is the sole owner of its userData directory. It gates the journal reap
     // below: a second instance sharing this userData must not reap the running instance's live
-    // children (its language servers, terminals, and Claude Code agent). The commonest way two
-    // instances share a userData is a development build launched from an installed Studio while
-    // developing Studio itself — the installed instance holds the lock, so the dev instance sees it.
+    // children (its language servers, terminals, and Claude Code agent). A development build keeps
+    // a profile of its own, so this is two development builds running at once, or two pointed at the
+    // same STUDIO_USER_DATA_DIR.
     let soleInstance: boolean = true;
     if (Program.START_URL === undefined) {
       if (!app.requestSingleInstanceLock()) {
