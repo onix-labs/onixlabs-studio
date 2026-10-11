@@ -231,11 +231,6 @@ export interface ContributedAiModel {
    * Gets the display name.
    */
   readonly label: string;
-
-  /**
-   * Gets the context window in tokens.
-   */
-  readonly contextWindow: number;
 }
 
 /**

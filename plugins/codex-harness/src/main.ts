@@ -537,6 +537,9 @@ function receive(message: HostMessage): void {
           images: false,
           efforts: ['low', 'medium', 'high', 'xhigh'],
           resumable: true,
+          // Every window is `context_window` from the CLI's own list of the account's models — the
+          // provider's figure for that model, never one this plugin worked out.
+          guaranteedContextWindows: true,
         },
       });
       break;

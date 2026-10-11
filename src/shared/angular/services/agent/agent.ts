@@ -871,8 +871,9 @@ export class Agent {
   /**
    * Holds the context window each model actually ran with, by model id, as the provider reported it
    * with a turn's usage. A fact about the model rather than the conversation, so it survives clearing
-   * and restoring; and it outranks the model list's figure, which a provider can only guess before a
-   * turn runs (Opus 5.5 is listed as plain `opus`, with nothing to say it has a 1M window).
+   * and restoring; and it outranks the model list's figure, which many providers do not state at all
+   * (Opus 5.5 is listed as plain `opus`, with nothing to say it has a 1M window). It is never written
+   * back to the model list: that shows only what a provider states up front.
    */
   private readonly reportedWindowsState: WritableSignal<ReadonlyMap<string, number>> = signal<
     ReadonlyMap<string, number>
@@ -1028,7 +1029,8 @@ export class Agent {
   /**
    * Gets the selected model's context window in tokens (the readout's denominator), or zero when it is
    * unknown. Sourced from this conversation's own effective model: the window it last reported running
-   * with, else the model list's figure.
+   * with, else the figure its provider states in the model list. Unknown shows the token count alone,
+   * with no percentage, rather than a percentage of a guess.
    */
   public readonly contextWindow: Signal<number> = computed((): number => {
     const id: string = this.model();

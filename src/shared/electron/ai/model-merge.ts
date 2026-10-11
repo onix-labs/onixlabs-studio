@@ -7,18 +7,10 @@
 // ⛔ Nothing here names a provider, a company, or a model. The table of `gpt-4o`, `o3` and
 // `claude-opus-4-8` that used to resolve a context window from an id lived in core and was the last
 // reason core had to know which models exist; a harness reports the window itself now (protocol
-// 1.10.0), and what remains is a single default for a harness that did not.
+// 1.10.0). ⛔ Nor is a window ever made up here: a model whose provider did not state one has none
+// (protocol 1.13.0), because a default shown as a model's capacity is a guess dressed as a fact.
 
 import type { AiModelInfo } from '@shared/api/ai-types';
-
-/**
- * The context window applied to a discovered model whose harness did not report one.
- *
- * Deliberately conservative and deliberately generic: it is the denominator of the token readout, so
- * under-guessing shows a conversation as fuller than it is — visible, and correctable per model — while
- * over-guessing hides that a turn is about to overflow. It names no provider, which is the point.
- */
-export const DEFAULT_CONTEXT_WINDOW: number = 32_768;
 
 /**
  * A model as a provider reported it.
@@ -44,8 +36,7 @@ export interface ReportedModel {
  * Merges discovered models into a connection's list, keeping every model the user already had.
  *
  * Additive on purpose. A model already in the list is left exactly as it is — the user may have renamed
- * it, pinned it, or corrected its context window, and a refresh that discarded that would punish them
- * for using the feature.
+ * it or pinned it, and a refresh that discarded that would punish them for using the feature.
  * @param existing The connection's current models.
  * @param discovered The models the provider reported.
  * @returns Returns the merged list.
@@ -64,7 +55,7 @@ export function mergeModels(
     merged.push({
       id: model.id,
       label: model.label ?? model.id,
-      contextWindow: model.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+      ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
     });
   }
   return merged;

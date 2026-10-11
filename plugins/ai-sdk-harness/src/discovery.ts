@@ -15,7 +15,6 @@ import {
   resolveOllamaBaseUrl,
   type ClientFamily,
 } from './endpoint';
-import { contextWindowFor } from './context-windows';
 import { describeRunError } from './events';
 import type { HarnessModel, ProviderSettings } from './protocol';
 
@@ -67,10 +66,9 @@ export function parseModelsResponse(json: unknown): HarnessModel[] {
     const displayName: unknown = (entry as { display_name?: unknown }).display_name;
     models.push({
       id,
+      // ⛔ No context window: an OpenAI-shaped `/models` response states none, and a figure inferred
+      // from the id would be shown in settings as the model's capacity (protocol 1.13.0).
       ...(typeof displayName === 'string' && displayName.length > 0 ? { label: displayName } : {}),
-      // ⛔ An OpenAI-shaped `/models` response carries no capacity, and core no longer guesses one
-      // (protocol 1.10.0) — so without this every discovered model reads as the 32K fallback (#697).
-      contextWindow: contextWindowFor(id),
     });
   }
   return models;

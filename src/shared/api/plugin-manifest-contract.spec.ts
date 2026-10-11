@@ -36,6 +36,7 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   // The same shape as 1.15.0: what changed is the closed list of hosting capabilities (#851).
   '1.16.0': '8fc65a66adb7c8604adb889a8a084c17a40a5df2f3400c97247d9ec020df23fa',
   '1.17.0': '78cf93349a6999d28eb28405aa783460b193c3ba857443f04f2e9f32de094e07',
+  '1.18.0': '791ccdb952a907c8b3c74d3d1f382933c4a71af100dc9ff3614d0ff5210dc552',
 };
 
 /**

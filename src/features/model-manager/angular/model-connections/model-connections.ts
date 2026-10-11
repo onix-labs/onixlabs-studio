@@ -7,13 +7,6 @@ import { ModelDetails } from '@shared/api/model-runtime-types';
 import { ModelRuntimes } from '../model-runtime/model-runtimes';
 
 /**
- * The context window assumed for a local model whose metadata does not report one. Deliberately
- * conservative: the token readout's denominator being too small shows the conversation as fuller than
- * it is, which is far less damaging than the opposite.
- */
-const FALLBACK_CONTEXT_WINDOW: number = 8_192;
-
-/**
  * Keeps the Ollama *connections* in step with the models the manager installs.
  *
  * This is the one place the two halves of the AI Model Manager's boundary meet. The manager owns the
@@ -65,12 +58,14 @@ export class ModelConnections {
     }
 
     // `/api/show` is the only place the context window is available, and it costs a round trip, so it
-    // is read once here rather than per connection.
+    // is read once here rather than per connection. Metadata that states none leaves the model without
+    // one: a fallback would be shown as the model's capacity.
     const details: ModelDetails | null = await this.runtimes.show(name);
+    const contextLength: number | undefined = details?.contextLength;
     const model: AiModelInfo = {
       id: name,
       label: name,
-      contextWindow: details?.contextLength ?? FALLBACK_CONTEXT_WINDOW,
+      ...(contextLength === undefined ? {} : { contextWindow: contextLength }),
     };
 
     for (const connection of targets) {
@@ -79,7 +74,7 @@ export class ModelConnections {
       }
       this.log.info(
         'model-manager.connections',
-        `Adding '${name}' to connection '${connection.id}' (context ${model.contextWindow})`,
+        `Adding '${name}' to connection '${connection.id}' (context ${model.contextWindow ?? 'not stated'})`,
       );
       this.connections.update(connection.id, { models: [...connection.models, model] });
     }

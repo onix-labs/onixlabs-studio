@@ -47,7 +47,15 @@ class ScriptedHarness {
   /**
    * Holds the models the harness reports when asked.
    */
-  public declaredModels: readonly { id: string; label?: string }[] = [{ id: 'm1' }];
+  public declaredModels: readonly { id: string; label?: string; contextWindow?: number }[] = [
+    { id: 'm1' },
+  ];
+
+  /**
+   * Holds whether the harness declares its models' context windows guaranteed, or undefined for one
+   * that says nothing.
+   */
+  public guaranteedContextWindows: boolean | undefined = undefined;
 
   /**
    * Holds whether the provider closed the transport.
@@ -92,6 +100,7 @@ class ScriptedHarness {
           images: true,
           efforts: ['low', 'high'],
           resumable: true,
+          guaranteedContextWindows: this.guaranteedContextWindows,
         },
       });
       return;
@@ -658,6 +667,27 @@ describe('HarnessAgentProvider', () => {
     expect(report?.models).toEqual([{ id: 'x1', label: 'Model X1' }]);
     // A harness that reported models says nothing about why it did not, and core phrases the success.
     expect(report?.detail).toBeNull();
+  });
+
+  it('discoverModels_dropsTheWindowsOfAHarnessThatDidNotGuaranteeThem', async () => {
+    // ⛔ A window a harness may have guessed is shown as no window: every Claude model read 200K.
+    harness.declaredModels = [
+      { id: 'opus', label: 'Opus 5.5', contextWindow: 200_000 },
+      { id: 'local', contextWindow: 32_768 },
+    ];
+
+    const report: AgentModelReport | null = await provider.discoverModels({ apiKey: null });
+
+    expect(report?.models).toEqual([{ id: 'opus', label: 'Opus 5.5' }, { id: 'local' }]);
+  });
+
+  it('discoverModels_keepsTheWindowsOfAHarnessThatGuaranteesThem', async () => {
+    harness.guaranteedContextWindows = true;
+    harness.declaredModels = [{ id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000 }];
+
+    const report: AgentModelReport | null = await provider.discoverModels({ apiKey: null });
+
+    expect(report?.models).toEqual([{ id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000 }]);
   });
 
   it('discoverModels_doesNotAskAHarnessThatDidNotDeclareIt', async () => {

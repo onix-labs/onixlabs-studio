@@ -107,10 +107,13 @@ export interface AiModelInfo {
   readonly label: string;
 
   /**
-   * Gets the model's context window in tokens, so the renderer can show how full the conversation's
-   * context is (the token readout's denominator).
+   * Gets the model's context window in tokens, as its provider states it, or undefined when the provider
+   * does not. Shown in settings, and the token readout's denominator before a turn reports one.
+   *
+   * ⛔ Never a guess or a default (protocol 1.13.0). Absent means unknown, and unknown is shown as
+   * nothing: a figure Studio made up would be read as the model's capacity.
    */
-  readonly contextWindow: number;
+  readonly contextWindow?: number;
 
   /**
    * Gets a value indicating whether the user pinned this model to the top of the picker. Absent means

@@ -570,7 +570,8 @@ export interface AgentModelReport {
    *
    * ⛔ `contextWindow` is the provider's to report (protocol 1.10.0). Core used to resolve it from the
    * model id against a table naming `gpt-4o`, `claude-opus-4-8` and the rest — which is exactly the
-   * provider knowledge that cannot live here. Undefined falls back to one neutral default.
+   * provider knowledge that cannot live here. Undefined means unknown, and stays unknown: Studio shows
+   * no window rather than a default (protocol 1.13.0).
    */
   readonly models: readonly { id: string; label?: string; contextWindow?: number }[];
 

@@ -14,7 +14,14 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { appendModels, ModelReview, modelNames, offeredAgain, reviewModels } from './model-review';
+import {
+  appendModels,
+  ModelReview,
+  modelNames,
+  offeredAgain,
+  reviewModels,
+  withContextWindow,
+} from './model-review';
 
 /**
  * Describes the outcome of a Discover the user asked for.
@@ -50,11 +57,6 @@ export interface ConnectionReview {
    */
   readonly review: ModelReview;
 }
-
-/**
- * The context window applied to a manually-added model until the user edits it or discovery refines it.
- */
-const DEFAULT_MANUAL_CONTEXT_WINDOW: number = 32_768;
 
 /**
  * The status reported for a connection whose auth has not been resolved yet (or when the agent bridge
@@ -362,8 +364,9 @@ export class AiConnections {
   }
 
   /**
-   * Applies a review's retired flags to a connection's current list. Marking is not a change to the
-   * list — every model stays, and the user decides what to remove — so it needs no asking.
+   * Applies a review's retired flags and provider-stated context windows to a connection's current
+   * list. Neither is a change to the list — every model stays, and the user decides what to remove — so
+   * it needs no asking.
    * @param id The connection id.
    * @param review The review.
    */
@@ -372,23 +375,26 @@ export class AiConnections {
     if (current === undefined) {
       return;
     }
-    const retired: ReadonlyMap<string, boolean> = new Map<string, boolean>(
-      review.models.map((model: AiModelInfo): [string, boolean] => [
-        model.id,
-        model.retired === true,
-      ]),
+    const reviewed: ReadonlyMap<string, AiModelInfo> = new Map<string, AiModelInfo>(
+      review.models.map((model: AiModelInfo): [string, AiModelInfo] => [model.id, model]),
     );
     let changed: boolean = false;
     const models: AiModelInfo[] = current.models.map((model: AiModelInfo): AiModelInfo => {
-      const now: boolean | undefined = retired.get(model.id);
-      if (now === undefined || now === (model.retired === true)) {
+      const now: AiModelInfo | undefined = reviewed.get(model.id);
+      if (now === undefined) {
         return model;
       }
-      changed = true;
-      if (now) {
-        return { ...model, retired: true };
-      }
-      return offeredAgain(model);
+      const retired: boolean = now.retired === true;
+      const flagged: AiModelInfo =
+        retired === (model.retired === true)
+          ? model
+          : retired
+            ? { ...model, retired: true }
+            : offeredAgain(model);
+      const updated: AiModelInfo =
+        now.contextWindow === undefined ? flagged : withContextWindow(flagged, now.contextWindow);
+      changed ||= updated !== model;
+      return updated;
     });
     if (changed) {
       this.update(id, { models });
@@ -522,10 +528,10 @@ export class AiConnections {
     ) {
       return;
     }
+    // No context window: nothing has stated one, and a default would be shown as the model's capacity.
     const model: AiModelInfo = {
       id: trimmed,
       label: trimmed,
-      contextWindow: DEFAULT_MANUAL_CONTEXT_WINDOW,
       // Discovery not listing it is why it was added by hand, so discovery never retires it.
       manual: true,
     };

@@ -127,8 +127,12 @@ import {
  * `1.17.0` adds a hosting contribution's optional `commandLineTools` (#853): the host's own CLI by
  * command name (`gh`), so Studio can keep agents off it when the user asks — they then go through the
  * plugin, which asks before it changes anything. The plugin names its tool; core names none. Adds only.
+ *
+ * `1.18.0` stops reading a declared AI model's `contextWindow`. A manifest is the author's claim at
+ * release time rather than the provider's data, and a window shown in settings must be the provider's
+ * own (agent protocol 1.13.0). Manifests that still declare one are accepted; the figure is ignored.
  */
-export const PLUGIN_API_VERSION: string = '1.17.0';
+export const PLUGIN_API_VERSION: string = '1.18.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -769,11 +773,6 @@ export interface ManifestAiModel {
    * Gets the display name.
    */
   readonly label: string;
-
-  /**
-   * Gets the context window in tokens.
-   */
-  readonly contextWindow: number;
 }
 
 /**
@@ -2107,16 +2106,13 @@ function readAiModels(
     return undefined;
   }
   const models: ManifestAiModel[] = [];
+  // ⛔ A declared `contextWindow` is not read (plugin API 1.18.0). A manifest is the author's claim at
+  // release time, not the provider's data, so a window written into one is a guess; and manifests
+  // published before this still carry one, so it is tolerated rather than refused.
   readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
-    const window: unknown = entry['contextWindow'];
-    if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
-      errors.add(`${at}.contextWindow`, 'must be a positive number of tokens');
-      return;
-    }
     models.push({
       id: readString(entry, 'id', `${at}.`, errors),
       label: readString(entry, 'label', `${at}.`, errors),
-      contextWindow: window,
     });
   });
   return models;
