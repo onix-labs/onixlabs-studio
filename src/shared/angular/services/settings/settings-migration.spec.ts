@@ -1,6 +1,11 @@
 import { restoreOverrides } from './settings-migration';
 import { SettingsOverrides } from './settings';
 
+/**
+ * The marker every restored map carries once its stored context windows have been dealt with.
+ */
+const MARKED: Record<string, unknown> = { 'ai.connectionsFormat': 2 };
+
 describe('restoreOverrides', () => {
   it('nullOrNonObject_yieldsAnEmptyMap', () => {
     expect(restoreOverrides(null)).toEqual({});
@@ -12,6 +17,7 @@ describe('restoreOverrides', () => {
     const flat: Record<string, unknown> = {
       'application.undoStackSize': 50,
       'appearance.ribbonAlignment': 'left',
+      ...MARKED,
     };
 
     const result: SettingsOverrides = restoreOverrides(flat);
@@ -29,13 +35,14 @@ describe('restoreOverrides', () => {
     expect(restoreOverrides(legacy)).toEqual({
       'application.undoStackSize': 30,
       'appearance.ribbonAlignment': 'left',
+      ...MARKED,
     });
   });
 
   it('legacyFlatTextEditor_mapsUnderTheGlobalPrefix', () => {
     const legacy: Record<string, unknown> = { textEditor: { fontSize: 14 } };
 
-    expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 14 });
+    expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 14, ...MARKED });
   });
 
   it('legacyProfileAwareTextEditor_keepsGlobalAndDropsTheRetiredProfiles', () => {
@@ -43,7 +50,7 @@ describe('restoreOverrides', () => {
       textEditor: { global: { fontSize: 16 }, profiles: [{ id: 'x' }] },
     };
 
-    expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 16 });
+    expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 16, ...MARKED });
   });
 
   it('flatProfiles_areDroppedFromAnAlreadyFlatStore', () => {
@@ -52,7 +59,7 @@ describe('restoreOverrides', () => {
       'textEditor.profiles': [{ id: 'x' }],
     };
 
-    expect(restoreOverrides(flat)).toEqual({ 'textEditor.global.fontSize': 16 });
+    expect(restoreOverrides(flat)).toEqual({ 'textEditor.global.fontSize': 16, ...MARKED });
   });
 
   it('oldProviderChoice_carriesForwardOntoTheActiveConnection', () => {
@@ -128,5 +135,44 @@ describe('restoreOverrides', () => {
 
     expect('ai.activeConnectionId' in result).toBe(false);
     expect('ai.connectionModels' in result).toBe(false);
+  });
+
+  it('storedContextWindows_areDroppedOnceWithEachModelCheck', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'ai.connections': [
+        {
+          id: 'claude',
+          modelCheck: { at: 1, plugin: 'onixlabs.claude-harness@0.8.0', discovered: true },
+          models: [
+            { id: 'opus', label: 'Opus 5.5', contextWindow: 200_000, pinned: true },
+            { id: 'my-model', label: 'my-model', manual: true },
+          ],
+        },
+      ],
+    });
+
+    expect(result['ai.connections']).toEqual([
+      {
+        id: 'claude',
+        models: [
+          { id: 'opus', label: 'Opus 5.5', pinned: true },
+          { id: 'my-model', label: 'my-model', manual: true },
+        ],
+      },
+    ]);
+    expect(result['ai.connectionsFormat']).toBe(2);
+  });
+
+  it('storedContextWindows_onceMarked_areKept', () => {
+    const connections: unknown[] = [
+      { id: 'codex', models: [{ id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000 }] },
+    ];
+
+    const result: SettingsOverrides = restoreOverrides({
+      'ai.connections': connections,
+      ...MARKED,
+    });
+
+    expect(result['ai.connections']).toEqual(connections);
   });
 });

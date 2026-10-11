@@ -10,6 +10,7 @@ import type {
 import type {
   HarnessAnswer,
   HarnessCapabilities,
+  HarnessModel,
   HarnessTool,
   TurnContextRef,
   TurnImage,
@@ -278,7 +279,9 @@ export class HarnessAgentProvider implements AgentProvider {
               : refusalFor(request),
           ),
       });
-      return report;
+      return report === null || capabilities.guaranteedContextWindows === true
+        ? report
+        : withoutContextWindows(report);
     } finally {
       host.close();
     }
@@ -800,6 +803,24 @@ export async function answerRequest(
       );
       return { kind: 'permission', granted: false };
   }
+}
+
+/**
+ * Drops the context windows from a discovery report whose harness did not declare them guaranteed.
+ *
+ * ⛔ Not a fallback, a refusal. A harness that never said its windows are the provider's own may have
+ * guessed them, and a guess shown as a model's capacity is a lie the user cannot see through — every
+ * Claude model read 200K once the CLI stopped tagging its 1M models. No window is the honest answer.
+ * @param report The report as the harness sent it.
+ * @returns Returns the report with every model's window removed.
+ */
+function withoutContextWindows(report: HarnessModelReport): HarnessModelReport {
+  return {
+    ...report,
+    models: report.models.map(({ id, label }: HarnessModel): HarnessModel =>
+      label === undefined ? { id } : { id, label },
+    ),
+  };
 }
 
 /**

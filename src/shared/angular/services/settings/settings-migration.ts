@@ -133,7 +133,71 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // had no faithful per-language equivalent worth preserving.
   delete result['textEditor.profiles'];
 
-  return result;
+  return dropGuessedContextWindows(result);
+}
+
+/**
+ * The setting recording which format the stored connections are in, written only here.
+ */
+const CONNECTIONS_FORMAT_KEY: string = 'ai.connectionsFormat';
+
+/**
+ * The connections format in which every stored context window is one a provider stated (agent protocol
+ * 1.13.0). Before it, a window could be a harness's guess or a default Studio filled in.
+ */
+const STATED_WINDOWS_FORMAT: number = 2;
+
+/**
+ * Removes every context window stored before windows had to be stated by the provider, once.
+ *
+ * ⛔ All of them, because nothing recorded which were stated and which were guessed — every Claude model
+ * was saved at a 200K family floor, every hand-added one at a 32K default — and a guess left in place is
+ * shown in settings as the model's capacity. Each connection's last model check goes too, so the next
+ * check rediscovers straight away and a provider that does state its windows has them back.
+ *
+ * ⚠️ Once, not every load: a window stored after this is the provider's, and the marker is what keeps a
+ * later load from discarding it.
+ * @param overrides The restored override map.
+ * @returns Returns the override map with stored windows removed and the format marked.
+ */
+function dropGuessedContextWindows(overrides: Record<string, unknown>): Record<string, unknown> {
+  if (overrides[CONNECTIONS_FORMAT_KEY] === STATED_WINDOWS_FORMAT) {
+    return overrides;
+  }
+  const connections: unknown = overrides['ai.connections'];
+  return {
+    ...overrides,
+    ...(Array.isArray(connections)
+      ? { 'ai.connections': connections.map(withoutStoredWindows) }
+      : {}),
+    [CONNECTIONS_FORMAT_KEY]: STATED_WINDOWS_FORMAT,
+  };
+}
+
+/**
+ * Removes a stored connection's model windows and its last model check, leaving anything that is not a
+ * connection untouched.
+ * @param connection The stored connection.
+ * @returns Returns the connection without them.
+ */
+function withoutStoredWindows(connection: unknown): unknown {
+  if (typeof connection !== 'object' || connection === null) {
+    return connection;
+  }
+  const stripped: Record<string, unknown> = { ...(connection as Record<string, unknown>) };
+  delete stripped['modelCheck'];
+  const models: unknown = stripped['models'];
+  if (Array.isArray(models)) {
+    stripped['models'] = models.map((model: unknown): unknown => {
+      if (typeof model !== 'object' || model === null) {
+        return model;
+      }
+      const kept: Record<string, unknown> = { ...(model as Record<string, unknown>) };
+      delete kept['contextWindow'];
+      return kept;
+    });
+  }
+  return stripped;
 }
 
 /**

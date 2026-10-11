@@ -1,40 +1,10 @@
-// What Studio needs to know about an Anthropic model that the Agent SDK does not report: its context
-// window, and a label carrying the version.
+// What Studio needs to know about an Anthropic model that the Agent SDK does not report: a label
+// carrying the version.
 //
-// ⛔ This knowledge belongs here and nowhere else (#653). Core used to hold a table of `claude-opus-4-8`
-// and friends, which meant it could never stop knowing which models Anthropic has — so the table moved
-// to the plugin that is already talking to Anthropic, and the window rides the reported model
-// (agent protocol 1.10.0).
-
-/**
- * The context window Anthropic's models carry unless the id says otherwise.
- *
- * A family floor rather than a per-model table: the exact figure for a given generation changes without
- * the family changing, and a floor that is occasionally low shows a conversation as fuller than it is —
- * visible and correctable — where a ceiling that is too high hides that a turn is about to overflow.
- */
-const FAMILY_CONTEXT_WINDOW: number = 200_000;
-
-/**
- * Resolves a model's context window from its identifiers.
- *
- * The SDK marks an extended-context variant with a bracketed hint — `opus[1m]`, `claude-fable-5-1[1m]` —
- * and reports nothing else about capacity, so that hint is the only thing distinguishing a 1M model from
- * a 200K one. Without it every Claude model read as the 32K default, which showed a 1M conversation as
- * full at three percent of its capacity (#697).
- * @param value The id the SDK is asked to run.
- * @param resolved The canonical model the id resolves to, when the SDK reported one.
- * @returns Returns the context window in tokens.
- */
-export function contextWindowFor(value: string, resolved?: string): number {
-  const text: string = `${value} ${resolved ?? ''}`.toLowerCase();
-  const hint: RegExpExecArray | null = /\[(\d+)([km])\]/.exec(text);
-  if (hint !== null) {
-    const size: number = Number(hint[1]);
-    return hint[2] === 'm' ? size * 1_000_000 : size * 1_000;
-  }
-  return FAMILY_CONTEXT_WINDOW;
-}
+// ⛔ Not its context window. The SDK's model list states none, and this file used to infer one — a
+// `[1m]` hint in the id, else a 200K family floor — which turned into every model reading 200K once the
+// CLI stopped tagging its 1M models. An inferred window is a guess, and Studio shows none rather than a
+// guess (agent protocol 1.13.0).
 
 /**
  * Builds the label shown in the model picker, adding the version when the SDK's display name omits it.

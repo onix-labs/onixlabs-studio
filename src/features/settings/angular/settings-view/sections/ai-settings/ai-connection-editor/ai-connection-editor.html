@@ -129,7 +129,9 @@
               <span class="conn-editor__model-retired">No longer offered</span>
             }
           </span>
-          <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+          @if (model.contextWindow !== undefined) {
+            <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+          }
           <app-button
             variant="none"
             size="small"

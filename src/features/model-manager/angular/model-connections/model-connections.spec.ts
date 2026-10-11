@@ -113,14 +113,16 @@ describe('ModelConnections', () => {
     expect((fake.updates[0]?.patch.models ?? []).at(-1)?.contextWindow).toBe(32_768);
   });
 
-  it('falls back to a conservative context window when the runtime reports none', async () => {
+  it('leaves the context window unknown when the runtime reports none', async () => {
     const link: ModelConnections = build(null);
     fake.list = [connection('ollama', 'ollama')];
 
     await link.linkInstalled('mystery:latest');
 
-    // Too small merely overstates how full the context is; too large would understate it.
-    expect((fake.updates[0]?.patch.models ?? []).at(-1)?.contextWindow).toBe(8_192);
+    // A fallback would be shown in settings as the model's capacity.
+    const added: AiModelInfo | undefined = (fake.updates[0]?.patch.models ?? []).at(-1);
+    expect(added?.id).toBe('mystery:latest');
+    expect(added && 'contextWindow' in added).toBe(false);
   });
 
   it('leaves other providers alone', async () => {

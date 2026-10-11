@@ -311,12 +311,57 @@ describe('AiConnections', () => {
 
       await connections.discover(find(connections, created.id));
 
+      // No context window either: nothing stated one, and a default would read as its capacity.
       expect(find(connections, created.id).models[0]).toEqual({
         id: 'gpt-5.5',
         label: 'gpt-5.5',
-        contextWindow: 32_768,
         manual: true,
       });
+    });
+
+    it('discover_setsAListedModelsWindowToTheOneTheProviderStates', async () => {
+      discovered = [{ id: 'terra', label: 'Terra', contextWindow: 272_000 }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, {
+        harnessId: 'test.harness',
+        models: [{ id: 'terra', label: 'Terra', pinned: true }],
+      });
+
+      await connections.discover(find(connections, created.id));
+
+      expect(find(connections, created.id).models).toEqual([
+        { id: 'terra', label: 'Terra', pinned: true, contextWindow: 272_000 },
+      ]);
+    });
+
+    it('discover_whenTheProviderStatesNoWindow_keepsTheOneTheListHolds', async () => {
+      // A local runtime stated this one when the model was added; a harness that cannot say is not a
+      // correction.
+      discovered = [{ id: 'qwen3:8b', label: 'qwen3:8b' }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, {
+        harnessId: 'test.harness',
+        models: [{ id: 'qwen3:8b', label: 'qwen3:8b', contextWindow: 40_960 }],
+      });
+
+      await connections.discover(find(connections, created.id));
+
+      expect(find(connections, created.id).models).toEqual([
+        { id: 'qwen3:8b', label: 'qwen3:8b', contextWindow: 40_960 },
+      ]);
+    });
+
+    it('discover_addsAModelWithoutAWindowWhenTheProviderStatesNone', async () => {
+      discovered = [{ id: 'opus', label: 'Opus 5.5' }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, { harnessId: 'test.harness', models: [] });
+
+      await connections.discover(find(connections, created.id));
+
+      expect(find(connections, created.id).models).toEqual([{ id: 'opus', label: 'Opus 5.5' }]);
     });
 
     it('discover_offersModelsTheUserTurnedDown', async () => {

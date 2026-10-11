@@ -38,7 +38,7 @@ import { homedir } from 'node:os';
 import type { ModelInfo, Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { hasLocalLogin, resolveExecutable } from './environment';
 import { note } from './log';
-import { contextWindowFor, labelFor } from './models';
+import { labelFor } from './models';
 import {
   type Answer,
   type HarnessMessage,
@@ -197,10 +197,9 @@ async function discover(discoveryId: string): Promise<void> {
         ...(typeof model.displayName === 'string' && model.displayName.length > 0
           ? { label: labelFor(model.displayName, model.resolvedModel) }
           : {}),
-        // ⛔ The SDK reports no capacity at all, and core no longer guesses one (protocol 1.10.0), so
-        // without this every Claude model reads as the 32K fallback — a 1M conversation showing as full
-        // at three percent of its capacity (#697).
-        contextWindow: contextWindowFor(model.value, model.resolvedModel),
+        // ⛔ No context window. The SDK's model list states none, and anything this plugin put here
+        // would be a guess shown in settings as the model's capacity — as the 200K family floor was,
+        // once the CLI stopped tagging its 1M models. The real figure arrives with each turn's usage.
       })),
       // Read only when the list is empty, and this is the case it exists for: without a login the SDK
       // reports nothing, and "reported no models" would send the user looking in the wrong place.

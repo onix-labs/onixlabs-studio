@@ -98,6 +98,7 @@ export interface SettingsValues {
   readonly 'ai.connections': readonly AiConnection[];
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
+  readonly 'ai.connectionsFormat': number;
   readonly 'ai.autoScroll': boolean;
   readonly 'ai.reportBackgroundTasks': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
@@ -768,6 +769,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           "The model last selected per connection. A missing entry uses the connection's default.",
         control: { kind: 'custom', component: 'ai-connections' },
         default: {},
+      },
+      {
+        key: 'ai.connectionsFormat',
+        title: 'Connections format',
+        description:
+          'The format the stored connections are in. Written by the settings migration, never by hand.',
+        control: { kind: 'custom', component: 'ai-connections' },
+        default: 1,
       },
       {
         key: 'ai.autoScroll',

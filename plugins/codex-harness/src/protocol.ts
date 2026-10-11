@@ -28,6 +28,8 @@ export interface Capabilities {
   readonly images: boolean;
   readonly efforts: readonly string[];
   readonly resumable: boolean;
+  /** Whether every reported model's context window is the provider's own figure (protocol 1.13.0). */
+  readonly guaranteedContextWindows?: boolean;
 }
 
 /**

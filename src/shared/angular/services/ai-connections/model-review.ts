@@ -19,8 +19,8 @@ export interface ModelReview {
   readonly added: readonly AiModelInfo[];
 
   /**
-   * Gets the configuration's own list with each model's retired flag brought up to date, in its own
-   * order. Unchanged when nothing was discovered.
+   * Gets the configuration's own list with each model's retired flag and context window brought up to
+   * date, in its own order. Unchanged when nothing was discovered.
    */
   readonly models: readonly AiModelInfo[];
 
@@ -53,6 +53,11 @@ export interface OfferedModels {
  * manifest is the plugin author's guess at release time, and offering a model from it that discovery
  * does not list is offering one the account cannot run. Without discovery, the manifest is all there
  * is. Only discovery retires a model: a manifest that stops listing one says nothing about the account.
+ *
+ * A listed model's context window is the provider's, not the user's, so a figure discovery states
+ * replaces whatever the list held. A model discovery lists without one keeps its own: the only windows a
+ * list holds are ones a provider stated (a local runtime's, read when the model was added), and silence
+ * from a harness that cannot say is not a correction.
  * @param current The configuration's models.
  * @param offered What the provider offers.
  * @param dismissed The model ids the user turned down, which are not offered again.
@@ -78,27 +83,51 @@ export function reviewModels(
   if (offered.discovered === null) {
     return { added, models: current, retired: [] };
   }
-  const listed: Set<string> = new Set<string>(
-    offered.discovered.map((model: AiModelInfo): string => model.id),
+  const listed: ReadonlyMap<string, AiModelInfo> = new Map<string, AiModelInfo>(
+    offered.discovered.map((model: AiModelInfo): [string, AiModelInfo] => [model.id, model]),
   );
   const retired: string[] = [];
   const models: AiModelInfo[] = current.map((model: AiModelInfo): AiModelInfo => {
+    const found: AiModelInfo | undefined = listed.get(model.id);
+    if (found !== undefined) {
+      // Offered again: a provider can bring a model back, or an account can regain one.
+      const offeredNow: AiModelInfo = model.retired === true ? offeredAgain(model) : model;
+      return found.contextWindow === undefined
+        ? offeredNow
+        : withContextWindow(offeredNow, found.contextWindow);
+    }
     if (model.manual === true) {
       return model;
     }
-    if (!listed.has(model.id)) {
-      if (model.retired !== true) {
-        retired.push(model.id);
-      }
-      return model.retired === true ? model : { ...model, retired: true };
+    if (model.retired !== true) {
+      retired.push(model.id);
     }
-    if (model.retired === true) {
-      // Offered again: a provider can bring a model back, or an account can regain one.
-      return offeredAgain(model);
-    }
-    return model;
+    return model.retired === true ? model : { ...model, retired: true };
   });
   return { added, models, retired };
+}
+
+/**
+ * Sets a model's context window to the one its provider states, removing it when the provider states
+ * none.
+ * @param model The model.
+ * @param contextWindow The provider's window, or undefined.
+ * @returns Returns the model with that window, or the model itself when it already had it.
+ */
+export function withContextWindow(
+  model: AiModelInfo,
+  contextWindow: number | undefined,
+): AiModelInfo {
+  if (model.contextWindow === contextWindow) {
+    return model;
+  }
+  const updated: { -readonly [K in keyof AiModelInfo]: AiModelInfo[K] } = { ...model };
+  if (contextWindow === undefined) {
+    delete updated.contextWindow;
+  } else {
+    updated.contextWindow = contextWindow;
+  }
+  return updated;
 }
 
 /**
@@ -145,5 +174,5 @@ export function modelNames(models: readonly AiModelInfo[]): string {
  * @returns Returns the model without per-user flags.
  */
 function offeredModel(model: AiModelInfo): AiModelInfo {
-  return { id: model.id, label: model.label, contextWindow: model.contextWindow };
+  return withContextWindow({ id: model.id, label: model.label }, model.contextWindow);
 }

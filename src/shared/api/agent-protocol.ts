@@ -210,8 +210,15 @@ import { AiEvent } from './ai/ai-event-types';
  * model's listed window is the harness's guess before any turn runs, and a guess can be wrong. The
  * Claude CLI lists Opus 5.5 as plain `opus`, with nothing to say it runs with a 1M window, while each
  * turn's result reports the real figure. Optional, so every published harness is unaffected.
+ *
+ * `1.13.0` makes a reported model's context window a **guarantee**, and adds the handshake's optional
+ * `guaranteedContextWindows` to say so. Until now a harness was free to guess — a family floor, a size
+ * read out of an id — and Studio showed the guess as fact: every Claude model read 200K in settings
+ * once the CLI stopped tagging its 1M models. A window is now honoured only from a harness that
+ * declares it reads the figure from the provider's own data; any other harness's windows are dropped,
+ * and the model shows none. Optional, so every published harness is unaffected but for that.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.12.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.13.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -293,6 +300,16 @@ export interface HarnessCapabilities {
    * `stateless` harness and ignored there.
    */
   readonly resumable: boolean;
+
+  /**
+   * Gets whether the context windows this harness reports with its models are the provider's own
+   * figures (protocol 1.13.0). Absent means they are not, and Studio drops them.
+   *
+   * ⛔ Declare it only when every window comes from data the provider publishes for that model — a
+   * catalogue entry, a runtime's loaded size. A figure inferred from an id or a family is a guess, and a
+   * guess shown as a model's capacity is the dishonesty this exists to stop.
+   */
+  readonly guaranteedContextWindows?: boolean;
 }
 
 /**
@@ -639,10 +656,10 @@ export interface HarnessModel {
   readonly label?: string;
 
   /**
-   * Gets the model's context window in tokens, or undefined when the harness does not know.
+   * Gets the model's context window in tokens, as the provider states it, or undefined when it does not.
    *
-   * ⚠️ Optional so that a harness published against an earlier protocol is unaffected: an omitted window
-   * falls back to core's single neutral default, which names no provider and no model.
+   * ⛔ Honoured only from a harness that declared `guaranteedContextWindows` (protocol 1.13.0). An
+   * omitted window is not filled in: Studio shows no window rather than a guessed one.
    */
   readonly contextWindow?: number;
 }
