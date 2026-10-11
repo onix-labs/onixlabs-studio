@@ -13,6 +13,7 @@
       label="Installed"
       [toggle]="true"
       [pressed]="browse.shownGroup() === 'installed'"
+      [disabled]="!browse.hasGroup('installed')"
       (action)="onGroup('installed')"
     />
     <app-ribbon-strip-button
@@ -20,6 +21,7 @@
       label="Available"
       [toggle]="true"
       [pressed]="browse.shownGroup() === 'available'"
+      [disabled]="!browse.hasGroup('available')"
       (action)="onGroup('available')"
     />
   </app-ribbon-strip-group>

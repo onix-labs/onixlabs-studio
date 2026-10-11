@@ -9,6 +9,10 @@ import {
   RunningModel,
   RuntimeInstallation,
 } from '@shared/api/model-runtime-types';
+import {
+  ModelGroupId,
+  ModelManagerCommands,
+} from '../model-manager-commands/model-manager-commands';
 import { ModelManagerView } from './model-manager-view';
 
 /**
@@ -129,6 +133,16 @@ describe('ModelManagerView', () => {
   }
 
   /**
+   * Opens a group of the list the way the ribbon does, and lets it render.
+   * @param fixture The view.
+   * @param group The group to open.
+   */
+  function openGroup(fixture: ComponentFixture<ModelManagerView>, group: ModelGroupId): void {
+    TestBed.inject(ModelManagerCommands).openGroup(group);
+    fixture.detectChanges();
+  }
+
+  /**
    * Counts the invocations of a channel.
    */
   function countOf(channel: ModelRuntimeChannel): number {
@@ -149,8 +163,9 @@ describe('ModelManagerView', () => {
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain("Ollama isn't installed");
-    expect(text).toContain('Install Ollama');
-    expect(text).not.toContain('Start');
+    expect(text).toContain('Install it from the ribbon');
+    // The ribbon offers Install in place of Start.
+    expect(TestBed.inject(ModelManagerCommands).needsInstall()).toBe(true);
   });
 
   it('offers to start the server when the runtime is installed but stopped', async () => {
@@ -165,7 +180,7 @@ describe('ModelManagerView', () => {
     expect(text).toContain("Ollama isn't running");
     expect(text).toContain('Installed on this machine');
     expect(text).toContain('0.32.14');
-    expect(text).not.toContain('Install Ollama');
+    expect(TestBed.inject(ModelManagerCommands).needsInstall()).toBe(false);
   });
 
   it('lists the installed and loaded models once the server is running', async () => {
@@ -181,8 +196,10 @@ describe('ModelManagerView', () => {
     expect(text).toContain('7.6B');
     expect(text).toContain('Q4_K_M');
     expect(text).toContain('4.4 GB');
+
+    openGroup(fixture, 'loaded');
     // A model with nothing in VRAM is running on the CPU, which the view names rather than implying.
-    expect(text).toContain('CPU');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('CPU');
   });
 
   it('names the runtime from the backend rather than assuming Ollama', async () => {
@@ -234,14 +251,9 @@ describe('ModelManagerView', () => {
       { available: false },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    await createView();
 
-    const start: HTMLButtonElement | null = [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
-    ].find((button: Element): boolean =>
-      (button.textContent ?? '').includes('Start'),
-    ) as HTMLButtonElement | null;
-    start?.click();
+    TestBed.inject(ModelManagerCommands).start();
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, 0);
     });
@@ -256,6 +268,7 @@ describe('ModelManagerView', () => {
     );
 
     const fixture: ComponentFixture<ModelManagerView> = await createView();
+    openGroup(fixture, 'available');
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Available');
@@ -280,6 +293,7 @@ describe('ModelManagerView', () => {
     );
 
     const fixture: ComponentFixture<ModelManagerView> = await createView();
+    openGroup(fixture, 'available');
 
     // The Hugging Face entry's size depends on the quantisation Ollama picks, so it is unknown here.
     const rows: HTMLElement[] = [
@@ -291,7 +305,7 @@ describe('ModelManagerView', () => {
     expect(hub?.textContent).toContain('—');
   });
 
-  it('marks an already-installed catalogue model rather than offering to install it', async () => {
+  it('leaves an installed model out of the catalogue, as the Plugin Manager does', async () => {
     catalogResult = {
       models: [
         {
@@ -314,15 +328,18 @@ describe('ModelManagerView', () => {
     );
 
     const fixture: ComponentFixture<ModelManagerView> = await createView();
+    openGroup(fixture, 'available');
 
-    // INSTALLED is qwen2.5-coder:7b, so the catalogue row for it must not offer an Install button.
-    const rows: HTMLElement[] = [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'),
-    ] as HTMLElement[];
-    const row: HTMLElement | undefined = rows.find((r: HTMLElement): boolean =>
-      (r.textContent ?? '').includes('Qwen 2.5 Coder 7B'),
-    );
-    expect(row?.textContent).toContain('Installed');
+    // INSTALLED is qwen2.5-coder:7b, so the catalogue leaves it out, as an installed plugin is left
+    // out of Available; with nothing else in the catalogue, the Available box goes too.
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Qwen 2.5 Coder 7B');
+    expect(
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'app-accordion .accordion__heading',
+        ),
+      ].map((heading: HTMLElement): string => heading.textContent?.trim() ?? ''),
+    ).not.toContain('Available');
   });
 
   it('warns when a catalogue source failed, rather than silently showing fewer results', async () => {
@@ -344,9 +361,12 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
     const fixture: ComponentFixture<ModelManagerView> = await createView();
+    openGroup(fixture, 'available');
 
     const install: HTMLButtonElement | undefined = [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.model-manager__action button',
+      ),
     ].find((button: HTMLButtonElement): boolean => (button.textContent ?? '').includes('Install'));
     install?.click();
     await new Promise<void>((resolve: () => void): void => {
@@ -360,6 +380,123 @@ describe('ModelManagerView', () => {
     expect(call?.args).toEqual(['llama3.2:3b']);
   });
 
+  it('describesAnInstalledModel_fromTheCatalogueEntryWithTheSameReference', async () => {
+    catalogResult = {
+      models: [
+        {
+          ref: 'qwen2.5-coder:7b',
+          name: 'Qwen 2.5 Coder 7B',
+          source: 'curated',
+          category: 'coding',
+          description: 'A strong coding model.',
+          parameterSize: '7.6B',
+          sizeBytes: 1,
+          downloads: 0,
+          url: '',
+        },
+      ],
+      failedSources: [],
+    };
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    const row: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'tr.table-row',
+    );
+    expect(row?.querySelector('.model-manager__description')?.textContent).toBe(
+      'A strong coding model.',
+    );
+  });
+
+  it('statesAndActions_matchThePluginManager', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const cells: () => string[] = (): string[] =>
+      [...host.querySelectorAll<HTMLElement>('tr.table-row')].map(
+        (row: HTMLElement): string =>
+          `${row.querySelector('app-chip.model-manager__state')?.textContent?.trim()} / ${row
+            .querySelector('.model-manager__action button')
+            ?.textContent?.trim()}`,
+      );
+
+    // An installed model is Installed, with Remove.
+    expect(cells()).toEqual(['Installed / Remove']);
+
+    openGroup(fixture, 'available');
+    // The catalogue offers Install for what is not there yet.
+    expect(cells()).toContain('Not installed / Install');
+  });
+
+  it('opensInstalledFirst_andOnlyOneGroupAtATime', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const open: () => string[] = (): string[] =>
+      [
+        ...host.querySelectorAll<HTMLElement>('.model-manager__group--open .accordion__heading'),
+      ].map((heading: HTMLElement): string => heading.textContent?.trim() ?? '');
+
+    expect(
+      [...host.querySelectorAll<HTMLElement>('app-accordion .accordion__heading')].map(
+        (heading: HTMLElement): string => heading.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Installed', 'Available', 'Loaded']);
+    expect(open()).toEqual(['Installed']);
+    expect(host.querySelectorAll('app-table')).toHaveLength(1);
+    expect(TestBed.inject(ModelManagerCommands).shownGroup()).toBe('installed');
+
+    host.querySelectorAll<HTMLButtonElement>('.accordion__header')[2].click();
+    fixture.detectChanges();
+    expect(open()).toEqual(['Loaded']);
+  });
+
+  it('saysWhatIsInstalledAndLoaded_underTheHeading', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.model-manager__headline')?.textContent,
+    ).toContain('Ollama is running. 1 model installed, 1 loaded, 4.4 GB on disk.');
+  });
+
+  it('search_filtersTheInstalledModelsByName', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const commands: ModelManagerCommands = TestBed.inject(ModelManagerCommands);
+
+    commands.search('QWEN');
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('qwen2.5-coder:7b');
+    expect(commands.searchText()).toBe('QWEN');
+
+    commands.search('mistral');
+    fixture.detectChanges();
+    // Nothing installed matches, so the Installed box is left out.
+    expect(
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'app-accordion .accordion__heading',
+        ),
+      ].map((heading: HTMLElement): string => heading.textContent?.trim() ?? ''),
+    ).not.toContain('Installed');
+  });
+
   it('removes a model through the runtime client', async () => {
     stubBridge(
       { available: true, version: '0.32.14', startedByStudio: true },
@@ -369,7 +506,7 @@ describe('ModelManagerView', () => {
 
     const remove: HTMLButtonElement | null = (
       fixture.nativeElement as HTMLElement
-    ).querySelector<HTMLButtonElement>('[aria-label="Remove"]');
+    ).querySelector<HTMLButtonElement>('.model-manager__action button');
     remove?.click();
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, 0);

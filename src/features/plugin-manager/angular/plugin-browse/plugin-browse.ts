@@ -186,11 +186,11 @@ export class PluginBrowse {
    */
   public readonly shownGroup: Signal<PluginGroupId | null> = computed((): PluginGroupId | null => {
     const chosen: PluginGroupId | null = this.openGroup();
-    if (chosen === null || this.groupHasRows(chosen)) {
+    if (chosen === null || this.hasGroup(chosen)) {
       return chosen;
     }
     const other: PluginGroupId = chosen === 'installed' ? 'available' : 'installed';
-    return this.groupHasRows(other) ? other : chosen;
+    return this.hasGroup(other) ? other : chosen;
   });
 
   /**
@@ -223,11 +223,12 @@ export class PluginBrowse {
   }
 
   /**
-   * Gets whether a group has any plugins to list.
+   * Gets whether a group has any plugins to list. An empty group has no box, so the ribbon disables its
+   * button.
    * @param group The group.
    * @returns Returns true when it has.
    */
-  private groupHasRows(group: PluginGroupId): boolean {
+  public hasGroup(group: PluginGroupId): boolean {
     return (group === 'installed' ? this.installedVisible() : this.availableVisible()).length > 0;
   }
 }

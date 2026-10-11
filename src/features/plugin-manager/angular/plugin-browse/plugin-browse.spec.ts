@@ -109,6 +109,9 @@ describe('PluginBrowse', () => {
 
     browse.openGroup.set(null);
     expect(browse.shownGroup()).toBeNull();
+    // An empty group has no box, so the ribbon disables its button.
+    expect(browse.hasGroup('installed')).toBe(false);
+    expect(browse.hasGroup('available')).toBe(true);
   });
 
   it('category_narrowsToThatCategoryOnly', () => {

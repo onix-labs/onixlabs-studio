@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
-import { ModelManagerCommandHandler, ModelManagerCommands } from './model-manager-commands';
+import {
+  ModelGroupId,
+  ModelManagerCommandHandler,
+  ModelManagerCommands,
+} from './model-manager-commands';
 
 /**
  * Builds a handler recording the calls made through it.
@@ -15,9 +19,16 @@ function handlerWith(
     running: signal<boolean>(running),
     stoppable: signal<boolean>(stoppable),
     busy,
+    needsInstall: signal<boolean>(false),
+    shownGroup: signal<ModelGroupId | null>('installed'),
+    presentGroups: signal<readonly ModelGroupId[]>(['installed', 'available']),
+    searchText: signal<string>('llama'),
     refresh: (): void => void calls.push('refresh'),
     start: (): void => void calls.push('start'),
     stop: (): void => void calls.push('stop'),
+    installRuntime: (): void => void calls.push('install'),
+    openGroup: (group: ModelGroupId): void => void calls.push(`open:${group}`),
+    search: (text: string): void => void calls.push(`search:${text}`),
   };
   return { handler, calls, busy };
 }
@@ -29,6 +40,10 @@ describe('ModelManagerCommands', () => {
     expect(commands.running()).toBe(false);
     expect(commands.stoppable()).toBe(false);
     expect(commands.busy()).toBe(false);
+    expect(commands.needsInstall()).toBe(false);
+    expect(commands.shownGroup()).toBeNull();
+    expect(commands.searchText()).toBe('');
+    expect(commands.presentGroups()).toEqual([]);
   });
 
   it('is a no-op when no view is active, rather than throwing', () => {
@@ -49,8 +64,14 @@ describe('ModelManagerCommands', () => {
     commands.refresh();
     commands.start();
     commands.stop();
+    commands.installRuntime();
+    commands.openGroup('loaded');
+    commands.search('qwen');
 
-    expect(calls).toEqual(['refresh', 'start', 'stop']);
+    expect(calls).toEqual(['refresh', 'start', 'stop', 'install', 'open:loaded', 'search:qwen']);
+    expect(commands.shownGroup()).toBe('installed');
+    expect(commands.searchText()).toBe('llama');
+    expect(commands.presentGroups()).toEqual(['installed', 'available']);
   });
 
   it('reads its state through the registered handler', () => {
