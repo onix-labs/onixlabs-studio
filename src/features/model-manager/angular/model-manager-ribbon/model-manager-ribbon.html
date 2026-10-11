@@ -1,6 +1,13 @@
 <app-ribbon-overflow>
   <app-ribbon-strip-group title="Runtime">
-    @if (running()) {
+    @if (needsInstall()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.DOWNLOAD"
+        label="Install"
+        [disabled]="busy()"
+        (action)="onInstall()"
+      />
+    } @else if (running()) {
       <app-ribbon-strip-button
         [icon]="Icon.STOP"
         label="Stop"
@@ -20,6 +27,50 @@
       label="Refresh"
       [disabled]="busy()"
       (action)="onRefresh()"
+    />
+  </app-ribbon-strip-group>
+
+  <!-- Which group of the list is open: one at a time, so these are toggles rather than checks, and
+       the pressed one follows a group opened from its own header. A group with nothing in it (no model
+       loaded, say) has no box to open, so its button is disabled; none has one while the runtime is
+       not running. -->
+  <app-ribbon-strip-group title="Models">
+    <app-ribbon-strip-button
+      [icon]="Icon.CHECK"
+      label="Installed"
+      [toggle]="true"
+      [pressed]="shownGroup() === 'installed'"
+      [disabled]="!presentGroups().includes('installed')"
+      (action)="onGroup('installed')"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.DOWNLOAD"
+      label="Available"
+      [toggle]="true"
+      [pressed]="shownGroup() === 'available'"
+      [disabled]="!presentGroups().includes('available')"
+      (action)="onGroup('available')"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.AI_MODELS"
+      label="Loaded"
+      [toggle]="true"
+      [pressed]="shownGroup() === 'loaded'"
+      [disabled]="!presentGroups().includes('loaded')"
+      (action)="onGroup('loaded')"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Search">
+    <app-text-field
+      class="model-ribbon__search"
+      kind="search"
+      placeholder="Search…"
+      ariaLabel="Search models"
+      [value]="searchText()"
+      [disabled]="!running()"
+      (valueChange)="onSearch($event)"
+      (escape)="onSearch('')"
     />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

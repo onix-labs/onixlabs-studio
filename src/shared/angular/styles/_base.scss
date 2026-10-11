@@ -60,6 +60,16 @@ select:focus-visible {
   border-color: var(--accent-color) !important;
 }
 
+// The small, quiet uppercase label that heads a section (PLUGINS, INSTALLED, AVAILABLE): the Welcome
+// screen's section title, for the rest of the application.
+.section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--form-muted-foreground-color);
+}
+
 // Scroll bars float over the content, app-wide, rather than taking a channel beside it. Any native bar,
 // however it is styled, takes its width out of the content box, so a selected row's fill would stop
 // short of the area's edge. So every native bar is hidden here, from the first paint, and the

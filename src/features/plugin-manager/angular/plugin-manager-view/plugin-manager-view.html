@@ -43,7 +43,7 @@
 
   <div main class="plugin-manager__main">
     <header class="plugin-manager__header">
-      <h2 class="plugin-manager__title">{{ heading() }}</h2>
+      <h2 class="plugin-manager__title section-label">{{ heading() }}</h2>
       <p class="plugin-manager__subtitle">{{ summary() }}</p>
     </header>
 
@@ -54,46 +54,84 @@
       </p>
     }
 
-    <app-list-view
-      class="plugin-manager__list"
-      [rows]="rows()"
-      [emptyText]="
-        browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.'
-      "
-    >
-      <ng-template let-row>
-        @let item = plugin(row);
-        <div class="plugin-row">
+    <!-- Installed, then Available: each an accordion holding its own table, whose header stays in
+         view while its rows scroll. Open groups share the height, each taking no more than it needs. -->
+    <div class="plugin-manager__groups">
+      @for (group of groups(); track group.id) {
+        <app-accordion
+          class="plugin-manager__group"
+          [class.plugin-manager__group--open]="isOpen(group.id)"
+          [heading]="group.label"
+          [section]="true"
+          [fill]="true"
+          [expanded]="isOpen(group.id)"
+          (expandedChange)="setOpen(group.id, $event)"
+        >
+          <app-chip accordionActions>{{ group.rows.length }}</app-chip>
+          <app-table
+            class="plugin-manager__table"
+            [columns]="columns"
+            [rows]="group.rows"
+            [striped]="true"
+          >
+            <ng-template appTableRow let-row>
+              <ng-container
+                [ngTemplateOutlet]="cells"
+                [ngTemplateOutletContext]="{ $implicit: row }"
+              />
+            </ng-template>
+          </app-table>
+        </app-accordion>
+      } @empty {
+        <p class="plugin-manager__empty">
+          {{ browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.' }}
+        </p>
+      }
+    </div>
+
+    <!-- One plugin's cells, shared by both groups' tables. -->
+    <ng-template #cells let-row>
+      @let item = plugin(row);
+      <td class="plugin-cell">
+        <span class="plugin-row__plugin">
           <app-icon class="plugin-row__icon" [icon]="iconFor(item)" [size]="2.5" />
           <span class="plugin-row__identity">
             <span class="plugin-row__name">{{ item.name }}</span>
             <span class="plugin-row__description">{{ item.description }}</span>
           </span>
-          <span class="plugin-row__category">{{ categories(item) }}</span>
-          <span class="plugin-row__targets">{{ languages(item) }}</span>
-          <span class="plugin-row__version">
-            @if (canUpdate(item)) {
-              {{ item.installedVersion }} → {{ item.version }}
-            } @else {
-              {{ item.version }}
-            }
-          </span>
-          <span
-            class="plugin-row__state"
-            [class.plugin-row__state--installed]="item.state === 'installed' && !canUpdate(item)"
-            [class.plugin-row__state--update]="canUpdate(item)"
-            [class.plugin-row__state--available]="item.state === 'available'"
-            [class.plugin-row__state--busy]="item.state === 'busy'"
-            [class.plugin-row__state--unavailable]="item.state === 'unavailable'"
-          >
-            <app-icon [icon]="stateIcon(item)" />
-            {{ stateLabel(item) }}
-          </span>
-          <span class="plugin-row__action">
-            <app-plugin-action [plugin]="item" />
-          </span>
-        </div>
-      </ng-template>
-    </app-list-view>
+        </span>
+      </td>
+      <td class="plugin-cell plugin-row__muted plugin-row__category">{{ categories(item) }}</td>
+      <td class="plugin-cell">
+        <span class="plugin-row__chips">
+          @for (name of languages(item); track name) {
+            <app-chip [title]="name">{{ name }}</app-chip>
+          }
+        </span>
+      </td>
+      <td class="plugin-cell">
+        <app-chip class="plugin-row__version" [tone]="canUpdate(item) ? 'info' : 'neutral'">
+          @if (canUpdate(item)) {
+            {{ item.installedVersion }} → {{ item.version }}
+          } @else {
+            {{ item.version }}
+          }
+        </app-chip>
+      </td>
+      <td class="plugin-cell">
+        <app-chip
+          class="plugin-row__state"
+          [class.plugin-row__state--busy]="item.state === 'busy'"
+          [tone]="stateTone(item)"
+          [icon]="stateIcon(item)"
+          >{{ stateLabel(item) }}</app-chip
+        >
+      </td>
+      <td class="plugin-cell">
+        <span class="plugin-row__action">
+          <app-plugin-action [plugin]="item" />
+        </span>
+      </td>
+    </ng-template>
   </div>
 </app-panel-layout>

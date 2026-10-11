@@ -1,6 +1,11 @@
 import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
 
 /**
+ * The groups the AI Model Manager's list is split into, one open at a time.
+ */
+export type ModelGroupId = 'installed' | 'available' | 'loaded';
+
+/**
  * The contract the active AI Model Manager view implements so the ribbon can drive it. Mirrors the
  * Containers/System Monitor command-registry pattern: the view registers a handler while active, the
  * ribbon calls the forwarding methods, and each is a no-op when no view is active.
@@ -21,6 +26,44 @@ export interface ModelManagerCommandHandler {
    * Gets whether an operation is in flight, so the ribbon can disable its actions.
    */
   readonly busy: Signal<boolean>;
+
+  /**
+   * Gets whether the runtime is not installed, so the ribbon offers Install in place of Start.
+   */
+  readonly needsInstall: Signal<boolean>;
+
+  /**
+   * Gets the group of the list that is open, or null when none is, so the ribbon's group buttons show
+   * which is pressed.
+   */
+  readonly shownGroup: Signal<ModelGroupId | null>;
+
+  /**
+   * Gets the groups that have models to list, so the ribbon disables the button of an empty one.
+   */
+  readonly presentGroups: Signal<readonly ModelGroupId[]>;
+
+  /**
+   * Gets the search text the list is filtered by.
+   */
+  readonly searchText: Signal<string>;
+
+  /**
+   * Installs the runtime.
+   */
+  installRuntime(): void;
+
+  /**
+   * Opens a group of the list, closing the others.
+   * @param group The group to open.
+   */
+  openGroup(group: ModelGroupId): void;
+
+  /**
+   * Filters the list by text: the installed and loaded models by name, and the catalogue by search.
+   * @param text The search text.
+   */
+  search(text: string): void;
 
   /**
    * Reloads the installed models, running models, status and disk usage.
@@ -70,6 +113,34 @@ export class ModelManagerCommands {
   public readonly busy: Signal<boolean> = computed((): boolean => this.handler()?.busy() ?? false);
 
   /**
+   * Gets whether the active view's runtime is not installed.
+   */
+  public readonly needsInstall: Signal<boolean> = computed(
+    (): boolean => this.handler()?.needsInstall() ?? false,
+  );
+
+  /**
+   * Gets the active view's open group, or null when no view is active or none is open.
+   */
+  public readonly shownGroup: Signal<ModelGroupId | null> = computed(
+    (): ModelGroupId | null => this.handler()?.shownGroup() ?? null,
+  );
+
+  /**
+   * Gets the active view's groups that have models to list; none when no view is active.
+   */
+  public readonly presentGroups: Signal<readonly ModelGroupId[]> = computed(
+    (): readonly ModelGroupId[] => this.handler()?.presentGroups() ?? [],
+  );
+
+  /**
+   * Gets the active view's search text.
+   */
+  public readonly searchText: Signal<string> = computed(
+    (): string => this.handler()?.searchText() ?? '',
+  );
+
+  /**
    * Registers the active view's handler as the current one.
    * @param handler The handler to make current.
    */
@@ -106,5 +177,28 @@ export class ModelManagerCommands {
    */
   public stop(): void {
     this.handler()?.stop();
+  }
+
+  /**
+   * Installs the active view's runtime.
+   */
+  public installRuntime(): void {
+    this.handler()?.installRuntime();
+  }
+
+  /**
+   * Opens a group of the active view's list.
+   * @param group The group to open.
+   */
+  public openGroup(group: ModelGroupId): void {
+    this.handler()?.openGroup(group);
+  }
+
+  /**
+   * Filters the active view's list.
+   * @param text The search text.
+   */
+  public search(text: string): void {
+    this.handler()?.search(text);
   }
 }

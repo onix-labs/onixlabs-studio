@@ -27,7 +27,8 @@
   position: sticky;
   inset-block-start: 0;
   z-index: 1;
-  padding: 0.3rem 0.625rem;
+  // Generous, so the header reads as the table's own band rather than as a squeezed first row.
+  padding: 0.75rem 0.625rem;
   background: var(--dock-title-background-color);
   color: var(--dock-tab-foreground-color);
   font-weight: 600;
@@ -87,9 +88,15 @@
   }
 }
 
-// A data row. Cells are the consumer's; the row owns hover chrome only.
+// A data row. Cells are the consumer's; the row owns its stripe, hover and selection chrome.
 .table-row {
   transition: var(--hover-transition);
+
+  // The alternate stripe of a `striped` table: a faint wash of the text colour, so it reads in either
+  // theme. Hover and selection, declared after, still show over it.
+  &--alternate {
+    background: color-mix(in srgb, var(--dock-tab-foreground-color) 5%, transparent);
+  }
 
   &:hover {
     background: var(--dock-title-background-color--focused);

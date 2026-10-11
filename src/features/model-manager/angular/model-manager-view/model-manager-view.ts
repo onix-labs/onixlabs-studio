@@ -13,7 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
@@ -35,11 +35,13 @@ import {
 } from '@shared/api/model-runtime-types';
 import { ModelConnections } from '../model-connections/model-connections';
 import {
+  ModelGroupId,
   ModelManagerCommandHandler,
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
 import { ModelRuntimes } from '../model-runtime/model-runtimes';
 import { Chip } from '@shared/angular/components/chip/chip';
+import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
 
 /**
  * The installed-models table's columns.
@@ -50,7 +52,8 @@ const INSTALLED_COLUMNS: readonly TableColumn[] = [
   { id: 'quantization', header: 'Quantisation', width: '9rem' },
   { id: 'size', header: 'Size', width: '8rem', align: 'end' },
   { id: 'modified', header: 'Modified', width: '11rem' },
-  { id: 'actions', header: '', width: '4rem', align: 'end' },
+  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'actions', header: '', width: '8.5rem', align: 'end' },
 ];
 
 /**
@@ -71,7 +74,8 @@ const AVAILABLE_COLUMNS: readonly TableColumn[] = [
   { id: 'source', header: 'Source', width: '8rem' },
   { id: 'parameters', header: 'Parameters', width: '8rem' },
   { id: 'size', header: 'Size', width: '8rem', align: 'end' },
-  { id: 'actions', header: '', width: '12rem', align: 'end' },
+  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'actions', header: '', width: '8.5rem', align: 'end' },
 ];
 
 /**
@@ -121,6 +125,41 @@ export interface ModelManagerSummary {
 }
 
 /**
+ * One group of the list: an accordion holding its own table.
+ */
+interface ModelGroup {
+  /**
+   * Gets the group's id.
+   */
+  readonly id: ModelGroupId;
+
+  /**
+   * Gets the group's heading.
+   */
+  readonly label: string;
+
+  /**
+   * Gets how many models the group lists.
+   */
+  readonly count: number;
+}
+
+/**
+ * Gets the key a model reference is matched by: the runtime names an untagged pull `name:latest`, and
+ * the catalogue may list it either way, so the `:latest` tag is ignored on both sides.
+ * @param reference The model reference.
+ * @returns Returns the key.
+ */
+function referenceKey(reference: string): string {
+  return reference.replace(/:latest$/, '');
+}
+
+/**
+ * The order the groups are listed in, and fall back through when the chosen one has nothing to show.
+ */
+const GROUP_ORDER: readonly ModelGroupId[] = ['installed', 'available', 'loaded'];
+
+/**
  * The AI Model Manager tab: the local model lifecycle in one place.
  *
  * It owns the *runtime and the weights* — whether the runtime is installed, whether its server is up,
@@ -133,7 +172,7 @@ export interface ModelManagerSummary {
  */
 @Component({
   selector: 'app-model-manager-view',
-  imports: [Chip, Button, TextField, AppIcon, Table, TableRowDef],
+  imports: [Accordion, AppIcon, Button, Chip, ProgressBar, Table, TableRowDef],
   templateUrl: './model-manager-view.html',
   styleUrl: './model-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -262,6 +301,20 @@ export class ModelManagerView implements OnInit {
   protected readonly searchText: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds the name of the model being removed, or null, so its row shows the work in progress as a
+   * plugin row does.
+   */
+  protected readonly removing: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds every catalogue description seen this session, by model reference, so an installed model can
+   * show its description whatever the catalogue is currently searched for.
+   */
+  private readonly descriptions: WritableSignal<ReadonlyMap<string, string>> = signal<
+    ReadonlyMap<string, string>
+  >(new Map<string, string>());
+
+  /**
    * Holds whether a catalogue search is in flight.
    */
   protected readonly searching: WritableSignal<boolean> = signal<boolean>(false);
@@ -292,7 +345,9 @@ export class ModelManagerView implements OnInit {
    */
   protected readonly installedRefs: Signal<ReadonlySet<string>> = computed(
     (): ReadonlySet<string> =>
-      new Set<string>(this.installed().map((model: LocalModel): string => model.name)),
+      new Set<string>(
+        this.installed().map((model: LocalModel): string => referenceKey(model.name)),
+      ),
   );
 
   /**
@@ -300,7 +355,12 @@ export class ModelManagerView implements OnInit {
    */
   protected readonly availableRows: Signal<readonly TableRow[]> = computed(
     (): readonly TableRow[] =>
-      this.available().map((model: CatalogModel): TableRow => ({ id: model.ref, data: model })),
+      this.available()
+        // What is installed is listed under Installed, as an installed plugin is.
+        .filter(
+          (model: CatalogModel): boolean => !this.installedRefs().has(referenceKey(model.ref)),
+        )
+        .map((model: CatalogModel): TableRow => ({ id: model.ref, data: model })),
   );
 
   /**
@@ -403,15 +463,78 @@ export class ModelManagerView implements OnInit {
    */
   protected readonly installedRows: Signal<readonly TableRow[]> = computed(
     (): readonly TableRow[] =>
-      this.installed().map((model: LocalModel): TableRow => ({ id: model.name, data: model })),
+      this.installed()
+        .filter((model: LocalModel): boolean => this.matches(model.name))
+        .map((model: LocalModel): TableRow => ({ id: model.name, data: model })),
   );
 
   /**
    * Gets the running models adapted to the table's row shape.
    */
   protected readonly runningRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    this.running().map((model: RunningModel): TableRow => ({ id: model.name, data: model })),
+    this.running()
+      .filter((model: RunningModel): boolean => this.matches(model.name))
+      .map((model: RunningModel): TableRow => ({ id: model.name, data: model })),
   );
+
+  /**
+   * Gets the groups of the list, each an accordion with its own table, leaving out any with nothing in
+   * it.
+   */
+  protected readonly groups: Signal<readonly ModelGroup[]> = computed((): readonly ModelGroup[] => {
+    const groups: ModelGroup[] = [
+      { id: 'installed', label: 'Installed', count: this.installedRows().length },
+      { id: 'available', label: 'Available', count: this.availableRows().length },
+      { id: 'loaded', label: 'Loaded', count: this.runningRows().length },
+    ];
+    return groups.filter((group: ModelGroup): boolean => group.count > 0);
+  });
+
+  /**
+   * Holds the group the user chose to open, or null when they closed it. Installed is open to begin
+   * with.
+   */
+  private readonly openGroup: WritableSignal<ModelGroupId | null> = signal<ModelGroupId | null>(
+    'installed',
+  );
+
+  /**
+   * Gets the group that is actually open: the chosen one, unless it has nothing to show, in which case
+   * the first that has opens in its place rather than leaving every box shut. The ribbon reads it too,
+   * so the two never disagree.
+   */
+  protected readonly shownGroup: Signal<ModelGroupId | null> = computed((): ModelGroupId | null => {
+    const chosen: ModelGroupId | null = this.openGroup();
+    const shown: readonly ModelGroupId[] = this.groups().map(
+      (group: ModelGroup): ModelGroupId => group.id,
+    );
+    if (chosen === null || shown.includes(chosen)) {
+      return chosen;
+    }
+    return GROUP_ORDER.find((id: ModelGroupId): boolean => shown.includes(id)) ?? chosen;
+  });
+
+  /**
+   * Gets the sentence under the heading: the runtime and its state, then what is installed and loaded
+   * and the disk it takes.
+   */
+  protected readonly headline: Signal<string> = computed((): string => {
+    if (this.needsInstall()) {
+      return `${this.runtimeName()} isn't installed.`;
+    }
+    if (!this.isRunning()) {
+      return `${this.runtimeName()} isn't running.`;
+    }
+    const installed: number = this.installed().length;
+    const loaded: number = this.running().length;
+    const usage: ModelDiskUsage | null = this.disk();
+    const disk: string =
+      usage === null || usage.path === '' ? '' : `, ${this.formatBytes(usage.bytes)} on disk`;
+    return (
+      `${this.runtimeName()} is running. ${installed} ${installed === 1 ? 'model' : 'models'} ` +
+      `installed, ${loaded} loaded${disk}.`
+    );
+  });
 
   /**
    * Holds the handler the ribbon drives the active view through.
@@ -420,9 +543,18 @@ export class ModelManagerView implements OnInit {
     running: this.isRunning,
     stoppable: this.isStoppable,
     busy: this.busy,
+    needsInstall: this.needsInstall,
+    shownGroup: this.shownGroup,
+    presentGroups: computed((): readonly ModelGroupId[] =>
+      this.groups().map((group: ModelGroup): ModelGroupId => group.id),
+    ),
+    searchText: this.searchText,
     refresh: (): void => void this.refresh(),
     start: (): void => void this.start(),
     stop: (): void => void this.stop(),
+    installRuntime: (): void => void this.installRuntime(),
+    openGroup: (group: ModelGroupId): void => this.openGroup.set(group),
+    search: (text: string): void => this.onSearchChange(text),
   };
 
   /**
@@ -556,6 +688,7 @@ export class ModelManagerView implements OnInit {
       return;
     }
     this.busy.set(true);
+    this.removing.set(model.name);
     try {
       const removed: boolean = await this.runtimes.remove(model.name);
       this.log.info('model-manager.view', `Remove '${model.name}' ${removed ? 'ok' : 'failed'}`);
@@ -565,8 +698,66 @@ export class ModelManagerView implements OnInit {
       }
       await this.refresh();
     } finally {
+      this.removing.set(null);
       this.busy.set(false);
     }
+  }
+
+  /**
+   * Gets whether a group is the open one.
+   * @param id The group's id.
+   * @returns Returns true when it is.
+   */
+  protected isOpen(id: ModelGroupId): boolean {
+    return this.shownGroup() === id;
+  }
+
+  /**
+   * Opens a group, closing the others; or closes it, leaving none open.
+   * @param id The group's id.
+   * @param open Whether it is to be open.
+   */
+  protected setOpen(id: ModelGroupId, open: boolean): void {
+    this.openGroup.set(open ? id : null);
+  }
+
+  /**
+   * Gets an installed model's description, from the catalogue entry with the same reference.
+   * @param model The installed model.
+   * @returns Returns the description, or an empty string when the catalogue does not list it.
+   */
+  protected descriptionOf(model: LocalModel): string {
+    return this.descriptions().get(referenceKey(model.name)) ?? '';
+  }
+
+  /**
+   * Remembers the descriptions a catalogue result carries.
+   * @param models The catalogue models.
+   */
+  private remember(models: readonly CatalogModel[]): void {
+    const described: readonly CatalogModel[] = models.filter(
+      (model: CatalogModel): boolean => model.description.length > 0,
+    );
+    if (described.length === 0) {
+      return;
+    }
+    this.descriptions.update((known: ReadonlyMap<string, string>): ReadonlyMap<string, string> => {
+      const next: Map<string, string> = new Map<string, string>(known);
+      for (const model of described) {
+        next.set(referenceKey(model.ref), model.description);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Gets whether a model's name matches the search text, ignoring case.
+   * @param name The model's name.
+   * @returns Returns true when there is no search text, or the name contains it.
+   */
+  private matches(name: string): boolean {
+    const text: string = this.searchText().trim().toLowerCase();
+    return text.length === 0 || name.toLowerCase().includes(text);
   }
 
   /**
@@ -601,6 +792,7 @@ export class ModelManagerView implements OnInit {
     try {
       const result: CatalogResult = await this.runtimes.searchCatalog(this.searchText());
       this.available.set(result.models);
+      this.remember(result.models);
       this.catalogFailures.set(result.failedSources);
     } finally {
       this.searching.set(false);
@@ -646,12 +838,13 @@ export class ModelManagerView implements OnInit {
   }
 
   /**
-   * Whether a catalogue model is already installed.
-   * @param ref The model reference.
-   * @returns Returns true when it is installed.
+   * Gets the state chip's words for a download in progress: how far it has got, when that is known.
+   * @param progress The pull progress.
+   * @returns Returns the label.
    */
-  protected isInstalled(ref: string): boolean {
-    return this.installedRefs().has(ref);
+  protected pullLabel(progress: ModelPullProgress): string {
+    const percent: number | null = this.pullPercent(progress);
+    return percent === null ? 'Downloading…' : `Downloading ${percent}%`;
   }
 
   /**

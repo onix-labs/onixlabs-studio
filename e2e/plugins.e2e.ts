@@ -25,8 +25,23 @@ async function openPlugins(app: ElectronApplication, page: Page): Promise<void> 
  */
 function pluginRow(page: Page, name: string): Locator {
   return page
-    .locator('.plugin-row')
+    .locator('tr.table-row')
     .filter({ has: page.locator('.plugin-row__name', { hasText: name }) });
+}
+
+/**
+ * Opens one of the Plugin Manager's groups, unless it is open already: only one is open at a time,
+ * and clicking the open one would close it.
+ * @param page The main window.
+ * @param heading The group's heading, "Installed" or "Available".
+ */
+async function openGroup(page: Page, heading: string): Promise<void> {
+  const header: Locator = page.locator('app-accordion .accordion__header').filter({
+    has: page.locator('.accordion__heading', { hasText: new RegExp(`^${heading}$`) }),
+  });
+  if ((await header.getAttribute('aria-expanded')) !== 'true') {
+    await header.click();
+  }
 }
 
 /**
@@ -40,6 +55,7 @@ function pluginRow(page: Page, name: string): Locator {
 test.describe('the plugin catalogue', () => {
   test('offersTheDebugAdaptersAsPluginsRatherThanShippingThem', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Available');
 
     // Core ships no debug adapter. Both of these are entries in the curated index, and reaching the
     // catalogue at all is what proves the contribution point is wired rather than merely declared —
@@ -53,6 +69,7 @@ test.describe('the plugin catalogue', () => {
 
   test('reportsTheDebuggersAsNotInstalledOnAFreshProfile', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Available');
     const row: Locator = pluginRow(page, 'Python Debugger (debugpy)');
 
     // The point of the delivery model: a fresh installation carries no debugger, and says so, rather
@@ -67,6 +84,7 @@ test.describe('a sideloaded plugin', () => {
 
   test('reachesTheCatalogueBesideTheIndexedOnes', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Installed');
     const row: Locator = pluginRow(page, 'Zig Debugger');
 
     // Nothing in core knows this adapter exists: its manifest alone put it there, which is the whole

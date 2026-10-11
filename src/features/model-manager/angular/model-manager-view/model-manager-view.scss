@@ -1,6 +1,6 @@
-// The AI Model Manager view fills its tab: a runtime header (state and controls), then the installed
-// and loaded model tables. Everything below the header is empty until the server is up, so the header
-// carries the state that explains why.
+// The AI Model Manager view fills its tab: a heading saying what state the runtime is in, then the
+// models in accordion tables, as the Plugin Manager lists plugins. The runtime's controls are on the
+// ribbon. Everything below the heading is empty until the server is up, so the heading says why.
 :host {
   display: block;
   block-size: 100%;
@@ -10,81 +10,85 @@
   display: flex;
   flex-direction: column;
   block-size: 100%;
+  min-block-size: 0;
+}
+
+// The heading does not scroll: it is the one sentence saying what state the runtime is in.
+.model-manager__heading {
+  flex: none;
+  padding: 0.75rem 1rem 0.5rem;
+}
+
+.model-manager__heading-title {
+  // The shared `.section-label` sets the type; only the spacing is ours.
+  margin: 0;
+}
+
+.model-manager__headline {
+  margin: 0.25rem 0 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.model-manager__warning {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--warning-color, var(--form-muted-foreground-color));
+}
+
+// The groups, inset from the view's edges.
+.model-manager__groups {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-block-size: 0;
+  padding: 0.25rem 1rem 1rem;
   overflow: auto;
 }
 
-// The runtime header: indicator and description on the left, controls on the right.
-.model-manager__runtime {
-  display: flex;
+// A closed group is just its header. The open one takes the height, capped at what its table needs,
+// and scrolls inside its box with its column header in view.
+.model-manager__group {
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1.25rem;
-  border-block-end: 1px solid var(--form-control-border-color);
-}
 
-.model-manager__runtime-state {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  min-inline-size: 0;
-}
-
-.model-manager__indicator {
-  flex: 0 0 auto;
-  inline-size: 0.55rem;
-  block-size: 0.55rem;
-  border-radius: 50%;
-  background-color: var(--form-muted-foreground-color);
-
-  &--running {
-    background-color: var(--success-color);
+  &--open {
+    flex: 1 1 0;
+    max-block-size: calc-size(max-content, size);
   }
 }
 
-.model-manager__runtime-text {
-  min-inline-size: 0;
-}
-
-.model-manager__runtime-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+.model-manager__none {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.model-manager__runtime-status {
-  font-size: 0.78rem;
-  font-weight: 400;
   color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
 }
 
-.model-manager__runtime-detail {
-  margin: 0.1rem 0 0;
-  font-size: 0.8rem;
-  color: var(--form-muted-foreground-color);
+// Rows get the Plugin Manager's room, so the two managers read alike; a catalogue row is two lines.
+// Scoped through the table's class so it outranks the table's own cell padding.
+.model-manager__table td {
+  padding-block: 0.5rem;
+  vertical-align: middle;
 }
 
-.model-manager__shutdown-note {
+// Where the runtime came from, after the sentence: a fact for the curious rather than the headline.
+.model-manager__install {
+  margin-inline-start: 0.25rem;
   opacity: 0.85;
 }
 
-.model-manager__runtime-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.5rem;
+.model-manager__shutdown-note {
+  margin-inline-start: 0.25rem;
+  opacity: 0.85;
 }
 
 // The managed install's progress strip, shown only while an install is running or has just settled.
 .model-manager__progress {
   flex: none;
-  padding: 0.6rem 1.25rem 0.75rem;
-  border-block-end: 1px solid var(--form-control-border-color);
+  padding: 0 1rem 0.75rem;
 }
 
 .model-manager__progress-head {
@@ -148,37 +152,6 @@
   color: var(--danger-color);
 }
 
-.model-manager__section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 1rem 1.25rem 0;
-
-  &:last-child {
-    padding-block-end: 1.25rem;
-  }
-}
-
-.model-manager__header {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-}
-
-.model-manager__title {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.model-manager__disk {
-  margin-inline-start: auto;
-  font-size: 0.78rem;
-  color: var(--form-muted-foreground-color);
-  font-variant-numeric: tabular-nums;
-}
-
 .model-manager__name {
   font-weight: 500;
   color: var(--body-foreground-color);
@@ -189,45 +162,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.model-manager__row-actions {
-  text-align: end;
-  white-space: nowrap;
-}
-
-.model-manager__search {
-  margin-inline-start: auto;
-  inline-size: 18rem;
-}
-
-.model-manager__warning {
-  font-size: 0.75rem;
-  color: var(--warning-color, var(--form-muted-foreground-color));
-}
-
 // A second line under the model name, for the curated list's one-line descriptions.
 .model-manager__description {
   display: block;
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--form-muted-foreground-color);
-}
-
-.model-manager__installed {
-  font-size: 0.78rem;
-  color: var(--form-muted-foreground-color);
-}
-
-.model-manager__pull {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.model-manager__pull-label {
-  font-size: 0.78rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--form-muted-foreground-color);
-  text-transform: capitalize;
 }
 
 .model-manager__empty {
@@ -258,4 +198,28 @@
   max-inline-size: 32rem;
   font-size: 0.85rem;
   color: var(--form-muted-foreground-color);
+}
+
+// Work in flight is italic rather than coloured, as on a plugin row: it has not reached an outcome.
+.model-manager__state--busy {
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+}
+
+// The row's one action, in a fixed column at the end so it lines up down the table, as on a plugin
+// row; it holds the button's height while a progress bar stands in for it.
+.model-manager__action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-block-size: var(--control-height);
+
+  app-button,
+  app-progress-bar {
+    inline-size: 100%;
+  }
+
+  app-button {
+    overflow: hidden;
+  }
 }

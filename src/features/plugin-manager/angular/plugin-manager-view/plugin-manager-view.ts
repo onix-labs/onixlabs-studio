@@ -8,6 +8,7 @@ import {
   input,
   OnInit,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   FormatPluginContribution,
   LanguagePluginContribution,
@@ -18,12 +19,19 @@ import {
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
+import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
-import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
+import {
+  PluginBrowse,
+  PluginGroupId,
+  categoriesOf,
+  rowIconForCategory,
+} from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import {
@@ -45,6 +53,40 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
 };
 
 /**
+ * The plugin table's columns. The plugin column takes a fixed share so its name and description have
+ * room; the category and languages share what is left; version, state and the action are fixed, so
+ * they line up down the table however wide their text is.
+ */
+const COLUMNS: readonly TableColumn[] = [
+  { id: 'plugin', header: 'Plugin', width: '38%' },
+  { id: 'category', header: 'Category' },
+  { id: 'languages', header: 'Languages' },
+  { id: 'version', header: 'Version', width: '8.5rem' },
+  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'action', header: '', width: '8.5rem', align: 'end' },
+];
+
+/**
+ * One group of the list: an accordion holding its own table.
+ */
+interface PluginGroup {
+  /**
+   * Gets the group's id.
+   */
+  readonly id: PluginGroupId;
+
+  /**
+   * Gets the group's heading.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the group's rows, one per plugin.
+   */
+  readonly rows: readonly TableRow[];
+}
+
+/**
  * The Plugin Manager: the list of plugins Studio knows about, what is installed on this machine, and
  * the controls that change that.
  *
@@ -55,7 +97,17 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [AppIcon, ListView, PanelLayout, Panel, PluginAction],
+  imports: [
+    Accordion,
+    AppIcon,
+    Chip,
+    NgTemplateOutlet,
+    PanelLayout,
+    Panel,
+    PluginAction,
+    Table,
+    TableRowDef,
+  ],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -100,18 +152,29 @@ export class PluginManagerView implements OnInit {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets the browsing state the ribbon drives: the search text, the install-state filter, the selected
+   * Gets the browsing state the ribbon drives: the search text, the open group, the selected
    * category and the ordering.
    */
   protected readonly browse: PluginBrowse = inject(PluginBrowse);
 
   /**
-   * Gets the plugins to list, adapted to the list's row shape.
+   * Gets the table's columns.
    */
-  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
-    this.browse
-      .visible()
-      .map((plugin: PluginSummary): ListRow => ({ id: plugin.id, data: plugin })),
+  protected readonly columns: readonly TableColumn[] = COLUMNS;
+
+  /**
+   * Gets the plugins to list, in two groups, each an accordion with its own table: those installed on
+   * this machine (see `isInstalled`), then the rest. Each keeps the browse order, and a group with
+   * nothing in it is left out.
+   */
+  protected readonly groups: Signal<readonly PluginGroup[]> = computed(
+    (): readonly PluginGroup[] => {
+      const groups: PluginGroup[] = [
+        { id: 'installed', label: 'Installed', rows: this.rowsOf(this.browse.installedVisible()) },
+        { id: 'available', label: 'Available', rows: this.rowsOf(this.browse.availableVisible()) },
+      ];
+      return groups.filter((group: PluginGroup): boolean => group.rows.length > 0);
+    },
   );
 
   /**
@@ -126,7 +189,7 @@ export class PluginManagerView implements OnInit {
    * that provide the same thing happens — which is the one thing this view deliberately does not do.
    */
   protected readonly summary: Signal<string> = computed((): string => {
-    const shown: number = this.rows().length;
+    const shown: number = this.browse.visible().length;
     const noun: string = shown === 1 ? 'plugin' : 'plugins';
     const scope: string = this.browse.narrowed() ? 'match your filters' : 'available';
     return `${shown} ${noun} ${scope}. Where two installed plugins provide the same thing, choose between them in Settings.`;
@@ -144,8 +207,35 @@ export class PluginManagerView implements OnInit {
    * @param row The table row.
    * @returns Returns the row's plugin.
    */
-  protected plugin(row: ListRow): PluginSummary {
+  protected plugin(row: TableRow): PluginSummary {
     return row.data as PluginSummary;
+  }
+
+  /**
+   * Gets whether a group is the open one.
+   * @param id The group's id.
+   * @returns Returns true when it is.
+   */
+  protected isOpen(id: PluginGroupId): boolean {
+    return this.browse.shownGroup() === id;
+  }
+
+  /**
+   * Opens a group, closing the other; or closes it, leaving none open.
+   * @param id The group's id.
+   * @param open Whether it is to be open.
+   */
+  protected setOpen(id: PluginGroupId, open: boolean): void {
+    this.browse.openGroup.set(open ? id : null);
+  }
+
+  /**
+   * Builds a table row per plugin.
+   * @param plugins The plugins, in order.
+   * @returns Returns the rows.
+   */
+  private rowsOf(plugins: readonly PluginSummary[]): readonly TableRow[] {
+    return plugins.map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin }));
   }
 
   /**
@@ -175,9 +265,9 @@ export class PluginManagerView implements OnInit {
    * Names the languages a plugin serves, in the words a person uses for them rather than the
    * identifiers Monaco does.
    * @param plugin The plugin.
-   * @returns Returns the language names.
+   * @returns Returns the language names, then any formats.
    */
-  protected languages(plugin: PluginSummary): string {
+  protected languages(plugin: PluginSummary): readonly string[] {
     const languages: readonly string[] = [
       ...new Set(
         plugin.contributions
@@ -201,7 +291,7 @@ export class PluginManagerView implements OnInit {
           ),
       ),
     ];
-    return [...languages.map(languageDisplayName), ...formats].join(', ');
+    return [...languages.map(languageDisplayName), ...formats];
   }
 
   /**
@@ -244,7 +334,24 @@ export class PluginManagerView implements OnInit {
   }
 
   /**
-   * Gets the icon shown beside a row's state.
+   * Gets the tone of a row's state chip: each state in the semantic colour that already means it
+   * everywhere else in the application.
+   * @param plugin The plugin.
+   * @returns Returns the tone.
+   */
+  protected stateTone(plugin: PluginSummary): ChipTone {
+    if (plugin.state === 'installed') {
+      return canUpdate(plugin) ? 'info' : 'success';
+    }
+    if (plugin.state === 'busy') {
+      // Not a colour of its own: the work is transient, and a colour would imply an outcome.
+      return 'neutral';
+    }
+    return plugin.state === 'available' ? 'warning' : 'danger';
+  }
+
+  /**
+   * Gets the icon shown in a row's state chip.
    * @param plugin The plugin.
    * @returns Returns the icon.
    */

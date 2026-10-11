@@ -77,21 +77,41 @@ describe('PluginBrowse', () => {
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
-  it('stateFilter_narrowsToInstalledOrNotInstalled', () => {
-    browse.stateFilter.set('installed');
-    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['ts']);
+  it('openGroup_startsOnInstalled_andNarrowsNothing', () => {
+    // The groups are boxes on the list, not a filter: every plugin is listed whichever is open.
+    expect(browse.openGroup()).toBe('installed');
+    expect(browse.visible()).toHaveLength(3);
 
-    browse.stateFilter.set('not-installed');
-    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude', 'mystery']);
+    browse.openGroup.set('available');
+    expect(browse.visible()).toHaveLength(3);
+    expect(browse.narrowed()).toBe(false);
   });
 
-  it('aBusyPluginShowsUnderBothStates_soARowNeverVanishesUnderTheButtonJustPressed', () => {
-    catalogue.set([plugin({ id: 'busy', name: 'Busy', state: 'busy' })]);
+  it('groups_countASideloadedPluginAsInstalled_thoughItRecordsNoVersion', () => {
+    catalogue.set([
+      plugin({ id: 'sideloaded', name: 'Zig', state: 'installed', installedVersion: null }),
+      plugin({ id: 'updating', name: 'Busy', state: 'busy', installedVersion: '1.0.0' }),
+      plugin({ id: 'new', name: 'New', state: 'available', installedVersion: null }),
+    ]);
 
-    browse.stateFilter.set('installed');
-    expect(browse.visible()).toHaveLength(1);
-    browse.stateFilter.set('not-installed');
-    expect(browse.visible()).toHaveLength(1);
+    expect(browse.installedVisible().map((p: PluginSummary): string => p.id)).toEqual([
+      'updating',
+      'sideloaded',
+    ]);
+    expect(browse.availableVisible().map((p: PluginSummary): string => p.id)).toEqual(['new']);
+  });
+
+  it('shownGroup_opensTheOtherGroup_whenTheChosenOneHasNothingToShow', () => {
+    catalogue.set([plugin({ id: 'new', name: 'New', state: 'available', installedVersion: null })]);
+
+    expect(browse.openGroup()).toBe('installed');
+    expect(browse.shownGroup()).toBe('available');
+
+    browse.openGroup.set(null);
+    expect(browse.shownGroup()).toBeNull();
+    // An empty group has no box, so the ribbon disables its button.
+    expect(browse.hasGroup('installed')).toBe(false);
+    expect(browse.hasGroup('available')).toBe(true);
   });
 
   it('category_narrowsToThatCategoryOnly', () => {
