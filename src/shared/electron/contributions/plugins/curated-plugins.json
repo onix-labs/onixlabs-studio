@@ -1,5 +1,5 @@
 {
-  "revision": 35,
+  "revision": 36,
   "plugins": [
     {
       "id": "pyright",
@@ -1166,13 +1166,13 @@
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "90e7f4d14e0fd512234a52f4dbc764c42f35ded1acbbc23a70010da371204e13",
+        "sha256": "2784e719584e02e885db78a672ba889978955fa2030a7be4c6f52381a27f6d0e",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1210,18 +1210,15 @@
                 "models": [
                   {
                     "id": "claude-opus-4-8",
-                    "label": "Opus 4.8",
-                    "contextWindow": 1000000
+                    "label": "Opus 4.8"
                   },
                   {
                     "id": "claude-sonnet-4-6",
-                    "label": "Sonnet 4.6",
-                    "contextWindow": 1000000
+                    "label": "Sonnet 4.6"
                   },
                   {
                     "id": "claude-haiku-4-5",
-                    "label": "Haiku 4.5",
-                    "contextWindow": 200000
+                    "label": "Haiku 4.5"
                   }
                 ]
               }
@@ -1234,13 +1231,13 @@
       "id": "onixlabs.codex-harness",
       "name": "Codex (out of process)",
       "description": "Runs OpenAI Codex through its SDK in its own process, over Studio's agent protocol.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "apiVersion": "1.12.0",
       "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript. Authenticates through your local Codex login, or through an API key configured against the connection.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-        "sha256": "a47e21d54e4e43eb63cc189c9da2e0f10549e72b46a2e66109c38c254c1264f6",
+        "sha256": "db296015eb6e5eae313cfcb1c4edfa933f67b46dd89ee38f1dd5e99604be164d",
         "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
       },
       "contributes": {
@@ -1271,13 +1268,11 @@
                 "models": [
                   {
                     "id": "gpt-5.6-terra",
-                    "label": "GPT-5.6-Terra",
-                    "contextWindow": 272000
+                    "label": "GPT-5.6-Terra"
                   },
                   {
                     "id": "gpt-5.6-luna",
-                    "label": "GPT-5.6-Luna",
-                    "contextWindow": 272000
+                    "label": "GPT-5.6-Luna"
                   }
                 ]
               }
@@ -1290,13 +1285,13 @@
       "id": "onixlabs.ai-sdk-harness",
       "name": "AI SDK (out of process)",
       "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "apiVersion": "1.12.0",
       "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB \u2014 the SDK is pure JavaScript and ships inside the plugin.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-        "sha256": "604789a0c400faca42453de3268c168a086100b4e7eb96e93a4a8c0a43db9550",
+        "sha256": "366eab78e4d6b84645a9e00194637428b54398cc256a180f5db8cd90a157f1fe",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
       "contributes": {
@@ -1379,18 +1374,15 @@
                 "models": [
                   {
                     "id": "qwen3:8b",
-                    "label": "Qwen3 8B",
-                    "contextWindow": 40960
+                    "label": "Qwen3 8B"
                   },
                   {
                     "id": "qwen2.5-coder:14b",
-                    "label": "Qwen2.5 Coder 14B",
-                    "contextWindow": 32768
+                    "label": "Qwen2.5 Coder 14B"
                   },
                   {
                     "id": "qwen2.5-coder:7b",
-                    "label": "Qwen2.5 Coder 7B",
-                    "contextWindow": 32768
+                    "label": "Qwen2.5 Coder 7B"
                   }
                 ]
               },

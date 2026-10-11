@@ -8,7 +8,7 @@
       "name": "claude-harness",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/claude-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.8.0/onixlabs-claude-harness-0.8.0.tgz"
+        "@onixlabs/claude-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.9.0/onixlabs-claude-harness-0.9.0.tgz"
       }
     },
     "node_modules/@anthropic-ai/claude-agent-sdk": {
@@ -196,9 +196,9 @@
       }
     },
     "node_modules/@onixlabs/claude-harness": {
-      "version": "0.8.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.8.0/onixlabs-claude-harness-0.8.0.tgz",
-      "integrity": "sha512-LfWamm/RntUBNJsZb5thSXRp0DxgdaE/kt6eEbh+2O1NpeRQ3qihJ69YJh9lRxxv/qD6N75k1XhfNkR1XKU5eg==",
+      "version": "0.9.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-claude-harness-v0.9.0/onixlabs-claude-harness-0.9.0.tgz",
+      "integrity": "sha512-CJmLnPGoiQj8Sd3HZaveILLjPV6u+AhMDM7FhvNYlu/hU+Q8RV9HLGaojrdJJxeH3HS5IzD7DhjGrdM5AMmNlA==",
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.261",
         "@modelcontextprotocol/sdk": "1.31.0",
