@@ -12,7 +12,7 @@ import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 
 /**
  * Holds one directory tab's worktree-container state, provided by the tab's host component so the
- * per-checkout sub-views and the Worktrees panel share it: the container descriptor and per-checkout
+ * per-checkout sub-views and the Repository panel's worktrees share it: the container descriptor and per-checkout
  * statuses, the active checkout selection, and the container mutations (add/remove checkout). In an
  * ordinary single-workspace tab the session simply stays uninitialized ({@link isContainer} is
  * false), so consumers need no null-handling — the same panel and view code runs in both modes.
@@ -71,16 +71,6 @@ export class WorktreeSession {
   private readonly claimedRoots: Set<string> = new Set<string>();
 
   /**
-   * Holds each materialised checkout's agent-running signal, keyed by checkout id. Registered by
-   * the checkout's sub-view from its OWN live {@link import('@shared/angular/services/agent/agent').Agent}
-   * — the same instance Mission Control mirrors — so the panel's activity glyphs are never a
-   * second source of truth.
-   */
-  private readonly activitySignal: WritableSignal<ReadonlyMap<string, Signal<boolean>>> = signal<
-    ReadonlyMap<string, Signal<boolean>>
-  >(new Map<string, Signal<boolean>>());
-
-  /**
    * Gets the container root path, or null while the tab is an ordinary workspace.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
@@ -113,13 +103,6 @@ export class WorktreeSession {
    * Gets the operation currently in flight, or null when idle.
    */
   public readonly busy: Signal<'add' | 'remove' | null> = this.busySignal.asReadonly();
-
-  /**
-   * Gets each materialised checkout's agent-running signal, keyed by checkout id. A checkout with
-   * no entry has not been materialised (no sub-view, so no agent yet).
-   */
-  public readonly agentActivity: Signal<ReadonlyMap<string, Signal<boolean>>> =
-    this.activitySignal.asReadonly();
 
   /**
    * Gets the branches checked out by more than one checkout. Full clones mean git no longer
@@ -191,29 +174,6 @@ export class WorktreeSession {
   public activate(id: string): void {
     this.log.info('workspace.worktree', 'Checkout switched', this.labelFor(id));
     this.activeIdSignal.set(id);
-  }
-
-  /**
-   * Registers a materialised checkout's agent-running signal, powering the panel's activity glyph.
-   * @param id The checkout id.
-   * @param running The checkout agent's live running signal.
-   * @returns Returns a disposer that unregisters the signal (called on sub-view destroy).
-   */
-  public registerAgentActivity(id: string, running: Signal<boolean>): () => void {
-    const next: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
-      this.activitySignal(),
-    );
-    next.set(id, running);
-    this.activitySignal.set(next);
-    return (): void => {
-      const current: Map<string, Signal<boolean>> = new Map<string, Signal<boolean>>(
-        this.activitySignal(),
-      );
-      if (current.get(id) === running) {
-        current.delete(id);
-        this.activitySignal.set(current);
-      }
-    };
   }
 
   /**
@@ -338,6 +298,31 @@ export class WorktreeSession {
     } finally {
       this.busySignal.set(null);
     }
+  }
+
+  /**
+   * Renames a checkout — sets its alias — refreshing the descriptor on success.
+   * @param id The checkout id to rename.
+   * @param alias The new alias.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async rename(id: string, alias: string): Promise<WorktreeOutcome<null>> {
+    const root: string | null = this.rootSignal();
+    if (root === null || this.worktrees.client === undefined) {
+      return worktreeError('The tab is not a worktree container.');
+    }
+    this.log.info('workspace.worktree', 'Renaming checkout', this.labelFor(id), alias);
+    const outcome: WorktreeOutcome<null> = await this.worktrees.client.renameCheckout(
+      root,
+      id,
+      alias,
+    );
+    if (outcome.ok) {
+      await this.refresh();
+    } else {
+      this.log.warn('workspace.worktree', 'Checkout rename failed', outcome.error);
+    }
+    return outcome;
   }
 
   /**

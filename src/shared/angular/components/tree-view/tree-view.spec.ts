@@ -22,6 +22,7 @@ function makeRow(id: string, depth: number, expandable: boolean, expanded: boole
     <app-tree-view
       [rows]="rows()"
       [selectedId]="selectedId()"
+      [selectedIds]="selectedIds()"
       (rowClick)="onRow($event)"
       (backgroundClick)="backgroundClicks = backgroundClicks + 1"
     >
@@ -38,6 +39,7 @@ class TestHost {
     makeRow('collapsed', 0, true, false),
   ]);
   public readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
+  public readonly selectedIds: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
   public readonly clicked: TreeRow[] = [];
   public backgroundClicks: number = 0;
 
@@ -134,6 +136,23 @@ describe('TreeView', () => {
     expect(rows[1].getAttribute('aria-selected')).toBe('true');
     expect(rows[0].classList).not.toContain('active');
     expect(rows[0].getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('selectedIds_drawEachOfThoseRowsSelectedToo_andTheTreeMultiselectable', () => {
+    // Every worktree's checked-out branch, say: several rows that are each "the current one".
+    component.selectedId.set('root');
+    component.selectedIds.set(['collapsed']);
+    fixture.detectChanges();
+
+    const rows: readonly HTMLElement[] = rowElements();
+    expect(rows.map((row: HTMLElement): boolean => row.classList.contains('active'))).toEqual([
+      true,
+      false,
+      true,
+    ]);
+    expect(rows[2].getAttribute('aria-selected')).toBe('true');
+    expect(rows[1].getAttribute('aria-selected')).toBe('false');
+    expect(host.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe('true');
   });
 
   it('selectedId_whenSetFromOutside_scrollsTheSelectedRowIntoView', async () => {

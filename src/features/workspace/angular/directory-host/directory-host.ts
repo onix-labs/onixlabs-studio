@@ -70,7 +70,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds this tab's worktree session, provided here so the sub-views and the Worktrees panel
+   * Holds this tab's worktree session, provided here so the sub-views and the Repository panel's worktrees
    * share it.
    */
   protected readonly session: WorktreeSession = inject(WorktreeSession);

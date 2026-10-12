@@ -10,6 +10,7 @@ import {
   serializeWorktreeConfig,
   WORKTREE_CONFIG_FILE,
   WorktreeCheckoutInfo,
+  WorktreeBranch,
   WorktreeCheckoutStatus,
   WorktreeConfig,
   WorktreeDescriptor,
@@ -196,7 +197,8 @@ describe('WorktreeOperations', () => {
       const config: WorktreeConfig = parseWorktreeConfig(
         JSON.parse(await fs.readFile(path.join(root, STUDIO_DIR, WORKTREE_CONFIG_FILE), 'utf8')),
       );
-      expect(config.checkouts).toEqual([{ id, alias: undefined }]);
+      // Named after the branch it was converted on, so its label does not follow later checkouts.
+      expect(config.checkouts).toEqual([{ id, alias: 'main' }]);
     });
 
     it('refusesUnopenedNonRepositoryAndAlreadyPromotedRoots', GIT_TEST_TIMEOUT, async () => {
@@ -352,6 +354,21 @@ describe('WorktreeOperations', () => {
       expect(statuses?.[0].behind).toBeNull();
     });
 
+    it('listsEachCheckoutsOwnLocalBranches', GIT_TEST_TIMEOUT, async () => {
+      // Each checkout is a clone of its own, so the Repository panel lists each one's branches
+      // beneath it — read here, beside the rest of its status.
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      await git(path.join(root, id), 'branch', 'feat/x');
+
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+
+      expect(statuses?.[0].branches.map((branch: WorktreeBranch): string => branch.name)).toEqual([
+        'feat/x',
+        'main',
+      ]);
+    });
+
     it('returnsNullForRootsThatAreNotContainers', async () => {
       const plain: string = path.join(base, 'plain');
       await fs.mkdir(plain);
@@ -377,6 +394,51 @@ describe('WorktreeOperations', () => {
       workspace.addRoot(plain);
 
       expect(await operations.branches(plain)).toBeNull();
+    });
+  });
+
+  describe('addCheckout default names', () => {
+    it(
+      'namesAnUnnamedWorktreeAfterItsBranch_numberedWhenTheNameIsTaken',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        // The converted worktree is "main"; a bare add clones main again, so it is "main 2". One
+        // started on a new branch takes that branch's name.
+        const { root } = await promoteFixture();
+
+        const bare: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {});
+        const branched: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+          branch: 'feat/x',
+        });
+
+        expect(bare.ok && bare.value.alias).toBe('main 2');
+        expect(branched.ok && branched.value.alias).toBe('feat/x');
+      },
+    );
+  });
+
+  describe('renameCheckout', () => {
+    it('setsTheAlias_trimmed', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      const outcome: WorktreeOutcome<null> = await operations.renameCheckout(
+        root,
+        id,
+        '  default ',
+      );
+
+      expect(outcome.ok).toBe(true);
+      expect((await operations.describe(root))?.checkouts[0].alias).toBe('default');
+    });
+
+    it('refusesAnEmptyName_andUnregisteredIds', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      expect((await operations.renameCheckout(root, id, '   ')).ok).toBe(false);
+      expect((await operations.renameCheckout(root, '../evil', 'x')).ok).toBe(false);
+      expect((await operations.describe(root))?.checkouts[0].alias).toBe('main');
     });
   });
 

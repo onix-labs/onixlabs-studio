@@ -131,6 +131,9 @@ import {
   SourceControlCommands,
 } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
+import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
+import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -181,7 +184,6 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   files: ['solution', 'agent'],
   solution: ['files', 'agent'],
   search: ['files', 'agent'],
-  worktrees: ['files', 'solution'],
   branches: ['files', 'solution'],
   agent: ['commit', 'files'],
   commit: ['agent', 'files'],
@@ -202,7 +204,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
  */
 @Component({
   selector: 'app-directory-view',
-  imports: [DockContainer],
+  imports: [DockContainer, WorktreeDialogs],
   templateUrl: './directory-view.html',
   styleUrl: './directory-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -227,6 +229,10 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     FileOpener,
     WorkspaceGit,
     Repository,
+    // The Repository panel's worktrees, per view beside its Repository: "the current worktree" is
+    // the checkout this view shows, which a container keeps one view alive for each of.
+    WorktreeRepository,
+    { provide: REPOSITORY_WORKTREES, useExisting: WorktreeRepository },
     // The forge's view of this tab's repository (pull requests, issues, CI runs). Per view, beside
     // Repository: a dock panel is destroyed when another tool in its stack activates, so state owned
     // by the panel would be re-fetched on every tool switch against a rate-limited API.
@@ -400,10 +406,15 @@ export class DirectoryView implements OnInit, OnDestroy {
   });
 
   /**
-   * Holds the tab-level worktree session (host-provided): container state for the Worktrees panel,
-   * the active-checkout selection, and host root-ownership claims.
+   * Holds the tab-level worktree session (host-provided): container state, the active-checkout
+   * selection, and host root-ownership claims.
    */
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
+
+  /**
+   * Holds this view's worktrees as the Repository panel reads them.
+   */
+  private readonly worktreeRepository: WorktreeRepository = inject(WorktreeRepository);
 
   /**
    * Holds the structured logger.
@@ -411,8 +422,7 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds this view's live agent, whose running state a checkout sub-view publishes to the
-   * Worktrees panel's activity glyphs.
+   * Holds this view's live agent, which a workspace opened with an agent brief starts.
    */
   private readonly agent: Agent = inject(Agent);
 
@@ -708,8 +718,8 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
    * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
-   * Worktrees a container, Logs something that has actually logged, and the source-control trio a
-   * repository. A panel absent from this map has nothing to depend on and is always available.
+   * Logs something that has actually logged, and the source-control trio a repository. A panel
+   * absent from this map has nothing to depend on and is always available.
    *
    * This drives two things at once: which panels the View → Panels menu offers, and which the dock
    * renders. Both mean the same thing — the panel has nothing to show — so both read it from here.
@@ -724,7 +734,6 @@ export class DirectoryView implements OnInit, OnDestroy {
         solution: this.solutionModel.model() !== null,
         packages: this.packageModel.model() !== null,
         debug: this.debugSession.state() !== 'idle',
-        worktrees: this.worktreeSession.isContainer(),
         // The demoted Logs panel is reachable exactly when it has content, as it always was — the
         // difference is that it is now passed over rather than cut out of the layout, so a layout
         // that names it still names it once something logs.
@@ -1343,22 +1352,12 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.forgeRepository.setActive(this.isActive());
     });
 
-    // Keep the Worktrees panel present while this view belongs to a container: every preset apply
-    // rebuilds the layout from the preset's definition, so the container's defining panel is
-    // re-added (and shown) whenever it is missing.
-    effect((): void => {
-      if (!this.worktreeSession.isContainer()) {
-        return;
-      }
-      const layout: DockNode = this.dockState.layout();
-      if (collectPanelIds(layout).includes('worktrees')) {
-        return;
-      }
-      const anchor: StackNode | null =
-        findStackOfPanel(layout, 'files') ?? firstStackOfRole(layout, 'tool');
-      if (anchor !== null) {
-        untracked((): void => this.dockState.tabInto(anchor.id, 'worktrees'));
-      }
+    // The Repository panel reads its worktrees through this view: which checkout it is, and whether
+    // its flat repository can become worktrees (the ribbon's Promote, through the same handler).
+    this.worktreeRepository.bind({
+      checkoutId: this.checkoutId,
+      canConvert: this.repositoryCommandHandler.canPromoteToWorktree,
+      convert: (): void => this.repositoryCommandHandler.promoteToWorktree(),
     });
   }
 
@@ -1769,14 +1768,6 @@ export class DirectoryView implements OnInit, OnDestroy {
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
     // dispatch and other per-view registries, which must not collide across a container's sub-views.
     this.dockTabContext.setTabId(this.viewScope());
-    // A checkout sub-view publishes its agent's running state to the Worktrees panel, so the
-    // panel's activity glyph mirrors the SAME live agent Mission Control does.
-    const checkout: string | null = this.checkoutId();
-    if (checkout !== null) {
-      this.destroyRef.onDestroy(
-        this.worktreeSession.registerAgentActivity(checkout, this.agent.isRunning),
-      );
-    }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {

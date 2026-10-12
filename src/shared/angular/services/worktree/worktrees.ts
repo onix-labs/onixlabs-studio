@@ -33,6 +33,8 @@ function createClient(bridge: Bridge): WorktreeClient {
       bridge.invoke(WorktreeChannel.AddCheckout, root, options),
     removeCheckout: (root: string, id: string): Promise<WorktreeOutcome<null>> =>
       bridge.invoke(WorktreeChannel.RemoveCheckout, root, id),
+    renameCheckout: (root: string, id: string, alias: string): Promise<WorktreeOutcome<null>> =>
+      bridge.invoke(WorktreeChannel.RenameCheckout, root, id, alias),
     openCheckout: (root: string, id: string): Promise<WorktreeOutcome<string>> =>
       bridge.invoke(WorktreeChannel.OpenCheckout, root, id),
     status: (root: string): Promise<readonly WorktreeCheckoutStatus[] | null> =>

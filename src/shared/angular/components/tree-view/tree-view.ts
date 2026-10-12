@@ -207,6 +207,25 @@ export class TreeView {
   public readonly selectedId: InputSignal<string | null> = input<string | null>(null);
 
   /**
+   * Gets the ids of further rows drawn selected alongside {@link selectedId} — several rows that are
+   * each "the current one" of their own group, such as every worktree's checked-out branch. Only
+   * {@link selectedId} is scrolled into view.
+   */
+  public readonly selectedIds: InputSignal<readonly string[]> = input<readonly string[]>([]);
+
+  /**
+   * Gets the set of every row drawn selected: {@link selectedId} and {@link selectedIds}.
+   */
+  protected readonly selection: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    const ids: Set<string> = new Set<string>(this.selectedIds());
+    const single: string | null = this.selectedId();
+    if (single !== null) {
+      ids.add(single);
+    }
+    return ids;
+  });
+
+  /**
    * Gets whether rows render through a virtual scroller (only the scrollport's rows get DOM).
    * Requires the host to give the tree a bounded height; size-to-content hosts must leave this off.
    */

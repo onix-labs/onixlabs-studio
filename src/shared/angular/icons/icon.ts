@@ -730,10 +730,20 @@ export class Icon {
   public static readonly STASH: Icon = new Icon('ph-duotone ph-archive');
 
   /**
-   * Gets the worktree icon shown on the Worktrees panel, the ribbon's Promote action, and the
+   * Gets the worktree icon shown on the Repository panel's worktrees, the ribbon's Promote action, and the
    * status strip's active-checkout indicator.
    */
   public static readonly WORKTREE: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the glyph on the worktree the view is showing, in the Repository panel.
+   */
+  public static readonly WORKTREE_SHOWN: Icon = new Icon('ph-duotone ph-eye');
+
+  /**
+   * Gets the glyph on a worktree the view is not showing, in the Repository panel.
+   */
+  public static readonly WORKTREE_HIDDEN: Icon = new Icon('ph-duotone ph-eye-slash');
 
   /**
    * Gets the remote (cloud) icon shown on the source-control remotes section.

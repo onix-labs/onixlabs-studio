@@ -1,0 +1,31 @@
+// The worktree dialogs' content, inside the app's default modal card.
+.worktree-dialog__title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.worktree-dialog__message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.worktree-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
+.worktree-dialog__input {
+  inline-size: 100%;
+  margin-block: 0 0.75rem;
+}
+
+.worktree-dialog__dropdown {
+  display: block;
+  margin-block-end: 0.75rem;
+}
