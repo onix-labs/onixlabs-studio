@@ -21,6 +21,7 @@ function createRecordingHandler(
       calls.push('stash');
     },
     canPromoteToWorktree: signal<boolean>(canPromote),
+    promoteBlocker: signal<string | null>(null),
     promoteToWorktree: (): void => {
       calls.push('promoteToWorktree');
     },

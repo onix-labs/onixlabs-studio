@@ -395,6 +395,57 @@ describe('WorktreeOperations', () => {
 
       expect(await operations.branches(plain)).toBeNull();
     });
+
+    it('listsTheBranchesOfEveryWorktree_notOnlyTheFirsts', GIT_TEST_TIMEOUT, async () => {
+      // Each worktree is a clone of its own: a branch made in the second, never pushed, is unknown
+      // to the first — and was missing from the New Worktree picker.
+      const { root } = await promoteFixture();
+      const second: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {});
+      if (!second.ok) {
+        throw new Error(second.error);
+      }
+      await git(path.join(root, second.value.id), 'branch', 'only-in-second');
+
+      expect(await operations.branches(root)).toContain('only-in-second');
+    });
+  });
+
+  describe('addCheckout from another worktree', () => {
+    it(
+      'fetchesABranchOnlyAnotherWorktreeHas_ratherThanMakingANewOne',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        // Cloned from the first worktree, asking for the branch by name would have created a new
+        // branch of that name off main. It is the second worktree's branch, commit and all.
+        const { root } = await promoteFixture();
+        const second: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(
+          root,
+          {},
+        );
+        if (!second.ok) {
+          throw new Error(second.error);
+        }
+        const secondDir: string = path.join(root, second.value.id);
+        await git(secondDir, 'checkout', '-q', '-b', 'side');
+        await fs.writeFile(path.join(secondDir, 'side.txt'), 'side\n', 'utf8');
+        await git(secondDir, 'add', '.');
+        await git(secondDir, '-c', 'user.email=s@s', '-c', 'user.name=S', 'commit', '-qm', 'side');
+        await git(secondDir, 'checkout', '-q', 'main');
+
+        const third: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+          branch: 'side',
+        });
+
+        expect(third.ok).toBe(true);
+        if (!third.ok) {
+          return;
+        }
+        const thirdDir: string = path.join(root, third.value.id);
+        expect(third.value.branch).toBe('side');
+        // The second worktree's commit came with it.
+        await expect(fs.readFile(path.join(thirdDir, 'side.txt'), 'utf8')).resolves.toBe('side\n');
+      },
+    );
   });
 
   describe('addCheckout default names', () => {

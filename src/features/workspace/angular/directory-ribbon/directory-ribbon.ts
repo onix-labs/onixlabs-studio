@@ -926,6 +926,13 @@ export class DirectoryRibbon {
   protected readonly canPromote: Signal<boolean> = this.repositoryCommands.canPromoteToWorktree;
 
   /**
+   * Gets whether promotion is held back right now — the agent at work in the folder it would move.
+   */
+  protected readonly promoteBlocked: Signal<boolean> = computed(
+    (): boolean => this.repositoryCommands.promoteBlocker() !== null,
+  );
+
+  /**
    * Holds whether the promote confirmation is open.
    */
   protected readonly promoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);

@@ -27,6 +27,11 @@ export interface WorktreeRepositoryView {
   readonly canConvert: Signal<boolean>;
 
   /**
+   * Gets why the view's flat repository cannot be converted right now, or null.
+   */
+  readonly convertBlocker: Signal<string | null>;
+
+  /**
    * Converts the view's flat repository to worktrees. Unconfirmed: the caller has already asked.
    */
   convert(): void;
@@ -114,6 +119,13 @@ export class WorktreeRepository implements RepositoryWorktrees {
    */
   public readonly canConvert: Signal<boolean> = computed(
     (): boolean => !this.session.isContainer() && (this.view()?.canConvert() ?? false),
+  );
+
+  /**
+   * Gets why the view's flat repository cannot be converted right now, or null.
+   */
+  public readonly convertBlocker: Signal<string | null> = computed(
+    (): string | null => this.view()?.convertBlocker() ?? null,
   );
 
   /**

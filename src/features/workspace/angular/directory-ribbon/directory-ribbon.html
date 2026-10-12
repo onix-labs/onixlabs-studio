@@ -140,7 +140,7 @@
       <app-ribbon-strip-button
         [icon]="Icon.WORKTREE"
         label="Promote"
-        [disabled]="!hasRepository()"
+        [disabled]="!hasRepository() || promoteBlocked()"
         (action)="onPromote()"
       />
     }
@@ -339,7 +339,7 @@
       The folder becomes a worktree container: everything in it moves into a checkout directory, and
       further checkouts of the same repository can then work in parallel — each on its own branch,
       with its own terminals, agent, and debugger. The view reloads around the container; the path
-      you open stays the same.
+      you open stays the same, and the agent conversation carries on in the first worktree.
     </p>
     <div class="directory-ribbon__confirm-actions">
       <app-button label="Cancel" (click)="cancelPromote()" />

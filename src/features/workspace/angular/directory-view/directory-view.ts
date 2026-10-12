@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AGENT_RUN_OWNER } from '@shared/angular/services/agent/agent-run-owner';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -383,11 +384,17 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Gets the host's promote action, or null when promotion is unavailable (the view is already a
-   * checkout inside a container, or the tab is not hosted).
+   * checkout inside a container, or the tab is not hosted). It is handed the id of the agent
+   * conversation open here, so the view the host rebuilds around the first worktree can take it over.
    */
-  public readonly promoteHandler: InputSignal<(() => void) | null> = input<(() => void) | null>(
-    null,
-  );
+  public readonly promoteHandler: InputSignal<((conversationId: string | null) => void) | null> =
+    input<((conversationId: string | null) => void) | null>(null);
+
+  /**
+   * Gets the id of an agent conversation this view takes over when it opens — the one a repository
+   * was converted to worktrees in the middle of — or null for none.
+   */
+  public readonly adoptConversation: InputSignal<string | null> = input<string | null>(null);
 
   /**
    * Emits this view's workspace root whenever it changes, so the host can re-resolve what the tab
@@ -415,6 +422,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this view's worktrees as the Repository panel reads them.
    */
   private readonly worktreeRepository: WorktreeRepository = inject(WorktreeRepository);
+
+  /**
+   * Holds the notifications a refused promotion is reported through.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the structured logger.
@@ -1039,8 +1051,41 @@ export class DirectoryView implements OnInit, OnDestroy {
       (): boolean =>
         this.promoteHandler() !== null && this.repository.supports('parallelCheckouts'),
     ),
-    promoteToWorktree: (): void => this.promoteHandler()?.(),
+    // Promotion moves every file in the folder. An agent at work in it would be writing to paths that
+    // are about to move, so promotion waits for it to finish.
+    promoteBlocker: computed((): string | null =>
+      this.agent.isRunning()
+        ? 'The agent is working in this folder — wait or stop it first.'
+        : null,
+    ),
+    promoteToWorktree: (): void => void this.promote(),
   };
+
+  /**
+   * Promotes this view's repository to worktrees, carrying the agent conversation across: it is saved
+   * now and handed to the host, whose new view for the first worktree takes it over. Re-checks the
+   * agent at the last moment, since a run can start between the confirmation and the click.
+   * @returns Returns a promise that resolves once the promotion has been handed to the host.
+   */
+  private async promote(): Promise<void> {
+    const handler: ((conversationId: string | null) => void) | null = this.promoteHandler();
+    const blocker: string | null = this.repositoryCommandHandler.promoteBlocker();
+    if (handler === null) {
+      return;
+    }
+    if (blocker !== null) {
+      this.log.warn('workspace', 'Promotion refused', blocker);
+      this.notifications.notify({
+        severity: 'warning',
+        title: 'Could not convert to worktrees',
+        detail: blocker,
+      });
+      return;
+    }
+    const conversationId: string | null = await this.agentConversation.flush();
+    this.log.info('workspace', 'Promoting to worktrees', conversationId ?? '(no conversation)');
+    handler(conversationId);
+  }
 
   /**
    * Resolves the worktree container's display name (its directory basename), or null when this view
@@ -1357,6 +1402,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.worktreeRepository.bind({
       checkoutId: this.checkoutId,
       canConvert: this.repositoryCommandHandler.canPromoteToWorktree,
+      convertBlocker: this.repositoryCommandHandler.promoteBlocker,
       convert: (): void => this.repositoryCommandHandler.promoteToWorktree(),
     });
   }
@@ -1773,6 +1819,13 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (initial !== null) {
       this.log.info('workspace', 'Workspace folder opened', initial.path);
       this.workspace.openListing(initial);
+    }
+    // The conversation of a repository converted to worktrees carries on here, in the first
+    // worktree's view. Taken over only once the folder is open: adopting saves it under this view's
+    // root, which is how it moves into this worktree's history.
+    const adopted: string | null = this.adoptConversation();
+    if (adopted !== null) {
+      void this.agentConversation.adopt(adopted);
     }
     const start: WorkspaceAgentStart | undefined = this.workspaces.takeAgentStart(this.tabId());
     if (start !== undefined) {

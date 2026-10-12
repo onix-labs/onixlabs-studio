@@ -580,6 +580,32 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
+   * Saves the open conversation now, rather than when the autosave would, and names it — so another
+   * view can take it over before this one goes away (a repository converted to worktrees rebuilds
+   * the view the conversation lives in).
+   * @returns Returns the open conversation's id once it is saved, or null when there is none.
+   */
+  public async flush(): Promise<string | null> {
+    this.cancelScheduledSave();
+    await this.persist();
+    return this.currentIdState();
+  }
+
+  /**
+   * Takes over a conversation another view saved, and saves it again under this view's context, so
+   * it moves to where this view lists its history. Its provider session comes with it.
+   * @param id The conversation id.
+   * @returns Returns a promise that resolves once the conversation is open and saved here.
+   */
+  public async adopt(id: string): Promise<void> {
+    await this.open(id);
+    if (this.currentIdState() === id) {
+      await this.persist();
+      this.log.info('AgentConversation', 'Conversation adopted', id, contextIdOf(this.context()));
+    }
+  }
+
+  /**
    * Deletes the given conversations, starting a fresh conversation if the open one was removed, then
    * reloads the history summaries.
    * @param ids The conversation ids to delete.

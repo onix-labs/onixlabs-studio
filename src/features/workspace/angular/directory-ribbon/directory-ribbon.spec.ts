@@ -152,6 +152,7 @@ class FakeDocumentHandler implements WorkspaceDocumentCommandHandler {
 class FakeRepositoryCommands {
   public readonly calls: string[] = [];
   public readonly canPromoteToWorktree: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly promoteBlocker: WritableSignal<string | null> = signal<string | null>(null);
 
   public fetch(): void {
     this.calls.push('fetch');
