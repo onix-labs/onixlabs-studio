@@ -6,7 +6,8 @@
   margin: 0;
   font-weight: 600;
   color: var(--agent-card-title-color);
-  white-space: pre-wrap;
+  // ⛔ No `pre-wrap` (unlike the question card's title, which is the agent's own text): this title is
+  // the template's, and pre-wrap kept the whitespace before "Apply" as a visible leading space.
   word-break: break-word;
 
   // One weight for the whole title: the name inside it is not heavier than the words around it.

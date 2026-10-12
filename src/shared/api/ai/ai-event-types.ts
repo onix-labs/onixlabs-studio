@@ -199,6 +199,12 @@ export interface AiInputChoice {
 }
 
 /**
+ * How many of a question's suggested answers the user may pick: one (an OR choice, drawn as radios) or
+ * any number (an AND choice, drawn as checkboxes and answered with every picked label).
+ */
+export type AiInputSelection = 'single' | 'multiple';
+
+/**
  * Asks the user a question the agent needs answered before it continues. Raised by the in-app
  * `ask_user` tool; the provider blocks on the answer exactly as it blocks on a permission decision.
  * Answered with an `AiInputReply` carrying the {@link inputId}.
@@ -224,6 +230,11 @@ export interface AiInputRequestEvent extends AiEventBase {
    * answer is always accepted, so the choices are suggestions rather than a closed set.
    */
   readonly choices: readonly AiInputChoice[];
+
+  /**
+   * Gets how many of the choices the user may pick, or undefined for one.
+   */
+  readonly selection?: AiInputSelection;
 }
 
 /**

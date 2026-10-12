@@ -4,6 +4,7 @@ import type {
   AiEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
@@ -742,6 +743,7 @@ export async function answerRequest(
         text(asked['question'], ''),
         toChoices(asked['choices']),
         dismiss,
+        toSelection(asked['selection']),
       );
       return { kind: 'input', answer };
     }
@@ -875,6 +877,16 @@ function toChoices(value: unknown): readonly AiInputChoice[] {
     });
   }
   return choices;
+}
+
+/**
+ * Reads the selection on an `input` request (protocol 1.14.0). Only `'multiple'` changes anything; a
+ * harness that omits it, or sends something unknown, asks for one choice as every harness did before.
+ * @param value The `selection` field as the harness sent it.
+ * @returns Returns `'multiple'`, or undefined for one choice.
+ */
+function toSelection(value: unknown): AiInputSelection | undefined {
+  return value === 'multiple' ? 'multiple' : undefined;
 }
 
 /**

@@ -19,6 +19,7 @@ import type {
   AiSlashCommand,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiPermissionRemember,
   AiProviderId,
@@ -319,6 +320,11 @@ export interface AgentItem {
    * Gets the suggested answers the user can pick from (empty for a free-form question).
    */
   readonly inputChoices?: readonly AiInputChoice[];
+
+  /**
+   * Gets how many of the suggested answers the user may pick, or undefined for one.
+   */
+  readonly inputSelection?: AiInputSelection;
 
   /**
    * Gets the input request's state.
@@ -2001,6 +2007,7 @@ export class Agent {
           inputId: event.inputId,
           inputQuestion: event.question,
           inputChoices: event.choices,
+          ...(event.selection === undefined ? {} : { inputSelection: event.selection }),
           inputState: 'pending',
         });
         break;

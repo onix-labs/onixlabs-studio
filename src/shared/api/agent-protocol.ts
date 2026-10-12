@@ -217,8 +217,14 @@ import { AiEvent } from './ai/ai-event-types';
  * once the CLI stopped tagging its 1M models. A window is now honoured only from a harness that
  * declares it reads the figure from the provider's own data; any other harness's windows are dropped,
  * and the model shows none. Optional, so every published harness is unaffected but for that.
+ *
+ * `1.14.0` adds an `input` request's optional `selection`. Every question was drawn as a radio list, so
+ * a question whose answer is *several* of its choices — Claude's `multiSelect` — reached the user as an
+ * OR when it was an AND. `'multiple'` draws checkboxes and answers with the picked labels joined by
+ * ", ", the form Claude's own question tool answers in. Optional, so every published harness is
+ * unaffected: an omitted selection is one choice, as before.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.13.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.14.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -673,6 +679,8 @@ export type HarnessRequest =
       readonly kind: 'input';
       readonly question: string;
       readonly choices: readonly HarnessChoice[];
+      // How many choices the user may pick (1.14.0); one when omitted.
+      readonly selection?: 'single' | 'multiple';
     }
   | {
       readonly kind: 'edit-decision';

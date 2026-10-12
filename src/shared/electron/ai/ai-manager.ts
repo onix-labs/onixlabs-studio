@@ -16,6 +16,7 @@ import type {
   AiThinkingEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiRemoteControlMode,
   AiInputReply,
   AiModelInfo,
@@ -1101,8 +1102,16 @@ export class AiManager {
         question: string,
         choices: readonly AiInputChoice[],
         cancel?: AbortSignal,
+        selection?: AiInputSelection,
       ): Promise<string | null> =>
-        this.requestInput(request.requestId, controller.signal, question, choices, cancel),
+        this.requestInput(
+          request.requestId,
+          controller.signal,
+          question,
+          choices,
+          cancel,
+          selection,
+        ),
       requestEditDecision: (
         name: string,
         detail: string,
@@ -1841,6 +1850,7 @@ export class AiManager {
    * @param cancel An optional signal that dismisses this question and resolves null when aborted —
    *   raised when a remote peer answers the same question first, so Studio's still-visible prompt is
    *   cleared via an `input-dismissed` event (distinct from a run abort, which tears the run down).
+   * @param selection How many of the choices the user may pick; one when omitted.
    * @returns Returns the user's answer, or null when they declined.
    */
   private requestInput(
@@ -1849,6 +1859,7 @@ export class AiManager {
     question: string,
     choices: readonly AiInputChoice[],
     cancel?: AbortSignal,
+    selection?: AiInputSelection,
   ): Promise<string | null> {
     const inputId: string = randomUUID();
     // The run is blocked on the user: its wall clock pauses until the question settles.
@@ -1883,7 +1894,14 @@ export class AiManager {
         );
       }
       signal.addEventListener('abort', (): void => settle(null), { once: true });
-      this.emit({ requestId, kind: 'input-request', inputId, question, choices });
+      this.emit({
+        requestId,
+        kind: 'input-request',
+        inputId,
+        question,
+        choices,
+        ...(selection === undefined ? {} : { selection }),
+      });
     });
   }
 

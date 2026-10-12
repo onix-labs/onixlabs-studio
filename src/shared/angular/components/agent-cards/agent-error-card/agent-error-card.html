@@ -1,8 +1,5 @@
 <app-agent-card class="agent__error" tone="error">
-  <p class="agent__error-text">
-    <app-icon class="agent__error-icon" [icon]="Icon.ERROR" aria-hidden="true" />
-    <span>{{ item().text }}</span>
-  </p>
+  <p class="agent__error-text">{{ item().text }}</p>
   @if (item().errorProvider) {
     <span class="agent__error-provider">{{ item().errorProvider }}</span>
   }
@@ -10,7 +7,7 @@
     <details class="agent__error-details">
       <summary class="agent__error-summary">
         <span>Details</span>
-        <app-icon class="agent__error-caret" [icon]="Icon.CARET_DOWN" />
+        <app-icon class="agent__error-caret" [icon]="Icon.CARET_DOWN_BOLD" />
       </summary>
       <pre class="agent__error-diagnostics">{{ text }}</pre>
     </details>

@@ -54,7 +54,14 @@ import {
 import { hasLocalLogin } from './environment';
 import { note } from './log';
 import { buildOptions, type GateContext } from './options';
-import type { Answer, HarnessMessage, Request, StudioTool, TurnRequest } from './protocol';
+import type {
+  Answer,
+  HarnessMessage,
+  Request,
+  Selection,
+  StudioTool,
+  TurnRequest,
+} from './protocol';
 import { RemoteControlBridge, type AttachMode } from './remote-control';
 import { createStudioToolServer, type ToolBridge } from './tools';
 
@@ -547,11 +554,13 @@ export class Session {
         requestId: string,
         question: string,
         choices: readonly { label: string; description?: string }[],
+        selection: Selection,
       ): { answer: Promise<string | null>; withdraw: () => void } => {
         const asked: { answer: Promise<Answer>; withdraw: () => void } = this.host.ask(requestId, {
           kind: 'input',
           question,
           choices,
+          selection,
         });
         return {
           answer: asked.answer.then((answer: Answer): string | null =>

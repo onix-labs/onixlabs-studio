@@ -207,9 +207,24 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
           .describe(
             'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
           ),
+        multiple: z
+          .boolean()
+          .optional()
+          .describe(
+            'True when the user may pick several choices at once (the choices are not mutually exclusive); the answer is then the picked labels joined with ", ". Omit when exactly one choice applies.',
+          ),
       }),
-      execute: (args: { question: string; choices?: AiInputChoice[] }): Promise<string> =>
-        askUser(context, args.question, args.choices ?? []),
+      execute: (args: {
+        question: string;
+        choices?: AiInputChoice[];
+        multiple?: boolean;
+      }): Promise<string> =>
+        askUser(
+          context,
+          args.question,
+          args.choices ?? [],
+          args.multiple === true ? 'multiple' : 'single',
+        ),
     }),
   };
 }

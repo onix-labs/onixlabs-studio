@@ -43,6 +43,20 @@ const QUESTION: AgentItem = {
   inputState: 'pending',
 };
 
+const MULTIPLE_QUESTION: AgentItem = {
+  id: 'multiple-question',
+  kind: 'input-request',
+  text: '',
+  inputQuestion: 'Which checks should the release workflow run?',
+  inputChoices: [
+    { label: 'Unit tests', description: 'the Vitest suite with coverage' },
+    { label: 'Lint', description: 'ESLint and the format check' },
+    { label: 'End-to-end', description: 'the Playwright suite against a packaged build' },
+  ],
+  inputSelection: 'multiple',
+  inputState: 'pending',
+};
+
 const DECISION: AgentItem = {
   id: 'decision',
   kind: 'edit-decision',
@@ -131,6 +145,7 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
       outputs: ['answer'],
       states: [
         { name: 'Pending · suggestions', inputs: { item: QUESTION } },
+        { name: 'Pending · pick several', inputs: { item: MULTIPLE_QUESTION } },
         {
           name: 'Pending · free-form',
           inputs: {
@@ -144,6 +159,16 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
         {
           name: 'Answered',
           inputs: { item: { ...QUESTION, inputState: 'answered', inputAnswer: 'orders-db' } },
+        },
+        {
+          name: 'Answered · several',
+          inputs: {
+            item: {
+              ...MULTIPLE_QUESTION,
+              inputState: 'answered',
+              inputAnswer: 'Unit tests, End-to-end',
+            },
+          },
         },
         { name: 'Not answered', inputs: { item: { ...QUESTION, inputState: 'dismissed' } } },
       ],

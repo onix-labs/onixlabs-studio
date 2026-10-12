@@ -359,6 +359,32 @@ describe('HarnessAgentProvider', () => {
     ]);
   });
 
+  it('run_asksForSeveralChoices_onlyWhenTheHarnessSaysSo', async () => {
+    // 1.14.0: an AND question reached the user as an OR, drawn as radios. Only 'multiple' changes
+    // anything — an older harness, or a value Studio does not know, still asks for one choice.
+    harness.requests = [
+      { kind: 'input', question: 'which?', choices: ['a', 'b'], selection: 'multiple' },
+      { kind: 'input', question: 'which?', choices: ['a', 'b'] },
+      { kind: 'input', question: 'which?', choices: ['a', 'b'], selection: 'all-of-them' },
+    ];
+    const selections: unknown[] = [];
+    const { context } = contextFor({
+      requestInput: (
+        _question: string,
+        _choices: unknown,
+        _cancel?: AbortSignal,
+        selection?: unknown,
+      ): Promise<string | null> => {
+        selections.push(selection);
+        return Promise.resolve('a');
+      },
+    });
+
+    await provider.run(context);
+
+    expect(selections).toEqual(['multiple', undefined, undefined]);
+  });
+
   it('run_stillAcceptsTheBareLabelsEveryOlderHarnessSends', async () => {
     // ⚠️ Every harness published before 1.9.0 sends strings, and a shape that refused them would break
     // the ones already installed on somebody's machine.

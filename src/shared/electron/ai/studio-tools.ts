@@ -46,6 +46,7 @@ import {
   WRITE_TERMINAL_INPUT,
   type AgentContextRef,
   type AiInputChoice,
+  type AiInputSelection,
 } from '@shared/api/ai-types';
 import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
 import { logger } from '@shared/electron/logger';
@@ -183,7 +184,9 @@ export const ASK_USER_DESCRIPTION: string =
   'can make: a choice between approaches, a missing name or value, or confirmation before something ' +
   'destructive or hard to reverse. Provide choices when the sensible answers are enumerable — each ' +
   'with a short label and a description explaining the trade-off; put a recommended choice first and ' +
-  'note "(recommended)" in its description. The user can always answer with their own text instead. ' +
+  'note "(recommended)" in its description. When the choices are not mutually exclusive — the user ' +
+  'may want several of them — set multiple so they are offered as checkboxes rather than one-of. ' +
+  'The user can always answer with their own text instead. ' +
   'Do not use it to ask for permission to run a tool (permission prompts are separate), and do not ' +
   'ask when the answer is derivable from the context you already have.';
 
@@ -495,15 +498,17 @@ export async function deleteRunConfigurations(
  * @param context The agent run context (carries the input request round-trip).
  * @param question The question to ask.
  * @param choices The suggested answers, or empty for a free-form question.
+ * @param selection How many of the choices the user may pick.
  * @returns Returns the user's answer, or a note that they declined to answer.
  */
 export async function askUser(
   context: AgentRunContext,
   question: string,
   choices: readonly AiInputChoice[],
+  selection: AiInputSelection = 'single',
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: ask_user (${choices.length} choice(s))`);
-  const answer: string | null = await context.requestInput(question, choices);
+  logger.trace('StudioTools', `Tool invoked: ask_user (${choices.length} choice(s), ${selection})`);
+  const answer: string | null = await context.requestInput(question, choices, undefined, selection);
   logger.debug('StudioTools', `ask_user: ${answer === null ? 'user declined' : 'user answered'}`);
   return formatAskUserAnswer(answer);
 }
