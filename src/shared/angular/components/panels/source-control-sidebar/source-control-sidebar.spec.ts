@@ -645,6 +645,8 @@ class FakeWorktrees implements RepositoryWorktrees {
 
   public readonly canConvert: WritableSignal<boolean> = signal<boolean>(false);
 
+  public readonly convertBlocker: WritableSignal<string | null> = signal<string | null>(null);
+
   public readonly calls: string[] = [];
 
   public activate(id: string): void {
@@ -3009,6 +3011,22 @@ describe('SourceControlSidebar', () => {
       expect(more).not.toContain('New Worktree…');
     });
 
+    it('flat_whileTheAgentWorks_offersConvertDisabled_withTheReason', () => {
+      // Converting moves every file in the folder: not while the agent is writing to it. Shown
+      // disabled rather than hidden, so it is plain the command is there and will be back.
+      worktrees.canConvert.set(true);
+      worktrees.convertBlocker.set('The agent is working in this folder.');
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const convert: MenuItem | undefined = (
+        mounted.componentInstance as unknown as { moreItems(): readonly MenuItem[] }
+      )
+        .moreItems()
+        .find((item: MenuItem): boolean => item.label === 'Convert to Worktrees…');
+
+      expect(convert?.disabled).toBe(true);
+      expect(convert?.status).toBe('agent is working');
+    });
+
     it('worktrees_nestEachWorktreesOwnBranches_andHighlightEveryCheckedOutBranch', () => {
       // Several branches are in work at once, so every worktree's checked-out branch is highlighted.
       worktrees.worktrees.set([current, other]);
@@ -3123,6 +3141,22 @@ describe('SourceControlSidebar', () => {
       expect(
         (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id="worktree:w2"] input'),
       ).toBeNull();
+    });
+
+    it('local_offersANewWorktreeOnItsMenu_onlyWhenTheRepositoryHasWorktrees', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree…']);
+      (
+        mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
+      ).onContextAction({ itemId: 'repo.newWorktree', row: row(mounted, 'section:local') });
+      expect(worktrees.calls).toEqual(['add']);
+
+      // A flat repository's Local is only branches: no menu at all.
+      worktrees.worktrees.set(null);
+      mounted.detectChanges();
+      expect(menuLabels(mounted, 'section:local')).toEqual([]);
     });
 
     it('theMoreMenu_offersANewWorktree_andRefreshReadsTheWorktreesToo', () => {

@@ -49,6 +49,7 @@ function agentStub(
     supportsRemoteControl: signal<boolean>(false),
     remoteControl: signal<AiRemoteControlMode>('off'),
     queued: signal<readonly AgentQueuedMessage[]>([]),
+    sessionId: signal<string | null>('sess-1'),
     branch,
     clear: (): void => {
       log.push('clear');
@@ -245,6 +246,45 @@ describe('AgentConversation', () => {
 
     expect(log).toContain('restore');
     expect(conversation.currentId()).toBe('c1');
+  });
+
+  it('flush_savesTheOpenConversationNow_andNamesIt', async () => {
+    // A repository converted to worktrees rebuilds the view the conversation lives in: it is saved
+    // there and then, rather than by an autosave that would land after the view is gone.
+    const conversation: AgentConversation = build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'refactor the settings page' }]);
+    TestBed.tick();
+
+    const id: string | null = await conversation.flush();
+
+    expect(id).not.toBeNull();
+    expect(saves.map((record: StoredAgentConversation): string => record.id)).toEqual([id]);
+    expect(saves[0].sessionId).toBe('sess-1');
+  });
+
+  it('flush_withNothingOpen_namesNothing', async () => {
+    const conversation: AgentConversation = build();
+
+    expect(await conversation.flush()).toBeNull();
+    expect(saves).toEqual([]);
+  });
+
+  it('adopt_opensTheConversation_andSavesItUnderThisViewsContext', async () => {
+    // Saved under the repository's old root; taken over by the first worktree's view, whose root is
+    // the worktree's own directory — and re-saved there, so it lists in that worktree's history.
+    const conversation: AgentConversation = build((): ConversationContext => ({
+      kind: 'workspace',
+      key: '/repo/11111111-2222-4333-8444-555555555555',
+    }));
+
+    await conversation.adopt('c1');
+
+    expect(log).toContain('restore');
+    expect(conversation.currentId()).toBe('c1');
+    expect(saves.map((record: StoredAgentConversation): string => record.contextId)).toEqual([
+      'workspace:/repo/11111111-2222-4333-8444-555555555555',
+    ]);
+    expect(saves[0].id).toBe('c1');
   });
 
   it('rename_patchesTheTitleThroughTheStore', async () => {

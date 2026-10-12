@@ -70,6 +70,12 @@ export interface RepositoryWorktrees {
   readonly canConvert: Signal<boolean>;
 
   /**
+   * Gets why the flat repository cannot be converted right now — its agent at work in the folder —
+   * or null when nothing stands in the way.
+   */
+  readonly convertBlocker: Signal<string | null>;
+
+  /**
    * Asks to convert the flat repository to worktrees: the feature confirms with the user first,
    * since it restructures the folder on disk.
    */

@@ -886,9 +886,21 @@ export class SourceControlSidebar implements OnDestroy {
         },
       ];
     }
-    return (this.worktreeSource?.canConvert() ?? false)
-      ? [{ id: ACTION_CONVERT_TO_WORKTREES, label: 'Convert to Worktrees…', icon: Icon.WORKTREE }]
-      : [];
+    if (!(this.worktreeSource?.canConvert() ?? false)) {
+      return [];
+    }
+    // Shown but disabled while the agent works in the folder, with the reason beside it: the command
+    // exists and will be back, which a missing item would not say.
+    const blocked: boolean = (this.worktreeSource?.convertBlocker() ?? null) !== null;
+    return [
+      {
+        id: ACTION_CONVERT_TO_WORKTREES,
+        label: 'Convert to Worktrees…',
+        icon: Icon.WORKTREE,
+        disabled: blocked,
+        ...(blocked ? { status: 'agent is working' } : {}),
+      },
+    ];
   }
 
   /**
@@ -2458,6 +2470,18 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.branch !== undefined) {
       return this.branchItems(node.branch);
     }
+    // Local holds the worktrees, so a new one is made from it — the same command as the more menu's.
+    // A flat repository's Local is only branches and offers nothing here.
+    if (node.kind === 'section' && node.sectionKey === 'local' && this.worktrees() !== null) {
+      return [
+        {
+          id: ACTION_NEW_WORKTREE,
+          label: 'New Worktree…',
+          icon: Icon.WORKTREE,
+          disabled: this.worktreeSource?.busy() ?? false,
+        },
+      ];
+    }
     if (node.kind === 'worktree' && node.worktree !== undefined) {
       return this.worktreeItems(node.worktree);
     }
@@ -2622,6 +2646,10 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected onContextAction(choice: TreeMenuSelection): void {
     const node: RepoNode = this.nodeOf(choice.row);
+    if (choice.itemId === ACTION_NEW_WORKTREE) {
+      this.worktreeSource?.requestAdd();
+      return;
+    }
     if (node.worktree !== undefined && this.onWorktreeAction(choice.itemId, node.worktree)) {
       return;
     }

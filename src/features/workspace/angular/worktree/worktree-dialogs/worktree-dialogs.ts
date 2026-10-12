@@ -82,6 +82,20 @@ export class WorktreeDialogs {
   >([]);
 
   /**
+   * Holds whether the branch list has been read, so the picker (or its absence) is not drawn on a
+   * guess while it loads.
+   */
+  protected readonly branchesLoaded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether any existing branch is free to take: the picker is only worth showing when it
+   * offers a choice beyond a new branch.
+   */
+  protected readonly hasFreeBranches: Signal<boolean> = computed(
+    (): boolean => this.branchOptions().length > 1,
+  );
+
+  /**
    * Holds the branch picker's selection: a branch name, or {@link NEW_BRANCH}.
    */
   protected readonly branchPick: WritableSignal<string> = signal<string>(NEW_BRANCH);
@@ -122,7 +136,9 @@ export class WorktreeDialogs {
     this.addAlias.set('');
     this.branchOptions.set([{ value: NEW_BRANCH, label: 'New branch…' }]);
     this.branchPick.set(NEW_BRANCH);
+    this.branchesLoaded.set(false);
     void this.session.loadBranches().then((branches: readonly string[]): void => {
+      this.branchesLoaded.set(true);
       const taken: ReadonlySet<string> = this.session.takenBranches();
       const available: readonly DropdownOption[] = branches
         .filter((branch: string): boolean => !taken.has(branch))

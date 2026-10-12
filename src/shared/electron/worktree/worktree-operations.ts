@@ -25,6 +25,7 @@ import {
 import {
   VcsBranch,
   VcsRefs,
+  VcsRemote,
   VcsStatus,
   VersionControlResponse,
 } from '@shared/api/version-control-protocol';
@@ -41,6 +42,17 @@ import { WorkspaceContext } from '../workspace-context';
  */
 function isSafeOperand(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && !value.startsWith('-');
+}
+
+/**
+ * Reads the branch out of a remote branch's name, `<remote>/<branch>`. The branch may itself contain
+ * slashes, so only the first segment is the remote's.
+ * @param remoteBranch The remote branch's name.
+ * @returns Returns the branch, or an empty string when the name has no remote segment.
+ */
+function remoteBranchName(remoteBranch: string): string {
+  const separator: number = remoteBranch.indexOf('/');
+  return separator === -1 ? '' : remoteBranch.slice(separator + 1);
 }
 
 /**
@@ -270,17 +282,29 @@ export class WorktreeOperations {
       return worktreeError('No installed version-control plugin can make the checkout.');
     }
     const id: string = mintCheckoutId();
+    const directory: string = path.join(resolved, id);
+    // A branch only another worktree has (made there, never pushed) is fetched from that worktree
+    // into the new clone, which still clones from — and keeps as its origin — the usual source.
+    const holder: string | null =
+      branch === undefined ? null : await this.worktreeHoldingOnly(resolved, config, branch);
     const cloned: VersionControlResponse<'clone'> = await this.versionControl.requestGlobal(
       plugin.id,
       'clone',
       {
         url: source,
-        directory: path.join(resolved, id),
-        ...(branch === undefined ? {} : { branch, createBranch: true }),
+        directory,
+        ...(branch === undefined || holder !== null ? {} : { branch, createBranch: true }),
       },
     );
     if (!cloned.ok) {
       return worktreeError(`The checkout could not be made: ${cloned.error}`);
+    }
+    if (branch !== undefined && holder !== null) {
+      const fetched: string | null = await this.takeBranchFrom(directory, holder, branch);
+      if (fetched !== null) {
+        await this.trash(directory).catch((): void => undefined);
+        return worktreeError(`The branch "${branch}" could not be fetched: ${fetched}`);
+      }
     }
 
     // Unnamed, it takes the branch it starts on, as a name of its own: a label that followed the
@@ -410,29 +434,113 @@ export class WorktreeOperations {
     if (config === null) {
       return null;
     }
-    const source: string | null = await this.firstExistingCheckout(resolved, config);
-    if (source === null) {
-      return null;
-    }
-    const refs: VcsRefs | null = await this.readRefs(source);
-    if (refs === null) {
-      return null;
-    }
-    // A remote branch is named `<remote>/<branch>`; the branch may itself contain slashes, so only the
-    // first segment is the remote's.
-    const names: Set<string> = new Set<string>(
-      refs.branches.map((branch: { readonly name: string }): string => branch.name),
-    );
-    for (const remote of refs.remotes) {
-      for (const branch of remote.branches) {
-        const separator: number = branch.name.indexOf('/');
-        const name: string = separator === -1 ? '' : branch.name.slice(separator + 1);
-        if (name.length > 0 && name !== 'HEAD') {
-          names.add(name);
+    // Every worktree is a clone of its own, so a branch made in one is unknown to the others until it
+    // is pushed: the picker offers the branches of all of them, not only the first's.
+    const names: Set<string> = new Set<string>();
+    let read: boolean = false;
+    for (const checkout of config.checkouts) {
+      const directory: string = path.join(resolved, checkout.id);
+      const refs: VcsRefs | null = (await this.isDirectory(directory))
+        ? await this.readRefs(directory)
+        : null;
+      if (refs === null) {
+        continue;
+      }
+      read = true;
+      for (const branch of refs.branches) {
+        names.add(branch.name);
+      }
+      for (const remote of refs.remotes) {
+        for (const branch of remote.branches) {
+          const name: string = remoteBranchName(branch.name);
+          if (name.length > 0 && name !== 'HEAD') {
+            names.add(name);
+          }
         }
       }
     }
-    return [...names].sort((a: string, b: string): number => a.localeCompare(b));
+    return read ? [...names].sort((a: string, b: string): number => a.localeCompare(b)) : null;
+  }
+
+  /**
+   * Brings a branch another worktree holds into a fresh clone and checks it out: fetched straight
+   * from that worktree's directory (a path is a remote to git), so no remote is left behind.
+   * @param directory The fresh clone.
+   * @param holder The worktree holding the branch.
+   * @param branch The branch.
+   * @returns Returns null on success, or the failure reason.
+   */
+  private async takeBranchFrom(
+    directory: string,
+    holder: string,
+    branch: string,
+  ): Promise<string | null> {
+    const fetched: VersionControlResponse<'fetchRef'> = await this.versionControl.request(
+      directory,
+      'fetchRef',
+      { remote: holder, sourceRef: `refs/heads/${branch}`, localBranch: branch },
+    );
+    if (!fetched.ok) {
+      return fetched.error;
+    }
+    const checkedOut: VersionControlResponse<'checkout'> = await this.versionControl.request(
+      directory,
+      'checkout',
+      { branch },
+    );
+    return checkedOut.ok ? null : checkedOut.error;
+  }
+
+  /**
+   * Finds the worktree a branch must be fetched from because the clone source cannot supply it: a
+   * branch made in one worktree and never pushed exists in that clone alone. Cloned from the origin,
+   * asking for it by name would create a new branch of that name — not that one.
+   * @param root The resolved container root.
+   * @param config The container configuration.
+   * @param branch The branch the new worktree is to have.
+   * @returns Returns the directory of a worktree holding the branch locally, or null when the clone
+   * source has it (or nothing does, and it is new).
+   */
+  private async worktreeHoldingOnly(
+    root: string,
+    config: WorktreeConfig,
+    branch: string,
+  ): Promise<string | null> {
+    let holder: string | null = null;
+    let first: boolean = true;
+    for (const checkout of config.checkouts) {
+      const directory: string = path.join(root, checkout.id);
+      const refs: VcsRefs | null = (await this.isDirectory(directory))
+        ? await this.readRefs(directory)
+        : null;
+      if (refs === null) {
+        continue;
+      }
+      const local: boolean = refs.branches.some(
+        (candidate: { readonly name: string }): boolean => candidate.name === branch,
+      );
+      // The source supplies it when it is on the origin (a remote branch of the remote that IS the
+      // container's origin), or — a container with no origin is cloned from its first worktree —
+      // when it is one of that worktree's local branches, which are all a clone of it carries.
+      const onOrigin: boolean =
+        config.origin !== null &&
+        refs.remotes.some(
+          (remote: VcsRemote): boolean =>
+            remote.url === config.origin &&
+            remote.branches.some(
+              (remoteBranch: { readonly name: string }): boolean =>
+                remoteBranchName(remoteBranch.name) === branch,
+            ),
+        );
+      if (onOrigin || (config.origin === null && first && local)) {
+        return null;
+      }
+      if (local && holder === null) {
+        holder = directory;
+      }
+      first = false;
+    }
+    return holder;
   }
 
   /**

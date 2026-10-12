@@ -12,14 +12,22 @@
       Clones the repository into a new worktree on the chosen branch. Branches already checked out
       by another worktree are not offered.
     </p>
-    <app-dropdown
-      class="worktree-dialog__dropdown"
-      [options]="branchOptions()"
-      [value]="branchPick()"
-      [fullWidth]="true"
-      ariaLabel="Branch"
-      (valueChange)="branchPick.set($event)"
-    />
+    <!-- The picker only when it offers a real choice. With every branch checked out somewhere, it
+         would hold "New branch…" alone — a choice of one — so the name field stands by itself. -->
+    @if (branchesLoaded() && hasFreeBranches()) {
+      <app-dropdown
+        class="worktree-dialog__dropdown"
+        [options]="branchOptions()"
+        [value]="branchPick()"
+        [fullWidth]="true"
+        ariaLabel="Branch"
+        (valueChange)="branchPick.set($event)"
+      />
+    } @else if (branchesLoaded()) {
+      <p class="worktree-dialog__note">
+        Every branch is checked out in a worktree — name a new one.
+      </p>
+    }
     @if (branchPick() === NEW_BRANCH) {
       <app-text-field
         class="worktree-dialog__input"
@@ -81,7 +89,7 @@
       The folder becomes a worktree container: everything in it moves into a worktree directory, and
       further worktrees of the same repository can then work in parallel — each on its own branch,
       with its own terminals, agent, and debugger. The view reloads around the container; the path
-      you open stays the same.
+      you open stays the same, and the agent conversation carries on in the first worktree.
     </p>
     <div class="worktree-dialog__actions">
       <app-button label="Cancel" (click)="cancelConvert()" />
