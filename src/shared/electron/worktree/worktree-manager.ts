@@ -97,6 +97,21 @@ export class WorktreeManager {
       },
     );
     ipcMain.handle(
+      WorktreeChannel.RenameCheckout,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        alias: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Rename checkout ${String(id)} in ${String(root)}`);
+        return this.logged(
+          `Rename checkout ${String(id)}`,
+          this.operations.renameCheckout(root, id, alias),
+        );
+      },
+    );
+    ipcMain.handle(
       WorktreeChannel.OpenCheckout,
       (
         _event: IpcMainInvokeEvent,

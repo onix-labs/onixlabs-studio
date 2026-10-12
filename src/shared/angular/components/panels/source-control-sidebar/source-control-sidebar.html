@@ -24,12 +24,19 @@
   <app-tree-view
     [rows]="rows()"
     [selectedId]="selectedId()"
+    [selectedIds]="selectedIds()"
     [contextMenuFor]="contextMenuFor"
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowDoubleClick($event)"
     (contextMenuSelect)="onContextAction($event)"
+    [editingId]="renamingRowId()"
+    [editValue]="renaming()?.label ?? ''"
+    (editCommit)="onRenameCommit($event)"
+    (editCancel)="onRenameCancel()"
   >
-    <ng-template let-row>
+    <!-- While a worktree is being renamed, the tree's field takes the place of its name and glyphs;
+         the icon stays, so the row keeps its shape. -->
+    <ng-template let-row let-editing="editing">
       @let node = nodeOf(row);
       <app-icon
         class="tree-icon"
@@ -38,9 +45,17 @@
       />
       <!-- Nothing in the tree is bold: a section reads as a heading by its folder icon and its place
            at the top level, as an explorer's folders do. -->
-      <span class="tree-name" [class.rail__muted]="node.muted">
-        {{ node.label }}
-      </span>
+      @if (!editing) {
+        <span class="tree-name" [class.rail__muted]="node.muted">
+          {{ node.label }}
+          <!-- Collapsed, a worktree names the branch it has checked out, beside its own name;
+               expanded, that branch is the highlighted row beneath it, so saying it twice would be
+               noise. -->
+          @if (node.kind === 'worktree' && !row.expanded && node.worktree?.branch) {
+            <span class="rail__worktree-branch">({{ node.worktree?.branch }})</span>
+          }
+        </span>
+      }
 
       @if (node.note; as note) {
         <!-- Why what is beneath this heading is not current. Muted and beside the label rather than a
@@ -78,6 +93,39 @@
         </span>
       }
 
+      @if (node.kind === 'worktree' && !editing && node.worktree; as worktree) {
+        <!-- The view shows one worktree at a time: an open eye on that one, a closed eye on the rest. -->
+        <app-icon
+          class="rail__worktree-visibility"
+          [class.rail__worktree-visibility--shown]="worktree.current"
+          [icon]="worktree.current ? Icon.WORKTREE_SHOWN : Icon.WORKTREE_HIDDEN"
+          [title]="worktree.current ? 'Shown in this view' : 'Not shown — double-click to switch'"
+        />
+        @if (worktree.duplicateBranch) {
+          <app-icon
+            class="rail__worktree-warning"
+            [icon]="Icon.WARNING"
+            title="Another worktree has this branch checked out"
+          />
+        }
+      }
+
+      @if (node.worktreeBranch; as branch) {
+        <!-- Another worktree's branch reads like one of this worktree's: the same counts in the same
+             order. Its uncommitted changes are only a count here — the way to them is that worktree. -->
+        @if (node.changes !== undefined) {
+          <span class="rail__delta" [title]="node.changes + ' uncommitted change(s)'">
+            <app-icon [icon]="Icon.GIT_COMMIT" />{{ node.changes }}
+          </span>
+        }
+        <span class="rail__delta" title="Commits to push">
+          <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
+        </span>
+        <span class="rail__delta" title="Commits to pull">
+          <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
+        </span>
+      }
+
       @if (node.status; as status) {
         @if (status === 'running' || status === 'queued') {
           <!-- Checks in flight get a pulsing circle rather than a spinner glyph nothing rotates. Warning
@@ -91,6 +139,15 @@
       }
     </ng-template>
   </app-tree-view>
+
+  <!-- Whether this is one checkout or a set of worktrees: status, so a chip, read-only. -->
+  <app-panel-status>
+    <span class="panel-status__item">
+      <app-chip [tone]="worktrees() === null ? 'neutral' : 'accent'" [icon]="Icon.WORKTREE">
+        {{ layoutChip() }}
+      </app-chip>
+    </span>
+  </app-panel-status>
 }
 
 <!-- Creates a branch at the current head. Checking out afterwards is the default, since creating a

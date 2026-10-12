@@ -43,6 +43,11 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
+import {
+  REPOSITORY_WORKTREES,
+  RepositoryWorktree,
+  RepositoryWorktrees,
+} from '@shared/angular/services/repository-worktrees/repository-worktrees';
 
 import { browsableRemoteUrl, SourceControlSidebar } from './source-control-sidebar';
 
@@ -628,6 +633,45 @@ class FakeConversation {
   }
 }
 
+/**
+ * Stands in for the workspace feature's worktrees, recording what the panel asks of it.
+ */
+class FakeWorktrees implements RepositoryWorktrees {
+  public readonly worktrees: WritableSignal<readonly RepositoryWorktree[] | null> = signal<
+    readonly RepositoryWorktree[] | null
+  >(null);
+
+  public readonly busy: WritableSignal<boolean> = signal<boolean>(false);
+
+  public readonly canConvert: WritableSignal<boolean> = signal<boolean>(false);
+
+  public readonly calls: string[] = [];
+
+  public activate(id: string): void {
+    this.calls.push(`activate:${id}`);
+  }
+
+  public requestAdd(): void {
+    this.calls.push('add');
+  }
+
+  public rename(id: string, name: string): void {
+    this.calls.push(`rename:${id}:${name}`);
+  }
+
+  public requestRemove(id: string): void {
+    this.calls.push(`remove:${id}`);
+  }
+
+  public requestConvert(): void {
+    this.calls.push('convert');
+  }
+
+  public refresh(): void {
+    this.calls.push('refresh');
+  }
+}
+
 describe('SourceControlSidebar', () => {
   let component: SourceControlSidebar;
   let fixture: ComponentFixture<SourceControlSidebar>;
@@ -639,6 +683,7 @@ describe('SourceControlSidebar', () => {
   let agent: FakeAgent;
   let conversation: FakeConversation;
   let revealed: string[];
+  let worktrees: FakeWorktrees;
 
   const panel: DockPanel = {
     id: 'repository',
@@ -655,10 +700,13 @@ describe('SourceControlSidebar', () => {
     agent = new FakeAgent();
     conversation = new FakeConversation();
     revealed = [];
+    worktrees = new FakeWorktrees();
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
+        // Flat unless a test gives it worktrees, so every other test sees the panel it always did.
+        { provide: REPOSITORY_WORKTREES, useValue: worktrees },
         // The real seam over the fakes below: what Open in Agent does is its behaviour now, and the
         // rail's job is only to ask it.
         IssueAgent,
@@ -2875,6 +2923,221 @@ describe('SourceControlSidebar', () => {
       internals.collapseAll();
 
       expect(forge.watched.size).toBe(0);
+    });
+  });
+
+  describe('worktrees in Local', () => {
+    /**
+     * The current worktree (this view's repository: main and develop, on main) and another, a clone
+     * of its own, on feat/x.
+     */
+    const other: RepositoryWorktree = {
+      id: 'w2',
+      label: 'review',
+      path: '/container/w2',
+      branch: 'feat/x',
+      changes: 3,
+      branches: [
+        { name: 'feat/x', ahead: 2, behind: 0 },
+        { name: 'old', ahead: 0, behind: 0 },
+      ],
+      current: false,
+      duplicateBranch: false,
+    };
+    const current: RepositoryWorktree = {
+      ...other,
+      id: 'w1',
+      label: 'main',
+      path: '/container/w1',
+      branch: 'main',
+      changes: 2,
+      branches: [],
+      current: true,
+    };
+
+    function mount(): ComponentFixture<SourceControlSidebar> {
+      const mounted: ComponentFixture<SourceControlSidebar> =
+        TestBed.createComponent(SourceControlSidebar);
+      mounted.componentRef.setInput('panel', panel);
+      mounted.detectChanges();
+      return mounted;
+    }
+
+    function selectedRows(mounted: ComponentFixture<SourceControlSidebar>): readonly string[] {
+      return Array.from(
+        (mounted.nativeElement as HTMLElement).querySelectorAll('[aria-selected="true"]'),
+      ).map((row: Element): string => row.getAttribute('data-tree-id') ?? '');
+    }
+
+    function menuLabels(
+      mounted: ComponentFixture<SourceControlSidebar>,
+      id: string,
+    ): readonly string[] {
+      return mounted.componentInstance
+        .contextMenuFor(row(mounted, id))
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label);
+    }
+
+    function row(mounted: ComponentFixture<SourceControlSidebar>, id: string): TreeRow {
+      const found: TreeRow | undefined = (
+        mounted.componentInstance as unknown as { rows(): readonly TreeRow[] }
+      )
+        .rows()
+        .find((candidate: TreeRow): boolean => candidate.id === id);
+      if (found === undefined) {
+        throw new Error(`No row ${id}`);
+      }
+      return found;
+    }
+
+    it('flat_listsBranches_andSaysItIsASingleCheckout', () => {
+      worktrees.canConvert.set(true);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const text: string = (mounted.nativeElement as HTMLElement).textContent ?? '';
+      const more: readonly string[] = (
+        mounted.componentInstance as unknown as { moreItems(): readonly MenuItem[] }
+      )
+        .moreItems()
+        .map((item: MenuItem): string => item.label);
+
+      expect(text).toContain('Single checkout');
+      expect(
+        (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id^="worktree:"]'),
+      ).toBeNull();
+      expect(more).toContain('Convert to Worktrees…');
+      expect(more).not.toContain('New Worktree…');
+    });
+
+    it('worktrees_nestEachWorktreesOwnBranches_andHighlightEveryCheckedOutBranch', () => {
+      // Several branches are in work at once, so every worktree's checked-out branch is highlighted.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w1'));
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+      const ids: readonly string[] = Array.from(
+        (mounted.nativeElement as HTMLElement).querySelectorAll('[data-tree-id]'),
+      ).map((element: Element): string => element.getAttribute('data-tree-id') ?? '');
+
+      expect(ids.slice(1, 7)).toEqual([
+        'worktree:w1',
+        'branch:main',
+        'branch:develop',
+        'worktree:w2',
+        'worktree:w2:branch:feat/x',
+        'worktree:w2:branch:old',
+      ]);
+      expect(selectedRows(mounted)).toEqual(['branch:main', 'worktree:w2:branch:feat/x']);
+      expect((mounted.nativeElement as HTMLElement).textContent).toContain('Worktrees · 2');
+    });
+
+    it('aWorktree_startsCollapsedNamingItsBranch_andOpensOnClick', () => {
+      // Collapsed, the worktrees read as a list of what is in work: each names its checked-out
+      // branch. Expanded, that branch is the highlighted row beneath, so the name is not repeated.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const host: HTMLElement = mounted.nativeElement as HTMLElement;
+      const nameOf: (id: string) => string = (id: string): string =>
+        (host.querySelector(`[data-tree-id="${id}"] .tree-name`)?.textContent ?? '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      expect(host.querySelector('[data-tree-id="worktree:w2:branch:old"]')).toBeNull();
+      expect(nameOf('worktree:w1')).toBe('main (main)');
+      expect(nameOf('worktree:w2')).toBe('review (feat/x)');
+
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      expect(host.querySelector('[data-tree-id="worktree:w2:branch:old"]')).not.toBeNull();
+      expect(nameOf('worktree:w2')).toBe('review');
+    });
+
+    it('aWorktree_isSwitchedToOnDoubleClick', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+
+      mounted.componentInstance.onRowDoubleClick(row(mounted, 'worktree:w2'));
+      // The current worktree is where the view already is: nothing to switch to.
+      mounted.componentInstance.onRowDoubleClick(row(mounted, 'worktree:w1'));
+      expect(worktrees.calls).toEqual(['activate:w2']);
+    });
+
+    it('aWorktreesMenu_switchesFindsAndRemoves_butNeverRemovesTheLastOne', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      expect(menuLabels(mounted, 'worktree:w2')).toEqual([
+        'Switch to Worktree',
+        'Rename…',
+        'Open in File System',
+        'Copy Path',
+        'Remove Worktree…',
+      ]);
+      expect(menuLabels(mounted, 'worktree:w1')).toEqual([
+        'Rename…',
+        'Open in File System',
+        'Copy Path',
+        'Remove Worktree…',
+      ]);
+      expect(menuLabels(mounted, 'worktree:w2:branch:old')).toEqual(['Switch to Worktree']);
+
+      (
+        mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
+      ).onContextAction({ itemId: 'worktree.remove', row: row(mounted, 'worktree:w2') });
+      expect(worktrees.calls).toEqual(['remove:w2']);
+
+      worktrees.worktrees.set([current]);
+      mounted.detectChanges();
+      expect(menuLabels(mounted, 'worktree:w1')).not.toContain('Remove Worktree…');
+    });
+
+    it('rename_opensTheNameFieldOnTheWorktree_andRenamesItOnCommit', () => {
+      // Renamed in place, as a file is in the explorers: its name becomes the field, starting from
+      // the name it goes by now.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        onRenameCommit(edit: { row: TreeRow; value: string }): void;
+      } = mounted.componentInstance as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+        onRenameCommit(edit: { row: TreeRow; value: string }): void;
+      };
+
+      internals.onContextAction({ itemId: 'worktree.rename', row: row(mounted, 'worktree:w2') });
+      mounted.detectChanges();
+      const field: HTMLInputElement | null = (mounted.nativeElement as HTMLElement).querySelector(
+        '[data-tree-id="worktree:w2"] input',
+      );
+
+      expect(field?.value).toBe('review');
+
+      internals.onRenameCommit({ row: row(mounted, 'worktree:w2'), value: 'settings work' });
+      mounted.detectChanges();
+
+      expect(worktrees.calls).toEqual(['rename:w2:settings work']);
+      expect(
+        (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id="worktree:w2"] input'),
+      ).toBeNull();
+    });
+
+    it('theMoreMenu_offersANewWorktree_andRefreshReadsTheWorktreesToo', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: { onMoreAction(id: string): void; refresh(): void } =
+        mounted.componentInstance as unknown as {
+          onMoreAction(id: string): void;
+          refresh(): void;
+        };
+
+      internals.onMoreAction('repo.newWorktree');
+      internals.refresh();
+
+      expect(worktrees.calls).toEqual(['add', 'refresh']);
     });
   });
 });

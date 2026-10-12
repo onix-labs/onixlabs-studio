@@ -8,8 +8,10 @@ import {
   mintCheckoutId,
   parseWorktreeConfig,
   removeCheckoutEntry,
+  renameCheckoutEntry,
   serializeWorktreeConfig,
   WorkspaceKind,
+  WorktreeBranch,
   WorktreeCheckout,
   WorktreeCheckoutInfo,
   WorktreeCheckoutStatus,
@@ -20,7 +22,12 @@ import {
   worktreeOk,
   WorktreeOutcome,
 } from '@shared/api/worktree';
-import { VcsRefs, VcsStatus, VersionControlResponse } from '@shared/api/version-control-protocol';
+import {
+  VcsBranch,
+  VcsRefs,
+  VcsStatus,
+  VersionControlResponse,
+} from '@shared/api/version-control-protocol';
 import { TrustedPaths } from '../trusted-paths';
 import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
 import { VersionControlHost } from '../version-control/version-control-host';
@@ -35,6 +42,11 @@ import { WorkspaceContext } from '../workspace-context';
 function isSafeOperand(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && !value.startsWith('-');
 }
+
+/**
+ * The longest name a worktree may be given — a label in a tree row, not a document.
+ */
+const MAX_ALIAS_LENGTH: number = 100;
 
 /**
  * Implements the worktree-container disk operations: resolving what a directory is, describing a
@@ -183,8 +195,12 @@ export class WorktreeOperations {
     }
 
     const origin: string | null = await this.readOrigin(target);
+    const alias: string | undefined = await this.defaultAlias(target, []);
     try {
-      await this.writeConfig(resolved, defaultWorktreeConfig(origin, [{ id }]));
+      await this.writeConfig(
+        resolved,
+        defaultWorktreeConfig(origin, [{ id, ...(alias === undefined ? {} : { alias }) }]),
+      );
     } catch (error) {
       await this.rollbackPromotion(resolved, target, moved);
       return worktreeError(
@@ -267,14 +283,58 @@ export class WorktreeOperations {
       return worktreeError(`The checkout could not be made: ${cloned.error}`);
     }
 
+    // Unnamed, it takes the branch it starts on, as a name of its own: a label that followed the
+    // branch would rename the worktree whenever a different branch was checked out in it.
+    const name: string | undefined =
+      alias ??
+      (await this.defaultAlias(
+        path.join(resolved, id),
+        (await this.status(resolved)) ?? [],
+        config.checkouts,
+      ));
     try {
-      await this.writeConfig(resolved, addCheckoutEntry(config, { id, alias }));
+      await this.writeConfig(resolved, addCheckoutEntry(config, { id, alias: name }));
     } catch (error) {
       return worktreeError(
         `The container configuration could not be written: ${this.message(error)}`,
       );
     }
-    return worktreeOk(await this.describeCheckout(resolved, { id, alias }));
+    return worktreeOk(await this.describeCheckout(resolved, { id, alias: name }));
+  }
+
+  /**
+   * Names a new worktree after the branch it starts on, numbered when another worktree already goes
+   * by that name ("main 2"). A worktree already registered goes by its alias, or — registered before
+   * worktrees were named — by its branch, which is what its label shows.
+   * @param directory The new worktree's directory.
+   * @param statuses The registered worktrees' statuses, for the branches of the unnamed ones.
+   * @param checkouts The registered worktrees.
+   * @returns Returns the name, or undefined when the branch cannot be read (the label then follows
+   * the branch, as an unnamed worktree's always has).
+   */
+  private async defaultAlias(
+    directory: string,
+    statuses: readonly WorktreeCheckoutStatus[],
+    checkouts: readonly WorktreeCheckout[] = [],
+  ): Promise<string | undefined> {
+    const branch: string | null | undefined = (await this.readVcsStatus(directory))?.branch;
+    if (branch === null || branch === undefined || branch.length === 0) {
+      return undefined;
+    }
+    const taken: ReadonlySet<string> = new Set<string>(
+      checkouts.flatMap((checkout: WorktreeCheckout): string[] => {
+        const name: string | null | undefined =
+          checkout.alias ??
+          statuses.find((status: WorktreeCheckoutStatus): boolean => status.id === checkout.id)
+            ?.branch;
+        return name === null || name === undefined ? [] : [name];
+      }),
+    );
+    let name: string = branch;
+    for (let suffix: number = 2; taken.has(name); suffix++) {
+      name = `${branch} ${suffix}`;
+    }
+    return name;
   }
 
   /**
@@ -311,7 +371,7 @@ export class WorktreeOperations {
 
   /**
    * Reads every registered checkout's lightweight status — branch, changed working-tree entries,
-   * and ahead/behind relative to its upstream — for the Worktrees panel. A checkout whose state
+   * and ahead/behind relative to its upstream, and its local branches — for the Repository panel's worktrees. A checkout whose state
    * cannot be read reports null fields rather than failing the whole read.
    * @param root The container root, which must be an open workspace root.
    * @returns Returns the statuses in registration order, or null when the root is not open or not
@@ -384,12 +444,21 @@ export class WorktreeOperations {
   private async readStatus(root: string, id: string): Promise<WorktreeCheckoutStatus> {
     const directory: string = path.join(root, id);
     if (!(await this.isDirectory(directory))) {
-      return { id, branch: null, changes: null, ahead: null, behind: null };
+      return { id, branch: null, changes: null, ahead: null, behind: null, branches: [] };
     }
     const status: VcsStatus | null = await this.readVcsStatus(directory);
     if (status === null) {
-      return { id, branch: null, changes: null, ahead: null, behind: null };
+      return { id, branch: null, changes: null, ahead: null, behind: null, branches: [] };
     }
+    const refs: VcsRefs | null = await this.readRefs(directory);
+    const branches: readonly WorktreeBranch[] = (refs?.branches ?? []).map(
+      (branch: VcsBranch): WorktreeBranch => ({
+        name: branch.name,
+        ahead: branch.ahead,
+        behind: branch.behind,
+        ...(branch.upstream === undefined ? {} : { upstream: branch.upstream }),
+      }),
+    );
     // A path staged and changed again appears in both lists, and counts once — as one line of
     // `git status --porcelain` did.
     const changed: Set<string> = new Set<string>(
@@ -405,6 +474,7 @@ export class WorktreeOperations {
       changes: changed.size,
       ahead: tracked ? status.ahead : null,
       behind: tracked ? status.behind : null,
+      branches,
     };
   }
 
@@ -443,6 +513,47 @@ export class WorktreeOperations {
     }
     try {
       await this.writeConfig(resolved, removeCheckoutEntry(config, id));
+    } catch (error) {
+      return worktreeError(
+        `The container configuration could not be written: ${this.message(error)}`,
+      );
+    }
+    return worktreeOk(null);
+  }
+
+  /**
+   * Renames a registered checkout: sets its display alias. The alias is the checkout's name in the
+   * UI only — its directory, a GUID, never changes.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param alias The candidate alias, never trusted: trimmed, and refused when empty or too long.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async renameCheckout(
+    root: unknown,
+    id: unknown,
+    alias: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return worktreeError('The workspace is not open.');
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return worktreeError('The workspace is not a worktree container.');
+    }
+    if (
+      !isSafeCheckoutId(id) ||
+      !config.checkouts.some((entry: WorktreeCheckout): boolean => entry.id === id)
+    ) {
+      return worktreeError('The checkout is not registered in this container.');
+    }
+    const name: string = typeof alias === 'string' ? alias.trim() : '';
+    if (name.length === 0 || name.length > MAX_ALIAS_LENGTH) {
+      return worktreeError(`A worktree's name must be 1 to ${MAX_ALIAS_LENGTH} characters.`);
+    }
+    try {
+      await this.writeConfig(resolved, renameCheckoutEntry(config, id, name));
     } catch (error) {
       return worktreeError(
         `The container configuration could not be written: ${this.message(error)}`,

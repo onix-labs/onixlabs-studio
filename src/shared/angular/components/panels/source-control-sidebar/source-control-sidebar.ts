@@ -49,6 +49,7 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
@@ -58,6 +59,15 @@ import { MutationResult } from '@shared/angular/services/source-control/source-c
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Log } from '@shared/angular/services/log/log';
+import { Chip } from '@shared/angular/components/chip/chip';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
+import {
+  REPOSITORY_WORKTREES,
+  RepositoryWorktree,
+  RepositoryWorktrees,
+} from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
+import type { WorktreeBranch } from '@shared/api/worktree';
 
 /**
  * Identifies the outcome of a pull request's checks, as the status badge shows it. Re-exported from
@@ -78,6 +88,8 @@ interface RepoNode {
   readonly kind:
     | 'section'
     | 'branch'
+    | 'worktree'
+    | 'worktree-branch'
     | 'remote'
     | 'remote-branch'
     | 'tag'
@@ -111,6 +123,24 @@ interface RepoNode {
    * Gets the branch, for a local-branch row (drives the ahead/behind deltas and checkout action).
    */
   readonly branch?: GitBranch;
+
+  /**
+   * Gets the worktree, for a worktree row and for the branch rows of a worktree other than the
+   * current one (drives switching, revealing and removal).
+   */
+  readonly worktree?: RepositoryWorktree;
+
+  /**
+   * Gets the branch, for a branch row of a worktree other than the current one. The current
+   * worktree's branches are ordinary {@link branch} rows, with every branch action behind them.
+   */
+  readonly worktreeBranch?: WorktreeBranch;
+
+  /**
+   * Gets the changed-entry count to show on a branch row of another worktree: set only on the branch
+   * that worktree has checked out, where its uncommitted changes sit.
+   */
+  readonly changes?: number;
 
   /**
    * Gets the stash, for a stash row (drives the apply, pop, and drop actions).
@@ -390,6 +420,41 @@ const ACTION_RERUN: string = 'run.rerun';
 const ACTION_CANCEL_RUN: string = 'run.cancel';
 
 /**
+ * Identifies the Switch to Worktree command on a worktree's context menu.
+ */
+const ACTION_SWITCH_WORKTREE: string = 'worktree.switch';
+
+/**
+ * Identifies the Rename command on a worktree's context menu.
+ */
+const ACTION_RENAME_WORKTREE: string = 'worktree.rename';
+
+/**
+ * Identifies the Open in File System command on a worktree's context menu.
+ */
+const ACTION_REVEAL_WORKTREE: string = 'worktree.reveal';
+
+/**
+ * Identifies the Copy Path command on a worktree's context menu.
+ */
+const ACTION_COPY_WORKTREE_PATH: string = 'worktree.copyPath';
+
+/**
+ * Identifies the Remove Worktree command on a worktree's context menu.
+ */
+const ACTION_REMOVE_WORKTREE: string = 'worktree.remove';
+
+/**
+ * Identifies the New Worktree command on the tool strip's more-actions menu.
+ */
+const ACTION_NEW_WORKTREE: string = 'repo.newWorktree';
+
+/**
+ * Identifies the Convert to Worktrees command on the tool strip's more-actions menu.
+ */
+const ACTION_CONVERT_TO_WORKTREES: string = 'repo.convertToWorktrees';
+
+/**
  * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
  * `unauthorized` always carry one, so only the two quiet states need an entry here.
  */
@@ -467,6 +532,8 @@ interface SectionDef {
     TreeView,
     IssueAgentConfirm,
     VersionControlMissing,
+    Chip,
+    PanelStatus,
   ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
@@ -538,6 +605,43 @@ export class SourceControlSidebar implements OnDestroy {
    * Holds the opener that surfaces an issue as a document in the well.
    */
   private readonly issueOpener: IssueOpener = inject(IssueOpener);
+
+  /**
+   * Holds the view's worktrees, or null where the view provides none (so it reads as flat).
+   */
+  private readonly worktreeSource: RepositoryWorktrees | null = inject(REPOSITORY_WORKTREES, {
+    optional: true,
+  });
+
+  /**
+   * Gets the repository's worktrees, or null for a flat repository. In a flat repository Local is a
+   * list of branches; with worktrees it is the worktrees, each over its own branches.
+   */
+  protected readonly worktrees: Signal<readonly RepositoryWorktree[] | null> = computed(
+    (): readonly RepositoryWorktree[] | null => this.worktreeSource?.worktrees() ?? null,
+  );
+
+  /**
+   * Holds the worktree being renamed in place, or null while none is.
+   */
+  protected readonly renaming: WritableSignal<RepositoryWorktree | null> =
+    signal<RepositoryWorktree | null>(null);
+
+  /**
+   * Gets the row id of the worktree being renamed, which the tree opens its name field on.
+   */
+  protected readonly renamingRowId: Signal<string | null> = computed((): string | null => {
+    const worktree: RepositoryWorktree | null = this.renaming();
+    return worktree === null ? null : `worktree:${worktree.id}`;
+  });
+
+  /**
+   * Holds the ids of the worktrees the user has expanded. Every worktree starts collapsed, naming its
+   * checked-out branch beside it, so the worktrees read as a list of what is in work.
+   */
+  private readonly expandedWorktrees: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
 
   /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
@@ -695,7 +799,20 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private matches(row: TreeRow, needle: string): boolean {
     const node: RepoNode = this.nodeOf(row);
-    return node.kind !== 'empty' && node.label.toLowerCase().includes(needle);
+    if (node.kind === 'empty') {
+      return false;
+    }
+    // A worktree stays while any branch beneath it matches, so a match is never shown without the
+    // worktree it belongs to.
+    if (node.kind === 'worktree' && node.worktree !== undefined) {
+      const names: readonly string[] = node.worktree.current
+        ? this.repository.branches().map((branch: GitBranch): string => branch.name)
+        : node.worktree.branches.map((branch: WorktreeBranch): string => branch.name);
+      return [node.label, ...names].some((name: string): boolean =>
+        name.toLowerCase().includes(needle),
+      );
+    }
+    return node.label.toLowerCase().includes(needle);
   }
 
   /**
@@ -737,6 +854,7 @@ export class SourceControlSidebar implements OnDestroy {
         icon: Icon.STASH,
         disabled: this.repository.changeCount() === 0,
       },
+      ...this.worktreeMoreItems(),
       { separator: true, id: 'repo.sep', label: '' },
       {
         id: ACTION_FETCH,
@@ -753,6 +871,27 @@ export class SourceControlSidebar implements OnDestroy {
   );
 
   /**
+   * Builds the more-actions menu's worktree command: a new worktree beside the others, or — for a
+   * flat repository that can have them — converting it to worktrees. Nothing when it can be neither.
+   * @returns Returns the menu items.
+   */
+  private worktreeMoreItems(): readonly MenuItem[] {
+    if (this.worktrees() !== null) {
+      return [
+        {
+          id: ACTION_NEW_WORKTREE,
+          label: 'New Worktree…',
+          icon: Icon.WORKTREE,
+          disabled: this.worktreeSource?.busy() ?? false,
+        },
+      ];
+    }
+    return (this.worktreeSource?.canConvert() ?? false)
+      ? [{ id: ACTION_CONVERT_TO_WORKTREES, label: 'Convert to Worktrees…', icon: Icon.WORKTREE }]
+      : [];
+  }
+
+  /**
    * Runs a command chosen from the tool strip's more-actions menu.
    * @param id The chosen item's identifier.
    */
@@ -762,6 +901,12 @@ export class SourceControlSidebar implements OnDestroy {
       return;
     }
     switch (id) {
+      case ACTION_NEW_WORKTREE:
+        this.worktreeSource?.requestAdd();
+        break;
+      case ACTION_CONVERT_TO_WORKTREES:
+        this.worktreeSource?.requestConvert();
+        break;
       case ACTION_NEW_BRANCH:
         this.openBranchDialog();
         break;
@@ -818,6 +963,7 @@ export class SourceControlSidebar implements OnDestroy {
   protected refresh(): void {
     this.log.info('SourceControlSidebar', 'Refreshing repository');
     void this.repository.refresh();
+    this.worktreeSource?.refresh();
     // Refresh what the panel is actually showing, which includes any forge section the user has
     // open — but only those: a collapsed section has nothing on screen to bring up to date, and the
     // forge is rate-limited.
@@ -849,6 +995,29 @@ export class SourceControlSidebar implements OnDestroy {
   });
 
   /**
+   * Gets the ids of the other rows drawn as checked out: in a worktree container, every other
+   * worktree's checked-out branch. The point of worktrees is several branches in work at once, so
+   * every one of them is highlighted, as the current branch always was.
+   */
+  protected readonly selectedIds: Signal<readonly string[]> = computed((): readonly string[] =>
+    (this.worktrees() ?? [])
+      .filter(
+        (worktree: RepositoryWorktree): boolean => !worktree.current && worktree.branch !== null,
+      )
+      .map((worktree: RepositoryWorktree): string =>
+        this.worktreeBranchId(worktree.id, worktree.branch ?? ''),
+      ),
+  );
+
+  /**
+   * Gets the status strip's chip: whether the repository is a single checkout or a set of worktrees.
+   */
+  protected readonly layoutChip: Signal<string> = computed((): string => {
+    const worktrees: readonly RepositoryWorktree[] | null = this.worktrees();
+    return worktrees === null ? 'Single checkout' : `Worktrees · ${worktrees.length}`;
+  });
+
+  /**
    * Unwraps a tree row's repository-node payload.
    * @param row The tree row.
    * @returns Returns the repository node.
@@ -867,6 +1036,13 @@ export class SourceControlSidebar implements OnDestroy {
       case 'section':
         if (node.sectionKey !== undefined) {
           this.toggleSection(node.sectionKey);
+        }
+        break;
+      // A worktree opens and closes like a section; switching to it is a double click or its menu,
+      // since a single click that also moved the whole view would make looking inside one a jump.
+      case 'worktree':
+        if (node.worktree !== undefined) {
+          this.toggleWorktree(node.worktree.id);
         }
         break;
       // A remote-tracking branch navigates like any other ref now that it knows its tip; it was only
@@ -895,7 +1071,54 @@ export class SourceControlSidebar implements OnDestroy {
     const node: RepoNode = this.nodeOf(row);
     if (node.issue !== undefined) {
       this.issueOpener.open(node.issue);
+      return;
     }
+    // Another worktree, or one of its branches: go and work in it.
+    if (node.worktree !== undefined && !node.worktree.current) {
+      this.switchToWorktree(node.worktree);
+    }
+  }
+
+  /**
+   * Opens or closes a worktree's branches.
+   * @param id The worktree's checkout id.
+   */
+  private toggleWorktree(id: string): void {
+    const next: Set<string> = new Set<string>(this.expandedWorktrees());
+    if (!next.delete(id)) {
+      next.add(id);
+    }
+    this.expandedWorktrees.set(next);
+  }
+
+  /**
+   * Renames the worktree whose name field was committed. The tree commits only a trimmed name that
+   * is not empty and differs from the one it started with.
+   * @param edit The committed edit.
+   */
+  protected onRenameCommit(edit: TreeEdit): void {
+    const worktree: RepositoryWorktree | null = this.renaming();
+    this.renaming.set(null);
+    if (worktree !== null) {
+      this.log.info('SourceControlSidebar', 'Renaming worktree', worktree.label, edit.value);
+      this.worktreeSource?.rename(worktree.id, edit.value);
+    }
+  }
+
+  /**
+   * Closes the name field without renaming.
+   */
+  protected onRenameCancel(): void {
+    this.renaming.set(null);
+  }
+
+  /**
+   * Scopes the view to a worktree.
+   * @param worktree The worktree.
+   */
+  private switchToWorktree(worktree: RepositoryWorktree): void {
+    this.log.info('SourceControlSidebar', 'Switching to worktree', worktree.label);
+    this.worktreeSource?.activate(worktree.id);
   }
 
   /**
@@ -1735,13 +1958,25 @@ export class SourceControlSidebar implements OnDestroy {
    * @returns Returns the rows.
    */
   private localRows(): readonly TreeRow[] {
+    const worktrees: readonly RepositoryWorktree[] | null = this.worktrees();
+    return worktrees === null ? this.branchRows(1) : this.worktreeRows(worktrees);
+  }
+
+  /**
+   * Builds the current checkout's branch rows: the whole of Local in a flat repository, and the
+   * branches beneath the current worktree in a worktree container. Either way they are this view's
+   * own branches, with every branch action behind them.
+   * @param depth The rows' depth in the tree.
+   * @returns Returns the rows.
+   */
+  private branchRows(depth: number): readonly TreeRow[] {
     const branches: readonly GitBranch[] = this.repository.branches();
     if (branches.length === 0) {
-      return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches')];
+      return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches', depth)];
     }
     return branches.map((branch: GitBranch): TreeRow => ({
       id: `branch:${branch.name}`,
-      depth: 1,
+      depth,
       expandable: false,
       expanded: false,
       data: {
@@ -1752,6 +1987,80 @@ export class SourceControlSidebar implements OnDestroy {
         commit: branch.tip,
       },
     }));
+  }
+
+  /**
+   * Builds Local for a worktree container: each worktree, and beneath it its own local branches with
+   * its checked-out branch among them. Several branches are worked on at once, so each worktree's
+   * checked-out branch is highlighted, not only the current one's (see {@link selectedIds}).
+   *
+   * The current worktree's branches are this view's live ones. Another worktree's are read from its
+   * status: it is a clone of its own, so it has branches this view's repository does not.
+   * @param worktrees The worktrees, in registration order.
+   * @returns Returns the rows.
+   */
+  private worktreeRows(worktrees: readonly RepositoryWorktree[]): readonly TreeRow[] {
+    const expanded: ReadonlySet<string> = this.expandedWorktrees();
+    const out: TreeRow[] = [];
+    for (const worktree of worktrees) {
+      const open: boolean = expanded.has(worktree.id);
+      out.push({
+        id: `worktree:${worktree.id}`,
+        depth: 1,
+        expandable: true,
+        expanded: open,
+        data: {
+          kind: 'worktree',
+          icon: Icon.WORKTREE,
+          label: worktree.label,
+          worktree,
+        },
+      });
+      if (!open) {
+        continue;
+      }
+      out.push(...(worktree.current ? this.branchRows(2) : this.otherWorktreeBranchRows(worktree)));
+    }
+    return out;
+  }
+
+  /**
+   * Builds the branch rows beneath a worktree other than the current one.
+   * @param worktree The worktree.
+   * @returns Returns the rows.
+   */
+  private otherWorktreeBranchRows(worktree: RepositoryWorktree): readonly TreeRow[] {
+    if (worktree.branches.length === 0) {
+      return [
+        this.emptyRow(`worktree:${worktree.id}`, Icon.SOURCE_CONTROL, 'No local branches', 2),
+      ];
+    }
+    return worktree.branches.map((branch: WorktreeBranch): TreeRow => ({
+      id: this.worktreeBranchId(worktree.id, branch.name),
+      depth: 2,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'worktree-branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: branch.name,
+        worktree,
+        worktreeBranch: branch,
+        ...(branch.name === worktree.branch && worktree.changes !== null
+          ? { changes: worktree.changes }
+          : {}),
+      },
+    }));
+  }
+
+  /**
+   * Builds the row id of a branch beneath a worktree other than the current one.
+   * @param worktreeId The worktree's checkout id.
+   * @param branch The branch name.
+   * @returns Returns the row id.
+   */
+  private worktreeBranchId(worktreeId: string, branch: string): string {
+    return `worktree:${worktreeId}:branch:${branch}`;
   }
 
   /**
@@ -2149,6 +2458,13 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.branch !== undefined) {
       return this.branchItems(node.branch);
     }
+    if (node.kind === 'worktree' && node.worktree !== undefined) {
+      return this.worktreeItems(node.worktree);
+    }
+    // Another worktree's branch can only be acted on from inside that worktree.
+    if (node.kind === 'worktree-branch' && node.worktree !== undefined) {
+      return [{ id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE }];
+    }
     if (node.stash !== undefined) {
       // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
       // buttons' tooltips used to say; the muted trailing note carries it into the menu.
@@ -2239,11 +2555,76 @@ export class SourceControlSidebar implements OnDestroy {
   };
 
   /**
+   * Builds a worktree row's menu: switching to it (from another), finding it on disk, and removing it.
+   *
+   * Removal is omitted rather than disabled on the last worktree and while one is being created or
+   * removed: the first is a rule about the container, the second momentary, and a greyed item would
+   * only invite the user to keep trying.
+   * @param worktree The worktree.
+   * @returns Returns the menu items.
+   */
+  private worktreeItems(worktree: RepositoryWorktree): readonly MenuItem[] {
+    const items: MenuItem[] = [];
+    if (!worktree.current) {
+      items.push(
+        { id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE },
+        { separator: true, id: 'worktree.sep.switch', label: '' },
+      );
+    }
+    items.push(
+      { id: ACTION_RENAME_WORKTREE, label: 'Rename…', icon: Icon.PENCIL },
+      { separator: true, id: 'worktree.sep.rename', label: '' },
+      { id: ACTION_REVEAL_WORKTREE, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
+      { id: ACTION_COPY_WORKTREE_PATH, label: 'Copy Path', icon: Icon.COPY },
+    );
+    const removable: boolean =
+      (this.worktrees()?.length ?? 0) > 1 && !(this.worktreeSource?.busy() ?? false);
+    if (removable) {
+      items.push(
+        { separator: true, id: 'worktree.sep.remove', label: '' },
+        { id: ACTION_REMOVE_WORKTREE, label: 'Remove Worktree…', icon: Icon.TRASH, tone: 'danger' },
+      );
+    }
+    return items;
+  }
+
+  /**
+   * Runs a worktree command from a worktree row, or from a branch row of another worktree.
+   * @param itemId The chosen item's identifier.
+   * @param worktree The worktree the row belongs to.
+   * @returns Returns true when the command was a worktree command.
+   */
+  private onWorktreeAction(itemId: string, worktree: RepositoryWorktree): boolean {
+    switch (itemId) {
+      case ACTION_SWITCH_WORKTREE:
+        this.switchToWorktree(worktree);
+        return true;
+      case ACTION_RENAME_WORKTREE:
+        this.renaming.set(worktree);
+        return true;
+      case ACTION_REVEAL_WORKTREE:
+        void this.shell.revealPath(worktree.path);
+        return true;
+      case ACTION_COPY_WORKTREE_PATH:
+        void navigator.clipboard.writeText(worktree.path).catch((): void => undefined);
+        return true;
+      case ACTION_REMOVE_WORKTREE:
+        this.worktreeSource?.requestRemove(worktree.id);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
    * Runs a context-menu command against the row it was chosen on.
    * @param choice The chosen item and its row.
    */
   protected onContextAction(choice: TreeMenuSelection): void {
     const node: RepoNode = this.nodeOf(choice.row);
+    if (node.worktree !== undefined && this.onWorktreeAction(choice.itemId, node.worktree)) {
+      return;
+    }
     // Push carries its remote in the identifier, so it is matched by prefix before the exact-match
     // switch below — a `case` cannot express "this command, whichever remote it named".
     if (node.tag !== undefined && choice.itemId.startsWith(ACTION_PUSH_TAG)) {
@@ -2591,12 +2972,13 @@ export class SourceControlSidebar implements OnDestroy {
    * @param key The section key, for a stable id.
    * @param icon The icon to show.
    * @param label The placeholder text.
+   * @param depth The row's depth: a section's child by default, deeper beneath a worktree.
    * @returns Returns the row.
    */
-  private emptyRow(key: string, icon: Icon, label: string): TreeRow {
+  private emptyRow(key: string, icon: Icon, label: string, depth: number = 1): TreeRow {
     return {
       id: `empty:${key}`,
-      depth: 1,
+      depth,
       expandable: false,
       expanded: false,
       data: { kind: 'empty', icon, label, muted: true },

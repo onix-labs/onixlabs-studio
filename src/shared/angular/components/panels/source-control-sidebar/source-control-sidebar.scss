@@ -70,6 +70,38 @@
   font-style: italic;
 }
 
+// A collapsed worktree's checked-out branch, after its name: muted, as the rest of the row's facts are.
+.rail__worktree-branch {
+  margin-inline-start: 0.2rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// A worktree row's glyphs: whether the view is showing it, and a warning when another worktree has
+// the same branch checked out.
+.rail__worktree-visibility,
+.rail__worktree-warning {
+  flex-shrink: 0;
+  margin-inline-start: 0.35rem;
+  font-size: 0.8rem;
+}
+
+// A worktree the view is not showing: a closed eye, muted and dimmed so it recedes beside the
+// accent eye of the one it is.
+.rail__worktree-visibility {
+  color: var(--form-muted-foreground-color);
+  opacity: 0.6;
+
+  // The worktree the view is showing: its open eye in the accent, at full strength.
+  &--shown {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+}
+
+.rail__worktree-warning {
+  color: var(--warning-color);
+}
+
 // The rail's dialogs (new branch, drop stash), rendered in the app's default modal card; these
 // classes style only their content.
 .rail__dialog-title {
