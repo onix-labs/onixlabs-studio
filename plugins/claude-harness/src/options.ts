@@ -38,7 +38,7 @@ import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format'
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
 import { STUDIO_TOOL_PREFIX } from './tools';
-import type { Choice, TurnRequest } from './protocol';
+import type { Choice, Selection, TurnRequest } from './protocol';
 
 /**
  * Built-in tools auto-allowed whenever the run has something to read: read-only project exploration.
@@ -82,6 +82,7 @@ interface QuestionOption {
 interface ParsedQuestion {
   readonly question: string;
   readonly options: readonly QuestionOption[];
+  readonly selection: Selection;
 }
 
 /**
@@ -116,12 +117,14 @@ export interface GateContext {
    * @param requestId The run the question belongs to.
    * @param question The question text.
    * @param choices The suggested answers.
+   * @param selection How many of the choices the user may pick.
    * @returns Returns the answer, and a way to withdraw the question.
    */
   readonly askInput: (
     requestId: string,
     question: string,
     choices: readonly Choice[],
+    selection: Selection,
   ) => { readonly answer: Promise<string | null>; readonly withdraw: () => void };
 
   /**
@@ -174,7 +177,13 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
         });
       }
     }
-    questions.push({ question, options });
+    // `multiSelect` marks an AND question; Studio draws it as checkboxes and answers with the picked
+    // labels joined by ", ", which is the form the tool itself answers a multi-select question in.
+    questions.push({
+      question,
+      options,
+      selection: record['multiSelect'] === true ? 'multiple' : 'single',
+    });
   }
   return questions;
 }
@@ -261,6 +270,7 @@ async function answerQuestions(
         turn.requestId,
         parsed.question,
         parsed.options,
+        parsed.selection,
       );
       // Registered so a peer answering mid-sequence takes this question off the user's screen
       // rather than leaving them part way through a set that no longer matters.

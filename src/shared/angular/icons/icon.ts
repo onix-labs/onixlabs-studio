@@ -278,6 +278,26 @@ export class Icon {
    */
   public static readonly TOOL_WRITE: Icon = new Icon('ph ph-pencil-simple');
 
+  /**
+   * Gets the glyph on a timeline node for a permission prompt (the agent asking to run something).
+   */
+  public static readonly PROMPT_PERMISSION: Icon = new Icon('ph ph-shield');
+
+  /**
+   * Gets the glyph on a timeline node for a question the agent asks the user.
+   */
+  public static readonly PROMPT_QUESTION: Icon = new Icon('ph ph-question');
+
+  /**
+   * Gets the glyph on a timeline node for an edit decision (a staged edit awaiting apply or reject).
+   */
+  public static readonly PROMPT_EDIT: Icon = new Icon('ph ph-git-diff');
+
+  /**
+   * Gets the glyph on a timeline node for a failed run.
+   */
+  public static readonly PROMPT_ERROR: Icon = new Icon('ph ph-x-circle');
+
   // --- Ribbon: file commands ---
 
   /**

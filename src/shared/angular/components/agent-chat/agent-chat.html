@@ -107,39 +107,6 @@
             </div>
           </div>
         }
-        @case ('input-request') {
-          <app-agent-question-card
-            class="agent__card"
-            [class.agent__unmeasured]="!isMeasured(row.id)"
-            [item]="row.item!"
-            (answer)="answerInput(row.item!, $event)"
-          />
-        }
-        @case ('edit-decision') {
-          <app-agent-edit-decision-card
-            class="agent__card"
-            [class.agent__unmeasured]="!isMeasured(row.id)"
-            [item]="row.item!"
-            (decide)="decide(row.item!, $event)"
-          />
-        }
-        @case ('error') {
-          <app-agent-error-card
-            class="agent__card"
-            [class.agent__unmeasured]="!isMeasured(row.id)"
-            [item]="row.item!"
-            [busy]="isRunning()"
-            (retry)="retry(row.item!)"
-          />
-        }
-        @case ('permission') {
-          <app-agent-permission-card
-            class="agent__card"
-            [class.agent__unmeasured]="!isMeasured(row.id)"
-            [item]="row.item!"
-            (respond)="respond(row.item!, $event)"
-          />
-        }
         @default {
           <ng-container
             [ngTemplateOutlet]="railRow"
@@ -179,6 +146,7 @@
           class="agent__node-icon"
           [class.agent__node-icon--error]="row.item?.toolState === 'error'"
           [class.agent__node-icon--notice]="row.kind === 'notice'"
+          [class.agent__node-icon--failed]="row.kind === 'error'"
         >
           <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
         </span>
@@ -238,6 +206,22 @@
           @case ('working') {
             <p class="agent__working" aria-live="polite">Working…</p>
           }
+          @case ('permission') {
+            <app-agent-permission-card [item]="row.item!" (respond)="respond(row.item!, $event)" />
+          }
+          @case ('input-request') {
+            <app-agent-question-card [item]="row.item!" (answer)="answerInput(row.item!, $event)" />
+          }
+          @case ('edit-decision') {
+            <app-agent-edit-decision-card [item]="row.item!" (decide)="decide(row.item!, $event)" />
+          }
+          @case ('error') {
+            <app-agent-error-card
+              [item]="row.item!"
+              [busy]="isRunning()"
+              (retry)="retry(row.item!)"
+            />
+          }
           @case ('notice') {
             <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
                  reports from a previous session. ⛔ NOT a bubble: the model did not write this, and
@@ -250,7 +234,7 @@
               <details class="agent__action agent__notice">
                 <summary class="agent__action-summary">
                   <span class="agent__action-label">{{ row.label }}</span>
-                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
                 <p class="agent__notice-body">{{ detail }}</p>
               </details>
@@ -313,7 +297,7 @@
                   @if (lane.meta) {
                     <span class="agent__lane-meta">{{ lane.meta }}</span>
                   }
-                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
                 <div class="agent__action-detail agent__lane-body">
                   @if (row.item!.toolDetail) {
@@ -345,7 +329,7 @@
                   @if (row.item!.toolState === 'backgrounded') {
                     <span class="agent__lane-status">In background…</span>
                   }
-                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
                 <div class="agent__action-detail">
                   <span class="agent__action-tech">{{ row.tech }}</span>

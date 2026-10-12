@@ -154,11 +154,23 @@ export interface Choice {
 }
 
 /**
+ * How many of an `input` request's choices the user may pick.
+ */
+export type Selection = 'single' | 'multiple';
+
+/**
  * A blocking question this harness asks Studio.
  */
 export type Request =
   | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
-  | { readonly kind: 'input'; readonly question: string; readonly choices: readonly Choice[] }
+  | {
+      readonly kind: 'input';
+      readonly question: string;
+      readonly choices: readonly Choice[];
+      // How many choices the user may pick (Studio 1.14.0). Optional, so a build that predates it
+      // reads the question as one-of rather than refusing it.
+      readonly selection?: Selection;
+    }
   | {
       readonly kind: 'edit-decision';
       readonly name: string;

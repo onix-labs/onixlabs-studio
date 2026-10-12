@@ -6,6 +6,8 @@ import {
   output,
   OutputEmitterRef,
 } from '@angular/core';
+import type { AiInputSelection } from '@shared/api/ai-types';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 
 /**
@@ -32,11 +34,12 @@ export interface AgentChoice {
  * The choices a card offers, as a radio list (#855): each row pairs a radio dial with a bold label and
  * a muted description, so a choice reads as its consequence rather than as a button. Shared by the
  * question card, where choosing selects and an Answer button confirms, and the edit-decision card,
- * where choosing is the decision.
+ * where choosing is the decision. A question whose choices are not mutually exclusive draws checkboxes
+ * instead, so an AND choice does not read as an OR.
  */
 @Component({
   selector: 'app-agent-choice-list',
-  imports: [Radio],
+  imports: [Checkbox, Radio],
   templateUrl: './agent-choice-list.html',
   styleUrl: './agent-choice-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,9 +57,14 @@ export class AgentChoiceList {
   public readonly name: InputSignal<string> = input.required<string>();
 
   /**
-   * Gets the selected choice's value, or null when none is.
+   * Gets how many choices may be picked: one, drawn as radios, or any number, drawn as checkboxes.
    */
-  public readonly selected: InputSignal<string | null> = input<string | null>(null);
+  public readonly selection: InputSignal<AiInputSelection> = input<AiInputSelection>('single');
+
+  /**
+   * Gets the values of the picked choices; at most one unless {@link selection} is `'multiple'`.
+   */
+  public readonly selected: InputSignal<readonly string[]> = input<readonly string[]>([]);
 
   /**
    * Gets what the group is announced as.
@@ -64,7 +72,7 @@ export class AgentChoiceList {
   public readonly ariaLabel: InputSignal<string> = input<string>('');
 
   /**
-   * Emits the value of a choice the user picks.
+   * Emits the value of a choice the user picks — or, for a multiple selection, ticks or unticks.
    */
   public readonly choose: OutputEmitterRef<string> = output<string>();
 }

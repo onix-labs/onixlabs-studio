@@ -4,7 +4,9 @@
     <span class="agent__ask-hint">
       {{
         choices().length
-          ? 'Pick an option, or type your own answer below.'
+          ? selection() === 'multiple'
+            ? 'Pick any that apply, or type your own answer below.'
+            : 'Pick an option, or type your own answer below.'
           : 'Type your answer below.'
       }}
     </span>
@@ -12,6 +14,7 @@
       <app-agent-choice-list
         [choices]="choices()"
         [name]="'ask-' + item().id"
+        [selection]="selection()"
         [selected]="selected()"
         [ariaLabel]="item().inputQuestion ?? ''"
         (choose)="select($event)"
@@ -26,7 +29,7 @@
         label="Answer"
         [class.agent__ask-placeholder]="!choices().length"
         [attr.aria-hidden]="choices().length ? null : 'true'"
-        [disabled]="selected() === null"
+        [disabled]="selected().length === 0"
         (click)="confirm()"
       />
       <app-button label="Skip" (click)="answer.emit(null)" />

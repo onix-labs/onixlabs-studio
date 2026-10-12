@@ -729,15 +729,13 @@ export class AgentChat implements OnInit {
       const wordCountFor: (item: AgentItem | null) => string = (item: AgentItem | null): string =>
         this.wordCountFor(item);
 
-      // A notice is on the rail too (#695): Studio's own bookkeeping — a background task settling, a
-      // compaction that failed — is machinery, and machinery reads as a chip beside a node, like a
-      // tool call, not as a card standing apart from everything.
+      // The rail is the agent's run, so everything but the user's own messages is on it. A notice is
+      // machinery (#695) and reads as a chip beside a node. The prompt cards — permission, question,
+      // edit decision, error — are steps in the run too: the agent stopping at a particular point to
+      // ask, which only reads as such where the rail places it. Their outline is what marks them as
+      // waiting on the user, not standing apart from the rail.
       const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
-        kind === 'assistant' ||
-        kind === 'thinking' ||
-        kind === 'tool' ||
-        kind === 'notice' ||
-        kind === 'working';
+        kind !== 'user';
 
       // A backgrounded tool is still live: its result came back the instant it backgrounded, but the
       // work carries on until the task settles. Treating it as finished is the lie #427 exists to fix.
@@ -755,6 +753,14 @@ export class AgentChat implements OnInit {
             return Icon.SPINNER;
           case 'notice':
             return Icon.INFO;
+          case 'permission':
+            return Icon.PROMPT_PERMISSION;
+          case 'input-request':
+            return Icon.PROMPT_QUESTION;
+          case 'edit-decision':
+            return Icon.PROMPT_EDIT;
+          case 'error':
+            return Icon.PROMPT_ERROR;
           case 'tool':
             if (entry.item?.toolState === 'running' || entry.item?.toolState === 'backgrounded') {
               return Icon.SPINNER;

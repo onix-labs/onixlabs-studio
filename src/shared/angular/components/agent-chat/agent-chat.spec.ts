@@ -550,6 +550,53 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__notice-icon')).toBeNull();
   });
 
+  it('promptCards_sitOnTheRail_eachBesideItsOwnNode', () => {
+    // A prompt is the agent stopping at a point in its run to ask, so it sits on the rail where that
+    // point is: a node of its own, joined to the rows either side, with no card off to one side.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-2',
+        kind: 'permission',
+        text: '',
+        permissionName: 'Bash',
+        permissionDetail: 'npm run lint',
+        permissionState: 'pending',
+      },
+      {
+        id: 'item-3',
+        kind: 'input-request',
+        text: '',
+        inputQuestion: 'Which?',
+        inputState: 'pending',
+      },
+      {
+        id: 'item-4',
+        kind: 'edit-decision',
+        text: '',
+        decisionName: 'a.ts',
+        decisionState: 'pending',
+      },
+      { id: 'item-5', kind: 'error', text: 'Request failed' },
+    ]);
+    fixture.detectChanges();
+
+    const rows: readonly Element[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.agent__messages > .agent__row'),
+    );
+    expect(rows).toHaveLength(5);
+    const glyphs: readonly string[] = rows
+      .slice(1)
+      .map((row: Element): string => row.querySelector('.agent__node-icon i')?.className ?? '');
+    expect(glyphs[0]).toContain('ph-shield');
+    expect(glyphs[1]).toContain('ph-question');
+    expect(glyphs[2]).toContain('ph-git-diff');
+    expect(glyphs[3]).toContain('ph-x-circle');
+    expect(rows[1].classList.contains('agent__row--up')).toBe(true);
+    expect(rows[3].classList.contains('agent__row--down')).toBe(true);
+    expect(rows[4].querySelector('.agent__node-icon--failed')).not.toBeNull();
+  });
+
   it('notice_withoutDetail_rendersTheChipAloneWithNothingToExpand', () => {
     // A caret that opens onto nothing is a promise the row cannot keep.
     items.set([{ id: 'item-1', kind: 'notice', text: 'Stopped' }]);

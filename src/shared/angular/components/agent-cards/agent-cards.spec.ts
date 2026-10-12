@@ -83,6 +83,51 @@ describe('AgentQuestionCard', () => {
 
     expect(text(fixture)).toBe('Which approach?B');
   });
+
+  describe('pick several', () => {
+    const several: AgentItem = {
+      ...question,
+      inputChoices: [{ label: 'A' }, { label: 'B' }, { label: 'C' }],
+      inputSelection: 'multiple',
+    };
+
+    it('drawsCheckboxes_notRadios', () => {
+      const fixture: ComponentFixture<AgentQuestionCard> = render(AgentQuestionCard, several);
+      const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(element.querySelectorAll('app-checkbox')).toHaveLength(3);
+      expect(element.querySelector('app-radio')).toBeNull();
+      expect(element.querySelector('[role="group"]')).not.toBeNull();
+    });
+
+    it('answersWithEveryTickedChoice_inTheOrderTheyAreListed', () => {
+      const fixture: ComponentFixture<AgentQuestionCard> = render(AgentQuestionCard, several);
+      const answers: (string | null)[] = [];
+      fixture.componentInstance.answer.subscribe((answer: string | null): number =>
+        answers.push(answer),
+      );
+
+      fixture.componentInstance.select('C');
+      fixture.componentInstance.select('A');
+      fixture.componentInstance.confirm();
+
+      expect(answers).toEqual(['A, C']);
+    });
+
+    it('untickingTheOnlyChoice_leavesNothingToConfirm', () => {
+      const fixture: ComponentFixture<AgentQuestionCard> = render(AgentQuestionCard, several);
+      const answers: (string | null)[] = [];
+      fixture.componentInstance.answer.subscribe((answer: string | null): number =>
+        answers.push(answer),
+      );
+
+      fixture.componentInstance.select('B');
+      fixture.componentInstance.select('B');
+      fixture.componentInstance.confirm();
+
+      expect(answers).toEqual([]);
+    });
+  });
 });
 
 describe('AgentPermissionCard', () => {

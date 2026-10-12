@@ -102,6 +102,9 @@
 
   --agent-view-surface-color: var(--gray-150);
   --agent-view-border-color: var(--gray-500);
+  // Entries nested inside a container (a sub-agent's own activity): a shade off the container they
+  // sit in, so a nested chip or reply does not vanish into it.
+  --agent-view-nested-surface-color: var(--gray-200);
   // The inner ring of an attached image: the surface's own tone, inside its accent outer ring.
   --agent-image-inner-border-color: #fff;
   // Prompt card titles: the accent, a shade darker on light surfaces (#856).

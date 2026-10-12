@@ -6,6 +6,7 @@ import type {
   AiEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiPermissionPosture,
   AiRemoteControlMode,
@@ -343,12 +344,15 @@ export interface AgentRunContext {
    * @param choices The suggested answers, or empty for a free-form question.
    * @param cancel An optional signal that dismisses the local prompt and resolves null when aborted —
    *   used when a remote peer answers the same question first, so Studio's prompt clears.
+   * @param selection How many of the choices the user may pick; one when omitted. Several picks are
+   *   answered as their labels joined with ", ".
    * @returns Returns the user's answer, or null when they declined.
    */
   requestInput(
     question: string,
     choices: readonly AiInputChoice[],
     cancel?: AbortSignal,
+    selection?: AiInputSelection,
   ): Promise<string | null>;
 
   /**

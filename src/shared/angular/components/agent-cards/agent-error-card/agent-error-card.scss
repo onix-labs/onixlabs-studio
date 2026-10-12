@@ -2,19 +2,12 @@
   display: block;
 }
 
-// The cause line beside its warning glyph, the provider readout under it, and the diagnostics
-// disclosure.
+// The cause line, the provider readout under it, and the diagnostics disclosure. The failure glyph is
+// the card's rail node (agent-chat), not drawn in here.
 .agent__error-text {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
   margin: 0;
   font-weight: 600;
-  // A failure is red throughout — outline, glyph and title — so it never reads as a prompt.
-  color: var(--danger-color);
-}
-
-.agent__error-icon {
+  // A failure is red throughout — outline, node glyph and title — so it never reads as a prompt.
   color: var(--danger-color);
 }
 
