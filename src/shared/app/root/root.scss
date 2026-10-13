@@ -57,3 +57,14 @@
   max-width: 100%;
   z-index: 50;
 }
+
+// "Over the ribbon": the stack hangs from the top of the ribbon's right-hand end, which ribbon
+// alignment (left or center, never right) leaves free, and overlaps the content below when it is
+// taller than the ribbon. Spanning down to the status strip keeps it in place when the active tab
+// shows no ribbon.
+.toast-host.toast-host--ribbon {
+  grid-area: auto;
+  grid-row: ribbon-strip-start / status-strip-start;
+  grid-column: 1;
+  align-self: start;
+}

@@ -175,4 +175,13 @@ describe('restoreOverrides', () => {
 
     expect(result['ai.connections']).toEqual(connections);
   });
+
+  it('retiredRightRibbonAlignment_fallsBackToTheDefault', () => {
+    expect(restoreOverrides({ 'appearance.ribbonAlignment': 'right' })).not.toHaveProperty(
+      'appearance.ribbonAlignment',
+    );
+    expect(restoreOverrides({ 'appearance.ribbonAlignment': 'center' })).toMatchObject({
+      'appearance.ribbonAlignment': 'center',
+    });
+  });
 });

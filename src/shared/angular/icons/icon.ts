@@ -239,6 +239,11 @@ export class Icon {
   public static readonly BELL: Icon = new Icon('ph-duotone ph-bell-ringing');
 
   /**
+   * The bell shown on the notification tray's trigger while notifications are muted.
+   */
+  public static readonly BELL_SLASH: Icon = new Icon('ph-duotone ph-bell-slash');
+
+  /**
    * Gets the thin agent (brain) glyph shown large in the agent panel's empty state.
    */
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');

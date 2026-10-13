@@ -133,6 +133,12 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // had no faithful per-language equivalent worth preserving.
   delete result['textEditor.profiles'];
 
+  // Right alignment of the ribbon was retired so the ribbon's right-hand end can carry the
+  // notification stack. A profile that chose it falls back to the default.
+  if (result['appearance.ribbonAlignment'] === 'right') {
+    delete result['appearance.ribbonAlignment'];
+  }
+
   return dropGuessedContextWindows(result);
 }
 

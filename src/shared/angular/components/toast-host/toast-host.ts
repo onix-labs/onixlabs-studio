@@ -1,23 +1,20 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   OnDestroy,
   Signal,
 } from '@angular/core';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
-import { Icon } from '@shared/angular/icons/icon';
-import { severityIcon } from '@shared/angular/icons/severity-icon';
+import { ToastCard } from '@shared/angular/components/toast-card/toast-card';
 import { Log } from '@shared/angular/services/log/log';
 import {
   Notification,
   NotificationAction,
   Notifications,
-  NotificationSeverity,
 } from '@shared/angular/services/notifications/notifications';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { NotificationPosition, Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * The shortest time, in milliseconds, a paused toast runs for after the pointer leaves it, so a
@@ -26,7 +23,13 @@ import { Settings } from '@shared/angular/services/settings/settings';
 const MINIMUM_RESUME_MS: number = 500;
 
 /**
- * Tracks a transient toast's auto-dismiss countdown so hovering can pause and resume it.
+ * How many toasts the stack draws: the front one and up to two receding behind it. Any more wait,
+ * out of sight, for the ones in front to go.
+ */
+const SHOWN_DEPTH: number = 3;
+
+/**
+ * Tracks a transient toast's auto-dismiss countdown so it can be paused and resumed.
  */
 interface ToastTimer {
   /**
@@ -46,17 +49,41 @@ interface ToastTimer {
 }
 
 /**
- * Represents the toast stack rendered in the main window's bottom-right corner, above the status
- * strip. Presentation policy lives here: transient toasts auto-dismiss after the configured
- * duration and pause while hovered; sticky toasts (errors) stay until dismissed; an action button
- * runs its action and dismisses its toast.
+ * One toast in the stack, with how far behind the front it sits.
+ */
+interface StackedToast {
+  /**
+   * Gets the toast.
+   */
+  readonly toast: Notification;
+
+  /**
+   * Gets its depth: 0 for the front toast, 1 and 2 for those receding behind it.
+   */
+  readonly depth: number;
+}
+
+/**
+ * Represents the toast stack, in the content's bottom-right corner above the status strip or over the
+ * ribbon's right-hand end, as the "Position" setting says.
+ *
+ * The stack recedes rather than growing up the screen: the newest toast is in front, and up to two
+ * older ones sit behind it, each a little higher, smaller and blurrier. Only the front toast can be
+ * read and pressed; dismissing it brings the next forward.
+ *
+ * Presentation policy lives here: a transient toast counts down only while it is in front (a toast
+ * pushed back keeps its remaining time until it returns), and pauses while hovered; sticky toasts
+ * (errors) stay until dismissed; an action button runs its action and dismisses its toast.
  */
 @Component({
   selector: 'app-toast-host',
-  imports: [Button, AppIcon],
+  imports: [ToastCard],
   templateUrl: './toast-host.html',
   styleUrl: './toast-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.toast-host--ribbon]': "position() === 'ribbon'",
+  },
 })
 export class ToastHost implements OnDestroy {
   /**
@@ -65,7 +92,7 @@ export class ToastHost implements OnDestroy {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
-   * Holds the settings store the toast duration is read from.
+   * Holds the settings store the toast duration and position are read from.
    */
   private readonly settings: Settings = inject(Settings);
 
@@ -80,22 +107,37 @@ export class ToastHost implements OnDestroy {
   private readonly timers: Map<number, ToastTimer> = new Map<number, ToastTimer>();
 
   /**
-   * Gets the live toasts, oldest first.
+   * Holds whether the pointer is over the front toast, so a change in the stack does not restart a
+   * countdown the user is holding.
    */
-  protected readonly toasts: Signal<readonly Notification[]> = this.notifications.toasts;
+  private hovering: boolean = false;
 
   /**
-   * Gets the icon vocabulary for the template.
+   * Gets where the stack sits.
    */
-  protected readonly Icon: typeof Icon = Icon;
+  protected readonly position: Signal<NotificationPosition> =
+    this.settings.value('notifications.position');
 
   /**
-   * Keeps the countdown map in step with the stack: an arriving transient toast starts its
-   * countdown, and a departing toast (dismissed from anywhere) releases its timer.
+   * Gets the toasts drawn, newest first, each with its depth. Rendered back to front, so the template
+   * reverses nothing: depth alone places each card.
+   */
+  protected readonly stack: Signal<readonly StackedToast[]> = computed(
+    (): readonly StackedToast[] =>
+      [...this.notifications.toasts()]
+        .reverse()
+        .slice(0, SHOWN_DEPTH)
+        .map((toast: Notification, depth: number): StackedToast => ({ toast, depth })),
+  );
+
+  /**
+   * Keeps the countdowns in step with the stack: drops those of departed toasts, runs the front
+   * toast's, and holds every other.
    */
   private readonly timerSync: ReturnType<typeof effect> = effect((): void => {
+    const toasts: readonly Notification[] = this.notifications.toasts();
     const live: ReadonlySet<number> = new Set<number>(
-      this.toasts().map((toast: Notification): number => toast.id),
+      toasts.map((toast: Notification): number => toast.id),
     );
     for (const [id, timer] of this.timers) {
       if (!live.has(id)) {
@@ -105,15 +147,24 @@ export class ToastHost implements OnDestroy {
         this.timers.delete(id);
       }
     }
-    for (const toast of this.toasts()) {
-      if (!toast.sticky && !this.timers.has(toast.id)) {
-        this.start(toast);
+    const front: Notification | undefined = toasts.at(-1);
+    for (const toast of toasts) {
+      if (toast.sticky) {
+        continue;
+      }
+      if (!this.timers.has(toast.id)) {
+        this.create(toast);
+      }
+      if (toast === front && !this.hovering) {
+        this.resume(toast);
+      } else if (toast !== front) {
+        this.hold(toast);
       }
     }
   });
 
   /**
-   * Releases every running countdown.
+   * Clears every pending countdown so none fires after the host is gone.
    */
   public ngOnDestroy(): void {
     for (const timer of this.timers.values()) {
@@ -125,10 +176,60 @@ export class ToastHost implements OnDestroy {
   }
 
   /**
-   * Pauses a toast's auto-dismiss countdown while the pointer is over it.
+   * Pauses the front toast's countdown while the pointer is over it.
    * @param toast The hovered toast.
    */
-  protected pause(toast: Notification): void {
+  protected onEnter(toast: Notification): void {
+    this.hovering = true;
+    this.hold(toast);
+  }
+
+  /**
+   * Resumes the front toast's countdown when the pointer leaves it.
+   * @param toast The toast the pointer left.
+   */
+  protected onLeave(toast: Notification): void {
+    this.hovering = false;
+    this.resume(toast);
+  }
+
+  /**
+   * Runs a toast's action and dismisses the toast.
+   * @param toast The toast.
+   * @param action The action pressed.
+   */
+  protected onAction(toast: Notification, action: NotificationAction): void {
+    this.log.info('ToastHost', `Toast action '${action.label}' invoked`, toast.id);
+    action.run();
+    this.dismiss(toast);
+  }
+
+  /**
+   * Dismisses a toast; its tray entry stays.
+   * @param toast The toast.
+   */
+  protected dismiss(toast: Notification): void {
+    this.hovering = false;
+    this.notifications.dismiss(toast.id);
+  }
+
+  /**
+   * Records a transient toast's countdown at the configured duration, not yet running.
+   * @param toast The arriving toast.
+   */
+  private create(toast: Notification): void {
+    this.timers.set(toast.id, {
+      handle: null,
+      remaining: this.settings.get('notifications.toastDuration') * 1000,
+      startedAt: Date.now(),
+    });
+  }
+
+  /**
+   * Holds a countdown, keeping what is left of it.
+   * @param toast The toast.
+   */
+  private hold(toast: Notification): void {
     const timer: ToastTimer | undefined = this.timers.get(toast.id);
     if (timer === undefined) {
       return;
@@ -142,10 +243,10 @@ export class ToastHost implements OnDestroy {
   }
 
   /**
-   * Resumes a toast's paused countdown once the pointer leaves it.
-   * @param toast The departed toast.
+   * Runs a held countdown, with at least {@link MINIMUM_RESUME_MS} left.
+   * @param toast The toast.
    */
-  protected resume(toast: Notification): void {
+  private resume(toast: Notification): void {
     const timer: ToastTimer | undefined = this.timers.get(toast.id);
     if (timer === undefined) {
       return;
@@ -156,57 +257,5 @@ export class ToastHost implements OnDestroy {
     timer.remaining = Math.max(timer.remaining, MINIMUM_RESUME_MS);
     timer.startedAt = Date.now();
     timer.handle = setTimeout((): void => this.notifications.dismiss(toast.id), timer.remaining);
-  }
-
-  /**
-   * Runs a toast action and dismisses its toast.
-   * @param toast The toast offering the action.
-   * @param action The chosen action.
-   */
-  protected onAction(toast: Notification, action: NotificationAction): void {
-    this.log.info('ToastHost', `Toast action '${action.label}' invoked`, toast.id);
-    action.run();
-    this.notifications.dismiss(toast.id);
-  }
-
-  /**
-   * Dismisses a toast.
-   * @param toast The toast to dismiss.
-   */
-  protected onDismiss(toast: Notification): void {
-    this.notifications.dismiss(toast.id);
-  }
-
-  /**
-   * Resolves the icon a severity renders with.
-   * @param severity The toast's severity.
-   * @returns Returns the severity's icon.
-   */
-  protected iconFor(severity: NotificationSeverity): Icon {
-    return severityIcon(severity);
-  }
-
-  /**
-   * Resolves the button tone a severity carries, so a toast's action and dismiss buttons take the same
-   * state colour as the card. `error` maps to the `danger` tone (the same red under a different name);
-   * every other severity shares its tone's name.
-   * @param severity The toast's severity.
-   * @returns Returns the matching button tone.
-   */
-  protected toneFor(severity: NotificationSeverity): ButtonTone {
-    return severity === 'error' ? 'danger' : severity;
-  }
-
-  /**
-   * Starts a transient toast's auto-dismiss countdown at the configured duration.
-   * @param toast The arriving toast.
-   */
-  private start(toast: Notification): void {
-    const duration: number = this.settings.get('notifications.toastDuration') * 1000;
-    this.timers.set(toast.id, {
-      handle: setTimeout((): void => this.notifications.dismiss(toast.id), duration),
-      remaining: duration,
-      startedAt: Date.now(),
-    });
   }
 }

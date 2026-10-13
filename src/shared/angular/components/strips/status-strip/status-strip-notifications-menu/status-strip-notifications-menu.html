@@ -8,7 +8,7 @@
   [cdkMenuPosition]="menuPosition"
   (cdkMenuOpened)="onOpened()"
 >
-  <app-icon [icon]="Icon.BELL" />
+  <app-icon [icon]="muted() ? Icon.BELL_SLASH : Icon.BELL" />
   @if (unseenCount() > 0) {
     <span class="notifications-menu__count">{{ countLabel() }}</span>
   }
@@ -18,42 +18,39 @@
   <div class="notifications-menu__panel" cdkMenu>
     <div class="notifications-menu__header">
       <p class="notifications-menu__heading">Notifications</p>
-      @if (history().length > 0) {
-        <!-- A plain button rather than a cdkMenuItem so clearing keeps the flyout open on its
-             empty state; the stopPropagation keeps the click from reaching the menu. -->
+      <!-- Plain buttons rather than cdkMenuItems so muting and clearing keep the flyout open; the
+           stopPropagation keeps the click from reaching the menu. -->
+      <div class="notifications-menu__header-actions">
         <app-button
           variant="none"
           size="small"
-          label="Clear all"
+          [label]="muted() ? 'Unmute' : 'Mute'"
           (pointerdown)="$event.preventDefault()"
-          (click)="clearAll(); $event.stopPropagation()"
+          (click)="toggleMute(); $event.stopPropagation()"
         />
-      }
+        @if (history().length > 0) {
+          <app-button
+            variant="none"
+            size="small"
+            label="Clear all"
+            (pointerdown)="$event.preventDefault()"
+            (click)="clearAll(); $event.stopPropagation()"
+          />
+        }
+      </div>
     </div>
     @if (history().length === 0) {
       <p class="notifications-menu__empty">No notifications</p>
     }
+    <!-- Each entry is drawn exactly as it appeared in the stack, by the same card. -->
     @for (entry of history(); track entry.id) {
-      <div class="notifications-menu__item notifications-menu__item--{{ entry.severity }}">
-        <app-icon class="notifications-menu__item-icon" [icon]="iconFor(entry.severity)" />
-        <span class="notifications-menu__item-text">
-          <span class="notifications-menu__item-title">{{ entry.title }}</span>
-          @if (entry.detail) {
-            <span class="notifications-menu__item-detail">{{ entry.detail }}</span>
-          }
-          <span class="notifications-menu__item-time">{{ relativeTime(entry.timestamp) }}</span>
-        </span>
-        <!-- Plain button (not a cdkMenuItem) so several entries can be removed in a row. -->
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Remove: ' + entry.title"
-          tooltip="Remove"
-          (pointerdown)="$event.preventDefault()"
-          (click)="remove(entry); $event.stopPropagation()"
-        />
-      </div>
+      <app-toast-card
+        class="notifications-menu__card"
+        closeVerb="Remove"
+        [notification]="entry"
+        (closed)="remove(entry)"
+        (acted)="act(entry, $event)"
+      />
     }
   </div>
 </ng-template>

@@ -24,10 +24,6 @@
   justify-content: safe center;
 }
 
-.ribbon-overflow__row--right {
-  justify-content: safe flex-end;
-}
-
 // The trailing trigger wrapper: kept as the last row item so the trigger always sits directly after
 // the last visible group, and the positioning context for its flyout. Its display is managed
 // imperatively (hidden when nothing overflows), so it takes space — and a gap — only when needed.

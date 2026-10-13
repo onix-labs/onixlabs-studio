@@ -1,15 +1,22 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  Signal,
+  viewChild,
+} from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ToastCard } from '@shared/angular/components/toast-card/toast-card';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
-import { severityIcon } from '@shared/angular/icons/severity-icon';
 import {
   Notification,
+  NotificationAction,
   Notifications,
-  NotificationSeverity,
 } from '@shared/angular/services/notifications/notifications';
 
 /**
@@ -29,7 +36,7 @@ const MAX_SHOWN_COUNT: number = 99;
  */
 @Component({
   selector: 'app-status-strip-notifications-menu',
-  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu, ToastCard],
   templateUrl: './status-strip-notifications-menu.html',
   styleUrl: './status-strip-notifications-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -56,6 +63,16 @@ export class StatusStripNotificationsMenu {
   protected readonly unseenCount: Signal<number> = this.notifications.unseenCount;
 
   /**
+   * Gets whether notifications are muted, which the trigger shows as a slashed bell.
+   */
+  protected readonly muted: Signal<boolean> = this.notifications.muted;
+
+  /**
+   * Gets the trigger, for closing the flyout after an action.
+   */
+  private readonly trigger: Signal<CdkMenuTrigger> = viewChild.required(CdkMenuTrigger);
+
+  /**
    * Gets the badge's text: the unseen count, or `99+` once there are more than the badge spells out.
    */
   protected readonly countLabel: Signal<string> = computed((): string => {
@@ -71,7 +88,7 @@ export class StatusStripNotificationsMenu {
   protected readonly triggerTitle: Signal<string> = computed((): string => {
     const unseen: number = this.unseenCount();
     if (unseen === 0) {
-      return 'Notifications';
+      return this.muted() ? 'Notifications (muted)' : 'Notifications';
     }
     if (unseen > MAX_SHOWN_COUNT) {
       return `More than ${MAX_SHOWN_COUNT} new notifications`;
@@ -108,29 +125,21 @@ export class StatusStripNotificationsMenu {
   }
 
   /**
-   * Resolves the icon a severity renders with.
-   * @param severity The notification's severity.
-   * @returns Returns the severity's icon.
+   * Mutes or unmutes notifications for the rest of the session.
    */
-  protected iconFor(severity: NotificationSeverity): Icon {
-    return severityIcon(severity);
+  protected toggleMute(): void {
+    this.notifications.setMuted(!this.muted());
   }
 
   /**
-   * Formats how long ago a notification was raised, coarsely — the flyout is a recency cue, not a
-   * timeline.
-   * @param timestamp The notification's epoch millisecond timestamp.
-   * @returns Returns the formatted age.
+   * Runs an entry's action, then removes the entry (and its toast, when still live) and closes the
+   * flyout, since the action usually takes the user somewhere else.
+   * @param entry The notification.
+   * @param action The action pressed.
    */
-  protected relativeTime(timestamp: number): string {
-    const minutes: number = Math.floor((Date.now() - timestamp) / 60_000);
-    if (minutes < 1) {
-      return 'just now';
-    }
-    if (minutes < 60) {
-      return `${minutes}m ago`;
-    }
-    const hours: number = Math.floor(minutes / 60);
-    return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
+  protected act(entry: Notification, action: NotificationAction): void {
+    action.run();
+    this.notifications.removeFromHistory(entry.id);
+    this.trigger().close();
   }
 }
