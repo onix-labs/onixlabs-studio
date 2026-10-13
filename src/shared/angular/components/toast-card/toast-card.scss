@@ -19,6 +19,10 @@
   border-radius: calc(1rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+  // The colour fades when it moves to a card (only the newest coloured, and the newest dismissed).
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease;
 }
 
 :host(.toast--info) {
@@ -35,6 +39,12 @@
 
 :host(.toast--error) {
   --toast-color: var(--danger-color);
+}
+
+// Not the newest, when only the newest is coloured: the app's grey, whatever the severity, until it
+// becomes the newest. Last, so it wins over the severity.
+:host(.toast--plain) {
+  --toast-color: var(--neutral-color);
 }
 
 // The header lays the icon, title, and close button on one line, all vertically centred against

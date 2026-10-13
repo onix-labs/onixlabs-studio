@@ -2,22 +2,32 @@ import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { NotificationPosition, Settings } from '@shared/angular/services/settings/settings';
+import {
+  NotificationColour,
+  NotificationStacking,
+  Settings,
+} from '@shared/angular/services/settings/settings';
 import { ToastHost } from './toast-host';
 
 describe('ToastHost', () => {
   let fixture: ComponentFixture<ToastHost>;
   let host: HTMLElement;
   let notifications: Notifications;
-  let position: WritableSignal<NotificationPosition>;
+  let stacking: WritableSignal<NotificationStacking>;
+  let colour: WritableSignal<NotificationColour>;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    position = signal<NotificationPosition>('bottom-right');
+    // Backwards unless a test says otherwise: most of what is asserted is the receding stack.
+    stacking = signal<NotificationStacking>('backwards');
+    colour = signal<NotificationColour>('all');
     const settingsStub: Partial<Settings> = {
       get: ((key: string): unknown =>
         key === 'notifications.toastDuration' ? 5 : 'nothing') as Settings['get'],
-      value: (() => position.asReadonly()) as unknown as Settings['value'],
+      value: ((key: string): unknown =>
+        key === 'notifications.stacking'
+          ? stacking.asReadonly()
+          : colour.asReadonly()) as unknown as Settings['value'],
     };
     await TestBed.configureTestingModule({
       imports: [ToastHost],
@@ -144,12 +154,95 @@ describe('ToastHost', () => {
     expect(drawn()).toEqual([]);
   });
 
-  it('theRibbonPosition_marksTheHost', () => {
-    expect(host.classList.contains('toast-host--ribbon')).toBe(false);
+  /**
+   * Raises a notification of a severity and renders.
+   * @param title Its title.
+   * @param severity Its severity.
+   */
+  function raiseAs(title: string, severity: 'info' | 'success' | 'warning' | 'error'): void {
+    notifications.notify({ severity, title, sticky: true });
+    fixture.detectChanges();
+  }
 
-    position.set('ribbon');
+  /**
+   * Gets the titles of the cards drawn in grey.
+   * @returns Returns the titles.
+   */
+  function grey(): string[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('app-toast-card.toast--plain')).map(
+      (card: HTMLElement): string => card.querySelector('.toast__title')?.textContent?.trim() ?? '',
+    );
+  }
+
+  it('upwards_drawsEveryToastAsAColumn_newestFirst_allPressable', () => {
+    stacking.set('upwards');
+    raise('One', true);
+    raise('Two', true);
+    raise('Three', true);
+    raise('Four', true);
+
+    const cards: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('app-toast-card'));
+    expect(
+      cards.map((card: HTMLElement) => card.querySelector('.toast__title')?.textContent?.trim()),
+    ).toEqual(['Four', 'Three', 'Two', 'One']);
+    expect(cards.every((card: HTMLElement): boolean => !card.inert)).toBe(true);
+    expect(host.querySelector('.toast-stack--upwards')).not.toBeNull();
+  });
+
+  it('upwards_everyToastCountsDown', () => {
+    stacking.set('upwards');
+    raise('Older');
+    raise('Newer');
+
+    vi.advanceTimersByTime(5000);
     fixture.detectChanges();
 
-    expect(host.classList.contains('toast-host--ribbon')).toBe(true);
+    expect(host.querySelectorAll('app-toast-card')).toHaveLength(0);
+  });
+
+  it('upwards_hoveringOneToast_holdsOnlyItsCountdown', () => {
+    stacking.set('upwards');
+    raise('Running');
+    raise('Held');
+    // The newest heads the column.
+    host.querySelector<HTMLElement>('app-toast-card')!.dispatchEvent(new MouseEvent('mouseenter'));
+
+    vi.advanceTimersByTime(5000);
+    fixture.detectChanges();
+
+    expect(
+      Array.from(host.querySelectorAll('.toast__title')).map((title) => title.textContent?.trim()),
+    ).toEqual(['Held']);
+  });
+
+  it('colourAll_coloursEveryToast', () => {
+    raiseAs('Red', 'error');
+    raiseAs('Yellow', 'warning');
+    raiseAs('Green', 'success');
+
+    expect(grey()).toEqual([]);
+  });
+
+  it('colourNewestOnly_greysAllButTheNewest_andTheColourMovesOnDismissal', () => {
+    colour.set('newest');
+    raiseAs('Red', 'error');
+    raiseAs('Yellow', 'warning');
+    raiseAs('Green', 'success');
+
+    expect(grey().sort()).toEqual(['Red', 'Yellow']);
+
+    host.querySelector<HTMLElement>('.toast-stack__card--depth-0 .toast__close button')?.click();
+    fixture.detectChanges();
+
+    expect(grey()).toEqual(['Red']);
+  });
+
+  it('colourNewestOnly_appliesStackingUpwardsToo', () => {
+    stacking.set('upwards');
+    colour.set('newest');
+    raiseAs('Red', 'error');
+    raiseAs('Green', 'success');
+
+    expect(grey()).toEqual(['Red']);
   });
 });

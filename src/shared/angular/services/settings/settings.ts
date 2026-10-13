@@ -82,16 +82,21 @@ export type SelectAllScope = 'block' | 'document';
 export type PrintMargin = 'narrow' | 'regular' | 'wide';
 
 /**
- * Identifies how the ribbon's controls are aligned within the ribbon strip. There is no right
- * alignment: the ribbon's right-hand end is where the notification stack can sit.
+ * Identifies how the ribbon's controls are aligned within the ribbon strip.
  */
 export type RibbonAlignment = 'left' | 'center';
 
 /**
- * Identifies where the notification stack appears: the bottom-right corner of the content, above the
- * status strip, or over the right-hand end of the ribbon.
+ * Identifies how notifications stack in the bottom-right corner: in a column growing up the screen,
+ * or receding behind the newest, which alone stays in front.
  */
-export type NotificationPosition = 'bottom-right' | 'ribbon';
+export type NotificationStacking = 'upwards' | 'backwards';
+
+/**
+ * Identifies which notifications are drawn in their severity's colour: all of them, or only the
+ * newest, the rest in the app's greys.
+ */
+export type NotificationColour = 'all' | 'newest';
 
 /**
  * Identifies what still pops up while notifications are muted: nothing, or errors only. Muted

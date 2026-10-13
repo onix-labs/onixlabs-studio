@@ -1,70 +1,81 @@
-// The host is laid over the content cell (or the ribbon) by the root grid and must never intercept
-// input aimed at what is beneath it — only the front toast is interactive.
+// The host is laid over the content cell by the root grid and must never intercept input aimed at
+// what is beneath it — only the toasts that can be pressed take the pointer.
 :host {
   pointer-events: none;
 }
 
-// The stack is the front toast's box plus its inset. The receding toasts are laid over that same box,
-// so whatever their own content, they peek out above the front toast by their lift alone.
 .toast-stack {
-  position: relative;
   padding: 0.75rem;
-  // Room above the front toast for the two receding behind it to peek out.
-  padding-block-start: 1.75rem;
-}
-
-// Over the ribbon, the stack starts nearer the top of the ribbon: just enough room for the peeks.
-:host(.toast-host--ribbon) {
-  .toast-stack {
-    padding-block-start: 1.25rem;
-  }
-
-  .toast-stack__card--depth-1,
-  .toast-stack__card--depth-2 {
-    inset-block-start: 1.25rem;
-  }
 }
 
 .toast-stack__card {
   inline-size: 22.5rem;
   max-inline-size: calc(100vw - 1.5rem);
-  transform-origin: top center;
-  transition:
-    transform 200ms ease,
-    filter 200ms ease,
-    opacity 200ms ease;
 }
 
-// The front toast: in flow, sharp, and the only one that takes the pointer.
-.toast-stack__card--depth-0 {
+// --- Upwards: a column growing up the screen, newest at the top, every toast pressable.
+
+.toast-stack--upwards {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+
+  .toast-stack__card {
+    pointer-events: auto;
+    animation: toast-in 160ms ease-out;
+  }
+}
+
+// --- Backwards: the stack is the front toast's box plus its inset. The receding toasts are laid over
+// --- that same box, so whatever their own content, they peek out above it by their lift alone.
+
+.toast-stack--backwards {
   position: relative;
-  z-index: 3;
-  pointer-events: auto;
-  animation: toast-in 160ms ease-out;
-}
+  // Room above the front toast for the two receding behind it to peek out.
+  padding-block-start: 1.75rem;
 
-// The receding toasts take the front toast's box exactly (clipping any content longer than it), then
-// each step back lifts them 0.5rem, scales them by a tenth, blurs them more and fades them.
-.toast-stack__card--depth-1,
-.toast-stack__card--depth-2 {
-  position: absolute;
-  inset-block: 1.75rem 0.75rem;
-  inset-inline: 0.75rem;
-  overflow: hidden;
-}
+  .toast-stack__card {
+    transform-origin: top center;
+    transition:
+      transform 200ms ease,
+      filter 200ms ease,
+      opacity 200ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease;
+  }
 
-.toast-stack__card--depth-1 {
-  z-index: 2;
-  transform: translateY(-0.5rem) scale(0.9);
-  filter: blur(0.125rem);
-  opacity: 0.75;
-}
+  // The front toast: in flow, sharp, and the only one that takes the pointer.
+  .toast-stack__card--depth-0 {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+    animation: toast-in 160ms ease-out;
+  }
 
-.toast-stack__card--depth-2 {
-  z-index: 1;
-  transform: translateY(-1rem) scale(0.8);
-  filter: blur(0.25rem);
-  opacity: 0.5;
+  // The receding toasts take the front toast's box exactly (clipping any content longer than it),
+  // then each step back lifts them 0.5rem, scales them by a tenth, blurs them more and fades them.
+  .toast-stack__card--depth-1,
+  .toast-stack__card--depth-2 {
+    position: absolute;
+    inset-block: 1.75rem 0.75rem;
+    inset-inline: 0.75rem;
+    overflow: hidden;
+  }
+
+  .toast-stack__card--depth-1 {
+    z-index: 2;
+    transform: translateY(-0.5rem) scale(0.9);
+    filter: blur(0.125rem);
+    opacity: 0.75;
+  }
+
+  .toast-stack__card--depth-2 {
+    z-index: 1;
+    transform: translateY(-1rem) scale(0.8);
+    filter: blur(0.25rem);
+    opacity: 0.5;
+  }
 }
 
 @keyframes toast-in {
@@ -80,10 +91,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .toast-stack__card {
-    transition: none;
-  }
-
-  .toast-stack__card--depth-0 {
-    animation: none;
+    animation: none !important;
+    transition: none !important;
   }
 }
