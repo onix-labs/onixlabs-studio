@@ -29,7 +29,10 @@ class FakeEndpoint implements HostingEndpoint {
    * Initializes the fake.
    * @param answers How each operation is answered.
    */
-  public constructor(private readonly answers: Partial<Record<HostingOp, HostingResponse>>) {}
+  public constructor(
+    private readonly answers: Partial<Record<HostingOp, HostingResponse>>,
+    private readonly protocol: string = '1.0',
+  ) {}
 
   /**
    * Starts the fake, whatever sign-in choices it is given.
@@ -39,7 +42,7 @@ class FakeEndpoint implements HostingEndpoint {
     this.running = true;
     this.starts++;
     return Promise.resolve({
-      protocol: '1.0',
+      protocol: this.protocol,
       capabilities: [
         'pullRequests',
         'issues',
@@ -49,6 +52,8 @@ class FakeEndpoint implements HostingEndpoint {
         'accounts',
         'listRepositories',
         'createRepository',
+        'setIssueState',
+        'commentOnIssue',
       ],
     });
   }
@@ -89,7 +94,10 @@ describe('HostingManager', () => {
    * Builds the manager over one GitHub-like plugin.
    * @param answers How the plugin answers.
    */
-  function build(answers: Partial<Record<HostingOp, HostingResponse>> = {}): void {
+  function build(
+    answers: Partial<Record<HostingOp, HostingResponse>> = {},
+    protocol: string = '1.0',
+  ): void {
     const descriptor: HostingDescriptor = {
       id: 'onixlabs.github',
       displayName: 'GitHub',
@@ -104,6 +112,8 @@ describe('HostingManager', () => {
         'accounts',
         'listRepositories',
         'createRepository',
+        'setIssueState',
+        'commentOnIssue',
       ],
       authModes: ['cli', 'studio'],
       commandLineTools: ['gh'],
@@ -112,14 +122,17 @@ describe('HostingManager', () => {
           ? { available: true, spec: { command: 'github', args: [] } }
           : { available: false, reason: 'GitHub is not installed.' },
     };
-    endpoint = new FakeEndpoint({
-      describeRepository: {
-        id: 1,
-        ok: true,
-        result: { capabilities: ['pullRequests', 'ciRuns'] },
+    endpoint = new FakeEndpoint(
+      {
+        describeRepository: {
+          id: 1,
+          ok: true,
+          result: { capabilities: ['pullRequests', 'ciRuns'] },
+        },
+        ...answers,
       },
-      ...answers,
-    });
+      protocol,
+    );
     const store: HostingCredentialStore = new HostingCredentialStore({
       load: (): string | null => blob,
       save: (plaintext: string | null): void => {
@@ -178,11 +191,139 @@ describe('HostingManager', () => {
         name: 'studio',
       });
 
-      expect(described).toEqual({ provider: 'GitHub', capabilities: ['pullRequests', 'ciRuns'] });
+      expect(described).toEqual({
+        provider: 'GitHub',
+        capabilities: ['pullRequests', 'ciRuns'],
+        closeReasons: [],
+      });
     });
 
     it('refusesAReferenceThatCouldRedirectThePath', async () => {
       expect(await manager.describe({ host: 'github.com', owner: 'a/../b', name: 'c' })).toBeNull();
+    });
+  });
+
+  describe('issue writes (#890)', () => {
+    const REPOSITORY: unknown = { host: 'github.com', owner: 'onix-labs', name: 'studio' };
+
+    beforeEach(() => {
+      build({
+        describeRepository: {
+          id: 1,
+          ok: true,
+          result: { capabilities: ['issues', 'setIssueState', 'commentOnIssue'] },
+        },
+      });
+    });
+
+    /**
+     * Gets what the plugin was asked to do, leaving out the handshake and the repository check.
+     * @returns Returns the writes sent.
+     */
+    function writes(): { op: HostingOp; params: unknown }[] {
+      return endpoint.sent.filter(
+        (entry: { op: HostingOp }): boolean =>
+          entry.op === 'setIssueState' || entry.op === 'commentOnIssue',
+      );
+    }
+
+    it('setIssueState_closesWithTheReasonGiven', async () => {
+      await manager.setIssueState(REPOSITORY, 12, 'closed', 'notPlanned');
+
+      expect(writes()).toEqual([
+        {
+          op: 'setIssueState',
+          params: {
+            repository: { host: 'github.com', owner: 'onix-labs', name: 'studio' },
+            issue: 12,
+            state: 'closed',
+            reason: 'notPlanned',
+          },
+        },
+      ]);
+    });
+
+    it('setIssueState_reopening_sendsNoReason', async () => {
+      await manager.setIssueState(REPOSITORY, 12, 'open', 'completed');
+
+      expect(writes()[0].params).not.toHaveProperty('reason');
+    });
+
+    it('setIssueState_refusesAStateItDoesNotKnow_withoutAskingThePlugin', async () => {
+      const result: { ok: boolean } = await manager.setIssueState(REPOSITORY, 12, 'deleted', null);
+
+      expect(result.ok).toBe(false);
+      expect(writes()).toEqual([]);
+    });
+
+    it('setIssueState_dropsAReasonItDoesNotKnow', async () => {
+      await manager.setIssueState(REPOSITORY, 12, 'closed', 'because');
+
+      expect(writes()[0].params).not.toHaveProperty('reason');
+    });
+
+    it('setIssueState_asADuplicate_namesTheOriginal_toAPluginThatCanCloseAsOne', async () => {
+      build(
+        {
+          describeRepository: {
+            id: 1,
+            ok: true,
+            result: { capabilities: ['issues', 'setIssueState'] },
+          },
+        },
+        '1.3',
+      );
+
+      await manager.setIssueState(REPOSITORY, 12, 'closed', 'duplicate', 7);
+
+      expect(writes()[0].params).toMatchObject({ reason: 'duplicate', duplicateOf: 7 });
+    });
+
+    it('setIssueState_asADuplicate_refusesAPluginTooOldToCloseAsOne', async () => {
+      // The fixture's plugin speaks 1.0, which knows no duplicate reason.
+      const result: { ok: boolean } = await manager.setIssueState(
+        REPOSITORY,
+        12,
+        'closed',
+        'duplicate',
+        7,
+      );
+
+      expect(result.ok).toBe(false);
+      expect(writes()).toEqual([]);
+    });
+
+    it('setIssueState_asADuplicate_refusesNoOriginal_orItself', async () => {
+      build({}, '1.3');
+
+      for (const original of [undefined, 0, 'seven', 12]) {
+        expect(
+          (await manager.setIssueState(REPOSITORY, 12, 'closed', 'duplicate', original)).ok,
+        ).toBe(false);
+      }
+      expect(writes()).toEqual([]);
+    });
+
+    it('commentOnIssue_postsTheBody', async () => {
+      await manager.commentOnIssue(REPOSITORY, 12, 'Fixed in **#931**.');
+
+      expect(writes()).toEqual([
+        {
+          op: 'commentOnIssue',
+          params: {
+            repository: { host: 'github.com', owner: 'onix-labs', name: 'studio' },
+            issue: 12,
+            body: 'Fixed in **#931**.',
+          },
+        },
+      ]);
+    });
+
+    it('commentOnIssue_refusesAnEmptyComment_withoutAskingThePlugin', async () => {
+      for (const body of ['', '   ', 42, null]) {
+        expect((await manager.commentOnIssue(REPOSITORY, 12, body)).ok).toBe(false);
+      }
+      expect(writes()).toEqual([]);
     });
   });
 

@@ -7,6 +7,7 @@ import {
   HOSTING_WRITE_OPS,
   HostedRepositoryRef,
   HostingOp,
+  hostingProtocolAtLeast,
   isCompatibleHostingProtocol,
   isHostingAuthMode,
   isHostingCapability,
@@ -89,5 +90,14 @@ describe('the guards', () => {
     expect(isHostingCapability('teleport')).toBe(false);
     expect(isHostingAuthMode('cli')).toBe(true);
     expect(isHostingAuthMode('oauth')).toBe(false);
+  });
+
+  it('hostingProtocolAtLeast_comparesEachPartAsANumber', () => {
+    expect(hostingProtocolAtLeast('1.3', '1.3')).toBe(true);
+    expect(hostingProtocolAtLeast('1.10', '1.3')).toBe(true);
+    expect(hostingProtocolAtLeast('1.3.1', '1.3')).toBe(true);
+    expect(hostingProtocolAtLeast('1.2', '1.3')).toBe(false);
+    expect(hostingProtocolAtLeast('1', '1.3')).toBe(false);
+    expect(hostingProtocolAtLeast('2.0', '1.3')).toBe(true);
   });
 });

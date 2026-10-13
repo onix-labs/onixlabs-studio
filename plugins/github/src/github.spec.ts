@@ -1117,6 +1117,61 @@ describe('writing', () => {
     expect(closed).toMatchObject({ ok: true, result: { state: 'closed' } });
   });
 
+  it('setIssueState_asADuplicate_readsTheOriginalsId_andNamesItToGitHub', async () => {
+    // GitHub takes the original by its internal id, not its number.
+    const { github, http } = setup([
+      { match: '/issues/7', status: 200, body: { ...(ISSUE_BODY as object), id: 4242, number: 7 } },
+      { match: '/issues/12', status: 200, body: { ...(ISSUE_BODY as object), state: 'closed' } },
+    ]);
+
+    const closed: Outcome<HostedIssue> = await github.setIssueState(
+      REPOSITORY,
+      12,
+      'closed',
+      'duplicate',
+      7,
+    );
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET', 'PATCH']);
+    expect(http.requests[0].url).toContain('/issues/7');
+    expect(JSON.parse(http.requests[1].body ?? '{}')).toEqual({
+      state: 'closed',
+      state_reason: 'duplicate',
+      duplicate_issue_id: 4242,
+    });
+    expect(closed).toMatchObject({ ok: true, result: { state: 'closed' } });
+  });
+
+  it('setIssueState_asADuplicateOfAMissingIssue_changesNothing_andSaysWhichIssue', async () => {
+    const { github, http } = setup([{ match: '/issues/99', status: 404, body: {} }]);
+
+    const closed: Outcome<HostedIssue> = await github.setIssueState(
+      REPOSITORY,
+      12,
+      'closed',
+      'duplicate',
+      99,
+    );
+
+    expect(http.requests.map((request) => request.method)).toEqual(['GET']);
+    expect(closed).toMatchObject({ ok: false, code: 'not-found' });
+    expect(closed.ok ? '' : closed.error).toContain('#99');
+  });
+
+  it('setIssueState_asADuplicateOfNothing_isRefused_withoutAskingGitHub', async () => {
+    const { github, http } = setup([]);
+
+    const closed: Outcome<HostedIssue> = await github.setIssueState(
+      REPOSITORY,
+      12,
+      'closed',
+      'duplicate',
+    );
+
+    expect(http.requests).toEqual([]);
+    expect(closed).toMatchObject({ ok: false, code: 'refused' });
+  });
+
   it('createPullRequest_postsTheBranches_andAnswersWithThePullRequest', async () => {
     const { github, http } = setup([
       {

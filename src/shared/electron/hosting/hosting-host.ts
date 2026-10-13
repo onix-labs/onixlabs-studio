@@ -3,6 +3,7 @@ import {
   HOSTING_READ_OPS,
   HOSTING_REPOSITORY_OPS,
   HOSTING_WRITE_OPS,
+  HostedCloseReason,
   HostedRepositoryRef,
   HostingAgentTool,
   HostingAuthMode,
@@ -11,6 +12,7 @@ import {
   HostingOp,
   HostingParams,
   HostingResponse,
+  hostingProtocolAtLeast,
   parseRemoteUrl,
 } from '@shared/api/hosting-protocol';
 import { logger } from '../logger';
@@ -118,6 +120,12 @@ export type HostedRepositoryDescription =
        * Gets the capabilities the plugin has *and* the repository allows — what the UI offers.
        */
       readonly capabilities: readonly HostingCapability[];
+
+      /**
+       * Gets the reasons an issue may be closed for: none without `setIssueState`, and `duplicate`
+       * only from a plugin speaking protocol 1.3 or later.
+       */
+      readonly closeReasons: readonly HostedCloseReason[];
     }
   | { readonly ok: false; readonly error: string };
 
@@ -280,6 +288,7 @@ export class HostingHost {
           pluginId: descriptor.id,
           displayName: descriptor.displayName,
           capabilities: allowed,
+          closeReasons: closeReasonsFor(plugin.description.protocol, allowed),
         };
   }
 
@@ -706,6 +715,25 @@ export class HostingHost {
     this.running.set(descriptor.id, plugin);
     return plugin;
   }
+}
+
+/**
+ * Lists the reasons an issue may be closed for, given what a repository allows and the protocol its
+ * plugin speaks.
+ * @param protocol The protocol version the plugin announced.
+ * @param allowed What the repository allows.
+ * @returns Returns the reasons, or none when issues cannot be closed.
+ */
+export function closeReasonsFor(
+  protocol: string,
+  allowed: readonly HostingCapability[],
+): readonly HostedCloseReason[] {
+  if (!allowed.includes('setIssueState')) {
+    return [];
+  }
+  return hostingProtocolAtLeast(protocol, '1.3')
+    ? ['completed', 'notPlanned', 'duplicate']
+    : ['completed', 'notPlanned'];
 }
 
 /**

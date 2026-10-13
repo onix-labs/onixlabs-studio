@@ -229,10 +229,15 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
     case 'setIssueState': {
       const state: unknown = field(params, 'state');
       const reason: unknown = field(params, 'reason');
+      const duplicateOf: unknown = field(params, 'duplicateOf');
       return typeof issue === 'number' &&
         (state === 'open' || state === 'closed') &&
-        (reason === undefined || reason === 'completed' || reason === 'notPlanned')
-        ? github.setIssueState(repository, issue, state, reason)
+        (reason === undefined ||
+          reason === 'completed' ||
+          reason === 'notPlanned' ||
+          reason === 'duplicate') &&
+        (duplicateOf === undefined || typeof duplicateOf === 'number')
+        ? github.setIssueState(repository, issue, state, reason, duplicateOf)
         : malformed(op);
     }
     case 'createPullRequest': {

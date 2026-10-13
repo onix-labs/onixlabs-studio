@@ -41,6 +41,7 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
@@ -246,6 +247,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     IssueStore,
     IssueOpener,
     IssueAgent,
+    IssueActions,
     DockTabContext,
     DockState,
     DockGeometry,

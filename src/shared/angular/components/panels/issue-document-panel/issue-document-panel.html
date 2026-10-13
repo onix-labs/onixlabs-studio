@@ -1,8 +1,19 @@
 @if (issue(); as issue) {
   <!-- The issue's state is what it IS, so it is a chip on the status strip (#882); the strip is what
-       can be done with it: hand it to an agent, or the menu every document strip ends with. -->
+       can be done with it: close or reopen it (#890), hand it to an agent, or the menu every document
+       strip ends with. -->
   <app-panel-toolbar>
     <span class="panel-toolbar__spacer"></span>
+    @if (canSetState()) {
+      <app-button
+        variant="none"
+        [icon]="issue.state === 'open' ? Icon.ISSUE_CLOSE : Icon.ISSUE_REOPEN"
+        [label]="issue.state === 'open' ? 'Close Issue' : 'Reopen Issue'"
+        [loading]="busy()"
+        [disabled]="busy()"
+        (click)="toggleState()"
+      />
+    }
     <app-button
       variant="none"
       [icon]="Icon.AGENT"
@@ -22,6 +33,7 @@
   <app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
 
   <app-issue-agent-confirm />
+  <app-issue-state-confirm />
 
   <div class="issue__scroll">
     <header class="issue__header">
@@ -94,6 +106,28 @@
             <app-markdown-renderer [text]="comment.body" />
           </article>
         }
+      }
+
+      <!-- Where the thread ends, as on the host: the next turn is written under the last one. -->
+      @if (canComment()) {
+        <div class="issue__compose">
+          <app-markdown-field
+            [value]="draft()"
+            [minRows]="4"
+            [disabled]="busy()"
+            ariaLabel="Comment"
+            (valueChange)="draft.set($event)"
+          >
+            <app-button
+              markdownFieldAction
+              variant="solid"
+              label="Comment"
+              [loading]="busy()"
+              [disabled]="busy() || !hasDraft()"
+              (click)="postComment()"
+            />
+          </app-markdown-field>
+        </div>
       }
     </section>
   </div>

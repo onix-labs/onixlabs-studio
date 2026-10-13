@@ -1,10 +1,13 @@
 <input
   type="number"
   class="number-field"
-  [value]="value()"
+  [value]="zeroIsEmpty() && value() === 0 ? '' : value()"
+  [attr.placeholder]="placeholder()"
+  [attr.aria-label]="ariaLabel()"
   [min]="min()"
   [max]="max()"
   [step]="step()"
   [disabled]="disabled()"
+  (input)="onInput($event)"
   (change)="onChange($event)"
 />

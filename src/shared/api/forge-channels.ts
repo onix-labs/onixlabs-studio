@@ -8,6 +8,7 @@
 
 import { HostedAccount, HostedRepository, HostingAuthMode } from './hosting-protocol';
 import {
+  ForgeCloseReason,
   ForgeHostAccount,
   ForgeRepositoryCapabilities,
   ForgeIssue,
@@ -72,6 +73,16 @@ export enum ForgeChannel {
    * Lists one issue's comments (invoke).
    */
   IssueComments = 'forge:issue-comments',
+
+  /**
+   * Closes or reopens an issue the user chose (invoke).
+   */
+  SetIssueState = 'forge:set-issue-state',
+
+  /**
+   * Comments on an issue as the user (invoke).
+   */
+  CommentOnIssue = 'forge:comment-on-issue',
 
   /**
    * Lists a repository's recent CI/CD workflow runs (invoke).
@@ -182,6 +193,36 @@ export interface ForgeClient {
     repository: ForgeRepositoryRef,
     issueNumber: number,
   ): Promise<ForgeResult<readonly ForgeIssueComment[]>>;
+
+  /**
+   * Closes or reopens an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param state The state to put it in.
+   * @param reason Why it is being closed, where the host records one; ignored when reopening.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
+   * @returns Returns the issue as it now stands, or the reason it could not be changed.
+   */
+  setIssueState(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: ForgeCloseReason,
+    duplicateOf?: number,
+  ): Promise<ForgeResult<ForgeIssue>>;
+
+  /**
+   * Comments on an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param body The comment, as Markdown.
+   * @returns Returns the posted comment, or the reason it could not be posted.
+   */
+  commentOnIssue(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<ForgeResult<ForgeIssueComment>>;
 
   /**
    * Lists a repository's recent CI/CD workflow runs.

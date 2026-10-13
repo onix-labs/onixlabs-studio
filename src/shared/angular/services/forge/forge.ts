@@ -4,6 +4,7 @@ import { Bridge } from '@shared/api/bridge';
 import { ForgeChannel, ForgeClient } from '@shared/api/forge-channels';
 import { HostedAccount, HostedRepository, HostingAuthMode } from '@shared/api/hosting-protocol';
 import {
+  ForgeCloseReason,
   ForgeHostAccount,
   ForgeIssue,
   ForgeIssueComment,
@@ -182,6 +183,58 @@ export class Forge implements ForgeClient {
         ForgeChannel.IssueComments,
         repository,
         issueNumber,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Closes or reopens an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param state The state to put it in.
+   * @param reason Why it is being closed, where the host records one; ignored when reopening.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
+   * @returns Returns the issue as it now stands, or the reason it could not be changed.
+   */
+  public setIssueState(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: ForgeCloseReason,
+    duplicateOf?: number,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    this.log.info('forge', `Setting issue #${issueNumber} ${state}`, reason ?? '');
+    return (
+      this.bridge?.invoke<ForgeResult<ForgeIssue>>(
+        ForgeChannel.SetIssueState,
+        repository,
+        issueNumber,
+        state,
+        reason,
+        duplicateOf,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Comments on an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param body The comment, as Markdown.
+   * @returns Returns the posted comment, or the reason it could not be posted.
+   */
+  public commentOnIssue(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<ForgeResult<ForgeIssueComment>> {
+    this.log.info('forge', `Commenting on issue #${issueNumber}`);
+    return (
+      this.bridge?.invoke<ForgeResult<ForgeIssueComment>>(
+        ForgeChannel.CommentOnIssue,
+        repository,
+        issueNumber,
+        body,
       ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }

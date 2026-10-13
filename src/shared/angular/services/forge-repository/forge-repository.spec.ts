@@ -97,6 +97,7 @@ class FakeForge {
   public capabilities: ForgeRepositoryCapabilities | null = {
     provider: 'GitHub',
     capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
+    closeReasons: [],
   };
 
   public describe(): Promise<ForgeRepositoryCapabilities | null> {
@@ -162,6 +163,31 @@ class FakeForge {
     this.commands.push(`cancel:${runId}`);
     return Promise.resolve({ ok: true, value: undefined });
   }
+
+  public setIssueState(
+    _: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: string,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    this.commands.push(`${state}:${issueNumber}${reason === undefined ? '' : `:${reason}`}`);
+    return Promise.resolve({
+      ok: true,
+      value: {
+        number: issueNumber,
+        title: 'Something is broken',
+        author: 'matthew',
+        url: `https://github.com/onix-labs/onixlabs-studio/issues/${issueNumber}`,
+        labels: [],
+        assignees: [],
+        state,
+        body: '',
+        createdAt: '2026-08-01T10:00:00Z',
+        updatedAt: '2026-10-13T10:00:00Z',
+        commentCount: 0,
+      },
+    });
+  }
 }
 
 /**
@@ -216,7 +242,11 @@ describe('ForgeRepository', () => {
     });
 
     it('readsWhatTheRepositoryAllows_andSupportsEverythingUntilItKnows', async () => {
-      forge.capabilities = { provider: 'GitHub', capabilities: ['pullRequests', 'ciRuns'] };
+      forge.capabilities = {
+        provider: 'GitHub',
+        capabilities: ['pullRequests', 'ciRuns'],
+        closeReasons: [],
+      };
       repository.remotes.set([
         { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
       ]);
@@ -451,6 +481,27 @@ describe('ForgeRepository', () => {
       await service.cancel(run({ id: '42' }));
 
       expect(forge.commands).toEqual(['cancel:42']);
+    });
+
+    it('setIssueState_closesTheIssueAndReReadsTheList', async () => {
+      await service.loadIssues();
+      forge.issueResult = { ok: true, value: [] };
+
+      const result: ForgeResult<ForgeIssue> = await service.setIssueState(
+        12,
+        'closed',
+        'completed',
+      );
+
+      expect(forge.commands).toEqual(['closed:12:completed']);
+      expect(result.ok && result.value.state).toBe('closed');
+      // The section lists open issues, so a closed one leaves it.
+      expect(service.issues().items).toEqual([]);
+    });
+
+    it('issueWrites_failWithoutTouchingTheForge_whenNoRepositoryWasDetected', async () => {
+      expect((await service.setIssueState(12, 'closed')).ok).toBe(false);
+      expect(forge.commands).toEqual([]);
     });
 
     it('runCommands_failWithoutTouchingTheForge_whenNoRepositoryWasDetected', async () => {

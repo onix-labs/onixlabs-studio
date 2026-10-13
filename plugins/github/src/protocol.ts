@@ -19,7 +19,9 @@
 // homepage, last push, fork, archived, starred — and the
 // `listStarredRepositories` request, so a repository browser can offer views on them. Both are
 // additions, so a 1.1 plugin is still understood.
-export const HOSTING_PROTOCOL_VERSION: string = '1.2';
+// 1.3 (#890) adds the `duplicate` close reason, with `duplicateOf` naming the original issue. Studio
+// only asks a 1.3 plugin to close as a duplicate, so a 1.2 plugin is still understood.
+export const HOSTING_PROTOCOL_VERSION: string = '1.3';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -443,9 +445,10 @@ export interface HostedIssue {
 }
 
 /**
- * Says why an issue was closed: its work is done, or it will not be done.
+ * Says why an issue was closed: its work is done, it will not be done, or it repeats another issue
+ * (since protocol 1.3).
  */
-export type HostedCloseReason = 'completed' | 'notPlanned';
+export type HostedCloseReason = 'completed' | 'notPlanned' | 'duplicate';
 
 /**
  * Describes a comment on an issue.
@@ -687,12 +690,14 @@ export interface HostingOperations {
   };
 
   /**
-   * Closes or reopens an issue. `reason` says why one was closed, where the host records it.
+   * Closes or reopens an issue. `reason` says why one was closed, where the host records it; a
+   * `duplicate` names the original issue's number in `duplicateOf`.
    */
   readonly setIssueState: {
     readonly params: IssueParams & {
       readonly state: 'open' | 'closed';
       readonly reason?: HostedCloseReason;
+      readonly duplicateOf?: number;
     };
     readonly result: HostedIssue;
   };

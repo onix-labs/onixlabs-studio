@@ -7,7 +7,9 @@ import {
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
@@ -26,7 +28,11 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
+import { IssueStateConfirm } from '@shared/angular/components/panels/issue-state-confirm/issue-state-confirm';
+import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
+import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore, OpenIssue } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
@@ -45,7 +51,17 @@ import { Chip } from '@shared/angular/components/chip/chip';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [Chip, Button, CdkMenuTrigger, IssueAgentConfirm, MarkdownRenderer, Menu, PanelToolbar],
+  imports: [
+    Chip,
+    Button,
+    CdkMenuTrigger,
+    IssueAgentConfirm,
+    IssueStateConfirm,
+    MarkdownField,
+    MarkdownRenderer,
+    Menu,
+    PanelToolbar,
+  ],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -70,6 +86,50 @@ export class IssueDocumentPanel {
    * Holds the seam that starts a conversation about this issue, shared with the rail's row menu.
    */
   private readonly issueAgent: IssueAgent = inject(IssueAgent);
+
+  /**
+   * Holds the seam that closes, reopens and comments on the issue (#890).
+   */
+  private readonly issueActions: IssueActions = inject(IssueActions);
+
+  /**
+   * Holds the forge-backed repository, which says what its host allows.
+   */
+  private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
+
+  /**
+   * Holds the comment being written.
+   */
+  protected readonly draft: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets whether the host lets the issue be closed and reopened from here.
+   */
+  protected readonly canSetState: Signal<boolean> = computed((): boolean =>
+    this.forgeRepository.supports('setIssueState'),
+  );
+
+  /**
+   * Gets whether the host lets the issue be commented on from here.
+   */
+  protected readonly canComment: Signal<boolean> = computed((): boolean =>
+    this.forgeRepository.supports('commentOnIssue'),
+  );
+
+  /**
+   * Gets whether a request about this issue is in flight, so its controls wait for the answer.
+   */
+  protected readonly busy: Signal<boolean> = computed((): boolean => {
+    const issue: ForgeIssue | null = this.issue();
+    return issue !== null && this.issueActions.busy().has(issue.number);
+  });
+
+  /**
+   * Gets whether the comment being written says anything.
+   */
+  protected readonly hasDraft: Signal<boolean> = computed(
+    (): boolean => this.draft().trim().length > 0,
+  );
 
   /**
    * Gets the icon set, exposed for the template.
@@ -190,6 +250,31 @@ export class IssueDocumentPanel {
       void this.shell.openExternal(url);
     } else if (id === MENU_COPY_LINK) {
       void navigator.clipboard.writeText(url).catch((): void => undefined);
+    }
+  }
+
+  /**
+   * Asks to close the issue, or to reopen it when it is closed.
+   */
+  protected toggleState(): void {
+    const issue: ForgeIssue | null = this.issue();
+    if (issue !== null) {
+      this.issueActions.requestToggle(issue);
+    }
+  }
+
+  /**
+   * Posts the comment being written, clearing it once the host has it.
+   * @returns Returns a promise that resolves once the comment is posted or has failed.
+   */
+  protected async postComment(): Promise<void> {
+    const issue: ForgeIssue | null = this.issue();
+    const body: string = this.draft().trim();
+    if (issue === null || body.length === 0) {
+      return;
+    }
+    if (await this.issueActions.comment(issue, body)) {
+      this.draft.set('');
     }
   }
 

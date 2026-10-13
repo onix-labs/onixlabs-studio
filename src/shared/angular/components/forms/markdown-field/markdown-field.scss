@@ -51,10 +51,15 @@
   }
 }
 
-// The Edit button sits at the field's trailing edge, beneath the frame.
+// The Edit button sits at the field's trailing edge, beneath the frame, with any actions the host
+// adds beside it: one row, every button as wide as the widest.
 .markdown-field__actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.5rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
 }
 
 // The editing window: a heading over the editor frame and a trailing action row. It fills the modal

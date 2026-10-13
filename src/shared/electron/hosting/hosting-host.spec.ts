@@ -11,7 +11,12 @@ import {
 } from '@shared/api/hosting-protocol';
 import { HostingDescriptor, HostingResolution, HostingSpec } from './hosting-descriptor';
 import { HostingCredentialSource, HostingEndpoint } from './hosting-endpoint';
-import { HostedRepositoryDescription, HostingHost, HostingPluginDescription } from './hosting-host';
+import {
+  closeReasonsFor,
+  HostedRepositoryDescription,
+  HostingHost,
+  HostingPluginDescription,
+} from './hosting-host';
 import { HostingCaller } from './hosting-write-gate';
 
 /**
@@ -647,5 +652,21 @@ describe('HostingHost', () => {
       expect(replaced?.running).toBe(false);
       expect(endpoints.get('onixlabs.github')?.running).toBe(true);
     });
+  });
+});
+
+describe('closeReasonsFor', () => {
+  it('offersNothing_whenIssuesCannotBeClosed', () => {
+    expect(closeReasonsFor('1.3', ['issues'])).toEqual([]);
+  });
+
+  it('offersDuplicate_onlyFromAPluginSpeaking1_3OrLater', () => {
+    // A 1.2 plugin refuses a reason it does not know, so it is never asked to close as a duplicate.
+    expect(closeReasonsFor('1.2', ['setIssueState'])).toEqual(['completed', 'notPlanned']);
+    expect(closeReasonsFor('1.3', ['setIssueState'])).toEqual([
+      'completed',
+      'notPlanned',
+      'duplicate',
+    ]);
   });
 });
