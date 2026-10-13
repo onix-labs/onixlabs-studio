@@ -52,6 +52,12 @@ import { AgentSessionHandle } from '@shared/angular/services/agent-sessions/agen
 const SAVE_DEBOUNCE_MS: number = 700;
 
 /**
+ * The longest (ms) a change waits to be saved while the transcript keeps changing, so a run that
+ * never pauses is still saved every few seconds rather than only when it stops.
+ */
+const SAVE_MAX_WAIT_MS: number = 5000;
+
+/**
  * The maximum length of a derived conversation title before it is truncated.
  */
 const TITLE_MAX_LENGTH: number = 60;
@@ -322,6 +328,11 @@ export class AgentConversation implements AgentSessionHandle {
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Holds when (epoch ms) the oldest change not yet saved was made, or null when there is none.
+   */
+  private unsavedSince: number | null = null;
+
+  /**
    * Initializes a new instance of the {@link AgentConversation} class, wiring the autosave of the
    * transcript, the reload of the history summaries on context/visibility change, and the flush of a
    * pending save when the host is torn down.
@@ -373,11 +384,12 @@ export class AgentConversation implements AgentSessionHandle {
       });
     });
 
+    const unregister: () => void = this.store.registerPendingSave((): Promise<void> =>
+      this.savePending(),
+    );
     this.destroyRef.onDestroy((): void => {
-      if (this.saveTimer !== null) {
-        this.cancelScheduledSave();
-        void this.persist();
-      }
+      unregister();
+      void this.savePending();
     });
   }
 
@@ -736,14 +748,27 @@ export class AgentConversation implements AgentSessionHandle {
 
   /**
    * Schedules a debounced save of the current transcript, coalescing a streaming run's rapid updates
-   * into a single write.
+   * into a single write. The save waits for a pause, but never longer than {@link SAVE_MAX_WAIT_MS}
+   * after the oldest unsaved change.
    */
   private scheduleSave(): void {
+    const since: number = this.unsavedSince ?? Date.now();
     this.cancelScheduledSave();
-    this.saveTimer = setTimeout((): void => {
-      this.saveTimer = null;
-      void this.persist();
-    }, SAVE_DEBOUNCE_MS);
+    this.unsavedSince = since;
+    const wait: number = Math.min(SAVE_DEBOUNCE_MS, since + SAVE_MAX_WAIT_MS - Date.now());
+    this.saveTimer = setTimeout((): void => void this.savePending(), Math.max(0, wait));
+  }
+
+  /**
+   * Saves the scheduled change now, if one is waiting.
+   * @returns Returns a promise that resolves once the save has been handed to the store.
+   */
+  private async savePending(): Promise<void> {
+    if (this.saveTimer === null) {
+      return;
+    }
+    this.cancelScheduledSave();
+    await this.persist();
   }
 
   /**
@@ -754,11 +779,12 @@ export class AgentConversation implements AgentSessionHandle {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    this.unsavedSince = null;
   }
 
   /**
    * Persists the current transcript under its context, minting a conversation id and creation time on
-   * first save, then refreshes the history summaries. No-ops on an empty transcript.
+   * first save, then puts its summary at the top of the history. No-ops on an empty transcript.
    */
   private async persist(): Promise<void> {
     const items: readonly AgentItem[] = this.agent.items();
@@ -797,8 +823,18 @@ export class AgentConversation implements AgentSessionHandle {
         ? {}
         : { queue: this.agent.queued().map((entry: AgentQueuedMessage): string => entry.text) }),
     };
-    await this.store.save(record);
-    await this.reloadSummaries();
+    const summary: AgentConversationSummary | null = await this.store.save(record);
+    if (summary !== null) {
+      // Just saved, so newest: it goes first, without asking the store for the whole list again.
+      this.summariesState.update(
+        (summaries: readonly AgentConversationSummary[]): readonly AgentConversationSummary[] => [
+          summary,
+          ...summaries.filter(
+            (existing: AgentConversationSummary): boolean => existing.id !== summary.id,
+          ),
+        ],
+      );
+    }
   }
 
   /**

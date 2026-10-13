@@ -1415,6 +1415,10 @@ class Program {
     }
     this.confirming = true;
     const proceed: boolean = await this.requestRendererClose();
+    if (proceed) {
+      // The renderer has saved its conversations; make sure they reach the disk before it goes.
+      await this.agentConversationStore.flush();
+    }
     this.confirming = false;
     if (proceed) {
       this.quitConfirmed = true;

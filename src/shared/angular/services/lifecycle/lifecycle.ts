@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
+import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
@@ -9,7 +10,8 @@ import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsav
 /**
  * Answers the main process's request to close the window. When the window is closing, it walks the
  * documents with unsaved changes and prompts to save, discard, or cancel each one (reusing the native
- * confirm-save dialog), then tells the main process whether to proceed. Cancelling any prompt — or a
+ * confirm-save dialog), saves any agent conversation still holding back a change, then tells the main
+ * process whether to proceed. Cancelling any prompt — or a
  * cancelled save-as — keeps the window open. Outside Electron the bridge is absent and the service is
  * inert.
  */
@@ -32,6 +34,11 @@ export class Lifecycle {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
+   * Holds the conversation store client, whose held-back saves are made before the window closes.
+   */
+  private readonly conversations: AgentConversations = inject(AgentConversations);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -52,6 +59,9 @@ export class Lifecycle {
   private async onRequestClose(): Promise<void> {
     this.log.info('Lifecycle', 'Window close requested');
     const proceed: boolean = await this.confirmUnsavedChanges();
+    if (proceed) {
+      await this.conversations.savePending();
+    }
     this.log.info('Lifecycle', `Window close ${proceed ? 'confirmed' : 'cancelled'}`);
     this.bridge?.send(AppChannel.ConfirmClose, proceed);
   }
