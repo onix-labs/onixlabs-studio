@@ -24,9 +24,9 @@
   min-block-size: 0;
   padding: 1.5rem;
   overflow: auto;
-  // The one measure every agent entry is drawn to — a reply, a thought, a tool chip, a prompt card —
-  // so the transcript reads as a column rather than a ragged edge of whatever each entry happened to
-  // hold. Inherited by the prompt cards (see agent-card.scss), which are their own components.
+  // The widest any agent entry is drawn — a reply, a thought, a tool chip, a prompt card. Each entry
+  // fits its own content below it. Inherited by the prompt cards (see agent-card.scss), which are
+  // their own components.
   --agent-entry-max-size: 48rem;
   // Browser scroll anchoring stays ON. It is the one thing that holds the reader's place while a row
   // above the viewport settles from its `content-visibility` estimate to its real height — which is
@@ -313,14 +313,32 @@ $agent-row-spacing: 0.85rem;
   }
 }
 
-// The content column. Every entry fills it, however short its content: a one-line reply, a "Reading a
-// file" chip and a long thought share one width, so the transcript has one edge rather than as many
-// as it has entries.
+// The content column. Each entry fits its own content, up to the transcript's entry width: a one-line
+// reply or a "Reading a file" chip stays as short as what it says. A collapsible entry fits its widest
+// part, so closed it is just its header, and open it grows to whatever it revealed — a tool's detail,
+// a sub-agent's steps — with the header ruled across that width.
 .agent__row-content {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 0.4rem;
   min-inline-size: 0;
+
+  // Never wider than the column, so long content wraps inside the entry rather than overflowing it.
+  > * {
+    max-inline-size: 100%;
+  }
+
+  // ⚠️ The prompt cards keep the full entry width. They lay their own controls out by their own
+  // width (`container-type: inline-size`), and an element measured that way has no content width to
+  // fit: shrunk to fit, a permission card collapsed to a sliver and its command wrapped one letter
+  // per line.
+  > app-agent-permission-card,
+  > app-agent-question-card,
+  > app-agent-edit-decision-card,
+  > app-agent-error-card {
+    align-self: stretch;
+  }
 }
 
 // A collapsible entry — a tool call, a sub-agent, a notice — is one container: the summary is its
@@ -360,7 +378,7 @@ $agent-row-spacing: 0.85rem;
 }
 
 .agent__action-caret {
-  // At the chip's trailing edge, now the chip runs the entry's full width.
+  // At the header's trailing edge: right after the title when closed, at the far edge when open.
   margin-inline-start: auto;
   font-size: 0.75rem;
   opacity: 0.6;

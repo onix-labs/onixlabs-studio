@@ -4,7 +4,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  // The transcript's one entry width (agent-chat.scss); 48rem where a card is drawn outside one.
+  // The transcript's entry width (agent-chat.scss), as an upper limit; 48rem where a card is drawn
+  // outside one.
   max-inline-size: var(--agent-entry-max-size, 48rem);
   padding: 0.8rem 1rem;
   // The same surface as the agent's replies, so a prompt reads as part of the conversation.
