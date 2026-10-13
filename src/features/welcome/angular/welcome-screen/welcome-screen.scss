@@ -168,6 +168,11 @@
   white-space: nowrap;
 }
 
+// A count of what the section has waiting (the Tools tab's plugin updates), after the label.
+.welcome__tab-chip {
+  flex: none;
+}
+
 // The active tab: the accent outline, accent text and icon, a soft accent wash INSIDE the tab that ends
 // on exactly the panel's top colour (so there is no line where the tab meets its content), and the
 // feet.

@@ -45,6 +45,9 @@
         >
           <app-icon class="welcome__tab-icon" [icon]="tab.icon" />
           <span class="welcome__tab-label">{{ tab.label }}</span>
+          @if (tab.id === 'tools' && toolsWaiting() > 0) {
+            <app-chip class="welcome__tab-chip" tone="accent">{{ toolsWaiting() }}</app-chip>
+          }
         </button>
       }
     </div>

@@ -1,5 +1,8 @@
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import type { PluginSummary } from '@shared/api/plugin-channels';
+import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -12,12 +15,17 @@ describe('WelcomeScreen', () => {
   let host: HTMLElement;
   let tabs: Tabs;
   let modal: WelcomeModal;
+  let waiting: WritableSignal<readonly PluginSummary[]>;
 
   beforeEach(async () => {
     windows = new FakeModalWindows();
+    waiting = signal<readonly PluginSummary[]>([]);
     await TestBed.configureTestingModule({
       imports: [WelcomeScreen],
-      providers: [{ provide: ModalWindows, useValue: windows }],
+      providers: [
+        { provide: ModalWindows, useValue: windows },
+        { provide: PluginUpdates, useValue: { available: waiting.asReadonly() } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(WelcomeScreen);
@@ -69,6 +77,22 @@ describe('WelcomeScreen', () => {
       'Source Control',
       'Tools & Settings',
     ]);
+  });
+
+  it('nothingWaiting_theToolsTabCarriesNoCount', () => {
+    expect(host.querySelector('.welcome__tab-chip')).toBeNull();
+  });
+
+  it('pluginUpdatesWaiting_theToolsTabCarriesTheirCount', async () => {
+    waiting.set([{ id: 'a' }, { id: 'b' }, { id: 'c' }] as unknown as readonly PluginSummary[]);
+    await fixture.whenStable();
+
+    const chips: HTMLElement[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.welcome__tab-chip'),
+    );
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent.trim()).toBe('3');
+    expect(chips[0].closest('.welcome__tab')?.textContent).toContain('Tools & Settings');
   });
 
   it('createSomething_andSourceControl_areShown', () => {

@@ -111,6 +111,18 @@
     transform 150ms ease;
 }
 
+// The tool's name, with a chip beside it when the tool has something waiting (plugin updates).
+.welcome__tool-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.welcome__tool-chip {
+  flex: none;
+}
+
 // A narrow window drops to one column.
 @container welcome-panel (max-width: 44rem) {
   .tools__grid {

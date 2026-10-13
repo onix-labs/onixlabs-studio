@@ -1,11 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   output,
   OutputEmitterRef,
+  Signal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -42,7 +46,7 @@ interface ToolCard {
  */
 @Component({
   selector: 'app-welcome-tools',
-  imports: [AppIcon, TooltipTrigger],
+  imports: [AppIcon, Chip, TooltipTrigger],
   templateUrl: './welcome-tools.html',
   styleUrl: './welcome-tools.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -62,6 +66,19 @@ export class WelcomeTools {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Gets how many installed plugins have an update waiting, shown as a chip on the Plugin Manager's
+   * card: the welcome window stands in front of the main window, where the notification appears.
+   */
+  protected readonly updateCount: Signal<number> = computed(
+    (): number => this.pluginUpdates.available().length,
+  );
+
+  /**
+   * Holds the plugin-update check.
+   */
+  private readonly pluginUpdates: PluginUpdates = inject(PluginUpdates);
 
   /**
    * Gets the tool cards, in reading order.

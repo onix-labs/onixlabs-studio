@@ -8,6 +8,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { TabType } from '@shared/angular/services/tabs/tab';
@@ -15,6 +16,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { WelcomeCreate } from '@features/welcome/angular/welcome-create/welcome-create';
@@ -71,6 +73,7 @@ interface SectionTab {
   selector: 'app-welcome-screen',
   imports: [
     AppIcon,
+    Chip,
     Modal,
     ModalContent,
     WelcomeGetStarted,
@@ -105,6 +108,19 @@ export class WelcomeScreen {
    */
   protected readonly shownSections: readonly SectionTab[] = this.sections.filter(
     (tab: SectionTab): boolean => tab.shown,
+  );
+
+  /**
+   * Holds the plugin-update check, whose count the Tools tab carries.
+   */
+  private readonly pluginUpdates: PluginUpdates = inject(PluginUpdates);
+
+  /**
+   * Gets how many things in the Tools section are waiting on the user (today, plugin updates), shown
+   * as a count chip on its tab so it is seen without opening the section.
+   */
+  protected readonly toolsWaiting: Signal<number> = computed(
+    (): number => this.pluginUpdates.available().length,
   );
 
   /**
