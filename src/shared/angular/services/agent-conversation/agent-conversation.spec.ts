@@ -84,6 +84,8 @@ describe('AgentConversation', () => {
   let saves: StoredAgentConversation[];
   let metaPatches: AgentConversationMetaPatch[];
   let attachedRefs: AgentContextRef[];
+  let pendingSaves: (() => Promise<void>)[];
+  let listAllCalls: number;
 
   /**
    * Configures the module with the given optional context resolver and returns the service.
@@ -93,11 +95,18 @@ describe('AgentConversation', () => {
   function build(resolver?: ConversationContextResolver): AgentConversation {
     const storeStub: Partial<AgentConversations> = {
       list: (): Promise<readonly AgentConversationSummary[]> => Promise.resolve([]),
-      listAll: (): Promise<readonly AgentConversationSummary[]> => Promise.resolve([]),
+      listAll: (): Promise<readonly AgentConversationSummary[]> => {
+        listAllCalls += 1;
+        return Promise.resolve([]);
+      },
       load: (): Promise<StoredAgentConversation | null> => Promise.resolve(RECORD),
       save: (record: StoredAgentConversation): Promise<AgentConversationSummary | null> => {
         saves.push(record);
-        return Promise.resolve(null);
+        return Promise.resolve(record);
+      },
+      registerPendingSave: (save: () => Promise<void>): (() => void) => {
+        pendingSaves.push(save);
+        return (): void => undefined;
       },
       updateMeta: (patch: AgentConversationMetaPatch): Promise<AgentConversationSummary | null> => {
         metaPatches.push(patch);
@@ -131,6 +140,97 @@ describe('AgentConversation', () => {
     saves = [];
     metaPatches = [];
     attachedRefs = [];
+    pendingSaves = [];
+    listAllCalls = 0;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Replaces the transcript with one more message, as a streaming run does on every delta.
+   * @param text The new message's text.
+   */
+  function stream(text: string): void {
+    items.update((current: readonly AgentItem[]): readonly AgentItem[] => [
+      ...current,
+      { id: `item-${current.length + 1}`, kind: 'assistant', text },
+    ]);
+    TestBed.tick();
+  }
+
+  it('autosave_waitsForAPause_andSavesABurstOnce', () => {
+    vi.useFakeTimers();
+    build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'hi' }]);
+    TestBed.tick();
+    stream('a');
+    vi.advanceTimersByTime(600);
+    stream('b');
+    vi.advanceTimersByTime(600);
+
+    expect(saves).toHaveLength(0);
+
+    vi.advanceTimersByTime(100);
+
+    expect(saves).toHaveLength(1);
+    expect(saves[0].items).toHaveLength(3);
+  });
+
+  it('autosave_whenTheRunNeverPauses_stillSavesEveryFewSeconds', () => {
+    vi.useFakeTimers();
+    build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'hi' }]);
+    TestBed.tick();
+    for (let tick: number = 0; tick < 30; tick += 1) {
+      stream(`delta ${tick}`);
+      vi.advanceTimersByTime(400);
+    }
+
+    // Twelve seconds of deltas 400ms apart never pause for 700ms, yet are saved at the five-second
+    // ceiling: once at five seconds, and again five seconds after the next change.
+    expect(saves).toHaveLength(2);
+  });
+
+  it('autosave_putsTheSavedSummaryFirst_withoutListingEveryConversationAgain', async () => {
+    vi.useFakeTimers();
+    const conversation: AgentConversation = build();
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    const listedAtStart: number = listAllCalls;
+    items.set([{ id: 'item-1', kind: 'user', text: 'hi' }]);
+    TestBed.tick();
+
+    await vi.advanceTimersByTimeAsync(700);
+
+    expect(
+      conversation.summaries().map((summary: AgentConversationSummary): string => summary.id),
+    ).toEqual([saves[0].id]);
+    expect(listAllCalls).toBe(listedAtStart);
+  });
+
+  it('pendingSave_whenAChangeIsWaiting_savesItNow', async () => {
+    vi.useFakeTimers();
+    build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'hi' }]);
+    TestBed.tick();
+
+    // The window is closing: the change is saved without waiting for the pause.
+    await Promise.all(pendingSaves.map((save: () => Promise<void>): Promise<void> => save()));
+
+    expect(saves).toHaveLength(1);
+    vi.advanceTimersByTime(5000);
+    expect(saves).toHaveLength(1);
+  });
+
+  it('pendingSave_whenNothingIsWaiting_savesNothing', async () => {
+    build();
+
+    await Promise.all(pendingSaves.map((save: () => Promise<void>): Promise<void> => save()));
+
+    expect(pendingSaves).toHaveLength(1);
+    expect(saves).toHaveLength(0);
   });
 
   it('context_whenNoResolverAndNoBinding_isGlobal', () => {

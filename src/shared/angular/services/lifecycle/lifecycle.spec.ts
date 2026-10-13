@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
+import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import {
   UNSAVED_WORK,
@@ -200,6 +201,38 @@ describe('Lifecycle', () => {
     requestClose();
     await flush();
 
+    expect(respondedWith).toEqual([false]);
+  });
+
+  it('requestClose_savesHeldBackConversationsBeforeAnswering', async () => {
+    const events: string[] = [];
+    create();
+    TestBed.inject(AgentConversations).registerPendingSave(async (): Promise<void> => {
+      await Promise.resolve();
+      events.push('conversation saved');
+    });
+
+    requestClose();
+    await flush();
+
+    expect(events).toEqual(['conversation saved']);
+    expect(respondedWith).toEqual([true]);
+  });
+
+  it('requestClose_whenCancelled_leavesHeldBackConversationsToTheirAutosave', async () => {
+    dirty = [{ id: 'a', name: 'a.ts' }];
+    choices.set('a.ts', 'cancel');
+    let saved: boolean = false;
+    create();
+    TestBed.inject(AgentConversations).registerPendingSave((): Promise<void> => {
+      saved = true;
+      return Promise.resolve();
+    });
+
+    requestClose();
+    await flush();
+
+    expect(saved).toBe(false);
     expect(respondedWith).toEqual([false]);
   });
 
