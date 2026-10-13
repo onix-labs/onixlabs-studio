@@ -19,7 +19,8 @@ import type {
   ImageSizing,
   LanguageOverrides,
   MutedNotifications,
-  NotificationPosition,
+  NotificationColour,
+  NotificationStacking,
   MarginSize,
   PrintMargin,
   RibbonAlignment,
@@ -65,7 +66,8 @@ export interface SettingsValues {
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
-  readonly 'notifications.position': NotificationPosition;
+  readonly 'notifications.stacking': NotificationStacking;
+  readonly 'notifications.colour': NotificationColour;
   readonly 'notifications.whenMuted': MutedNotifications;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
@@ -388,19 +390,34 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: false,
       },
       {
-        key: 'notifications.position',
-        title: 'Position',
+        key: 'notifications.stacking',
+        title: 'Stacking',
         description:
-          'Where notifications appear: the bottom-right corner, above the status strip, or over the ' +
-          'right-hand end of the ribbon.',
+          'How notifications stack: in a column growing up the screen, or receding behind the ' +
+          'newest, which alone can be read and pressed until it is dismissed.',
         control: {
           kind: 'select',
           options: [
-            { value: 'bottom-right', label: 'Bottom right' },
-            { value: 'ribbon', label: 'Over the ribbon' },
+            { value: 'upwards', label: 'Upwards' },
+            { value: 'backwards', label: 'Backwards' },
           ],
         },
-        default: 'bottom-right',
+        default: 'upwards',
+      },
+      {
+        key: 'notifications.colour',
+        title: 'Colour',
+        description:
+          "Which notifications show their severity's colour: all of them, or only the newest, with " +
+          'the rest in grey until they become the newest.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'all', label: 'All notifications' },
+            { value: 'newest', label: 'Newest only' },
+          ],
+        },
+        default: 'all',
       },
       {
         key: 'notifications.whenMuted',

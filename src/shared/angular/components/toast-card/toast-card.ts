@@ -35,6 +35,7 @@ import type {
     '[class.toast--success]': "notification().severity === 'success'",
     '[class.toast--warning]': "notification().severity === 'warning'",
     '[class.toast--error]': "notification().severity === 'error'",
+    '[class.toast--plain]': 'plain()',
     '[attr.role]': "notification().severity === 'error' ? 'alert' : 'status'",
   },
 })
@@ -43,6 +44,12 @@ export class ToastCard {
    * Gets the notification to draw.
    */
   public readonly notification: InputSignal<Notification> = input.required<Notification>();
+
+  /**
+   * Gets whether the card is drawn in the app's greys rather than its severity's colour, for a
+   * notification that is not the newest when only the newest is coloured. Its role is unchanged.
+   */
+  public readonly plain: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets the close button's accessible verb, which differs by surface ("Dismiss" in the stack,
@@ -80,6 +87,9 @@ export class ToastCard {
    * @returns Returns the tone.
    */
   protected toneFor(severity: NotificationSeverity): ButtonTone {
+    if (this.plain()) {
+      return 'neutral';
+    }
     return severity === 'error' ? 'danger' : severity;
   }
 }

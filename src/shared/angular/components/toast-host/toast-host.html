@@ -1,11 +1,19 @@
-<!-- polite: arrivals are announced without interrupting; errors additionally carry role="alert". The
-     front toast is the one in flow and sizes the stack; those behind it are laid over its box and
-     pushed back by depth, and are inert, so only the front toast can be read or pressed. -->
-<div class="toast-stack" aria-live="polite" aria-label="Notifications">
+<!-- polite: arrivals are announced without interrupting; errors additionally carry role="alert".
+     Upwards, every toast is a card in the column. Backwards, the front toast is the one in flow and
+     sizes the stack; those behind it are laid over its box, pushed back by depth, and inert, so only
+     the front toast can be read or pressed. -->
+<div
+  class="toast-stack"
+  [class.toast-stack--upwards]="stacking() === 'upwards'"
+  [class.toast-stack--backwards]="stacking() === 'backwards'"
+  aria-live="polite"
+  aria-label="Notifications"
+>
   @for (item of stack(); track item.toast.id) {
     <app-toast-card
       class="toast-stack__card toast-stack__card--depth-{{ item.depth }}"
       [notification]="item.toast"
+      [plain]="item.plain"
       [inert]="item.depth > 0"
       [attr.aria-hidden]="item.depth > 0 ? 'true' : null"
       (mouseenter)="onEnter(item.toast)"

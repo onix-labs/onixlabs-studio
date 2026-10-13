@@ -96,4 +96,15 @@ describe('ToastCard', () => {
 
     expect(acted).toEqual([push]);
   });
+
+  it('plain_greysTheCard_andItsButtons_butKeepsItsRole', () => {
+    fixture.componentRef.setInput('plain', true);
+    render(notification('error', [{ label: 'Retry', run: (): void => undefined }]));
+
+    expect(host.classList).toContain('toast--plain');
+    expect(host.getAttribute('role')).toBe('alert');
+    expect(host.querySelector('.toast__actions app-button')?.classList).toContain(
+      'button--tone-neutral',
+    );
+  });
 });

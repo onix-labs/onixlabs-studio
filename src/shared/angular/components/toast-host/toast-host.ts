@@ -14,7 +14,11 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
-import { NotificationPosition, Settings } from '@shared/angular/services/settings/settings';
+import {
+  NotificationColour,
+  NotificationStacking,
+  Settings,
+} from '@shared/angular/services/settings/settings';
 
 /**
  * The shortest time, in milliseconds, a paused toast runs for after the pointer leaves it, so a
@@ -23,7 +27,7 @@ import { NotificationPosition, Settings } from '@shared/angular/services/setting
 const MINIMUM_RESUME_MS: number = 500;
 
 /**
- * How many toasts the stack draws: the front one and up to two receding behind it. Any more wait,
+ * How many toasts the receding stack draws: the front one and up to two behind it. Any more wait,
  * out of sight, for the ones in front to go.
  */
 const SHOWN_DEPTH: number = 3;
@@ -49,7 +53,7 @@ interface ToastTimer {
 }
 
 /**
- * One toast in the stack, with how far behind the front it sits.
+ * One toast as drawn, with how far behind the front it sits and whether it is coloured.
  */
 interface StackedToast {
   /**
@@ -58,22 +62,32 @@ interface StackedToast {
   readonly toast: Notification;
 
   /**
-   * Gets its depth: 0 for the front toast, 1 and 2 for those receding behind it.
+   * Gets its depth when stacking backwards: 0 for the front toast, 1 and 2 for those behind it.
+   * Always 0 when stacking upwards, where every toast is in front.
    */
   readonly depth: number;
+
+  /**
+   * Gets whether it is drawn in grey: only the newest is coloured, and this is not the newest.
+   */
+  readonly plain: boolean;
 }
 
 /**
- * Represents the toast stack, in the content's bottom-right corner above the status strip or over the
- * ribbon's right-hand end, as the "Position" setting says.
+ * Represents the toast stack, in the content's bottom-right corner above the status strip.
  *
- * The stack recedes rather than growing up the screen: the newest toast is in front, and up to two
- * older ones sit behind it, each a little higher, smaller and blurrier. Only the front toast can be
- * read and pressed; dismissing it brings the next forward.
+ * The "Stacking" setting decides its shape. **Upwards**, toasts form a column growing up the screen,
+ * newest at the top, every one readable and pressable. **Backwards**, the newest is in front and
+ * up to two older ones sit behind it, each a little higher, smaller, blurrier and fainter; only the
+ * front toast can be read and pressed, and dismissing it brings the next forward.
  *
- * Presentation policy lives here: a transient toast counts down only while it is in front (a toast
- * pushed back keeps its remaining time until it returns), and pauses while hovered; sticky toasts
- * (errors) stay until dismissed; an action button runs its action and dismisses its toast.
+ * The "Colour" setting can grey every toast but the newest; the colour moves to the next newest as
+ * the newest goes.
+ *
+ * Presentation policy lives here: a transient toast counts down while it can be seen in full (every
+ * toast stacking upwards; only the front one stacking backwards, so a toast pushed back keeps its
+ * remaining time until it returns), and pauses while hovered; sticky toasts (errors) stay until
+ * dismissed; an action button runs its action and dismisses its toast.
  */
 @Component({
   selector: 'app-toast-host',
@@ -81,9 +95,6 @@ interface StackedToast {
   templateUrl: './toast-host.html',
   styleUrl: './toast-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '[class.toast-host--ribbon]': "position() === 'ribbon'",
-  },
 })
 export class ToastHost implements OnDestroy {
   /**
@@ -92,7 +103,7 @@ export class ToastHost implements OnDestroy {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
-   * Holds the settings store the toast duration and position are read from.
+   * Holds the settings store the toast duration, stacking and colour are read from.
    */
   private readonly settings: Settings = inject(Settings);
 
@@ -107,35 +118,51 @@ export class ToastHost implements OnDestroy {
   private readonly timers: Map<number, ToastTimer> = new Map<number, ToastTimer>();
 
   /**
-   * Holds whether the pointer is over the front toast, so a change in the stack does not restart a
+   * Holds the identifier of the toast under the pointer, so a change in the stack does not restart a
    * countdown the user is holding.
    */
-  private hovering: boolean = false;
+  private hoveredId: number | null = null;
 
   /**
-   * Gets where the stack sits.
+   * Gets how the toasts stack.
    */
-  protected readonly position: Signal<NotificationPosition> =
-    this.settings.value('notifications.position');
+  protected readonly stacking: Signal<NotificationStacking> =
+    this.settings.value('notifications.stacking');
 
   /**
-   * Gets the toasts drawn, newest first, each with its depth. Rendered back to front, so the template
-   * reverses nothing: depth alone places each card.
+   * Gets which toasts are coloured.
+   */
+  private readonly colour: Signal<NotificationColour> = this.settings.value('notifications.colour');
+
+  /**
+   * Gets the toasts drawn, newest first. Upwards: every toast, so the newest heads the column.
+   * Backwards: the newest few, each placed by its depth alone.
    */
   protected readonly stack: Signal<readonly StackedToast[]> = computed(
-    (): readonly StackedToast[] =>
-      [...this.notifications.toasts()]
-        .reverse()
-        .slice(0, SHOWN_DEPTH)
-        .map((toast: Notification, depth: number): StackedToast => ({ toast, depth })),
+    (): readonly StackedToast[] => {
+      const toasts: readonly Notification[] = this.notifications.toasts();
+      const newest: Notification | undefined = toasts.at(-1);
+      const newestOnly: boolean = this.colour() === 'newest';
+      const backwards: boolean = this.stacking() === 'backwards';
+      const newestFirst: readonly Notification[] = [...toasts].reverse();
+      const drawn: readonly Notification[] = backwards
+        ? newestFirst.slice(0, SHOWN_DEPTH)
+        : newestFirst;
+      return drawn.map((toast: Notification, index: number): StackedToast => ({
+        toast,
+        depth: backwards ? index : 0,
+        plain: newestOnly && toast !== newest,
+      }));
+    },
   );
 
   /**
-   * Keeps the countdowns in step with the stack: drops those of departed toasts, runs the front
-   * toast's, and holds every other.
+   * Keeps the countdowns in step with the stack: drops those of departed toasts, runs those that can
+   * be seen in full and are not hovered, and holds every other.
    */
   private readonly timerSync: ReturnType<typeof effect> = effect((): void => {
     const toasts: readonly Notification[] = this.notifications.toasts();
+    const upwards: boolean = this.stacking() === 'upwards';
     const live: ReadonlySet<number> = new Set<number>(
       toasts.map((toast: Notification): number => toast.id),
     );
@@ -155,9 +182,10 @@ export class ToastHost implements OnDestroy {
       if (!this.timers.has(toast.id)) {
         this.create(toast);
       }
-      if (toast === front && !this.hovering) {
+      const visible: boolean = upwards || toast === front;
+      if (visible && toast.id !== this.hoveredId) {
         this.resume(toast);
-      } else if (toast !== front) {
+      } else if (!visible) {
         this.hold(toast);
       }
     }
@@ -176,20 +204,20 @@ export class ToastHost implements OnDestroy {
   }
 
   /**
-   * Pauses the front toast's countdown while the pointer is over it.
+   * Pauses a toast's countdown while the pointer is over it.
    * @param toast The hovered toast.
    */
   protected onEnter(toast: Notification): void {
-    this.hovering = true;
+    this.hoveredId = toast.id;
     this.hold(toast);
   }
 
   /**
-   * Resumes the front toast's countdown when the pointer leaves it.
+   * Resumes a toast's countdown when the pointer leaves it.
    * @param toast The toast the pointer left.
    */
   protected onLeave(toast: Notification): void {
-    this.hovering = false;
+    this.hoveredId = null;
     this.resume(toast);
   }
 
@@ -209,7 +237,9 @@ export class ToastHost implements OnDestroy {
    * @param toast The toast.
    */
   protected dismiss(toast: Notification): void {
-    this.hovering = false;
+    if (this.hoveredId === toast.id) {
+      this.hoveredId = null;
+    }
     this.notifications.dismiss(toast.id);
   }
 

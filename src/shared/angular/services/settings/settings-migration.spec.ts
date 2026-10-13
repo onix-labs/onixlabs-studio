@@ -184,4 +184,10 @@ describe('restoreOverrides', () => {
       'appearance.ribbonAlignment': 'center',
     });
   });
+
+  it('retiredNotificationPosition_isDropped', () => {
+    expect(restoreOverrides({ 'notifications.position': 'ribbon' })).not.toHaveProperty(
+      'notifications.position',
+    );
+  });
 });
