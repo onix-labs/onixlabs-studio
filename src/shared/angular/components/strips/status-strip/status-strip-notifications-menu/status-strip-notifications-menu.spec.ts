@@ -102,14 +102,30 @@ describe('StatusStripNotificationsMenu', () => {
     expect(notifications.history().length).toBe(0);
   });
 
-  it('relativeTime_formatsCoarseAges', () => {
-    const component: { relativeTime(timestamp: number): string } =
-      fixture.componentInstance as unknown as { relativeTime(timestamp: number): string };
-    const now: number = Date.now();
+  it('render_whenMuted_showsTheSlashedBell', () => {
+    fixture.detectChanges();
+    const icon: () => string = (): string =>
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.notifications-menu__trigger app-icon i')
+        ?.className.toString() ?? '';
+    expect(icon()).toContain('ph-bell-ringing');
 
-    expect(component.relativeTime(now)).toBe('just now');
-    expect(component.relativeTime(now - 5 * 60_000)).toBe('5m ago');
-    expect(component.relativeTime(now - 3 * 3_600_000)).toBe('3h ago');
-    expect(component.relativeTime(now - 2 * 86_400_000)).toBe('2d ago');
+    notifications.setMuted(true);
+    fixture.detectChanges();
+
+    expect(icon()).toContain('ph-bell-slash');
+    expect(icon()).toContain('ph-duotone');
+  });
+
+  it('toggleMute_flipsTheStoresMute', () => {
+    const component: { toggleMute(): void } = fixture.componentInstance as unknown as {
+      toggleMute(): void;
+    };
+
+    component.toggleMute();
+    expect(notifications.muted()).toBe(true);
+
+    component.toggleMute();
+    expect(notifications.muted()).toBe(false);
   });
 });

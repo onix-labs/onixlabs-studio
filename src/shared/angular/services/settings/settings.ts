@@ -82,9 +82,22 @@ export type SelectAllScope = 'block' | 'document';
 export type PrintMargin = 'narrow' | 'regular' | 'wide';
 
 /**
- * Identifies how the ribbon's controls are aligned within the ribbon strip.
+ * Identifies how the ribbon's controls are aligned within the ribbon strip. There is no right
+ * alignment: the ribbon's right-hand end is where the notification stack can sit.
  */
-export type RibbonAlignment = 'left' | 'center' | 'right';
+export type RibbonAlignment = 'left' | 'center';
+
+/**
+ * Identifies where the notification stack appears: the bottom-right corner of the content, above the
+ * status strip, or over the right-hand end of the ribbon.
+ */
+export type NotificationPosition = 'bottom-right' | 'ribbon';
+
+/**
+ * Identifies what still pops up while notifications are muted: nothing, or errors only. Muted
+ * notifications are still recorded in the tray.
+ */
+export type MutedNotifications = 'nothing' | 'errors';
 
 /**
  * Identifies how much of the application menu the title strip carries: not at all (`hidden`), as a

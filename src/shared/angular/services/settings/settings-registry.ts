@@ -18,6 +18,8 @@ import type {
   ImageAlignment,
   ImageSizing,
   LanguageOverrides,
+  MutedNotifications,
+  NotificationPosition,
   MarginSize,
   PrintMargin,
   RibbonAlignment,
@@ -63,6 +65,8 @@ export interface SettingsValues {
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
+  readonly 'notifications.position': NotificationPosition;
+  readonly 'notifications.whenMuted': MutedNotifications;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
 
@@ -192,7 +196,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           options: [
             { value: 'left', label: 'Left' },
             { value: 'center', label: 'Center' },
-            { value: 'right', label: 'Right' },
           ],
         },
         default: 'left',
@@ -383,6 +386,36 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Answering stays in the conversation; the toast jumps to the asking tab.',
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'notifications.position',
+        title: 'Position',
+        description:
+          'Where notifications appear: the bottom-right corner, above the status strip, or over the ' +
+          'right-hand end of the ribbon.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'bottom-right', label: 'Bottom right' },
+            { value: 'ribbon', label: 'Over the ribbon' },
+          ],
+        },
+        default: 'bottom-right',
+      },
+      {
+        key: 'notifications.whenMuted',
+        title: 'When muted',
+        description:
+          'What still appears while notifications are muted from the tray. Muted notifications are ' +
+          'still recorded in the tray.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'nothing', label: 'Show nothing' },
+            { value: 'errors', label: 'Show errors only' },
+          ],
+        },
+        default: 'nothing',
       },
     ],
   },
