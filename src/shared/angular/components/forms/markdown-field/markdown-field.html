@@ -9,7 +9,8 @@
 </div>
 
 <!-- Room to write: the same text in a window of its own, expandable to the screen, as the agent
-     composer offers. Edits there are a draft until applied. -->
+     composer offers. Edits there are a draft until applied. A host's own actions for the field (an
+     issue's Comment) join it on the same row, after it. -->
 <div class="markdown-field__actions">
   <app-button
     variant="outline"
@@ -20,6 +21,7 @@
     [disabled]="disabled()"
     (click)="openModal()"
   />
+  <ng-content select="[markdownFieldAction]" />
 </div>
 
 <app-modal

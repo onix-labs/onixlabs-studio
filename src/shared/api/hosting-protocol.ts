@@ -29,7 +29,9 @@
 // homepage, last push, fork, archived, starred — and the
 // `listStarredRepositories` request, so a repository browser can offer views on them. Both are
 // additions, so a 1.1 plugin is still understood.
-export const HOSTING_PROTOCOL_VERSION: string = '1.2';
+// 1.3 (#890) adds the `duplicate` close reason, with `duplicateOf` naming the original issue. Studio
+// only asks a 1.3 plugin to close as a duplicate, so a 1.2 plugin is still understood.
+export const HOSTING_PROTOCOL_VERSION: string = '1.3';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -453,9 +455,10 @@ export interface HostedIssue {
 }
 
 /**
- * Says why an issue was closed: its work is done, or it will not be done.
+ * Says why an issue was closed: its work is done, it will not be done, or it repeats another issue
+ * (since protocol 1.3).
  */
-export type HostedCloseReason = 'completed' | 'notPlanned';
+export type HostedCloseReason = 'completed' | 'notPlanned' | 'duplicate';
 
 /**
  * Describes a comment on an issue.
@@ -697,12 +700,14 @@ export interface HostingOperations {
   };
 
   /**
-   * Closes or reopens an issue. `reason` says why one was closed, where the host records it.
+   * Closes or reopens an issue. `reason` says why one was closed, where the host records it; a
+   * `duplicate` names the original issue's number in `duplicateOf`.
    */
   readonly setIssueState: {
     readonly params: IssueParams & {
       readonly state: 'open' | 'closed';
       readonly reason?: HostedCloseReason;
+      readonly duplicateOf?: number;
     };
     readonly result: HostedIssue;
   };
@@ -983,6 +988,26 @@ export function isCompatibleHostingProtocol(announced: unknown): boolean {
   }
   const major: (version: string) => string = (version: string): string => version.split('.')[0];
   return major(announced) === major(HOSTING_PROTOCOL_VERSION);
+}
+
+/**
+ * Determines whether a plugin's announced protocol version is at least a given one, for what a minor
+ * version added (closing as a duplicate arrived in 1.3).
+ * @param announced The version the plugin announced.
+ * @param minimum The version that added the feature.
+ * @returns Returns true when the plugin speaks that version or later.
+ */
+export function hostingProtocolAtLeast(announced: string, minimum: string): boolean {
+  const parts: (version: string) => number[] = (version: string): number[] =>
+    version.split('.').map((part: string): number => Number.parseInt(part, 10) || 0);
+  const [have, want] = [parts(announced), parts(minimum)];
+  for (let index: number = 0; index < Math.max(have.length, want.length); index += 1) {
+    const difference: number = (have[index] ?? 0) - (want[index] ?? 0);
+    if (difference !== 0) {
+      return difference > 0;
+    }
+  }
+  return true;
 }
 
 /**

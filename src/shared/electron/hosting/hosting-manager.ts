@@ -14,6 +14,7 @@ import {
 import {
   HostedAccount,
   HostedAuthStatus,
+  HostedCloseReason,
   HostedRepository,
   HostedRepositoryRef,
   HostingAuthMode,
@@ -132,6 +133,28 @@ export class HostingManager {
           repository: target,
           issue: asIssueNumber(issueNumber),
         })),
+    );
+    ipcMain.handle(
+      ForgeChannel.SetIssueState,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+        issueNumber: unknown,
+        state: unknown,
+        reason: unknown,
+        duplicateOf: unknown,
+      ): Promise<ForgeResult<ForgeIssue>> =>
+        this.setIssueState(repository, issueNumber, state, reason, duplicateOf),
+    );
+    ipcMain.handle(
+      ForgeChannel.CommentOnIssue,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+        issueNumber: unknown,
+        body: unknown,
+      ): Promise<ForgeResult<ForgeIssueComment>> =>
+        this.commentOnIssue(repository, issueNumber, body),
     );
     ipcMain.handle(
       ForgeChannel.WorkflowRuns,
@@ -310,7 +333,11 @@ export class HostingManager {
     }
     const described: HostedRepositoryDescription = await this.host.describeRepository(target);
     return described.ok
-      ? { provider: described.displayName, capabilities: described.capabilities }
+      ? {
+          provider: described.displayName,
+          capabilities: described.capabilities,
+          closeReasons: described.closeReasons,
+        }
       : null;
   }
 
@@ -524,6 +551,74 @@ export class HostingManager {
   }
 
   /**
+   * Closes or reopens an issue the user chose, validating the state and reason first. A reason is
+   * only passed on when closing, and a duplicate only with a valid original, to a plugin that can
+   * close as one.
+   * @param repository The untrusted reference.
+   * @param issueNumber The untrusted issue number.
+   * @param state The untrusted state.
+   * @param reason The untrusted close reason.
+   * @param duplicateOf The untrusted number of the original issue, for a duplicate.
+   * @returns Returns the issue as it now stands, or why it could not be changed.
+   */
+  public async setIssueState(
+    repository: unknown,
+    issueNumber: unknown,
+    state: unknown,
+    reason: unknown,
+    duplicateOf?: unknown,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    if (state !== 'open' && state !== 'closed') {
+      return refused('Invalid issue state.');
+    }
+    const closeReason: HostedCloseReason | undefined =
+      state === 'closed' &&
+      (reason === 'completed' || reason === 'notPlanned' || reason === 'duplicate')
+        ? reason
+        : undefined;
+    const issue: number = asIssueNumber(issueNumber);
+    const original: number = asIssueNumber(duplicateOf);
+    if (closeReason === 'duplicate') {
+      if (original === 0 || original === issue) {
+        return refused('Name the issue this one duplicates.');
+      }
+      const described: ForgeRepositoryCapabilities | null = await this.describe(repository);
+      if (described !== null && !described.closeReasons.includes('duplicate')) {
+        return refused(`${described.provider} cannot close an issue as a duplicate.`);
+      }
+    }
+    return this.read(repository, 'setIssueState', (target) => ({
+      repository: target,
+      issue,
+      state,
+      ...(closeReason === undefined ? {} : { reason: closeReason }),
+      ...(closeReason === 'duplicate' ? { duplicateOf: original } : {}),
+    }));
+  }
+
+  /**
+   * Comments on an issue as the user, refusing an empty comment before it reaches the host.
+   * @param repository The untrusted reference.
+   * @param issueNumber The untrusted issue number.
+   * @param body The untrusted comment.
+   * @returns Returns the posted comment, or why it could not be posted.
+   */
+  public commentOnIssue(
+    repository: unknown,
+    issueNumber: unknown,
+    body: unknown,
+  ): Promise<ForgeResult<ForgeIssueComment>> {
+    if (typeof body !== 'string' || body.trim().length === 0) {
+      return Promise.resolve({ ok: false, error: 'The comment is empty.', unauthorized: false });
+    }
+    return this.read(repository, 'commentOnIssue', (target) => ({
+      repository: target,
+      issue: asIssueNumber(issueNumber),
+      body,
+    }));
+  }
+
+  /**
    * Re-runs or cancels a CI run the user chose, validating the run id first.
    * @param repository The untrusted reference.
    * @param runId The untrusted run id.
@@ -547,6 +642,15 @@ export class HostingManager {
     );
     return result.ok ? { ok: true, value: undefined } : result;
   }
+}
+
+/**
+ * Builds the failure for a request refused before it reached the host.
+ * @param error Why it was refused.
+ * @returns Returns the failure.
+ */
+function refused(error: string): ForgeResult<never> {
+  return { ok: false, error, unauthorized: false };
 }
 
 /**

@@ -80,6 +80,7 @@ function build(
               pluginId: 'onixlabs.github',
               displayName: 'GitHub',
               capabilities: ['issues', 'createIssue'] as const,
+              closeReasons: [] as const,
             },
       ),
     requestFor: requestFor as unknown as HostingHost['requestFor'],

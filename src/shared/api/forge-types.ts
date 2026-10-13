@@ -9,6 +9,7 @@
 // resolved, and to whom.
 
 import type {
+  HostedCloseReason,
   HostedCheckStatus,
   HostedCiRun,
   HostedCiRunStatus,
@@ -59,6 +60,11 @@ export interface ForgeRepositoryCapabilities {
    * Gets the capabilities on offer.
    */
   readonly capabilities: readonly HostingCapability[];
+
+  /**
+   * Gets the reasons an issue may be closed for, empty when issues cannot be closed.
+   */
+  readonly closeReasons: readonly ForgeCloseReason[];
 }
 
 /**
@@ -156,6 +162,11 @@ export type ForgeIssue = HostedIssue;
  * Describes a comment on an issue.
  */
 export type ForgeIssueComment = HostedIssueComment;
+
+/**
+ * Describes why an issue was closed: finished, or not going to be.
+ */
+export type ForgeCloseReason = HostedCloseReason;
 
 /**
  * Describes where a CI run is.

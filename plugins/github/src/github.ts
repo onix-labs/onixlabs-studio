@@ -150,6 +150,7 @@ interface RawPullRequest {
  * The raw issue shape, as much of it as this reads.
  */
 interface RawIssue {
+  readonly id?: unknown;
   readonly number?: unknown;
   readonly title?: unknown;
   readonly html_url?: unknown;
@@ -725,11 +726,14 @@ export class GitHubHosting {
   }
 
   /**
-   * Closes or reopens an issue, recording why one was closed.
+   * Closes or reopens an issue, recording why one was closed. A duplicate names its original, which
+   * GitHub takes by the issue's internal id rather than its number, so the original is read first —
+   * which also refuses an original that does not exist before anything is changed.
    * @param repository The repository.
    * @param issue The issue's number.
    * @param state Whether it should be open or closed.
    * @param reason Why it is being closed, when it is.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
    * @returns Returns the issue as it now is.
    */
   public async setIssueState(
@@ -737,16 +741,57 @@ export class GitHubHosting {
     issue: number,
     state: 'open' | 'closed',
     reason: HostedCloseReason | undefined,
+    duplicateOf?: number,
   ): Promise<Outcome<HostedIssue>> {
+    let duplicate: { readonly duplicate_issue_id: number } | undefined;
+    if (state === 'closed' && reason === 'duplicate') {
+      const original: Outcome<number> = await this.issueId(repository, duplicateOf ?? 0);
+      if (!original.ok) {
+        return original;
+      }
+      duplicate = { duplicate_issue_id: original.result };
+    }
     const stateReason: string | undefined =
       state === 'open' ? 'reopened' : reason === 'notPlanned' ? 'not_planned' : reason;
     const sent: Outcome<unknown> = await this.send(
       repository.host,
       'PATCH',
       `${repoPath(repository)}/issues/${issueNumber(issue)}`,
-      { state, ...(stateReason === undefined ? {} : { state_reason: stateReason }) },
+      {
+        state,
+        ...(stateReason === undefined ? {} : { state_reason: stateReason }),
+        ...duplicate,
+      },
     );
     return sent.ok ? { ok: true, result: toIssue(sent.result ?? {}) } : sent;
+  }
+
+  /**
+   * Reads an issue's internal id from its number.
+   * @param repository The repository.
+   * @param issue The issue's number.
+   * @returns Returns the id, or why it could not be read.
+   */
+  private async issueId(repository: HostedRepositoryRef, issue: number): Promise<Outcome<number>> {
+    if (issueNumber(issue) === 0) {
+      return { ok: false, error: 'Name the issue this one duplicates.', code: 'refused' };
+    }
+    const read: Outcome<unknown> = await this.get(
+      repository.host,
+      `${repoPath(repository)}/issues/${issueNumber(issue)}`,
+    );
+    if (!read.ok) {
+      return read.code === 'not-found'
+        ? {
+            ...read,
+            error: `There is no issue #${issue} in ${repository.owner}/${repository.name}.`,
+          }
+        : read;
+    }
+    const id: unknown = (read.result as RawIssue | null)?.id;
+    return typeof id === 'number'
+      ? { ok: true, result: id }
+      : { ok: false, error: `GitHub did not say which issue #${issue} is.`, code: 'not-found' };
   }
 
   /**

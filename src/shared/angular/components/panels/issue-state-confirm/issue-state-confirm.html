@@ -1,0 +1,51 @@
+<!-- Asked before an issue's state changes on its host: everyone watching it is told, so a half-aimed
+     click should not do it. -->
+<app-modal
+  [open]="actions.pending() !== null"
+  [width]="30"
+  ariaLabel="Change issue state"
+  (dismiss)="actions.dismiss()"
+>
+  <ng-template appModalContent>
+    @if (actions.pending(); as pending) {
+      @if (pending.state === 'closed') {
+        <h2 class="confirm__title">Close issue #{{ pending.issue.number }}?</h2>
+        <p class="confirm__issue">{{ pending.issue.title }}</p>
+        <p class="confirm__question">Why do you want to close this issue?</p>
+        <div class="confirm__fields">
+          <app-dropdown
+            ariaLabel="Why do you want to close this issue?"
+            [fullWidth]="true"
+            [options]="reasons()"
+            [value]="reason()"
+            (valueChange)="chooseReason($event)"
+          />
+          @if (reason() === 'duplicate') {
+            <app-number-field
+              [fullWidth]="true"
+              [spinner]="false"
+              placeholder="Number of the issue this duplicates"
+              ariaLabel="Number of the issue this duplicates"
+              [value]="duplicateOf()"
+              [min]="0"
+              [zeroIsEmpty]="true"
+              [live]="true"
+              (valueChange)="duplicateOf.set($event)"
+            />
+          }
+        </div>
+        <div class="confirm__actions">
+          <app-button variant="solid" label="Close" [disabled]="!canClose()" (click)="close()" />
+          <app-button label="Cancel" (click)="actions.dismiss()" />
+        </div>
+      } @else {
+        <h2 class="confirm__title">Reopen issue #{{ pending.issue.number }}?</h2>
+        <p class="confirm__issue">{{ pending.issue.title }}</p>
+        <div class="confirm__actions">
+          <app-button variant="solid" label="Reopen" (click)="actions.confirm()" />
+          <app-button label="Cancel" (click)="actions.dismiss()" />
+        </div>
+      }
+    }
+  </ng-template>
+</app-modal>

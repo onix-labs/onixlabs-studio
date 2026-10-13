@@ -1,6 +1,13 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ForgeIssue, ForgeRepositoryRef } from '@shared/api/forge-types';
+import {
+  ForgeCloseReason,
+  ForgeIssue,
+  ForgeIssueComment,
+  ForgeRepositoryRef,
+  ForgeResult,
+} from '@shared/api/forge-types';
+import type { HostingCapability } from '@shared/api/hosting-protocol';
 import { Icon } from '@shared/angular/icons/icon';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -12,6 +19,7 @@ import {
 } from '@shared/angular/services/document-status/document-status';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
+import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
@@ -86,9 +94,17 @@ describe('IssueDocumentPanel', () => {
   let agent: FakeAgent;
   let conversation: FakeConversation;
   let revealed: string[];
+  let allowed: Set<HostingCapability>;
+  let stateRequests: { issue: number; state: string; reason?: ForgeCloseReason }[];
+  let posted: string[];
+  let thread: ForgeIssueComment[];
 
   beforeEach(async () => {
     opened = [];
+    allowed = new Set<HostingCapability>();
+    stateRequests = [];
+    posted = [];
+    thread = [];
     agent = new FakeAgent();
     conversation = new FakeConversation();
     revealed = [];
@@ -97,6 +113,7 @@ describe('IssueDocumentPanel', () => {
       providers: [
         // The real seam over fakes, as the rail's tests drive it: the strip's job is only to ask it.
         IssueAgent,
+        IssueActions,
         { provide: Agent, useValue: agent },
         { provide: AgentConversation, useValue: conversation },
         {
@@ -108,6 +125,34 @@ describe('IssueDocumentPanel', () => {
               owner: 'onix-labs',
               name: 'onixlabs-studio',
             }),
+            supports: (capability: HostingCapability): boolean => allowed.has(capability),
+            closeReasons: signal<readonly ForgeCloseReason[]>(['completed', 'notPlanned']),
+            issues: signal({ state: 'ready', items: [], message: null, stale: false }),
+            setIssueState: (
+              issue: number,
+              state: 'open' | 'closed',
+              reason?: ForgeCloseReason,
+            ): Promise<ForgeResult<ForgeIssue>> => {
+              stateRequests.push({ issue, state, ...(reason === undefined ? {} : { reason }) });
+              return Promise.resolve({ ok: true, value: makeIssue({ state }) });
+            },
+            commentOnIssue: (
+              _issue: number,
+              body: string,
+            ): Promise<ForgeResult<ForgeIssueComment>> => {
+              const comment: ForgeIssueComment = {
+                id: `${thread.length + 1}`,
+                author: 'matthew',
+                body,
+                createdAt: '2026-10-13T10:00:00Z',
+                url: 'https://example.com/c',
+              };
+              posted.push(body);
+              thread.push(comment);
+              return Promise.resolve({ ok: true, value: comment });
+            },
+            issueComments: (): Promise<ForgeResult<readonly ForgeIssueComment[]>> =>
+              Promise.resolve({ ok: true, value: [...thread] }),
           },
         },
         {
@@ -292,5 +337,91 @@ describe('IssueDocumentPanel', () => {
     );
 
     expect(opened).toEqual(['https://example.com/12']);
+  });
+  it('stateControls_whenTheHostDoesNotAllowThem_areNotOffered', () => {
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+
+    expect(host.querySelector('app-panel-toolbar')?.textContent).not.toContain('Close Issue');
+    expect(host.querySelector('.issue__compose')).toBeNull();
+  });
+
+  it('closeIssue_asksWhy_thenClosesItWithTheReasonChosen', async () => {
+    allowed.add('setIssueState');
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+    const strip: HTMLElement = host.querySelector('app-panel-toolbar')!;
+    expect(strip.textContent).toContain('Close Issue');
+
+    [...strip.querySelectorAll<HTMLButtonElement>('button')]
+      .find(
+        (button: HTMLButtonElement): boolean =>
+          button.textContent?.includes('Close Issue') ?? false,
+      )!
+      .click();
+    const actions: IssueActions = TestBed.inject(IssueActions);
+    expect(actions.pending()).toEqual({ issue: makeIssue(), state: 'closed' });
+    expect(stateRequests).toEqual([]);
+
+    await actions.confirm('notPlanned');
+    fixture.detectChanges();
+
+    expect(stateRequests).toEqual([{ issue: 12, state: 'closed', reason: 'notPlanned' }]);
+    // The document shows the issue as the host now holds it, so the strip offers the way back.
+    expect(host.querySelector('app-panel-toolbar')?.textContent).toContain('Reopen Issue');
+  });
+
+  it('reopenIssue_onAClosedIssue_reopensItWithoutAReason', async () => {
+    allowed.add('setIssueState');
+    issues.put('issue:12', makeIssue({ state: 'closed' }));
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+
+    (fixture.componentInstance as unknown as { toggleState(): void }).toggleState();
+    await TestBed.inject(IssueActions).confirm();
+
+    expect(stateRequests).toEqual([{ issue: 12, state: 'open' }]);
+  });
+
+  it('comment_postsTheDraft_clearsIt_andShowsTheThreadAsTheHostHoldsIt', async () => {
+    allowed.add('commentOnIssue');
+    issues.put('issue:12', makeIssue());
+    issues.putComments('issue:12', []);
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+    expect(host.querySelector('.issue__compose')).not.toBeNull();
+    const panel: { draft: WritableSignal<string>; postComment(): Promise<void> } =
+      fixture.componentInstance as unknown as {
+        draft: WritableSignal<string>;
+        postComment(): Promise<void>;
+      };
+
+    panel.draft.set('  Fixed in **#931**.  ');
+    await panel.postComment();
+    fixture.detectChanges();
+
+    expect(posted).toEqual(['Fixed in **#931**.']);
+    expect(panel.draft()).toBe('');
+    expect(issues.get('issue:12')?.issue.commentCount).toBe(1);
+    expect(host.textContent).toContain('1 comment');
+  });
+
+  it('comment_whenTheDraftIsBlank_postsNothing', async () => {
+    allowed.add('commentOnIssue');
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+    const panel: { draft: WritableSignal<string>; postComment(): Promise<void> } =
+      fixture.componentInstance as unknown as {
+        draft: WritableSignal<string>;
+        postComment(): Promise<void>;
+      };
+
+    panel.draft.set('   ');
+    await panel.postComment();
+
+    expect(posted).toEqual([]);
   });
 });

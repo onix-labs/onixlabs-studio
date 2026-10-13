@@ -548,6 +548,16 @@ export class Icon {
   public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
 
   /**
+   * Gets the close-issue icon, on the issue document's strip while the issue is open.
+   */
+  public static readonly ISSUE_CLOSE: Icon = new Icon('ph-duotone ph-check-circle');
+
+  /**
+   * Gets the reopen-issue icon, on the issue document's strip while the issue is closed.
+   */
+  public static readonly ISSUE_REOPEN: Icon = new Icon('ph-duotone ph-arrow-counter-clockwise');
+
+  /**
    * Gets the bold open-external glyph used by the markdown tool strip's open-in-tab button.
    */
   public static readonly OPEN_EXTERNAL_BOLD: Icon = new Icon('ph-bold ph-arrow-square-out');
