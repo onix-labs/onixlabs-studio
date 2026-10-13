@@ -8,6 +8,7 @@ import {
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
+import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
@@ -83,6 +84,11 @@ export const config: ApplicationConfig = {
     // plugin is known, and again after the plugin updates — whether or not settings is ever opened.
     provideAppInitializer((): void => {
       inject(ModelUpdates);
+    }),
+    // Instantiate the plugin-update check at start-up, so waiting updates are announced once the main
+    // window has the plugin list, whether or not the Plugin Manager is ever opened.
+    provideAppInitializer((): void => {
+      inject(PluginUpdates);
     }),
     // Instantiate the core application menu at start-up, so the menu bar carries Studio's own commands
     // from the first paint rather than the platform's default roles. Features fold their own entries

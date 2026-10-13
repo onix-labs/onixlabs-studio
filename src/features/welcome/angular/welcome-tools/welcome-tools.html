@@ -15,7 +15,14 @@
           />
         </span>
         <span class="welcome__tool-text">
-          <span class="welcome__tool-title">{{ tool.title }}</span>
+          <span class="welcome__tool-heading">
+            <span class="welcome__tool-title">{{ tool.title }}</span>
+            @if (tool.opens === 'plugin-manager' && updateCount() > 0) {
+              <app-chip class="welcome__tool-chip" tone="accent">
+                {{ updateCount() === 1 ? '1 update' : updateCount() + ' updates' }}
+              </app-chip>
+            }
+          </span>
           <span class="welcome__tool-description">{{ tool.description }}</span>
         </span>
         <app-icon class="welcome__tool-chevron" [icon]="Icon.WELCOME_CHEVRON" />
