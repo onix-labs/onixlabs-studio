@@ -1,0 +1,182 @@
+// The AI Manager's library sub-views (Prompt Profiles, Skills): the entries listed in the side panel,
+// and the one selected edited in the main area at full width. Shared by both, so the two read as one
+// design.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.library {
+  block-size: 100%;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The editor
+// ---------------------------------------------------------------------------------------------
+
+.library__main {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.library__editor {
+  // One width for every control in the editor's rows — the name field and the scope dropdowns —
+  // so their edges line up down the page. The scope editor reads it too.
+  --library-control-width: 18rem;
+
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100%;
+  padding: 0.75rem 1rem 1rem;
+
+  app-text-field {
+    inline-size: var(--library-control-width);
+  }
+}
+
+.library__header {
+  flex: none;
+  margin-block-end: 0.25rem;
+}
+
+.library__title {
+  // The shared `.section-label` sets the type; only the spacing is ours.
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.library__notice {
+  margin: 0 0 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.library__notice--top {
+  flex: none;
+  margin: 0.75rem 1rem 0;
+}
+
+.library__alert {
+  margin: 0.25rem 0;
+  color: var(--warning-color);
+  font-size: 0.8rem;
+}
+
+.library__error {
+  margin: 0.25rem 0;
+  color: var(--danger-color);
+  font-size: 0.8rem;
+}
+
+.library__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-block: 0.6rem;
+}
+
+// The instructions are the point of the entry, so they take whatever height the editor has left.
+.library__body--grow {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  // The editor runs on to the page's own inset rather than stopping short of it.
+  padding-block-end: 0;
+}
+
+.library__body-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.library__body-description {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--settings-muted-foreground-color);
+}
+
+.library__files {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+// Save and Revert lead; the actions on the entry as a whole (show its folder, delete it) sit apart at
+// the far end.
+.library__footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+
+.library__footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nothing selected
+// ---------------------------------------------------------------------------------------------
+
+.library__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.library__empty-icon {
+  color: var(--form-muted-foreground-color);
+  font-size: 2.5rem;
+}
+
+.library__empty-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.library__empty-hint {
+  max-inline-size: 30rem;
+  margin: 0 0 0.5rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The delete confirmation
+// ---------------------------------------------------------------------------------------------
+
+.library__dialog-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.library__dialog-message {
+  margin: 0 0 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}

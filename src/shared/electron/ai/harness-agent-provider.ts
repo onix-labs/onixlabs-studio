@@ -30,7 +30,6 @@ import type {
 } from './agent-provider';
 import { HarnessHost, HarnessModelReport, HarnessTransport, refusalFor } from './harness-host';
 import { describeOffer, invokeTool } from './harness-tools';
-import { composeUserPrompt } from './prompt-layers';
 
 /**
  * How long {@link HarnessAgentSession.panicStop} gives a harness to settle its turns before the
@@ -943,9 +942,7 @@ export function toTurnRequest(
 ): TurnRequest {
   return {
     requestId: context.requestId,
-    // The user's standing instructions ride inside the prompt (#300), so a harness that reads only
-    // the fields it has always read still delivers them.
-    prompt: composeUserPrompt(context),
+    prompt: context.prompt,
     workspaceRoot: context.workspaceRoot,
     model: context.model,
     agentSessionId: context.agentSessionId,

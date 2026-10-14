@@ -11,18 +11,20 @@
 <!-- Room to write: the same text in a window of its own, expandable to the screen, as the agent
      composer offers. Edits there are a draft until applied. A host's own actions for the field (an
      issue's Comment) join it on the same row, after it. -->
-<app-button-row>
-  <app-button
-    variant="outline"
-    [icon]="Icon.MARKDOWN_FILL"
-    label="Edit"
-    [ariaLabel]="'Edit ' + (ariaLabel() ?? 'in a window')"
-    tooltip="Edit in a window"
-    [disabled]="disabled()"
-    (click)="openModal()"
-  />
-  <ng-content select="[markdownFieldAction]" />
-</app-button-row>
+@if (expandable()) {
+  <app-button-row>
+    <app-button
+      variant="outline"
+      [icon]="Icon.MARKDOWN_FILL"
+      label="Edit"
+      [ariaLabel]="'Edit ' + (ariaLabel() ?? 'in a window')"
+      tooltip="Edit in a window"
+      [disabled]="disabled()"
+      (click)="openModal()"
+    />
+    <ng-content select="[markdownFieldAction]" />
+  </app-button-row>
+}
 
 <app-modal
   [open]="modalOpen()"

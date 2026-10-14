@@ -6,6 +6,18 @@
   inline-size: 100%;
 }
 
+:host(.markdown-field--fill) {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// Filling, the frame takes the field's height and drops the cap, so the editor scrolls inside it
+// only once the text outgrows the page rather than at a fixed 24rem.
+:host(.markdown-field--fill) .markdown-field__frame {
+  flex: 1 1 auto;
+  max-block-size: none;
+}
+
 :host(.markdown-field--disabled) .markdown-field__frame {
   opacity: 0.4;
 }

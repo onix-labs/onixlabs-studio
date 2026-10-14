@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { PromptProfile, PromptProfiles, ResolvedPrompts } from './prompt-profiles';
+import { PromptProfile, PromptProfiles } from './prompt-profiles';
 
 describe('PromptProfiles', () => {
   let profiles: PromptProfiles;
@@ -25,11 +25,11 @@ describe('PromptProfiles', () => {
     const created: PromptProfile = profiles.create('One');
 
     profiles.update(created.id, {
-      system: 'Be terse.',
+      instructions: 'Be terse.',
       scope: { surfaces: ['terminal'], languages: [] },
     });
 
-    expect(profiles.profiles()[0].system).toBe('Be terse.');
+    expect(profiles.profiles()[0].instructions).toBe('Be terse.');
     expect(profiles.profiles()[0].scope.surfaces).toEqual(['terminal']);
   });
 
@@ -41,43 +41,40 @@ describe('PromptProfiles', () => {
     expect(profiles.profiles()).toHaveLength(0);
   });
 
-  it('resolve_whenNothingMatches_returnsEmptyLayers', () => {
+  it('resolve_whenNothingMatches_returnsNothing', () => {
     const created: PromptProfile = profiles.create('C#');
     profiles.update(created.id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      user: 'Use var.',
+      instructions: 'Use var.',
     });
 
-    expect(profiles.resolve('editor', 'markdown')).toEqual({ system: '', user: '' });
+    expect(profiles.resolve('editor', 'markdown')).toBe('');
   });
 
   it('resolve_whenSeveralMatch_composesGlobalThenSurfaceThenLanguage', () => {
     const language: PromptProfile = profiles.create('C#');
     profiles.update(language.id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      user: 'Explicit types.',
+      instructions: 'Explicit types.',
     });
     const global: PromptProfile = profiles.create('Everywhere');
-    profiles.update(global.id, { user: 'British English.' });
+    profiles.update(global.id, { instructions: 'British English.' });
     const surface: PromptProfile = profiles.create('Editor');
     profiles.update(surface.id, {
       scope: { surfaces: ['editor'], languages: [] },
-      user: 'Be terse.',
+      instructions: 'Be terse.',
     });
 
-    const resolved: ResolvedPrompts = profiles.resolve('editor', 'csharp');
-
-    expect(resolved.user).toBe(
+    expect(profiles.resolve('editor', 'csharp')).toBe(
       '### Everywhere\nBritish English.\n\n### Editor\nBe terse.\n\n### C#\nExplicit types.',
     );
-    expect(resolved.system).toBe('');
   });
 
   it('resolve_whenProfileDisabled_skipsIt', () => {
     const created: PromptProfile = profiles.create('Parked');
-    profiles.update(created.id, { system: 'Ignored.', enabled: false });
+    profiles.update(created.id, { instructions: 'Ignored.', enabled: false });
 
-    expect(profiles.resolve('project', null).system).toBe('');
+    expect(profiles.resolve('project', null)).toBe('');
   });
 
   it('load_whenStoreHoldsJunk_dropsIt', () => {
@@ -95,5 +92,31 @@ describe('PromptProfiles', () => {
 
     expect(fresh.profiles()).toHaveLength(1);
     expect(fresh.profiles()[0].scope).toEqual({ surfaces: [], languages: [] });
+  });
+
+  it('load_whenStoreHoldsTheOldTwoLayerShape_joinsThemIntoOneInstructionsText_andRewritesTheStore', () => {
+    // #948 dropped the layer added beneath each message. A profile saved before keeps all it said:
+    // the standing text first, then what used to go beneath the message.
+    localStorage.setItem(
+      'ai.promptProfiles',
+      JSON.stringify([
+        { id: 'a', name: 'Both', system: 'Explicit types.', user: 'British English.' },
+        { id: 'b', name: 'User only', system: '', user: 'Be brief.' },
+      ]),
+    );
+
+    TestBed.resetTestingModule();
+    const fresh: PromptProfiles = TestBed.inject(PromptProfiles);
+
+    expect(fresh.profiles().map((profile: PromptProfile): string => profile.instructions)).toEqual([
+      'Explicit types.\n\nBritish English.',
+      'Be brief.',
+    ]);
+    const stored: readonly Record<string, unknown>[] = JSON.parse(
+      localStorage.getItem('ai.promptProfiles') ?? '[]',
+    ) as readonly Record<string, unknown>[];
+    expect(stored[0]).toMatchObject({ instructions: 'Explicit types.\n\nBritish English.' });
+    expect(stored[0]).not.toHaveProperty('system');
+    expect(stored[0]).not.toHaveProperty('user');
   });
 });

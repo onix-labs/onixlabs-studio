@@ -39,10 +39,10 @@ export class PanelDragHandle {
 
   /**
    * Gets a value indicating whether the handle can start a drag: both the panel and the layout's
-   * drag coordinator resolved.
+   * drag coordinator resolved, and the panel is movable (#949).
    */
   protected get draggable(): boolean {
-    return this.panel !== null && this.drag !== null;
+    return this.panel !== null && this.drag !== null && this.panel.movable();
   }
 
   /**
@@ -50,7 +50,7 @@ export class PanelDragHandle {
    * @param event The mouse-down event.
    */
   protected onMouseDown(event: MouseEvent): void {
-    if (this.panel === null || this.drag === null || event.button !== 0) {
+    if (!this.draggable || this.panel === null || this.drag === null || event.button !== 0) {
       return;
     }
     const target: HTMLElement | null = event.target as HTMLElement | null;

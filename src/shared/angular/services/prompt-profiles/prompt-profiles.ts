@@ -11,10 +11,9 @@ import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
- * A prompt profile (#300): standing text the user wants every matching agent turn to carry — a system
- * layer, appended to Studio's own instructions, and a user layer, composed beneath each message. Both
- * bodies are free-form; "skills, context, instructions, guardrails" are all just prompt text here, and
- * a profile may fill either body or both.
+ * A prompt profile (#300): standing instructions the user wants every matching agent turn to carry,
+ * appended to Studio's own. Free-form; "context, conventions, guardrails" are all just prompt text
+ * here. Where a skill is loaded only when the agent judges it relevant, a profile always applies.
  */
 export interface PromptProfile {
   /**
@@ -34,35 +33,15 @@ export interface PromptProfile {
   readonly scope: PromptScope;
 
   /**
-   * Gets the system-prompt text, or empty for none.
+   * Gets the standing instructions, or empty for none.
    */
-  readonly system: string;
-
-  /**
-   * Gets the user-prompt text, or empty for none.
-   */
-  readonly user: string;
+  readonly instructions: string;
 
   /**
    * Gets whether the profile is applied. A disabled profile is kept but never composed, so a user can
    * park one without losing it.
    */
   readonly enabled: boolean;
-}
-
-/**
- * The two composed layers a run receives, each empty when nothing applies.
- */
-export interface ResolvedPrompts {
-  /**
-   * Gets the composed system layer.
-   */
-  readonly system: string;
-
-  /**
-   * Gets the composed user layer.
-   */
-  readonly user: string;
 }
 
 /**
@@ -93,6 +72,11 @@ export class PromptProfiles {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds whether {@link load} found profiles in the old two-layer shape.
+   */
+  private migrated: boolean = false;
+
+  /**
    * Holds the profiles, in the order the user keeps them.
    */
   private readonly profilesState: WritableSignal<readonly PromptProfile[]> = signal<
@@ -105,6 +89,17 @@ export class PromptProfiles {
   public readonly profiles: Signal<readonly PromptProfile[]> = this.profilesState.asReadonly();
 
   /**
+   * Initializes the service, rewriting the store once when it still holds profiles in the old
+   * two-layer shape, so the migration happens one time rather than on every read.
+   */
+  public constructor() {
+    if (this.migrated) {
+      this.persist();
+      this.log.info('PromptProfiles', 'Profiles migrated to a single instructions text');
+    }
+  }
+
+  /**
    * Creates an empty profile applying everywhere, and returns it for the caller to open.
    * @param name The display name.
    * @returns Returns the new profile.
@@ -114,8 +109,7 @@ export class PromptProfiles {
       id: crypto.randomUUID(),
       name: name.trim().length === 0 ? 'New profile' : name.trim(),
       scope: GLOBAL_SCOPE,
-      system: '',
-      user: '',
+      instructions: '',
       enabled: true,
     };
     this.profilesState.update((profiles: readonly PromptProfile[]): readonly PromptProfile[] => [
@@ -154,12 +148,13 @@ export class PromptProfiles {
   }
 
   /**
-   * Composes the layers a run receives from every enabled profile in scope.
+   * Composes the instructions a run receives from every enabled profile in scope, each under its own
+   * heading.
    * @param surface The surface the run is dispatched from.
    * @param language The language of the document owning the run, or null.
-   * @returns Returns the composed layers.
+   * @returns Returns the composed instructions, or an empty string when none apply.
    */
-  public resolve(surface: AgentSurface, language: string | null): ResolvedPrompts {
+  public resolve(surface: AgentSurface, language: string | null): string {
     const matching: readonly PromptProfile[] = sortByScope(
       this.profilesState().filter(
         (profile: PromptProfile): boolean =>
@@ -167,28 +162,21 @@ export class PromptProfiles {
       ),
       (profile: PromptProfile): PromptScope => profile.scope,
     );
-    const compose: (pick: (profile: PromptProfile) => string) => string = (
-      pick: (profile: PromptProfile) => string,
-    ): string =>
-      matching
-        .map((profile: PromptProfile): { name: string; text: string } => ({
-          name: profile.name,
-          text: pick(profile).trim(),
-        }))
-        .filter((section: { text: string }): boolean => section.text.length > 0)
-        .map(
-          (section: { name: string; text: string }): string =>
-            `### ${section.name}\n${section.text}`,
-        )
-        .join('\n\n');
-    return {
-      system: compose((profile: PromptProfile): string => profile.system),
-      user: compose((profile: PromptProfile): string => profile.user),
-    };
+    return matching
+      .map((profile: PromptProfile): { name: string; text: string } => ({
+        name: profile.name,
+        text: profile.instructions.trim(),
+      }))
+      .filter((section: { text: string }): boolean => section.text.length > 0)
+      .map(
+        (section: { name: string; text: string }): string => `### ${section.name}\n${section.text}`,
+      )
+      .join('\n\n');
   }
 
   /**
-   * Reads the persisted profiles, dropping anything malformed.
+   * Reads the persisted profiles, dropping anything malformed. A profile saved before the user layer
+   * was dropped has its two texts joined into one, system first, so nothing the user wrote is lost.
    * @returns Returns the profiles.
    */
   private load(): readonly PromptProfile[] {
@@ -209,12 +197,31 @@ export class PromptProfiles {
         id: record['id'],
         name: record['name'],
         scope: readPromptScope(record['scope']),
-        system: typeof record['system'] === 'string' ? record['system'] : '',
-        user: typeof record['user'] === 'string' ? record['user'] : '',
+        instructions: this.instructionsOf(record),
         enabled: record['enabled'] !== false,
       });
     }
     return profiles;
+  }
+
+  /**
+   * Reads a stored profile's instructions, joining the old system and user texts when it predates the
+   * single text, and noting that the store needs rewriting.
+   * @param record The stored profile.
+   * @returns Returns the instructions.
+   */
+  private instructionsOf(record: Record<string, unknown>): string {
+    if (typeof record['instructions'] === 'string') {
+      return record['instructions'];
+    }
+    const legacy: readonly string[] = [record['system'], record['user']]
+      .filter((text: unknown): text is string => typeof text === 'string')
+      .map((text: string): string => text.trim())
+      .filter((text: string): boolean => text.length > 0);
+    if ('system' in record || 'user' in record) {
+      this.migrated = true;
+    }
+    return legacy.join('\n\n');
   }
 
   /**

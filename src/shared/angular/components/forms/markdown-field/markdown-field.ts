@@ -40,6 +40,7 @@ import { Icon } from '@shared/angular/icons/icon';
     role: 'group',
     '[attr.aria-label]': 'ariaLabel()',
     '[class.markdown-field--disabled]': 'disabled()',
+    '[class.markdown-field--fill]': 'fill()',
     '[style.--markdown-field-min-rows]': 'minRows()',
   },
 })
@@ -64,6 +65,19 @@ export class MarkdownField {
    * content.
    */
   public readonly minRows: InputSignal<number> = input<number>(5);
+
+  /**
+   * Gets whether the field offers its Edit button, which opens the text in a window of its own. A
+   * field that already has the room to write — one filling a page, see {@link fill} — leaves it out,
+   * and with it any actions projected beside it.
+   */
+  public readonly expandable: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets whether the field fills the height its parent gives it rather than growing with its content
+   * up to a cap. The parent must give the field a height: a flex column, with the field flexed.
+   */
+  public readonly fill: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets a value indicating whether the field is read-only.

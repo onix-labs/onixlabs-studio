@@ -46,7 +46,7 @@ describe('WelcomeTools', () => {
     ).toEqual([
       'Containers',
       'Orchestration',
-      'AI Model Manager',
+      'AI Manager',
       'System Monitor',
       'Plugin Manager',
       'Settings',
@@ -55,7 +55,7 @@ describe('WelcomeTools', () => {
 
   it('aCard_asksForItsTool', () => {
     clickCard('Containers');
-    clickCard('AI Model Manager');
+    clickCard('AI Manager');
     clickCard('System Monitor');
     clickCard('Plugin Manager');
     clickCard('Settings');

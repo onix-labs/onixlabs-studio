@@ -43,10 +43,7 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
-import {
-  PromptProfiles,
-  ResolvedPrompts,
-} from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -1440,22 +1437,18 @@ export class Agent {
       seed === null
         ? prompt
         : `Summary of the conversation so far, for context:\n\n${seed}\n\n---\n\n${prompt}`;
-    // The user's standing layers (#300): resolved here, where the surface and the owning document's
-    // language are both known, and threaded through the run as two strings so core applies them in
-    // one place for every harness.
+    // The user's standing instructions (#300): resolved here, where the surface and the owning
+    // document's language are both known, and threaded through the run as one string so core applies
+    // it in one place for every harness.
     const language: string | undefined = this.languageSource?.();
-    const standing: ResolvedPrompts = this.promptProfiles.resolve(
-      surface ?? 'editor',
-      language ?? null,
-    );
+    const standing: string = this.promptProfiles.resolve(surface ?? 'editor', language ?? null);
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
       ...(language === undefined ? {} : { language }),
-      systemPromptExtra: [standing.system, this.briefText ?? '']
+      systemPromptExtra: [standing, this.briefText ?? '']
         .filter((layer: string): boolean => layer.trim().length > 0)
         .join('\n\n'),
-      userPromptExtra: standing.user,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),

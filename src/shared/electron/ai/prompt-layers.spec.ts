@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LOAD_SKILL } from '@shared/api/ai-types';
 import type { AgentRunContext, OfferedSkill } from './agent-provider';
-import { composeUserPrompt, skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
 
 /**
  * Builds a run context carrying only the prompt layers.
@@ -12,7 +12,6 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): AgentRunC
   return {
     prompt: 'do the thing',
     systemPromptExtra: '',
-    userPromptExtra: '',
     skills: [],
     ...overrides,
   } as unknown as AgentRunContext;
@@ -42,19 +41,6 @@ describe('withSystemPromptExtra', () => {
     expect(result.startsWith('base\n\n')).toBe(true);
     expect(result.endsWith('### Style\nExplicit types.')).toBe(true);
     expect(result).toContain('standing instructions');
-  });
-});
-
-describe('composeUserPrompt', () => {
-  it('composeUserPrompt_whenNone_returnsThePromptUnchanged', () => {
-    expect(composeUserPrompt(contextFor())).toBe('do the thing');
-  });
-
-  it('composeUserPrompt_whenPresent_placesTheStandingTextBeneathTheMessage', () => {
-    const result: string = composeUserPrompt(contextFor({ userPromptExtra: 'British English.' }));
-
-    expect(result.startsWith('do the thing\n\n---\n')).toBe(true);
-    expect(result.endsWith('British English.')).toBe(true);
   });
 });
 

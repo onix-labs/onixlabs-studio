@@ -1,10 +1,9 @@
 import { LOAD_SKILL } from '@shared/api/ai-types';
 import type { AgentRunContext, OfferedSkill } from './agent-provider';
 
-// The user-owned layers of a run's prompts (#300, #301), composed here so both are applied in exactly
-// one place on each side of the wire: the system layer goes into the instructions core sends a
-// harness with its tools, the user layer into the prompt field of the turn envelope. Neither is a new
-// protocol field — a harness receives them inside strings it already reads — which is what lets every
+// The user-owned layers of a run's instructions (#300, #301), composed here so they are applied in
+// exactly one place: the instructions core sends a harness with its tools. Neither is a new protocol
+// field — a harness receives them inside a string it already reads — which is what lets every
 // published harness honour them without a release.
 
 /**
@@ -14,14 +13,6 @@ import type { AgentRunContext, OfferedSkill } from './agent-provider';
  */
 const SYSTEM_EXTRA_HEADING: string =
   'The user has configured standing instructions for this context. Follow them alongside the above:';
-
-/**
- * The separator and heading placed between the user's message and their standing instructions.
- * A rule rather than a blank line, because the two arrive as one string and the model has to be able
- * to see where the message the user typed ends.
- */
-const USER_EXTRA_HEADING: string =
-  '---\nStanding instructions the user has set for this kind of work, which apply to the message above:';
 
 /**
  * Appends the user's standing system text to Studio's instructions.
@@ -39,23 +30,6 @@ export function withSystemPromptExtra(instructions: string, context: AgentRunCon
   return extra.length === 0
     ? instructions
     : `${instructions}\n\n${SYSTEM_EXTRA_HEADING}\n\n${extra}`;
-}
-
-/**
- * Composes the prompt a harness receives from the message the user typed and their standing
- * instructions for the run.
- *
- * 🔑 Beneath the message, not above it. The message is what the user is asking for; the standing text
- * is how they want it done, and a model reads the last thing in a prompt as the thing to satisfy — so
- * the standing text sits where it shapes the answer without displacing the ask.
- * @param context The run context.
- * @returns Returns the prompt, or the user's message unchanged when there are no standing instructions.
- */
-export function composeUserPrompt(context: AgentRunContext): string {
-  const extra: string = context.userPromptExtra.trim();
-  return extra.length === 0
-    ? context.prompt
-    : `${context.prompt}\n\n${USER_EXTRA_HEADING}\n\n${extra}`;
 }
 
 /**

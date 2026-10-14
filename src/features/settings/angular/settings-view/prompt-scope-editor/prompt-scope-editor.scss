@@ -1,5 +1,0 @@
-// The editor contributes rows to whichever list it sits in; its own host must not become a stray
-// flex child between them.
-:host {
-  display: contents;
-}

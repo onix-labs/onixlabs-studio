@@ -10,7 +10,7 @@ import {
 } from '@shared/api/model-runtime-types';
 
 /**
- * A local AI model runtime — the provider slot the AI Model Manager is built against, so the manager
+ * A local AI model runtime — the provider slot the AI Manager is built against, so the manager
  * never names Ollama. An implementation owns one runtime's native API and maps it into the normalised
  * `@shared/api/model-runtime-types` shapes.
  *

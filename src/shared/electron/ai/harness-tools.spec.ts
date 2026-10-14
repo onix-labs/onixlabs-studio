@@ -44,7 +44,6 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): AgentRunC
     toolPolicies: {},
     language: null,
     systemPromptExtra: '',
-    userPromptExtra: '',
     skills: [],
     workspaceRoot: '/ws',
     permissionPosture: 'prompt',

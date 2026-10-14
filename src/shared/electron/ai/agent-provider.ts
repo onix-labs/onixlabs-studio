@@ -244,13 +244,6 @@ export interface AgentRunContext {
   readonly systemPromptExtra: string;
 
   /**
-   * Gets the user's standing instructions for the user message, or empty when no prompt profile
-   * matches (#300). Composed beneath the prompt when the turn envelope is built, so every harness
-   * receives them without the wire carrying a second field.
-   */
-  readonly userPromptExtra: string;
-
-  /**
    * Gets the skills in scope for this run (#301): the ones a model is told about, and may load. Empty
    * when the library has none that apply, in which case no skill tool is offered either.
    */

@@ -23,7 +23,7 @@ import { OllamaRuntime } from './ollama-runtime';
 const POLL_INTERVAL_MS: number = 3_000;
 
 /**
- * The local model-runtime backend contribution — the AI Model Manager's main-process half (#409). It
+ * The local model-runtime backend contribution — the AI Manager's main-process half (#409). It
  * exposes one {@link ModelRuntime}'s read operations over the {@link ModelRuntimeChannel} channels and
  * pushes server-status changes to the renderer. It declares no permissions: talking to a local HTTP
  * server needs none.

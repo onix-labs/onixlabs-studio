@@ -95,7 +95,6 @@ function contextFor(
     allowedWritePaths: [],
     language: null,
     systemPromptExtra: '',
-    userPromptExtra: '',
     skills: [],
     deniedWritePaths: [],
     allowedNetworkLocations: [],

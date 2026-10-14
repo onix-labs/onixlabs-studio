@@ -36,7 +36,7 @@ const NEW_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }
 const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string }[] = [
   { type: 'mission-control', label: 'Mission Control' },
   { type: 'containers', label: 'Containers' },
-  { type: 'model-manager', label: 'AI Models' },
+  { type: 'model-manager', label: 'AI Manager' },
   { type: 'system-monitor', label: 'System Monitor' },
 ];
 

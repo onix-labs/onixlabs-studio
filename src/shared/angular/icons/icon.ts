@@ -171,9 +171,19 @@ export class Icon {
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
   /**
-   * Gets the AI Model Manager content icon.
+   * Gets the AI Manager content icon, which also stands for its Local Models sub-view.
    */
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the AI Manager's Prompt Profiles sub-view icon.
+   */
+  public static readonly AI_PROFILES: Icon = new Icon('ph-duotone ph-chat-text');
+
+  /**
+   * Gets the AI Manager's Skills sub-view icon.
+   */
+  public static readonly AI_SKILLS: Icon = new Icon('ph-duotone ph-sparkle');
 
   /**
    * Gets the Plugins content icon, which also stands for every category at once.
@@ -1330,7 +1340,7 @@ export class Icon {
   public static readonly WELCOME_AGENT: Icon = new Icon('ph-duotone ph-brain');
 
   /**
-   * Gets the duotone AI Model Manager icon shown on the welcome screen.
+   * Gets the duotone AI Manager icon shown on the welcome screen.
    */
   public static readonly WELCOME_AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
