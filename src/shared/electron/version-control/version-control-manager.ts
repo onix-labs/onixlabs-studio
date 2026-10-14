@@ -241,7 +241,7 @@ export class VersionControlManager {
       return Promise.resolve({
         id: 0,
         ok: false,
-        error: 'Malformed source-control request.',
+        error: 'Malformed version-control request.',
         code: 'refused',
       });
     }

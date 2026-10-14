@@ -56,7 +56,7 @@ import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-o
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
-import { MarkdownClipboard } from './markdown-clipboard';
+import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { ReadAlongHighlighter } from './read-along-highlighter';
 import { ReviewReveal } from './review-reveal';
 import { OutlineScrollSpy } from './outline-scroll-spy';

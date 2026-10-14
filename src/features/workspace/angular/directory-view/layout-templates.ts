@@ -8,7 +8,7 @@ import { LayoutTemplate } from '@shared/angular/services/layouts/layouts';
 export const DEFAULT_TEMPLATE_ID: string = 'default';
 
 /**
- * Holds the identifier of the Source Control template, which the Commit command stages transiently.
+ * Holds the identifier of the Version Control template, which the Commit command stages transiently.
  */
 export const SOURCE_CONTROL_TEMPLATE_ID: string = 'source-control';
 
@@ -62,7 +62,7 @@ export const LAYOUT_TEMPLATES: readonly LayoutTemplate[] = [
   },
   {
     id: SOURCE_CONTROL_TEMPLATE_ID,
-    name: 'Source Control',
+    name: 'Version Control',
     // Repository and Commit share the left column as tabs — the two halves of deciding what to commit,
     // one at a time. History and Terminal share the centre the same way, the graph in front: both want
     // the whole of it, and what the terminal is for here is the command the history just made you want

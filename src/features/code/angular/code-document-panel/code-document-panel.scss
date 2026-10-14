@@ -23,6 +23,15 @@
   min-inline-size: 0;
 }
 
+// The rule between the strip's clusters, drawn exactly as the markdown strip draws its own, so a code
+// file's strip and a markdown file's strip read as the same kind of thing.
+.document-panel__divider {
+  flex: 0 0 auto;
+  inline-size: 0.0625rem;
+  block-size: 1rem;
+  background: var(--dock-border-color);
+}
+
 .document-panel__editor {
   flex: 1 1 auto;
   min-height: 0;

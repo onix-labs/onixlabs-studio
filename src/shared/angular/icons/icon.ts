@@ -1403,7 +1403,7 @@ export class Icon {
    */
   public static readonly WELCOME_TOOL_PLUGINS: Icon = new Icon('ph-duotone ph-puzzle-piece');
 
-  // --- Welcome screen: tabs, Create Something, Source Control ---
+  // --- Welcome screen: tabs, Create Something, Version Control ---
   //
   // The welcome screen draws its glyphs at the light weight, so a rail of steps or a list of
   // repositories reads as one set. These are the ones its sections need beyond the actions
@@ -1424,7 +1424,7 @@ export class Icon {
   public static readonly WELCOME_TAB_CREATE: Icon = new Icon('ph-duotone ph-cube');
 
   /**
-   * Gets the duotone icon of the welcome screen's Source Control tab.
+   * Gets the duotone icon of the welcome screen's Version Control tab.
    */
   public static readonly WELCOME_TAB_SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');
 

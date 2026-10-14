@@ -107,7 +107,7 @@ describe('SetupStepSummary', () => {
           authenticated: false,
           hasStoredToken: false,
           identity: null,
-          detail: 'Add a token in Settings → Source Control.',
+          detail: 'Add a token in Settings → Version Control.',
         },
       },
     ];

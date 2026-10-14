@@ -14,6 +14,25 @@
     (click)="onRedo()"
   />
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  <!-- The clipboard, acting on this pane rather than on whatever holds focus: the strip belongs to the
+       document. The menu's ⌘X, ⌘C and ⌘V stay native roles that follow focus, so no shortcut is
+       claimed here. -->
+  <app-button variant="none" [icon]="Icon.CUT" ariaLabel="Cut" tooltip="Cut" (click)="onCut()" />
+  <app-button
+    variant="none"
+    [icon]="Icon.COPY"
+    ariaLabel="Copy"
+    tooltip="Copy"
+    (click)="onCopy()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.PASTE"
+    ariaLabel="Paste"
+    tooltip="Paste"
+    (click)="onPaste()"
+  />
+  <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
   <!-- What the cursor is in, and the way to turn it into another kind of block: the markdown tab's
        style field, here too (#882). -->
   <app-dropdown

@@ -332,7 +332,7 @@ export async function createWorkspaceTools(context: AgentRunContext): Promise<To
     }),
     [READ_SOURCE_CONTROL_STATUS]: tool({
       description:
-        "Read the workspace's source-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
+        "Read the workspace's version-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
       inputSchema: z.object({}),
       execute: (): Promise<string> => readSourceControlStatus(context),
     }),

@@ -52,7 +52,7 @@ interface PluginRow {
 }
 
 /**
- * Lists the installed version-control plugins in Settings ▸ Source Control, with which tool each runs
+ * Lists the installed version-control plugins in Settings ▸ Version Control, with which tool each runs
  * (#817) — offering exactly the modes the plugin's manifest advertises, the way the Claude provider
  * offers its CLI. Saving restarts the plugin, and the row then shows the version that tool reports, or
  * why it could not be run.

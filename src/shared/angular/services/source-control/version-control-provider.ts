@@ -580,7 +580,7 @@ export class VersionControlProvider implements SourceControlProvider {
     params: VcsParams<Op>,
   ): Promise<MutationResult> {
     if (this.api === undefined) {
-      return { success: false, error: 'Source control is unavailable' };
+      return { success: false, error: 'Version control is unavailable' };
     }
     const response: VersionControlResponse<Op> = await this.api.request(this.root, op, params);
     return response.ok

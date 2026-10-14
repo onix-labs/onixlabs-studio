@@ -26,6 +26,7 @@ import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset
 import { callCommand } from '@milkdown/utils';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { Icon } from '@shared/angular/icons/icon';
 import { toggleTaskList } from '@shared/angular/milkdown/markdown-task-list';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -57,8 +58,8 @@ const BLOCK_TYPE_OPTIONS: readonly DropdownOption[] = Array.from(
 
 /**
  * Represents the compact formatting tool-strip for a markdown editor pane: the basic editing
- * capabilities — history, inline marks, lists, and the table and divider blocks — as a single
- * seamless row of the same icon buttons the explorer tool strips use.
+ * capabilities — history, the clipboard, inline marks, lists, and the table and divider blocks — as a
+ * single seamless row of the same icon buttons the explorer tool strips use.
  *
  * The full markdown tab already presents these through its ribbon; this strip exists for the
  * surfaces that host the shared editor without one (the workspace document well), so a table can be
@@ -86,6 +87,13 @@ export class MarkdownToolstrip {
    * (the strip's buttons no-op until it exists).
    */
   public readonly editor: InputSignal<MarkdownEditor | undefined> = input<MarkdownEditor>();
+
+  /**
+   * Gets the clipboard actions, shared with the markdown tab's Cut, Copy and Paste.
+   */
+  private readonly clipboard: MarkdownClipboard = new MarkdownClipboard(
+    (): MarkdownEditor | undefined => this.editor(),
+  );
 
   /**
    * Gets whether the menu offers Open in Tab. Enabled by hosts (the document well) whose document can
@@ -190,6 +198,28 @@ export class MarkdownToolstrip {
    */
   protected onRedo(): void {
     this.editor()?.run(callCommand(redoCommand.key));
+  }
+
+  /**
+   * Cuts the selection to the clipboard, formatting included, as the markdown tab's Cut does.
+   */
+  protected onCut(): void {
+    this.clipboard.clipboardCommand('cut');
+  }
+
+  /**
+   * Copies the selection to the clipboard, formatting included, as the markdown tab's Copy does.
+   */
+  protected onCopy(): void {
+    this.clipboard.clipboardCommand('copy');
+  }
+
+  /**
+   * Pastes the clipboard's text at the selection, parsed as markdown, as the markdown tab's Paste
+   * does: pasted formatting arrives as formatting, in one undoable step.
+   */
+  protected onPaste(): void {
+    this.clipboard.pasteMarkdown();
   }
 
   /**

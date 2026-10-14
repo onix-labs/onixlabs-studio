@@ -89,7 +89,7 @@
   flex: none;
 }
 
-// Templates: an accordion of groups, as Source Control's sidebar sections, scrolling as a whole; rows as
+// Templates: an accordion of groups, as the Repository panel's sections, scrolling as a whole; rows as
 // in the repository list, the picked one held in the accent.
 .step__list-frame {
   @include scroll-frame;

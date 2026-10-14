@@ -15,7 +15,35 @@ import {
 } from '@shared/angular/services/agent/agent-controls';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import type { MenuItem } from '@shared/angular/components/menu/menu';
 import { AgentToolStrip } from './agent-tool-strip';
+
+/**
+ * The strip's protected menu members, reached through a cast so the menus can be driven without
+ * opening their overlays.
+ */
+interface StripMenus {
+  /**
+   * Gets the Attach menu's items.
+   */
+  attachItems(): readonly MenuItem[];
+
+  /**
+   * Gets the "…" menu's items.
+   */
+  moreItems(): readonly MenuItem[];
+
+  /**
+   * Runs a command chosen from the Attach menu.
+   */
+  onAttachMenu(id: string): void;
+
+  /**
+   * Runs a command chosen from the "…" menu.
+   */
+  onMoreMenu(id: string): void;
+}
 
 describe('AgentToolStrip', () => {
   let fixture: ComponentFixture<AgentToolStrip>;
@@ -25,6 +53,10 @@ describe('AgentToolStrip', () => {
   let tailRequests: number;
   let topRequests: number;
   let promptRequests: number;
+  let fileAttaches: number;
+  let folderAttaches: number;
+  let selectionAttaches: number;
+  let hasSelection: WritableSignal<boolean>;
   let running: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
@@ -84,8 +116,52 @@ describe('AgentToolStrip', () => {
     return match;
   }
 
+  /**
+   * Gets the strip's menu members.
+   * @returns Returns the component, typed to its protected menu members.
+   */
+  function menus(): StripMenus {
+    return fixture.componentInstance as unknown as StripMenus;
+  }
+
+  /**
+   * Finds a menu item by its label.
+   * @param items The menu's items.
+   * @param label The item's label.
+   * @returns Returns the matching item.
+   */
+  function item(items: readonly MenuItem[], label: string): MenuItem {
+    const match: MenuItem | undefined = items.find(
+      (candidate: MenuItem): boolean => candidate.label === label,
+    );
+    if (match === undefined) {
+      throw new Error(`No menu item labelled "${label}"`);
+    }
+    return match;
+  }
+
+  /**
+   * Chooses an item from the "…" menu by its label, as the menu's selected output would.
+   * @param label The item's label.
+   */
+  function chooseMore(label: string): void {
+    menus().onMoreMenu(item(menus().moreItems(), label).id);
+  }
+
+  /**
+   * Chooses an item from the Attach menu by its label, as the menu's selected output would.
+   * @param label The item's label.
+   */
+  function chooseAttach(label: string): void {
+    menus().onAttachMenu(item(menus().attachItems(), label).id);
+  }
+
   beforeEach(async () => {
     newChats = 0;
+    fileAttaches = 0;
+    folderAttaches = 0;
+    selectionAttaches = 0;
+    hasSelection = signal<boolean>(true);
     historyToggles = 0;
     tailRequests = 0;
     topRequests = 0;
@@ -104,6 +180,9 @@ describe('AgentToolStrip', () => {
       stop: (): void => undefined,
       compact: (): void => undefined,
       toggleHistory: (): void => void (historyToggles += 1),
+      attachFile: (): void => void (fileAttaches += 1),
+      attachFolder: (): void => void (folderAttaches += 1),
+      attachSelection: (): void => void (selectionAttaches += 1),
       scrollToTop: (): void => void (topRequests += 1),
       scrollToLastPrompt: (): void => void (promptRequests += 1),
       scrollToBottom: (): void => void (tailRequests += 1),
@@ -134,6 +213,7 @@ describe('AgentToolStrip', () => {
         { provide: AgentConversation, useValue: conversationStub },
         { provide: Agent, useValue: agentStub },
         { provide: AgentEngine, useValue: engineStub },
+        { provide: EditorCommands, useValue: { hasSelection } },
       ],
     }).compileComponents();
 
@@ -172,28 +252,101 @@ describe('AgentToolStrip', () => {
     expect(
       host.querySelector<HTMLSelectElement>('select[aria-label="Provider and model"]')?.disabled,
     ).toBe(true);
-    expect(button('Attach file').disabled).toBe(true);
-    expect(button('Add folder').disabled).toBe(true);
-    expect(button('Attach selection').disabled).toBe(true);
+    expect(button('Attach').disabled).toBe(true);
+    expect(
+      menus()
+        .attachItems()
+        .every((entry: MenuItem): boolean => entry.disabled === true),
+    ).toBe(true);
     expect(button('New chat').disabled).toBe(true);
     expect(button('Compact conversation').disabled).toBe(true);
     expect(button('Stop').disabled).toBe(false);
   });
 
-  it('history_whenClicked_togglesTheHistoryList', () => {
-    button('Conversation history').click();
+  it('attach_isOneMenuButton_inPlaceOfTheThreeAttachButtons', () => {
+    expect(button('Attach').disabled).toBe(false);
+    expect(host.querySelector('button[aria-label="Attach file"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Add folder"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Attach selection"]')).toBeNull();
+    expect(
+      menus()
+        .attachItems()
+        .map((entry: MenuItem): string => entry.label),
+    ).toEqual(['Attach File…', 'Attach Folder…', 'Attach Selection']);
+  });
+
+  it('attachMenu_eachItem_asksTheConversationToAttachThatKind', () => {
+    chooseAttach('Attach File…');
+    chooseAttach('Attach Folder…');
+    chooseAttach('Attach Selection');
+
+    expect(fileAttaches).toBe(1);
+    expect(folderAttaches).toBe(1);
+    expect(selectionAttaches).toBe(1);
+  });
+
+  it('attachSelection_whenThereIsNoSelection_isDisabled_andTheOthersAreNot', () => {
+    hasSelection.set(false);
+
+    expect(item(menus().attachItems(), 'Attach Selection').disabled).toBe(true);
+    expect(item(menus().attachItems(), 'Attach File…').disabled).toBe(false);
+    expect(item(menus().attachItems(), 'Attach Folder…').disabled).toBe(false);
+  });
+
+  it('moreActions_isOneMenuButton_holdingHistoryThenTheScrollJumps', () => {
+    expect(button('More Actions')).toBeTruthy();
+    expect(host.querySelector('button[aria-label="Conversation history"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Scroll to top"]')).toBeNull();
+    expect(
+      menus()
+        .moreItems()
+        .map((entry: MenuItem): string => (entry.separator === true ? '---' : entry.label)),
+    ).toEqual([
+      'Conversation History',
+      '---',
+      'Scroll to Top',
+      'Scroll to Bottom',
+      'Scroll to Last Prompt',
+    ]);
+  });
+
+  it('history_whenChosen_togglesTheHistoryList', () => {
+    chooseMore('Conversation History');
 
     expect(historyToggles).toBe(1);
   });
 
-  it('scrollToBottom_whenClicked_asksTheTranscriptForItsLatestMessage', () => {
-    button('Scroll to bottom').click();
+  it('history_isACheckedItem_reflectingWhetherTheListIsOpen', () => {
+    expect(item(menus().moreItems(), 'Conversation History').checked).toBe(false);
+
+    historyOpen.set(true);
+
+    expect(item(menus().moreItems(), 'Conversation History').checked).toBe(true);
+  });
+
+  it('history_whenAnExternalStateIsSupplied_emitsInsteadOfTogglingTheConversation', () => {
+    // A Mission Control tile keeps its own history state, so the shared conversation is left alone.
+    let emitted: number = 0;
+    fixture.componentInstance.historyToggle.subscribe((): void => void (emitted += 1));
+    fixture.componentRef.setInput('history', true);
+    fixture.detectChanges();
+
+    expect(item(menus().moreItems(), 'Conversation History').checked).toBe(true);
+
+    chooseMore('Conversation History');
+
+    expect(emitted).toBe(1);
+    expect(historyToggles).toBe(0);
+  });
+
+  it('scrollToBottom_whenChosen_asksTheTranscriptForItsLatestMessage', () => {
+    chooseMore('Scroll to Bottom');
 
     expect(tailRequests).toBe(1);
   });
 
-  it('scrollToTop_whenClicked_asksTheTranscriptForItsFirstMessage', () => {
-    button('Scroll to top').click();
+  it('scrollToTop_whenChosen_asksTheTranscriptForItsFirstMessage', () => {
+    chooseMore('Scroll to Top');
 
     expect(topRequests).toBe(1);
     // The three jumps are separate requests: asking for the top must not also ask for the tail.
@@ -201,20 +354,30 @@ describe('AgentToolStrip', () => {
     expect(promptRequests).toBe(0);
   });
 
-  it('scrollToLastPrompt_whenClicked_asksTheTranscriptForTheLastThingTheUserSent', () => {
-    button('Scroll to last prompt').click();
+  it('scrollToLastPrompt_whenChosen_asksTheTranscriptForTheLastThingTheUserSent', () => {
+    chooseMore('Scroll to Last Prompt');
 
     expect(promptRequests).toBe(1);
     expect(topRequests).toBe(0);
     expect(tailRequests).toBe(0);
   });
 
-  it('scrollButtons_askAgainOnEveryClick', () => {
-    // Each is an event rather than a state, so a second click has to scroll a second time.
-    button('Scroll to top').click();
-    button('Scroll to top').click();
+  it('scrollItems_askAgainOnEveryChoice', () => {
+    // Each is an event rather than a state, so a second choice has to scroll a second time.
+    chooseMore('Scroll to Top');
+    chooseMore('Scroll to Top');
 
     expect(topRequests).toBe(2);
+  });
+
+  it('scrollItems_whenTheConversationIsEmpty_areDisabled_butHistoryIsNot', () => {
+    hasMessages.set(false);
+
+    const items: readonly MenuItem[] = menus().moreItems();
+    expect(item(items, 'Scroll to Top').disabled).toBe(true);
+    expect(item(items, 'Scroll to Bottom').disabled).toBe(true);
+    expect(item(items, 'Scroll to Last Prompt').disabled).toBe(true);
+    expect(item(items, 'Conversation History').disabled).toBeFalsy();
   });
 
   it('engine_whenProvidersLoad_offersOneFieldGroupingModelsByProvider', () => {

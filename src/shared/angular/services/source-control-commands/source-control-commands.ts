@@ -2,7 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Defines the repository commands the directory ribbon's Source Control group can invoke on the
+ * Defines the repository commands the directory ribbon's Version Control group can invoke on the
  * active workspace.
  *
  * Deliberately small. Everything that acts on something the user can see and select — checking out a

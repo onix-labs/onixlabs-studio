@@ -84,7 +84,7 @@ describe('Layouts', () => {
     });
     layouts.registerTemplate({
       id: 'source-control',
-      name: 'Source Control',
+      name: 'Version Control',
       createLayout: (): DockNode => mkStack('tool', ['branches']),
     });
     if (seed) {
@@ -113,7 +113,7 @@ describe('Layouts', () => {
 
     expect(layouts.templates()).toEqual([
       { id: 'default', name: 'Default' },
-      { id: 'source-control', name: 'Source Control' },
+      { id: 'source-control', name: 'Version Control' },
     ]);
     expect(layouts.layouts()).toEqual([]);
   });
@@ -123,7 +123,7 @@ describe('Layouts', () => {
 
     expect(layouts.layouts().map((layout: LayoutInfo): string => layout.name)).toEqual([
       'Default',
-      'Source Control',
+      'Version Control',
     ]);
     // The seeded layouts are the user's own, so they persist like any other.
     expect(Array.isArray(store.values.get('layout.presets'))).toBe(true);
@@ -156,7 +156,7 @@ describe('Layouts', () => {
 
     expect(layouts.layouts().map((layout: LayoutInfo): string => layout.name)).toEqual([
       'Default',
-      'Source Control',
+      'Version Control',
       'Default 2',
       'Default 3',
     ]);
@@ -172,7 +172,7 @@ describe('Layouts', () => {
 
     expect(layouts.layouts().map((layout: LayoutInfo): string => layout.name)).toEqual([
       'General Engineering',
-      'Source Control',
+      'Version Control',
       'Default',
     ]);
   });
@@ -237,7 +237,7 @@ describe('Layouts', () => {
     expect(layouts.rename(id, '  ')).toBe(false);
     expect(layouts.rename('missing', 'Fine')).toBe(false);
     // Swallowing another layout's name would leave two the user cannot tell apart.
-    expect(layouts.rename(id, 'source control')).toBe(false);
+    expect(layouts.rename(id, 'version control')).toBe(false);
     expect(layouts.rename(id, 'Mine')).toBe(true);
     expect(layouts.layouts()[0]?.name).toBe('Mine');
   });
@@ -253,7 +253,7 @@ describe('Layouts', () => {
 
     expect(layouts.layouts().length).toBe(1);
     expect(store.values.get('layout.default-preset')).toBeNull();
-    expect(layouts.defaultId()).toBe(idOf(layouts, 'Source Control'));
+    expect(layouts.defaultId()).toBe(idOf(layouts, 'Version Control'));
     expect(applied).toBe(1);
   });
 
@@ -280,7 +280,7 @@ describe('Layouts', () => {
   it('switchTransient_shadowsThePickWithoutPersistingIt_andReturnRestores', (): void => {
     const layouts: Layouts = build();
     layouts.register(session);
-    const chosen: string = idOf(layouts, 'Source Control');
+    const chosen: string = idOf(layouts, 'Version Control');
 
     expect(layouts.switchTransient(chosen)).toBe(true);
     expect(layouts.activeId()).toBe(chosen);
@@ -298,7 +298,7 @@ describe('Layouts', () => {
   it('switchTransientForTemplate_prefersTheUsersOwnLayoutForIt', (): void => {
     const layouts: Layouts = build();
     layouts.register(session);
-    const own: string = idOf(layouts, 'Source Control');
+    const own: string = idOf(layouts, 'Version Control');
     // The link is the template it came from, so renaming does not break it.
     layouts.rename(own, 'Committing');
 
@@ -310,11 +310,11 @@ describe('Layouts', () => {
   it('switchTransientForTemplate_withNoLayoutOfTheirOwn_stagesTheTemplate', (): void => {
     const layouts: Layouts = build();
     layouts.register(session);
-    layouts.remove(idOf(layouts, 'Source Control'));
+    layouts.remove(idOf(layouts, 'Version Control'));
 
     expect(layouts.switchTransientForTemplate('source-control')).toBe(true);
     expect(layouts.activeId()).toBe('source-control');
-    expect(layouts.activeName()).toBe('Source Control');
+    expect(layouts.activeName()).toBe('Version Control');
   });
 
   it('switchTransient_whenAlreadyShowingOrUnknown_declines', (): void => {
@@ -329,7 +329,7 @@ describe('Layouts', () => {
   it('select_whileTransient_takesOverAndDisarmsIt', (): void => {
     const layouts: Layouts = build();
     layouts.register(session);
-    const chosen: string = idOf(layouts, 'Source Control');
+    const chosen: string = idOf(layouts, 'Version Control');
     layouts.switchTransient(chosen);
 
     layouts.select(chosen);
@@ -362,8 +362,26 @@ describe('Layouts', () => {
 
     expect(second.layouts().map((layout: LayoutInfo): string => layout.name)).toEqual([
       'Default',
-      'Source Control',
+      'Version Control',
       'Kept',
+    ]);
+  });
+
+  it('aSavedLayoutStillNamedForARenamedTemplate_takesItsNewName', (): void => {
+    // #941: "Source Control" became "Version Control". A copy seeded before then still carries the old
+    // name, and is brought into line; one the user renamed keeps their name.
+    store.values.set('layout.presets', [
+      { id: 'a', name: 'Source Control', templateId: 'source-control', layout: {} },
+      { id: 'b', name: 'My review layout', templateId: 'source-control', layout: {} },
+      { id: 'c', name: 'Source Control', layout: {} },
+    ]);
+
+    const layouts: Layouts = build();
+
+    expect(layouts.layouts().map((layout: LayoutInfo): string => layout.name)).toEqual([
+      'Version Control',
+      'My review layout',
+      'Source Control',
     ]);
   });
 

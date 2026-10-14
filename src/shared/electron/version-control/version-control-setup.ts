@@ -7,7 +7,7 @@ import { PluginDescription, VersionControlHost } from './version-control-host';
  * What the setup wizard is told when no version-control plugin is installed.
  */
 const NO_PLUGIN: string =
-  'No version-control plugin is installed, so source control is unavailable. Install Git from the Plugin Manager.';
+  'No version-control plugin is installed, so version control is unavailable. Install Git from the Plugin Manager.';
 
 /**
  * Answers the setup wizard's version-control questions — is the tool there, which version, who are
@@ -124,7 +124,7 @@ export class VersionControlSetup {
       detail:
         status === 'ok'
           ? `${identity.name} <${identity.email}>`
-          : `No ${missing.join(' or ')} configured, so commits will be refused. Set it on the Source Control step.`,
+          : `No ${missing.join(' or ')} configured, so commits will be refused. Set it on the Version Control step.`,
     };
   }
 }

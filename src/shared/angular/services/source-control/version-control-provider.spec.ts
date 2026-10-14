@@ -264,7 +264,7 @@ describe('VersionControlProvider', () => {
 
     expect(await provider.commit('m')).toEqual({
       success: false,
-      error: 'Source control is unavailable',
+      error: 'Version control is unavailable',
     });
   });
 });

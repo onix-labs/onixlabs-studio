@@ -1239,11 +1239,11 @@ function readStatusState(body: unknown): string {
 export function notSignedInDetail(host: string, choice: HostingAuthMode | undefined): string {
   switch (choice) {
     case 'cli':
-      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or choose another way to sign in under Settings → Source Control.`;
+      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or choose another way to sign in under Settings → Version Control.`;
     case 'studio':
-      return `Not signed in to ${host}. Add a token under Settings → Source Control, or choose another way to sign in there.`;
+      return `Not signed in to ${host}. Add a token under Settings → Version Control, or choose another way to sign in there.`;
     default:
-      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or add a token under Settings → Source Control.`;
+      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or add a token under Settings → Version Control.`;
   }
 }
 
@@ -1285,7 +1285,7 @@ function failure(status: number, mode: HostingAuthMode): Outcome<never> {
         error:
           mode === 'cli'
             ? 'GitHub rejected the GitHub CLI’s login. Sign in again with `gh auth login`.'
-            : 'GitHub rejected the token saved in Studio. Replace it under Settings → Source Control.',
+            : 'GitHub rejected the token saved in Studio. Replace it under Settings → Version Control.',
         code: 'unauthorized',
       };
     case 403:

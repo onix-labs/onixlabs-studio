@@ -107,7 +107,7 @@ export interface ForgeAuthStatus {
 
 /**
  * Describes one host an installed hosting plugin serves, and how it is signed in to it (#821): one
- * row of Settings ▸ Source Control, and of the setup summary. Core names no host; these come from the
+ * row of Settings ▸ Version Control, and of the setup summary. Core names no host; these come from the
  * plugins' manifests.
  */
 export interface ForgeHostAccount {

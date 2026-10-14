@@ -270,14 +270,14 @@ describe('GitHubHosting', () => {
       expect(status.ok && status.result.authenticated).toBe(false);
       // The test's credential is the token Studio keeps, so that is what the user is sent to fix.
       expect(status.ok && status.result.detail).toBe(
-        'GitHub rejected the token saved in Studio. Replace it under Settings → Source Control.',
+        'GitHub rejected the token saved in Studio. Replace it under Settings → Version Control.',
       );
     });
 
     it('notSignedIn_pointsAtTheWayTheUserChoseToSignIn', () => {
       // A user who chose a token is not sent to the CLI, nor one who chose the CLI to a token.
       expect(notSignedInDetail('github.com', 'studio')).toBe(
-        'Not signed in to github.com. Add a token under Settings → Source Control, or choose another way to sign in there.',
+        'Not signed in to github.com. Add a token under Settings → Version Control, or choose another way to sign in there.',
       );
       expect(notSignedInDetail('github.com', 'cli')).toContain('`gh auth login`');
       expect(notSignedInDetail('github.com', 'cli')).not.toContain('Add a token');

@@ -66,6 +66,7 @@ interface RibbonInternals {
   onSaveMenuItem(id: string): void;
   commitMenuItems(): readonly RibbonMenuItem[];
   onCommitMenuItem(id: string): void;
+  onRepoFetch(): void;
   layouts(): readonly LayoutInfo[];
   templateOptions(): readonly DropdownOption[];
   layoutMenuItems(): readonly RibbonMenuItem[];
@@ -147,12 +148,10 @@ class FakeDocumentHandler implements WorkspaceDocumentCommandHandler {
 }
 
 /**
- * A recording stand-in for the repository command facade behind the Source Control group.
+ * A recording stand-in for the repository command facade behind the Version Control group.
  */
 class FakeRepositoryCommands {
   public readonly calls: string[] = [];
-  public readonly canPromoteToWorktree: WritableSignal<boolean> = signal<boolean>(false);
-  public readonly promoteBlocker: WritableSignal<string | null> = signal<string | null>(null);
 
   public fetch(): void {
     this.calls.push('fetch');
@@ -160,10 +159,6 @@ class FakeRepositoryCommands {
 
   public stash(): void {
     this.calls.push('stash');
-  }
-
-  public promoteToWorktree(): void {
-    this.calls.push('promoteToWorktree');
   }
 }
 
@@ -420,7 +415,7 @@ describe('DirectoryRibbon', () => {
     });
     layoutStore.registerTemplate({
       id: 'source-control',
-      name: 'Source Control',
+      name: 'Version Control',
       createLayout: (): DockNode => mkStack('tool', ['branches']),
     });
     layoutStore.seedFromTemplates();
@@ -930,20 +925,27 @@ describe('DirectoryRibbon', () => {
     });
   });
 
-  describe('the Edit group', () => {
-    it('carriesOnlyTheClipboardAndHistoryActions_notTheTidyingPair', () => {
-      // Format and Code Cleanup were removed from the ribbon; the group is now the clipboard trio and
-      // the history/find actions alone.
+  describe('editing', () => {
+    it('leavesClipboardAndHistoryToTheEditorStrips_keepingFindOnTheMenu', () => {
+      // The ribbon has no Edit group: Cut, Copy, Paste, Undo and Redo live on each editor's own
+      // strip, where they act on the document whose strip it is. Find stays, because the menu's
+      // Edit section is the one way to the workspace's Search panel.
       const ribbon: Record<string, unknown> = internals() as unknown as Record<string, unknown>;
 
-      expect(ribbon['onFormatDocument']).toBeUndefined();
-      expect(ribbon['onCodeCleanup']).toBeUndefined();
-      expect(typeof ribbon['onCut']).toBe('function');
+      for (const handler of ['onCut', 'onCopy', 'onPaste', 'onUndo', 'onRedo']) {
+        expect(ribbon[handler]).toBeUndefined();
+      }
       expect(typeof ribbon['onFind']).toBe('function');
+      const edit: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')
+          ?.items ?? [];
+      expect(edit.map((entry: MenuEntry): string | undefined => entry.id)).toEqual([
+        'directory.find',
+      ]);
     });
   });
 
-  describe('the Source Control group', () => {
+  describe('the Version Control group', () => {
     it('commitMenu_carriesStashAlone_andDispatchesIt', () => {
       // Staging is deliberately absent: a commit resets the index and stages exactly the files
       // checked in the Commit panel, so staging beforehand cannot change what a commit contains.
@@ -969,6 +971,36 @@ describe('DirectoryRibbon', () => {
       expect(ribbon['onToggleDiff']).toBeUndefined();
       expect(typeof ribbon['onRepoFetch']).toBe('function');
       expect(typeof ribbon['onStash']).toBe('function');
+    });
+
+    it('offersNoPromote_theRepositoryPanelsConvertDoingTheSameConversion', () => {
+      // Promote went from the ribbon and the menu: the Repository panel's "Convert to Worktrees…"
+      // performs the same conversion, so the ribbon carrying it too was a second way to the same
+      // restructuring of the folder on disk.
+      const ribbon: Record<string, unknown> = internals() as unknown as Record<string, unknown>;
+
+      expect(ribbon['onPromote']).toBeUndefined();
+      expect(ribbon['canPromote']).toBeUndefined();
+      expect(ribbon['promoteConfirmOpen']).toBeUndefined();
+    });
+
+    it('menuSection_isNamedVersionControl_andListsCommitThenFetchPullPush', () => {
+      const section: MenuContribution | undefined = menu
+        .sections()
+        .find((candidate: MenuContribution): boolean => candidate.id === 'source-control');
+
+      expect(section?.label).toBe('Version Control');
+      expect(
+        (section?.items ?? [])
+          .map((entry: MenuEntry): string | undefined => entry.id)
+          .filter((id: string | undefined): boolean => id !== undefined),
+      ).toEqual(['directory.commit', 'directory.fetch', 'directory.pull', 'directory.push']);
+    });
+
+    it('fetch_dispatchesToTheRepositoryCommands', () => {
+      internals().onRepoFetch();
+
+      expect(repositoryCommands.calls).toEqual(['fetch']);
     });
   });
 
@@ -1063,7 +1095,7 @@ describe('DirectoryRibbon', () => {
         internals()
           .layouts()
           .map((layout: LayoutInfo): string => layout.name),
-      ).toEqual(['Default', 'Source Control']);
+      ).toEqual(['Default', 'Version Control']);
       expect(internals().defaultLayoutId()).toBe(idOf('Default'));
     });
 
@@ -1091,7 +1123,7 @@ describe('DirectoryRibbon', () => {
       const items: readonly RibbonMenuItem[] = internals().layoutMenuItems();
       expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual([
         'Default',
-        'Source Control',
+        'Version Control',
         'Custom',
       ]);
       expect(items.find((item: RibbonMenuItem): boolean => item.id === customId)?.active).toBe(
@@ -1102,9 +1134,9 @@ describe('DirectoryRibbon', () => {
     it('theStatusNameFollowsTheShowingLayout_whileTheButtonFaceStaysDefault', () => {
       expect(internals().activeLayoutName()).toBe('Default');
 
-      internals().onSelectLayout(idOf('Source Control'));
+      internals().onSelectLayout(idOf('Version Control'));
 
-      expect(internals().activeLayoutName()).toBe('Source Control');
+      expect(internals().activeLayoutName()).toBe('Version Control');
       // The default is unmoved: switching to a layout is not choosing it as the default.
       expect(internals().defaultLayoutId()).toBe(idOf('Default'));
     });
@@ -1117,7 +1149,7 @@ describe('DirectoryRibbon', () => {
         internals()
           .layouts()
           .map((layout: LayoutInfo): string => layout.name),
-      ).toEqual(['Default', 'Source Control', 'Default 2', 'Default 3']);
+      ).toEqual(['Default', 'Version Control', 'Default 2', 'Default 3']);
       // The prompt is not a template, so choosing it adds nothing.
       internals().onPickTemplate('');
       expect(internals().layouts().length).toBe(4);
@@ -1127,19 +1159,19 @@ describe('DirectoryRibbon', () => {
       expect(internals().templateOptions()).toEqual([
         { value: '', label: 'Templates' },
         { value: 'default', label: 'Default' },
-        { value: 'source-control', label: 'Source Control' },
+        { value: 'source-control', label: 'Version Control' },
       ]);
     });
 
     it('saveAs_offersTheShowingLayoutsName_soSavingOverItIsTheDefaultGesture', () => {
-      internals().onSelectLayout(idOf('Source Control'));
+      internals().onSelectLayout(idOf('Version Control'));
 
       internals().onSaveLayoutAs();
 
-      expect(internals().saveAsName()).toBe('Source Control');
+      expect(internals().saveAsName()).toBe('Version Control');
       expect(internals().saveAsDefault()).toBe(false);
       // The name is taken, so the dialog says what confirming will replace.
-      expect(internals().saveAsOverwrites()?.id).toBe(idOf('Source Control'));
+      expect(internals().saveAsOverwrites()?.id).toBe(idOf('Version Control'));
     });
 
     it('saveAs_overAnExistingName_replacesThatLayoutRatherThanAddingOne', () => {
@@ -1234,7 +1266,7 @@ describe('DirectoryRibbon', () => {
       const id: string = idOf('Default');
       internals().onBeginRename({ id, name: 'Default' });
 
-      internals().editingName.set('  source CONTROL ');
+      internals().editingName.set('  version CONTROL ');
       expect(internals().canCommitRename()).toBe(false);
       internals().onCommitRename();
 
@@ -1265,21 +1297,21 @@ describe('DirectoryRibbon', () => {
         internals()
           .layouts()
           .map((layout: LayoutInfo): string => layout.name),
-      ).toEqual(['Source Control']);
+      ).toEqual(['Version Control']);
       // The deleted layout held the default, so it falls back rather than stranding the choice.
-      expect(internals().defaultLayoutId()).toBe(idOf('Source Control'));
+      expect(internals().defaultLayoutId()).toBe(idOf('Version Control'));
       expect(internals().deletingLayout()).toBeNull();
     });
 
     it('manage_setsTheDefault_whichAWorkspaceWithNoPickOfItsOwnFollows', () => {
-      const sourceControl: string = idOf('Source Control');
+      const sourceControl: string = idOf('Version Control');
       internals().onManageLayouts();
 
       internals().onSetDefaultLayout(sourceControl);
 
       expect(internals().defaultLayoutId()).toBe(sourceControl);
       // This workspace has never chosen a layout, so it follows the default wherever it moves.
-      expect(internals().activeLayoutName()).toBe('Source Control');
+      expect(internals().activeLayoutName()).toBe('Version Control');
 
       internals().closeManage();
       expect(internals().manageOpen()).toBe(false);
@@ -1288,7 +1320,7 @@ describe('DirectoryRibbon', () => {
     it('manage_settingTheDefault_leavesAWorkspaceThatHasChosenForItselfAlone', () => {
       internals().onSelectLayout(idOf('Default'));
 
-      internals().onSetDefaultLayout(idOf('Source Control'));
+      internals().onSetDefaultLayout(idOf('Version Control'));
 
       // A pick of its own outranks the default, so the showing layout does not move under the user.
       expect(internals().activeLayoutName()).toBe('Default');

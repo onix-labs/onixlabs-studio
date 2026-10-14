@@ -74,7 +74,7 @@ describe('WelcomeScreen', () => {
     expect(sectionTabs().map((tab: HTMLButtonElement): string => tab.textContent.trim())).toEqual([
       'Get Started',
       'Create Something',
-      'Source Control',
+      'Version Control',
       'Tools & Settings',
     ]);
   });

@@ -4,6 +4,10 @@ import { CodeDocumentEditor } from '@features/code/angular/code-document/code-do
 import { TextEditorCursor } from '@shared/angular/components/text-editor/text-editor';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
+import {
+  EditorCommandHandler,
+  EditorCommands,
+} from '@shared/angular/services/editor-commands/editor-commands';
 import { LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { CodeSymbol, SymbolKind } from '@shared/angular/services/lsp/lsp-symbols';
@@ -61,6 +65,12 @@ class StandInEditor {
         }),
       }),
       getModelUri: (): string => 'inmemory://model/1',
+      trigger: (action: string): void => {
+        StandInEditor.moves.actions.push(action);
+      },
+      paste: (): void => {
+        StandInEditor.moves.actions.push('paste');
+      },
       reveal: (line: number, column: number): void => {
         StandInEditor.moves.position = { lineNumber: line, column };
       },
@@ -209,6 +219,43 @@ describe('CodeDocumentPanel', () => {
       'editor.unfoldAll',
       'actions.find',
     ]);
+  });
+
+  it('theStripsHistoryAndClipboardButtons_actOnThisEditor_evenWhenAnotherIsActive', async () => {
+    // The ribbon's Edit group went; these replace it on the document itself, so they must reach
+    // this document's editor rather than whichever one the command registry holds as active.
+    const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+    const elsewhere: string[] = [];
+    TestBed.inject(EditorCommands).register('another-document', {
+      cut: (): number => elsewhere.push('cut'),
+      copy: (): number => elsewhere.push('copy'),
+      paste: (): number => elsewhere.push('paste'),
+      undo: (): number => elsewhere.push('undo'),
+      redo: (): number => elsewhere.push('redo'),
+    } as unknown as EditorCommandHandler);
+    const strip: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.document-panel__strip',
+    )!;
+    const press: (label: string) => void = (label: string): void =>
+      strip.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)?.click();
+
+    for (const label of ['Undo', 'Redo', 'Cut', 'Copy', 'Paste']) {
+      press(label);
+    }
+
+    expect(StandInEditor.moves.actions).toEqual([
+      'undo',
+      'redo',
+      'editor.action.clipboardCutAction',
+      'editor.action.clipboardCopyAction',
+      'paste',
+    ]);
+    expect(elsewhere).toEqual([]);
+    // They lead the strip, ahead of the Type and Member dropdowns.
+    const labels: (string | null)[] = Array.from(
+      strip.querySelectorAll('button[aria-label], select[aria-label]'),
+    ).map((control: Element): string | null => control.getAttribute('aria-label'));
+    expect(labels.slice(0, 7)).toEqual(['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Type', 'Member']);
   });
 
   it('theMenusViewOptions_areTheEditorWideSettings_theRibbonsCheckboxesSet', async () => {

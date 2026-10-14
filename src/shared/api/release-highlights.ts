@@ -93,7 +93,7 @@ export const RELEASE_HIGHLIGHTS: readonly ReleaseHighlights[] = [
       {
         title: 'A workspace agent that can act like the Explorer',
         detail:
-          'The agent docked in a workspace can open files and diffs, read source control, drive ' +
+          'The agent docked in a workspace can open files and diffs, read version control, drive ' +
           'the terminal panel, and create, rename or delete entries in the tree. Standing prompt ' +
           'profiles and a skill library scope instructions by surface and language.',
       },

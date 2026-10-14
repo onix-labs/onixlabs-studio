@@ -202,7 +202,7 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
     title: 'Version control',
     summary:
       'Studio runs no version-control tool of its own. Install Git to see changes, commit, branch ' +
-      'and work with remotes; without it the source-control panels have nothing to show.',
+      'and work with remotes; without it the version-control panels have nothing to show.',
   },
   hosting: {
     icon: Icon.SETUP_HOSTING,

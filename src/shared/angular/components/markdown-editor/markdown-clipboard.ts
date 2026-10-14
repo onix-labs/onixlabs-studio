@@ -35,7 +35,11 @@ export class MarkdownClipboard {
    * @param command The clipboard command to execute.
    */
   public clipboardCommand(command: 'cut' | 'copy'): void {
-    this.paneOf()?.focusEditor();
+    const pane: MarkdownEditor | undefined = this.paneOf();
+    if (pane === undefined) {
+      return;
+    }
+    pane.focusEditor();
     document.execCommand(command);
   }
 
@@ -81,6 +85,9 @@ export class MarkdownClipboard {
    * @param action The action to run with the clipboard text.
    */
   private withClipboardText(action: (text: string) => void): void {
+    if (this.paneOf() === undefined) {
+      return;
+    }
     void navigator.clipboard
       .readText()
       .then((text: string): void => {

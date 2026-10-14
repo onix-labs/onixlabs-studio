@@ -1,6 +1,6 @@
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownCommandHandler } from '@shared/angular/services/markdown-commands/markdown-commands';
-import { MarkdownClipboard } from './markdown-clipboard';
+import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { OutlineScrollSpy } from './outline-scroll-spy';
 import { buildMarkdownCommandHandler } from './build-command-handler';
 
