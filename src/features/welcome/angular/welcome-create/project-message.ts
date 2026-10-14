@@ -130,7 +130,7 @@ export function projectBrief(hasFolder: boolean, skills: readonly Skill[]): stri
   return [
     hasFolder
       ? 'This conversation starts a new project, in its new workspace. It holds nothing the user wrote yet.'
-      : 'This conversation starts a new project that has no folder yet, so there is nowhere to create files: do not try to. When the plan is settled, say so; the user chooses where the project goes.',
+      : 'This conversation starts a new project that has no folder yet, so there is nowhere to create files: do not try to. When the plan is settled and the user agrees, offer them a workspace for it with the propose-workspace tool, writing the handoff its agent will start from; the user chooses where the project goes.',
     'Help the user plan the project before building it. Build on what they have already decided rather than asking it again; ask about what is missing one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.',
     ...skills.map((skill: Skill): string => `Follow the "${skill.name}" skill:\n\n${skill.body}`),
   ].join('\n\n');

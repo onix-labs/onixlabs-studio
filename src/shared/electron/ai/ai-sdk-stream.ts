@@ -1,6 +1,7 @@
 import type { ToolSet } from 'ai';
 import {
   ASK_USER,
+  PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -49,6 +50,8 @@ import {
 import type { AgentRunContext } from './agent-provider';
 import {
   ASK_USER_DESCRIPTION,
+  PROPOSE_WORKSPACE_DESCRIPTION,
+  proposeWorkspace,
   ASK_USER_PROMPT_APPENDIX,
   API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
@@ -1133,6 +1136,45 @@ export function promptForSurface(
 }
 
 /**
+ * Builds the standalone agent tab's own tool (#876): offering the user a workspace for the project the
+ * agent has been planning with them.
+ * @param context The run context the tool acts through.
+ * @returns Returns the tool set.
+ */
+export async function createProjectTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [PROPOSE_WORKSPACE]: tool({
+      description: PROPOSE_WORKSPACE_DESCRIPTION,
+      inputSchema: z.object({
+        name: z
+          .string()
+          .min(1)
+          .max(100)
+          .describe(
+            "The project's folder name: letters, digits, dots, hyphens and underscores, e.g. invoice-tracker.",
+          ),
+        summary: z
+          .string()
+          .max(2000)
+          .optional()
+          .describe('A sentence or two saying what the project is, shown on the card.'),
+        handoff: z
+          .string()
+          .min(1)
+          .max(256 * 1024)
+          .describe(
+            "Markdown for the workspace's agent: the plan, the decisions made and why, and what to do first.",
+          ),
+      }),
+      execute: (args: { name: string; summary?: string; handoff: string }): Promise<string> =>
+        Promise.resolve(proposeWorkspace(context, args)),
+    }),
+  };
+}
+
+/**
  * Builds the tool set for a run's surface: the terminal, binary, or (default) editor tools, plus the
  * ask-user tool every surface carries. Shared by the AI-SDK-backed providers so the surface-to-tools
  * mapping lives in one place.
@@ -1157,14 +1199,14 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createTerminalTools(context);
       case 'binary':
         return createBinaryTools(context);
-      // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
-      // so a project run carries only the ask-user tool (a documented limitation of those providers).
       case 'api':
         return createApiTools(context);
       case 'workspace':
         return createWorkspaceTools(context);
+      // The standalone agent has no owning document, and the AI-SDK providers have no built-in tools:
+      // a project run carries the ask-user tool and the one that moves the plan into a workspace.
       case 'project':
-        return Promise.resolve({});
+        return createProjectTools(context);
       case 'editor':
         return createStudioTools(context);
     }

@@ -36,6 +36,15 @@ describe('parseProjectRequest', () => {
     });
   });
 
+  it('carriesAHandoff_andRefusesOneThatIsNotText', () => {
+    expect(
+      parseProjectRequest({ name: 'todo', repository: { kind: 'none' }, handoff: '# Plan' }),
+    ).toEqual({ name: 'todo', repository: { kind: 'none' }, handoff: '# Plan' });
+    expect(
+      typeof parseProjectRequest({ name: 'todo', repository: { kind: 'none' }, handoff: 42 }),
+    ).toBe('string');
+  });
+
   it('refusesANameThatIsMoreThanOneFolder', () => {
     for (const name of ['a/b', '..', '.', '', 'a\\b', 'a b']) {
       expect(typeof parseProjectRequest({ name, repository: { kind: 'none' } })).toBe('string');
@@ -252,6 +261,35 @@ describe('NewProjectManager', () => {
     expect(config.origin).toBeNull();
     expect(config.checkouts).toHaveLength(1);
     expect(inits).toEqual([{ directory: path.join(folder, config.checkouts[0].id) }]);
+  });
+
+  it('aHandoff_isWrittenIntoTheFolder', async () => {
+    // #876: the plan an agent tab made, for the project's own agent to start from.
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'none' },
+      handoff: '# Plan\n\nBuild the list first.\n',
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(fs.readFileSync(path.join(parent!, 'todo', 'handoff.md'), 'utf8')).toBe(
+      '# Plan\n\nBuild the list first.\n',
+    );
+  });
+
+  it('aHandoff_goesIntoAWorktreesFirstCheckout_whereItsAgentWorks', async () => {
+    await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'worktree' },
+      handoff: '# Plan\n',
+    });
+
+    const folder: string = path.join(parent!, 'todo');
+    const config: WorktreeConfig = parseWorktreeConfig(
+      JSON.parse(fs.readFileSync(path.join(folder, '.studio', 'worktree.json'), 'utf8')),
+    );
+    expect(fs.existsSync(path.join(folder, config.checkouts[0].id, 'handoff.md'))).toBe(true);
+    expect(fs.existsSync(path.join(folder, 'handoff.md'))).toBe(false);
   });
 
   it('aLocalRepositoryThatFails_removesTheFolderItMade', async () => {

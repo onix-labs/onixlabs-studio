@@ -1,0 +1,111 @@
+<app-agent-card
+  class="agent__workspace"
+  [tone]="item().proposalState === 'pending' ? 'pending' : 'settled'"
+>
+  <p class="agent__workspace-title">Create the workspace</p>
+  @if (item().proposalSummary; as summary) {
+    <p class="agent__workspace-summary">{{ summary }}</p>
+  }
+
+  @switch (item().proposalState) {
+    @case ('pending') {
+      <!-- The details, as Create Something asks for them: each labelled, so a filled field still
+           says what it is. -->
+      <div class="agent__workspace-fields">
+        <span class="agent__workspace-label">Name</span>
+        <app-text-field
+          class="agent__workspace-field"
+          ariaLabel="Name"
+          placeholder="my-project"
+          [value]="destination.name()"
+          (valueChange)="destination.name.set($event)"
+          (enter)="create()"
+        />
+        <span class="agent__workspace-label">Location</span>
+        <div class="agent__workspace-location">
+          <span
+            class="agent__workspace-path"
+            [class.agent__workspace-path--empty]="destination.location() === null"
+            [title]="destination.location() ?? ''"
+            ><bdi>{{ destination.location() ?? 'Not chosen' }}</bdi></span
+          >
+          <app-button label="Browse…" size="small" (click)="destination.browse()" />
+        </div>
+        <span class="agent__workspace-label">Repository</span>
+        <div class="agent__workspace-choices">
+          <app-dropdown
+            ariaLabel="Repository"
+            placeholder="Repository…"
+            [fullWidth]="true"
+            [options]="destination.repositoryOptions()"
+            [value]="destination.repository() ?? ''"
+            (valueChange)="setRepository($event)"
+          />
+          @if (destination.hosted()) {
+            <app-dropdown
+              ariaLabel="Account"
+              [placeholder]="
+                destination.accounts().length === 0 ? 'No accounts signed in' : 'Account…'
+              "
+              [fullWidth]="true"
+              [options]="destination.accountOptions()"
+              [value]="destination.account() ?? ''"
+              [disabled]="destination.accounts().length === 0"
+              (valueChange)="setAccount($event)"
+            />
+          }
+          @if (destination.repository() !== null && destination.repository() !== 'none') {
+            <app-dropdown
+              ariaLabel="Repository layout"
+              placeholder="Layout…"
+              [fullWidth]="true"
+              [options]="layoutOptions"
+              [value]="destination.layout() ?? ''"
+              (valueChange)="setLayout($event)"
+            />
+          }
+        </div>
+      </div>
+
+      @if (error(); as message) {
+        <p class="agent__workspace-error" role="alert">{{ message }}</p>
+      } @else if (!canCreate) {
+        <p class="agent__workspace-hint">Open this conversation in its agent tab to create it.</p>
+      } @else {
+        <p class="agent__workspace-hint">{{ hint() }}</p>
+      }
+
+      <!-- What the workspace's agent will start from, written by this one: worth reading before it is
+           written into the project. -->
+      <button
+        type="button"
+        class="agent__workspace-toggle"
+        (click)="showHandoff.set(!showHandoff())"
+      >
+        {{ showHandoff() ? 'Hide' : 'Show' }} the handoff
+      </button>
+      @if (showHandoff()) {
+        <div class="agent__workspace-handoff">
+          <app-markdown-renderer [text]="item().proposalHandoff ?? ''" />
+        </div>
+      }
+
+      <app-button-row class="agent__workspace-actions">
+        <app-button
+          variant="solid"
+          label="Create"
+          [loading]="creating()"
+          [disabled]="!ready()"
+          (click)="create()"
+        />
+        <app-button label="Not Now" [disabled]="creating()" (click)="dismiss()" />
+      </app-button-row>
+    }
+    @case ('created') {
+      <span class="agent__workspace-state">Created at {{ item().proposalPath }}</span>
+    }
+    @default {
+      <span class="agent__workspace-state">Not now</span>
+    }
+  }
+</app-agent-card>

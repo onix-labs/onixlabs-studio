@@ -108,6 +108,13 @@ export const WRITE_BINARY_ASSEMBLY: string = 'write_binary_assembly';
 export const ASK_USER: string = 'ask_user';
 
 /**
+ * The in-app tool a standalone agent tab's agent offers the user a workspace with (#876), once the plan
+ * it made with them is settled: a card to name and place the project, and the handoff its workspace's
+ * agent starts from. Exposed on the project surface only — anywhere else the project already has one.
+ */
+export const PROPOSE_WORKSPACE: string = 'propose_workspace';
+
+/**
  * The in-app capability that stages an editor mutation as a pending preview instead of applying it:
  * the prospective change is computed, shown as a diff in the document well when the target has a
  * diff editor (code; markdown has none), and held until committed or cancelled. Not a model tool —

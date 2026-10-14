@@ -4,6 +4,7 @@ import { AgentErrorCard } from '@shared/angular/components/agent-cards/agent-err
 import { AgentPermissionCard } from '@shared/angular/components/agent-cards/agent-permission-card/agent-permission-card';
 import { AgentQuestionCard } from '@shared/angular/components/agent-cards/agent-question-card/agent-question-card';
 import { CanvasConversation } from './canvas-conversation';
+import { CanvasWorkspaceCard } from './canvas-workspace-card';
 import type { SpecimenPage } from './specimen';
 import { proposedDiff } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
 
@@ -90,6 +91,42 @@ const NEW_FILE: string = [
   '});',
   '',
 ].join('\n');
+
+/**
+ * A workspace the agent tab's agent offers once the plan is settled (#876).
+ * @param extra Anything else.
+ * @returns Returns the item.
+ */
+function proposal(extra: Partial<AgentItem> = {}): AgentItem {
+  return {
+    id: 'proposal',
+    kind: 'workspace-proposal',
+    text: '',
+    proposalName: 'invoice-tracker',
+    proposalSummary:
+      'A desktop app for freelancers to log billable hours, raise invoices and see what is overdue.',
+    proposalHandoff: [
+      '# Invoice tracker — handoff',
+      '',
+      '## The plan',
+      '',
+      '1. A local SQLite store for clients, hours and invoices.',
+      '2. An hours log first; invoices are drafted from logged hours.',
+      '3. PDF export, then the overdue view.',
+      '',
+      '## Decisions',
+      '',
+      '- **Electron + Angular**, matching the tools the user already knows.',
+      '- **No cloud sync** in the first version: everything stays on the machine.',
+      '',
+      '## Start with',
+      '',
+      'Scaffold the app and the hours log, with tests, before anything else.',
+    ].join('\n'),
+    proposalState: 'pending',
+    ...extra,
+  };
+}
 
 const QUESTION: AgentItem = {
   id: 'question',
@@ -235,6 +272,28 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
             item: permission('Bash', 'npm run build', { permissionState: 'dismissed' }),
           },
         },
+      ],
+    },
+    {
+      name: 'Create the workspace (#876)',
+      component: CanvasWorkspaceCard,
+      outputs: [],
+      states: [
+        { name: 'Pending', inputs: { item: proposal() } },
+        {
+          name: 'Pending · no summary',
+          inputs: { item: proposal({ proposalSummary: undefined }) },
+        },
+        {
+          name: 'Created',
+          inputs: {
+            item: proposal({
+              proposalState: 'created',
+              proposalPath: '/Users/matthew/Development/invoice-tracker',
+            }),
+          },
+        },
+        { name: 'Not now', inputs: { item: proposal({ proposalState: 'dismissed' }) } },
       ],
     },
     {

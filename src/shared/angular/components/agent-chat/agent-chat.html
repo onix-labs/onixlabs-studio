@@ -215,6 +215,9 @@
           @case ('edit-decision') {
             <app-agent-edit-decision-card [item]="row.item!" (decide)="decide(row.item!, $event)" />
           }
+          @case ('workspace-proposal') {
+            <app-agent-workspace-card [item]="row.item!" />
+          }
           @case ('error') {
             <app-agent-error-card
               [item]="row.item!"

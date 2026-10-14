@@ -299,6 +299,11 @@ export class Icon {
   public static readonly PROMPT_EDIT: Icon = new Icon('ph ph-git-diff');
 
   /**
+   * Gets the glyph on a timeline node for a workspace an agent tab offers to make (#876).
+   */
+  public static readonly WORKSPACE_PROPOSAL: Icon = new Icon('ph ph-folder-simple-plus');
+
+  /**
    * Gets the glyph on a timeline node for a failed run.
    */
   public static readonly PROMPT_ERROR: Icon = new Icon('ph ph-x-circle');
