@@ -1,4 +1,4 @@
-import { AiConnection } from '@shared/api/ai-types';
+import { AiConnection, AiProposedChange } from '@shared/api/ai-types';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
@@ -20,6 +20,11 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Agent, AgentItem, STREAM_FLUSH_MS } from './agent';
+import { ProposedChanges } from './proposed-changes';
+import {
+  ProposedDiff,
+  proposedDiff,
+} from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
 
 /**
  * The providers the stub runtime reports.
@@ -184,7 +189,17 @@ describe('Agent', () => {
       },
     };
     TestBed.configureTestingModule({
-      providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
+      providers: [
+        Agent,
+        { provide: AiRuntime, useValue: runtimeStub },
+        {
+          provide: ProposedChanges,
+          useValue: {
+            diffOf: (change: AiProposedChange): Promise<ProposedDiff> =>
+              Promise.resolve(proposedDiff(change.path, 'a\n', 'b\n')),
+          },
+        },
+      ],
     });
     // ⚠️ Nothing is seeded any more (#653), so a fresh profile has no active connection until the
     // engine's async provider load picks one. These tests run synchronously against a stubbed
@@ -1261,6 +1276,25 @@ describe('Agent', () => {
     expect(agent.awaitingDecision()).toBe(false);
     expect(lastItem()?.permissionState).toBe('allowed');
     expect(lastItem()?.permissionHasWorkspace).toBe(true);
+  });
+
+  it('permission_withAProposedChange_putsItsDiffOnThePrompt', async () => {
+    // #891: worked out when the request arrives, so the card shows what was asked.
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Edit',
+      detail: '/ws/a.ts',
+      hasWorkspace: true,
+      change: { path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(lastItem()?.permissionDiff?.path).toBe('/ws/a.ts');
+    expect(lastItem()?.permissionDiff?.additions).toBe(1);
   });
 
   it('permission_whenGrantedWithARememberScope_forwardsAndRecordsIt', () => {

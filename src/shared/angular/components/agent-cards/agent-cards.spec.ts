@@ -12,6 +12,7 @@ import {
   PermissionAnswer,
 } from './agent-permission-card/agent-permission-card';
 import { AgentQuestionCard } from './agent-question-card/agent-question-card';
+import { proposedDiff } from './agent-edit-diff/proposed-diff';
 
 /**
  * Renders a card for an item.
@@ -139,6 +140,41 @@ describe('AgentPermissionCard', () => {
     permissionState: 'pending',
     permissionHasWorkspace: true,
   };
+
+  it('showsTheChangeAnEditWouldMake_whileItWaits', () => {
+    // #891: the diff is in the conversation, beside the question it answers.
+    const fixture: ComponentFixture<AgentPermissionCard> = render(AgentPermissionCard, {
+      ...permission,
+      permissionName: 'Edit',
+      permissionDetail: 'src/greet.ts',
+      permissionDiff: proposedDiff('src/greet.ts', 'hello\n', 'hello, world\n'),
+    });
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('app-agent-edit-diff')).not.toBeNull();
+    expect(text(fixture)).toContain('+1');
+    expect(text(fixture)).toContain('hello, world');
+    // The diff names the file, so the detail line saying the same is left out.
+    expect(host.querySelector('.agent__permission-detail')).toBeNull();
+  });
+
+  it('foldsTheChangeAway_onceAnswered_andOpensItAgainOnRequest', () => {
+    const fixture: ComponentFixture<AgentPermissionCard> = render(AgentPermissionCard, {
+      ...permission,
+      permissionName: 'Edit',
+      permissionState: 'allowed',
+      permissionDiff: proposedDiff('src/greet.ts', 'hello\n', 'hello, world\n'),
+    });
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('app-agent-edit-diff')).toBeNull();
+    expect(text(fixture)).toContain('Show change to greet.ts');
+
+    host.querySelector<HTMLButtonElement>('.agent__permission-toggle')!.click();
+    fixture.detectChanges();
+
+    expect(host.querySelector('app-agent-edit-diff')).not.toBeNull();
+    expect(text(fixture)).toContain('Hide change to greet.ts');
+  });
 
   it('carriesTheRememberScope_onBothAnswers', () => {
     const fixture: ComponentFixture<AgentPermissionCard> = render(AgentPermissionCard, permission);

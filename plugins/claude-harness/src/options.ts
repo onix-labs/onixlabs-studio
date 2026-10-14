@@ -38,7 +38,7 @@ import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format'
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
 import { STUDIO_TOOL_PREFIX } from './tools';
-import type { Choice, Selection, TurnRequest } from './protocol';
+import type { Choice, ProposedChange, Selection, TurnRequest } from './protocol';
 
 /**
  * Built-in tools auto-allowed whenever the run has something to read: read-only project exploration.
@@ -104,12 +104,14 @@ export interface GateContext {
    * @param requestId The run the question belongs to.
    * @param name The display name of the action.
    * @param detail A one-line summary of what it will do.
+   * @param change The file change it would make, when it writes a file.
    * @returns Returns the decision, and a way to withdraw the question.
    */
   readonly askPermission: (
     requestId: string,
     name: string,
     detail: string,
+    change?: ProposedChange,
   ) => { readonly granted: Promise<boolean>; readonly withdraw: () => void };
 
   /**
@@ -326,6 +328,67 @@ async function answerQuestions(
 }
 
 /**
+ * The largest change worth sending with a prompt. A write of a generated file runs to megabytes, and a
+ * prompt is not the place for it: past this the prompt shows the path alone, as it always did.
+ */
+const MAX_CHANGE_LENGTH: number = 512 * 1024;
+
+/**
+ * Reads the file change a tool would make from its input (#891), for Studio to show with the prompt:
+ * a write's whole content, or an edit's replacements. Any other tool, or input of an unexpected shape,
+ * proposes nothing.
+ * @param toolName The SDK tool name.
+ * @param input The tool's input.
+ * @returns Returns the change, or undefined for none.
+ */
+export function proposedChange(
+  toolName: string,
+  input: Record<string, unknown>,
+): ProposedChange | undefined {
+  const path: unknown = input['file_path'];
+  if (typeof path !== 'string' || path.length === 0) {
+    return undefined;
+  }
+  let change: ProposedChange | undefined;
+  if (toolName === 'Write' && typeof input['content'] === 'string') {
+    change = { path, content: input['content'] };
+  } else if (toolName === 'Edit') {
+    const edit: ProposedChange['edits'] = replacementsOf([input]);
+    change = edit === undefined ? undefined : { path, edits: edit };
+  } else if (toolName === 'MultiEdit' && Array.isArray(input['edits'])) {
+    const edits: ProposedChange['edits'] = replacementsOf(input['edits'] as readonly unknown[]);
+    change = edits === undefined ? undefined : { path, edits };
+  }
+  return change !== undefined && JSON.stringify(change).length <= MAX_CHANGE_LENGTH
+    ? change
+    : undefined;
+}
+
+/**
+ * Reads an edit tool's replacements, in its own field names.
+ * @param raw The edits as the tool received them.
+ * @returns Returns the replacements, or undefined when any is not one.
+ */
+function replacementsOf(raw: readonly unknown[]): ProposedChange['edits'] {
+  const edits: { oldText: string; newText: string; replaceAll?: boolean }[] = [];
+  for (const entry of raw) {
+    const fields: Record<string, unknown> =
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};
+    const oldText: unknown = fields['old_string'];
+    const newText: unknown = fields['new_string'];
+    if (typeof oldText !== 'string' || typeof newText !== 'string') {
+      return undefined;
+    }
+    edits.push({
+      oldText,
+      newText,
+      ...(fields['replace_all'] === true ? { replaceAll: true } : {}),
+    });
+  }
+  return edits;
+}
+
+/**
  * Resolves a tool permission, racing Studio's prompt against the remote peer when a controllable
  * bridge is open.
  *
@@ -352,6 +415,7 @@ async function decidePermission(
     turn.requestId,
     displayName,
     detail,
+    proposedChange(toolName, input),
   );
   if (!bridge?.canPrompt) {
     return local.granted;

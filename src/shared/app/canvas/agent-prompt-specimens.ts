@@ -5,6 +5,7 @@ import { AgentPermissionCard } from '@shared/angular/components/agent-cards/agen
 import { AgentQuestionCard } from '@shared/angular/components/agent-cards/agent-question-card/agent-question-card';
 import { CanvasConversation } from './canvas-conversation';
 import type { SpecimenPage } from './specimen';
+import { proposedDiff } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
 
 // The agent conversation's prompt cards in every state (#855, #856). Fixtures are written as an agent
 // would produce them — real tool names, real lengths — because the faults worth finding are the ones
@@ -29,6 +30,66 @@ function permission(name: string, detail: string, extra: Partial<AgentItem> = {}
     ...extra,
   };
 }
+
+/**
+ * A small TypeScript file, as an agent finds it before an edit (#891).
+ */
+const GREET_BEFORE: string = [
+  "import { Logger } from './logger';",
+  '',
+  '/**',
+  ' * Greets someone by name.',
+  ' */',
+  'export function greet(name: string): string {',
+  '  return `Hello, ${name}`;',
+  '}',
+  '',
+  'export function farewell(name: string): string {',
+  '  return `Goodbye, ${name}`;',
+  '}',
+  '',
+].join('\n');
+
+/**
+ * The same file after the edit the agent proposes: a greeting that trims and logs.
+ */
+const GREET_AFTER: string = GREET_BEFORE.replace(
+  '  return `Hello, ${name}`;',
+  [
+    '  const trimmed: string = name.trim();',
+    "  Logger.info('greet', trimmed);",
+    '  return `Hello, ${trimmed}!`;',
+  ].join('\n'),
+);
+
+/**
+ * A long file with changes far apart, so the diff shows two hunks with a gap between them.
+ */
+const SETTINGS_BEFORE: string = Array.from(
+  { length: 60 },
+  (_: unknown, index: number): string =>
+    `  setting${index + 1}: ${index % 2 === 0 ? 'true' : 'false'},`,
+).join('\n');
+
+const SETTINGS_AFTER: string = SETTINGS_BEFORE.replace(
+  '  setting4: false,',
+  '  setting4: true,',
+).replace('  setting52: false,', '  setting52: true,\n  setting52Reason: "matches the default",');
+
+/**
+ * A new file an agent proposes to write.
+ */
+const NEW_FILE: string = [
+  "import { describe, expect, it } from 'vitest';",
+  "import { greet } from './greet';",
+  '',
+  "describe('greet', () => {",
+  "  it('greetsByName', () => {",
+  "    expect(greet(' Ada ')).toBe('Hello, Ada!');",
+  '  });',
+  '});',
+  '',
+].join('\n');
 
 const QUESTION: AgentItem = {
   id: 'question',
@@ -88,6 +149,43 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
       outputs: ['respond'],
       states: [
         { name: 'Pending', inputs: { item: permission('Bash', 'npm run build') } },
+        {
+          name: 'Pending · edit (#891)',
+          inputs: {
+            item: permission('Edit', 'src/greet.ts', {
+              permissionDiff: proposedDiff('src/greet.ts', GREET_BEFORE, GREET_AFTER),
+            }),
+          },
+        },
+        {
+          name: 'Pending · edit, two places',
+          inputs: {
+            item: permission('Edit', 'src/app/settings/default-settings.ts', {
+              permissionDiff: proposedDiff(
+                '/Users/matthew/Development/ONIXLabs/onixlabs-studio/src/app/settings/default-settings.ts',
+                SETTINGS_BEFORE,
+                SETTINGS_AFTER,
+              ),
+            }),
+          },
+        },
+        {
+          name: 'Pending · new file',
+          inputs: {
+            item: permission('Write', 'src/greet.spec.ts', {
+              permissionDiff: proposedDiff('src/greet.spec.ts', null, NEW_FILE),
+            }),
+          },
+        },
+        {
+          name: 'Allowed · edit, folded',
+          inputs: {
+            item: permission('Edit', 'src/greet.ts', {
+              permissionState: 'allowed',
+              permissionDiff: proposedDiff('src/greet.ts', GREET_BEFORE, GREET_AFTER),
+            }),
+          },
+        },
         {
           name: 'Pending · long command',
           inputs: {

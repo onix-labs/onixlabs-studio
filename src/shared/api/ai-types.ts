@@ -126,6 +126,7 @@ export type {
   AiToolStartEvent,
   AiToolEndEvent,
   AiPermissionEvent,
+  AiProposedChange,
   AiInputChoice,
   AiInputSelection,
   AiInputRequestEvent,

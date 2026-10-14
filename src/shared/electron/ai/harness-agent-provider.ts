@@ -1,4 +1,5 @@
 import type {
+  AiProposedChange,
   AgentContextRef,
   AiEffort,
   AiEvent,
@@ -714,6 +715,43 @@ export class HarnessAgentSession implements AgentSession {
 }
 
 /**
+ * Reads the file change a permission request proposes (protocol 1.15.0), which a plugin wrote and so is
+ * checked rather than trusted: a path, and either a whole content or replacements, each of the right
+ * type. Anything else proposes nothing, and the prompt shows the request's name and detail as before.
+ * @param value The request's `change`, as the plugin sent it.
+ * @returns Returns the change, or undefined for none.
+ */
+export function readProposedChange(value: unknown): AiProposedChange | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const { path, content, edits } = value as Record<string, unknown>;
+  if (typeof path !== 'string' || path.length === 0) {
+    return undefined;
+  }
+  if (typeof content === 'string') {
+    return { path, content };
+  }
+  if (!Array.isArray(edits) || edits.length === 0) {
+    return undefined;
+  }
+  const replacements: { oldText: string; newText: string; replaceAll?: boolean }[] = [];
+  for (const entry of edits as readonly unknown[]) {
+    const fields: Record<string, unknown> =
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};
+    if (typeof fields['oldText'] !== 'string' || typeof fields['newText'] !== 'string') {
+      return undefined;
+    }
+    replacements.push({
+      oldText: fields['oldText'],
+      newText: fields['newText'],
+      ...(fields['replaceAll'] === true ? { replaceAll: true } : {}),
+    });
+  }
+  return { path, edits: replacements };
+}
+
+/**
  * Puts a harness's question to the user and returns the answer in the protocol's shape.
  *
  * Module-level rather than a method, because a live session answers a question exactly as a transient
@@ -735,6 +773,7 @@ export async function answerRequest(
         text(asked['name'], 'Action'),
         text(asked['detail'], ''),
         dismiss,
+        readProposedChange(asked['change']),
       );
       return { kind: 'permission', granted };
     }

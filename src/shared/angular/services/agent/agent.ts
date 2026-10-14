@@ -8,6 +8,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AgentControls, AgentPhase, agentControls, agentPhase } from './agent-controls';
+import type { ProposedDiff } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
+import { ProposedChanges } from './proposed-changes';
 import type {
   AgentContextRef,
   AgentMode,
@@ -22,6 +24,7 @@ import type {
   AiInputSelection,
   AiModelInfo,
   AiPermissionRemember,
+  AiProposedChange,
   AiProviderId,
   AiProviderInfo,
   AiRemoteControlMode,
@@ -305,6 +308,12 @@ export interface AgentItem {
    * one-off grant).
    */
   readonly permissionRemember?: AiPermissionRemember;
+
+  /**
+   * Gets the change a permission to edit or write a file would make, worked out when the request
+   * arrived (#891), or undefined for a permission that changes no file.
+   */
+  readonly permissionDiff?: ProposedDiff;
 
   /**
    * Gets the id used to answer an input request (an agent question).
@@ -667,6 +676,11 @@ export class Agent {
    * Holds the structured logger.
    */
   private readonly logger: Log = inject(Log);
+
+  /**
+   * Holds the service that works out what a proposed file change would do (#891).
+   */
+  private readonly proposedChanges: ProposedChanges = inject(ProposedChanges);
 
   /**
    * Holds the transcript-performance probe (GitHub #408 instrumentation), notified each time the stream
@@ -1999,6 +2013,9 @@ export class Agent {
           permissionState: 'pending',
           permissionHasWorkspace: event.hasWorkspace,
         });
+        if (event.change !== undefined) {
+          this.attachProposedDiff(event.permissionId, event.change);
+        }
         break;
       case 'input-request':
         this.push({
@@ -2833,6 +2850,23 @@ export class Agent {
           : item,
       ),
     );
+  }
+
+  /**
+   * Works out the change a permission prompt proposes and puts it on the prompt (#891), once the file
+   * has been read. Worked out now rather than when the card draws, so a conversation reopened later
+   * shows what was asked, not a diff against whatever the file has since become.
+   * @param permissionId The prompt's permission id.
+   * @param change The change it proposes.
+   */
+  private attachProposedDiff(permissionId: string, change: AiProposedChange): void {
+    void this.proposedChanges.diffOf(change).then((diff: ProposedDiff): void => {
+      this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+        items.map((item: AgentItem): AgentItem =>
+          item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
+        ),
+      );
+    });
   }
 
   /**
