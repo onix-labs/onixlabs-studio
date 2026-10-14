@@ -184,19 +184,31 @@ describe('PluginManagerView', () => {
     // ⛔ One button per row, never a choice of two: Install, Update and Remove are mutually exclusive on
     // any given plugin, so a row offering more than one of them would be offering a contradiction.
     render([
-      summary({ id: 'a', state: 'available' }),
-      summary({ id: 'b', state: 'installed', installedVersion: '1.0.0', version: '1.0.0' }),
-      summary({ id: 'c', state: 'installed', installedVersion: '1.0.0', version: '2.0.0' }),
-      summary({ id: 'd', state: 'unavailable' }),
+      summary({ id: 'a', name: 'A', state: 'available' }),
+      summary({
+        id: 'b',
+        name: 'B',
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '1.0.0',
+      }),
+      summary({
+        id: 'c',
+        name: 'C',
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '2.0.0',
+      }),
+      summary({ id: 'd', name: 'D', state: 'unavailable' }),
     ]);
 
-    // Installed is the open group to begin with.
+    choose('Installed');
     expect(actionButtons()).toEqual([
       { label: 'Remove', disabled: false },
       { label: 'Update', disabled: false },
     ]);
 
-    openGroup('Available');
+    choose('Available');
     expect(actionButtons()).toEqual([
       { label: 'Install', disabled: false },
       // Still offered, and still says what it would do — the state column beside it says why it cannot.
@@ -205,66 +217,120 @@ describe('PluginManagerView', () => {
   });
 
   /**
-   * Opens a group by clicking its header.
-   * @param heading The group's heading.
+   * Chooses a filter in the side panel by its label.
+   * @param label The filter's label.
    */
-  function openGroup(heading: string): void {
-    [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('app-accordion')]
+  function choose(label: string): void {
+    [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.category-list__item',
+      ),
+    ]
       .find(
-        (group: HTMLElement): boolean =>
-          group.querySelector('.accordion__heading')?.textContent?.trim() === heading,
+        (entry: HTMLButtonElement): boolean =>
+          entry.querySelector('.category-list__label')?.textContent?.trim() === label,
       )!
-      .querySelector<HTMLButtonElement>('.accordion__header')!
       .click();
     fixture.detectChanges();
   }
 
   /**
-   * Reads each group's accordion: its heading and count.
-   * @returns Returns them, in order, as "Heading count".
+   * Reads the side panel's filters: each label and count.
+   * @returns Returns them, in order, as "Label count".
    */
-  function groups(): string[] {
+  function filters(): string[] {
     return [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('app-accordion'),
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+        '.category-list__item',
+      ),
     ].map(
-      (group: HTMLElement): string =>
-        `${group.querySelector('.accordion__heading')?.textContent?.trim()} ${group
-          .querySelector('app-chip')
+      (entry: HTMLElement): string =>
+        `${entry.querySelector('.category-list__label')?.textContent?.trim()} ${entry
+          .querySelector('.category-list__count')
           ?.textContent?.trim()}`,
     );
   }
 
-  it('groupsInstalledPlugins_thenTheRest_eachInAnAccordionWithItsOwnStripedTable', () => {
+  /**
+   * Reads the listed plugins' names, in row order.
+   * @returns Returns the names.
+   */
+  function names(): string[] {
+    return [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.plugin-row__name'),
+    ].map((name: HTMLElement): string => name.textContent?.trim() ?? '');
+  }
+
+  it('sidePanel_filtersByEveryPluginInstallStateOrCategory_intoOneStripedTable', () => {
+    // #950. One flat filter list beside one table: no accordions.
     render([
       summary({ id: 'a', name: 'Alpha', state: 'available' }),
       summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
-      // Mid-update: still installed, so it stays in its group while the work runs.
+      // Mid-update: still installed, so it stays under Installed while the work runs.
       summary({ id: 'c', name: 'Gamma', state: 'busy', installedVersion: '1.0.0' }),
       summary({ id: 'd', name: 'Delta', state: 'unavailable' }),
     ]);
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-
-    expect(groups()).toEqual(['Installed 2', 'Available 2']);
-    // Each group carries the section label style and a table with its own column header.
-    expect(host.querySelectorAll('app-accordion .accordion__heading.section-label')).toHaveLength(
-      2,
-    );
-    const names: () => string[] = (): string[] =>
-      [...host.querySelectorAll<HTMLElement>('.plugin-row__name')].map(
-        (name: HTMLElement): string => name.textContent?.trim() ?? '',
-      );
     const stripes: () => boolean[] = (): boolean[] =>
       [...host.querySelectorAll<HTMLElement>('tr.table-row')].map((row: HTMLElement): boolean =>
         row.classList.contains('table-row--alternate'),
       );
-    // Only the open group's table renders, with its own column header, striped from its first row.
-    expect(host.querySelectorAll('app-accordion app-table thead')).toHaveLength(1);
+
+    expect(filters().slice(0, 3)).toEqual(['All Plugins 4', 'Installed 2', 'Available 2']);
+    expect(host.querySelector('app-accordion')).toBeNull();
+    expect(host.querySelectorAll('app-table')).toHaveLength(1);
+    expect(names()).toEqual(['Alpha', 'Beta', 'Delta', 'Gamma']);
+    expect(host.querySelector('.plugin-manager__title')?.textContent?.trim()).toBe('All Plugins');
+
+    choose('Installed');
     expect(names()).toEqual(['Beta', 'Gamma']);
     expect(stripes()).toEqual([false, true]);
+    expect(host.querySelector('.plugin-manager__title')?.textContent?.trim()).toBe(
+      'Installed Plugins',
+    );
 
-    openGroup('Available');
+    choose('Available');
     expect(names()).toEqual(['Alpha', 'Delta']);
-    expect(stripes()).toEqual([false, true]);
+  });
+
+  it('sidePanel_searchesTheList', () => {
+    render([
+      summary({ id: 'a', name: 'Alpha', state: 'available' }),
+      summary({ id: 'b', name: 'Beta', state: 'available' }),
+    ]);
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+      '.category-list__search input',
+    )!;
+
+    input.value = 'bet';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(names()).toEqual(['Beta']);
+  });
+
+  it('sortsByAColumn_whenItsHeaderIsClicked', () => {
+    render([
+      summary({ id: 'a', name: 'Alpha', state: 'available' }),
+      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
+    ]);
+    const header: (label: string) => HTMLButtonElement = (label: string): HTMLButtonElement =>
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+          '.table-th__button',
+        ),
+      ].find((button: HTMLButtonElement): boolean => button.textContent?.trim() === label)!;
+
+    // Ascending, then descending: Studio's tables cycle a sortable header that way.
+    header('Plugin').click();
+    header('Plugin').click();
+    fixture.detectChanges();
+    expect(names()).toEqual(['Beta', 'Alpha']);
+
+    header('State').click();
+    fixture.detectChanges();
+    // Installed first.
+    expect(names()).toEqual(['Beta', 'Alpha']);
   });
 
   it('showsLanguagesVersionAndState_asChips', () => {
@@ -297,46 +363,6 @@ describe('PluginManagerView', () => {
     // A waiting update shows both versions, in the tone the state uses for it.
     expect(chip('app-chip.plugin-row__version')).toEqual(['1.0.0 → 2.0.0 chip--info']);
     expect(chip('app-chip.plugin-row__state')).toEqual(['Update available chip--info']);
-  });
-
-  it('opensInstalledFirst_andOnlyOneGroupAtATime', () => {
-    render([
-      summary({ id: 'a', state: 'available' }),
-      summary({ id: 'b', state: 'installed', installedVersion: '1.0.0' }),
-    ]);
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const open: () => string[] = (): string[] =>
-      [
-        ...host.querySelectorAll<HTMLElement>('.plugin-manager__group--open .accordion__heading'),
-      ].map((heading: HTMLElement): string => heading.textContent?.trim() ?? '');
-    expect(open()).toEqual(['Installed']);
-
-    host.querySelectorAll<HTMLButtonElement>('.accordion__header')[1].click();
-    fixture.detectChanges();
-
-    expect(open()).toEqual(['Available']);
-    expect(host.querySelectorAll('app-table')).toHaveLength(1);
-  });
-
-  it('closingAGroup_hidesItsTable_andOpeningItShowsItAgain', () => {
-    render([summary({ id: 'a', state: 'available' })]);
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const toggle: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.accordion__header')!;
-
-    toggle.click();
-    fixture.detectChanges();
-    expect(host.querySelector('app-table')).toBeNull();
-    expect(host.querySelector('.plugin-manager__group--open')).toBeNull();
-
-    toggle.click();
-    fixture.detectChanges();
-    expect(host.querySelector('app-table')).not.toBeNull();
-  });
-
-  it('leavesOutAGroupWithNothingInIt', () => {
-    render([summary({ id: 'a', state: 'available' })]);
-
-    expect(groups()).toEqual(['Available 1']);
   });
 
   it('aBusyPlugin_showsAProgressBarInPlaceOfItsButton', () => {

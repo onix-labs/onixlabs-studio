@@ -1,18 +1,23 @@
 <app-panel-layout class="plugin-manager">
-  <!-- Categories are a panel rather than a column of the list, so they resize and collapse like every
-       other side surface in the application (#panel-layout). -->
+  <!-- The filters (#950): search, then every plugin, the installed or available ones, then each
+       category. Part of the view rather than a helper, so it can be resized but not closed or moved. -->
   <app-panel
     panelId="plugin-categories"
     defaultEdge="left"
-    [defaultSize]="220"
-    [minSize]="160"
+    [allowedEdges]="sideEdges"
+    [movable]="false"
+    [defaultSize]="240"
+    [minSize]="180"
     [maxSize]="420"
   >
     <app-category-list
-      title="Plugin Categories"
-      [items]="categoryItems()"
-      [selectedId]="browse.category() ?? ALL_CATEGORIES"
-      (selectedIdChange)="onCategory($event)"
+      title="Plugins"
+      [searchable]="true"
+      searchPlaceholder="Search plugins…"
+      [(query)]="browse.query"
+      [items]="filterItems()"
+      [selectedId]="browse.filter()"
+      (selectedIdChange)="browse.filter.set($event)"
     />
   </app-panel>
 
@@ -29,40 +34,22 @@
       </p>
     }
 
-    <!-- Installed, then Available: each an accordion holding its own table, whose header stays in
-         view while its rows scroll. Open groups share the height, each taking no more than it needs. -->
-    <div class="plugin-manager__groups">
-      @for (group of groups(); track group.id) {
-        <app-accordion
-          class="plugin-manager__group"
-          [class.plugin-manager__group--open]="isOpen(group.id)"
-          [heading]="group.label"
-          [section]="true"
-          [fill]="true"
-          [expanded]="isOpen(group.id)"
-          (expandedChange)="setOpen(group.id, $event)"
-        >
-          <app-chip accordionActions>{{ group.rows.length }}</app-chip>
-          <app-table
-            class="plugin-manager__table"
-            [columns]="columns"
-            [rows]="group.rows"
-            [striped]="true"
-          >
-            <ng-template appTableRow let-row>
-              <ng-container
-                [ngTemplateOutlet]="cells"
-                [ngTemplateOutletContext]="{ $implicit: row }"
-              />
-            </ng-template>
-          </app-table>
-        </app-accordion>
-      } @empty {
-        <p class="plugin-manager__empty">
-          {{ browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.' }}
-        </p>
-      }
-    </div>
+    <!-- One list, filling the rest of the view, its header in view while its rows scroll. Sorted by
+         clicking a column's header. -->
+    <app-table
+      class="plugin-manager__table"
+      [columns]="columns"
+      [rows]="rows()"
+      [striped]="true"
+      [emptyText]="
+        browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.'
+      "
+      (sortChange)="browse.sort.set($event)"
+    >
+      <ng-template appTableRow let-row>
+        <ng-container [ngTemplateOutlet]="cells" [ngTemplateOutletContext]="{ $implicit: row }" />
+      </ng-template>
+    </app-table>
 
     <!-- One plugin's cells, shared by both groups' tables. -->
     <ng-template #cells let-row>

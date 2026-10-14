@@ -19,18 +19,20 @@ import {
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import {
+  ALL_PLUGINS,
+  AVAILABLE_PLUGINS,
+  INSTALLED_PLUGINS,
   PluginBrowse,
   PluginCategory,
-  PluginGroupId,
   categoriesOf,
   rowIconForCategory,
 } from '../plugin-browse/plugin-browse';
@@ -55,47 +57,23 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
 };
 
 /**
- * The side list's identifier for "All Plugins", which no category name can take.
- */
-const ALL_CATEGORIES: string = '\u0000all';
-
-/**
  * The plugin table's columns. The plugin column takes a fixed share so its name and description have
  * room; the category and languages share what is left; version, state and the action are fixed, so
  * they line up down the table however wide their text is.
  */
 const COLUMNS: readonly TableColumn[] = [
-  { id: 'plugin', header: 'Plugin', width: '38%' },
-  { id: 'category', header: 'Category' },
+  { id: 'plugin', header: 'Plugin', width: '38%', sortable: true },
+  { id: 'category', header: 'Category', sortable: true },
   { id: 'languages', header: 'Languages' },
   { id: 'version', header: 'Version', width: '8.5rem' },
-  { id: 'state', header: 'State', width: '10.5rem' },
+  { id: 'state', header: 'State', width: '10.5rem', sortable: true },
   { id: 'action', header: '', width: '8.5rem', align: 'end' },
 ];
 
 /**
- * One group of the list: an accordion holding its own table.
- */
-interface PluginGroup {
-  /**
-   * Gets the group's id.
-   */
-  readonly id: PluginGroupId;
-
-  /**
-   * Gets the group's heading.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the group's rows, one per plugin.
-   */
-  readonly rows: readonly TableRow[];
-}
-
-/**
  * The Plugin Manager: the list of plugins Studio knows about, what is installed on this machine, and
- * the controls that change that.
+ * the controls that change that. A side panel filters the list (#950) — every plugin, the installed
+ * or available ones, or a category — and the list fills the rest of the view as one table.
  *
  * This is the first of the plugin model's three layers made visible — *available* and *installed*. What
  * a plugin contributes is shown here as plain text (a Python language server, a C# debugger) because it
@@ -105,7 +83,6 @@ interface PluginGroup {
 @Component({
   selector: 'app-plugin-manager-view',
   imports: [
-    Accordion,
     AppIcon,
     CategoryList,
     Chip,
@@ -160,8 +137,7 @@ export class PluginManagerView implements OnInit {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets the browsing state the ribbon drives: the search text, the open group, the selected
-   * category and the ordering.
+   * Gets the browsing state: the search text, the side panel's filter and the column sort.
    */
   protected readonly browse: PluginBrowse = inject(PluginBrowse);
 
@@ -171,41 +147,49 @@ export class PluginManagerView implements OnInit {
   protected readonly columns: readonly TableColumn[] = COLUMNS;
 
   /**
-   * Gets the plugins to list, in two groups, each an accordion with its own table: those installed on
-   * this machine (see `isInstalled`), then the rest. Each keeps the browse order, and a group with
-   * nothing in it is left out.
+   * Gets the edges the side panel may sit on: only its own, since it is part of the view.
    */
-  protected readonly groups: Signal<readonly PluginGroup[]> = computed(
-    (): readonly PluginGroup[] => {
-      const groups: PluginGroup[] = [
-        { id: 'installed', label: 'Installed', rows: this.rowsOf(this.browse.installedVisible()) },
-        { id: 'available', label: 'Available', rows: this.rowsOf(this.browse.availableVisible()) },
-      ];
-      return groups.filter((group: PluginGroup): boolean => group.rows.length > 0);
-    },
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+
+  /**
+   * Gets the table's rows, one per plugin the filter and search leave, in the chosen order.
+   */
+  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
+    this.browse
+      .visible()
+      .map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
   );
 
   /**
-   * Gets the identifier of the side list's "All Plugins" entry, which selects no category.
+   * Gets the side panel's filters: every plugin, the installed and the available ones, then each
+   * category, every one with how many plugins it holds.
    */
-  protected readonly ALL_CATEGORIES: string = ALL_CATEGORIES;
-
-  /**
-   * Gets the side list's entries: every plugin, then one per category.
-   */
-  protected readonly categoryItems: Signal<readonly CategoryItem[]> = computed(
+  protected readonly filterItems: Signal<readonly CategoryItem[]> = computed(
     (): readonly CategoryItem[] => [
       {
-        id: ALL_CATEGORIES,
+        id: ALL_PLUGINS,
         label: 'All Plugins',
         icon: Icon.PLUGINS,
         count: this.browse.all().length,
       },
-      ...this.browse.categories().map((category: PluginCategory): CategoryItem => ({
+      {
+        id: INSTALLED_PLUGINS,
+        label: 'Installed',
+        icon: Icon.CHECK,
+        count: this.browse.installedCount(),
+      },
+      {
+        id: AVAILABLE_PLUGINS,
+        label: 'Available',
+        icon: Icon.DOWNLOAD,
+        count: this.browse.notInstalledCount(),
+      },
+      ...this.browse.categories().map((category: PluginCategory, index: number): CategoryItem => ({
         id: category.name,
         label: category.name,
         icon: category.icon,
         count: category.count,
+        dividerBefore: index === 0,
       })),
     ],
   );
@@ -213,9 +197,18 @@ export class PluginManagerView implements OnInit {
   /**
    * Gets the heading, which names the selected category so the list always says what it is showing.
    */
-  protected readonly heading: Signal<string> = computed(
-    (): string => this.browse.category() ?? 'Plugins',
-  );
+  protected readonly heading: Signal<string> = computed((): string => {
+    switch (this.browse.filter()) {
+      case ALL_PLUGINS:
+        return 'All Plugins';
+      case INSTALLED_PLUGINS:
+        return 'Installed Plugins';
+      case AVAILABLE_PLUGINS:
+        return 'Available Plugins';
+      default:
+        return this.browse.filter();
+    }
+  });
 
   /**
    * Gets the sentence under the heading: how many plugins are listed, and where choosing between two
@@ -242,33 +235,6 @@ export class PluginManagerView implements OnInit {
    */
   protected plugin(row: TableRow): PluginSummary {
     return row.data as PluginSummary;
-  }
-
-  /**
-   * Gets whether a group is the open one.
-   * @param id The group's id.
-   * @returns Returns true when it is.
-   */
-  protected isOpen(id: PluginGroupId): boolean {
-    return this.browse.shownGroup() === id;
-  }
-
-  /**
-   * Opens a group, closing the other; or closes it, leaving none open.
-   * @param id The group's id.
-   * @param open Whether it is to be open.
-   */
-  protected setOpen(id: PluginGroupId, open: boolean): void {
-    this.browse.openGroup.set(open ? id : null);
-  }
-
-  /**
-   * Builds a table row per plugin.
-   * @param plugins The plugins, in order.
-   * @returns Returns the rows.
-   */
-  private rowsOf(plugins: readonly PluginSummary[]): readonly TableRow[] {
-    return plugins.map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin }));
   }
 
   /**
@@ -331,14 +297,6 @@ export class PluginManagerView implements OnInit {
    * Gets whether a newer version is waiting, exposed for the state badge.
    */
   protected readonly canUpdate: typeof canUpdate = canUpdate;
-
-  /**
-   * Selects a category from the side list, or every plugin.
-   * @param id The chosen entry's identifier.
-   */
-  protected onCategory(id: string): void {
-    this.browse.category.set(id === ALL_CATEGORIES ? null : id);
-  }
 
   /**
    * Gets a plugin's categories as one readable phrase.

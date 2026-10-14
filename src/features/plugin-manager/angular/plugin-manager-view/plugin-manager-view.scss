@@ -47,34 +47,12 @@
   font-size: 0.8125rem;
 }
 
-// The groups, inset from the view's edges. The heading above them does not scroll: a heading that
-// scrolled away would take the one sentence saying which category you are looking at with it.
-.plugin-manager__groups {
-  display: flex;
+// The one list fills the rest of the view, inset from its edges, and scrolls inside with its column
+// header in view.
+.plugin-manager__table {
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 0.75rem;
   min-block-size: 0;
-  padding: 0.25rem 1rem 1rem;
-  overflow: auto;
-}
-
-// A closed group is just its header. Open groups share the height equally, each capped at what its
-// table needs, so a short group shows whole and a long one takes the rest and scrolls inside its box,
-// its column header staying in view.
-.plugin-manager__group {
-  flex: none;
-
-  &--open {
-    flex: 1 1 0;
-    max-block-size: calc-size(max-content, size);
-  }
-}
-
-.plugin-manager__empty {
-  margin: 0;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.8125rem;
+  margin: 0.25rem 1rem 1rem;
 }
 
 // ---------------------------------------------------------------------------------------------

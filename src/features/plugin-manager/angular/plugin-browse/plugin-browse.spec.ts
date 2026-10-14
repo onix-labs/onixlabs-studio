@@ -3,7 +3,13 @@ import { signal, WritableSignal } from '@angular/core';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-import { categoriesOf, PluginBrowse } from './plugin-browse';
+import {
+  ALL_PLUGINS,
+  AVAILABLE_PLUGINS,
+  categoriesOf,
+  INSTALLED_PLUGINS,
+  PluginBrowse,
+} from './plugin-browse';
 
 /**
  * Builds a plugin summary with the fields these tests narrow on.
@@ -77,46 +83,38 @@ describe('PluginBrowse', () => {
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
-  it('openGroup_startsOnInstalled_andNarrowsNothing', () => {
-    // The groups are boxes on the list, not a filter: every plugin is listed whichever is open.
-    expect(browse.openGroup()).toBe('installed');
-    expect(browse.visible()).toHaveLength(3);
-
-    browse.openGroup.set('available');
+  it('filter_startsOnEveryPlugin_andNarrowsToInstalledAvailableOrACategory', () => {
+    // #950. One flat list of filters in the side panel: every plugin, by install state, or a category.
+    expect(browse.filter()).toBe(ALL_PLUGINS);
     expect(browse.visible()).toHaveLength(3);
     expect(browse.narrowed()).toBe(false);
+
+    browse.filter.set(INSTALLED_PLUGINS);
+    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['ts']);
+    expect(browse.narrowed()).toBe(true);
+
+    browse.filter.set(AVAILABLE_PLUGINS);
+    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude', 'mystery']);
+
+    browse.filter.set('AI Providers');
+    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
-  it('groups_countASideloadedPluginAsInstalled_thoughItRecordsNoVersion', () => {
+  it('installed_countsASideloadedPlugin_thoughItRecordsNoVersion', () => {
     catalogue.set([
       plugin({ id: 'sideloaded', name: 'Zig', state: 'installed', installedVersion: null }),
       plugin({ id: 'updating', name: 'Busy', state: 'busy', installedVersion: '1.0.0' }),
       plugin({ id: 'new', name: 'New', state: 'available', installedVersion: null }),
     ]);
 
-    expect(browse.installedVisible().map((p: PluginSummary): string => p.id)).toEqual([
+    browse.filter.set(INSTALLED_PLUGINS);
+    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual([
       'updating',
       'sideloaded',
     ]);
-    expect(browse.availableVisible().map((p: PluginSummary): string => p.id)).toEqual(['new']);
-  });
-
-  it('shownGroup_opensTheOtherGroup_whenTheChosenOneHasNothingToShow', () => {
-    catalogue.set([plugin({ id: 'new', name: 'New', state: 'available', installedVersion: null })]);
-
-    expect(browse.openGroup()).toBe('installed');
-    expect(browse.shownGroup()).toBe('available');
-
-    browse.openGroup.set(null);
-    expect(browse.shownGroup()).toBeNull();
-    // An empty group has no box, so the ribbon disables its button.
-    expect(browse.hasGroup('installed')).toBe(false);
-    expect(browse.hasGroup('available')).toBe(true);
-  });
-
-  it('category_narrowsToThatCategoryOnly', () => {
-    browse.category.set('AI Providers');
-    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
+    expect(browse.installedCount()).toBe(2);
+    browse.filter.set(AVAILABLE_PLUGINS);
+    expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['new']);
   });
 
   it('categories_areBuiltFromWhatIsContributed_withCountsAndIcons', () => {
@@ -129,9 +127,16 @@ describe('PluginBrowse', () => {
     ]);
   });
 
-  it('sort_byStatePutsInstalledFirst', () => {
-    browse.sort.set('state');
+  it('sort_followsTheColumnHeader_andItsDirection', () => {
+    browse.sort.set({ columnId: 'state', direction: 'asc' });
     expect(browse.visible()[0].id).toBe('ts');
+
+    browse.sort.set({ columnId: 'plugin', direction: 'desc' });
+    expect(browse.visible().map((p: PluginSummary): string => p.name)).toEqual([
+      'TypeScript Language Server',
+      'Mystery',
+      'Claude',
+    ]);
   });
 
   it('counts_areOfTheCatalogueRatherThanTheFilteredList', () => {
