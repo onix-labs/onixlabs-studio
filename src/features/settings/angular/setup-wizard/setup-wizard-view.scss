@@ -183,17 +183,8 @@
 }
 
 .setup__actions {
-  // Back and Next (or Finish) are one pair, so they are one width whatever their labels: equal grid
-  // columns, each as wide as the wider button and never narrower than 5rem. A flex basis cannot do
-  // this — a flex item will not shrink below its content, so "Next →" outgrew a 4rem Back.
-  //
-  // The footer hugs its buttons at the pane's end rather than spanning the pane, which is what makes
-  // the equal columns as wide as the wider button rather than half the pane each.
-  display: grid;
-  grid-auto-columns: minmax(5rem, 1fr);
-  grid-auto-flow: column;
-  align-self: flex-end;
-  gap: 0.5rem;
+  // The pane is a column that grows its body, so the footer keeps its own height beneath it. Back
+  // stays before Next (or Finish): a wizard reads in the direction it moves.
   flex: none;
 }
 

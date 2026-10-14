@@ -27,16 +27,3 @@
   gap: 0.5rem;
   margin: 0 0 1.3rem;
 }
-
-.confirm__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-
-  // A one-word answer gives a button almost nothing to be as wide as, so every answer is floored to
-  // a width that reads as a row of choices rather than a row of small labels. The inner control
-  // flexes to its host, so the floor belongs on the host.
-  app-button {
-    min-inline-size: 6rem;
-  }
-}

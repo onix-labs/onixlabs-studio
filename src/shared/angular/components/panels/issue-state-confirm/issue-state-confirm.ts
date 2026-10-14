@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { ForgeCloseReason } from '@shared/api/forge-types';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -36,7 +37,7 @@ const CLOSE_REASON_OPTIONS: readonly DropdownOption[] = [
  */
 @Component({
   selector: 'app-issue-state-confirm',
-  imports: [Button, Dropdown, Modal, ModalContent, NumberField],
+  imports: [Button, ButtonRow, Dropdown, Modal, ModalContent, NumberField],
   templateUrl: './issue-state-confirm.html',
   styleUrl: './issue-state-confirm.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

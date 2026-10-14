@@ -17,6 +17,7 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import {
   TreeMenuSelection,
@@ -132,7 +133,7 @@ interface ApiRow {
  */
 @Component({
   selector: 'app-api-explorer-panel',
-  imports: [AppIcon, ExplorerToolbar, TreeView, Modal, ModalContent, Button, TextField],
+  imports: [AppIcon, ExplorerToolbar, TreeView, Modal, ModalContent, Button, ButtonRow, TextField],
   templateUrl: './api-explorer-panel.html',
   styleUrl: './api-explorer-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

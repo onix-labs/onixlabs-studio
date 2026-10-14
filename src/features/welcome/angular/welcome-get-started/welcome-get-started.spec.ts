@@ -155,7 +155,12 @@ describe('WelcomeGetStarted', () => {
     expect(internals.missingItem()).toBe(item);
     const prompt: HTMLElement = windows.contentHost!;
     expect(prompt.querySelector('.welcome__confirm-message')).not.toBeNull();
-    expect(prompt.querySelectorAll('.welcome__confirm-actions--stack app-button').length).toBe(3);
+    // One row, primary first and Cancel last (#894).
+    expect(
+      [...prompt.querySelectorAll('app-button-row button')].map(
+        (button: Element): string => button.textContent?.trim() ?? '',
+      ),
+    ).toEqual(['Locate', 'Remove', 'Cancel']);
   });
 
   it('removeMissing_whenPrompted_forgetsTheItemAndDismisses', async () => {

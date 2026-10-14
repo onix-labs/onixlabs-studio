@@ -58,13 +58,15 @@
     </div>
     <div class="commit-graph__actions">
       <span class="commit-graph__summary">{{ filterSummary() }}</span>
-      <app-button
-        variant="outline"
-        label="Clear"
-        [disabled]="!filtered()"
-        (click)="clearFilter()"
-      />
-      <app-button variant="solid" label="Filter" (click)="applyFilter()" />
+      <app-button-row>
+        <app-button variant="solid" label="Filter" (click)="applyFilter()" />
+        <app-button
+          variant="outline"
+          label="Clear"
+          [disabled]="!filtered()"
+          (click)="clearFilter()"
+        />
+      </app-button-row>
     </div>
   </div>
 }

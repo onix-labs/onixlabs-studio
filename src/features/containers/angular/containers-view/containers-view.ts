@@ -15,6 +15,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
@@ -75,7 +76,7 @@ export interface ContainersSummary {
  */
 @Component({
   selector: 'app-containers-view',
-  imports: [Button, AppIcon, PanelLayout, Panel, Terminal, TooltipTrigger],
+  imports: [Button, ButtonRow, AppIcon, PanelLayout, Panel, Terminal, TooltipTrigger],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
   providers: [ContainerTerminals],

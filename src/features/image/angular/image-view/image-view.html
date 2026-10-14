@@ -12,13 +12,15 @@
           }
         </span>
         <span class="panel-toolbar__spacer"></span>
-        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
-        <app-button
-          variant="solid"
-          label="Crop"
-          [disabled]="cropRect() === null"
-          (click)="applyCrop()"
-        />
+        <app-button-row>
+          <app-button
+            variant="solid"
+            label="Crop"
+            [disabled]="cropRect() === null"
+            (click)="applyCrop()"
+          />
+          <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        </app-button-row>
       </app-panel-toolbar>
     }
     @case ('resize') {
@@ -62,8 +64,10 @@
           </span>
         }
         <span class="panel-toolbar__spacer"></span>
-        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
-        <app-button variant="solid" label="Resize" (click)="applyResize()" />
+        <app-button-row>
+          <app-button variant="solid" label="Resize" (click)="applyResize()" />
+          <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        </app-button-row>
       </app-panel-toolbar>
     }
     @case ('export') {
@@ -98,13 +102,15 @@
           <span class="image-view__hint">% — {{ size.width }} × {{ size.height }}</span>
         }
         <span class="panel-toolbar__spacer"></span>
-        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
-        <app-button
-          variant="solid"
-          label="Export…"
-          [disabled]="document()?.busy() ?? true"
-          (click)="applyExport()"
-        />
+        <app-button-row>
+          <app-button
+            variant="solid"
+            label="Export…"
+            [disabled]="document()?.busy() ?? true"
+            (click)="applyExport()"
+          />
+          <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        </app-button-row>
       </app-panel-toolbar>
     }
   }

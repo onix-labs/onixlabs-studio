@@ -11,6 +11,7 @@ import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
@@ -68,6 +69,7 @@ export interface SkillRow {
   imports: [
     Accordion,
     Button,
+    ButtonRow,
     MarkdownField,
     SettingRow,
     TextField,

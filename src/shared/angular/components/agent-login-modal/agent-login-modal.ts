@@ -19,6 +19,7 @@ import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Log } from '@shared/angular/services/log/log';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
@@ -37,7 +38,7 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
  */
 @Component({
   selector: 'app-agent-login-modal',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal [open]="open()" [width]="30" ariaLabel="Sign in to Claude" (dismiss)="close()">
@@ -74,8 +75,7 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
             </p>
           }
 
-          <div class="login-modal__actions">
-            <app-button label="Dismiss" (click)="close()" />
+          <app-button-row class="login-modal__actions">
             @if (phase() === 'success') {
               <app-button variant="solid" label="Done" (click)="close()" />
             } @else {
@@ -86,7 +86,8 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
                 (click)="startLogin()"
               />
             }
-          </div>
+            <app-button label="Dismiss" (click)="close()" />
+          </app-button-row>
         </div>
       </ng-template>
     </app-modal>
@@ -120,9 +121,6 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
       }
 
       .login-modal__actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.6rem;
         margin-block-start: 0.4rem;
       }
     `,

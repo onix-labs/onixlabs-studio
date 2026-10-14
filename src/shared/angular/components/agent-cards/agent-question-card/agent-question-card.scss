@@ -12,22 +12,13 @@
   word-break: break-word;
 }
 
-// Answer and Skip are one width — the wider label's — one equal column per button, so a free-form
-// question's lone Skip is not given an empty partner.
-.agent__ask-actions {
-  display: inline-grid;
-  grid-auto-columns: 1fr;
-  grid-auto-flow: column;
-  gap: 0.5rem;
-  // At the card's right edge, as Allow and Deny are. The card is a flex column, so this is
-  // `align-self` (which also stops the grid stretching to the card's width).
-  align-self: flex-end;
-}
-
-// Narrow — a docked Agent panel: the buttons share the full width equally.
+// Narrow — a docked Agent panel: the buttons share the full width equally. The button row keeps to
+// the card's trailing edge at its own width everywhere else, as Allow and Deny do; here it gives that
+// up to span the card, which no input can say because only the card's width decides it.
 @container (inline-size <= 22.5rem) {
   .agent__ask-actions {
-    display: grid;
+    inline-size: auto;
+    margin-inline-start: 0;
     align-self: stretch;
   }
 }

@@ -1,0 +1,29 @@
+// One column per button, every column as wide as the widest (#894). The row is only as wide as its
+// buttons need, so `1fr` shares out the widest button's width rather than the container's.
+//
+// The floor keeps a one-word answer ("No", "Set") from shrinking the whole row to a row of small
+// labels. A button's inner control flexes to its host, so sizing the host sizes the button.
+:host {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(6rem, 1fr);
+  gap: 0.5rem;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  margin-inline-start: auto;
+}
+
+// A row of small buttons lives in a toolbar or a banner, where a dialog's floor would make them wider
+// than the strip they sit in: they are only as wide as the widest label.
+:host(.button-row--small) {
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+:host(.button-row--start) {
+  margin-inline-start: 0;
+}
+
+:host(.button-row--fill) {
+  inline-size: auto;
+  margin-inline-start: 0;
+}

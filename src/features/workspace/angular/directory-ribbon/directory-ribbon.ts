@@ -56,6 +56,7 @@ import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbo
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 
@@ -96,6 +97,7 @@ const COMMIT_STASH: string = 'stash';
     Radio,
     TextField,
     Button,
+    ButtonRow,
     AppIcon,
     Dropdown,
     RibbonStripOverflow,

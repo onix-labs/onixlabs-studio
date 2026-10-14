@@ -171,7 +171,9 @@ describe('ContainersView', () => {
     stubBridge({ available: false });
     const fixture: ComponentFixture<ContainersView> = await createView();
     const actions: readonly string[] = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.containers__empty-actions button'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.containers__empty app-button-row button',
+      ),
     ).map((button: Element): string => button.textContent?.trim() ?? '');
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain("Docker isn't running");
@@ -193,7 +195,9 @@ describe('ContainersView', () => {
     const fixture: ComponentFixture<ContainersView> = await createView();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     const actions: string = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.containers__empty-actions button'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.containers__empty app-button-row button',
+      ),
     )
       .map((button: Element): string => button.textContent?.trim() ?? '')
       .join(' ');

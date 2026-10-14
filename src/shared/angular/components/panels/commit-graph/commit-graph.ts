@@ -13,6 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
@@ -139,7 +140,7 @@ interface EdgeViewModel {
  */
 @Component({
   selector: 'app-commit-graph',
-  imports: [AppIcon, Button, Chip, PanelToolbar, TextField],
+  imports: [AppIcon, Button, ButtonRow, Chip, PanelToolbar, TextField],
   templateUrl: './commit-graph.html',
   styleUrl: './commit-graph.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

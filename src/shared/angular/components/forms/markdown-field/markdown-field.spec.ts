@@ -78,7 +78,7 @@ describe('MarkdownField', () => {
     await fixture.whenStable();
     expect(windows.openWindows).toBe(0);
 
-    host.querySelector<HTMLButtonElement>('.markdown-field__actions button')?.click();
+    host.querySelector<HTMLButtonElement>('app-button-row button')?.click();
     flush();
 
     expect(windows.openWindows).toBe(1);
@@ -102,7 +102,7 @@ describe('MarkdownField', () => {
     ): HTMLButtonElement | undefined =>
       buttons().find((b: HTMLButtonElement): boolean => b.textContent?.trim() === label);
 
-    host.querySelector<HTMLButtonElement>('.markdown-field__actions button')?.click();
+    host.querySelector<HTMLButtonElement>('app-button-row button')?.click();
     flush();
     field.onDraftChange('changed');
     button('Cancel')?.click();
@@ -110,7 +110,7 @@ describe('MarkdownField', () => {
     expect(component.value()).toBe('original');
     expect(windows.openWindows).toBe(0);
 
-    host.querySelector<HTMLButtonElement>('.markdown-field__actions button')?.click();
+    host.querySelector<HTMLButtonElement>('app-button-row button')?.click();
     flush();
     field.onDraftChange('changed');
     button('Apply')?.click();

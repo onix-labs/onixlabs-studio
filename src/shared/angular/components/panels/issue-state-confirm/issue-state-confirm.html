@@ -34,17 +34,17 @@
             />
           }
         </div>
-        <div class="confirm__actions">
+        <app-button-row>
           <app-button variant="solid" label="Close" [disabled]="!canClose()" (click)="close()" />
           <app-button label="Cancel" (click)="actions.dismiss()" />
-        </div>
+        </app-button-row>
       } @else {
         <h2 class="confirm__title">Reopen issue #{{ pending.issue.number }}?</h2>
         <p class="confirm__issue">{{ pending.issue.title }}</p>
-        <div class="confirm__actions">
+        <app-button-row>
           <app-button variant="solid" label="Reopen" (click)="actions.confirm()" />
           <app-button label="Cancel" (click)="actions.dismiss()" />
-        </div>
+        </app-button-row>
       }
     }
   </ng-template>

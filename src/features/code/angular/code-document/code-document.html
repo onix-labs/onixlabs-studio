@@ -33,11 +33,11 @@
       <app-toggle [checked]="editEnabled()" (checkedChange)="editEnabled.set($event)" />
       <span class="breakpoint-editor__label">Enabled</span>
     </div>
-    <div class="breakpoint-editor__actions">
+    <app-button-row class="breakpoint-editor__actions">
+      <app-button variant="solid" label="Save" (click)="saveBreakpointEdit()" />
       <app-button label="Remove" (click)="removeBreakpointEdit()" />
       <app-button label="Cancel" (click)="closeBreakpointEdit()" />
-      <app-button variant="solid" label="Save" (click)="saveBreakpointEdit()" />
-    </div>
+    </app-button-row>
   </div>
 }
 

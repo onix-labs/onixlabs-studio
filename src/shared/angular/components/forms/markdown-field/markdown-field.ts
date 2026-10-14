@@ -11,6 +11,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -31,7 +32,7 @@ import { Icon } from '@shared/angular/icons/icon';
  */
 @Component({
   selector: 'app-markdown-field',
-  imports: [Button, MarkdownEditor, Modal, ModalContent],
+  imports: [Button, ButtonRow, MarkdownEditor, Modal, ModalContent],
   templateUrl: './markdown-field.html',
   styleUrl: './markdown-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

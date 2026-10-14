@@ -44,6 +44,7 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -523,6 +524,7 @@ interface SectionDef {
   imports: [
     TextField,
     Button,
+    ButtonRow,
     Dropdown,
     AppIcon,
     Checkbox,

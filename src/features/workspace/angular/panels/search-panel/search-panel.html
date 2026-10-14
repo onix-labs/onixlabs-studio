@@ -89,23 +89,30 @@
 
   <div class="search-panel__actions">
     <span class="search-panel__summary">{{ summary() }}</span>
-    <app-button [variant]="mode() === 'find' ? 'solid' : 'outline'" label="Find" (click)="find()" />
-    @if (mode() === 'replace') {
+    <!-- The primary action leads: Replace All in the replace form, Find on its own in the find form. -->
+    <app-button-row>
+      @if (mode() === 'replace') {
+        <app-button
+          variant="solid"
+          label="Replace All"
+          [disabled]="!canReplaceAll()"
+          tooltip="Replace every match in every file listed"
+          (click)="replaceEvery()"
+        />
+        <app-button
+          variant="outline"
+          label="Replace"
+          [disabled]="!canReplace()"
+          tooltip="Replace the selected match, then move to the next"
+          (click)="replaceSelected()"
+        />
+      }
       <app-button
-        variant="outline"
-        label="Replace"
-        [disabled]="!canReplace()"
-        tooltip="Replace the selected match, then move to the next"
-        (click)="replaceSelected()"
+        [variant]="mode() === 'find' ? 'solid' : 'outline'"
+        label="Find"
+        (click)="find()"
       />
-      <app-button
-        variant="solid"
-        label="Replace All"
-        [disabled]="!canReplaceAll()"
-        tooltip="Replace every match in every file listed"
-        (click)="replaceEvery()"
-      />
-    }
+    </app-button-row>
   </div>
 </div>
 

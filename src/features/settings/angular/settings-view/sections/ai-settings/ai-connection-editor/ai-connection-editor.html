@@ -62,17 +62,19 @@
           placeholder="API key"
           (valueChange)="onApiKeyInput($event)"
         />
-        <app-button
-          variant="solid"
-          label="Save"
-          [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
-          (click)="saveKey()"
-        />
-        <app-button
-          label="Clear"
-          [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
-          (click)="clearKey()"
-        />
+        <app-button-row align="start">
+          <app-button
+            variant="solid"
+            label="Save"
+            [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
+            (click)="saveKey()"
+          />
+          <app-button
+            label="Clear"
+            [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
+            (click)="clearKey()"
+          />
+        </app-button-row>
       </span>
     </app-setting-row>
   }

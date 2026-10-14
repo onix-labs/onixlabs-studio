@@ -35,6 +35,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AgentComposerShortcuts } from '@shared/angular/components/agent-composer-shortcuts/agent-composer-shortcuts';
@@ -184,6 +185,7 @@ interface ContextChip {
   selector: 'app-agent-composer',
   imports: [
     Button,
+    ButtonRow,
     AppIcon,
     Modal,
     ModalContent,

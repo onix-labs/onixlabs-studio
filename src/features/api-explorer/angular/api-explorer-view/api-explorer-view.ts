@@ -21,6 +21,7 @@ import {
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -83,7 +84,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
  */
 @Component({
   selector: 'app-api-explorer-view',
-  imports: [DockContainer, Modal, ModalContent, Button, TextField],
+  imports: [DockContainer, Modal, ModalContent, Button, ButtonRow, TextField],
   templateUrl: './api-explorer-view.html',
   styleUrl: './api-explorer-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

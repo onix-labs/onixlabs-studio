@@ -51,17 +51,6 @@
   }
 }
 
-// The Edit button sits at the field's trailing edge, beneath the frame, with any actions the host
-// adds beside it: one row, every button as wide as the widest.
-.markdown-field__actions {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 0.5rem;
-  inline-size: fit-content;
-  margin-inline-start: auto;
-}
-
 // The editing window: a heading over the editor frame and a trailing action row. It fills the modal
 // panel so that when the panel is expanded to the window, the editor grows to fill it — the same
 // shape as the agent composer's markdown modal.
@@ -95,14 +84,4 @@
   &:focus-within {
     border-color: var(--accent-color);
   }
-}
-
-// Equal-width buttons, sized to the wider of the two and kept to the trailing edge.
-.markdown-field__modal-actions {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 0.5rem;
-  inline-size: fit-content;
-  margin-inline-start: auto;
 }

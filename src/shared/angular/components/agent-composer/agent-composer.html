@@ -192,7 +192,7 @@
       <app-agent-tasks-menu />
     </div>
 
-    <div class="agent__composer-actions">
+    <app-button-row class="agent__composer-actions">
       <app-button
         variant="outline"
         [icon]="Icon.MARKDOWN_FILL"
@@ -233,7 +233,7 @@
           [disabled]="draft().trim().length === 0"
         />
       }
-    </div>
+    </app-button-row>
   </div>
 </form>
 
@@ -282,15 +282,15 @@
         [value]="newPromptText()"
         (input)="newPromptText.set($any($event.target).value)"
       ></textarea>
-      <div class="agent__md-actions">
-        <app-button label="Close" (click)="closeManagePrompts()" />
+      <app-button-row>
         <app-button
           variant="solid"
           label="Save prompt"
           [disabled]="newPromptName().trim().length === 0 || newPromptText().trim().length === 0"
           (click)="savePrompt()"
         />
-      </div>
+        <app-button label="Close" (click)="closeManagePrompts()" />
+      </app-button-row>
     </div>
   </ng-template>
 </app-modal>
@@ -319,8 +319,7 @@
           />
         </div>
       }
-      <div class="agent__md-actions">
-        <app-button label="Cancel" (click)="cancelMarkdown()" />
+      <app-button-row>
         <app-button
           variant="solid"
           [icon]="Icon.SEND"
@@ -328,7 +327,8 @@
           [disabled]="isRunning() || markdownValue().trim().length === 0"
           (click)="submitMarkdown()"
         />
-      </div>
+        <app-button label="Cancel" (click)="cancelMarkdown()" />
+      </app-button-row>
     </div>
   </ng-template>
 </app-modal>

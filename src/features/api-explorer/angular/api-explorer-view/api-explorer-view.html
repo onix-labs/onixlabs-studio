@@ -24,15 +24,15 @@
       (enter)="prompts.confirmCollection()"
       (escape)="prompts.cancelCollection()"
     />
-    <div class="api-explorer__dialog-actions">
-      <app-button label="Cancel" (click)="prompts.cancelCollection()" />
+    <app-button-row class="api-explorer__dialog-actions">
       <app-button
         variant="solid"
         label="Add"
         [disabled]="prompts.collectionName().trim() === ''"
         (click)="prompts.confirmCollection()"
       />
-    </div>
+      <app-button label="Cancel" (click)="prompts.cancelCollection()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -69,14 +69,14 @@
       (enter)="prompts.confirmEnvironment()"
       (escape)="prompts.cancelEnvironment()"
     />
-    <div class="api-explorer__dialog-actions">
-      <app-button label="Cancel" (click)="prompts.cancelEnvironment()" />
+    <app-button-row class="api-explorer__dialog-actions">
       <app-button
         variant="solid"
         label="Add"
         [disabled]="prompts.environmentName().trim() === ''"
         (click)="prompts.confirmEnvironment()"
       />
-    </div>
+      <app-button label="Cancel" (click)="prompts.cancelEnvironment()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

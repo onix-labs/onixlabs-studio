@@ -10,6 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -32,7 +33,7 @@ const NEW_BRANCH: string = '__new__';
  */
 @Component({
   selector: 'app-worktree-dialogs',
-  imports: [Button, Dropdown, Modal, ModalContent, TextField],
+  imports: [Button, ButtonRow, Dropdown, Modal, ModalContent, TextField],
   templateUrl: './worktree-dialogs.html',
   styleUrl: './worktree-dialogs.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

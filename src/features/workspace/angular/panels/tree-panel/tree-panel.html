@@ -64,9 +64,9 @@
     <p class="tree-panel__dialog-message">
       It moves to the Trash, so you can put it back from there if you need it.
     </p>
-    <div class="tree-panel__dialog-actions">
-      <app-button label="Cancel" (click)="cancelDelete()" />
+    <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelDelete()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
