@@ -237,6 +237,33 @@ export class PanelLayout implements PanelLayoutContext {
   );
 
   /**
+   * Gets whether each edge's grip resizes anything (#949). On left and right edges the grip resizes
+   * the innermost column, so it follows that panel; on top and bottom edges it resizes the whole
+   * stack, so every visible member must allow it.
+   */
+  protected readonly gripEnabled: Signal<Readonly<Record<PanelEdge, boolean>>> = computed(
+    (): Readonly<Record<PanelEdge, boolean>> => {
+      const stacks: Readonly<Record<PanelEdge, readonly Panel[]>> = this.edgeStacks();
+      const enabled: Record<PanelEdge, boolean> = {
+        left: true,
+        right: true,
+        top: true,
+        bottom: true,
+      };
+      for (const edge of PANEL_EDGES) {
+        const members: readonly Panel[] = stacks[edge].filter((panel: Panel): boolean =>
+          panel.visible(),
+        );
+        enabled[edge] =
+          edge === 'left' || edge === 'right'
+            ? (members[0]?.resizable() ?? true)
+            : members.every((panel: Panel): boolean => panel.resizable());
+      }
+      return enabled;
+    },
+  );
+
+  /**
    * Gets the rendered cross-axis size of each edge: zero when the edge has no visible panel. Left
    * and right edges are the sum of their columns' own clamped widths, so the edge grows to fit
    * every panel; top and bottom edges take the stack's shared stored height, or the live grip
@@ -435,6 +462,9 @@ export class PanelLayout implements PanelLayoutContext {
    */
   protected onGripDown(edge: PanelEdge, event: MouseEvent): void {
     event.preventDefault();
+    if (!this.gripEnabled()[edge]) {
+      return;
+    }
     const members: readonly Panel[] = this.edgeStacks()[edge].filter((panel: Panel): boolean =>
       panel.visible(),
     );

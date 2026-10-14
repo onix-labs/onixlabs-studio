@@ -1,5 +1,5 @@
 /**
- * Names the local model-runtime IPC channels. This is the AI Model Manager's slice of the IPC
+ * Names the local model-runtime IPC channels. This is the AI Manager's slice of the IPC
  * contract: the renderer client and the main-process
  * {@link import('../electron/contributions/model-runtime/model-runtime.contribution').ModelRuntimeContribution}
  * name their channels from here, over the generic {@link import('./bridge').Bridge} transport. The

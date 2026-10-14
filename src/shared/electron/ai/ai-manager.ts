@@ -983,7 +983,6 @@ export class AiManager {
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
     const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
-    const userPromptExtra: string = sanitizePromptExtra(request.userPromptExtra);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
     if (skills.length > 0) {
       logger.debug(
@@ -1041,7 +1040,6 @@ export class AiManager {
       mode,
       language,
       systemPromptExtra,
-      userPromptExtra,
       skills,
       blockedCommands:
         request.blockHostCommandLine === true && runHosting !== null

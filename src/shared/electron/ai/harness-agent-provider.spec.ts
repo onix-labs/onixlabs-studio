@@ -245,7 +245,6 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     allowedWritePaths: ['/ws'],
     language: null,
     systemPromptExtra: '',
-    userPromptExtra: '',
     skills: [],
     deniedWritePaths: ['/ws/secrets'],
     allowedNetworkLocations: ['example.com'],
@@ -785,19 +784,17 @@ describe('toTurnRequest', () => {
     expect(turn['setSteerHandler']).toBeUndefined();
   });
 
-  it('composesTheUsersStandingInstructionsIntoThePromptRatherThanANewField', () => {
-    // #300. Inside the prompt, not beside it: a harness that reads only the fields it has always
-    // read still delivers them, which is what spares every published plugin a release.
-    const { context } = contextFor({ userPromptExtra: '### House\nBritish English.' });
+  it('sendsThePromptAsTheUserTypedIt', () => {
+    // #948. Standing instructions go with Studio's own, never beneath the message: nothing is added
+    // to what the user typed.
+    const { context } = contextFor();
 
     const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
       string,
       unknown
     >;
 
-    expect(turn['prompt']).toMatch(/^do the thing\n\n---\n/);
-    expect(turn['prompt']).toMatch(/### House\nBritish English\.$/);
-    expect(turn['userPromptExtra']).toBeUndefined();
+    expect(turn['prompt']).toBe('do the thing');
   });
 
   it('carriesEveryFieldAHarnessNeedsToReachParityWithAnInCoreProvider', () => {

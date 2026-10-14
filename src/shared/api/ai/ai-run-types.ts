@@ -245,13 +245,6 @@ export interface AiRunRequest {
   readonly systemPromptExtra?: string;
 
   /**
-   * Gets the user's standing instructions for this run's user message (#300), resolved as
-   * {@link systemPromptExtra} is. Composed into the prompt the model receives, beneath the message
-   * the user typed; the transcript shows only what they typed. Absent when no profile matches.
-   */
-  readonly userPromptExtra?: string;
-
-  /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the
    * agent to read with its own file tools. Empty or absent when nothing is attached.
    */

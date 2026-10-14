@@ -165,11 +165,6 @@ export interface AiRunOptions {
   readonly systemPromptExtra?: string;
 
   /**
-   * Gets the user's standing instructions for the run's message (#300). Omitted when none applies.
-   */
-  readonly userPromptExtra?: string;
-
-  /**
    * Gets the files and folders attached to the run's context, referenced by path for the agent to read
    * with its own file tools. Omitted when nothing is attached.
    */
@@ -299,9 +294,6 @@ export class AiRuntime {
       ...(options.systemPromptExtra === undefined || options.systemPromptExtra.length === 0
         ? {}
         : { systemPromptExtra: options.systemPromptExtra }),
-      ...(options.userPromptExtra === undefined || options.userPromptExtra.length === 0
-        ? {}
-        : { userPromptExtra: options.userPromptExtra }),
       contextPaths: options.contextPaths ?? [],
       resumeSessionId: options.resumeSessionId ?? null,
       resumeSessionAt: options.resumeSessionAt ?? null,

@@ -16,6 +16,7 @@ import { PanelEdge } from './panel-types';
         defaultEdge="right"
         [allowedEdges]="allEdges"
         [visible]="visible()"
+        [resizable]="resizable()"
         [defaultSize]="200"
       >
         <div class="side-content">SIDE</div>
@@ -34,6 +35,7 @@ class PanelLayoutHost {
   // The re-home test moves the panel to the bottom edge, so the stub panel allows every edge.
   public readonly allEdges: readonly PanelEdge[] = ['left', 'right', 'top', 'bottom'];
   public readonly visible: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly resizable: WritableSignal<boolean> = signal<boolean>(true);
   public readonly extraMounted: WritableSignal<boolean> = signal<boolean>(false);
 }
 
@@ -64,6 +66,25 @@ describe('PanelLayout', () => {
     expect(panel?.getAttribute('data-edge')).toBe('right');
     expect(panel?.parentElement).toBe(wrapperOf(host, 'right'));
     expect(host.querySelector('.side-content')?.textContent).toContain('SIDE');
+  });
+
+  it('grip_whenThePanelItResizesIsNotResizable_isNotOffered', async () => {
+    // #949. A panel can hold its size; the edge grip that would resize it is not shown.
+    const { fixture, host } = await createHost();
+    const grip: () => HTMLElement = (): HTMLElement =>
+      wrapperOf(host, 'right').querySelector<HTMLElement>('.panel-layout__grip')!;
+    expect(grip().classList.contains('panel-layout__grip--fixed')).toBe(false);
+
+    fixture.componentInstance.resizable.set(false);
+    await fixture.whenStable();
+
+    expect(grip().classList.contains('panel-layout__grip--fixed')).toBe(true);
+    const before: string = wrapperOf(host, 'right').style.width;
+    grip().dispatchEvent(new MouseEvent('mousedown', { clientX: 500, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 }));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    await fixture.whenStable();
+    expect(wrapperOf(host, 'right').style.width).toBe(before);
   });
 
   it('render_stacksSameEdgePanelsInOrderInsideOneWrapper', async () => {

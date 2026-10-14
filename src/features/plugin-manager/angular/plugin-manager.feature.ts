@@ -10,7 +10,7 @@ import { PluginManagerView } from './plugin-manager-view/plugin-manager-view';
  * renders it without being compiled against it.
  *
  * The view owns *installation*. Choosing between two installed plugins that provide the same thing is
- * Settings' job — the same split the AI Model Manager draws against Settings > AI > Providers.
+ * Settings' job — the same split the AI Manager draws against its Providers section.
  */
 export const descriptor: FeatureDescriptor = {
   type: 'plugin-manager',

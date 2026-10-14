@@ -1,0 +1,5 @@
+// The AI Manager fills its tab with the sub-view shown; each sub-view lays out its own side panel.
+:host {
+  display: block;
+  block-size: 100%;
+}

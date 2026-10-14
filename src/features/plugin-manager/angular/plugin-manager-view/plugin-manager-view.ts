@@ -22,12 +22,14 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import {
   PluginBrowse,
+  PluginCategory,
   PluginGroupId,
   categoriesOf,
   rowIconForCategory,
@@ -51,6 +53,11 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   hosting: 'Code hosting',
   'agent-harness': 'AI provider',
 };
+
+/**
+ * The side list's identifier for "All Plugins", which no category name can take.
+ */
+const ALL_CATEGORIES: string = '\u0000all';
 
 /**
  * The plugin table's columns. The plugin column takes a fixed share so its name and description have
@@ -100,6 +107,7 @@ interface PluginGroup {
   imports: [
     Accordion,
     AppIcon,
+    CategoryList,
     Chip,
     NgTemplateOutlet,
     PanelLayout,
@@ -175,6 +183,31 @@ export class PluginManagerView implements OnInit {
       ];
       return groups.filter((group: PluginGroup): boolean => group.rows.length > 0);
     },
+  );
+
+  /**
+   * Gets the identifier of the side list's "All Plugins" entry, which selects no category.
+   */
+  protected readonly ALL_CATEGORIES: string = ALL_CATEGORIES;
+
+  /**
+   * Gets the side list's entries: every plugin, then one per category.
+   */
+  protected readonly categoryItems: Signal<readonly CategoryItem[]> = computed(
+    (): readonly CategoryItem[] => [
+      {
+        id: ALL_CATEGORIES,
+        label: 'All Plugins',
+        icon: Icon.PLUGINS,
+        count: this.browse.all().length,
+      },
+      ...this.browse.categories().map((category: PluginCategory): CategoryItem => ({
+        id: category.name,
+        label: category.name,
+        icon: category.icon,
+        count: category.count,
+      })),
+    ],
   );
 
   /**
@@ -298,6 +331,14 @@ export class PluginManagerView implements OnInit {
    * Gets whether a newer version is waiting, exposed for the state badge.
    */
   protected readonly canUpdate: typeof canUpdate = canUpdate;
+
+  /**
+   * Selects a category from the side list, or every plugin.
+   * @param id The chosen entry's identifier.
+   */
+  protected onCategory(id: string): void {
+    this.browse.category.set(id === ALL_CATEGORIES ? null : id);
+  }
 
   /**
    * Gets a plugin's categories as one readable phrase.

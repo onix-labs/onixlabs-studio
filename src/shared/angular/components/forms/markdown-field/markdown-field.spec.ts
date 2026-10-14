@@ -46,6 +46,31 @@ describe('MarkdownField', () => {
     expect(editor?.classList.contains('markdown-editor--inset')).toBe(true);
   });
 
+  it('expandable_whenOff_leavesOutTheEditButton', async () => {
+    // #948. A field filling a page already has the room a window would give it.
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.querySelector('app-button-row')).not.toBeNull();
+
+    fixture.componentRef.setInput('expandable', false);
+    fixture.detectChanges();
+
+    expect(host.querySelector('app-button-row')).toBeNull();
+  });
+
+  it('fill_marksTheHostToFillItsParent', async () => {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(host.classList.contains('markdown-field--fill')).toBe(false);
+
+    fixture.componentRef.setInput('fill', true);
+    fixture.detectChanges();
+
+    expect(host.classList.contains('markdown-field--fill')).toBe(true);
+  });
+
   it('value_whenGiven_seedsTheEditor_andEditsReportThroughTheModel', async () => {
     fixture.componentRef.setInput('value', '# Heading\n\nBody.');
     fixture.detectChanges();

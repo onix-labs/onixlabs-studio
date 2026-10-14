@@ -103,6 +103,18 @@ export class Panel {
   public readonly visible: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * Gets whether the panel can be dragged onto another edge (#949). A panel that cannot keeps its
+   * declared edge and shows no drag affordance; a tool's sub-view side panel is one.
+   */
+  public readonly movable: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Gets whether the panel's size can be dragged (#949). A panel that cannot holds its stored or
+   * declared size, and its edge grip and divider are not offered.
+   */
+  public readonly resizable: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets the smallest cross-axis size, in pixels, the panel's edge can be dragged to.
    */
   public readonly minSize: InputSignal<number> = input<number>(Panel.DEFAULT_MIN_SIZE);
@@ -167,7 +179,7 @@ export class Panel {
    * an edge stack but the first does, so adjacent panels can be rebalanced.
    */
   protected readonly dividerVisible: Signal<boolean> = computed((): boolean => {
-    if (this.context === null || !this.visible()) {
+    if (this.context === null || !this.visible() || !this.resizable()) {
       return false;
     }
     return this.context.visibleStack(this.edge()).indexOf(this.panelId()) > 0;

@@ -63,7 +63,6 @@ describe('Agent', () => {
     remoteControl: AiRemoteControlMode | undefined;
     language: string | undefined;
     systemPromptExtra: string | undefined;
-    userPromptExtra: string | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -164,7 +163,6 @@ describe('Agent', () => {
           remoteControl: options.remoteControl,
           language: options.language,
           systemPromptExtra: options.systemPromptExtra,
-          userPromptExtra: options.userPromptExtra,
         });
         return 'run-1';
       },
@@ -214,15 +212,15 @@ describe('Agent', () => {
     expect(runCalls[0].agentSessionId).toBeTruthy();
   });
 
-  it('send_carriesTheBoundLanguageAndTheStandingPromptsThatMatchIt', () => {
-    // #300. The layers are resolved here — the renderer owns the profiles and the host knows the
-    // owning document's language — and travel as two strings the transcript never shows.
+  it('send_carriesTheBoundLanguageAndTheStandingInstructionsThatMatchIt', () => {
+    // #300. The instructions are resolved here — the renderer owns the profiles and the host knows the
+    // owning document's language — and travel as a string the transcript never shows. The message
+    // itself goes as typed (#948 dropped the layer that was added beneath it).
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     const profile: PromptProfile = profiles.create('C#');
     profiles.update(profile.id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      system: 'Explicit types.',
-      user: 'British English.',
+      instructions: 'Explicit types.',
     });
     agent.bindLanguage((): string => 'csharp');
 
@@ -230,7 +228,6 @@ describe('Agent', () => {
 
     expect(runCalls[0].language).toBe('csharp');
     expect(runCalls[0].systemPromptExtra).toBe('### C#\nExplicit types.');
-    expect(runCalls[0].userPromptExtra).toBe('### C#\nBritish English.');
     expect(runCalls[0].prompt).toBe('hello');
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
   });
@@ -260,7 +257,7 @@ describe('Agent', () => {
   it('send_carriesTheConversationsBrief_afterTheStandingPrompts_untilANewChat', () => {
     // #806. A new project's conversation is briefed on the project and its starter skill.
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    profiles.update(profiles.create('Everywhere').id, { system: 'Be brief.' });
+    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
     agent.setBrief('A new project.');
 
     agent.send('hello');
@@ -273,16 +270,16 @@ describe('Agent', () => {
 
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });
+    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
     profiles.update(profiles.create('C#').id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      user: 'Explicit types.',
+      instructions: 'Explicit types.',
     });
 
     agent.send('hello');
 
     expect(runCalls[0].language).toBeUndefined();
-    expect(runCalls[0].userPromptExtra).toBe('### Everywhere\nBe brief.');
+    expect(runCalls[0].systemPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
   it('commandsEvent_forThisConversation_populatesTheDiscoveredCommands', () => {

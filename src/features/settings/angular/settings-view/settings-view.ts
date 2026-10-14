@@ -19,8 +19,7 @@ import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
-import { PromptProfilesSettings } from './prompt-profiles/prompt-profiles';
-import { SkillLibrarySettings } from './skill-library/skill-library';
+import { AiManagerLink } from './sections/ai-manager-link/ai-manager-link';
 import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
@@ -46,6 +45,7 @@ type SettingsSectionId =
   | 'keyboard'
   | 'ai'
   | 'ai-security'
+  // Prompt Profiles and Skills live in the AI Manager (#948); their entries here link to it.
   | 'ai-prompts'
   | 'ai-skills'
   | 'mission-control'
@@ -136,8 +136,7 @@ interface SettingsTreeData {
   selector: 'app-settings-view',
   imports: [
     Button,
-    PromptProfilesSettings,
-    SkillLibrarySettings,
+    AiManagerLink,
     LanguageEditorOverrides,
     LanguageServerSettings,
     AiSettingsSection,

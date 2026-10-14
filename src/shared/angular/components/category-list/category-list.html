@@ -1,0 +1,59 @@
+<div class="category-list">
+  @if (searchable()) {
+    <app-text-field
+      class="category-list__search"
+      kind="search"
+      [placeholder]="searchPlaceholder()"
+      [ariaLabel]="searchPlaceholder()"
+      [(value)]="query"
+      (escape)="query.set('')"
+    />
+  }
+  @if (title()) {
+    <h3 class="category-list__title">{{ title() }}</h3>
+  }
+  <ul class="category-list__items">
+    @for (item of items(); track item.id) {
+      @if (item.dividerBefore) {
+        <li class="category-list__divider" role="separator"></li>
+      }
+      <li class="category-list__row" [class.category-list__row--with-action]="item.action">
+        <button
+          type="button"
+          class="category-list__item"
+          [class.category-list__item--nested]="item.nested"
+          [class.category-list__item--muted]="item.muted"
+          [class.category-list__item--selected]="selectedId() === item.id"
+          [attr.aria-current]="selectedId() === item.id ? 'true' : null"
+          [disabled]="item.disabled"
+          (click)="selectedIdChange.emit(item.id)"
+        >
+          <app-icon class="category-list__icon" [icon]="item.icon" />
+          <span class="category-list__label">{{ item.label }}</span>
+          @if (item.badge) {
+            <app-icon
+              class="category-list__badge"
+              [icon]="item.badge"
+              [attr.title]="item.badgeLabel ?? null"
+              [attr.aria-label]="item.badgeLabel ?? null"
+            />
+          } @else if (item.count !== undefined && item.count !== null) {
+            <span class="category-list__count">{{ item.count }}</span>
+          }
+        </button>
+        <!-- A sibling of the entry rather than inside it: a button cannot hold a button. -->
+        @if (item.action) {
+          <button
+            type="button"
+            class="category-list__action"
+            [attr.aria-label]="item.actionLabel ?? null"
+            [appTooltip]="item.actionLabel ?? ''"
+            (click)="actionClick.emit(item.id)"
+          >
+            <app-icon [icon]="item.action" />
+          </button>
+        }
+      </li>
+    }
+  </ul>
+</div>

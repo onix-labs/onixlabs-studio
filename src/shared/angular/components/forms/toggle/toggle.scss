@@ -6,8 +6,11 @@
   appearance: none;
   position: relative;
   flex: none;
-  inline-size: 2.1rem;
-  block-size: 1.2rem;
+  // Whole pixels, not rems: the track and knob must land on the pixel grid together, or the space
+  // above and below the knob rounds differently and the knob reads off-centre. A 20px track with a
+  // 1px border leaves 18px inside; a 14px knob sits 2px clear on every side.
+  inline-size: 34px;
+  block-size: 20px;
   margin: 0;
   background: var(--form-track-color);
   // A transparent border at rest keeps the pill's colours unchanged, then recolours to the accent on
@@ -22,12 +25,10 @@
   &::before {
     content: '';
     position: absolute;
-    // The knob is centred within the track's inner (inside-border) box: 0.0875rem = (1.075rem inner
-    // height − 0.9rem knob) / 2, so it sits with equal space above and below.
-    inset-block-start: 0.0875rem;
-    inset-inline-start: 0.0875rem;
-    inline-size: 0.9rem;
-    block-size: 0.9rem;
+    inset-block-start: 2px;
+    inset-inline-start: 2px;
+    inline-size: 14px;
+    block-size: 14px;
     background: var(--form-knob-color);
     border-radius: 50%;
     transition: transform 150ms ease-in-out;
@@ -37,7 +38,8 @@
     background: var(--accent-color);
 
     &::before {
-      transform: translateX(0.9rem);
+      // Across the 32px inside, less the knob and its 2px clearance at each end.
+      transform: translateX(14px);
     }
   }
 

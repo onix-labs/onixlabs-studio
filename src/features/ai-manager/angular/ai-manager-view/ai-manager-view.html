@@ -1,0 +1,12 @@
+<!-- One sub-view at a time, chosen on the ribbon (#948). Each brings its own side panel. -->
+@switch (section()) {
+  @case ('models') {
+    <app-model-manager-view [isActive]="isActive()" />
+  }
+  @case ('profiles') {
+    <app-prompt-profiles />
+  }
+  @case ('skills') {
+    <app-skill-library />
+  }
+}

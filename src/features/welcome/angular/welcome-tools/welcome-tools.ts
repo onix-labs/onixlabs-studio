@@ -98,8 +98,8 @@ export class WelcomeTools {
       opens: null,
     },
     {
-      title: 'AI Model Manager',
-      description: 'Install, configure and manage AI models and inference endpoints.',
+      title: 'AI Manager',
+      description: 'Providers, local models, prompt profiles and skills, in one place.',
       icon: Icon.WELCOME_AI_MODELS,
       opens: 'model-manager',
     },

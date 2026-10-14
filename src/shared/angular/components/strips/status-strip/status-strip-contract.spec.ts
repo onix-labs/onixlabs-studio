@@ -7,7 +7,7 @@ import { CodeStatusStrip } from '@features/code/angular/code-status/code-status-
 import { ImageStatusStrip } from '@features/image/angular/image-status/image-status-strip';
 import { MarkdownStatusStrip } from '@features/markdown/angular/markdown-status/markdown-status-strip';
 import { ContainersStatusStrip } from '@features/containers/angular/containers-status/containers-status-strip';
-import { ModelManagerStatusStrip } from '@features/model-manager/angular/model-manager-status/model-manager-status-strip';
+import { AiManagerStatusStrip } from '@features/ai-manager/angular/ai-manager-status/ai-manager-status-strip';
 import { SystemMonitorStatusStrip } from '@features/system-monitor/angular/system-monitor-status/system-monitor-status-strip';
 import { MissionControlStatusStrip } from '@features/mission-control/angular/mission-control-status/mission-control-status-strip';
 import { PluginManagerStatusStrip } from '@features/plugin-manager/angular/plugin-manager-status/plugin-manager-status-strip';
@@ -53,7 +53,7 @@ describe('status strip contract', () => {
     ['plugin-manager', PluginManagerStatusStrip],
     ['mission-control', MissionControlStatusStrip],
     ['containers', ContainersStatusStrip],
-    ['model-manager', ModelManagerStatusStrip],
+    ['model-manager', AiManagerStatusStrip],
     ['system-monitor', SystemMonitorStatusStrip],
   ];
 

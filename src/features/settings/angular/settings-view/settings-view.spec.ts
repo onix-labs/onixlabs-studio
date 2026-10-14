@@ -3,6 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ProviderPage } from '@shared/api/ai-types';
 import type { LspServerSummary } from '@shared/api/lsp-channels';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -54,6 +56,23 @@ describe('SettingsView', () => {
     );
     expect(page).not.toBeNull();
     expect(page?.textContent).toContain('Echoes prompts back.');
+  });
+
+  it('render_theAiLibraryEntries_linkToTheAiManagerSectionThatHoldsThem', async () => {
+    // #948. Prompt profiles and skills moved to the AI Manager; Settings keeps an entry for each
+    // that says where they went and opens it there.
+    (component as unknown as { section: WritableSignal<string> }).section.set('ai-skills');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const page: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'app-ai-manager-link',
+    );
+    expect(page?.textContent).toContain('managed in the AI Manager');
+    page?.querySelector<HTMLButtonElement>('button')?.click();
+
+    expect(TestBed.inject(AiManagerNavigation).section()).toBe('skills');
+    expect(TestBed.inject(Tabs).activeTab()?.type).toBe('model-manager');
   });
 
   it('render_whenServersAreInstalled_nestsALanguageProvidersBranchUnderTextEditor', async () => {
