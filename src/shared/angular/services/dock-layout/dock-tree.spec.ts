@@ -107,7 +107,7 @@ describe('dock-tree', () => {
 
   describe('rightHandToolStack', () => {
     it('isTheToolStackThatIsTheRootRowsLastColumn', () => {
-      // The Default and Source Control layouts' shape: the Agent alone down the right.
+      // The Default and Version Control layouts' shape: the Agent alone down the right.
       const agent: StackNode = mkStack('tool', ['agent']);
       const tree: DockNode = mkSplit('row', [
         mkStack('tool', ['files']),

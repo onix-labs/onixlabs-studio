@@ -95,7 +95,7 @@ export function firstStackOfRole(tree: DockNode, role: StackRole): StackNode | n
 
 /**
  * Finds the layout's right-hand tool group: the tool stack that is the last column of a row at the
- * root — where the Agent sits in the Default and Source Control layouts.
+ * root — where the Agent sits in the Default and Version Control layouts.
  *
  * Only a stack that is itself the whole last column counts. A layout whose last column is a split (the
  * Agentic Engineering layout's agent-over-bottom-strip) has no right-hand group, and a caller that wants

@@ -42,6 +42,8 @@
     />
   }
 
+  <span class="strip__divider" aria-hidden="true"></span>
+
   <!-- One field for the pair: the models of every connection, grouped under their provider's label. -->
   <app-dropdown
     class="strip__field"
@@ -53,61 +55,38 @@
     (valueChange)="onEngine($event)"
   />
 
+  <span class="strip__divider" aria-hidden="true"></span>
+
+  <!-- The three ways to attach context share one button: they are one decision (what to attach),
+       and three icons side by side made the strip too busy to read. -->
   <app-button
     variant="none"
-    [icon]="Icon.ATTACH"
-    ariaLabel="Attach file"
-    tooltip="Attach file"
+    [icon]="Icon.PLUS"
+    ariaLabel="Attach"
+    tooltip="Attach"
     [disabled]="!controls().attach"
-    (click)="conversation.attachFile()"
+    [cdkMenuTriggerFor]="attachMenu.panel() ?? null"
+    [cdkMenuPosition]="attachMenu.position()"
   />
-  <app-button
-    variant="none"
-    [icon]="Icon.FOLDER_PLUS"
-    ariaLabel="Add folder"
-    tooltip="Add folder"
-    [disabled]="!controls().attach"
-    (click)="conversation.attachFolder()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.SELECTION"
-    ariaLabel="Attach selection"
-    tooltip="Attach selection"
-    [disabled]="!controls().attach || !hasSelection()"
-    (click)="conversation.attachSelection()"
+  <app-menu
+    #attachMenu
+    [items]="attachItems()"
+    placement="down-start"
+    (selected)="onAttachMenu($event)"
   />
 
+  <!-- The transcript's own controls (history and the scroll jumps) act on what is shown rather than on
+       the conversation, so they sit in the "…" menu at the far end, as on every other strip. -->
   <app-button
     class="strip__end"
     variant="none"
-    [icon]="Icon.SCROLL_TO_TOP"
-    ariaLabel="Scroll to top"
-    tooltip="Scroll to top"
-    (click)="conversation.scrollToTop()"
+    [icon]="Icon.DOTS_THREE_BOLD"
+    ariaLabel="More Actions"
+    tooltip="More Actions"
+    [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+    [cdkMenuPosition]="moreMenu.position()"
   />
-  <app-button
-    variant="none"
-    [icon]="Icon.SCROLL_TO_BOTTOM"
-    ariaLabel="Scroll to bottom"
-    tooltip="Scroll to bottom"
-    (click)="conversation.scrollToBottom()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.SCROLL_TO_LAST_PROMPT"
-    ariaLabel="Scroll to last prompt"
-    tooltip="Scroll to last prompt"
-    (click)="conversation.scrollToLastPrompt()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.RECENT"
-    ariaLabel="Conversation history"
-    tooltip="Conversation history"
-    [pressed]="historyPressed()"
-    (click)="onHistoryToggle()"
-  />
+  <app-menu #moreMenu [items]="moreItems()" placement="down-end" (selected)="onMoreMenu($event)" />
 </div>
 
 <app-agent-remote-modal

@@ -273,7 +273,7 @@ export class SettingsView {
     },
     {
       id: 'source-control',
-      label: 'Source Control',
+      label: 'Version Control',
       icon: Icon.SOURCE_CONTROL,
       children: [{ id: 'source-control-general', label: 'General', sectionId: 'source-control' }],
     },

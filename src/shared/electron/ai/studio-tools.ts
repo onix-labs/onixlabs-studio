@@ -360,7 +360,7 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   `- "${OPEN_DIFF}" opens a changed file's diff against HEAD in the well. Use it to show the user`,
   '  what you changed, rather than pasting a diff into the conversation.',
   `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
-  '  unstaged and conflicted files — what the source-control sidebar shows.',
+  '  unstaged and conflicted files — what the Repository panel shows.',
   `- "${CREATE_FILE}", "${CREATE_FOLDER}", "${RENAME_PATH}" and "${DELETE_PATH}" act on the tree the`,
   '  way the Explorer does, so it reflects them at once; a created file opens in the well. They are',
   "  confined to the workspace and the user's allowed write paths. Use your own file tools for the",
@@ -1576,7 +1576,7 @@ export async function readSourceControlStatus(context: AgentRunContext): Promise
   const reply: { ok?: boolean; error?: string; status?: ReportedSourceControl | null } =
     result ?? {};
   if (reply.ok !== true) {
-    return reply.error ?? 'The source-control state could not be read.';
+    return reply.error ?? 'The version-control state could not be read.';
   }
   const status: ReportedSourceControl | null | undefined = reply.status;
   if (status === null || status === undefined) {

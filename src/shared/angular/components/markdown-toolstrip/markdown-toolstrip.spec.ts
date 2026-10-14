@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import type { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownToolstrip } from './markdown-toolstrip';
@@ -61,6 +61,13 @@ const FORMATTING_LABELS: readonly string[] = [
   'Insert divider',
 ];
 
+/**
+ * The strip's clipboard buttons, by accessible name, in display order. Kept apart from the formatting
+ * buttons because they do not each hand the pane one action: Cut and Copy run the browser's own
+ * clipboard command against the focused pane, and Paste reads the clipboard before it acts.
+ */
+const CLIPBOARD_LABELS: readonly string[] = ['Cut', 'Copy', 'Paste'];
+
 describe('MarkdownToolstrip', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -107,17 +114,22 @@ describe('MarkdownToolstrip', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('app-button button'),
     ).map((button: Element): string | null => button.getAttribute('aria-label'));
     // The menu ends the strip, as it ends every document strip.
-    expect(labels).toEqual([...FORMATTING_LABELS, 'More Actions']);
+    expect(labels).toEqual([
+      ...FORMATTING_LABELS.slice(0, 2),
+      ...CLIPBOARD_LABELS,
+      ...FORMATTING_LABELS.slice(2),
+      'More Actions',
+    ]);
   });
 
-  it('theFormatDropdown_sitsBetweenHistoryAndFormatting_listingTheMarkdownTabsBlockTypes', () => {
-    // #882: the markdown tab's style field, on the well's strip too — after Undo and Redo, set apart
-    // from both them and the formatting buttons by a divider.
+  it('theFormatDropdown_sitsBetweenTheClipboardAndFormatting_listingTheMarkdownTabsBlockTypes', () => {
+    // #882: the markdown tab's style field, on the well's strip too — after the history and clipboard
+    // clusters, each set apart from the next by a divider.
     const fixture: ComponentFixture<MarkdownToolstrip> = createStrip();
     const order: string[] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelector('.markdown-toolstrip')?.children ?? [],
     )
-      .slice(0, 6)
+      .slice(0, 10)
       .map((element: Element): string =>
         element.tagName === 'APP-DROPDOWN'
           ? 'format'
@@ -125,7 +137,18 @@ describe('MarkdownToolstrip', () => {
             ? '|'
             : (element.querySelector('button')?.getAttribute('aria-label') ?? '?'),
       );
-    expect(order).toEqual(['Undo', 'Redo', '|', 'format', '|', 'Bold']);
+    expect(order).toEqual([
+      'Undo',
+      'Redo',
+      '|',
+      'Cut',
+      'Copy',
+      'Paste',
+      '|',
+      'format',
+      '|',
+      'Bold',
+    ]);
     const format: HTMLSelectElement | null = (
       fixture.nativeElement as HTMLElement
     ).querySelector<HTMLSelectElement>('.markdown-toolstrip > app-dropdown select');
@@ -181,10 +204,81 @@ describe('MarkdownToolstrip', () => {
   it('clicks_withoutAPane_areSafeNoOps', () => {
     const fixture: ComponentFixture<MarkdownToolstrip> = createStrip();
     expect((): void => {
-      for (const label of FORMATTING_LABELS) {
+      for (const label of [...FORMATTING_LABELS, ...CLIPBOARD_LABELS]) {
         buttonNamed(fixture, label).click();
       }
     }).not.toThrow();
+  });
+
+  describe('the clipboard buttons', () => {
+    let execCommand: (command: string) => boolean;
+    let readText: () => Promise<string>;
+    let originalClipboard: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      // happy-dom implements neither execCommand nor a readable clipboard, so both are stood in for.
+      execCommand = vi.fn((): boolean => true);
+      (document as unknown as { execCommand: (command: string) => boolean }).execCommand =
+        execCommand;
+      readText = vi.fn((): Promise<string> => Promise.resolve('**pasted**'));
+      originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { readText },
+      });
+    });
+
+    afterEach(() => {
+      if (originalClipboard !== undefined) {
+        Object.defineProperty(navigator, 'clipboard', originalClipboard);
+      } else {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      }
+    });
+
+    it('cutAndCopy_focusThePane_thenRunTheNativeCommand', () => {
+      // Focus first: pressing the button has just taken focus from the pane, and the native command
+      // acts on whatever holds it.
+      const { pane } = fakePane();
+      const focusEditor: () => void = vi.fn();
+      (pane as unknown as { focusEditor: () => void }).focusEditor = focusEditor;
+      const fixture: ComponentFixture<MarkdownToolstrip> = createStrip(pane);
+
+      buttonNamed(fixture, 'Cut').click();
+      buttonNamed(fixture, 'Copy').click();
+
+      expect(focusEditor).toHaveBeenCalledTimes(2);
+      expect(execCommand).toHaveBeenNthCalledWith(1, 'cut');
+      expect(execCommand).toHaveBeenNthCalledWith(2, 'copy');
+    });
+
+    it('paste_readsTheClipboard_andRunsOneActionAgainstThePane', async () => {
+      const { pane, runs } = fakePane();
+      const fixture: ComponentFixture<MarkdownToolstrip> = createStrip(pane);
+
+      buttonNamed(fixture, 'Paste').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(readText).toHaveBeenCalledTimes(1);
+      expect(runs).toHaveLength(1);
+    });
+
+    it('paste_ofAnEmptyClipboard_leavesThePaneAlone', async () => {
+      readText = vi.fn((): Promise<string> => Promise.resolve(''));
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { readText },
+      });
+      const { pane, runs } = fakePane();
+      const fixture: ComponentFixture<MarkdownToolstrip> = createStrip(pane);
+
+      buttonNamed(fixture, 'Paste').click();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(runs).toHaveLength(0);
+    });
   });
 
   it('paneActions_areDistinctPerButton', () => {

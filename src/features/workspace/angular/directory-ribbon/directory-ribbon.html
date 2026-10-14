@@ -12,21 +12,6 @@
     />
   </app-ribbon-strip-group>
 
-  <!-- Everything that acts on the well's focused document: the clipboard trio and the history and
-       find actions. -->
-  <app-ribbon-strip-group title="Edit">
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small [icon]="Icon.CUT" label="Cut" (action)="onCut()" />
-      <app-ribbon-strip-button-small [icon]="Icon.COPY" label="Copy" (action)="onCopy()" />
-      <app-ribbon-strip-button-small [icon]="Icon.PASTE" label="Paste" (action)="onPaste()" />
-    </app-ribbon-strip-column>
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small [icon]="Icon.UNDO" label="Undo" (action)="onUndo()" />
-      <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
-      <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
-    </app-ribbon-strip-column>
-  </app-ribbon-strip-group>
-
   <!-- Layouts: which panels exist and where they dock. Session rearrangements are ephemeral —
        switching, resetting, or relaunching re-applies the showing layout's saved definition, and Save
        As is the only write. The big button's face applies the DEFAULT layout and reads "Default"
@@ -103,11 +88,14 @@
   </app-ribbon-strip-group>
 
   <!-- The repo-global git actions, and only those: Commit (which sets the stage rather than
-       committing here — the Commit panel owns the message and the file selection), the three network
-       actions, and the structural Promote. Everything that acts on something the user can see and
-       select — branches, stashes, individual changes, the diff layout — lives on the Repository and
-       Commit panels instead. Every action gates on the open folder being a repository. -->
-  <app-ribbon-strip-group title="Source Control">
+       committing here — the Commit panel owns the message and the file selection), then the three
+       network actions in the order they are usually reached for: Fetch to see what the remote has,
+       Pull to bring it in, Push to send work out. Fetch wears the cloud with the downward arrow,
+       because the cloud alone stands for the remote itself rather than for asking it what is new.
+       Everything that acts on something the user can see and select — branches, stashes, worktrees,
+       individual changes, the diff layout — lives on the Repository and Commit panels instead. Every
+       action gates on the open folder being a repository. -->
+  <app-ribbon-strip-group title="Version Control">
     <app-ribbon-strip-menu-button
       [icon]="Icon.GIT_COMMIT"
       label="Commit"
@@ -116,34 +104,24 @@
       (action)="onCommit()"
       (selected)="onCommitMenuItem($event)"
     />
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ARROW_DOWN"
-        label="Pull"
-        [disabled]="!hasRepository()"
-        (action)="onPull()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.ARROW_UP"
-        label="Push"
-        [disabled]="!hasRepository()"
-        (action)="onPush()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.CLOUD"
-        label="Fetch"
-        [disabled]="!hasRepository()"
-        (action)="onRepoFetch()"
-      />
-    </app-ribbon-strip-column>
-    @if (canPromote()) {
-      <app-ribbon-strip-button
-        [icon]="Icon.WORKTREE"
-        label="Promote"
-        [disabled]="!hasRepository() || promoteBlocked()"
-        (action)="onPromote()"
-      />
-    }
+    <app-ribbon-strip-button
+      [icon]="Icon.CLOUD_DOWN"
+      label="Fetch"
+      [disabled]="!hasRepository()"
+      (action)="onRepoFetch()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.ARROW_DOWN"
+      label="Pull"
+      [disabled]="!hasRepository()"
+      (action)="onPull()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.ARROW_UP"
+      label="Push"
+      [disabled]="!hasRepository()"
+      (action)="onPush()"
+    />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 
@@ -321,29 +299,6 @@
     <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteLayout()" />
       <app-button label="Cancel" (click)="cancelDeleteLayout()" />
-    </app-button-row>
-  </ng-template>
-</app-modal>
-
-<!-- Asked before a repository is promoted into a worktree container: promotion restructures the
-     folder on disk, so it is never run from a bare button press. -->
-<app-modal
-  [open]="promoteConfirmOpen()"
-  [width]="28"
-  ariaLabel="Promote to worktree"
-  (dismiss)="cancelPromote()"
->
-  <ng-template appModalContent>
-    <h2 class="directory-ribbon__confirm-title">Promote to worktree?</h2>
-    <p class="directory-ribbon__confirm-message">
-      The folder becomes a worktree container: everything in it moves into a checkout directory, and
-      further checkouts of the same repository can then work in parallel — each on its own branch,
-      with its own terminals, agent, and debugger. The view reloads around the container; the path
-      you open stays the same, and the agent conversation carries on in the first worktree.
-    </p>
-    <app-button-row>
-      <app-button variant="solid" label="Promote" (click)="confirmPromote()" />
-      <app-button label="Cancel" (click)="cancelPromote()" />
     </app-button-row>
   </ng-template>
 </app-modal>

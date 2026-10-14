@@ -673,7 +673,7 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Holds the root source-control command seam this tab registers its handler with while active, so
-   * the directory ribbon's Source Control group reaches this workspace.
+   * the directory ribbon's Version Control group reaches this workspace.
    */
   private readonly workspaceSourceControl: WorkspaceSourceControlCommands = inject(
     WorkspaceSourceControlCommands,
@@ -1039,7 +1039,7 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Holds this workspace's repository command handler — the repo-global remainder behind the
-   * ribbon's Source Control group. Branch, stash-entry, and per-change actions are not here: the
+   * ribbon's Version Control group. Branch, stash-entry, and per-change actions are not here: the
    * Repository and Commit panels own those and reach this view's {@link Repository} directly.
    */
   private readonly repositoryCommandHandler: SourceControlCommandHandler = {

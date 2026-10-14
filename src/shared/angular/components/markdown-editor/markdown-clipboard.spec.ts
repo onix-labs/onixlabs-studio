@@ -1,5 +1,5 @@
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { MarkdownClipboard } from './markdown-clipboard';
+import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 
 /**
  * Builds a clipboard over a fixed pane (or none), for driving its commands in isolation.
@@ -61,5 +61,18 @@ describe('MarkdownClipboard', () => {
     expect((): void => clipboard.insertParsedInline('x')).not.toThrow();
     expect((): void => clipboard.insertRawText('x')).not.toThrow();
     expect((): void => clipboard.appendParsedBlock('x')).not.toThrow();
+  });
+
+  it('commands_whenPaneAbsent_touchNeitherTheDocumentNorTheClipboard', () => {
+    const readText: () => Promise<string> = vi.fn((): Promise<string> => Promise.resolve('x'));
+    vi.stubGlobal('navigator', { clipboard: { readText } });
+    const clipboard: MarkdownClipboard = clipboardOver(undefined);
+
+    clipboard.clipboardCommand('cut');
+    clipboard.pasteMarkdown();
+
+    expect(execCommand).not.toHaveBeenCalled();
+    expect(readText).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

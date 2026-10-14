@@ -9,7 +9,6 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import {
   MENU_SEPARATOR,
@@ -66,18 +65,19 @@ import { Radio } from '@shared/angular/components/forms/radio/radio';
 const SAVE_ALL: string = 'save-all';
 
 /**
- * Identifies the Stash item in the Source Control group's Commit split button menu.
+ * Identifies the Stash item in the Version Control group's Commit split button menu.
  */
 const COMMIT_STASH: string = 'stash';
 
 /**
- * Represents the contextual ribbon shown when a directory tab is active, in group order: File, Edit,
- * View, Run, Solution, Target (when the provider declares one), and Source Control.
+ * Represents the contextual ribbon shown when a directory tab is active, in group order: File, View,
+ * Solution, and Version Control.
  *
  * File saves the well's documents through the {@link WorkspaceDocumentCommands} seam — the well is
- * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. Edit
- * routes through the {@link EditorCommands} seam, and holds the document-level actions — the clipboard
- * trio, the history pair, and Find. View drives layout presets: the big button applies the DEFAULT
+ * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. There is
+ * no Edit group: the clipboard and history actions belong to the document they act on, so each
+ * editor's own strip carries them, and the workspace-wide Find stays on the application menu's Edit
+ * section. View drives layout presets: the big button applies the DEFAULT
  * preset (named on its face) and its menu lists every preset, while Save, Save As and Manage write
  * them. Solution is the single group for launching the project. Start is a split button: its face runs
  * the workspace's default configuration (falling back to the effective selection) in one press, and its
@@ -87,9 +87,9 @@ const COMMIT_STASH: string = 'stash';
  * face flips to Stop, red-toned, as soon as anything is in flight, and cancels every run rather than
  * only what it started. Configure opens the run configurations dialog where those are authored. (The
  * Debug and Build/Rebuild/Clean seams remain wired on this component but are not currently surfaced,
- * pending where they land in the run-configuration model.) Source Control is the workspace's one-stop
- * git group, dispatching through the {@link SourceControlCommands} and
- * {@link WorkspaceSourceControlCommands} seams.
+ * pending where they land in the run-configuration model.) Version Control is the workspace's one-stop
+ * group for the repository-wide actions — Commit, Fetch, Pull and Push — dispatching through the
+ * {@link SourceControlCommands} and {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
   selector: 'app-directory-ribbon',
@@ -144,8 +144,10 @@ export class DirectoryRibbon {
           // is routed by Chromium to whatever holds focus, so every control serves its own chord. A
           // feature entry claiming one of those accelerators REPLACES the core's (AppMenu.withoutClaimed)
           // and then runs the TAB's command wherever the caret happens to be, which is what broke ⌘C/⌘V
-          // over and over. The ribbon's own clipboard and history buttons remain: pressing one is an
-          // explicit instruction to act on this view rather than on whatever has focus.
+          // over and over. Each editor's own strip carries clipboard and history buttons instead:
+          // pressing one is an explicit instruction to act on that document rather than on whatever
+          // has focus. Find stays here because it opens the workspace's Search panel, and this is
+          // the only place it is reachable from now that the ribbon has no Edit group.
           {
             id: 'directory.find',
             label: 'Find…',
@@ -156,15 +158,13 @@ export class DirectoryRibbon {
       },
       {
         id: 'source-control',
-        label: 'Source Control',
+        label: 'Version Control',
         items: [
           { id: 'directory.commit', label: 'Commit…', run: (): void => this.onCommit() },
           MENU_SEPARATOR,
+          { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
           { id: 'directory.pull', label: 'Pull', run: (): void => this.onPull() },
           { id: 'directory.push', label: 'Push', run: (): void => this.onPush() },
-          { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
-          MENU_SEPARATOR,
-          { id: 'directory.promote', label: 'Promote Worktree', run: (): void => this.onPromote() },
         ],
       },
       {
@@ -221,11 +221,6 @@ export class DirectoryRibbon {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the editor command seam the Edit group dispatches through.
-   */
-  private readonly commands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the workspace find seam the Find command reveals the Search panel through.
@@ -329,14 +324,15 @@ export class DirectoryRibbon {
   private readonly picked: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the source-control seam the Source Control group dispatches through to the active workspace.
+   * Holds the source-control seam the Version Control group dispatches through to the active
+   * workspace.
    */
   private readonly sourceControl: WorkspaceSourceControlCommands = inject(
     WorkspaceSourceControlCommands,
   );
 
   /**
-   * Gets whether the active workspace's open folder is a git repository, enabling the Source Control
+   * Gets whether the active workspace's open folder is a git repository, enabling the Version Control
    * group's actions.
    */
   protected readonly hasRepository: Signal<boolean> = this.sourceControl.hasRepository;
@@ -544,42 +540,8 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Cuts the selection in the focused editor.
-   */
-  protected onCut(): void {
-    this.commands.cut();
-  }
-
-  /**
-   * Copies the selection in the focused editor.
-   */
-  protected onCopy(): void {
-    this.commands.copy();
-  }
-
-  /**
-   * Pastes into the focused editor.
-   */
-  protected onPaste(): void {
-    this.commands.paste();
-  }
-
-  /**
-   * Undoes the last edit in the focused editor.
-   */
-  protected onUndo(): void {
-    this.commands.undo();
-  }
-
-  /**
-   * Redoes the last undone edit in the focused editor.
-   */
-  protected onRedo(): void {
-    this.commands.redo();
-  }
-
-  /**
-   * Reveals the workspace's multi-file Search panel.
+   * Reveals the workspace's multi-file Search panel. Reached from the application menu's Edit
+   * section, the ribbon no longer carrying an Edit group of its own.
    */
   protected onFind(): void {
     this.log.info('workspace.ribbon', 'Find in Files invoked');
@@ -852,7 +814,7 @@ export class DirectoryRibbon {
    * Opens the active workspace's repository in the full source-control view.
    */
   protected onOpenSourceControl(): void {
-    this.log.info('source-control', 'Open in Source Control invoked');
+    this.log.info('source-control', 'Open in Version Control invoked');
     this.sourceControl.openInSourceControl();
   }
 
@@ -881,7 +843,7 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Holds the repository command facade behind the Source Control group, served by the active
+   * Holds the repository command facade behind the Version Control group, served by the active
    * workspace's registered handler.
    */
   private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
@@ -919,48 +881,6 @@ export class DirectoryRibbon {
   protected onStash(): void {
     this.log.info('source-control', 'Stash invoked');
     this.repositoryCommands.stash();
-  }
-
-  /**
-   * Gets whether the active view can promote its repository into a worktree container (an ordinary
-   * repository workspace can; a checkout inside a container cannot).
-   */
-  protected readonly canPromote: Signal<boolean> = this.repositoryCommands.canPromoteToWorktree;
-
-  /**
-   * Gets whether promotion is held back right now — the agent at work in the folder it would move.
-   */
-  protected readonly promoteBlocked: Signal<boolean> = computed(
-    (): boolean => this.repositoryCommands.promoteBlocker() !== null,
-  );
-
-  /**
-   * Holds whether the promote confirmation is open.
-   */
-  protected readonly promoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Opens the promote confirmation: promotion restructures the folder on disk, so it is never run
-   * from a bare button press.
-   */
-  protected onPromote(): void {
-    this.promoteConfirmOpen.set(true);
-  }
-
-  /**
-   * Confirms the promotion.
-   */
-  protected confirmPromote(): void {
-    this.promoteConfirmOpen.set(false);
-    this.log.info('source-control', 'Promote to worktree confirmed');
-    this.repositoryCommands.promoteToWorktree();
-  }
-
-  /**
-   * Cancels the promotion.
-   */
-  protected cancelPromote(): void {
-    this.promoteConfirmOpen.set(false);
   }
 
   /**

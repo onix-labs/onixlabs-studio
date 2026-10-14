@@ -229,7 +229,7 @@ const CLONE_URL: RegExp = /^(https?:\/\/\S+\/\S+|ssh:\/\/\S+|[\w.-]+@[\w.-]+:\S+
 const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
 
 /**
- * The welcome screen's Source Control section: "I want to find or bring existing code into Studio"
+ * The welcome screen's Version Control section: "I want to find or bring existing code into Studio"
  * (#805). Clone a repository by its URL or from the list — choosing first whether it lands as a flat
  * working copy or as a worktree container — or browse the repositories of every account the installed
  * hosting plugins are signed in to.

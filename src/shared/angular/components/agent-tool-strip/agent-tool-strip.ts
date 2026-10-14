@@ -11,6 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentControls } from '@shared/angular/services/agent/agent-controls';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -24,12 +25,29 @@ import { EditorCommands } from '@shared/angular/services/editor-commands/editor-
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
+
+/**
+ * Identifies the Attach menu's commands.
+ */
+const ATTACH_FILE: string = 'agent.attachFile';
+const ATTACH_FOLDER: string = 'agent.attachFolder';
+const ATTACH_SELECTION: string = 'agent.attachSelection';
+
+/**
+ * Identifies the "…" menu's commands.
+ */
+const MORE_HISTORY: string = 'agent.history';
+const MORE_SCROLL_TO_TOP: string = 'agent.scrollToTop';
+const MORE_SCROLL_TO_BOTTOM: string = 'agent.scrollToBottom';
+const MORE_SCROLL_TO_LAST_PROMPT: string = 'agent.scrollToLastPrompt';
 
 /**
  * A compact tool strip for a docked agent conversation — a mini version of the standalone agent tab's
  * ribbon. It carries the session actions (New Chat, Stop, Compact), this conversation's own
- * provider/model selection, and the history toggle, so a docked panel (which has no ribbon) gets the
+ * provider/model selection, an Attach menu, and a "…" menu holding the history toggle and the scroll
+ * jumps, so a docked panel (which has no ribbon) gets the
  * same controls. The session actions and history toggle drive the injected {@link AgentConversation};
  * the Engine field drives the injected {@link Agent}'s own selection (each conversation can run through
  * a different connection), with the option list drawn from the global {@link AgentEngine}.
@@ -37,7 +55,7 @@ import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/
  */
 @Component({
   selector: 'app-agent-tool-strip',
-  imports: [Dropdown, Button, AgentRemoteModal],
+  imports: [Dropdown, Button, AgentRemoteModal, CdkMenuTrigger, Menu],
   templateUrl: './agent-tool-strip.html',
   styleUrl: './agent-tool-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -124,18 +142,116 @@ export class AgentToolStrip {
   public readonly history: InputSignal<boolean | null> = input<boolean | null>(null);
 
   /**
-   * Emits when the history button is pressed while an external {@link history} state is supplied, so
+   * Emits when Conversation History is chosen while an external {@link history} state is supplied, so
    * the owner can toggle its own state.
    */
   public readonly historyToggle: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Gets the effective pressed state of the history button: the external override when supplied, else
-   * the conversation's own history-open state.
+   * Gets the effective checked state of the Conversation History item: the external override when
+   * supplied, else the conversation's own history-open state.
    */
   protected readonly historyPressed: Signal<boolean> = computed(
     (): boolean => this.history() ?? this.conversation.historyOpen(),
   );
+
+  /**
+   * Gets the Attach menu's items. Each follows the same table as the ribbon: all of them only while
+   * attaching is allowed, and Attach Selection only when there is a selection to attach.
+   */
+  protected readonly attachItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => {
+      const attach: boolean = this.controls().attach;
+      return [
+        { id: ATTACH_FILE, label: 'Attach File…', icon: Icon.ATTACH, disabled: !attach },
+        { id: ATTACH_FOLDER, label: 'Attach Folder…', icon: Icon.FOLDER_PLUS, disabled: !attach },
+        {
+          id: ATTACH_SELECTION,
+          label: 'Attach Selection',
+          icon: Icon.SELECTION,
+          disabled: !attach || !this.hasSelection(),
+        },
+      ];
+    },
+  );
+
+  /**
+   * Gets the "…" menu's items: the history switch, then the scroll jumps. The jumps are offered only
+   * when there is a transcript to scroll, as on the agent ribbon.
+   */
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
+    const empty: boolean = !this.conversation.hasMessages();
+    return [
+      {
+        id: MORE_HISTORY,
+        label: 'Conversation History',
+        icon: Icon.RECENT,
+        checked: this.historyPressed(),
+      },
+      { id: 'separator', label: '', separator: true },
+      {
+        id: MORE_SCROLL_TO_TOP,
+        label: 'Scroll to Top',
+        icon: Icon.SCROLL_TO_TOP,
+        disabled: empty,
+      },
+      {
+        id: MORE_SCROLL_TO_BOTTOM,
+        label: 'Scroll to Bottom',
+        icon: Icon.SCROLL_TO_BOTTOM,
+        disabled: empty,
+      },
+      {
+        id: MORE_SCROLL_TO_LAST_PROMPT,
+        label: 'Scroll to Last Prompt',
+        icon: Icon.SCROLL_TO_LAST_PROMPT,
+        disabled: empty,
+      },
+    ];
+  });
+
+  /**
+   * Runs a command chosen from the Attach menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onAttachMenu(id: string): void {
+    switch (id) {
+      case ATTACH_FILE:
+        this.conversation.attachFile();
+        break;
+      case ATTACH_FOLDER:
+        this.conversation.attachFolder();
+        break;
+      case ATTACH_SELECTION:
+        this.conversation.attachSelection();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Runs a command chosen from the "…" menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMoreMenu(id: string): void {
+    switch (id) {
+      case MORE_HISTORY:
+        this.onHistoryToggle();
+        break;
+      case MORE_SCROLL_TO_TOP:
+        this.conversation.scrollToTop();
+        break;
+      case MORE_SCROLL_TO_BOTTOM:
+        this.conversation.scrollToBottom();
+        break;
+      case MORE_SCROLL_TO_LAST_PROMPT:
+        this.conversation.scrollToLastPrompt();
+        break;
+      default:
+        break;
+    }
+  }
 
   /**
    * Toggles history: the owner's external state when one is supplied, otherwise the shared conversation.

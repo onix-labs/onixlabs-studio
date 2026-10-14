@@ -491,7 +491,7 @@ const PENDING_MESSAGES: Readonly<Record<string, string>> = {
   loading: 'Loading…',
   'no-forge': 'This repository has no remote on a supported forge',
   error: 'Could not read from the forge',
-  unauthorized: 'Not signed in — add a token in Settings → Source Control',
+  unauthorized: 'Not signed in — add a token in Settings → Version Control',
 };
 
 /**

@@ -66,7 +66,7 @@ interface SectionTab {
  *
  * Beneath the identity, four sections share one tab strip drawn like the document tabs, each a way of
  * using Studio: Get Started ("I know what I want to work on"), Create Something ("help me design and
- * build something"), Source Control ("bring existing code in") and Tools ("manage the environment").
+ * build something"), Version Control ("bring existing code in") and Tools ("manage the environment").
  * The sections report what the user did; this screen decides when to step aside.
  */
 @Component({
@@ -96,7 +96,7 @@ export class WelcomeScreen {
     // Real since #805: repositories from the hosting plugins, clones by the version-control plugin.
     {
       id: 'source-control',
-      label: 'Source Control',
+      label: 'Version Control',
       icon: Icon.WELCOME_TAB_SOURCE_CONTROL,
       shown: true,
     },

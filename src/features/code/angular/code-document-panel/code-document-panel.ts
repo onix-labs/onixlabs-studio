@@ -641,6 +641,43 @@ export class CodeDocumentPanel {
   }
 
   /**
+   * Undoes the last edit in this document's editor. The strip calls this panel's own handler rather
+   * than the {@link EditorCommands} registry, whose commands go to whichever editor is active: a
+   * button on this document's strip must act on this document even when another one holds focus.
+   */
+  protected undo(): void {
+    this.commandHandler?.undo();
+  }
+
+  /**
+   * Redoes the last undone edit in this document's editor.
+   */
+  protected redo(): void {
+    this.commandHandler?.redo();
+  }
+
+  /**
+   * Cuts the selection in this document's editor.
+   */
+  protected cut(): void {
+    this.commandHandler?.cut();
+  }
+
+  /**
+   * Copies the selection in this document's editor.
+   */
+  protected copy(): void {
+    this.commandHandler?.copy();
+  }
+
+  /**
+   * Pastes the clipboard into this document's editor, at its selection.
+   */
+  protected paste(): void {
+    this.commandHandler?.paste();
+  }
+
+  /**
    * Turns Word Wrap on or off, editor-wide, as the ribbon's Word Wrap does.
    */
   private toggleWordWrap(): void {

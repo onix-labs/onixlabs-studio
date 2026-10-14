@@ -50,7 +50,7 @@ interface AccountRow {
 }
 
 /**
- * Lists every host the installed hosting plugins serve in Settings ▸ Source Control (#821), with how
+ * Lists every host the installed hosting plugins serve in Settings ▸ Version Control (#821), with how
  * each is signed in: the ways its plugin's manifest offers, the token Studio keeps for it, and who the
  * host says the credential belongs to. Core names no host — with no hosting plugin installed there is
  * nothing here but the way to install one.

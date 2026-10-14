@@ -491,7 +491,7 @@ describe('SetupWizard', () => {
 
     it('steps_whenAVersionControlSystemIsInstalled_growItsIdentityBeneathIt', () => {
       // Who commits are from belongs to the system that makes them, as a provider's sign-in belongs
-      // beneath AI Providers; there is no separate Source Control step to find it in. GitHub has no
+      // beneath AI Providers; there is no separate Version Control step to find it in. GitHub has no
       // step: it has nothing to set up yet, so the summary reports it instead.
       const installed: Installed = nothingInstalled();
       installed.plugins.set([versionControl(['stagingArea', 'identity'])]);

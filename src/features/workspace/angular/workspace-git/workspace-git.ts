@@ -300,7 +300,7 @@ export class WorkspaceGit {
   /**
    * Gets whether a path has a diff the explorers offer to show: the folder is a repository and the path
    * is modified. Only modified — a new file's diff is the whole file, and a conflict is resolved in the
-   * Source Control panel rather than read here.
+   * Repository panel rather than read here.
    * @param path The absolute file path.
    * @returns Returns true when the context menu offers Show Diff.
    */
