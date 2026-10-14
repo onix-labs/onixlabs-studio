@@ -16,7 +16,9 @@
             <p class="containers__empty-hint">
               {{ candidate.name }} provides one. Studio talks to whichever engine you install.
             </p>
-            <div class="containers__empty-actions">
+            <!-- "start" only clears the row's trailing-edge margin; the empty state's column then
+                 centres it like the text above. -->
+            <app-button-row align="start">
               <app-button
                 variant="solid"
                 [icon]="Icon.DOWNLOAD"
@@ -30,7 +32,7 @@
                 label="Refresh"
                 (click)="refresh()"
               />
-            </div>
+            </app-button-row>
           } @else {
             <p class="containers__empty-hint">
               No container engine plugin is available to install.
@@ -50,14 +52,14 @@
               Run <code>{{ command }}</code> in a terminal.
             </p>
           }
-          <div class="containers__empty-actions">
+          <app-button-row align="start">
             <app-button
               variant="outline"
               [icon]="Icon.REFRESH"
               label="Refresh"
               (click)="refresh()"
             />
-          </div>
+          </app-button-row>
         </div>
       }
     } @else {

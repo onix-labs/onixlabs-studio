@@ -63,7 +63,9 @@ test.describe('containers with an engine installed', () => {
 
   test('offersNoButtonThatWouldStartTheEngine', async ({ app, page }) => {
     await openContainers(app, page);
-    const actions: Locator = page.locator('app-containers-view .containers__empty-actions button');
+    const actions: Locator = page.locator(
+      'app-containers-view .containers__empty app-button-row button',
+    );
 
     // Studio talks to an engine; it does not run one. Refresh is the only thing it can honestly offer.
     await expect(actions).toHaveText(['Refresh']);

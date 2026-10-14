@@ -278,15 +278,15 @@
         (valueChange)="onCategoryNameValue($event)"
         (enter)="onSaveCategory()"
       />
-      <div class="history__modal-actions">
-        <app-button label="Cancel" (click)="onCancelCategory()" />
+      <app-button-row>
         <app-button
           variant="solid"
           label="Save"
           [disabled]="editor.name.trim().length === 0"
           (click)="onSaveCategory()"
         />
-      </div>
+        <app-button label="Cancel" (click)="onCancelCategory()" />
+      </app-button-row>
     }
   </ng-template>
 </app-modal>
@@ -324,10 +324,10 @@
         <p class="history__manage-empty">No categories yet.</p>
       }
     </div>
-    <div class="history__modal-actions">
-      <app-button label="New category" (click)="onNewCategory()" />
+    <app-button-row>
       <app-button variant="solid" label="Done" (click)="onCloseManage()" />
-    </div>
+      <app-button label="New category" (click)="onNewCategory()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -345,9 +345,9 @@
       {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
       deleted. This cannot be undone.
     </p>
-    <div class="history__modal-actions">
-      <app-button label="Cancel" (click)="onCancelDelete()" />
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="onConfirmDelete()" />
-    </div>
+      <app-button label="Cancel" (click)="onCancelDelete()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

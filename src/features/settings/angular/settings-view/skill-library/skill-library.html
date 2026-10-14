@@ -130,18 +130,20 @@
       }
 
       <div class="skills__row-actions">
-        <app-button
-          variant="solid"
-          label="Save"
-          [disabled]="row.saving || !isDirty(row)"
-          [loading]="row.saving"
-          (click)="save(row)"
-        />
-        <app-button
-          [label]="row.stored ? 'Revert' : 'Discard'"
-          [disabled]="row.saving || (row.stored !== null && !isDirty(row))"
-          (click)="revert(row)"
-        />
+        <app-button-row align="start">
+          <app-button
+            variant="solid"
+            label="Save"
+            [disabled]="row.saving || !isDirty(row)"
+            [loading]="row.saving"
+            (click)="save(row)"
+          />
+          <app-button
+            [label]="row.stored ? 'Revert' : 'Discard'"
+            [disabled]="row.saving || (row.stored !== null && !isDirty(row))"
+            (click)="revert(row)"
+          />
+        </app-button-row>
         @if (row.stored) {
           <app-button
             variant="none"

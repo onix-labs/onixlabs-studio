@@ -29,6 +29,7 @@ import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/exp
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -126,7 +127,16 @@ interface PendingProjectAction {
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent, Button],
+  imports: [
+    AppIcon,
+    TreeView,
+    ExplorerToolbar,
+    HighlightedText,
+    Modal,
+    ModalContent,
+    Button,
+    ButtonRow,
+  ],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

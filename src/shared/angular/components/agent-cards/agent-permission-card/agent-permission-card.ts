@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AgentCard } from '../agent-card/agent-card';
 
@@ -41,7 +42,7 @@ export interface PermissionAnswer {
  */
 @Component({
   selector: 'app-agent-permission-card',
-  imports: [AgentCard, Button, Dropdown],
+  imports: [AgentCard, Button, ButtonRow, Dropdown],
   templateUrl: './agent-permission-card.html',
   styleUrl: './agent-permission-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

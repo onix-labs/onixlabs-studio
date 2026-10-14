@@ -4,6 +4,7 @@ import {
   FileConflicts,
 } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
@@ -25,7 +26,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
  */
 @Component({
   selector: 'app-document-conflict-modal',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (conflict(); as current) {
@@ -38,15 +39,15 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
               unsaved changes. Keep your version, or reload the version on disk (discarding your
               edits)?
             </p>
-            <div class="conflict__actions">
-              <app-button label="Keep my version" (click)="keep(current)" />
+            <app-button-row class="conflict__actions">
               <app-button
                 variant="solid"
                 tone="danger"
                 label="Reload from disk"
                 (click)="reload(current)"
               />
-            </div>
+              <app-button label="Keep my version" (click)="keep(current)" />
+            </app-button-row>
           </div>
         </ng-template>
       </app-modal>
@@ -71,9 +72,6 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
       }
 
       .conflict__actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.6rem;
         margin-block-start: 0.4rem;
       }
     `,

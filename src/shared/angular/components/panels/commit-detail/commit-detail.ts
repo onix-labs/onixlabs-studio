@@ -27,6 +27,7 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
@@ -97,6 +98,7 @@ type WorkingRowData =
     Chip,
     Textarea,
     Button,
+    ButtonRow,
     AppIcon,
     Checkbox,
     PanelToolbar,

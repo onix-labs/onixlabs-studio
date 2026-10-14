@@ -14,9 +14,9 @@
       }}
       {{ issueAgent.pending()?.title }}”.
     </p>
-    <div class="confirm__actions">
+    <app-button-row>
       <app-button variant="solid" label="Yes" (click)="issueAgent.confirm()" />
       <app-button label="No" (click)="issueAgent.dismiss()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>

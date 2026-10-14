@@ -8,7 +8,7 @@ import {
 } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 
-import { Modal } from './modal';
+import { isThemeProperty, Modal } from './modal';
 import { ModalContent } from './modal-content';
 
 /**
@@ -485,5 +485,16 @@ describe('Modal opening focus', () => {
 
     expect((): void => nextFrame()).not.toThrow();
     expect(document.activeElement?.classList.contains('probe-name') ?? false).toBe(false);
+  });
+});
+
+describe('isThemeProperty', () => {
+  it('carriesTheCallSitesTheming_butNotTheWindowsOwnInset', () => {
+    // The welcome screen is a dragless modal window; a confirmation it raises must keep its own drag
+    // inset, or its title sits under the window controls.
+    expect(isThemeProperty('--modal-panel-padding')).toBe(true);
+    expect(isThemeProperty('--accent-color')).toBe(true);
+    expect(isThemeProperty('--modal-window-drag-height')).toBe(false);
+    expect(isThemeProperty('color')).toBe(false);
   });
 });

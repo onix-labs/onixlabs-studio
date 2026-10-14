@@ -20,7 +20,7 @@
         (choose)="select($event)"
       />
     }
-    <div class="agent__ask-actions">
+    <app-button-row class="agent__ask-actions">
       <!-- A free-form question has nothing to confirm here (the answer is typed in the composer), so
            its Answer is kept only as an invisible placeholder: Skip then takes exactly the width and
            place it has beside a visible Answer. Hidden from pointer, keyboard and screen readers. -->
@@ -33,7 +33,7 @@
         (click)="confirm()"
       />
       <app-button label="Skip" (click)="answer.emit(null)" />
-    </div>
+    </app-button-row>
   } @else if (item().inputState === 'answered') {
     <span class="agent__ask-answer">{{ item().inputAnswer }}</span>
   } @else {

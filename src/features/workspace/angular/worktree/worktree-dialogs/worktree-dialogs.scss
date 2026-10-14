@@ -13,12 +13,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-.worktree-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-}
-
 // Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .worktree-dialog__input {
   inline-size: 100%;

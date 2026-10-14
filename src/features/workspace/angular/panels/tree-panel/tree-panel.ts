@@ -43,6 +43,7 @@ import {
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 
 /**
  * Identifies the row context-menu actions the panel offers.
@@ -134,7 +135,16 @@ export interface NameEdit {
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [Button, AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent],
+  imports: [
+    Button,
+    ButtonRow,
+    AppIcon,
+    TreeView,
+    ExplorerToolbar,
+    HighlightedText,
+    Modal,
+    ModalContent,
+  ],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

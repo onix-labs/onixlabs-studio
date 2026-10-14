@@ -20,6 +20,7 @@ import {
 } from '@angular/core';
 import { EncodableImageType, ENCODABLE_IMAGE_TYPES } from '@shared/api/image-formats';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
@@ -125,7 +126,7 @@ type Drag =
  */
 @Component({
   selector: 'app-image-view',
-  imports: [Button, Checkbox, Dropdown, NumberField, PanelToolbar, Slider],
+  imports: [Button, ButtonRow, Checkbox, Dropdown, NumberField, PanelToolbar, Slider],
   // One per view: the status strip reads this view's own context through its injector.
   providers: [ImageStatus],
   templateUrl: './image-view.html',

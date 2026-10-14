@@ -13,6 +13,7 @@ import {
 import type { AiInputSelection } from '@shared/api/ai-types';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { AgentCard } from '../agent-card/agent-card';
 import { AgentChoice, AgentChoiceList } from '../agent-choice-list/agent-choice-list';
 
@@ -23,7 +24,7 @@ import { AgentChoice, AgentChoiceList } from '../agent-choice-list/agent-choice-
  */
 @Component({
   selector: 'app-agent-question-card',
-  imports: [AgentCard, AgentChoiceList, Button],
+  imports: [AgentCard, AgentChoiceList, Button, ButtonRow],
   templateUrl: './agent-question-card.html',
   styleUrl: './agent-question-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -13,6 +13,7 @@ import { ForgeHostAccount } from '@shared/api/forge-types';
 import { HostingAuthMode } from '@shared/api/hosting-protocol';
 import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
@@ -59,7 +60,7 @@ interface AccountRow {
  */
 @Component({
   selector: 'app-hosting-accounts',
-  imports: [Button, Dropdown, PasswordField, SettingRow],
+  imports: [Button, ButtonRow, Dropdown, PasswordField, SettingRow],
   templateUrl: './hosting-accounts.html',
   styleUrl: './hosting-accounts.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

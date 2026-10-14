@@ -63,9 +63,9 @@
         pendingAction()?.project?.name
       }}” instead? Its output stays in the Build terminal until the new build replaces it.
     </p>
-    <div class="solution-panel__confirm-actions">
-      <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
+    <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

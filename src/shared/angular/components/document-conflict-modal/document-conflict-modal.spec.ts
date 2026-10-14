@@ -90,7 +90,11 @@ describe('DocumentConflictModal', () => {
     activeConflict.set(conflict);
     const host: HTMLElement | null = await present();
 
-    host?.querySelectorAll<HTMLButtonElement>('button')[0]?.click();
+    Array.from(host?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+      .find(
+        (button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Keep my version',
+      )
+      ?.click();
 
     expect(kept).toEqual(['doc-1']);
     expect(reloaded).toEqual([]);
@@ -100,7 +104,11 @@ describe('DocumentConflictModal', () => {
     activeConflict.set(conflict);
     const host: HTMLElement | null = await present();
 
-    host?.querySelectorAll<HTMLButtonElement>('button')[1]?.click();
+    Array.from(host?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+      .find(
+        (button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Reload from disk',
+      )
+      ?.click();
 
     expect(reloaded).toEqual(['doc-1']);
     expect(kept).toEqual([]);

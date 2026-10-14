@@ -14,6 +14,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Chip } from '@shared/angular/components/chip/chip';
@@ -115,7 +116,7 @@ export type SearchResultRow = SearchFileRow | SearchMatchRow;
  */
 @Component({
   selector: 'app-search-panel',
-  imports: [Chip, AppIcon, Button, Checkbox, PanelToolbar, TextField, TreeView],
+  imports: [Chip, AppIcon, Button, ButtonRow, Checkbox, PanelToolbar, TextField, TreeView],
   templateUrl: './search-panel.html',
   styleUrl: './search-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

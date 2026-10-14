@@ -12,6 +12,7 @@ import {
 import type { AiRemoteControlPosture } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
@@ -26,7 +27,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
  */
 @Component({
   selector: 'app-agent-remote-modal',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal [open]="open()" [width]="30" [ariaLabel]="title()" (dismiss)="dismissed.emit()">
@@ -35,10 +36,10 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
           <h2 class="remote-modal__title">{{ title() }}</h2>
           <p class="remote-modal__body">{{ body() }}</p>
           <p class="remote-modal__hint">{{ hint() }}</p>
-          <div class="remote-modal__actions">
+          <app-button-row class="remote-modal__actions">
             <app-button variant="solid" label="Yes" (click)="confirmed.emit()" />
             <app-button label="No" (click)="dismissed.emit()" />
-          </div>
+          </app-button-row>
         </div>
       </ng-template>
     </app-modal>
@@ -68,17 +69,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
       }
 
       .remote-modal__actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.6rem;
         margin-block-start: 0.4rem;
-      }
-
-      // Yes and No are two words of very different length, and a pair of buttons sized to their
-      // labels reads as a mistake. A floor on the host — the layout box the button fills — gives them
-      // a matching footprint without reaching into the button's own measurements.
-      .remote-modal__actions app-button {
-        min-inline-size: 6rem;
       }
     `,
   ],

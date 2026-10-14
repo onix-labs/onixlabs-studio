@@ -81,17 +81,10 @@
     inline-size: 100%;
   }
 
-  // Cancel and Save take one width between them rather than each sizing to its own label, so the pair
-  // reads as a matched set instead of two buttons of incidental widths.
+  // The button row lays the actions out; the dialog only keeps its column from squeezing the row when
+  // the editor above runs long.
   &__actions {
-    display: flex;
     flex: none;
-    justify-content: flex-end;
-    gap: 0.6rem;
-
-    app-button {
-      min-inline-size: 5.5rem;
-    }
   }
 }
 

@@ -14,6 +14,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -114,7 +115,7 @@ const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
  */
 @Component({
   selector: 'app-system-monitor-view',
-  imports: [Chip, Button, Dropdown, TextField, Table, TableRowDef, MetricTile],
+  imports: [Chip, Button, ButtonRow, Dropdown, TextField, Table, TableRowDef, MetricTile],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

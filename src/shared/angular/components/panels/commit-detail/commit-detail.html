@@ -81,7 +81,15 @@
         }
       </div>
       <p class="detail__operation-message">{{ operationMessage() }}</p>
-      <div class="detail__operation-actions">
+      <app-button-row size="small">
+        <app-button
+          size="small"
+          variant="solid"
+          label="Continue"
+          [disabled]="!repository.canContinueOperation()"
+          tooltip="Carry on, now that the conflicts are resolved"
+          (click)="continueOperation()"
+        />
         @if (canSkip()) {
           <app-button
             size="small"
@@ -92,20 +100,12 @@
         }
         <app-button
           size="small"
-          variant="solid"
-          label="Continue"
-          [disabled]="!repository.canContinueOperation()"
-          tooltip="Carry on, now that the conflicts are resolved"
-          (click)="continueOperation()"
-        />
-        <app-button
-          size="small"
           tone="danger"
           label="Abort"
           tooltip="Abandon this and put the working tree back where it started"
           (click)="abortOperation()"
         />
-      </div>
+      </app-button-row>
     </div>
   }
 
@@ -272,7 +272,7 @@
         [value]="repository.commitMessage()"
         (valueChange)="onMessageValue($event)"
       />
-      <div class="detail__composer-actions">
+      <app-button-row>
         <app-button
           variant="solid"
           [icon]="Icon.GIT_COMMIT"
@@ -286,7 +286,7 @@
           [disabled]="!canCommit()"
           (click)="commitAndPush()"
         />
-      </div>
+      </app-button-row>
     </div>
   } @else {
     <header class="detail__header">

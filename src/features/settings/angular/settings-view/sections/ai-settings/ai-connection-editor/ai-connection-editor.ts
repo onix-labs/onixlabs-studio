@@ -18,6 +18,7 @@ import { PasswordField } from '@shared/angular/components/forms/password-field/p
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Icon } from '@shared/angular/icons/icon';
 import { SettingControl } from '../../../setting-control/setting-control';
 
@@ -47,7 +48,7 @@ export interface HarnessReading {
  */
 @Component({
   selector: 'app-ai-connection-editor',
-  imports: [Button, TextField, PasswordField, Radio, SettingRow, SettingControl],
+  imports: [Button, ButtonRow, TextField, PasswordField, Radio, SettingRow, SettingControl],
   templateUrl: './ai-connection-editor.html',
   styleUrls: ['./ai-connection-editor.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

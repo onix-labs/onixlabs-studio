@@ -635,7 +635,7 @@ export class Modal implements OnDestroy {
       return;
     }
     for (const property of Array.from(style)) {
-      if (!property.startsWith('--')) {
+      if (!isThemeProperty(property)) {
         continue;
       }
       const value: string = style.getPropertyValue(property);
@@ -653,6 +653,19 @@ export class Modal implements OnDestroy {
     this.presented?.window.close();
     this.presented = null;
   }
+}
+
+/**
+ * Determines whether a property is theming a modal carries from its call site to its window: any
+ * custom property but a modal window's own `--modal-window-*`, which describe that window rather than
+ * a theme. A modal raised from inside another modal window (a confirmation on the dragless welcome
+ * screen) would otherwise carry the opener's zero drag inset across and put its title under the
+ * window controls.
+ * @param property The property name.
+ * @returns Returns true when the property is carried.
+ */
+export function isThemeProperty(property: string): boolean {
+  return property.startsWith('--') && !property.startsWith('--modal-window-');
 }
 
 /**

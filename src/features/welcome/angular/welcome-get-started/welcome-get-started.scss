@@ -267,23 +267,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-// Equal-width buttons, sized to the widest and kept to the trailing edge.
-.welcome__confirm-actions {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 0.6rem;
-  inline-size: fit-content;
-  margin-inline-start: auto;
-}
-
-// A prompt whose buttons carry longer labels stacks them in one full-width column.
-.welcome__confirm-actions--stack {
-  grid-auto-flow: row;
-  inline-size: auto;
-  margin-inline-start: 0;
-}
-
 // At a narrow window the columns stack, the actions first.
 @container welcome-panel (max-width: 44rem) {
   .start {

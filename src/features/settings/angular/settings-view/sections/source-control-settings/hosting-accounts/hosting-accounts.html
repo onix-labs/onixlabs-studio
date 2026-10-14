@@ -18,10 +18,19 @@
           placeholder="Personal access token"
           (valueChange)="onDraft(row, $event)"
         />
-        <app-button variant="solid" label="Save" [disabled]="!canSave(row)" (click)="onSave(row)" />
-        <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
       }
-      <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+      <app-button-row align="start">
+        @if (offersToken(row)) {
+          <app-button
+            variant="solid"
+            label="Save"
+            [disabled]="!canSave(row)"
+            (click)="onSave(row)"
+          />
+          <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
+        }
+        <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+      </app-button-row>
     </span>
   </app-setting-row>
 } @empty {

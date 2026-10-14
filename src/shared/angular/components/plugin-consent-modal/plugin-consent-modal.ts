@@ -12,6 +12,7 @@ import { PluginSummary } from '@shared/api/plugin-channels';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 
 /**
  * The terms a plugin is installed under, asked before anything is fetched.
@@ -26,7 +27,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
  */
 @Component({
   selector: 'app-plugin-consent-modal',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (plugin(); as pending) {
@@ -61,10 +62,10 @@ import { Button } from '@shared/angular/components/forms/button/button';
               it.
             </p>
 
-            <div class="consent__actions">
-              <app-button label="Cancel" (click)="declined.emit()" />
+            <app-button-row class="consent__actions">
               <app-button variant="solid" [label]="confirmLabel()" (click)="accepted.emit()" />
-            </div>
+              <app-button label="Cancel" (click)="declined.emit()" />
+            </app-button-row>
           </div>
         </ng-template>
       </app-modal>
@@ -105,9 +106,6 @@ import { Button } from '@shared/angular/components/forms/button/button';
       }
 
       .consent__actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.6rem;
         margin-block-start: 0.4rem;
       }
     `,

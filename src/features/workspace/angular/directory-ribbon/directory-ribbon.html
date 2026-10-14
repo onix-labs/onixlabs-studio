@@ -163,10 +163,10 @@
       Stop it and start it again? Its terminal keeps the session tab; the new run replaces the
       output.
     </p>
-    <div class="directory-ribbon__confirm-actions">
-      <app-button label="Cancel" (click)="cancelRunRestart()" />
+    <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmRunRestart()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelRunRestart()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -200,15 +200,15 @@
         <span>Saving replaces the “{{ existing.name }}” layout with the current arrangement.</span>
       </p>
     }
-    <div class="directory-ribbon__confirm-actions">
-      <app-button label="Cancel" (click)="cancelSaveAs()" />
+    <app-button-row>
       <app-button
         variant="solid"
         [label]="saveAsOverwrites() === null ? 'Save' : 'Replace'"
         [disabled]="saveAsName().trim().length === 0"
         (click)="confirmSaveAs()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelSaveAs()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -298,9 +298,9 @@
         </li>
       }
     </ul>
-    <div class="directory-ribbon__confirm-actions">
+    <app-button-row>
       <app-button variant="solid" label="Done" (click)="closeManage()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -318,10 +318,10 @@
       “{{ deletingLayout()?.name }}” is deleted for good. Workspaces showing it fall back to the
       default layout.
     </p>
-    <div class="directory-ribbon__confirm-actions">
-      <app-button label="Cancel" (click)="cancelDeleteLayout()" />
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteLayout()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelDeleteLayout()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -341,10 +341,10 @@
       with its own terminals, agent, and debugger. The view reloads around the container; the path
       you open stays the same, and the agent conversation carries on in the first worktree.
     </p>
-    <div class="directory-ribbon__confirm-actions">
-      <app-button label="Cancel" (click)="cancelPromote()" />
+    <app-button-row>
       <app-button variant="solid" label="Promote" (click)="confirmPromote()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelPromote()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -362,9 +362,9 @@
       Stop the running build and start this one instead? Its output stays in the Build terminal
       until the new build replaces it.
     </p>
-    <div class="directory-ribbon__confirm-actions">
-      <app-button label="Cancel" (click)="cancelBuildRestart()" />
+    <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmBuildRestart()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelBuildRestart()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

@@ -127,10 +127,10 @@
     <p class="welcome__confirm-message">
       Are you sure you want to clear all recent items? This cannot be undone.
     </p>
-    <div class="welcome__confirm-actions">
-      <app-button label="Cancel" (click)="cancelClearRecent()" />
+    <app-button-row>
       <app-button variant="solid" label="Clear" (click)="clearRecent()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelClearRecent()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -150,11 +150,11 @@
       <p class="welcome__confirm-message">
         “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
       </p>
-      <div class="welcome__confirm-actions welcome__confirm-actions--stack">
+      <app-button-row>
         <app-button variant="solid" label="Locate" (click)="locateMissing()" />
-        <app-button variant="outline" label="Remove" (click)="removeMissing()" />
-        <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
-      </div>
+        <app-button label="Remove" (click)="removeMissing()" />
+        <app-button label="Cancel" (click)="dismissMissing()" />
+      </app-button-row>
     }
   </ng-template>
 </app-modal>

@@ -74,6 +74,12 @@
   color: var(--accent-color);
 }
 
+// Copy and Clear sit in the toolbar's flow right after the indicator, so the row holds its place there
+// rather than pushing to the trailing edge, and it never gives up width to the flexing search field.
+.system-monitor__selection-actions {
+  flex: none;
+}
+
 // The audit table (the shared app-table) fills the remaining height and scrolls its own body.
 .system-monitor__table {
   flex: 1 1 auto;

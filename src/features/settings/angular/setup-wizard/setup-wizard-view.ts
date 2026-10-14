@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { SetupStepAiProvider } from './setup-step-ai-provider';
 import { SetupStepCatalogue } from './setup-step-catalogue';
 import { SetupStepSummary } from './setup-step-summary';
@@ -39,6 +40,7 @@ import {
     Modal,
     ModalContent,
     Button,
+    ButtonRow,
     AppIcon,
     TreeView,
     SetupStepSettings,

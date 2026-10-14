@@ -21,6 +21,7 @@ import { agentTypeFromContextKind } from '@shared/angular/services/agent-convers
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
@@ -138,6 +139,7 @@ type HistoryRowData =
     Chip,
     TextField,
     Button,
+    ButtonRow,
     AppIcon,
     Checkbox,
     HighlightedText,

@@ -179,15 +179,15 @@
       <app-checkbox [(checked)]="branchCheckout" />
       <span>Check out after creating</span>
     </label>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelBranch()" />
+    <app-button-row>
       <app-button
         variant="solid"
         label="Create"
         [disabled]="!canCreateBranch()"
         (click)="confirmBranch()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelBranch()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -211,7 +211,7 @@
     @if (renameNameError(); as error) {
       <p class="rail__dialog-error" role="alert">{{ error }}</p>
     }
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Rename"
@@ -219,7 +219,7 @@
         (click)="confirmRenameBranch()"
       />
       <app-button label="Cancel" (click)="cancelRenameBranch()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -249,7 +249,7 @@
         (valueChange)="onUpstreamChoice($event)"
       />
     }
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Set"
@@ -257,7 +257,7 @@
         (click)="confirmUpstream()"
       />
       <app-button label="Cancel" (click)="cancelUpstream()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -281,10 +281,10 @@
         push, and anyone else working on it will have to recover their own copy.
       }
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Rebase" (click)="confirmRebase()" />
       <app-button label="Cancel" (click)="cancelRebase()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -302,10 +302,10 @@
       “{{ pendingDeleteBranch()?.name }}” is deleted from this repository. A copy already pushed to
       a remote stays there.
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteBranch()" />
       <app-button label="Cancel" (click)="cancelDeleteBranch()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -323,10 +323,10 @@
       “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch you
       are on, or into anything it tracks. Deleting it now loses them, and nothing brings them back.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+    <app-button-row>
       <app-button variant="solid" label="Keep it" (click)="cancelForceDeleteBranch()" />
-    </div>
+      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -359,7 +359,7 @@
       (enter)="confirmRemote()"
       (escape)="cancelRemote()"
     />
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Add"
@@ -367,7 +367,7 @@
         (click)="confirmRemote()"
       />
       <app-button label="Cancel" (click)="cancelRemote()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -385,10 +385,10 @@
       “{{ pendingRemoveRemote()?.name }}” and its remote-tracking branches are removed from this
       repository. Nothing on the remote itself is touched.
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Remove" (click)="confirmRemoveRemote()" />
       <app-button label="Cancel" (click)="cancelRemoveRemote()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -421,15 +421,15 @@
       (enter)="confirmTag()"
       (escape)="cancelTag()"
     />
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelTag()" />
+    <app-button-row>
       <app-button
         variant="solid"
         label="Create"
         [disabled]="!canCreateTag()"
         (click)="confirmTag()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelTag()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -455,7 +455,7 @@
     }
     <!-- The local delete stays the solid one: it is the answer that is nearly always meant, and the
          far more destructive of the two should not be the one wearing the emphasis. -->
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
       @if (deleteTagRemote(); as remote) {
         <app-button
@@ -465,7 +465,7 @@
         />
       }
       <app-button label="Cancel" (click)="cancelDeleteTag()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -481,10 +481,10 @@
     <p class="rail__dialog-message">
       “{{ pendingDrop()?.message }}” is deleted without being restored. This cannot be undone.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelDropStash()" />
+    <app-button-row>
       <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelDropStash()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -501,10 +501,10 @@
       “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
       rather than replacing the old one.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelRerun()" />
+    <app-button-row>
       <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelRerun()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -521,10 +521,10 @@
       “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
       finished is abandoned.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Keep running" (click)="dismissCancelRun()" />
+    <app-button-row>
       <app-button variant="solid" label="Cancel run" (click)="confirmCancelRun()" />
-    </div>
+      <app-button label="Keep running" (click)="dismissCancelRun()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
