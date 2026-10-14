@@ -160,6 +160,10 @@
 >
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">New branch</h2>
+    <!-- Made from a worktree's menu, the branch is made in that worktree: each is a clone of its own. -->
+    @if (branchTarget(); as target) {
+      <p class="rail__dialog-message">In the “{{ target.label }}” worktree.</p>
+    }
     <app-text-field
       class="rail__dialog-input"
       placeholder="Branch name"
@@ -299,8 +303,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Delete this branch?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingDeleteBranch()?.name }}” is deleted from this repository. A copy already pushed to
-      a remote stays there.
+      “{{ pendingDeleteBranch()?.name }}” is deleted from
+      {{ deletionPlace(pendingDeleteBranch()) }}. A copy already pushed to a remote stays there.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteBranch()" />
@@ -320,8 +324,9 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Delete it anyway?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch you
-      are on, or into anything it tracks. Deleting it now loses them, and nothing brings them back.
+      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch
+      checked out in {{ deletionPlace(pendingForceDeleteBranch()) }}, or into anything it tracks.
+      Deleting it now loses them, and nothing brings them back.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Keep it" (click)="cancelForceDeleteBranch()" />

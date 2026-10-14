@@ -4,10 +4,12 @@ import type {
   WorktreeCheckoutStatus,
   WorktreeOutcome,
 } from '@shared/api/worktree';
+import { SourceControlCode } from '@shared/api/source-control-channels';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import type {
   RepositoryWorktree,
   RepositoryWorktrees,
+  WorktreeBranchDeletion,
 } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import { WorktreeSession } from './worktree-session';
 
@@ -175,6 +177,66 @@ export class WorktreeRepository implements RepositoryWorktrees {
           });
         }
       });
+  }
+
+  /**
+   * Creates a local branch in a worktree, reporting a failure as a notification.
+   * @param id The checkout id.
+   * @param name The branch to create.
+   * @param checkout Whether to check it out in that worktree.
+   * @returns Returns true once the branch exists.
+   */
+  public async createBranch(id: string, name: string, checkout: boolean): Promise<boolean> {
+    let failure: string;
+    try {
+      const outcome: WorktreeOutcome<null> = await this.session.createBranch(id, name, checkout);
+      if (outcome.ok) {
+        return true;
+      }
+      failure = outcome.error;
+    } catch (error: unknown) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: `Could not create ${name}`,
+      detail: failure,
+    });
+    return false;
+  }
+
+  /**
+   * Deletes a local branch in a worktree. Unmerged commits come back as a question for the panel to
+   * ask; any other failure is reported here, as a rename's is.
+   * @param id The checkout id.
+   * @param name The branch to delete.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns how it went.
+   */
+  public async deleteBranch(
+    id: string,
+    name: string,
+    force: boolean,
+  ): Promise<WorktreeBranchDeletion> {
+    let failure: string;
+    try {
+      const outcome: WorktreeOutcome<null> = await this.session.deleteBranch(id, name, force);
+      if (outcome.ok) {
+        return 'deleted';
+      }
+      if (outcome.code === (SourceControlCode.BranchNotMerged as string)) {
+        return 'not-merged';
+      }
+      failure = outcome.error;
+    } catch (error: unknown) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: `Could not delete ${name}`,
+      detail: failure,
+    });
+    return 'failed';
   }
 
   /**

@@ -47,6 +47,7 @@ import {
   REPOSITORY_WORKTREES,
   RepositoryWorktree,
   RepositoryWorktrees,
+  WorktreeBranchDeletion,
 } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 
 import { browsableRemoteUrl, SourceControlSidebar } from './source-control-sidebar';
@@ -671,6 +672,21 @@ class FakeWorktrees implements RepositoryWorktrees {
 
   public refresh(): void {
     this.calls.push('refresh');
+  }
+
+  /**
+   * Holds how a branch delete answers, so a refusal for unmerged commits can be staged.
+   */
+  public deletion: WorktreeBranchDeletion = 'deleted';
+
+  public deleteBranch(id: string, name: string, force: boolean): Promise<WorktreeBranchDeletion> {
+    this.calls.push(`deleteBranch:${id}:${name}:${force}`);
+    return Promise.resolve(this.deletion);
+  }
+
+  public createBranch(id: string, name: string, checkout: boolean): Promise<boolean> {
+    this.calls.push(`createBranch:${id}:${name}:${checkout}`);
+    return Promise.resolve(true);
   }
 }
 
@@ -2237,7 +2253,16 @@ describe('SourceControlSidebar', () => {
       // no items, which only works if this returns none.
       const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
 
-      expect(internals.contextMenuFor(sectionRow('tags', 'Tags'))).toEqual([]);
+      // A section's header has its own menu now (#939); a placeholder row ("No tags") has nothing.
+      expect(
+        internals.contextMenuFor({
+          id: 'empty:tags',
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: { kind: 'empty', icon: Icon.TAG, label: 'No tags' },
+        }),
+      ).toEqual([]);
       expect(
         internals.contextMenuFor({
           id: 'branch:main',
@@ -2715,9 +2740,9 @@ describe('SourceControlSidebar', () => {
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
       ).toEqual([
+        'Add Remote…',
         'New Branch…',
         'New Tag…',
-        'Add Remote…',
         'Stash Changes',
         'Fetch',
         'Push All Tags to origin',
@@ -2928,6 +2953,90 @@ describe('SourceControlSidebar', () => {
     });
   });
 
+  describe('section menus (#939)', () => {
+    /**
+     * Reads a section header's menu, without its separators.
+     * @param key The section key.
+     * @returns Returns the item labels.
+     */
+    function sectionLabels(key: string): string[] {
+      return component
+        .contextMenuFor(sectionRow(key, key))
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label);
+    }
+
+    /**
+     * Chooses an item from a section header's menu.
+     * @param key The section key.
+     * @param itemId The item chosen.
+     */
+    function choose(key: string, itemId: string): void {
+      (component as unknown as { onContextAction(c: TreeMenuSelection): void }).onContextAction({
+        itemId,
+        row: sectionRow(key, key),
+      });
+    }
+
+    it('theMoreMenu_isGroupedInTheOrderEveryMenuShares', () => {
+      // Add, then new, then stash, then fetch; a separator only between groups that are there.
+      const items: readonly MenuItem[] = (
+        component as unknown as { moreItems(): readonly MenuItem[] }
+      ).moreItems();
+
+      expect(
+        items.map((item: MenuItem): string => (item.separator === true ? '|' : item.label)),
+      ).toEqual([
+        'Add Remote…',
+        '|',
+        'New Branch…',
+        'New Tag…',
+        '|',
+        'Stash Changes',
+        '|',
+        'Fetch',
+        'Push All Tags to origin',
+      ]);
+    });
+
+    it('fetch_isTheCloudWithTheArrowDown', () => {
+      // The cloud alone is a remote; fetching from one is the arrow coming down from it.
+      const fetch: MenuItem | undefined = component
+        .contextMenuFor(sectionRow('remote', 'Remote'))
+        .find((item: MenuItem): boolean => item.label === 'Fetch All');
+
+      expect(fetch?.icon).toBe(Icon.CLOUD_DOWN);
+    });
+
+    it('eachSection_offersWhatMakesSomethingInIt', () => {
+      expect(sectionLabels('local')).toEqual(['New Branch…']);
+      expect(sectionLabels('remote')).toEqual(['Add Remote…', 'Fetch All']);
+      expect(sectionLabels('tags')[0]).toBe('New Tag…');
+      expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
+      expect(sectionLabels('pullRequests')).toEqual(['Refresh']);
+      expect(sectionLabels('issues')).toEqual(['Refresh']);
+      expect(sectionLabels('actions')).toEqual(['Refresh']);
+    });
+
+    it('aSectionsCommand_isTheStripsOwn', () => {
+      choose('local', 'repo.newBranch');
+      choose('remote', 'repo.addRemote');
+
+      const internals: { branchDialogOpen(): boolean; remoteDialogOpen(): boolean } =
+        component as unknown as { branchDialogOpen(): boolean; remoteDialogOpen(): boolean };
+      expect(internals.branchDialogOpen()).toBe(true);
+      expect(internals.remoteDialogOpen()).toBe(true);
+    });
+
+    it('refresh_rereadsThatSection_evenWhenItHasDataAlready', () => {
+      const before: number = forge.loads;
+
+      choose('issues', 'section.refresh');
+
+      expect(forge.loads).toBe(before + 1);
+    });
+  });
+
   describe('worktrees in Local', () => {
     /**
      * The current worktree (this view's repository: main and develop, on main) and another, a clone
@@ -3090,18 +3199,23 @@ describe('SourceControlSidebar', () => {
 
       expect(menuLabels(mounted, 'worktree:w2')).toEqual([
         'Switch to Worktree',
+        'New Branch…',
         'Rename…',
         'Open in File System',
         'Copy Path',
         'Remove Worktree…',
       ]);
       expect(menuLabels(mounted, 'worktree:w1')).toEqual([
+        'New Branch…',
         'Rename…',
         'Open in File System',
         'Copy Path',
         'Remove Worktree…',
       ]);
-      expect(menuLabels(mounted, 'worktree:w2:branch:old')).toEqual(['Switch to Worktree']);
+      expect(menuLabels(mounted, 'worktree:w2:branch:old')).toEqual([
+        'Switch to Worktree',
+        'Delete…',
+      ]);
 
       (
         mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
@@ -3147,16 +3261,95 @@ describe('SourceControlSidebar', () => {
       worktrees.worktrees.set([current, other]);
       const mounted: ComponentFixture<SourceControlSidebar> = mount();
 
+      // A branch is made in a worktree, from its own menu: Local makes worktrees (#939).
       expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree…']);
       (
         mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
       ).onContextAction({ itemId: 'repo.newWorktree', row: row(mounted, 'section:local') });
       expect(worktrees.calls).toEqual(['add']);
 
-      // A flat repository's Local is only branches: no menu at all.
+      // A flat repository's Local is only branches: a new branch is all it makes.
       worktrees.worktrees.set(null);
       mounted.detectChanges();
-      expect(menuLabels(mounted, 'section:local')).toEqual([]);
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Branch…']);
+    });
+
+    it('newBranch_onAnotherWorktree_isMadeInThatWorktree_checkedAgainstItsOwnBranches', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        branchTarget(): RepositoryWorktree | null;
+        branchName: WritableSignal<string>;
+        branchNameError(): string | null;
+        confirmBranch(): void;
+      } = mounted.componentInstance as unknown as typeof internals;
+
+      internals.onContextAction({ itemId: 'repo.newBranch', row: row(mounted, 'worktree:w2') });
+      expect(internals.branchTarget()?.id).toBe('w2');
+
+      // "old" is one of that worktree's branches, not this repository's.
+      internals.branchName.set('old');
+      expect(internals.branchNameError()).toBe('A branch with this name already exists.');
+
+      internals.branchName.set('fresh');
+      internals.confirmBranch();
+      expect(worktrees.calls).toEqual(['createBranch:w2:fresh:true']);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('createBranch'))).toBe(
+        false,
+      );
+    });
+
+    it('anotherWorktreesBranch_isDeletedInThatWorktree_askingAgainWhenItHoldsUnmergedWork', async () => {
+      // Each worktree is a clone of its own, so the delete goes to that one, not this repository.
+      worktrees.worktrees.set([current, other]);
+      worktrees.deletion = 'not-merged';
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        pendingDeleteBranch(): { name: string } | null;
+        pendingForceDeleteBranch(): { name: string } | null;
+        confirmDeleteBranch(): Promise<void>;
+        confirmForceDeleteBranch(): void;
+        deletionPlace(deletion: unknown): string;
+      } = mounted.componentInstance as unknown as typeof internals;
+
+      internals.onContextAction({
+        itemId: 'worktree.deleteBranch',
+        row: row(mounted, 'worktree:w2:branch:old'),
+      });
+      expect(internals.pendingDeleteBranch()?.name).toBe('old');
+      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toBe(
+        'the “review” worktree',
+      );
+
+      await internals.confirmDeleteBranch();
+      expect(internals.pendingForceDeleteBranch()?.name).toBe('old');
+
+      internals.confirmForceDeleteBranch();
+      expect(worktrees.calls).toEqual(['deleteBranch:w2:old:false', 'deleteBranch:w2:old:true']);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('deleteBranch'))).toBe(
+        false,
+      );
+    });
+
+    it('anotherWorktreesCheckedOutBranch_cannotBeDeleted_andTheMenuSaysWhy', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      const items: readonly MenuItem[] = mounted.componentInstance.contextMenuFor(
+        row(mounted, 'worktree:w2:branch:feat/x'),
+      );
+      const remove: MenuItem | undefined = items.find(
+        (item: MenuItem): boolean => item.label === 'Delete…',
+      );
+
+      expect(remove?.disabled).toBe(true);
+      expect(remove?.status).toBe('checked out there');
     });
 
     it('theMoreMenu_offersANewWorktree_andRefreshReadsTheWorktreesToo', () => {
