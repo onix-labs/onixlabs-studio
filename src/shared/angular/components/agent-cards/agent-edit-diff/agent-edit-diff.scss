@@ -1,0 +1,159 @@
+:host {
+  display: block;
+  min-inline-size: 0;
+}
+
+.edit-diff {
+  margin: 0;
+  overflow: hidden;
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.edit-diff__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.4rem 0.65rem;
+  border-block-end: 0.0625rem solid var(--agent-view-border-color);
+  font-size: 0.78rem;
+}
+
+// The path is what the change is to; a long one loses its start rather than its end, which is the
+// file's name. The box runs right to left so the ellipsis lands on the left, and the text inside is
+// isolated back to left to right so its slashes stay where they are.
+.edit-diff__path {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+
+  bdi {
+    direction: ltr;
+  }
+}
+
+.edit-diff__note {
+  color: var(--form-muted-foreground-color);
+}
+
+.edit-diff__counts {
+  display: flex;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+}
+
+.edit-diff__added {
+  color: var(--change-margin-saved);
+}
+
+.edit-diff__removed {
+  color: var(--change-margin-deleted);
+}
+
+// Long changes scroll inside the card rather than pushing the conversation down by a screenful.
+.edit-diff__body {
+  max-block-size: 18rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+// Every line is a row of one shared column: the column is as wide as the widest line, and never
+// narrower than the scroll area, so a highlight always runs the full width rather than stopping at the
+// end of its own text.
+.edit-diff__lines {
+  display: grid;
+  inline-size: max-content;
+  min-inline-size: 100%;
+}
+
+.edit-diff__line,
+.edit-diff__gap {
+  display: flex;
+  // The line's tint, as a custom property, so the pinned gutter can paint the same colour over the
+  // surface it covers.
+  --edit-diff-tint: transparent;
+  background: var(--edit-diff-tint);
+}
+
+.edit-diff__line--add {
+  --edit-diff-tint: color-mix(in srgb, var(--change-margin-saved) 16%, transparent);
+}
+
+.edit-diff__line--remove {
+  --edit-diff-tint: color-mix(in srgb, var(--change-margin-deleted) 16%, transparent);
+}
+
+// The line numbers and the sign stay at the left edge while the code scrolls sideways, so a scrolled
+// line still says where it is. Pinned content scrolls over the text, so it paints the card's surface
+// beneath the line's own tint rather than letting the text show through.
+.edit-diff__gutter {
+  position: sticky;
+  inset-inline-start: 0;
+  display: grid;
+  flex: none;
+  grid-template-columns: 2.6rem 2.6rem 1rem;
+  background:
+    linear-gradient(var(--edit-diff-tint), var(--edit-diff-tint)), var(--agent-view-surface-color);
+  user-select: none;
+}
+
+.edit-diff__number {
+  padding-inline-end: 0.4rem;
+  text-align: end;
+  color: var(--form-muted-foreground-color);
+}
+
+.edit-diff__sign {
+  color: var(--form-muted-foreground-color);
+}
+
+.edit-diff__line--add .edit-diff__sign {
+  color: var(--change-margin-saved);
+}
+
+.edit-diff__line--remove .edit-diff__sign {
+  color: var(--change-margin-deleted);
+}
+
+// Whitespace is part of a change: indentation is shown as it is.
+.edit-diff__text {
+  padding-inline-end: 0.65rem;
+  white-space: pre;
+}
+
+// The gap between two runs of change sits where the numbers do.
+.edit-diff__gap .edit-diff__gutter {
+  grid-template-columns: 6.2rem;
+  justify-items: center;
+  color: var(--form-muted-foreground-color);
+}
+
+// Shown above an edit whose text is not in the file, which is why its lines carry no numbers.
+.edit-diff__note-line {
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  border-block-end: 0.0625rem solid var(--agent-view-border-color);
+  font-size: 0.76rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.edit-diff__body--fragments .edit-diff__number {
+  visibility: hidden;
+}
+
+.edit-diff__empty {
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  color: var(--form-muted-foreground-color);
+  font-family: inherit;
+  font-style: italic;
+}

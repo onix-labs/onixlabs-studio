@@ -64,7 +64,10 @@ describe('Conversation canvas', () => {
         expect(host.querySelectorAll('app-agent-chat').length).toBeGreaterThan(0);
         expect(host.querySelectorAll('.agent__messages > *').length).toBeGreaterThan(10);
       }
-    });
+      // A page renders every specimen in every state, at three widths and in both themes — well over a
+      // hundred cards, diffs among them (#891). That is the point of the test, and on a loaded runner
+      // it outlasts the default five seconds without anything being wrong.
+    }, 20_000);
   }
 });
 

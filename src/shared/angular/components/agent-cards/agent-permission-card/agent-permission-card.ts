@@ -15,6 +15,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AgentCard } from '../agent-card/agent-card';
+import { AgentEditDiff } from '../agent-edit-diff/agent-edit-diff';
 
 /**
  * How long a grant is remembered beyond this once.
@@ -42,7 +43,7 @@ export interface PermissionAnswer {
  */
 @Component({
   selector: 'app-agent-permission-card',
-  imports: [AgentCard, Button, ButtonRow, Dropdown],
+  imports: [AgentCard, AgentEditDiff, Button, ButtonRow, Dropdown],
   templateUrl: './agent-permission-card.html',
   styleUrl: './agent-permission-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,6 +58,27 @@ export class AgentPermissionCard {
    * Emits the user's answer.
    */
   public readonly respond: OutputEmitterRef<PermissionAnswer> = output<PermissionAnswer>();
+
+  /**
+   * Holds whether an answered card shows its change again, having folded it away.
+   */
+  protected readonly showChange: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Shows or folds away an answered card's change.
+   */
+  protected toggleChange(): void {
+    this.showChange.update((shown: boolean): boolean => !shown);
+  }
+
+  /**
+   * Gets a path's last segment, which is what names a file in a sentence.
+   * @param path The path.
+   * @returns Returns the file's name.
+   */
+  protected fileName(path: string): string {
+    return path.split(/[\\/]/).pop() ?? path;
+  }
 
   /**
    * Holds how long the answer is to be remembered.

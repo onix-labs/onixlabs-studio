@@ -161,6 +161,37 @@ export interface AiPermissionEvent extends AiEventBase {
    * remember the decision for that workspace.
    */
   readonly hasWorkspace: boolean;
+
+  /**
+   * Gets the change to a file the tool would make, when it is one that writes a file and the harness
+   * said what it would write (#891), so the prompt can show it before the user decides.
+   */
+  readonly change?: AiProposedChange;
+}
+
+/**
+ * Describes a change a tool proposes to a file (#891): the whole new content of a write, or the
+ * replacements of an edit, in order.
+ */
+export interface AiProposedChange {
+  /**
+   * Gets the file the change is to.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file's whole new content, for a write.
+   */
+  readonly content?: string;
+
+  /**
+   * Gets the replacements, in order, for an edit.
+   */
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
 }
 
 /**

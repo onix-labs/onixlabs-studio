@@ -223,8 +223,13 @@ import { AiEvent } from './ai/ai-event-types';
  * OR when it was an AND. `'multiple'` draws checkboxes and answers with the picked labels joined by
  * ", ", the form Claude's own question tool answers in. Optional, so every published harness is
  * unaffected: an omitted selection is one choice, as before.
+ *
+ * `1.15.0` adds a `permission` request's optional `change` (#891): the file a tool would write and what
+ * it would write — a write's whole content, or an edit's replacements — so the prompt can show the
+ * change before the user decides. Optional, so every published harness is unaffected: a request
+ * without one is shown as before, by its name and detail alone.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.14.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.15.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -671,10 +676,41 @@ export interface HarnessModel {
 }
 
 /**
+ * Describes a change a tool proposes to a file (1.15.0): the whole new content of a write, or an
+ * edit's replacements in order. Studio reads the file as it is and shows the difference.
+ */
+export interface HarnessProposedChange {
+  /**
+   * Gets the file's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file's whole new content, for a write.
+   */
+  readonly content?: string;
+
+  /**
+   * Gets the replacements, in order, for an edit. An empty `oldText` sets the whole file.
+   */
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
+}
+
+/**
  * The body of a blocking request from a harness.
  */
 export type HarnessRequest =
-  | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
+  | {
+      readonly kind: 'permission';
+      readonly name: string;
+      readonly detail: string;
+      // The file change the tool would make (1.15.0), so the prompt can show it.
+      readonly change?: HarnessProposedChange;
+    }
   | {
       readonly kind: 'input';
       readonly question: string;

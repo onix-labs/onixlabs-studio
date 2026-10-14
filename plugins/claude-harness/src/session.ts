@@ -57,6 +57,7 @@ import { buildOptions, type GateContext } from './options';
 import type {
   Answer,
   HarnessMessage,
+  ProposedChange,
   Request,
   Selection,
   StudioTool,
@@ -537,11 +538,13 @@ export class Session {
         requestId: string,
         name: string,
         detail: string,
+        change?: ProposedChange,
       ): { granted: Promise<boolean>; withdraw: () => void } => {
         const asked: { answer: Promise<Answer>; withdraw: () => void } = this.host.ask(requestId, {
           kind: 'permission',
           name,
           detail,
+          ...(change === undefined ? {} : { change }),
         });
         return {
           granted: asked.answer.then(

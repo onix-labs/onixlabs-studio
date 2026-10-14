@@ -1,4 +1,5 @@
 import type {
+  AiProposedChange,
   AgentContextRef,
   AgentMode,
   AgentSurface,
@@ -321,9 +322,15 @@ export interface AgentRunContext {
    * @param detail A one-line summary of what the action will do.
    * @param cancel An optional signal that dismisses the local prompt and resolves false when aborted —
    *   used when a remote peer answers the same permission first, so Studio's prompt clears.
+   * @param change The file change the action would make, for the prompt to show (#891).
    * @returns Returns true when the user grants permission.
    */
-  requestPermission(name: string, detail: string, cancel?: AbortSignal): Promise<boolean>;
+  requestPermission(
+    name: string,
+    detail: string,
+    cancel?: AbortSignal,
+    change?: AiProposedChange,
+  ): Promise<boolean>;
 
   /**
    * Records an executed mutating/exec action to the audit log (#308/#311). Called at the execution

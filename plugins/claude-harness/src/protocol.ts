@@ -159,10 +159,31 @@ export interface Choice {
 export type Selection = 'single' | 'multiple';
 
 /**
+ * A change a tool would make to a file (Studio 1.15.0): a write's whole content, or an edit's
+ * replacements in order. Studio reads the file and shows the difference while the user decides.
+ */
+export interface ProposedChange {
+  readonly path: string;
+  readonly content?: string;
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
+}
+
+/**
  * A blocking question this harness asks Studio.
  */
 export type Request =
-  | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
+  | {
+      readonly kind: 'permission';
+      readonly name: string;
+      readonly detail: string;
+      // The file change the tool would make (Studio 1.15.0). Optional, so a build that predates it
+      // reads the request as before and ignores it.
+      readonly change?: ProposedChange;
+    }
   | {
       readonly kind: 'input';
       readonly question: string;

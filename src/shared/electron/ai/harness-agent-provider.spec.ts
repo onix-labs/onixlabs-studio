@@ -5,7 +5,8 @@ import { ASK_USER } from '@shared/api/ai/ai-tool-surface';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { HarnessAgentProvider, toTurnRequest } = await import('./harness-agent-provider');
+const { HarnessAgentProvider, readProposedChange, toTurnRequest } =
+  await import('./harness-agent-provider');
 type ProviderType = InstanceType<typeof HarnessAgentProvider>;
 
 /**
@@ -330,6 +331,29 @@ describe('HarnessAgentProvider', () => {
       { kind: 'edit-decision', decision: 'yes' },
       { kind: 'bridge', result: 'bridged', error: null },
     ]);
+  });
+
+  it('run_carriesAProposedFileChangeToThePrompt', async () => {
+    // 1.15.0 (#891): the prompt shows the change before the user decides.
+    harness.requests = [
+      {
+        kind: 'permission',
+        name: 'Edit',
+        detail: '/ws/a.ts',
+        change: { path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] },
+      },
+    ];
+    const asked: unknown[] = [];
+    const { context } = contextFor({
+      requestPermission: (...args: unknown[]): Promise<boolean> => {
+        asked.push(args[3]);
+        return Promise.resolve(true);
+      },
+    });
+
+    await provider.run(context);
+
+    expect(asked).toEqual([{ path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] }]);
   });
 
   it('run_carriesEachChoicesExplanationThroughToThePrompt', async () => {
@@ -1102,5 +1126,29 @@ describe('HarnessAgentSession', () => {
 
     expect(harness.closed).toBe(true);
     expect(session.alive).toBe(false);
+  });
+});
+
+describe('readProposedChange', () => {
+  it('readsAWrite_andAnEdit', () => {
+    expect(readProposedChange({ path: '/a', content: 'x' })).toEqual({ path: '/a', content: 'x' });
+    expect(
+      readProposedChange({ path: '/a', edits: [{ oldText: 'a', newText: 'b', replaceAll: true }] }),
+    ).toEqual({ path: '/a', edits: [{ oldText: 'a', newText: 'b', replaceAll: true }] });
+  });
+
+  it('refusesWhatAPluginGotWrong_ratherThanShowingSomethingMisleading', () => {
+    // A plugin wrote it, so it is checked: anything off proposes nothing, and the prompt is as before.
+    for (const value of [
+      undefined,
+      'a path',
+      { content: 'no path' },
+      { path: '/a' },
+      { path: '/a', edits: [] },
+      { path: '/a', edits: [{ oldText: 'a' }] },
+      { path: '/a', edits: [{ oldText: 1, newText: 'b' }] },
+    ]) {
+      expect(readProposedChange(value)).toBeUndefined();
+    }
   });
 });

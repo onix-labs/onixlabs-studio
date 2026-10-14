@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
 import type {
+  AiProposedChange,
   AgentContextRef,
   AgentMode,
   AgentSurface,
@@ -1087,7 +1088,12 @@ export class AiManager {
             workspaceRoot: request.workspaceRoot ?? null,
           }),
       },
-      requestPermission: (name: string, detail: string, cancel?: AbortSignal): Promise<boolean> =>
+      requestPermission: (
+        name: string,
+        detail: string,
+        cancel?: AbortSignal,
+        change?: AiProposedChange,
+      ): Promise<boolean> =>
         this.requestPermission(
           request.requestId,
           controller.signal,
@@ -1095,6 +1101,7 @@ export class AiManager {
           name,
           detail,
           cancel,
+          change,
         ),
       recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
         this.recordAudit(name, detail, request.workspaceRoot, source),
@@ -1732,6 +1739,8 @@ export class AiManager {
    * @param cancel An optional signal that dismisses this prompt and resolves false when aborted — raised
    *   when a remote peer answers the same permission first, so Studio's still-visible prompt is cleared
    *   via a `permission-dismissed` event (distinct from a run abort, which tears the whole run down).
+   * @param change The file change the action would make, carried to the prompt so it can be shown
+   *   (#891).
    * @returns Returns true when the user grants permission (or a remembered rule already does).
    */
   private requestPermission(
@@ -1741,6 +1750,7 @@ export class AiManager {
     name: string,
     detail: string,
     cancel?: AbortSignal,
+    change?: AiProposedChange,
   ): Promise<boolean> {
     if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -1787,6 +1797,7 @@ export class AiManager {
         name,
         detail,
         hasWorkspace: workspaceRoot !== null,
+        ...(change === undefined ? {} : { change }),
       });
     });
   }
