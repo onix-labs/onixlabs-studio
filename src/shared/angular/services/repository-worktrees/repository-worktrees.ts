@@ -48,6 +48,12 @@ export interface RepositoryWorktree {
 }
 
 /**
+ * Describes how deleting another worktree's branch went: deleted, refused for unmerged commits (so
+ * the panel asks whether to lose them), or failed for another reason, which the feature reports.
+ */
+export type WorktreeBranchDeletion = 'deleted' | 'not-merged' | 'failed';
+
+/**
  * The repository's worktrees, as the Repository panel reads and acts on them. A seam: the panel is
  * shared, while worktrees are the workspace feature's — so the feature provides this, and a view
  * without it (or a repository that is not a worktree container) reads as a flat repository.
@@ -105,6 +111,27 @@ export interface RepositoryWorktrees {
    * @param id The checkout id.
    */
   requestRemove(id: string): void;
+
+  /**
+   * Deletes a local branch in a worktree, which need not be the one the view is on: each worktree is
+   * a clone of its own. The panel confirms first; a failure other than unmerged commits is reported
+   * by the feature.
+   * @param id The checkout id.
+   * @param name The branch to delete.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns how it went.
+   */
+  deleteBranch(id: string, name: string, force: boolean): Promise<WorktreeBranchDeletion>;
+
+  /**
+   * Creates a local branch in a worktree, at that worktree's head. A failure is reported by the
+   * feature.
+   * @param id The checkout id.
+   * @param name The branch to create.
+   * @param checkout Whether to check it out in that worktree.
+   * @returns Returns true once the branch exists.
+   */
+  createBranch(id: string, name: string, checkout: boolean): Promise<boolean>;
 
   /**
    * Re-reads every worktree's status and branches.

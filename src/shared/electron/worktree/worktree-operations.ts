@@ -630,6 +630,100 @@ export class WorktreeOperations {
   }
 
   /**
+   * Creates a local branch in one registered checkout, through the version-control host in that
+   * checkout's own directory: each checkout is a clone of its own, so the view's repository cannot
+   * make a branch in another.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param name The candidate branch name, never trusted.
+   * @param checkout Whether to check the branch out in that checkout; anything but true is false.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async createBranch(
+    root: unknown,
+    id: unknown,
+    name: unknown,
+    checkout: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    const directory: WorktreeOutcome<string> = await this.checkoutDirectory(root, id);
+    if (!directory.ok) {
+      return directory;
+    }
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return worktreeError('No branch was named.');
+    }
+    const response: VersionControlResponse<'createBranch'> = await this.versionControl.request(
+      directory.value,
+      'createBranch',
+      { name: name.trim(), checkout: checkout === true },
+    );
+    return response.ok ? worktreeOk(null) : worktreeError(response.error, response.code);
+  }
+
+  /**
+   * Deletes a local branch in one registered checkout, through the version-control host in that
+   * checkout's own directory: each checkout is a clone of its own, so the view's repository cannot
+   * reach another's branches. The branch the checkout has checked out is refused, as git would.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param name The candidate branch name, never trusted.
+   * @param force Whether to delete it even with unmerged commits; anything but true is false.
+   * @returns Returns a null value on success, or the failure reason, coded `branch-not-merged` when an
+   * unforced delete was refused for unmerged commits.
+   */
+  public async deleteBranch(
+    root: unknown,
+    id: unknown,
+    name: unknown,
+    force: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    const directory: WorktreeOutcome<string> = await this.checkoutDirectory(root, id);
+    if (!directory.ok) {
+      return directory;
+    }
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return worktreeError('No branch was named.');
+    }
+    const status: VcsStatus | null = await this.readVcsStatus(directory.value);
+    if (status === null) {
+      return worktreeError('The checkout could not be read.');
+    }
+    if (status.branch === name) {
+      return worktreeError(`"${name}" is checked out in that worktree.`);
+    }
+    const response: VersionControlResponse<'deleteBranch'> = await this.versionControl.request(
+      directory.value,
+      'deleteBranch',
+      { name, force: force === true },
+    );
+    return response.ok ? worktreeOk(null) : worktreeError(response.error, response.code);
+  }
+
+  /**
+   * Resolves a registered checkout's directory in an open container, refusing anything else.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @returns Returns the checkout's directory, or why there is none.
+   */
+  private async checkoutDirectory(root: unknown, id: unknown): Promise<WorktreeOutcome<string>> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return worktreeError('The workspace is not open.');
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return worktreeError('The workspace is not a worktree container.');
+    }
+    if (
+      !isSafeCheckoutId(id) ||
+      !config.checkouts.some((entry: WorktreeCheckout): boolean => entry.id === id)
+    ) {
+      return worktreeError('The checkout is not registered in this container.');
+    }
+    return worktreeOk(path.join(resolved, id));
+  }
+
+  /**
    * Renames a registered checkout: sets its display alias. The alias is the checkout's name in the
    * UI only — its directory, a GUID, never changes.
    * @param root The container root, which must be an open workspace root.

@@ -66,6 +66,7 @@ import {
   REPOSITORY_WORKTREES,
   RepositoryWorktree,
   RepositoryWorktrees,
+  WorktreeBranchDeletion,
 } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import type { WorktreeBranch } from '@shared/api/worktree';
@@ -75,6 +76,22 @@ import type { WorktreeBranch } from '@shared/api/worktree';
  * the forge model so the panel and the provider cannot drift apart.
  */
 export type CheckStatus = ForgeCheckStatus;
+
+/**
+ * Describes a branch being deleted: one of this repository's, or, with its worktree, another
+ * worktree's (#939).
+ */
+interface BranchDeletion {
+  /**
+   * Gets the branch's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the worktree the branch lives in, when it is not this repository's.
+   */
+  readonly worktree?: RepositoryWorktree;
+}
 
 /**
  * Describes a row of the repository tree. The same flat shape covers every kind of row (section header,
@@ -424,6 +441,16 @@ const ACTION_CANCEL_RUN: string = 'run.cancel';
  * Identifies the Switch to Worktree command on a worktree's context menu.
  */
 const ACTION_SWITCH_WORKTREE: string = 'worktree.switch';
+
+/**
+ * Identifies the Delete command on another worktree's branch (#939).
+ */
+const ACTION_DELETE_WORKTREE_BRANCH: string = 'worktree.deleteBranch';
+
+/**
+ * Identifies the Refresh command on a forge-backed section's context menu (#939).
+ */
+const ACTION_REFRESH_SECTION: string = 'section.refresh';
 
 /**
  * Identifies the Rename command on a worktree's context menu.
@@ -831,46 +858,150 @@ export class SourceControlSidebar implements OnDestroy {
    * context menu instead, which is the rule the panel already followed with its buttons.
    */
   protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
-    this.offeredOnly([
-      {
-        id: ACTION_NEW_BRANCH,
-        label: 'New Branch…',
-        icon: Icon.PLUS,
-        disabled: !this.repository.isBound(),
-      },
-      {
-        id: ACTION_NEW_TAG,
-        label: 'New Tag…',
-        icon: Icon.TAG,
-        disabled: !this.repository.isBound(),
-      },
-      {
-        id: ACTION_ADD_REMOTE,
-        label: 'Add Remote…',
-        icon: Icon.CLOUD,
-        disabled: !this.repository.isBound(),
-      },
-      {
-        id: ACTION_STASH,
-        label: 'Stash Changes',
-        icon: Icon.STASH,
-        disabled: this.repository.changeCount() === 0,
-      },
-      ...this.worktreeMoreItems(),
-      { separator: true, id: 'repo.sep', label: '' },
-      {
-        id: ACTION_FETCH,
-        label: 'Fetch',
-        icon: Icon.CLOUD,
-        disabled: !this.repository.isBound(),
-      },
+    this.grouped('repo', [
+      [this.addRemoteItem()],
+      [...this.worktreeMoreItems(), this.newBranchItem(), this.newTagItem()],
+      [this.stashItem()],
       // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
       // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
-      ...(this.repository.tags().length === 0
-        ? []
-        : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
+      [this.fetchItem('Fetch'), ...this.pushAllTagsItems()],
     ]),
   );
+
+  /**
+   * Builds a menu from groups of items, in the one order the panel's menus share (#939): what adds
+   * (a remote), then what makes new (a worktree, branch or tag), then the stash, then what talks to a
+   * remote. Each group keeps only what the plugin supports, and a separator falls only between two
+   * groups that are left.
+   * @param prefix A prefix for the separators' identifiers.
+   * @param groups The groups, in order.
+   * @returns Returns the items.
+   */
+  private grouped(prefix: string, groups: readonly (readonly MenuItem[])[]): readonly MenuItem[] {
+    const kept: readonly (readonly MenuItem[])[] = groups
+      .map((group: readonly MenuItem[]): readonly MenuItem[] => this.offeredOnly(group))
+      .filter((group: readonly MenuItem[]): boolean => group.length > 0);
+    return kept.flatMap((group: readonly MenuItem[], index: number): readonly MenuItem[] =>
+      index === 0
+        ? group
+        : [{ separator: true, id: `${prefix}.sep.${index}`, label: '' }, ...group],
+    );
+  }
+
+  /**
+   * Builds the New Branch command, shared by the more menu and Local's own menu.
+   * @returns Returns the item.
+   */
+  private newBranchItem(): MenuItem {
+    return {
+      id: ACTION_NEW_BRANCH,
+      label: 'New Branch…',
+      icon: Icon.PLUS,
+      disabled: !this.repository.isBound(),
+    };
+  }
+
+  /**
+   * Builds the New Tag command, shared by the more menu and Tags' own menu.
+   * @returns Returns the item.
+   */
+  private newTagItem(): MenuItem {
+    return {
+      id: ACTION_NEW_TAG,
+      label: 'New Tag…',
+      icon: Icon.TAG,
+      disabled: !this.repository.isBound(),
+    };
+  }
+
+  /**
+   * Builds the Add Remote command, shared by the more menu and Remote's own menu.
+   * @returns Returns the item.
+   */
+  private addRemoteItem(): MenuItem {
+    return {
+      id: ACTION_ADD_REMOTE,
+      label: 'Add Remote…',
+      icon: Icon.CLOUD,
+      disabled: !this.repository.isBound(),
+    };
+  }
+
+  /**
+   * Builds the Stash Changes command, shared by the more menu and Stashes' own menu.
+   * @returns Returns the item.
+   */
+  private stashItem(): MenuItem {
+    return {
+      id: ACTION_STASH,
+      label: 'Stash Changes',
+      icon: Icon.STASH,
+      disabled: this.repository.changeCount() === 0,
+    };
+  }
+
+  /**
+   * Builds the Fetch command, which fetches every remote.
+   * @param label What the menu calls it: Fetch on the strip, Fetch All beside the remotes.
+   * @returns Returns the item.
+   */
+  private fetchItem(label: string): MenuItem {
+    return {
+      id: ACTION_FETCH,
+      label,
+      icon: Icon.CLOUD_DOWN,
+      disabled: !this.repository.isBound(),
+    };
+  }
+
+  /**
+   * Builds Push All Tags, or nothing when there is no tag to push.
+   * @returns Returns the items.
+   */
+  private pushAllTagsItems(): readonly MenuItem[] {
+    return this.repository.tags().length === 0
+      ? []
+      : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')];
+  }
+
+  /**
+   * Builds a section header's menu (#939): the commands that make something in that section, so the
+   * user finds them where they are looking rather than only on the strip's more menu. Each is the
+   * strip's own command, gated the same way.
+   * @param key The section's key.
+   * @returns Returns the items, or none for a section with nothing to offer.
+   */
+  private sectionItems(key: string): readonly MenuItem[] {
+    switch (key) {
+      case 'local':
+        // Local holds the worktrees when there are any, so it makes a worktree; a branch is made in a
+        // worktree, from that worktree's own menu. A flat repository's Local is only branches.
+        return this.worktrees() === null
+          ? this.grouped('local', [[this.newBranchItem()]])
+          : this.grouped('local', [
+              [
+                {
+                  id: ACTION_NEW_WORKTREE,
+                  label: 'New Worktree…',
+                  icon: Icon.WORKTREE,
+                  disabled: this.worktreeSource?.busy() ?? false,
+                },
+              ],
+            ]);
+      case 'remote':
+        return this.grouped('remote', [[this.addRemoteItem()], [this.fetchItem('Fetch All')]]);
+      case 'tags':
+        return this.grouped('tags', [[this.newTagItem()], this.pushAllTagsItems()]);
+      case 'stashes':
+        return this.grouped('stashes', [[this.stashItem()]]);
+      case 'pullRequests':
+      case 'issues':
+      case 'actions':
+        return [{ id: ACTION_REFRESH_SECTION, label: 'Refresh', icon: Icon.REFRESH }];
+      default:
+        return [];
+    }
+  }
 
   /**
    * Builds the more-actions menu's worktree command: a new worktree beside the others, or — for a
@@ -1300,10 +1431,20 @@ export class SourceControlSidebar implements OnDestroy {
     if (name.length === 0) {
       return null;
     }
-    return this.repository.branches().some((branch: GitBranch): boolean => branch.name === name)
-      ? 'A branch with this name already exists.'
-      : null;
+    const target: RepositoryWorktree | null = this.branchTarget();
+    const taken: readonly string[] =
+      target === null || target.current
+        ? this.repository.branches().map((branch: GitBranch): string => branch.name)
+        : target.branches.map((branch: WorktreeBranch): string => branch.name);
+    return taken.includes(name) ? 'A branch with this name already exists.' : null;
   });
+
+  /**
+   * Holds the worktree the new branch is made in, or null for this repository (#939). Each worktree
+   * is a clone of its own, so a branch made from a worktree's menu is made in that one.
+   */
+  protected readonly branchTarget: WritableSignal<RepositoryWorktree | null> =
+    signal<RepositoryWorktree | null>(null);
 
   /**
    * Gets a value indicating whether the new-branch dialog can be submitted.
@@ -1314,8 +1455,10 @@ export class SourceControlSidebar implements OnDestroy {
 
   /**
    * Opens the new-branch dialog.
+   * @param target The worktree to make the branch in, or null for this repository.
    */
-  protected openBranchDialog(): void {
+  protected openBranchDialog(target: RepositoryWorktree | null = null): void {
+    this.branchTarget.set(target);
     this.branchName.set('');
     this.branchCheckout.set(true);
     this.branchDialogOpen.set(true);
@@ -1335,6 +1478,11 @@ export class SourceControlSidebar implements OnDestroy {
       `Creating branch '${name}'`,
       `checkout=${this.branchCheckout()}`,
     );
+    const target: RepositoryWorktree | null = this.branchTarget();
+    if (target !== null && !target.current) {
+      void this.worktreeSource?.createBranch(target.id, name, this.branchCheckout());
+      return;
+    }
     void this.repository.createBranch(name, this.branchCheckout());
   }
 
@@ -1373,16 +1521,28 @@ export class SourceControlSidebar implements OnDestroy {
   /**
    * Holds the branch awaiting delete confirmation, or null when none is.
    */
-  protected readonly pendingDeleteBranch: WritableSignal<GitBranch | null> =
-    signal<GitBranch | null>(null);
+  protected readonly pendingDeleteBranch: WritableSignal<BranchDeletion | null> =
+    signal<BranchDeletion | null>(null);
 
   /**
    * Holds the branch whose delete git refused for holding unmerged commits, or null when none has
    * been. Distinct from {@link pendingDeleteBranch} because it is a different question: the first
    * asks whether to delete, this one asks whether to lose work.
    */
-  protected readonly pendingForceDeleteBranch: WritableSignal<GitBranch | null> =
-    signal<GitBranch | null>(null);
+  protected readonly pendingForceDeleteBranch: WritableSignal<BranchDeletion | null> =
+    signal<BranchDeletion | null>(null);
+
+  /**
+   * Says where a branch being deleted lives, for the delete questions: this repository, or another
+   * worktree, named.
+   * @param deletion The branch being deleted.
+   * @returns Returns the phrase.
+   */
+  protected deletionPlace(deletion: BranchDeletion | null): string {
+    return deletion?.worktree === undefined
+      ? 'this repository'
+      : `the “${deletion.worktree.label}” worktree`;
+  }
 
   /**
    * Confirms the delete, attempting it without force first.
@@ -1392,16 +1552,36 @@ export class SourceControlSidebar implements OnDestroy {
    * other failure is left to the panel's error surface.
    */
   protected async confirmDeleteBranch(): Promise<void> {
-    const branch: GitBranch | null = this.pendingDeleteBranch();
+    const branch: BranchDeletion | null = this.pendingDeleteBranch();
     this.pendingDeleteBranch.set(null);
     if (branch === null) {
       return;
     }
     this.log.info('SourceControlSidebar', `Deleting branch '${branch.name}'`);
-    const result: MutationResult = await this.repository.deleteBranch(branch.name);
-    if (!result.success && result.code === BRANCH_NOT_MERGED) {
+    if (await this.deleteBranch(branch, false)) {
       this.pendingForceDeleteBranch.set(branch);
     }
+  }
+
+  /**
+   * Deletes a branch where it lives: through this repository, or, for another worktree's, through
+   * that worktree (#939).
+   * @param branch The branch being deleted.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns true when git refused for unmerged commits, which is a question rather than a
+   * failure.
+   */
+  private async deleteBranch(branch: BranchDeletion, force: boolean): Promise<boolean> {
+    if (branch.worktree !== undefined) {
+      const outcome: WorktreeBranchDeletion | undefined = await this.worktreeSource?.deleteBranch(
+        branch.worktree.id,
+        branch.name,
+        force,
+      );
+      return outcome === 'not-merged';
+    }
+    const result: MutationResult = await this.repository.deleteBranch(branch.name, force);
+    return !result.success && result.code === BRANCH_NOT_MERGED;
   }
 
   /**
@@ -1415,11 +1595,11 @@ export class SourceControlSidebar implements OnDestroy {
    * Confirms the forced delete, losing the branch's unmerged commits.
    */
   protected confirmForceDeleteBranch(): void {
-    const branch: GitBranch | null = this.pendingForceDeleteBranch();
+    const branch: BranchDeletion | null = this.pendingForceDeleteBranch();
     this.pendingForceDeleteBranch.set(null);
     if (branch !== null) {
       this.log.warn('SourceControlSidebar', `Force-deleting branch '${branch.name}'`);
-      void this.repository.deleteBranch(branch.name, true);
+      void this.deleteBranch(branch, true);
     }
   }
 
@@ -1951,18 +2131,20 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
-   * Loads a forge-backed section's data, if it is one and it has nothing yet. Sections backed by git
-   * are already loaded with the repository and need nothing here.
+   * Loads a forge-backed section's data, if it is one and it has nothing yet, or always when forced
+   * (its menu's Refresh). Sections backed by git are already loaded with the repository and need
+   * nothing here.
    * @param key The section key being expanded.
+   * @param force Whether to read it even when it has data already.
    */
-  private loadSection(key: string): void {
-    if (key === 'pullRequests' && this.forge.pullRequests().state !== 'ready') {
+  private loadSection(key: string, force: boolean = false): void {
+    if (key === 'pullRequests' && (force || this.forge.pullRequests().state !== 'ready')) {
       void this.forge.loadPullRequests();
     }
-    if (key === 'issues' && this.forge.issues().state !== 'ready') {
+    if (key === 'issues' && (force || this.forge.issues().state !== 'ready')) {
       void this.forge.loadIssues();
     }
-    if (key === 'actions' && this.forge.workflowRuns().state !== 'ready') {
+    if (key === 'actions' && (force || this.forge.workflowRuns().state !== 'ready')) {
       void this.forge.loadWorkflowRuns();
     }
   }
@@ -2472,24 +2654,32 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.branch !== undefined) {
       return this.branchItems(node.branch);
     }
-    // Local holds the worktrees, so a new one is made from it — the same command as the more menu's.
-    // A flat repository's Local is only branches and offers nothing here.
-    if (node.kind === 'section' && node.sectionKey === 'local' && this.worktrees() !== null) {
-      return [
-        {
-          id: ACTION_NEW_WORKTREE,
-          label: 'New Worktree…',
-          icon: Icon.WORKTREE,
-          disabled: this.worktreeSource?.busy() ?? false,
-        },
-      ];
+    if (node.kind === 'section' && node.sectionKey !== undefined) {
+      return this.sectionItems(node.sectionKey);
     }
     if (node.kind === 'worktree' && node.worktree !== undefined) {
       return this.worktreeItems(node.worktree);
     }
-    // Another worktree's branch can only be acted on from inside that worktree.
-    if (node.kind === 'worktree-branch' && node.worktree !== undefined) {
-      return [{ id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE }];
+    // Another worktree's branch is mostly acted on from inside that worktree, but it can be deleted
+    // from here (#939): each worktree is a clone of its own, so the delete runs in that one. The
+    // branch it has checked out cannot go, as git would refuse, and the menu says why.
+    if (
+      node.kind === 'worktree-branch' &&
+      node.worktree !== undefined &&
+      node.worktreeBranch !== undefined
+    ) {
+      const checkedOut: boolean = node.worktreeBranch.name === node.worktree.branch;
+      return [
+        { id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE },
+        { separator: true, id: 'worktree-branch.sep', label: '' },
+        {
+          id: ACTION_DELETE_WORKTREE_BRANCH,
+          label: 'Delete…',
+          icon: Icon.TRASH,
+          disabled: checkedOut,
+          ...(checkedOut ? { status: 'checked out there' } : {}),
+        },
+      ];
     }
     if (node.stash !== undefined) {
       // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
@@ -2514,7 +2704,7 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.remote !== undefined) {
       const url: string = node.remote.url;
       return [
-        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD },
+        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD_DOWN },
         {
           id: ACTION_PRUNE_REMOTE,
           label: 'Prune',
@@ -2598,6 +2788,9 @@ export class SourceControlSidebar implements OnDestroy {
       );
     }
     items.push(
+      // A branch is made in a worktree, since each is a clone of its own (#939).
+      { ...this.newBranchItem(), disabled: false },
+      { separator: true, id: 'worktree.sep.branch', label: '' },
       { id: ACTION_RENAME_WORKTREE, label: 'Rename…', icon: Icon.PENCIL },
       { separator: true, id: 'worktree.sep.rename', label: '' },
       { id: ACTION_REVEAL_WORKTREE, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
@@ -2622,6 +2815,9 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private onWorktreeAction(itemId: string, worktree: RepositoryWorktree): boolean {
     switch (itemId) {
+      case ACTION_NEW_BRANCH:
+        this.openBranchDialog(worktree);
+        return true;
       case ACTION_SWITCH_WORKTREE:
         this.switchToWorktree(worktree);
         return true;
@@ -2650,6 +2846,23 @@ export class SourceControlSidebar implements OnDestroy {
     const node: RepoNode = this.nodeOf(choice.row);
     if (choice.itemId === ACTION_NEW_WORKTREE) {
       this.worktreeSource?.requestAdd();
+      return;
+    }
+    // A section's commands are the strip's own, bar Refresh, which re-reads that one section.
+    if (node.kind === 'section' && node.sectionKey !== undefined) {
+      if (choice.itemId === ACTION_REFRESH_SECTION) {
+        this.loadSection(node.sectionKey, true);
+      } else {
+        this.onMoreAction(choice.itemId);
+      }
+      return;
+    }
+    if (
+      choice.itemId === ACTION_DELETE_WORKTREE_BRANCH &&
+      node.worktree !== undefined &&
+      node.worktreeBranch !== undefined
+    ) {
+      this.pendingDeleteBranch.set({ name: node.worktreeBranch.name, worktree: node.worktree });
       return;
     }
     if (node.worktree !== undefined && this.onWorktreeAction(choice.itemId, node.worktree)) {

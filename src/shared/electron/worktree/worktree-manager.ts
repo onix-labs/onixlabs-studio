@@ -133,6 +133,38 @@ export class WorktreeManager {
       },
     );
     ipcMain.handle(
+      WorktreeChannel.DeleteBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        name: unknown,
+        force: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Delete branch ${String(name)} in ${String(id)}`);
+        return this.logged(
+          `Delete branch ${String(name)} in checkout ${String(id)}`,
+          this.operations.deleteBranch(root, id, name, force),
+        );
+      },
+    );
+    ipcMain.handle(
+      WorktreeChannel.CreateBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        name: unknown,
+        checkout: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Create branch ${String(name)} in ${String(id)}`);
+        return this.logged(
+          `Create branch ${String(name)} in checkout ${String(id)}`,
+          this.operations.createBranch(root, id, name, checkout),
+        );
+      },
+    );
+    ipcMain.handle(
       WorktreeChannel.Branches,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[] | null> => {
         logger.trace('WorktreeManager', `Branches for ${String(root)}`);

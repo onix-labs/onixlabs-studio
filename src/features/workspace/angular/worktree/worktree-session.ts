@@ -326,6 +326,70 @@ export class WorktreeSession {
   }
 
   /**
+   * Creates a local branch in a checkout, re-reading the statuses on success so the branch appears in
+   * the Repository panel.
+   * @param id The checkout id.
+   * @param name The branch to create.
+   * @param checkout Whether to check it out in that checkout.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async createBranch(
+    id: string,
+    name: string,
+    checkout: boolean,
+  ): Promise<WorktreeOutcome<null>> {
+    const root: string | null = this.rootSignal();
+    if (root === null || this.worktrees.client === undefined) {
+      return worktreeError('The tab is not a worktree container.');
+    }
+    this.log.info('workspace.worktree', 'Creating branch', name, this.labelFor(id), checkout);
+    const outcome: WorktreeOutcome<null> = await this.worktrees.client.createBranch(
+      root,
+      id,
+      name,
+      checkout,
+    );
+    if (outcome.ok) {
+      await this.refreshStatus();
+    } else {
+      this.log.warn('workspace.worktree', 'Branch create failed', outcome.error);
+    }
+    return outcome;
+  }
+
+  /**
+   * Deletes a local branch in a checkout, re-reading the statuses on success so the branch leaves the
+   * Repository panel.
+   * @param id The checkout id.
+   * @param name The branch to delete.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async deleteBranch(
+    id: string,
+    name: string,
+    force: boolean,
+  ): Promise<WorktreeOutcome<null>> {
+    const root: string | null = this.rootSignal();
+    if (root === null || this.worktrees.client === undefined) {
+      return worktreeError('The tab is not a worktree container.');
+    }
+    this.log.info('workspace.worktree', 'Deleting branch', name, this.labelFor(id), force);
+    const outcome: WorktreeOutcome<null> = await this.worktrees.client.deleteBranch(
+      root,
+      id,
+      name,
+      force,
+    );
+    if (outcome.ok) {
+      await this.refreshStatus();
+    } else {
+      this.log.warn('workspace.worktree', 'Branch delete failed', outcome.error);
+    }
+    return outcome;
+  }
+
+  /**
    * Removes a checkout (its directory goes to the OS trash), refreshing the descriptor on success.
    * @param id The checkout id to remove.
    * @returns Returns a null value on success, or the failure reason.

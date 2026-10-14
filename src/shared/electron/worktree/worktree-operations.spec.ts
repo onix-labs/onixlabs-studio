@@ -468,6 +468,107 @@ describe('WorktreeOperations', () => {
     );
   });
 
+  describe('createBranch', () => {
+    it('makesTheBranchInTheNamedCheckout_checkingItOutWhenAsked', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      expect((await operations.createBranch(root, id, 'kept', false)).ok).toBe(true);
+      expect((await operations.createBranch(root, id, 'switched', true)).ok).toBe(true);
+
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+      expect(statuses?.[0].branches.map((branch: WorktreeBranch): string => branch.name)).toEqual([
+        'kept',
+        'main',
+        'switched',
+      ]);
+      expect(statuses?.[0].branch).toBe('switched');
+    });
+
+    it('refusesACheckoutThatIsNotRegistered', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      expect((await operations.createBranch(root, '../evil', 'x', false)).ok).toBe(false);
+    });
+  });
+
+  describe('deleteBranch', () => {
+    /**
+     * Lists a checkout's local branch names.
+     * @param root The container root.
+     * @returns Returns the names.
+     */
+    async function branchesOf(root: string): Promise<string[]> {
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+      return (statuses?.[0].branches ?? []).map((branch: WorktreeBranch): string => branch.name);
+    }
+
+    it('deletesABranchInTheNamedCheckout', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      await git(path.join(root, id), 'branch', 'merged');
+
+      const outcome: WorktreeOutcome<null> = await operations.deleteBranch(
+        root,
+        id,
+        'merged',
+        false,
+      );
+
+      expect(outcome.ok).toBe(true);
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('refusesTheBranchTheCheckoutHasCheckedOut', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      const outcome: WorktreeOutcome<null> = await operations.deleteBranch(root, id, 'main', true);
+
+      expect(outcome).toMatchObject({ ok: false });
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('codesARefusalForUnmergedCommits_andDeletesWhenForced', GIT_TEST_TIMEOUT, async () => {
+      // The panel asks before losing work, so the refusal has to be recognisable as that one.
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      const checkout: string = path.join(root, id);
+      await git(checkout, 'checkout', '-b', 'unmerged');
+      await fs.writeFile(path.join(checkout, 'work.txt'), 'work\n', 'utf8');
+      await git(checkout, 'add', '.');
+      await git(
+        checkout,
+        '-c',
+        'user.email=spec@studio',
+        '-c',
+        'user.name=Spec',
+        'commit',
+        '-m',
+        'work',
+      );
+      await git(checkout, 'checkout', 'main');
+
+      const refused: WorktreeOutcome<null> = await operations.deleteBranch(
+        root,
+        id,
+        'unmerged',
+        false,
+      );
+      expect(refused).toMatchObject({ ok: false, code: 'branch-not-merged' });
+
+      expect((await operations.deleteBranch(root, id, 'unmerged', true)).ok).toBe(true);
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('refusesACheckoutThatIsNotRegistered', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      expect((await operations.deleteBranch(root, '../evil', 'main', false)).ok).toBe(false);
+      expect((await operations.deleteBranch(root, 'not-a-checkout', 'main', false)).ok).toBe(false);
+    });
+  });
+
   describe('renameCheckout', () => {
     it('setsTheAlias_trimmed', GIT_TEST_TIMEOUT, async () => {
       const { root, descriptor } = await promoteFixture();
