@@ -195,6 +195,38 @@ export interface AiProposedChange {
 }
 
 /**
+ * Offers the user a workspace for the project an agent has been planning in its own tab (#876): the
+ * name it suggests, and the handoff it wrote for the workspace's agent. The user completes and makes it
+ * from the card; the run does not wait for them.
+ */
+export interface AiWorkspaceProposalEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'workspace-proposal';
+
+  /**
+   * Gets the proposal's identifier.
+   */
+  readonly proposalId: string;
+
+  /**
+   * Gets the name the agent suggests for the project's folder.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a line or two saying what the project is, or undefined for none.
+   */
+  readonly summary?: string;
+
+  /**
+   * Gets the handoff, as Markdown: the plan, the decisions made, and what to do first.
+   */
+  readonly handoff: string;
+}
+
+/**
  * Withdraws a permission prompt the renderer is still showing because it was answered elsewhere — a
  * remote peer approved or declined the same tool call first (#331 remote control). The renderer
  * drops the matching pending prompt from the transcript; the run has already been resolved in the main
@@ -724,4 +756,5 @@ export type AiEvent =
   | AiTaskProgressEvent
   | AiTaskUpdatedEvent
   | AiBackgroundTaskEvent
-  | AiRemoteMessageEvent;
+  | AiRemoteMessageEvent
+  | AiWorkspaceProposalEvent;

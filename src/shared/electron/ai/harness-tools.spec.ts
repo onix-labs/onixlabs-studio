@@ -22,6 +22,7 @@ import {
   SAVE_RUN_CONFIGURATIONS,
   ASK_USER,
   LOAD_SKILL,
+  PROPOSE_WORKSPACE,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -80,6 +81,38 @@ describe('describeOffer', () => {
         DELETE_RUN_CONFIGURATIONS,
       ]),
     );
+  });
+
+  it('offersTheAgentTabAWayIntoAWorkspace_andNoOtherSurface', async () => {
+    // #876: a project planned in an agent tab moves into a workspace of its own; anywhere else the
+    // project already has one.
+    const project: { tools: readonly HarnessTool[]; systemPrompt: string } = await describeOffer(
+      contextFor({ surface: 'project', workspaceRoot: null }),
+    );
+    expect(names(project)).toContain(PROPOSE_WORKSPACE);
+    expect(project.systemPrompt).toContain(PROPOSE_WORKSPACE);
+    for (const surface of ['editor', 'workspace', 'terminal', 'binary', 'api']) {
+      expect(names(await describeOffer(contextFor({ surface })))).not.toContain(PROPOSE_WORKSPACE);
+    }
+  });
+
+  it('proposeWorkspace_putsTheProposalInTheConversation_andDoesNotWait', async () => {
+    const { proposeWorkspace } = await import('./studio-tools');
+    const emitted: unknown[] = [];
+    const told: string = proposeWorkspace(
+      contextFor({ surface: 'project', emit: (event: unknown): number => emitted.push(event) }),
+      { name: 'invoice-tracker', handoff: '# Plan' },
+    );
+
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        requestId: 'r1',
+        kind: 'workspace-proposal',
+        name: 'invoice-tracker',
+        handoff: '# Plan',
+      }),
+    ]);
+    expect(told).toContain('Stop here');
   });
 
   it('withholdsThemFromASurfaceConfinedToSomethingElse', async () => {

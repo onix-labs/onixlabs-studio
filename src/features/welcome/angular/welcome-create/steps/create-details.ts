@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
+import { PROJECT_LAYOUT_OPTIONS } from '@shared/angular/services/new-project/project-destination';
 import { ProjectAccount, ProjectDraft, ProjectLayout, ProjectRepository } from '../project-draft';
 
 /**
@@ -32,39 +33,19 @@ export class CreateDetails {
    * version-control plugin that can make one; a hosted one — made by the code host, then cloned — with
    * a hosting plugin as well.
    */
-  protected readonly repositoryOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      { value: 'none', label: 'No Repository' },
-      ...(this.draft.canVersion() && this.draft.canInit()
-        ? [{ value: 'local', label: 'Local Repository' }]
-        : []),
-      ...(this.draft.canVersion() && this.draft.canHost()
-        ? [
-            { value: 'public', label: 'Public Repository' },
-            { value: 'private', label: 'Private Repository' },
-          ]
-        : []),
-    ],
-  );
+  protected readonly repositoryOptions: Signal<readonly DropdownOption[]> =
+    this.draft.destination.repositoryOptions;
 
   /**
    * Gets the account choices.
    */
-  protected readonly accountOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.draft.accounts().map((account: ProjectAccount): DropdownOption => ({
-        value: account.id,
-        label: `${account.login} (${account.provider})`,
-      })),
-  );
+  protected readonly accountOptions: Signal<readonly DropdownOption[]> =
+    this.draft.destination.accountOptions;
 
   /**
    * Gets the layout choices, the same as cloning's.
    */
-  protected readonly layoutOptions: readonly DropdownOption[] = [
-    { value: 'flat', label: 'Flat Repository' },
-    { value: 'worktree', label: 'Worktree Repository' },
-  ];
+  protected readonly layoutOptions: readonly DropdownOption[] = PROJECT_LAYOUT_OPTIONS;
 
   /**
    * Gets the line under the name and place saying where the agent will start.

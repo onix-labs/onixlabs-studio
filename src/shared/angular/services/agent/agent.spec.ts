@@ -1297,6 +1297,36 @@ describe('Agent', () => {
     expect(lastItem()?.permissionDiff?.additions).toBe(1);
   });
 
+  it('workspaceProposal_putsACardInTheConversation_whichSettlesOnce', () => {
+    // #876: the agent tab's agent offers a workspace; the user acts on the card when they choose.
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'workspace-proposal',
+      proposalId: 'w1',
+      name: 'todo-app',
+      summary: 'A list that remembers.',
+      handoff: '# Plan',
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toMatchObject({
+      kind: 'workspace-proposal',
+      proposalName: 'todo-app',
+      proposalSummary: 'A list that remembers.',
+      proposalHandoff: '# Plan',
+      proposalState: 'pending',
+    });
+
+    agent.settleProposal(item!, 'created', '/Users/me/todo-app');
+    agent.settleProposal(lastItem()!, 'dismissed');
+
+    expect(lastItem()).toMatchObject({
+      proposalState: 'created',
+      proposalPath: '/Users/me/todo-app',
+    });
+  });
+
   it('permission_whenGrantedWithARememberScope_forwardsAndRecordsIt', () => {
     agent.send('hi');
     fireEvent({

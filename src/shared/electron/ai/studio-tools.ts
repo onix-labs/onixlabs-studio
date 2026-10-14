@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import {
   ASK_USER,
+  PROPOSE_WORKSPACE,
   CANCEL_EDIT_PREVIEW,
   COMMIT_EDIT_PREVIEW,
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
@@ -296,7 +298,48 @@ export const PROJECT_PROMPT_APPENDIX: string = [
   'The working directory is the open workspace root (or the home directory when no workspace is',
   'open). Changes you make to files on disk appear in the IDE: open editors follow external file',
   'changes, and the explorers refresh live.',
+  '',
+  'When you are planning a new project with the user and the plan is settled, call the',
+  `\`${PROPOSE_WORKSPACE}\` tool rather than creating folders yourself: it offers the user a card to`,
+  'name and place the project, then opens it as a workspace whose agent starts from the handoff you',
+  'write. Put everything that agent needs in the handoff: the plan, the decisions made and why, and',
+  'what to do first. Call it once, when the user agrees the plan is ready, then stop.',
 ].join('\n');
+
+/**
+ * Describes the propose-workspace tool to the model (#876).
+ */
+export const PROPOSE_WORKSPACE_DESCRIPTION: string = [
+  'Offer the user a workspace for the project you have planned together, once the plan is settled.',
+  'The user names and places it on a card; Studio then makes the project, writes your handoff into it',
+  'as handoff.md, and opens it as a workspace whose agent starts by reading the handoff. Returns at',
+  'once — end your turn after calling it.',
+].join(' ');
+
+/**
+ * Offers the user a workspace for the project planned in this agent tab (#876). The card is the user's
+ * to act on when they choose, so nothing here waits for them.
+ * @param context The run context.
+ * @param proposal The name, summary and handoff the agent proposes.
+ * @returns Returns what the model is told.
+ */
+export function proposeWorkspace(
+  context: AgentRunContext,
+  proposal: { readonly name: string; readonly summary?: string; readonly handoff: string },
+): string {
+  context.emit({
+    requestId: context.requestId,
+    kind: 'workspace-proposal',
+    proposalId: randomUUID(),
+    name: proposal.name,
+    ...(proposal.summary === undefined ? {} : { summary: proposal.summary }),
+    handoff: proposal.handoff,
+  });
+  return (
+    'The user has been offered a card to create the workspace. Stop here: when they create it, the ' +
+    'project opens as a workspace and its agent carries on from your handoff.'
+  );
+}
 
 /**
  * Appended to the system prompt on the workspace surface (#713): the agent panel docked in a workspace

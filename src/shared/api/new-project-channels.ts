@@ -154,6 +154,12 @@ export interface NewProjectRequest {
    * Gets the repository it starts with.
    */
   readonly repository: NewProjectRepository;
+
+  /**
+   * Gets a handoff to write into the project as `handoff.md` (#876): the plan an agent made before the
+   * project had a home, for the project's own agent to start from. Omitted for none.
+   */
+  readonly handoff?: string;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   defaultWorktreeConfig,
   mintCheckoutId,
   serializeWorktreeConfig,
+  parseWorktreeConfig,
   WORKTREE_CONFIG_FILE,
 } from '@shared/api/worktree';
 import type { CloneManager } from '../clone/clone-manager';
@@ -118,6 +119,9 @@ export class NewProjectManager {
           : this.createFolder(destination);
     if (outcome.ok) {
       logger.info('NewProjectManager', `Created ${outcome.path}`);
+      if (parsed.handoff !== undefined) {
+        writeHandoff(outcome.path, parsed.handoff);
+      }
     } else {
       logger.warn('NewProjectManager', `Project not created: ${outcome.error}`);
     }
@@ -236,21 +240,29 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   if (typeof value !== 'object' || value === null) {
     return 'No project was described.';
   }
-  const { name, repository } = value as Record<string, unknown>;
+  const { name, repository, handoff } = value as Record<string, unknown>;
   if (typeof name !== 'string' || !FOLDER_NAME.test(name)) {
     return 'The project name must be a single folder name, without slashes.';
   }
+  if (
+    handoff !== undefined &&
+    (typeof handoff !== 'string' || handoff.length > MAX_HANDOFF_LENGTH)
+  ) {
+    return 'The handoff is not one that can be written.';
+  }
+  const withHandoff: Pick<NewProjectRequest, 'handoff'> =
+    typeof handoff === 'string' ? { handoff } : {};
   if (typeof repository !== 'object' || repository === null) {
     return 'Choose a repository, or none.';
   }
   const fields: Record<string, unknown> = repository as Record<string, unknown>;
   if (fields['kind'] === 'none') {
-    return { name, repository: { kind: 'none' } };
+    return { name, repository: { kind: 'none' }, ...withHandoff };
   }
   if (fields['kind'] === 'local') {
     const layout: unknown = fields['layout'];
     return layout === 'flat' || layout === 'worktree'
-      ? { name, repository: { kind: 'local', layout } }
+      ? { name, repository: { kind: 'local', layout }, ...withHandoff }
       : 'Choose a flat repository or a worktree.';
   }
   if (fields['kind'] !== 'hosted') {
@@ -266,7 +278,39 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   return {
     name,
     repository: { kind: 'hosted', host, account, private: fields['private'] === true, layout },
+    ...withHandoff,
   };
+}
+
+/**
+ * The longest handoff written into a new project: a plan, not a document set.
+ */
+const MAX_HANDOFF_LENGTH: number = 256 * 1024;
+
+/**
+ * The handoff's file name in a new project (#876).
+ */
+export const HANDOFF_FILE: string = 'handoff.md';
+
+/**
+ * Writes a handoff into a new project, where its agent works: the folder itself, or, for a worktree
+ * container, its first checkout. Best-effort: the project is made either way, and a handoff that could
+ * not be written is logged rather than undoing it.
+ * @param project The project's folder.
+ * @param handoff The handoff's text.
+ */
+export function writeHandoff(project: string, handoff: string): void {
+  try {
+    const config: string = path.join(project, STUDIO_DIR, WORKTREE_CONFIG_FILE);
+    const first: string | undefined = fs.existsSync(config)
+      ? parseWorktreeConfig(JSON.parse(fs.readFileSync(config, 'utf8')) as unknown).checkouts[0]?.id
+      : undefined;
+    const folder: string = first === undefined ? project : path.join(project, first);
+    fs.writeFileSync(path.join(folder, HANDOFF_FILE), handoff, { encoding: 'utf8', flag: 'wx' });
+    logger.info('NewProjectManager', `Wrote the handoff into ${folder}`);
+  } catch (error: unknown) {
+    logger.warn('NewProjectManager', `The handoff could not be written: ${message(error)}`);
+  }
 }
 
 /**

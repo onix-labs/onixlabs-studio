@@ -35,6 +35,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AgentEditDecisionCard } from '@shared/angular/components/agent-cards/agent-edit-decision-card/agent-edit-decision-card';
+import { AgentWorkspaceCard } from '@shared/angular/components/agent-cards/agent-workspace-card/agent-workspace-card';
 import { AgentErrorCard } from '@shared/angular/components/agent-cards/agent-error-card/agent-error-card';
 import {
   AgentPermissionCard,
@@ -318,6 +319,7 @@ interface LaneInfo {
     AgentComposer,
     AgentQuestionCard,
     AgentEditDecisionCard,
+    AgentWorkspaceCard,
     AgentErrorCard,
     AgentPermissionCard,
   ],
@@ -759,6 +761,8 @@ export class AgentChat implements OnInit {
             return Icon.PROMPT_QUESTION;
           case 'edit-decision':
             return Icon.PROMPT_EDIT;
+          case 'workspace-proposal':
+            return Icon.WORKSPACE_PROPOSAL;
           case 'error':
             return Icon.PROMPT_ERROR;
           case 'tool':

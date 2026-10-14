@@ -26,6 +26,7 @@ import {
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Icon } from '@shared/angular/icons/icon';
+import { WorkspaceProposals } from '@shared/angular/services/workspace-proposals/workspace-proposals';
 
 /**
  * Hosts the agent conversation as a top-level tab: the {@link AgentChat} shell in the centre with the
@@ -37,7 +38,13 @@ import { Icon } from '@shared/angular/icons/icon';
 @Component({
   selector: 'app-agent-view',
   imports: [PanelLayout, Panel, AgentChat, AgentConversationList, ToolPanel],
-  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' }],
+  providers: [
+    Agent,
+    AgentConversation,
+    // The workspace this tab's agent offers is made from this tab's conversation (#876).
+    WorkspaceProposals,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'agent' },
+  ],
   templateUrl: './agent-view.html',
   styleUrl: './agent-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -63,6 +70,11 @@ export class AgentView implements OnInit, OnDestroy {
    * Holds the per-tab handoff a new project's agent start arrives through (#806).
    */
   private readonly workspaces: Workspaces = inject(Workspaces);
+
+  /**
+   * Holds this tab's workspace proposals, told which tab closes once one is made (#876).
+   */
+  private readonly proposals: WorkspaceProposals = inject(WorkspaceProposals);
 
   /**
    * Holds the active agent session registry the ribbon and accelerators drive.
@@ -147,6 +159,7 @@ export class AgentView implements OnInit, OnDestroy {
     const id: string | undefined = this.tabId();
     if (id !== undefined) {
       this.statusHost.register(id);
+      this.proposals.bind(id);
     }
     const start: WorkspaceAgentStart | undefined =
       id === undefined ? undefined : this.workspaces.takeAgentStart(id);

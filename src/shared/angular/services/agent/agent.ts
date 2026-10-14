@@ -110,8 +110,14 @@ export type AgentItemKind =
   | 'permission'
   | 'input-request'
   | 'edit-decision'
+  | 'workspace-proposal'
   | 'error'
   | 'notice';
+
+/**
+ * Identifies where a workspace proposal stands (#876): waiting for the user, made, or put aside.
+ */
+export type AgentProposalState = 'pending' | 'created' | 'dismissed';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -339,6 +345,31 @@ export interface AgentItem {
    * Gets the input request's state.
    */
   readonly inputState?: AgentInputState;
+
+  /**
+   * Gets the name the agent suggests for the project's folder (workspace proposals only, #876).
+   */
+  readonly proposalName?: string;
+
+  /**
+   * Gets what the project is, in a line or two (workspace proposals only, when the agent said).
+   */
+  readonly proposalSummary?: string;
+
+  /**
+   * Gets the handoff the workspace's agent starts from, as Markdown (workspace proposals only).
+   */
+  readonly proposalHandoff?: string;
+
+  /**
+   * Gets where the proposal stands (workspace proposals only).
+   */
+  readonly proposalState?: AgentProposalState;
+
+  /**
+   * Gets where the project was made (created workspace proposals only).
+   */
+  readonly proposalPath?: string;
 
   /**
    * Gets the answer the user gave (answered input requests only).
@@ -1776,6 +1807,23 @@ export class Agent {
   }
 
   /**
+   * Records where a workspace proposal ended up (#876): made, at its path, or put aside.
+   * @param item The proposal.
+   * @param state Where it stands now.
+   * @param path Where the project was made, when it was.
+   */
+  public settleProposal(item: AgentItem, state: 'created' | 'dismissed', path?: string): void {
+    if (item.kind !== 'workspace-proposal' || item.proposalState !== 'pending') {
+      return;
+    }
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      proposalState: state,
+      ...(path === undefined ? {} : { proposalPath: path }),
+    }));
+  }
+
+  /**
    * Answers a pending permission request, optionally telling the broker to remember a grant.
    * @param item The permission item.
    * @param granted Whether the user granted permission.
@@ -2016,6 +2064,16 @@ export class Agent {
         if (event.change !== undefined) {
           this.attachProposedDiff(event.permissionId, event.change);
         }
+        break;
+      case 'workspace-proposal':
+        this.push({
+          kind: 'workspace-proposal',
+          text: '',
+          proposalName: event.name,
+          ...(event.summary === undefined ? {} : { proposalSummary: event.summary }),
+          proposalHandoff: event.handoff,
+          proposalState: 'pending',
+        });
         break;
       case 'input-request':
         this.push({
