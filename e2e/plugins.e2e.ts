@@ -30,18 +30,15 @@ function pluginRow(page: Page, name: string): Locator {
 }
 
 /**
- * Opens one of the Plugin Manager's groups, unless it is open already: only one is open at a time,
- * and clicking the open one would close it.
+ * Chooses one of the Plugin Manager's side-panel filters (#950).
  * @param page The main window.
- * @param heading The group's heading, "Installed" or "Available".
+ * @param label The filter's label, such as "Installed" or "Available".
  */
-async function openGroup(page: Page, heading: string): Promise<void> {
-  const header: Locator = page.locator('app-accordion .accordion__header').filter({
-    has: page.locator('.accordion__heading', { hasText: new RegExp(`^${heading}$`) }),
-  });
-  if ((await header.getAttribute('aria-expanded')) !== 'true') {
-    await header.click();
-  }
+async function openGroup(page: Page, label: string): Promise<void> {
+  await page
+    .locator('.category-list__item')
+    .filter({ has: page.locator('.category-list__label', { hasText: new RegExp(`^${label}$`) }) })
+    .click();
 }
 
 /**

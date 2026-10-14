@@ -3,37 +3,23 @@ import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
-import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
-import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
-import { type RibbonFieldOption } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { PluginBrowse, type PluginSort, type PluginGroupId } from '../plugin-browse/plugin-browse';
 import { Icon } from '@shared/angular/icons/icon';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
- * The contextual ribbon shown while a Plugin Manager tab is active: reloading the catalogue, narrowing
- * the list by install state, searching it, and ordering it.
+ * The contextual ribbon shown while a Plugin Manager tab is active: reloading the catalogue. Searching,
+ * filtering and sorting live beside the list they act on — the side panel and the table's column
+ * headers (#950).
  *
  * ⛔ Installing and removing stay on the rows they act on. A strip button would need a selection model
  * to know which plugin it meant, and a list where the action is somewhere else is a list you have to
  * look away from to use.
- *
- * The narrowing controls write to {@link PluginBrowse} rather than to the view, because the view is a
- * sibling: the ribbon owns the controls, the view renders the result, and the status strip counts it.
  */
 @Component({
   selector: 'app-plugin-manager-ribbon',
-  imports: [
-    RibbonStripOverflow,
-    RibbonStripGroup,
-    RibbonStripButton,
-    RibbonStripColumn,
-    RibbonStripField,
-    TextField,
-  ],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton],
   templateUrl: './plugin-manager-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,36 +29,6 @@ export class PluginManagerRibbon {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Gets the browsing state the controls drive.
-   */
-  protected readonly browse: PluginBrowse = inject(PluginBrowse);
-
-  /**
-   * Gets the orderings offered by the Sort field.
-   */
-  protected readonly sortOptions: readonly RibbonFieldOption[] = [
-    { value: 'name', label: 'Name' },
-    { value: 'category', label: 'Category' },
-    { value: 'state', label: 'Installed first' },
-  ];
-
-  /**
-   * Opens a group of the list, closing the other.
-   * @param group The group to open.
-   */
-  protected onGroup(group: PluginGroupId): void {
-    this.browse.openGroup.set(group);
-  }
-
-  /**
-   * Orders the list.
-   * @param sort The ordering, as the field's string value.
-   */
-  protected onSort(sort: string): void {
-    this.browse.sort.set(sort as PluginSort);
-  }
 
   /**
    * Holds the plugin client the ribbon acts through.

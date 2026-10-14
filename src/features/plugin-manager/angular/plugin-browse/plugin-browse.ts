@@ -4,6 +4,7 @@ import {
   type PluginContribution,
   type PluginSummary,
 } from '@shared/api/plugin-channels';
+import type { TableSort } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
@@ -29,14 +30,12 @@ export interface PluginCategory {
 }
 
 /**
- * The groups the list is split into: plugins with a version installed, and the rest.
+ * The filters the side panel offers that are not categories: every plugin, those with a version
+ * installed, and the rest. A category filter is the category's own name.
  */
-export type PluginGroupId = 'installed' | 'available';
-
-/**
- * How the list is ordered.
- */
-export type PluginSort = 'name' | 'category' | 'state';
+export const ALL_PLUGINS: string = '\u0000all';
+export const INSTALLED_PLUGINS: string = '\u0000installed';
+export const AVAILABLE_PLUGINS: string = '\u0000available';
 
 /**
  * The category every plugin falls under when it contributes nothing recognisable.
@@ -78,12 +77,11 @@ const ROW_ICONS: Readonly<Record<string, Icon>> = {
 };
 
 /**
- * The browsing state of the Plugin Manager — what is searched for, which install states are shown,
- * which category is selected, and how the list is ordered.
+ * The browsing state of the Plugin Manager (#950) — what is searched for, which filter the side panel
+ * has chosen (every plugin, the installed or available ones, or a category), and the column the list
+ * is sorted by.
  *
- * ⛔ Held in a service rather than in the view because three surfaces read it: the contextual ribbon
- * owns the controls, the view renders the result, and the status strip counts it. A view-local signal
- * would leave the ribbon unable to reach the thing its own buttons change.
+ * ⛔ Held in a service rather than in the view because the view and the status strip both read it.
  *
  * Root-provided, because the Plugin Manager is a singleton tool view — there is only ever one of it, so
  * there is no per-tab state to keep apart.
@@ -101,22 +99,15 @@ export class PluginBrowse {
   public readonly query: WritableSignal<string> = signal<string>('');
 
   /**
-   * Gets the group that is open, or null when the user has closed it. Only one is open at a time, and
-   * Installed is open to begin with.
+   * Gets the side panel's filter: {@link ALL_PLUGINS}, {@link INSTALLED_PLUGINS},
+   * {@link AVAILABLE_PLUGINS}, or a category's name. Every plugin is shown to begin with.
    */
-  public readonly openGroup: WritableSignal<PluginGroupId | null> = signal<PluginGroupId | null>(
-    'installed',
-  );
+  public readonly filter: WritableSignal<string> = signal<string>(ALL_PLUGINS);
 
   /**
-   * Gets the selected category, or null for every category.
+   * Gets the column the list is sorted by and its direction, or null for the default order, by name.
    */
-  public readonly category: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Gets the ordering.
-   */
-  public readonly sort: WritableSignal<PluginSort> = signal<PluginSort>('name');
+  public readonly sort: WritableSignal<TableSort | null> = signal<TableSort | null>(null);
 
   /**
    * Gets every known plugin.
@@ -148,71 +139,39 @@ export class PluginBrowse {
   );
 
   /**
-   * Gets the plugins the list should show, narrowed by every filter and then ordered.
+   * Gets the plugins the filter and search leave, in the chosen order.
    */
   public readonly visible: Signal<readonly PluginSummary[]> = computed(
     (): readonly PluginSummary[] => {
       const text: string = this.query().trim().toLowerCase();
-      const category: string | null = this.category();
+      const filter: string = this.filter();
       const matched: readonly PluginSummary[] = this.all().filter(
         (plugin: PluginSummary): boolean =>
-          (category === null || categoriesOf(plugin).includes(category)) &&
-          (text.length === 0 || matchesText(plugin, text)),
+          passesFilter(plugin, filter) && (text.length === 0 || matchesText(plugin, text)),
       );
       return [...matched].sort(comparerFor(this.sort()));
     },
   );
 
   /**
-   * Gets the listed plugins that are installed: present on this machine, a sideloaded one included, or
-   * mid-update (still installed while the work runs).
-   */
-  public readonly installedVisible: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] => this.visible().filter(isInstalled),
-  );
-
-  /**
-   * Gets the listed plugins that are not installed.
-   */
-  public readonly availableVisible: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] =>
-      this.visible().filter((plugin: PluginSummary): boolean => !isInstalled(plugin)),
-  );
-
-  /**
-   * Gets the group that is actually open: the chosen one, unless it has nothing to show and the other
-   * does, in which case the other opens in its place rather than leaving every box shut. Null when the
-   * user has closed it. The ribbon and the list both read this, so they never disagree.
-   */
-  public readonly shownGroup: Signal<PluginGroupId | null> = computed((): PluginGroupId | null => {
-    const chosen: PluginGroupId | null = this.openGroup();
-    if (chosen === null || this.hasGroup(chosen)) {
-      return chosen;
-    }
-    const other: PluginGroupId = chosen === 'installed' ? 'available' : 'installed';
-    return this.hasGroup(other) ? other : chosen;
-  });
-
-  /**
-   * Gets how many plugins are installed.
+   * Gets how many plugins have a version installed on this machine.
    */
   public readonly installedCount: Signal<number> = computed(
-    (): number =>
-      this.all().filter((plugin: PluginSummary): boolean => plugin.state === 'installed').length,
+    (): number => this.all().filter(isInstalled).length,
   );
 
   /**
-   * Gets how many plugins are available but not installed.
+   * Gets how many plugins are available to install.
    */
   public readonly notInstalledCount: Signal<number> = computed(
     (): number => this.all().length - this.installedCount(),
   );
 
   /**
-   * Gets whether any filter is narrowing the list, which decides how an empty list is explained.
+   * Gets whether anything narrows the list: search text, or a filter other than every plugin.
    */
   public readonly narrowed: Signal<boolean> = computed(
-    (): boolean => this.query().trim().length > 0 || this.category() !== null,
+    (): boolean => this.query().trim().length > 0 || this.filter() !== ALL_PLUGINS,
   );
 
   /**
@@ -220,16 +179,6 @@ export class PluginBrowse {
    */
   public clearQuery(): void {
     this.query.set('');
-  }
-
-  /**
-   * Gets whether a group has any plugins to list. An empty group has no box, so the ribbon disables its
-   * button.
-   * @param group The group.
-   * @returns Returns true when it has.
-   */
-  public hasGroup(group: PluginGroupId): boolean {
-    return (group === 'installed' ? this.installedVisible() : this.availableVisible()).length > 0;
   }
 }
 
@@ -295,26 +244,50 @@ function matchesText(plugin: PluginSummary, text: string): boolean {
 }
 
 /**
- * Builds the comparer for an ordering. Every ordering falls back to the name, so the list is stable
- * rather than arbitrary within a group.
- * @param sort The ordering.
+ * Gets whether a plugin passes the side panel's filter.
+ * @param plugin The plugin.
+ * @param filter The filter: every plugin, installed, available, or a category's name.
+ * @returns Returns true when it passes.
+ */
+function passesFilter(plugin: PluginSummary, filter: string): boolean {
+  switch (filter) {
+    case ALL_PLUGINS:
+      return true;
+    case INSTALLED_PLUGINS:
+      return isInstalled(plugin);
+    case AVAILABLE_PLUGINS:
+      return !isInstalled(plugin);
+    default:
+      return categoriesOf(plugin).includes(filter);
+  }
+}
+
+/**
+ * Builds the comparer for a column sort: by the plugin's name, its first category, or its state
+ * (installed first), each falling back to the name; or by name alone when nothing is sorted.
+ * @param sort The column sort, or null.
  * @returns Returns the comparer.
  */
-function comparerFor(sort: PluginSort): (left: PluginSummary, right: PluginSummary) => number {
+function comparerFor(
+  sort: TableSort | null,
+): (left: PluginSummary, right: PluginSummary) => number {
   const byName: (left: PluginSummary, right: PluginSummary) => number = (
     left: PluginSummary,
     right: PluginSummary,
   ): number => left.name.localeCompare(right.name);
-  if (sort === 'category') {
-    return (left: PluginSummary, right: PluginSummary): number =>
-      categoriesOf(left)[0].localeCompare(categoriesOf(right)[0]) || byName(left, right);
+  if (sort === null) {
+    return byName;
   }
-  if (sort === 'state') {
-    // Installed first: what you already have is what you are most likely looking for.
-    const rank: (plugin: PluginSummary) => number = (plugin: PluginSummary): number =>
-      plugin.state === 'installed' ? 0 : 1;
-    return (left: PluginSummary, right: PluginSummary): number =>
-      rank(left) - rank(right) || byName(left, right);
-  }
-  return byName;
+  const direction: number = sort.direction === 'asc' ? 1 : -1;
+  const rank: (plugin: PluginSummary) => number = (plugin: PluginSummary): number =>
+    isInstalled(plugin) ? 0 : 1;
+  const primary: (left: PluginSummary, right: PluginSummary) => number =
+    sort.columnId === 'category'
+      ? (left: PluginSummary, right: PluginSummary): number =>
+          categoriesOf(left)[0].localeCompare(categoriesOf(right)[0])
+      : sort.columnId === 'state'
+        ? (left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right)
+        : byName;
+  return (left: PluginSummary, right: PluginSummary): number =>
+    direction * (primary(left, right) || byName(left, right));
 }
