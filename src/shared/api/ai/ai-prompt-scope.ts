@@ -80,6 +80,30 @@ export function scopeMatches(
 }
 
 /**
+ * Decides whether a skill's scope applies to a run (#962). Unlike {@link scopeMatches}, a skill's
+ * languages narrow only the editor: there it is offered for those languages alone, and on every other
+ * surface its languages have no say. A skill's languages double as tags for Create Something, so
+ * tagging one "TypeScript" must not hide it from the Agent tab.
+ * @param scope The skill's scope.
+ * @param surface The surface the run was dispatched from.
+ * @param language The language of the document owning the run, or null when it has none.
+ * @returns Returns true when the skill applies.
+ */
+export function skillScopeMatches(
+  scope: PromptScope,
+  surface: AgentSurface,
+  language: string | null,
+): boolean {
+  if (scope.surfaces.length > 0 && !scope.surfaces.includes(surface)) {
+    return false;
+  }
+  return (
+    surface !== 'editor' ||
+    scopeMatches({ surfaces: [], languages: scope.languages }, surface, language)
+  );
+}
+
+/**
  * Ranks a scope by how specific it is, so several matching pieces of guidance compose from the general
  * to the particular: global first, then surface-scoped, then language-scoped. Language guidance stacks
  * on top of surface guidance rather than replacing it, which is the whole reason the rank exists — a

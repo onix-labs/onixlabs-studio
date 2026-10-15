@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { CreateTechnology } from './create-technology';
-import { Technology } from './technology-catalogue';
+import { Technology } from '@shared/api/technology/technology-catalogue';
 
 /**
  * Builds a technology.

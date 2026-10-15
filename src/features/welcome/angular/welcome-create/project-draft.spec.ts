@@ -7,6 +7,31 @@ import { ProjectDraft } from './project-draft';
 import { FakeProjectMachine } from './project-draft.testing';
 import { PROJECT_TEMPLATES, ProjectTemplate } from './project-templates';
 
+/**
+ * Builds a loadable skill with the given tags.
+ * @param name The name.
+ * @param languages The editor languages.
+ * @param technologies The technologies.
+ * @returns Returns the skill.
+ */
+function skillTagged(
+  name: string,
+  languages: readonly string[],
+  technologies: readonly string[],
+): Skill {
+  return {
+    name,
+    description: 'd',
+    scope: { surfaces: [], languages },
+    technologies,
+    enabled: true,
+    body: '',
+    directory: `/lib/${name}`,
+    files: [],
+    problem: null,
+  };
+}
+
 describe('ProjectDraft', () => {
   let machine: FakeProjectMachine;
   let draft: ProjectDraft;
@@ -235,6 +260,28 @@ describe('ProjectDraft', () => {
       'on',
       'off',
     ]);
+  });
+
+  it('suggestedSkills_offersEnabledSkillsTaggedWithAPickedLanguageOrTechnology_withoutChoosingThem', () => {
+    machine.skills = [
+      skillTagged('angular-style', [], ['angular']),
+      skillTagged('ts-style', ['typescript'], []),
+      skillTagged('ef-core', [], ['ef-core']),
+      skillTagged('clean-code', [], []),
+      { ...skillTagged('parked', [], ['angular']), enabled: false },
+    ];
+
+    expect(draft.suggestedSkills()).toEqual([]);
+
+    draft.toggleTechnology('angular');
+    draft.toggleTechnology('typescript');
+
+    expect(draft.suggestedSkills().map((skill: Skill): string => skill.name)).toEqual([
+      'angular-style',
+      'ts-style',
+    ]);
+    expect(draft.matchedTechnologies(draft.suggestedSkills()[0])).toEqual(['Angular']);
+    expect([...draft.skills()]).toEqual([]);
   });
 
   it('importSkill_choosesWhatItImports_orSaysWhyItCouldNot', async () => {

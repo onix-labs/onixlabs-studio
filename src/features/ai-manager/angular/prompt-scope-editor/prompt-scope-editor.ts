@@ -66,6 +66,12 @@ export class PromptScopeEditor {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets whether the languages row is shown. The skill editor draws its own, which offers the
+   * project technologies beside the languages (#962).
+   */
+  public readonly showLanguages: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Sets the surfaces. The picker reports values in option order, which is {@link AGENT_SURFACES}
    * order, so the scope's surfaces stay canonically ordered without a re-sort here.
    * @param surfaces The selected surfaces.

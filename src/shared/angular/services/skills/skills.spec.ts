@@ -21,6 +21,7 @@ function skill(name: string): Skill {
     name,
     description: 'd',
     scope: { surfaces: [], languages: [] },
+    technologies: [],
     enabled: true,
     body: 'b',
     directory: `/lib/${name}`,
@@ -88,6 +89,7 @@ describe('Skills', () => {
       name: 'b',
       description: 'd',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: true,
       body: 'b',
     });
@@ -131,6 +133,7 @@ describe('Skills', () => {
       name: 'x',
       description: 'd',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: true,
       body: '',
     });

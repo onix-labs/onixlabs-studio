@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
-import { SkillLibrarySection } from './skill-library';
+import { SKILL_TAG_OPTIONS, SkillLibrarySection } from './skill-library';
 
 /**
  * Builds a stored skill.
@@ -15,6 +15,7 @@ function skill(name: string): Skill {
     name,
     description: 'd',
     scope: { surfaces: [], languages: [] },
+    technologies: [],
     enabled: true,
     body: 'b',
     directory: `/lib/${name}`,
@@ -184,6 +185,37 @@ describe('SkillLibrarySection', () => {
 
     expect(element().querySelector('.library__error')?.textContent).toContain('not a valid');
     expect(entries()).toHaveLength(1);
+  });
+
+  it('tags_areOneList_languagesNarrowTheEditor_theRestAreTechnologies', async () => {
+    // #962. Languages and technologies are picked in one list; an editor language goes into the
+    // scope, anything else into the technologies, and a hand-written id the list lacks is kept.
+    stored.set([{ ...skill('a'), technologies: ['hand-written'] }]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await selectFirst();
+    const view: {
+      selected(): unknown;
+      setTags(row: unknown, ids: readonly string[]): void;
+    } = fixture.componentInstance as unknown as {
+      selected(): unknown;
+      setTags(row: unknown, ids: readonly string[]): void;
+    };
+
+    view.setTags(view.selected(), ['typescript', 'angular']);
+    await editAndPause({});
+
+    expect(saved.at(-1)?.scope.languages).toEqual(['typescript']);
+    expect(saved.at(-1)?.technologies).toEqual(['angular', 'hand-written']);
+  });
+
+  it('tagOptions_listLanguagesFirst_thenEachCategory_withNoIdTwice', () => {
+    const values: string[] = SKILL_TAG_OPTIONS.map((option) => option.value);
+
+    expect(SKILL_TAG_OPTIONS[0].group).toBe('Languages');
+    expect(new Set(values).size).toBe(values.length);
+    expect(SKILL_TAG_OPTIONS.find((option) => option.value === 'angular')?.group).toBe('Frontend');
+    expect(SKILL_TAG_OPTIONS.some((option) => option.group === 'Other')).toBe(false);
   });
 
   it('delete_fromTheBinOnItsEntry_asksFirst_andRemovesTheFolderOnConfirm', async () => {

@@ -1,5 +1,9 @@
 import { readPromptScope, type PromptScope } from '@shared/api/ai-types';
-import { SKILL_DESCRIPTION_LIMIT, SKILL_NAME_PATTERN } from '@shared/api/skill-channels';
+import {
+  readSkillTechnologies,
+  SKILL_DESCRIPTION_LIMIT,
+  SKILL_NAME_PATTERN,
+} from '@shared/api/skill-channels';
 
 // Reads and writes `SKILL.md`: YAML frontmatter between `---` fences, then a Markdown body. Only the
 // subset of YAML a skill file needs is understood — scalars, inline `[a, b]` lists and block `- item`
@@ -10,7 +14,14 @@ import { SKILL_DESCRIPTION_LIMIT, SKILL_NAME_PATTERN } from '@shared/api/skill-c
 /**
  * The frontmatter keys this module owns and rewrites on save. Everything else is preserved verbatim.
  */
-const OWNED_KEYS: readonly string[] = ['name', 'description', 'surfaces', 'languages', 'enabled'];
+const OWNED_KEYS: readonly string[] = [
+  'name',
+  'description',
+  'surfaces',
+  'languages',
+  'technologies',
+  'enabled',
+];
 
 /**
  * A parsed skill file.
@@ -30,6 +41,11 @@ export interface ParsedSkillFile {
    * Gets the scope read from the `surfaces` and `languages` keys.
    */
   readonly scope: PromptScope;
+
+  /**
+   * Gets the technology ids read from the `technologies` key, or empty when it is absent.
+   */
+  readonly technologies: readonly string[];
 
   /**
    * Gets whether the skill is enabled; absent reads as enabled, so a file written by another tool is
@@ -67,6 +83,11 @@ export interface SkillFileContent {
    * Gets the scope, written as the `surfaces` and `languages` keys.
    */
   readonly scope: PromptScope;
+
+  /**
+   * Gets the technology ids, written as the `technologies` key.
+   */
+  readonly technologies: readonly string[];
 
   /**
    * Gets whether the skill is enabled.
@@ -210,6 +231,7 @@ export function parseSkillFile(text: string): ParsedSkillFile {
       surfaces: asList(values.get('surfaces')),
       languages: asList(values.get('languages')),
     }),
+    technologies: readSkillTechnologies(asList(values.get('technologies'))),
     enabled: !(typeof enabled === 'string' && enabled.trim().toLowerCase() === 'false'),
     body,
     foreignLines,
@@ -241,6 +263,7 @@ export function serializeSkillFile(content: SkillFileContent): string {
     `description: ${JSON.stringify(content.description)}`,
     ...listLines('surfaces', content.scope.surfaces),
     ...listLines('languages', content.scope.languages),
+    ...listLines('technologies', content.technologies),
     `enabled: ${content.enabled ? 'true' : 'false'}`,
     ...content.foreignLines,
     '---',

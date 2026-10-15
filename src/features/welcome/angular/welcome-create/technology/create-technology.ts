@@ -14,13 +14,13 @@ import {
   TECHNOLOGY_CATEGORIES,
   TECHNOLOGY_CATEGORY_LABELS,
   type TechnologyCategory,
-} from './technology-category';
+} from '@shared/api/technology/technology-category';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Icon } from '@shared/angular/icons/icon';
-import type { Technology } from './technology-catalogue';
+import type { Technology } from '@shared/api/technology/technology-catalogue';
 
 /**
  * How the catalogue is ordered.

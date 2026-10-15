@@ -7,6 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type { Skill } from '@shared/api/skill-channels';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
@@ -19,7 +20,7 @@ import { ProjectDraft } from '../project-draft';
  */
 @Component({
   selector: 'app-create-skills',
-  imports: [AppIcon],
+  imports: [AppIcon, NgTemplateOutlet],
   templateUrl: './create-skills.html',
   styleUrl: './create-steps.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,7 +44,7 @@ export class CreateSkills {
   /**
    * Gets the skills matching the search, by name or description, in name order.
    */
-  protected readonly skills: Signal<readonly Skill[]> = computed((): readonly Skill[] => {
+  private readonly matching: Signal<readonly Skill[]> = computed((): readonly Skill[] => {
     const needle: string = this.query().trim().toLowerCase();
     return this.draft
       .availableSkills()
@@ -55,6 +56,22 @@ export class CreateSkills {
       )
       .slice()
       .sort((a: Skill, b: Skill): number => a.name.localeCompare(b.name));
+  });
+
+  /**
+   * Gets the matching skills suggested for the project's technologies (#962), listed first.
+   */
+  protected readonly suggested: Signal<readonly Skill[]> = computed((): readonly Skill[] => {
+    const suggested: readonly Skill[] = this.draft.suggestedSkills();
+    return this.matching().filter((skill: Skill): boolean => suggested.includes(skill));
+  });
+
+  /**
+   * Gets the rest of the matching skills.
+   */
+  protected readonly others: Signal<readonly Skill[]> = computed((): readonly Skill[] => {
+    const suggested: readonly Skill[] = this.suggested();
+    return this.matching().filter((skill: Skill): boolean => !suggested.includes(skill));
   });
 
   /**
