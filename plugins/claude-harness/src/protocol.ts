@@ -82,6 +82,11 @@ export interface TurnRequest {
    * The commands the agent may not run (protocol 1.11.0, #853); absent from an older Studio.
    */
   readonly blockedCommands?: readonly string[];
+  /**
+   * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` keeps the model to
+   * Studio's tools and its clarifying question; absent from an older Studio, which means `'all'`.
+   */
+  readonly builtInTools?: 'all' | 'none';
   readonly images: readonly TurnImage[];
   readonly contextPaths: readonly ContextRef[];
   readonly remoteControl: 'off' | 'mirror' | 'control';

@@ -90,4 +90,23 @@
       </app-table>
     </section>
   </div>
+
+  <!-- The view's own agent (#966), docked on the right. It mounts on first show and stays mounted, so
+       closing it keeps its conversation; Mission Control registration lives on the view. -->
+  @if (agentMounted()) {
+    <app-panel
+      panelId="agent"
+      defaultEdge="right"
+      [visible]="agentVisible()"
+      [defaultSize]="360"
+      [minSize]="240"
+      [maxSize]="900"
+    >
+      <app-system-monitor-agent-panel
+        [tabId]="tabId()"
+        [isActive]="isActive() && agentVisible()"
+        (closed)="agentVisible.set(false)"
+      />
+    </app-panel>
+  }
 </app-panel-layout>

@@ -228,8 +228,14 @@ import { AiEvent } from './ai/ai-event-types';
  * it would write — a write's whole content, or an edit's replacements — so the prompt can show the
  * change before the user decides. Optional, so every published harness is unaffected: a request
  * without one is shown as before, by its name and detail alone.
+ *
+ * `1.16.0` adds a turn's optional `builtInTools` (#965). `'none'` asks the harness to withhold its own
+ * tools — the file, shell and web tools a model's runtime brings — so the agent works through Studio's
+ * tools alone: a terminal's agent through its terminal, a tool view's agent through its view. Optional,
+ * so every published harness is unaffected; one written before it keeps its tools, which the
+ * permission prompt still stands in front of.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.15.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.16.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -435,6 +441,13 @@ export interface TurnRequest {
    * ⚠️ Optional, so a harness written before it simply does not enforce it — the setting says which do.
    */
   readonly blockedCommands?: readonly string[];
+
+  /**
+   * Gets whether the harness's own built-in tools are offered (1.16.0, #965). `'none'` withholds them
+   * all — a harness keeps only its clarifying question, if it has one, and works through Studio's tools.
+   * Absent means `'all'`. ⚠️ Optional, so a harness written before it keeps its tools.
+   */
+  readonly builtInTools?: 'all' | 'none';
 
   /**
    * Gets the images attached to the turn's input. Empty when there are none, and always empty for a

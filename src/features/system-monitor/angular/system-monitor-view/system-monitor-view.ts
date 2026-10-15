@@ -35,6 +35,15 @@ import {
   SystemMonitorCommands,
 } from '../system-monitor-commands/system-monitor-commands';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { SystemMonitorAgentCapabilities } from '../system-monitor-agent/system-monitor-agent-capabilities';
+import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-agent-panel';
 
 /**
  * The severities shown by default: the notable ones. Trace and debug are fine-grained diagnostics,
@@ -129,6 +138,15 @@ const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
     MetricTile,
     Panel,
     PanelLayout,
+    SystemMonitorAgentPanel,
+  ],
+  // The agent and its conversation live on the VIEW, not the docked panel (#966): the panel mounts on
+  // first show and can be closed, and a run in flight must outlive both.
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'monitor' },
+    SystemMonitorAgentCapabilities,
   ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
@@ -523,10 +541,50 @@ export class SystemMonitorView implements OnInit {
   });
 
   /**
-   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   * Registers the view's agent with Mission Control and the requests inbox for the tab's whole life,
+   * service-only — the docked panel mounts on first show (#966).
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'monitor',
+  });
+
+  /**
+   * Registers the capabilities the agent reads the logs through, for the view's life.
+   */
+  private readonly agentCapabilities: SystemMonitorAgentCapabilities = inject(
+    SystemMonitorAgentCapabilities,
+  );
+
+  /**
+   * Holds whether the agent panel has been shown, after which it stays mounted so a closed panel keeps
+   * its place and its conversation.
+   */
+  protected readonly agentMounted: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the agent panel is showing.
+   */
+  protected readonly agentVisible: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
+   * tab id is readable.
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.agentHost.register(this.tabId());
+  }
+
+  /**
+   * Shows the agent panel, or hides it.
+   */
+  protected toggleAgent(): void {
+    const showing: boolean = !this.agentVisible();
+    if (showing) {
+      this.agentMounted.set(true);
+    }
+    this.agentVisible.set(showing);
   }
 
   /**
@@ -553,6 +611,8 @@ export class SystemMonitorView implements OnInit {
    */
   private readonly commandHandler: SystemMonitorCommandHandler = {
     hasRecords: this.hasRecords,
+    agentShown: this.agentVisible,
+    toggleAgent: (): void => this.toggleAgent(),
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
     copy: (): void => void this.copy(),

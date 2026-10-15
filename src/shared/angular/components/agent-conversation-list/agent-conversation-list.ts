@@ -53,6 +53,7 @@ const AGENT_TYPE_LABELS: Readonly<Record<AgentConversationAgentType, string>> = 
   terminal: 'Terminal',
   review: 'Review',
   search: 'Search',
+  monitor: 'System Monitor',
 };
 
 /**
@@ -65,6 +66,7 @@ const AGENT_TYPE_ORDER: readonly AgentConversationAgentType[] = [
   'terminal',
   'review',
   'search',
+  'monitor',
 ];
 
 /**

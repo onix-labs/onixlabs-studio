@@ -192,7 +192,10 @@ async function clientOptionsFor(turn: TurnRequest): Promise<CodexOptions> {
  * @returns Returns the thread options.
  */
 function threadOptionsFor(turn: TurnRequest): ThreadOptions {
-  const readOnly: boolean = turn.mode === 'chat';
+  // A turn Studio keeps off this harness's own tools (#965) — a terminal's or a tool view's — runs
+  // read-only too: Codex cannot withhold its shell, so the next best thing is a shell that cannot write.
+  const readOnly: boolean =
+    turn.mode === 'chat' || turn.surface === 'terminal' || turn.builtInTools === 'none';
   const options: ThreadOptions = {
     model: turn.model,
     sandboxMode: readOnly ? 'read-only' : 'workspace-write',

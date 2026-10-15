@@ -296,6 +296,30 @@ export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
 export const LOAD_SKILL: string = 'load_skill';
 
 /**
+ * The System Monitor capability that lists the app's log sessions (#966): the current one and the
+ * earlier ones still on disk, so the agent can say which run it is reading.
+ */
+export const LIST_LOG_SESSIONS: string = 'list_log_sessions';
+
+/**
+ * The System Monitor capability that reads log records (#966), filtered by session, severity, text and
+ * time, newest first and bounded, so a long session cannot flood the context window.
+ */
+export const QUERY_LOGS: string = 'query_logs';
+
+/**
+ * The System Monitor capability that summarises the recent resource readings (#966) — CPU, memory, GPU,
+ * network and disk — over the window the view has sampled.
+ */
+export const READ_SYSTEM_METRICS: string = 'read_system_metrics';
+
+/**
+ * The System Monitor capability that changes how much the app logs (#966). Gated: it changes a setting
+ * that outlives the conversation.
+ */
+export const SET_LOG_LEVEL: string = 'set_log_level';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -306,10 +330,11 @@ export type OpenDocumentFormat = 'markdown' | 'code';
  * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), a
  * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
  * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
- * owning document and works through the provider's built-in tools alone). It selects the tool set the
- * providers expose for the run.
+ * owning document and works through the provider's built-in tools alone), or one of the tool views
+ * (`monitor` — the System Monitor, #964). It selects the tool set the providers expose for the run.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project';
+export type AgentSurface =
+  'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project' | 'monitor';
 
 /**
  * Every surface, in the order they are presented to a user choosing among them. The one list the
@@ -323,7 +348,35 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'api',
   'workspace',
   'project',
+  'monitor',
 ];
+
+/**
+ * The tool views' surfaces (#964). An agent docked in a tool view is kept to that view: it is offered
+ * its view's own tools, the clarifying question and the skills, and nothing else — no workbench, file,
+ * terminal, run-configuration or hosting tools — so it cannot drift into work the view is not for.
+ */
+export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor'];
+
+/**
+ * Determines whether a surface belongs to a tool view.
+ * @param surface The surface.
+ * @returns Returns true when it is one of {@link TOOL_VIEW_SURFACES}.
+ */
+export function isToolViewSurface(surface: AgentSurface): boolean {
+  return TOOL_VIEW_SURFACES.includes(surface);
+}
+
+/**
+ * Determines whether a surface's agent is denied the harness's own built-in tools — its file, shell and
+ * web tools — and so works through Studio's tools alone. A terminal agent acts on its terminal, and a
+ * tool view's agent on its view; neither has any business with the file system.
+ * @param surface The surface.
+ * @returns Returns true when the harness's built-in tools are withheld.
+ */
+export function withholdsBuiltInTools(surface: AgentSurface): boolean {
+  return surface === 'terminal' || isToolViewSurface(surface);
+}
 
 /**
  * Determines whether a value names a surface.

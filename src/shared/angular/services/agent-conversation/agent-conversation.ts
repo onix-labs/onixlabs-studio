@@ -850,12 +850,12 @@ export class AgentConversation implements AgentSessionHandle {
   /**
    * Derives the short secondary-context label shown as a grey chip: the file/folder base name for a
    * file, workspace, or repository context, or undefined for the global bucket (which has no meaningful
-   * location).
+   * location) and for a tool view's, whose agent-type chip already names the view.
    * @param context The conversation context.
    * @returns Returns the label, or undefined when there is none.
    */
   private contextLabelOf(context: ConversationContext): string | undefined {
-    if (context.kind === 'global' || context.key.length === 0) {
+    if (context.kind === 'global' || context.kind === 'tool' || context.key.length === 0) {
       return undefined;
     }
     const parts: readonly string[] = context.key

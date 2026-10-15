@@ -18,6 +18,7 @@ import type {
   TurnImage,
   TurnRequest,
 } from '@shared/api/agent-protocol';
+import { withholdsBuiltInTools } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type {
   AgentAuth,
@@ -962,6 +963,8 @@ export function toTurnRequest(
     ...((context.blockedCommands ?? []).length === 0
       ? {}
       : { blockedCommands: [...context.blockedCommands] }),
+    // A terminal's or a tool view's agent works through Studio's tools alone (#965).
+    ...(withholdsBuiltInTools(context.surface) ? { builtInTools: 'none' as const } : {}),
     images: context.images.map((image: AiImageRef): TurnImage => ({
       mediaType: image.mediaType,
       data: image.data,

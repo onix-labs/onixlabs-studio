@@ -53,6 +53,13 @@ export {
   AGENT_SURFACES,
   isAgentSurface,
   LOAD_SKILL,
+  LIST_LOG_SESSIONS,
+  QUERY_LOGS,
+  READ_SYSTEM_METRICS,
+  SET_LOG_LEVEL,
+  TOOL_VIEW_SURFACES,
+  isToolViewSurface,
+  withholdsBuiltInTools,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
 export {

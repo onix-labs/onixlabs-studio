@@ -465,7 +465,7 @@ async function decidePermission(
  * @returns Returns the gate.
  */
 export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
-  const terminal: boolean = open.surface === 'terminal';
+  const confined: boolean = withholdsBuiltInTools(open);
   const readOnly: boolean = open.mode === 'chat';
   const hasWorkspace: boolean = open.workspaceRoot !== null;
   // The filesystem area a granted write may touch. The first root is the working directory, so a
@@ -485,10 +485,17 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
     if (toolName.startsWith(STUDIO_TOOL_PREFIX)) {
       return { behavior: 'allow', updatedInput: input };
     }
-    // A terminal-surface run is confined to its terminal: every built-in is denied, because the
-    // confinement is about what the agent may *act on* and a file system is not its terminal.
-    if (terminal) {
-      return { behavior: 'deny', message: 'This agent can only use the terminal.' };
+    // A terminal's or a tool view's run is confined to what it is docked to: every built-in is denied,
+    // because the confinement is about what the agent may *act on*, and a file system is neither. The
+    // built-ins are withheld from the model as well (see `buildOptions`); this is the backstop.
+    if (confined) {
+      return {
+        behavior: 'deny',
+        message:
+          open.surface === 'terminal'
+            ? 'This agent can only use the terminal.'
+            : 'This agent can only use the tools of the view it is docked to.',
+      };
     }
     if (readOnly) {
       return READ_ONLY_TOOLS.includes(toolName)
@@ -557,6 +564,16 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
 }
 
 /**
+ * Determines whether a turn's agent is kept off this harness's own tools (#965): a terminal's always,
+ * and any turn Studio asks it of (protocol 1.16.0) — a tool view's.
+ * @param open The turn the session opens with.
+ * @returns Returns true when only Studio's tools and the clarifying question are offered.
+ */
+export function withholdsBuiltInTools(open: TurnRequest): boolean {
+  return open.surface === 'terminal' || open.builtInTools === 'none';
+}
+
+/**
  * Builds the SDK options for a session.
  * @param gate What the permission gate can reach.
  * @param open The turn the session opens with, which fixes the structural options.
@@ -617,6 +634,9 @@ export function buildOptions(
       ? { additionalDirectories: [...open.allowedWritePaths] }
       : {}),
     ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
+    // A confined agent is not shown the built-ins at all (#965), so it cannot reach for them and be
+    // refused: only the clarifying question stays. Studio's own tools arrive over MCP regardless.
+    ...(withholdsBuiltInTools(open) ? { tools: [ASK_USER_QUESTION_TOOL] } : {}),
     hooks: {
       PreToolUse: [
         {

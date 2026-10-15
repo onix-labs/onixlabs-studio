@@ -2921,6 +2921,17 @@ export class Agent {
   }
 
   /**
+   * Adds a notice to the transcript: Studio speaking about its own machinery, never the agent. A host
+   * uses it for what the user should know about the conversation itself — that a tool view's agent
+   * sends what it reads to the provider, for instance (#966).
+   * @param text The notice's headline.
+   * @param detail The longer explanation, if any.
+   */
+  public note(text: string, detail?: string): void {
+    this.push({ kind: 'notice', text, ...(detail === undefined ? {} : { detail }), sealed: true });
+  }
+
+  /**
    * Appends a new item with a fresh identifier.
    * @param item The item without its id.
    */

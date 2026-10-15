@@ -1,6 +1,11 @@
 import type { ToolSet } from 'ai';
 import {
   ASK_USER,
+  isToolViewSurface,
+  LIST_LOG_SESSIONS,
+  QUERY_LOGS,
+  READ_SYSTEM_METRICS,
+  SET_LOG_LEVEL,
   PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
@@ -108,6 +113,13 @@ import {
 import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
 import { createHostingTools, hostingPromptAppendix } from './hosting-tools';
 import { createSkillTools } from './skill-tools';
+import {
+  listLogSessions,
+  MONITOR_PROMPT_APPENDIX,
+  queryLogs,
+  readSystemMetrics,
+  setLogLevel,
+} from './monitor-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -923,7 +935,11 @@ export async function createApiTools(context: AgentRunContext): Promise<ToolSet>
       description:
         'Send a saved request and return its status, headers and body. This makes a real call to a real service.',
       inputSchema: z.object({ id: z.string().min(1).describe('The id of the request to send.') }),
-      execute: (args: { id: string }): Promise<string> => sendApiRequest(context, args.id),
+      // Gated (#965): sending is a real call to a real service, and the posture is what decides
+      // whether the user is asked first. Until then only the prompt held the agent back.
+      execute: gated(context, SEND_API_REQUEST, (args: { id: string }): Promise<string> =>
+        sendApiRequest(context, args.id),
+      ),
     }),
     [SET_API_VARIABLE]: tool({
       description:
@@ -1074,6 +1090,83 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
 }
 
 /**
+ * Builds the System Monitor's tools (#966): reading the log audit and the resource readings, and —
+ * outside chat mode — changing the log level, gated because it is a setting that outlasts the run.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createMonitorTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_LOG_SESSIONS]: tool({
+      description: "List the app's log sessions (one per run of the app), newest first.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listLogSessions(context),
+    }),
+    [QUERY_LOGS]: tool({
+      description:
+        'Read log records, newest first. Filter narrowly — by severity, a phrase, a time window — and widen only when that finds nothing.',
+      inputSchema: z.object({
+        session: z
+          .string()
+          .optional()
+          .describe('A session id from list_log_sessions; omit for the current run.'),
+        severities: z
+          .array(z.enum(['trace', 'debug', 'info', 'warning', 'error']))
+          .optional()
+          .describe('Only these severities; omit for all of them.'),
+        text: z
+          .string()
+          .optional()
+          .describe('Only records whose message or source contains this, ignoring case.'),
+        since: z.string().optional().describe('Only records at or after this ISO-8601 time.'),
+        until: z.string().optional().describe('Only records at or before this ISO-8601 time.'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(300)
+          .optional()
+          .describe('How many records to return, at most 300; 100 when omitted.'),
+      }),
+      execute: (args: {
+        session?: string;
+        severities?: string[];
+        text?: string;
+        since?: string;
+        until?: string;
+        limit?: number;
+      }): Promise<string> => queryLogs(context, args),
+    }),
+    [READ_SYSTEM_METRICS]: tool({
+      description:
+        'Summarise the recent CPU, memory, GPU, network and disk readings: the latest, and the low, average and high over the sampled window.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readSystemMetrics(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [SET_LOG_LEVEL]: tool({
+      description:
+        "Change how much the app logs. 'auto' is the default; 'trace' and 'debug' write far more and should be set back afterwards.",
+      inputSchema: z.object({
+        level: z
+          .enum(['auto', 'trace', 'debug', 'info', 'warning', 'error'])
+          .describe('The least severe records to keep.'),
+      }),
+      execute: gated(context, SET_LOG_LEVEL, (args: { level: string }): Promise<string> =>
+        setLogLevel(context, args.level),
+      ),
+    }),
+  };
+}
+
+/**
  * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
  * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
  * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
@@ -1100,12 +1193,23 @@ export function promptForSurface(
         return PROJECT_PROMPT_APPENDIX;
       case 'editor':
         return STUDIO_PROMPT_APPENDIX;
+      case 'monitor':
+        return MONITOR_PROMPT_APPENDIX;
     }
   })();
   // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
   // instruction to ask rather than guess still applies, but naming a Studio tool it was not given
   // would point the model at something absent from its list.
   const withAsk: string = `${base}\n\n${options.nativeAsk === true ? CLARIFYING_QUESTION_APPENDIX : ASK_USER_PROMPT_APPENDIX}`;
+  // A tool view's agent holds its view's tools and nothing of Studio's at large (#964), so it is told
+  // about nothing else: no workbench, no run configurations, no hosting. Describing tools it was not
+  // given would only invite it to reach for them.
+  if (isToolViewSurface(surface)) {
+    const scoped: string =
+      context.mode === 'chat' ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
+    const listed: string = skillsAppendix(context);
+    return withSystemPromptExtra(listed.length === 0 ? scoped : `${scoped}\n\n${listed}`, context);
+  }
   const studio: string = ((): string => {
     // The workbench tools are registered on every surface, so every surface is told about them —
     // except in chat mode, where they are withheld and describing them would only invite a refusal.
@@ -1183,6 +1287,15 @@ export async function createProjectTools(context: AgentRunContext): Promise<Tool
  */
 export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
   const askUserTool: ToolSet = await createAskUserTool(context);
+  // A tool view's agent is kept to its view (#964): its own tools, the clarifying question and the
+  // skills — none of the workbench, run-configuration or hosting tools every other surface carries.
+  if (isToolViewSurface(context.surface)) {
+    return {
+      ...askUserTool,
+      ...(await createSkillTools(context)),
+      ...(await createToolViewTools(context)),
+    };
+  }
   // The workbench tools ride on every surface — see createWorkbenchTools.
   const workbenchTools: ToolSet = await createWorkbenchTools(context);
   // The run-configuration tools ride on the workspace-scoped surfaces only, and decide that for
@@ -1209,6 +1322,8 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createProjectTools(context);
       case 'editor':
         return createStudioTools(context);
+      case 'monitor':
+        return createToolViewTools(context);
     }
   })();
   return {
@@ -1219,4 +1334,18 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     ...hostingTools,
     ...surfaceTools,
   };
+}
+
+/**
+ * Builds a tool view's own tools (#964), by its surface. Empty for any other surface.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+async function createToolViewTools(context: AgentRunContext): Promise<ToolSet> {
+  switch (context.surface) {
+    case 'monitor':
+      return createMonitorTools(context);
+    default:
+      return {};
+  }
 }
