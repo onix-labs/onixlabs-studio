@@ -185,6 +185,18 @@ describe('SystemMonitorView', () => {
     expect(view.filtered()).toHaveLength(2);
   });
 
+  it('layout_stacksTheGraphsInAFixedSidePanel_besideTheLogs', async () => {
+    // #951. The graphs are glanced at; the logs are worked in, so they fill the view.
+    await create([record({ id: 1 })]);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const panel: HTMLElement | null = host.querySelector('app-panel');
+
+    expect(panel?.getAttribute('data-edge')).toBe('left');
+    expect(panel?.querySelectorAll('app-metric-tile')).toHaveLength(5);
+    expect(host.querySelector('.system-monitor__main app-table')).not.toBeNull();
+    expect(panel?.querySelector('app-table')).toBeNull();
+  });
+
   it('severity_isAChip_tonedByHowSevereItIs', async () => {
     await create([
       record({ id: 1, severity: 'trace' }),

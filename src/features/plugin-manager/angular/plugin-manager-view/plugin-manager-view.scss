@@ -47,12 +47,11 @@
   font-size: 0.8125rem;
 }
 
-// The one list fills the rest of the view, inset from its edges, and scrolls inside with its column
-// header in view.
+// The one list fills the rest of the view edge to edge, as the System Monitor's log does, and scrolls
+// inside with its column header in view.
 .plugin-manager__table {
   flex: 1 1 auto;
   min-block-size: 0;
-  margin: 0.25rem 1rem 1rem;
 }
 
 // ---------------------------------------------------------------------------------------------

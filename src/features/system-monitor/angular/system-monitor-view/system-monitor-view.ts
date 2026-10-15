@@ -18,6 +18,9 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
 import {
   createViewInjectorRegistrar,
@@ -115,12 +118,28 @@ const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
  */
 @Component({
   selector: 'app-system-monitor-view',
-  imports: [Chip, Button, ButtonRow, Dropdown, TextField, Table, TableRowDef, MetricTile],
+  imports: [
+    Chip,
+    Button,
+    ButtonRow,
+    Dropdown,
+    TextField,
+    Table,
+    TableRowDef,
+    MetricTile,
+    Panel,
+    PanelLayout,
+  ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SystemMonitorView implements OnInit {
+  /**
+   * Gets the edges the resources panel may sit on: only its own, since it is part of the view.
+   */
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+
   /**
    * Gets the severities in display order, exposed for the filter chips.
    */
