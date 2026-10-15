@@ -6,6 +6,7 @@ import {
   readPromptScope,
   scopeMatches,
   scopeSpecificity,
+  skillScopeMatches,
   sortByScope,
 } from './ai-prompt-scope';
 import { AGENT_SURFACES } from './ai-tool-surface';
@@ -66,6 +67,29 @@ describe('scopeMatches', () => {
     const scope: PromptScope = { surfaces: ['terminal'], languages: ['shell'] };
 
     expect(scopeMatches(scope, 'terminal', 'shell')).toBe(false);
+  });
+});
+
+describe('skillScopeMatches', () => {
+  // #962. A skill's languages narrow the editor only; elsewhere they are tags with no say.
+  const typescript: PromptScope = { surfaces: [], languages: ['typescript'] };
+
+  it('skillScopeMatches_inTheEditor_offersItOnlyForItsLanguages', () => {
+    expect(skillScopeMatches(typescript, 'editor', 'typescript')).toBe(true);
+    expect(skillScopeMatches(typescript, 'editor', 'python')).toBe(false);
+    expect(skillScopeMatches(typescript, 'editor', null)).toBe(false);
+  });
+
+  it('skillScopeMatches_elsewhere_ignoresItsLanguages', () => {
+    expect(skillScopeMatches(typescript, 'project', null)).toBe(true);
+    expect(skillScopeMatches(typescript, 'terminal', 'shell')).toBe(true);
+  });
+
+  it('skillScopeMatches_stillHonoursItsSurfaces', () => {
+    const scope: PromptScope = { surfaces: ['editor'], languages: ['typescript'] };
+
+    expect(skillScopeMatches(scope, 'project', null)).toBe(false);
+    expect(skillScopeMatches(GLOBAL_SCOPE, 'binary', null)).toBe(true);
   });
 });
 

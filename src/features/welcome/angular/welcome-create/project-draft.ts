@@ -27,12 +27,12 @@ import {
   ProjectOptionChoice,
   ProjectTemplate,
 } from './project-templates';
-import { Technology, TECHNOLOGY_CATALOGUE } from './technology/technology-catalogue';
+import { Technology, TECHNOLOGY_CATALOGUE } from '@shared/api/technology/technology-catalogue';
 import {
   TECHNOLOGY_CATEGORIES,
   TECHNOLOGY_CATEGORY_LABELS,
   TechnologyCategory,
-} from './technology/technology-category';
+} from '@shared/api/technology/technology-category';
 
 /**
  * Names a step of the New Project wizard, in order.
@@ -57,6 +57,15 @@ export type {
   ProjectRepository,
 } from '@shared/angular/services/new-project/project-destination';
 export { describeRepository } from '@shared/angular/services/new-project/project-destination';
+
+/**
+ * Gets what a skill is tagged with (#962): its languages, which double as tags, and its technologies.
+ * @param skill The skill.
+ * @returns Returns the ids.
+ */
+function tagsOf(skill: Skill): readonly string[] {
+  return [...skill.scope.languages, ...skill.technologies];
+}
 
 /**
  * Holds the New Project wizard's draft (#806): everything the user has told it, which step they are
@@ -253,6 +262,33 @@ export class ProjectDraft {
   public readonly availableSkills: Signal<readonly Skill[]> = computed((): readonly Skill[] =>
     this.skillLibrary.skills().filter((skill: Skill): boolean => skill.problem === null),
   );
+
+  /**
+   * Gets the skills suggested for the project (#962): every enabled one tagged with a language or a
+   * technology the user picked. Suggesting is all it does; nothing is chosen until the user chooses it.
+   */
+  public readonly suggestedSkills: Signal<readonly Skill[]> = computed((): readonly Skill[] => {
+    const picked: ReadonlySet<string> = this.technologies();
+    return this.availableSkills().filter(
+      (skill: Skill): boolean =>
+        skill.enabled && tagsOf(skill).some((id: string): boolean => picked.has(id)),
+    );
+  });
+
+  /**
+   * Gets the names of the picked technologies a skill is tagged with, which is why it is suggested.
+   * @param skill The skill.
+   * @returns Returns the names, in catalogue order.
+   */
+  public matchedTechnologies(skill: Skill): readonly string[] {
+    const picked: ReadonlySet<string> = this.technologies();
+    return this.catalogue()
+      .filter(
+        (technology: Technology): boolean =>
+          picked.has(technology.id) && tagsOf(skill).includes(technology.id),
+      )
+      .map((technology: Technology): string => technology.name);
+  }
 
   /**
    * Holds why the last skill import failed, or null.

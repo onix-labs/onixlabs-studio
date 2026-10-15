@@ -73,7 +73,31 @@
           />
         </app-setting-row>
 
-        <app-prompt-scope-editor [scope]="row.draft.scope" (scopeChange)="setScope(row, $event)" />
+        <app-prompt-scope-editor
+          [scope]="row.draft.scope"
+          [showLanguages]="false"
+          (scopeChange)="setScope(row, $event)"
+        />
+
+        <!-- Languages and technologies in one list (#962). A language narrows editor runs to it and
+             leaves the other surfaces alone; Create Something suggests the skill for a project using
+             any of them. -->
+        <app-setting-row
+          label="Languages & technologies"
+          description="In the editor, offered only for these languages. Create Something suggests it for projects using any of these. Leave empty for any."
+        >
+          <app-multi-select
+            class="library__tags"
+            [fullWidth]="true"
+            [searchable]="true"
+            searchPlaceholder="Search languages and technologies…"
+            [options]="tagOptions"
+            [value]="tagsOf(row)"
+            placeholder="Any"
+            ariaLabel="Languages and technologies"
+            (valueChange)="setTags(row, $event)"
+          />
+        </app-setting-row>
 
         <app-setting-row
           label="Enabled"

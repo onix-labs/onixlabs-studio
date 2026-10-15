@@ -37,6 +37,27 @@ export interface MultiSelectItem {
    * Gets a value indicating whether the option is offered but cannot be toggled.
    */
   readonly disabled?: boolean;
+
+  /**
+   * Gets an optional heading the option sits beneath. Consecutive options sharing a group are shown
+   * as one run under it, as the {@link Dropdown}'s are; an ungrouped list renders as it always has.
+   */
+  readonly group?: string;
+}
+
+/**
+ * A run of consecutive options sharing a heading.
+ */
+interface MultiSelectGroup {
+  /**
+   * Gets the heading, or undefined for options without one.
+   */
+  readonly label: string | undefined;
+
+  /**
+   * Gets the options, in display order.
+   */
+  readonly options: readonly MultiSelectItem[];
 }
 
 /**
@@ -103,6 +124,56 @@ export class MultiSelect {
   public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the panel opens with a search field that narrows the options by
+   * label or heading, for a list too long to scan.
+   */
+  public readonly searchable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the search field's placeholder.
+   */
+  public readonly searchPlaceholder: InputSignal<string> = input<string>('Search…');
+
+  /**
+   * Holds the panel's search field, while the panel is open and searchable.
+   */
+  private readonly search: Signal<ElementRef<HTMLInputElement> | undefined> =
+    viewChild<ElementRef<HTMLInputElement>>('search');
+
+  /**
+   * Holds the search text, cleared each time the panel opens.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the options shown, folded into runs under their headings. A search keeps the options whose
+   * label or heading contains it.
+   */
+  protected readonly groups: Signal<readonly MultiSelectGroup[]> = computed(
+    (): readonly MultiSelectGroup[] => {
+      const needle: string = this.query().trim().toLowerCase();
+      const groups: { label: string | undefined; options: MultiSelectItem[] }[] = [];
+      for (const option of this.options()) {
+        if (
+          needle.length > 0 &&
+          !option.label.toLowerCase().includes(needle) &&
+          !(option.group ?? '').toLowerCase().includes(needle)
+        ) {
+          continue;
+        }
+        const current: { label: string | undefined; options: MultiSelectItem[] } | undefined =
+          groups.at(-1);
+        if (current === undefined || current.label !== option.group) {
+          groups.push({ label: option.group, options: [option] });
+        } else {
+          current.options.push(option);
+        }
+      }
+      return groups;
+    },
+  );
+
+  /**
    * Holds the face button, measured when the panel opens so the panel is never narrower than it.
    */
   private readonly face: Signal<ElementRef<HTMLButtonElement>> =
@@ -157,7 +228,40 @@ export class MultiSelect {
    */
   protected onOpened(): void {
     this.faceWidth.set(this.face().nativeElement.offsetWidth);
+    this.query.set('');
     this.open.set(true);
+    // The menu focuses its first row as it opens; a searchable panel takes focus into its field
+    // instead, once that has settled, so typing searches straight away.
+    if (this.searchable()) {
+      setTimeout((): void => this.search()?.nativeElement.focus());
+    }
+  }
+
+  /**
+   * Updates the search from the field.
+   * @param event The input event carrying the current value.
+   */
+  protected onSearchInput(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Keeps the field's keystrokes from the menu, whose type-ahead would otherwise take a letter typed
+   * into the field as a jump to a row. Escape still closes the panel, and Down moves into the rows.
+   * @param event The key event.
+   */
+  protected onSearchKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      return;
+    }
+    event.stopPropagation();
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.search()
+        ?.nativeElement.closest('.multi-select__panel')
+        ?.querySelector<HTMLButtonElement>('.multi-select__option:not([aria-disabled="true"])')
+        ?.focus();
+    }
   }
 
   /**

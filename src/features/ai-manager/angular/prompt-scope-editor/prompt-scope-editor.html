@@ -11,18 +11,20 @@
   />
 </app-setting-row>
 
-<app-setting-row
-  label="Languages"
-  description="Narrows editor runs to these languages. Leave empty for every language; the other surfaces have none."
->
-  <app-multi-select
-    class="prompt-scope-editor__control"
-    [fullWidth]="true"
-    [options]="languageOptions"
-    [value]="scope().languages"
-    [disabled]="disabled()"
-    placeholder="Every language"
-    ariaLabel="Languages this applies to"
-    (valueChange)="onLanguages($event)"
-  />
-</app-setting-row>
+@if (showLanguages()) {
+  <app-setting-row
+    label="Languages"
+    description="Narrows editor runs to these languages. Leave empty for every language; the other surfaces have none."
+  >
+    <app-multi-select
+      class="prompt-scope-editor__control"
+      [fullWidth]="true"
+      [options]="languageOptions"
+      [value]="scope().languages"
+      [disabled]="disabled()"
+      placeholder="Every language"
+      ariaLabel="Languages this applies to"
+      (valueChange)="onLanguages($event)"
+    />
+  </app-setting-row>
+}

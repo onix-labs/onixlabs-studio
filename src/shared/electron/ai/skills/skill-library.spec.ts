@@ -74,6 +74,7 @@ describe('SkillLibrary', () => {
       name: 'Commit-Message',
       description: 'How to write a commit.',
       scope: { surfaces: ['project'], languages: [] },
+      technologies: [],
       enabled: true,
       body: 'Subject, blank, body.',
     });
@@ -92,6 +93,7 @@ describe('SkillLibrary', () => {
       previousName: 'old',
       description: 'd',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: true,
       body: 'body',
     });
@@ -110,6 +112,7 @@ describe('SkillLibrary', () => {
       previousName: 'a',
       description: 'd',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: true,
       body: '',
     });
@@ -125,6 +128,7 @@ describe('SkillLibrary', () => {
       name: 'a',
       description: 'changed',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: false,
       body: 'body',
     });
@@ -140,6 +144,7 @@ describe('SkillLibrary', () => {
       name: '../escape',
       description: 'd',
       scope: { surfaces: [], languages: [] },
+      technologies: [],
       enabled: true,
       body: '',
     });

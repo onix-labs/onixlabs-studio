@@ -234,6 +234,22 @@
   color: var(--wl-muted);
 }
 
+// Why a suggested skill is suggested: the project's technologies it is tagged with (#962).
+.step__row-match {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--accent-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// Heads the Skills step's two lists when some skills are suggested (#962).
+.step__list-heading {
+  @include section-title;
+
+  margin: 0;
+}
+
 .step__row-mark {
   flex: none;
 }

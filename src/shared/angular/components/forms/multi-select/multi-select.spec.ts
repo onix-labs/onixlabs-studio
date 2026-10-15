@@ -139,4 +139,50 @@ describe('MultiSelect', () => {
     expect(rows()).toHaveLength(0);
     expect(face().classList.contains('multi-select--open')).toBe(false);
   });
+
+  it('groups_whenOptionsCarryHeadings_showsEachRunUnderItsHeading', () => {
+    fixture.componentRef.setInput('options', [
+      { value: 'typescript', label: 'TypeScript', group: 'Languages' },
+      { value: 'python', label: 'Python', group: 'Languages' },
+      { value: 'angular', label: 'Angular', group: 'Frontend' },
+    ]);
+    open();
+
+    expect(
+      Array.from(document.querySelectorAll('.multi-select__heading')).map((heading) =>
+        heading.textContent?.trim(),
+      ),
+    ).toEqual(['Languages', 'Frontend']);
+    expect(rows()).toHaveLength(3);
+  });
+
+  it('search_whenSearchable_narrowsTheRowsByLabelOrHeading', () => {
+    fixture.componentRef.setInput('options', [
+      { value: 'typescript', label: 'TypeScript', group: 'Languages' },
+      { value: 'angular', label: 'Angular', group: 'Frontend' },
+      { value: 'react', label: 'React', group: 'Frontend' },
+    ]);
+    fixture.componentRef.setInput('searchable', true);
+    open();
+    const field: HTMLInputElement | null = document.querySelector<HTMLInputElement>(
+      '.multi-select__search input',
+    );
+    expect(field).not.toBeNull();
+
+    field!.value = 'ular';
+    field!.dispatchEvent(new Event('input'));
+    TestBed.tick();
+    expect(rows().map((row) => row.textContent?.trim())).toEqual(['Angular']);
+
+    field!.value = 'frontend';
+    field!.dispatchEvent(new Event('input'));
+    TestBed.tick();
+    expect(rows().map((row) => row.textContent?.trim())).toEqual(['Angular', 'React']);
+
+    field!.value = 'zzz';
+    field!.dispatchEvent(new Event('input'));
+    TestBed.tick();
+    expect(rows()).toHaveLength(0);
+    expect(document.querySelector('.multi-select__empty')?.textContent).toContain('Nothing');
+  });
 });

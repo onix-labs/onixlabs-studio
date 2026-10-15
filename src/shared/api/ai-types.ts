@@ -61,6 +61,7 @@ export {
   normalizeLanguage,
   readPromptScope,
   scopeMatches,
+  skillScopeMatches,
   scopeSpecificity,
   sortByScope,
 } from './ai/ai-prompt-scope';

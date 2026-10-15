@@ -29,6 +29,17 @@ describe('parseSkillFile', () => {
     expect(parsed.body).toBe('# Style\n\nPrefer explicit types.\n');
   });
 
+  it('parseSkillFile_readsTechnologies_lowerCasedAndUnique_orNoneWhenAbsent', () => {
+    const tagged: ParsedSkillFile = parseSkillFile(
+      '---\nname: a\ndescription: d\ntechnologies: [angular, TypeScript, typescript]\n---\nbody',
+    );
+    const untagged: ParsedSkillFile = parseSkillFile('---\nname: a\ndescription: d\n---\nbody');
+
+    expect(tagged.technologies).toEqual(['angular', 'typescript']);
+    expect(tagged.foreignLines).toEqual([]);
+    expect(untagged.technologies).toEqual([]);
+  });
+
   it('parseSkillFile_whenInlineLists_readsThem', () => {
     const parsed: ParsedSkillFile = parseSkillFile(
       "---\nname: a\ndescription: 'quoted'\nsurfaces: [terminal, binary]\n---\nbody",
@@ -83,6 +94,7 @@ describe('serializeSkillFile', () => {
       name: 'commit-message',
       description: 'How to write: a commit # message',
       scope: { surfaces: ['editor', 'project'], languages: [] },
+      technologies: ['angular', 'typescript'],
       enabled: true,
       body: 'Subject line, blank line, body.\n\n\n',
       foreignLines: ['model: opus'],
@@ -93,6 +105,7 @@ describe('serializeSkillFile', () => {
     expect(parsed.name).toBe('commit-message');
     expect(parsed.description).toBe('How to write: a commit # message');
     expect(parsed.scope).toEqual({ surfaces: ['editor', 'project'], languages: [] });
+    expect(parsed.technologies).toEqual(['angular', 'typescript']);
     expect(parsed.enabled).toBe(true);
     expect(parsed.body).toBe('Subject line, blank line, body.\n');
     expect(parsed.foreignLines).toEqual(['model: opus']);

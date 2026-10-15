@@ -9,8 +9,8 @@ import type { PromptScope } from './ai/ai-prompt-scope';
 //
 // 🔑 The on-disk format is the one the Claude Agent SDK discovers natively (`SKILL.md` with `name` and
 // `description` in the frontmatter), so a skill authored here is portable to any tool that reads that
-// layout, and one written elsewhere can be dropped into the library. Studio's own keys — the scope and
-// the enabled flag — sit beside those two in the same frontmatter, where a reader that does not know
+// layout, and one written elsewhere can be dropped into the library. Studio's own keys — the scope, the
+// technologies and the enabled flag — sit beside those two in the same frontmatter, where a reader that does not know
 // them ignores them.
 
 /**
@@ -86,6 +86,13 @@ export interface Skill {
   readonly scope: PromptScope;
 
   /**
+   * Gets the technologies the skill is about, by technology-catalogue id, or empty when it is about
+   * none in particular. They never decide what an agent is offered; Create Something uses them to
+   * suggest the skill for a project built on any of them.
+   */
+  readonly technologies: readonly string[];
+
+  /**
    * Gets whether the skill is offered to agents at all. A disabled skill stays on disk and in the
    * library view, and is simply never listed to a model.
    */
@@ -138,6 +145,11 @@ export interface SkillDraft {
    * Gets where the skill applies.
    */
   readonly scope: PromptScope;
+
+  /**
+   * Gets the technologies the skill is about, by technology-catalogue id.
+   */
+  readonly technologies: readonly string[];
 
   /**
    * Gets whether the skill is offered to agents.
@@ -207,4 +219,21 @@ export interface SkillClient {
    * @returns Returns the outcome, or null when the dialog was cancelled.
    */
   import(): Promise<SkillSaveResult | null>;
+}
+
+/**
+ * Reads a skill's technologies out of untrusted data: trimmed, lower-cased, non-empty and unique.
+ * Anything that is not a list reads as none.
+ * @param value The value to read.
+ * @returns Returns the technology ids.
+ */
+export function readSkillTechnologies(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ids: string[] = value
+    .filter((entry: unknown): entry is string => typeof entry === 'string')
+    .map((entry: string): string => entry.trim().toLowerCase())
+    .filter((entry: string): boolean => entry.length > 0);
+  return [...new Set(ids)];
 }

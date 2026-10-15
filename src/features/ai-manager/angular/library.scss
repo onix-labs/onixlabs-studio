@@ -112,6 +112,11 @@
   color: var(--settings-muted-foreground-color);
 }
 
+// A skill's languages and technologies (#962): the same width as the scope pickers above it.
+.library__tags {
+  inline-size: var(--library-control-width, auto);
+}
+
 .library__files {
   margin: 0;
   padding-inline-start: 1.25rem;
