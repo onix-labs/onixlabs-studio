@@ -59,7 +59,7 @@ export enum AgentConversationChannel {
  * set is open-ended by design so new specialized agents can be added without fragmenting history.
  */
 export type AgentConversationAgentType =
-  'agent' | 'code' | 'workspace' | 'terminal' | 'review' | 'search' | 'monitor';
+  'agent' | 'code' | 'workspace' | 'terminal' | 'review' | 'search' | 'monitor' | 'models';
 
 /**
  * Identifies the kind of context a conversation is associated with. `global` is the standalone "new

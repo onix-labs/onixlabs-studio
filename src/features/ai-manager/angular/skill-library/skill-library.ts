@@ -10,20 +10,10 @@ import {
 } from '@angular/core';
 import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
-import { Technology, TECHNOLOGY_CATALOGUE } from '@shared/api/technology/technology-catalogue';
-import {
-  TECHNOLOGY_CATEGORIES,
-  TECHNOLOGY_CATEGORY_LABELS,
-  type TechnologyCategory,
-} from '@shared/api/technology/technology-category';
 import {
   MultiSelect,
   MultiSelectItem,
 } from '@shared/angular/components/forms/multi-select/multi-select';
-import {
-  knownLanguages,
-  languageDisplayName,
-} from '@shared/angular/services/plugins/language-names';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -46,59 +36,7 @@ import {
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
-
-/**
- * The languages the editor knows, which narrow a skill's editor runs.
- */
-const EDITOR_LANGUAGES: ReadonlySet<string> = new Set<string>(knownLanguages());
-
-/**
- * The options of a skill's languages and technologies (#962), one list under category headings:
- * Languages first — every editor language and every language the catalogue names, by name — then each
- * of the catalogue's other categories. An editor language is listed only under Languages, so one id is
- * never offered twice.
- */
-export const SKILL_TAG_OPTIONS: readonly MultiSelectItem[] = ((): readonly MultiSelectItem[] => {
-  const byName: (a: MultiSelectItem, b: MultiSelectItem) => number = (
-    a: MultiSelectItem,
-    b: MultiSelectItem,
-  ): number => a.label.localeCompare(b.label);
-  const languages: Map<string, MultiSelectItem> = new Map<string, MultiSelectItem>();
-  for (const id of EDITOR_LANGUAGES) {
-    languages.set(id, { value: id, label: languageDisplayName(id), group: 'Languages' });
-  }
-  for (const technology of TECHNOLOGY_CATALOGUE) {
-    if (technology.category === 'languages') {
-      languages.set(technology.id, {
-        value: technology.id,
-        label: technology.name,
-        group: 'Languages',
-      });
-    }
-  }
-  const rest: MultiSelectItem[] = TECHNOLOGY_CATEGORIES.filter(
-    (category: TechnologyCategory): boolean => category !== 'languages' && category !== 'other',
-  ).flatMap((category: TechnologyCategory): MultiSelectItem[] =>
-    TECHNOLOGY_CATALOGUE.filter(
-      (technology: Technology): boolean =>
-        technology.category === category && !languages.has(technology.id),
-    )
-      .map((technology: Technology): MultiSelectItem => ({
-        value: technology.id,
-        label: technology.name,
-        group: TECHNOLOGY_CATEGORY_LABELS[category],
-      }))
-      .sort(byName),
-  );
-  return [...[...languages.values()].sort(byName), ...rest];
-})();
-
-/**
- * The ids {@link SKILL_TAG_OPTIONS} offers.
- */
-const OFFERED_TAGS: ReadonlySet<string> = new Set<string>(
-  SKILL_TAG_OPTIONS.map((option: MultiSelectItem): string => option.value),
-);
+import { SKILL_TAG_OPTIONS, splitSkillTags } from '../skill-tags/skill-tags';
 
 /**
  * How long after the last edit a skill is saved.
@@ -394,19 +332,14 @@ export class SkillLibrarySection {
    */
   protected setTags(row: SkillRow, ids: readonly string[]): void {
     const latest: SkillRow = this.drafts().get(row.key) ?? row;
-    const unlisted: (id: string) => boolean = (id: string): boolean => !OFFERED_TAGS.has(id);
+    const split: { languages: readonly string[]; technologies: readonly string[] } = splitSkillTags(
+      ids,
+      latest.draft.scope.languages,
+      latest.draft.technologies,
+    );
     this.edit(latest, {
-      scope: {
-        ...latest.draft.scope,
-        languages: [
-          ...ids.filter((id: string): boolean => EDITOR_LANGUAGES.has(id)),
-          ...latest.draft.scope.languages.filter(unlisted),
-        ],
-      },
-      technologies: [
-        ...ids.filter((id: string): boolean => !EDITOR_LANGUAGES.has(id)),
-        ...latest.draft.technologies.filter(unlisted),
-      ],
+      scope: { ...latest.draft.scope, languages: split.languages },
+      technologies: split.technologies,
     });
   }
 

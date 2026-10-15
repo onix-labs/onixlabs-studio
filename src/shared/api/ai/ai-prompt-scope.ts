@@ -36,6 +36,7 @@ export const AGENT_SURFACE_LABELS: Readonly<Record<AgentSurface, string>> = {
   workspace: 'Workspaces',
   project: 'Agent tab',
   monitor: 'System Monitor',
+  models: 'AI Manager',
 };
 
 /**

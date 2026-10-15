@@ -22,6 +22,22 @@ import {
 import { ModelManagerSummary, ModelManagerView } from '../model-manager-view/model-manager-view';
 import { PromptProfilesSection } from '../prompt-profiles/prompt-profiles';
 import { SkillLibrarySection } from '../skill-library/skill-library';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import {
+  toolViewConversationContext,
+  ToolViewAgentPanel,
+} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { AiManagerAgentCapabilities } from '../ai-manager-agent/ai-manager-agent-capabilities';
+import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 
 /**
  * How many entries a library sub-view holds, and how many of them are switched on.
@@ -46,7 +62,22 @@ export interface LibraryCounts {
  */
 @Component({
   selector: 'app-ai-manager-view',
-  imports: [ModelManagerView, PromptProfilesSection, SkillLibrarySection],
+  imports: [
+    ModelManagerView,
+    PromptProfilesSection,
+    SkillLibrarySection,
+    Panel,
+    PanelLayout,
+    ToolViewAgentPanel,
+  ],
+  // The agent and its conversation live on the VIEW, not the docked panel (#967), so a run outlives
+  // the panel being closed and the sub-view being switched.
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'models' },
+    AiManagerAgentCapabilities,
+  ],
   templateUrl: './ai-manager-view.html',
   styleUrl: './ai-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -69,6 +100,31 @@ export class AiManagerView implements OnInit {
   private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
     isActive: this.isActive,
   });
+
+  /**
+   * Registers the view's agent with Mission Control and the requests inbox for the tab's whole life.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'models',
+  });
+
+  /**
+   * Registers the capabilities the agent acts through, for the view's life.
+   */
+  private readonly agentCapabilities: AiManagerAgentCapabilities = inject(
+    AiManagerAgentCapabilities,
+  );
+
+  /**
+   * Holds whether the docked agent is showing, shared with the ribbon.
+   */
+  protected readonly agentPanel: AiManagerAgentPanelState = inject(AiManagerAgentPanelState);
+
+  /**
+   * Gets the context the AI Manager's conversations are filed under.
+   */
+  protected readonly agentContext: ConversationContext = toolViewConversationContext('models');
 
   /**
    * Holds the section state shared with the ribbon and deep links.
@@ -121,6 +177,7 @@ export class AiManagerView implements OnInit {
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.agentHost.register(this.tabId());
   }
 }
 

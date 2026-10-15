@@ -17,6 +17,7 @@ import {
 import { Skills } from '@shared/angular/services/skills/skills';
 import { AiLibraryCommands, AiLibrarySection } from '../ai-library-commands/ai-library-commands';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
+import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 
 /**
  * The contextual ribbon shown while the AI Manager tab is active (#948). Its View group chooses the
@@ -61,6 +62,16 @@ export class AiManagerRibbon {
    * Holds the skill library, which the folder and refresh buttons act on directly.
    */
   private readonly skills: Skills = inject(Skills);
+
+  /**
+   * Holds whether the docked agent is showing (#967).
+   */
+  private readonly agentPanel: AiManagerAgentPanelState = inject(AiManagerAgentPanelState);
+
+  /**
+   * Gets whether the docked agent is showing.
+   */
+  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
 
   /**
    * Gets the sub-view shown.
@@ -190,6 +201,13 @@ export class AiManagerRibbon {
    */
   protected onRefreshSkills(): void {
     void this.skills.reload();
+  }
+
+  /**
+   * Shows or hides the docked agent.
+   */
+  protected onToggleAgent(): void {
+    this.agentPanel.toggle();
   }
 
   /**

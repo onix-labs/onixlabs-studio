@@ -3,7 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
-import { SKILL_TAG_OPTIONS, SkillLibrarySection } from './skill-library';
+import { SKILL_TAG_OPTIONS } from '../skill-tags/skill-tags';
+import { SkillLibrarySection } from './skill-library';
 
 /**
  * Builds a stored skill.

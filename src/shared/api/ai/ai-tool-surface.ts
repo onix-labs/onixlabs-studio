@@ -320,6 +320,71 @@ export const READ_SYSTEM_METRICS: string = 'read_system_metrics';
 export const SET_LOG_LEVEL: string = 'set_log_level';
 
 /**
+ * The AI Manager capability that lists the local model runtime, its installed and running models and their disk use (#967).
+ */
+export const LIST_LOCAL_MODELS: string = 'list_local_models';
+
+/**
+ * The AI Manager capability that searches the model catalogue (#967).
+ */
+export const SEARCH_MODEL_CATALOG: string = 'search_model_catalog';
+
+/**
+ * The AI Manager capability that reports what the machine can run: its memory, processor and architecture (#967).
+ */
+export const READ_MACHINE_FACTS: string = 'read_machine_facts';
+
+/**
+ * The AI Manager capability that starts downloading a model. Gated: a model can run to gigabytes (#967).
+ */
+export const DOWNLOAD_MODEL: string = 'download_model';
+
+/**
+ * The AI Manager capability that deletes an installed model's weights. Gated (#967).
+ */
+export const DELETE_MODEL: string = 'delete_model';
+
+/**
+ * The AI Manager capability that lists the prompt profiles (#967).
+ */
+export const LIST_PROMPT_PROFILES: string = 'list_prompt_profiles';
+
+/**
+ * The AI Manager capability that creates or changes a prompt profile (#967).
+ */
+export const SAVE_PROMPT_PROFILE: string = 'save_prompt_profile';
+
+/**
+ * The AI Manager capability that deletes a prompt profile. Gated (#967).
+ */
+export const DELETE_PROMPT_PROFILE: string = 'delete_prompt_profile';
+
+/**
+ * The AI Manager capability that lists the skill library (#967).
+ */
+export const LIST_SKILLS: string = 'list_skills';
+
+/**
+ * The AI Manager capability that reads one skill's instructions (#967).
+ */
+export const READ_SKILL: string = 'read_skill';
+
+/**
+ * The AI Manager capability that lists what a skill may be scoped and tagged with: the surfaces, and the languages and technologies by category (#967).
+ */
+export const LIST_SKILL_TAGS: string = 'list_skill_tags';
+
+/**
+ * The AI Manager capability that creates or changes a skill (#967).
+ */
+export const SAVE_SKILL: string = 'save_skill';
+
+/**
+ * The AI Manager capability that deletes a skill. Gated (#967).
+ */
+export const DELETE_SKILL: string = 'delete_skill';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -331,10 +396,10 @@ export type OpenDocumentFormat = 'markdown' | 'code';
  * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
  * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
  * owning document and works through the provider's built-in tools alone), or one of the tool views
- * (`monitor` — the System Monitor, #964). It selects the tool set the providers expose for the run.
+ * (`monitor` — the System Monitor; `models` — the AI Manager, #964). It selects the tool set the providers expose for the run.
  */
 export type AgentSurface =
-  'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project' | 'monitor';
+  'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project' | 'monitor' | 'models';
 
 /**
  * Every surface, in the order they are presented to a user choosing among them. The one list the
@@ -349,6 +414,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'workspace',
   'project',
   'monitor',
+  'models',
 ];
 
 /**
@@ -356,7 +422,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
  * its view's own tools, the clarifying question and the skills, and nothing else — no workbench, file,
  * terminal, run-configuration or hosting tools — so it cannot drift into work the view is not for.
  */
-export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor'];
+export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor', 'models'];
 
 /**
  * Determines whether a surface belongs to a tool view.
