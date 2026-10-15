@@ -1,5 +1,9 @@
 <div class="table-scroll">
-  <table class="table" [style]="alignStyles()">
+  <table
+    class="table"
+    [class.table--comfortable]="rowSize() === 'comfortable'"
+    [style]="alignStyles()"
+  >
     <colgroup>
       @for (column of columns(); track column.id) {
         <col [style.width]="column.width ?? null" />

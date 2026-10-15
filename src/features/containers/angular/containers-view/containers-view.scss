@@ -1,22 +1,51 @@
-// The Containers view fills its tab: a panel layout with the list in the main area and the logs/shell
-// terminals docked below. It is a lean dashboard over the container engine: two sections (containers,
-// then images) of simple rows.
+// The Containers view fills its tab (#952): a side panel choosing Containers or Images, the chosen
+// list filling the main area as one table, and the logs/shell terminals in a titled panel below.
 :host {
   display: block;
   block-size: 100%;
 }
 
-// The main area (list) scrolls within itself; the terminal panel is a separate docked region.
+// The main area holds the one table, edge to edge, its header in view while its rows scroll; or the
+// engine's empty state.
 .containers-main {
-  block-size: 100%;
-  overflow: auto;
-}
-
-.containers {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 1rem 1.25rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// The heading over the list: what it is, and one sentence about it, as the other tools have.
+.containers__header {
+  flex: none;
+  padding: 0.75rem 1rem 0.5rem;
+}
+
+.containers__title {
+  // The shared `.section-label` sets the type; only the spacing is ours.
+  margin: 0;
+}
+
+.containers__subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+}
+
+.containers__table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The side panel's running-only switch, under the search: a label with its switch at the end.
+.containers__running-only {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
 }
 
 // The docked logs/shell terminals: a tab strip over the active pane.
@@ -93,70 +122,9 @@
   }
 }
 
-.containers__section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.containers__header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.containers__title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.containers__none {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--form-muted-foreground-color);
-}
-
-.containers__list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.containers__row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier, 1));
-  cursor: pointer;
-  transition: background-color var(--hover-transition, 0.12s ease);
-
-  &:hover {
-    background-color: var(--accent-surface-background-color);
-  }
-
-  &--selected {
-    background-color: var(--accent-surface-background-color);
-    box-shadow: inset 0 0 0 1px var(--accent-color);
-  }
-
-  &--static {
-    cursor: default;
-
-    &:hover {
-      background-color: transparent;
-    }
-  }
-}
-
 // A small dot that reads container state at a glance: muted when stopped, green when running.
 .containers__state {
-  flex: 0 0 auto;
+  display: inline-block;
   inline-size: 0.55rem;
   block-size: 0.55rem;
   border-radius: 50%;
@@ -167,15 +135,7 @@
   }
 }
 
-.containers__image-icon {
-  flex: 0 0 auto;
-  color: var(--form-muted-foreground-color);
-}
-
 .containers__name {
-  flex: 0 0 auto;
-  min-inline-size: 10rem;
-  font-size: 0.85rem;
   font-weight: 500;
   color: var(--body-foreground-color);
   overflow: hidden;
@@ -183,27 +143,40 @@
   white-space: nowrap;
 }
 
-.containers__image {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  font-size: 0.8rem;
+// A container's image, as a link to it in the Images list.
+.containers__image-link {
+  max-inline-size: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: none;
+  color: var(--accent-color);
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.containers__muted {
   color: var(--form-muted-foreground-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.containers__status {
-  flex: 0 0 auto;
-  font-size: 0.8rem;
-  color: var(--form-muted-foreground-color);
+.containers__numeric {
+  font-variant-numeric: tabular-nums;
 }
 
+// The row's actions, at the end of the row: start or stop, the ⋮ menu, and remove.
 .containers__actions {
-  flex: 0 0 auto;
-  display: flex;
+  display: inline-flex;
   gap: 0.15rem;
-  margin-inline-start: auto;
 }
 
 // The daemon-absent / loading placeholder, centred in the tab.

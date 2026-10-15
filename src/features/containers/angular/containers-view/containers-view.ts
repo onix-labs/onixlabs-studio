@@ -14,7 +14,13 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
@@ -65,6 +71,53 @@ export interface ContainersSummary {
 }
 
 /**
+ * The kinds of thing the side panel chooses between.
+ */
+export type ContainersKind = 'containers' | 'images';
+
+/**
+ * An image as the Images table lists it: the image, and how many containers run it.
+ */
+export interface ImageEntry {
+  /**
+   * Gets the image.
+   */
+  readonly image: ImageSummary;
+
+  /**
+   * Gets how many containers run the image.
+   */
+  readonly usedBy: number;
+}
+
+/**
+ * The Containers table's columns: the state dot, the name, the image it runs, the engine's status
+ * text, and the row's actions.
+ */
+const CONTAINER_COLUMNS: readonly TableColumn[] = [
+  { id: 'state', header: '', width: '2.25rem' },
+  { id: 'name', header: 'Name' },
+  { id: 'image', header: 'Image' },
+  { id: 'status', header: 'Status', width: '14rem' },
+  { id: 'actions', header: '', width: '7.5rem', align: 'end' },
+];
+
+/**
+ * The Images table's columns.
+ */
+const IMAGE_COLUMNS: readonly TableColumn[] = [
+  { id: 'tag', header: 'Image' },
+  { id: 'size', header: 'Size', width: '8rem', align: 'end' },
+  { id: 'used', header: 'Containers', width: '8rem', align: 'end' },
+];
+
+/**
+ * The row menu's actions.
+ */
+const MENU_LOGS: string = 'logs';
+const MENU_SHELL: string = 'shell';
+
+/**
  * The Containers tab: a thin dashboard over the containers backend contribution (#391). It lists
  * containers and images, starts/stops/removes a container, and stays live via the backend's event
  * push — so a `docker start` from the CLI reflects here without polling. When the engine is
@@ -76,7 +129,22 @@ export interface ContainersSummary {
  */
 @Component({
   selector: 'app-containers-view',
-  imports: [Button, ButtonRow, AppIcon, PanelLayout, Panel, Terminal, TooltipTrigger],
+  imports: [
+    Button,
+    ButtonRow,
+    AppIcon,
+    CategoryList,
+    CdkMenuTrigger,
+    Menu,
+    PanelLayout,
+    Panel,
+    Table,
+    TableRowDef,
+    Terminal,
+    Toggle,
+    ToolPanel,
+    TooltipTrigger,
+  ],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
   providers: [ContainerTerminals],
@@ -136,6 +204,52 @@ export class ContainersView implements OnInit, OnDestroy {
   protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
 
   /**
+   * Gets the edges the side panel may sit on: only its own, since it is part of the view.
+   */
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+
+  /**
+   * Gets the Containers table's columns.
+   */
+  protected readonly containerColumns: readonly TableColumn[] = CONTAINER_COLUMNS;
+
+  /**
+   * Gets the Images table's columns.
+   */
+  protected readonly imageColumns: readonly TableColumn[] = IMAGE_COLUMNS;
+
+  /**
+   * Holds the kind the side panel has chosen. Containers are shown to begin with.
+   */
+  protected readonly kind: WritableSignal<ContainersKind> = signal<ContainersKind>('containers');
+
+  /**
+   * Holds the side panel's search text, which narrows whichever list is shown.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether only running containers are listed.
+   */
+  protected readonly runningOnly: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the image selected in the Images list, such as the one a container's image link showed.
+   */
+  protected readonly selectedImageId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the container whose ⋮ button opened the shared row menu.
+   */
+  protected readonly menuTarget: WritableSignal<ContainerSummary | null> =
+    signal<ContainerSummary | null>(null);
+
+  /**
+   * Holds whether the user closed the Terminals panel. Opening another session shows it again.
+   */
+  protected readonly terminalsHidden: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds whether the daemon is reachable: null while first loading, then true/false.
    */
   protected readonly available: WritableSignal<boolean | null> = signal<boolean | null>(null);
@@ -163,6 +277,130 @@ export class ContainersView implements OnInit, OnDestroy {
    * Holds whether an action is in flight, so the controls disable until it settles.
    */
   protected readonly busy: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the side panel's entries: Containers and Images, each with how many the engine holds.
+   */
+  protected readonly kindItems: Signal<readonly CategoryItem[]> = computed(
+    (): readonly CategoryItem[] => [
+      {
+        id: 'containers',
+        label: 'Containers',
+        icon: Icon.CONTAINERS,
+        count: this.containers().length,
+      },
+      {
+        id: 'images',
+        label: 'Images',
+        icon: Icon.CONTAINER_IMAGES,
+        count: this.images().length,
+      },
+    ],
+  );
+
+  /**
+   * Gets the Containers table's rows: the containers the running-only switch and the search leave.
+   */
+  protected readonly containerRows: Signal<readonly TableRow[]> = computed(
+    (): readonly TableRow[] => {
+      const text: string = this.query().trim().toLowerCase();
+      return this.containers()
+        .filter(
+          (container: ContainerSummary): boolean =>
+            (!this.runningOnly() || this.isRunning(container)) &&
+            (text.length === 0 ||
+              this.displayName(container).toLowerCase().includes(text) ||
+              container.image.toLowerCase().includes(text)),
+        )
+        .map((container: ContainerSummary): TableRow => ({ id: container.id, data: container }));
+    },
+  );
+
+  /**
+   * Gets the Images table's rows: the images the search leaves, each with how many containers run it.
+   */
+  protected readonly imageRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const text: string = this.query().trim().toLowerCase();
+    return this.images()
+      .filter(
+        (image: ImageSummary): boolean =>
+          text.length === 0 || this.displayTag(image).toLowerCase().includes(text),
+      )
+      .map((image: ImageSummary): TableRow => ({
+        id: image.id,
+        data: {
+          image,
+          usedBy: this.containers().filter((container: ContainerSummary): boolean =>
+            runsImage(container, image),
+          ).length,
+        } satisfies ImageEntry,
+      }));
+  });
+
+  /**
+   * Gets the heading, which names the list shown.
+   */
+  protected readonly heading: Signal<string> = computed((): string =>
+    this.kind() === 'containers' ? 'Containers' : 'Images',
+  );
+
+  /**
+   * Gets the sentence under the heading: how many containers there are and how many run, or how many
+   * images there are and the disk they take.
+   */
+  protected readonly subtitle: Signal<string> = computed((): string => {
+    if (this.kind() === 'containers') {
+      const total: number = this.containers().length;
+      const running: number = this.containers().filter((container: ContainerSummary): boolean =>
+        this.isRunning(container),
+      ).length;
+      return `${total} ${total === 1 ? 'container' : 'containers'}, ${running} running.`;
+    }
+    const total: number = this.images().length;
+    const bytes: number = this.images().reduce(
+      (sum: number, image: ImageSummary): number => sum + image.size,
+      0,
+    );
+    return `${total} ${total === 1 ? 'image' : 'images'}, ${this.formatSize(bytes)} on disk.`;
+  });
+
+  /**
+   * Gets the selected container's row id, as the table takes it.
+   */
+  protected readonly selectedContainerIds: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const id: string | null = this.selectedId();
+      return new Set<string>(id === null ? [] : [id]);
+    },
+  );
+
+  /**
+   * Gets the selected image's row id, as the table takes it.
+   */
+  protected readonly selectedImageIds: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const id: string | null = this.selectedImageId();
+      return new Set<string>(id === null ? [] : [id]);
+    },
+  );
+
+  /**
+   * Gets the row menu's items for the container that opened it: its logs, and a shell while it runs.
+   */
+  protected readonly rowMenuItems: Signal<readonly MenuItem[]> = computed(
+    (): readonly MenuItem[] => {
+      const target: ContainerSummary | null = this.menuTarget();
+      return [
+        { id: MENU_LOGS, label: 'View Logs', icon: Icon.ARTICLE },
+        {
+          id: MENU_SHELL,
+          label: 'Open Shell',
+          icon: Icon.TERMINAL,
+          disabled: target === null || !this.isRunning(target),
+        },
+      ];
+    },
+  );
 
   /**
    * Gets the engine in effect's name as it reads inside a sentence ("Start Podman to…").
@@ -320,6 +558,68 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
+   * Shows a kind chosen in the side panel.
+   * @param kind The kind's id.
+   */
+  protected showKind(kind: string): void {
+    this.kind.set(kind as ContainersKind);
+  }
+
+  /**
+   * Shows a container's image in the Images list, selected.
+   * @param container The container whose image to show.
+   */
+  protected showImage(container: ContainerSummary): void {
+    const image: ImageSummary | undefined = this.images().find((candidate: ImageSummary): boolean =>
+      runsImage(container, candidate),
+    );
+    this.selectedImageId.set(image?.id ?? null);
+    this.query.set('');
+    this.kind.set('images');
+  }
+
+  /**
+   * Reads a Containers table row's container.
+   * @param row The row.
+   * @returns Returns the container.
+   */
+  protected containerOf(row: TableRow): ContainerSummary {
+    return row.data as ContainerSummary;
+  }
+
+  /**
+   * Reads an Images table row's entry.
+   * @param row The row.
+   * @returns Returns the image and how many containers run it.
+   */
+  protected imageOf(row: TableRow): ImageEntry {
+    return row.data as ImageEntry;
+  }
+
+  /**
+   * Hides the Terminals panel, keeping its sessions; the next session opened shows it again.
+   */
+  protected hideTerminals(): void {
+    this.terminalsHidden.set(true);
+  }
+
+  /**
+   * Runs the row menu's choice on the container that opened it.
+   * @param id The chosen item's id.
+   */
+  protected onRowMenu(id: string): void {
+    const target: ContainerSummary | null = this.menuTarget();
+    if (target === null) {
+      return;
+    }
+    if (id === MENU_LOGS) {
+      this.viewLogs(target);
+    } else if (id === MENU_SHELL) {
+      this.openShell(target);
+    }
+  }
+
+  /**
    * Selects a container row.
    * @param id The container id.
    */
@@ -359,6 +659,7 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected viewLogs(container: ContainerSummary): void {
     this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
+    this.terminalsHidden.set(false);
     this.terminals.open(
       `Logs: ${this.displayName(container)}`,
       `${this.client.engineCli()} logs -f ${container.id}`,
@@ -371,6 +672,7 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected openShell(container: ContainerSummary): void {
     this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
+    this.terminalsHidden.set(false);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
       `${this.client.engineCli()} exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
@@ -557,4 +859,22 @@ export class ContainersView implements OnInit, OnDestroy {
       this.selectedId.set(null);
     }
   }
+}
+
+/**
+ * Gets whether a container runs an image: its image reference names one of the image's tags, or the
+ * image's own id.
+ * @param container The container.
+ * @param image The image.
+ * @returns Returns true when it does.
+ */
+function runsImage(container: ContainerSummary, image: ImageSummary): boolean {
+  const reference: string = container.image;
+  return (
+    image.tags.includes(reference) ||
+    image.tags.includes(`${reference}:latest`) ||
+    image.id === reference ||
+    (reference.length > 0 &&
+      image.id.replace(/^sha256:/, '').startsWith(reference.replace(/^sha256:/, '')))
+  );
 }
