@@ -25,8 +25,11 @@
       [cdkContextMenuDisabled]="!rowHasMenu(row)"
       [attr.data-list-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
+      [class.list-row--disabled]="row.disabled"
+      [class.list-row--divided]="row.dividerBefore"
+      [attr.aria-disabled]="row.disabled ? 'true' : null"
       [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
-      (click)="rowClick.emit(row)"
+      (click)="choose(row)"
       (keydown.enter)="activate($event, row)"
       (keydown.space)="activate($event, row)"
     >

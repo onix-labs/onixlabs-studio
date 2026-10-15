@@ -16,8 +16,16 @@
 
 // The heading over the list: what it is, and one sentence about it, as the other tools have.
 .containers__header {
+  display: flex;
   flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.75rem 1rem 0.5rem;
+}
+
+.containers__heading {
+  min-inline-size: 0;
 }
 
 .containers__title {
@@ -36,15 +44,13 @@
   min-block-size: 0;
 }
 
-// The side panel's running-only switch, under the search: a label with its switch at the end.
+// The running-only switch, at the heading's end, centred against the title and its sentence.
 .containers__running-only {
   display: flex;
   flex: none;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
-  margin: 0 0.25rem 0.75rem;
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
   color: var(--form-muted-foreground-color);
 }
 
@@ -173,7 +179,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-// The row's actions, at the end of the row: start or stop, the ⋮ menu, and remove.
+// The row's actions, at the end of the row: start or stop, remove, and the ⋮ menu.
 .containers__actions {
   display: inline-flex;
   gap: 0.15rem;

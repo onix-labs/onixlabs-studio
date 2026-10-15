@@ -16,9 +16,6 @@ import { CategoryItem, CategoryList } from '@shared/angular/components/category-
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
-import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
-import type { ProviderPage } from '@shared/api/ai-types';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
@@ -126,11 +123,6 @@ export interface ModelManagerSummary {
 }
 
 /**
- * The Settings section of the Ollama provider page, where downloaded models become usable by agents.
- */
-const OLLAMA_PROVIDER_SECTION: string = 'ai-provider-ollama';
-
-/**
  * Gets the key a model reference is matched by: the runtime names an untagged pull `name:latest`, and
  * the catalogue may list it either way, so the `:latest` tag is ignored on both sides.
  * @param reference The model reference.
@@ -205,16 +197,6 @@ export class ModelManagerView {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the provider pages installed plugins contribute, read for the Ollama page.
-   */
-  private readonly providers: AiProviders = inject(AiProviders);
-
-  /**
-   * Holds the Settings deep-link seam, for opening the Ollama provider page.
-   */
-  private readonly settingsNavigation: SettingsNavigation = inject(SettingsNavigation);
 
   /**
    * Holds the command registry the ribbon drives this view through while active.
@@ -539,14 +521,6 @@ export class ModelManagerView {
   });
 
   /**
-   * Gets whether an installed plugin provides the Ollama provider page in Settings, where the
-   * downloaded models are set up for agents to use.
-   */
-  protected readonly canSetUpProvider: Signal<boolean> = computed((): boolean =>
-    this.providers.pages().some((page: ProviderPage): boolean => page.id === 'ollama'),
-  );
-
-  /**
    * Gets the sentence under the heading: the runtime and its state, then what is installed and loaded
    * and the disk it takes.
    */
@@ -734,13 +708,6 @@ export class ModelManagerView {
    */
   protected selectGroup(id: string): void {
     this.selectedGroup.set(id as ModelGroupId);
-  }
-
-  /**
-   * Opens Settings at the Ollama provider page, where the downloaded models are set up for agents.
-   */
-  protected setUpProvider(): void {
-    this.settingsNavigation.open(OLLAMA_PROVIDER_SECTION);
   }
 
   /**

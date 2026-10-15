@@ -91,6 +91,28 @@ describe('ListView', () => {
     expect(component.clicked[0].id).toBe('two');
   });
 
+  it('disabledRow_isListedDimmed_butNeitherAClickNorAKeyChoosesIt', () => {
+    // #954. A choice that exists but has nothing behind it yet, such as Local Models' Loaded.
+    component.rows.set([makeRow('one'), { ...makeRow('two'), disabled: true }]);
+    fixture.detectChanges();
+    const disabled: HTMLElement = rowElements()[1];
+
+    expect(disabled.classList.contains('list-row--disabled')).toBe(true);
+    expect(disabled.getAttribute('aria-disabled')).toBe('true');
+    disabled.click();
+    disabled.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(component.clicked).toEqual([]);
+  });
+
+  it('dividerBefore_marksTheRowThatOpensAGroup', () => {
+    component.rows.set([makeRow('one'), { ...makeRow('two'), dividerBefore: true }]);
+    fixture.detectChanges();
+
+    expect(
+      rowElements().map((row: HTMLElement) => row.classList.contains('list-row--divided')),
+    ).toEqual([false, true]);
+  });
+
   it('activate_whenEnterIsPressedOnARow_emitsThatRow', () => {
     rowElements()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 

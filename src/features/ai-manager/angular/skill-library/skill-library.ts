@@ -17,7 +17,6 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
-import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
@@ -33,6 +32,11 @@ import {
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
+
+/**
+ * How long after the last edit a skill is saved.
+ */
+const SAVE_DELAY_MS: number = 600;
 
 /**
  * A skill as the editor holds it: what is on disk, the draft being edited, and the state of the last
@@ -70,9 +74,10 @@ export interface SkillRow {
  * under Studio's user-data path, listed to agents by name and description and loaded on demand —
  * listed in its side panel, with the one selected edited at full width in the main area.
  *
- * Unlike the prompt profiles, a skill is on disk and a save can be refused — a name that is not a
- * valid folder name, a description the model could not act on — so edits are held as a draft and
- * committed with a Save button rather than written on every keystroke. The disk stays the truth:
+ * Like the prompt profiles, a skill saves as it is edited (#954) — a moment after the last keystroke,
+ * since a skill is a file and each one would otherwise rewrite or rename it. A save can be refused —
+ * a name that is not a valid folder name, a description the model could not act on — so the draft is
+ * kept and the reason shown until it is put right, and a new skill waits for a name and a description. The disk stays the truth:
  * every save and delete re-reads the library, and Refresh re-reads it for a user editing beside
  * Studio.
  */
@@ -91,7 +96,6 @@ export interface SkillRow {
     PromptScopeEditor,
     SettingRow,
     TextField,
-    Textarea,
     Toggle,
   ],
   templateUrl: './skill-library.html',
@@ -150,6 +154,14 @@ export class SkillLibrarySection {
    * Holds a counter for temporary keys.
    */
   private sequence: number = 0;
+
+  /**
+   * Holds the pending save of each row being edited, by row key.
+   */
+  private readonly saveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   /**
    * Gets the rows: every stored skill (with its draft when one is being edited), then the unsaved
@@ -218,7 +230,15 @@ export class SkillLibrarySection {
   public constructor() {
     const commands: AiLibraryCommands = inject(AiLibraryCommands);
     commands.register('skills', this.commandHandler);
-    inject(DestroyRef).onDestroy((): void => commands.unregister('skills', this.commandHandler));
+    inject(DestroyRef).onDestroy((): void => {
+      commands.unregister('skills', this.commandHandler);
+      // Leaving the view saves what was typed rather than dropping the last pause's worth of it.
+      for (const [key, timer] of this.saveTimers) {
+        clearTimeout(timer);
+        void this.save(key);
+      }
+      this.saveTimers.clear();
+    });
   }
 
   /**
@@ -268,7 +288,9 @@ export class SkillLibrarySection {
    * @param patch The fields to change.
    */
   protected edit(row: SkillRow, patch: Partial<SkillDraft>): void {
-    this.setRow({ ...row, draft: { ...row.draft, ...patch }, error: null });
+    const latest: SkillRow = this.drafts().get(row.key) ?? row;
+    this.setRow({ ...latest, draft: { ...latest.draft, ...patch }, error: null });
+    this.scheduleSave(row.key);
   }
 
   /**
@@ -294,37 +316,82 @@ export class SkillLibrarySection {
   }
 
   /**
-   * Saves a row's draft.
+   * Gets whether a new skill still lacks what a save needs — a name and a description — so it waits
+   * rather than being refused on every keystroke.
    * @param row The row.
+   * @returns Returns true while it is incomplete.
+   */
+  protected isIncomplete(row: SkillRow): boolean {
+    return (
+      row.stored === null &&
+      (row.draft.name.trim().length === 0 || row.draft.description.trim().length === 0)
+    );
+  }
+
+  /**
+   * Saves a row's draft a moment after the last edit, as a profile saves as it is typed: a skill is a
+   * file, so each keystroke would otherwise rename or rewrite it.
+   * @param key The row's key.
+   */
+  private scheduleSave(key: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.saveTimers.get(key);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+    }
+    this.saveTimers.set(
+      key,
+      setTimeout((): void => {
+        this.saveTimers.delete(key);
+        void this.save(key);
+      }, SAVE_DELAY_MS),
+    );
+  }
+
+  /**
+   * Saves a row's draft. A refused save keeps the draft and shows why; a new skill waits until it has
+   * a name and a description. Edits made while a save is in flight are saved after it.
+   * @param key The row's key.
    * @returns Resolves once the library has answered.
    */
-  protected async save(row: SkillRow): Promise<void> {
-    this.setRow({ ...row, saving: true, error: null });
+  protected async save(key: string): Promise<void> {
+    const row: SkillRow | undefined = this.drafts().get(key);
+    if (row === undefined || this.isIncomplete(row)) {
+      return;
+    }
+    if (row.saving) {
+      this.scheduleSave(key);
+      return;
+    }
+    if (!this.isDirty(row)) {
+      this.dropRow(key);
+      return;
+    }
     const draft: SkillDraft = {
       ...row.draft,
       name: row.draft.name.trim().toLowerCase(),
       ...(row.stored === null ? {} : { previousName: row.stored.name }),
     };
+    this.setRow({ ...row, saving: true, error: null });
     const result: SkillSaveResult = await this.skills.save(draft);
+    const latest: SkillRow = this.drafts().get(key) ?? row;
     if (result.error !== null) {
-      this.setRow({ ...row, draft, saving: false, error: result.error });
+      this.setRow({ ...latest, saving: false, error: result.error });
       return;
     }
-    // The library was re-read on save; the row now shows the stored form, so the draft is dropped. The
-    // stored row is keyed by its name, which a new skill or a rename has just changed.
-    this.dropRow(row.key);
-    if (this.selectedKey() === row.key) {
+    this.log.info('aiManager.skills', `Skill saved '${draft.name}'`);
+    // The library was re-read on save, so the row now shows the stored form under its name, which a new
+    // skill or a rename has just changed. Edits typed while the save ran are carried across to it.
+    this.dropRow(key);
+    const stored: Skill | null =
+      this.skills.skills().find((skill: Skill): boolean => skill.name === draft.name) ?? null;
+    const typedSince: boolean = JSON.stringify(latest.draft) !== JSON.stringify(row.draft);
+    if (typedSince && stored !== null) {
+      this.setRow({ ...latest, key: draft.name, stored, saving: false, error: null });
+      this.scheduleSave(draft.name);
+    }
+    if (this.selectedKey() === key) {
       this.selectedKey.set(draft.name);
     }
-    this.log.info('aiManager.skills', `Skill saved '${draft.name}'`);
-  }
-
-  /**
-   * Discards a row's draft, or removes an unsaved row.
-   * @param row The row.
-   */
-  protected revert(row: SkillRow): void {
-    this.dropRow(row.key);
   }
 
   /**
@@ -360,6 +427,11 @@ export class SkillLibrarySection {
    * @returns Resolves once the folder is gone.
    */
   protected async remove(row: SkillRow): Promise<void> {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.saveTimers.get(row.key);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.saveTimers.delete(row.key);
+    }
     this.dropRow(row.key);
     if (row.stored !== null) {
       await this.skills.delete(row.stored.name);

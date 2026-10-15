@@ -7,8 +7,8 @@
     [allowedEdges]="sideEdges"
     [movable]="false"
     [defaultSize]="240"
-    [minSize]="180"
-    [maxSize]="420"
+    [minSize]="240"
+    [maxSize]="480"
   >
     <app-category-list
       title="Local Models"
@@ -26,20 +26,7 @@
     <!-- The runtime's controls live on the ribbon; the page says what state it is in and lists the
          models, as the Plugin Manager lists plugins. -->
     <header class="model-manager__heading">
-      <div class="model-manager__heading-row">
-        <h2 class="model-manager__heading-title section-label">{{ heading() }}</h2>
-        <!-- Downloading a model is half the job; agents reach it through an Ollama configuration,
-             which is Settings' business. Offered only when a plugin provides that page. -->
-        @if (canSetUpProvider()) {
-          <app-button
-            variant="none"
-            size="small"
-            [icon]="Icon.SETTINGS"
-            label="Set Up as a Provider…"
-            (click)="setUpProvider()"
-          />
-        }
-      </div>
+      <h2 class="model-manager__heading-title section-label">{{ heading() }}</h2>
       <p class="model-manager__headline">
         {{ headline() }}
         @if (!needsInstall()) {
