@@ -15,6 +15,18 @@
       (action)="onStop()"
     />
     <app-ribbon-strip-button
+      [icon]="Icon.RESTART"
+      label="Restart"
+      [disabled]="!hasSelection()"
+      (action)="onRestart()"
+    />
+    <app-ribbon-strip-button
+      [icon]="selectionPaused() ? Icon.PLAY : Icon.PAUSE"
+      [label]="selectionPaused() ? 'Resume' : 'Pause'"
+      [disabled]="!hasSelection() || (!selectionRunning() && !selectionPaused())"
+      (action)="onTogglePause()"
+    />
+    <app-ribbon-strip-button
       [icon]="Icon.TRASH"
       label="Remove"
       tone="danger"

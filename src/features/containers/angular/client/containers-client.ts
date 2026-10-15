@@ -5,10 +5,14 @@ import { ContainerChannel } from '@shared/api/container-channels';
 import type { ContainerLogs } from '@shared/api/container-engine-protocol';
 import {
   ContainerEngineInfo,
+  ContainerStats,
   ContainerSummary,
   ContainerEvent,
   ContainerStatus,
+  ImagePullProgress,
   ImageSummary,
+  RunContainerRequest,
+  VolumeSummary,
 } from '@shared/api/container-types';
 
 /**
@@ -91,6 +95,122 @@ export class ContainersClient {
     return (
       this.bridge?.invoke<ContainerLogs>(ContainerChannel.Logs, id, tail) ??
       Promise.resolve({ lines: [], truncated: false })
+    );
+  }
+
+  /**
+   * Samples the resource use of running containers (#974).
+   * @param ids The container ids.
+   * @returns Returns a sample per container that answered.
+   */
+  public stats(ids: readonly string[]): Promise<ContainerStats[]> {
+    return (
+      this.bridge?.invoke<ContainerStats[]>(ContainerChannel.Stats, ids) ?? Promise.resolve([])
+    );
+  }
+
+  /**
+   * Lists the volumes (#974).
+   * @returns Returns the volume summaries.
+   */
+  public listVolumes(): Promise<VolumeSummary[]> {
+    return (
+      this.bridge?.invoke<VolumeSummary[]>(ContainerChannel.ListVolumes) ?? Promise.resolve([])
+    );
+  }
+
+  /**
+   * Removes a volume (#974).
+   * @param name The volume's name.
+   * @returns Returns true when it was removed.
+   */
+  public removeVolume(name: string): Promise<boolean> {
+    this.log.trace('containers.client', 'IPC remove volume', name);
+    return (
+      this.bridge?.invoke<boolean>(ContainerChannel.RemoveVolume, name) ?? Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Pauses a container (#974).
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public pause(id: string): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.Pause, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Resumes a paused container (#974).
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public unpause(id: string): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.Unpause, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Restarts a container (#974).
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public restart(id: string): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.Restart, id) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Removes an image (#974).
+   * @param id The image id.
+   * @param force Whether to remove it even when a container uses it.
+   * @returns Returns true when it was removed.
+   */
+  public removeImage(id: string, force: boolean = false): Promise<boolean> {
+    this.log.trace('containers.client', 'IPC remove image', id);
+    return (
+      this.bridge?.invoke<boolean>(ContainerChannel.RemoveImage, id, force) ??
+      Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Downloads an image (#974); its progress arrives on {@link onPullProgress}.
+   * @param reference The image reference.
+   * @returns Returns whether it succeeded, and why not.
+   */
+  public pullImage(reference: string): Promise<{ ok: boolean; error?: string }> {
+    this.log.info('containers.client', 'Pulling image', reference);
+    return (
+      this.bridge?.invoke<{ ok: boolean; error?: string }>(ContainerChannel.PullImage, reference) ??
+      Promise.resolve({
+        ok: false,
+        error: 'Container engines are only available in the desktop app.',
+      })
+    );
+  }
+
+  /**
+   * Subscribes to image download progress (#974).
+   * @param listener Receives each update.
+   * @returns Returns the function that unsubscribes.
+   */
+  public onPullProgress(listener: (progress: ImagePullProgress) => void): () => void {
+    return (
+      this.bridge?.on(ContainerChannel.PullProgress, (progress: unknown): void =>
+        listener(progress as ImagePullProgress),
+      ) ?? ((): void => undefined)
+    );
+  }
+
+  /**
+   * Creates a container from an image and starts it (#974).
+   * @param request What to run.
+   * @returns Returns the new container's id, or why it could not be run.
+   */
+  public run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+    this.log.info('containers.client', 'Running a container from', request.image);
+    return (
+      this.bridge?.invoke<{ id?: string; error?: string }>(ContainerChannel.Run, request) ??
+      Promise.resolve({ error: 'Container engines are only available in the desktop app.' })
     );
   }
 

@@ -1,9 +1,13 @@
 import type { ContainerLogs } from '@shared/api/container-engine-protocol';
 import {
   ContainerEvent,
+  ContainerStats,
   ContainerStatus,
   ContainerSummary,
+  ImagePullProgress,
   ImageSummary,
+  RunContainerRequest,
+  VolumeSummary,
 } from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
@@ -83,6 +87,73 @@ export interface ContainerEngine {
    * @returns Returns the status.
    */
   status(): Promise<ContainerStatus>;
+
+  /**
+   * Samples the resource use of running containers (#974).
+   * @param ids The container identifiers.
+   * @returns Returns a sample per container that answered.
+   */
+  stats(ids: readonly string[]): Promise<ContainerStats[]>;
+
+  /**
+   * Lists the volumes (#974).
+   * @returns Returns the volume summaries.
+   */
+  listVolumes(): Promise<VolumeSummary[]>;
+
+  /**
+   * Removes a volume no container uses (#974).
+   * @param name The volume's name.
+   * @returns Returns true when it was removed.
+   */
+  removeVolume(name: string): Promise<boolean>;
+
+  /**
+   * Pauses a running container (#974).
+   * @param id The container identifier.
+   * @returns Returns true when the engine accepted the request.
+   */
+  pause(id: string): Promise<boolean>;
+
+  /**
+   * Resumes a paused container (#974).
+   * @param id The container identifier.
+   * @returns Returns true when the engine accepted the request.
+   */
+  unpause(id: string): Promise<boolean>;
+
+  /**
+   * Restarts a container (#974).
+   * @param id The container identifier.
+   * @returns Returns true when the engine accepted the request.
+   */
+  restart(id: string): Promise<boolean>;
+
+  /**
+   * Removes an image (#974).
+   * @param id The image identifier or reference.
+   * @param force Whether to remove it even when a container uses it.
+   * @returns Returns true when it was removed.
+   */
+  removeImage(id: string, force: boolean): Promise<boolean>;
+
+  /**
+   * Downloads an image, reporting its progress (#974).
+   * @param reference The image reference.
+   * @param onProgress Receives the progress as it goes.
+   * @returns Returns whether it succeeded, and why not.
+   */
+  pullImage(
+    reference: string,
+    onProgress: (progress: ImagePullProgress) => void,
+  ): Promise<{ ok: boolean; error?: string }>;
+
+  /**
+   * Creates a container from an image and starts it (#974).
+   * @param request What to run.
+   * @returns Returns the new container's id, or why it could not be run.
+   */
+  run(request: RunContainerRequest): Promise<{ id?: string; error?: string }>;
 
   /**
    * Watches the engine's event stream.

@@ -13,6 +13,8 @@ interface FakeHandler {
   readonly viewLogs: Mock;
   readonly shell: Mock;
   readonly refresh: Mock;
+  readonly restart: Mock;
+  readonly togglePause: Mock;
 }
 
 /**
@@ -27,9 +29,14 @@ function fakeHandler(running: boolean): FakeHandler {
   const viewLogs: Mock = vi.fn();
   const shell: Mock = vi.fn();
   const refresh: Mock = vi.fn();
+  const restart: Mock = vi.fn();
+  const togglePause: Mock = vi.fn();
   const handler: ContainersCommandHandler = {
     hasSelection: computed((): boolean => true),
     selectionRunning: signal(running),
+    selectionPaused: signal(false),
+    restart,
+    togglePause,
     start,
     stop,
     remove,
@@ -37,7 +44,7 @@ function fakeHandler(running: boolean): FakeHandler {
     shell,
     refresh,
   };
-  return { handler, start, stop, remove, viewLogs, shell, refresh };
+  return { handler, start, stop, remove, viewLogs, shell, refresh, restart, togglePause };
 }
 
 describe('ContainersCommands', () => {
@@ -83,5 +90,19 @@ describe('ContainersCommands', () => {
 
     commands.unregister(second.handler); // current — clears
     expect(commands.hasSelection()).toBe(false);
+  });
+
+  it('forwardsRestartAndPause_andReflectsWhetherTheSelectionIsPaused', () => {
+    // #974.
+    const commands: ContainersCommands = new ContainersCommands();
+    const fake: FakeHandler = fakeHandler(true);
+    commands.register(fake.handler);
+
+    commands.restart();
+    commands.togglePause();
+
+    expect(fake.restart).toHaveBeenCalledOnce();
+    expect(fake.togglePause).toHaveBeenCalledOnce();
+    expect(commands.selectionPaused()).toBe(false);
   });
 });

@@ -14,9 +14,13 @@ import {
 } from '@shared/api/container-engine-protocol';
 import {
   ContainerEvent,
+  ContainerStats,
   ContainerStatus,
   ContainerSummary,
+  ImagePullProgress,
   ImageSummary,
+  RunContainerRequest,
+  VolumeSummary,
 } from '@shared/api/container-types';
 import { logger } from '../../logger';
 import { pidJournal } from '../../pid-journal';
@@ -33,6 +37,18 @@ const HANDSHAKE_TIMEOUT_MS: number = 10_000;
  * plugin is stuck, and the surface would rather show nothing than hang.
  */
 const REQUEST_TIMEOUT_MS: number = 30_000;
+
+/**
+ * How long an image download may take. Images run to gigabytes, so this is generous; a download that
+ * outlasts it is reported as failed, though the engine may well finish it.
+ */
+const PULL_TIMEOUT_MS: number = 30 * 60_000;
+
+/**
+ * How long a container may take to be created and started: longer than an ordinary call, since the
+ * engine may have to unpack the image's layers first.
+ */
+const RUN_TIMEOUT_MS: number = 2 * 60_000;
 
 /**
  * How long a plugin is given to exit after SIGTERM before it is killed.
@@ -99,6 +115,14 @@ export class ContainerEngineClient implements ContainerEngine {
    */
   private readonly listeners: Set<(event: ContainerEvent) => void> = new Set<
     (event: ContainerEvent) => void
+  >();
+
+  /**
+   * Holds the progress listeners of the downloads in flight, by image reference.
+   */
+  private readonly pulls: Map<string, (progress: ImagePullProgress) => void> = new Map<
+    string,
+    (progress: ImagePullProgress) => void
   >();
 
   /**
@@ -180,6 +204,105 @@ export class ContainerEngineClient implements ContainerEngine {
   }
 
   /**
+   * Samples the resource use of running containers.
+   * @param ids The container ids.
+   * @returns Returns a sample per container that answered; none when the plugin cannot.
+   */
+  public async stats(ids: readonly string[]): Promise<ContainerStats[]> {
+    return ids.length === 0 ? [] : [...((await this.call('stats', { ids })) ?? [])];
+  }
+
+  /**
+   * Lists the volumes.
+   * @returns Returns them, or none when the plugin cannot answer.
+   */
+  public async listVolumes(): Promise<VolumeSummary[]> {
+    return [...((await this.call('listVolumes', {})) ?? [])];
+  }
+
+  /**
+   * Removes a volume.
+   * @param name The volume's name.
+   * @returns Returns true when it was removed.
+   */
+  public async removeVolume(name: string): Promise<boolean> {
+    return (await this.call('removeVolume', { name })) === true;
+  }
+
+  /**
+   * Pauses a container.
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public async pause(id: string): Promise<boolean> {
+    return (await this.call('pause', { id })) === true;
+  }
+
+  /**
+   * Resumes a paused container.
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public async unpause(id: string): Promise<boolean> {
+    return (await this.call('unpause', { id })) === true;
+  }
+
+  /**
+   * Restarts a container.
+   * @param id The container id.
+   * @returns Returns true when the engine accepted it.
+   */
+  public async restart(id: string): Promise<boolean> {
+    return (await this.call('restart', { id })) === true;
+  }
+
+  /**
+   * Removes an image.
+   * @param id The image id or reference.
+   * @param force Whether to remove it even when a container uses it.
+   * @returns Returns true when it was removed.
+   */
+  public async removeImage(id: string, force: boolean): Promise<boolean> {
+    return (await this.call('removeImage', { id, force })) === true;
+  }
+
+  /**
+   * Downloads an image. Its progress arrives as the plugin sends it; the answer comes when it is done.
+   * @param reference The image reference.
+   * @param onProgress Receives the progress.
+   * @returns Returns whether it succeeded, and why not.
+   */
+  public async pullImage(
+    reference: string,
+    onProgress: (progress: ImagePullProgress) => void,
+  ): Promise<{ ok: boolean; error?: string }> {
+    this.pulls.set(reference, onProgress);
+    try {
+      return (
+        (await this.call('pullImage', { reference }, PULL_TIMEOUT_MS)) ?? {
+          ok: false,
+          error: 'The engine plugin cannot download images.',
+        }
+      );
+    } finally {
+      this.pulls.delete(reference);
+    }
+  }
+
+  /**
+   * Creates a container from an image and starts it.
+   * @param request What to run.
+   * @returns Returns the new container's id, or why it could not be run.
+   */
+  public async run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+    return (
+      (await this.call('run', { request }, RUN_TIMEOUT_MS)) ?? {
+        error: 'The engine plugin cannot run containers.',
+      }
+    );
+  }
+
+  /**
    * Watches the engine's events. The plugin is asked to send them while anyone is watching, and asked
    * again whenever it restarts.
    * @param onEvent Receives each event.
@@ -221,11 +344,13 @@ export class ContainerEngineClient implements ContainerEngine {
    * answer in time.
    * @param op The operation.
    * @param params Its parameters.
+   * @param timeoutMs How long to wait for the answer.
    * @returns Returns the result, or null.
    */
   private async call<Op extends ContainerEngineOp>(
     op: Op,
     params: ContainerEngineParams<Op>,
+    timeoutMs: number = REQUEST_TIMEOUT_MS,
   ): Promise<ContainerEngineResult<Op> | null> {
     if (!(await this.ensureStarted())) {
       return null;
@@ -235,7 +360,7 @@ export class ContainerEngineClient implements ContainerEngine {
       logger.debug('ContainerEngineClient', `'${this.id}' does not offer ${op}`);
       return null;
     }
-    const outcome: Outcome = await this.send(op, params, REQUEST_TIMEOUT_MS);
+    const outcome: Outcome = await this.send(op, params, timeoutMs);
     if (!outcome.ok) {
       logger.debug('ContainerEngineClient', `'${this.id}' ${op} failed: ${outcome.error}`);
       return null;
@@ -395,6 +520,13 @@ export class ContainerEngineClient implements ContainerEngine {
     }
     const record: Record<string, unknown> =
       typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    if (record['type'] === 'pull') {
+      const progress: ImagePullProgress | null = readPullProgress(record['progress']);
+      if (progress !== null) {
+        this.pulls.get(progress.reference)?.(progress);
+      }
+      return;
+    }
     if (record['type'] === 'event') {
       const event: ContainerEvent | null = readEvent(record['event']);
       if (event !== null) {
@@ -508,5 +640,28 @@ function readEvent(value: unknown): ContainerEvent | null {
     type: typeof record['type'] === 'string' ? record['type'] : '',
     action: typeof record['action'] === 'string' ? record['action'] : '',
     id: typeof record['id'] === 'string' ? record['id'] : '',
+  };
+}
+
+/**
+ * Reads a download's progress out of a pull line.
+ * @param value The progress.
+ * @returns Returns the progress, or null when it is not one.
+ */
+function readPullProgress(value: unknown): ImagePullProgress | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  if (typeof record['reference'] !== 'string') {
+    return null;
+  }
+  return {
+    reference: record['reference'],
+    status: typeof record['status'] === 'string' ? record['status'] : '',
+    ...(typeof record['current'] === 'number' ? { current: record['current'] } : {}),
+    ...(typeof record['total'] === 'number' ? { total: record['total'] } : {}),
+    done: record['done'] === true,
+    ...(typeof record['error'] === 'string' ? { error: record['error'] } : {}),
   };
 }

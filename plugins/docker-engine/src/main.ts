@@ -12,8 +12,11 @@ import {
   CONTAINER_ENGINE_PROTOCOL_VERSION,
   ContainerEngineCapability,
   ContainerEngineEventLine,
+  ContainerEnginePullLine,
   ContainerEngineResponse,
   ContainerEvent,
+  ImagePullProgress,
+  RunContainerRequest,
 } from './protocol';
 import { StreamHandle } from './transport';
 
@@ -26,6 +29,13 @@ const CAPABILITIES: readonly ContainerEngineCapability[] = [
   'lifecycle',
   'logs',
   'events',
+  'stats',
+  'volumes',
+  'pause',
+  'restart',
+  'imageRemove',
+  'imagePull',
+  'run',
 ];
 
 /**
@@ -42,7 +52,9 @@ let watching: StreamHandle | null = null;
  * Writes one line to stdout.
  * @param message The message.
  */
-function write(message: ContainerEngineResponse | ContainerEngineEventLine): void {
+function write(
+  message: ContainerEngineResponse | ContainerEngineEventLine | ContainerEnginePullLine,
+): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
@@ -99,6 +111,46 @@ async function answer(op: string, params: unknown): Promise<unknown> {
           ? (params as Record<string, unknown>)['tail']
           : undefined;
       return engine.logs(text(params, 'id'), typeof tail === 'number' ? tail : 500);
+    }
+    case 'stats': {
+      const ids: unknown =
+        typeof params === 'object' && params !== null
+          ? (params as Record<string, unknown>)['ids']
+          : undefined;
+      return engine.stats(
+        Array.isArray(ids) ? ids.filter((id: unknown): id is string => typeof id === 'string') : [],
+      );
+    }
+    case 'listVolumes':
+      return engine.listVolumes();
+    case 'removeVolume':
+      return engine.removeVolume(text(params, 'name'));
+    case 'pause':
+      return engine.pause(text(params, 'id'));
+    case 'unpause':
+      return engine.unpause(text(params, 'id'));
+    case 'restart':
+      return engine.restart(text(params, 'id'));
+    case 'removeImage':
+      return engine.removeImage(
+        text(params, 'id'),
+        typeof params === 'object' &&
+          params !== null &&
+          (params as Record<string, unknown>)['force'] === true,
+      );
+    case 'pullImage':
+      return engine.pullImage(text(params, 'reference'), (progress: ImagePullProgress): void =>
+        write({ type: 'pull', progress }),
+      );
+    case 'run': {
+      const request: unknown =
+        typeof params === 'object' && params !== null
+          ? (params as Record<string, unknown>)['request']
+          : undefined;
+      if (typeof request !== 'object' || request === null) {
+        throw new Error('Say what to run.');
+      }
+      return engine.run(request as RunContainerRequest);
     }
     case 'watchStart':
       watching ??= engine.watch((event: ContainerEvent): void => write({ type: 'event', event }));

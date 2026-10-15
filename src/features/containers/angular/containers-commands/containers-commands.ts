@@ -17,6 +17,21 @@ export interface ContainersCommandHandler {
   readonly selectionRunning: Signal<boolean>;
 
   /**
+   * Gets whether the selected container is paused (#974).
+   */
+  readonly selectionPaused: Signal<boolean>;
+
+  /**
+   * Restarts the selected container (#974).
+   */
+  restart(): void;
+
+  /**
+   * Pauses the selected running container, or resumes it when it is paused (#974).
+   */
+  togglePause(): void;
+
+  /**
    * Starts the selected container.
    */
   start(): void;
@@ -71,6 +86,13 @@ export class ContainersCommands {
    */
   public readonly selectionRunning: Signal<boolean> = computed(
     (): boolean => this.handler()?.selectionRunning() ?? false,
+  );
+
+  /**
+   * Gets whether the active view's selected container is paused (#974).
+   */
+  public readonly selectionPaused: Signal<boolean> = computed(
+    (): boolean => this.handler()?.selectionPaused() ?? false,
   );
 
   /**
@@ -129,6 +151,20 @@ export class ContainersCommands {
   /**
    * Refreshes the active view's lists.
    */
+  /**
+   * Restarts the active view's selected container (#974).
+   */
+  public restart(): void {
+    this.handler()?.restart();
+  }
+
+  /**
+   * Pauses or resumes the active view's selected container (#974).
+   */
+  public togglePause(): void {
+    this.handler()?.togglePause();
+  }
+
   public refresh(): void {
     this.handler()?.refresh();
   }

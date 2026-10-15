@@ -37,6 +37,9 @@ describe('ContainersRibbon', () => {
     const commandsStub: Partial<ContainersCommands> = {
       hasSelection,
       selectionRunning,
+      selectionPaused: signal<boolean>(false),
+      restart: (): void => void calls.push('restart'),
+      togglePause: (): void => void calls.push('togglePause'),
       start: (): void => void calls.push('start'),
       stop: (): void => void calls.push('stop'),
       remove: (): void => void calls.push('remove'),

@@ -35,7 +35,16 @@ import {
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { Icon } from '@shared/angular/icons/icon';
-import { ContainerSummary, ImageSummary } from '@shared/api/container-types';
+import {
+  ContainerPort,
+  ContainerStats,
+  ContainerSummary,
+  ImageSummary,
+  VolumeSummary,
+} from '@shared/api/container-types';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { ContainerPullDialog } from '../container-run/container-pull-dialog';
+import { ContainerRunDialog } from '../container-run/container-run-dialog';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
@@ -75,7 +84,7 @@ export interface ContainersSummary {
 /**
  * The kinds of thing the side panel chooses between.
  */
-export type ContainersKind = 'containers' | 'images';
+export type ContainersKind = 'containers' | 'images' | 'volumes';
 
 /**
  * An image as the Images table lists it: the image, and how many containers run it.
@@ -93,14 +102,34 @@ export interface ImageEntry {
 }
 
 /**
- * The Containers table's columns: the state dot, the name, the image it runs, the engine's status
- * text, and the row's actions.
+ * A volume as the Volumes table lists it: the volume, and how many containers mount it.
+ */
+export interface VolumeEntry {
+  /**
+   * Gets the volume.
+   */
+  readonly volume: VolumeSummary;
+
+  /**
+   * Gets how many containers mount it.
+   */
+  readonly usedBy: number;
+}
+
+/**
+ * The Containers table's columns: a tick for bulk actions, the state dot, the name, the image it runs,
+ * its published ports, its CPU and memory while it runs (#974), the engine's status text, and the
+ * row's actions.
  */
 const CONTAINER_COLUMNS: readonly TableColumn[] = [
+  { id: 'select', header: '', width: '2.25rem' },
   { id: 'state', header: '', width: '2.25rem' },
   { id: 'name', header: 'Name' },
   { id: 'image', header: 'Image' },
-  { id: 'status', header: 'Status', width: '14rem' },
+  { id: 'ports', header: 'Ports', width: '9rem' },
+  { id: 'cpu', header: 'CPU', width: '5rem', align: 'end' },
+  { id: 'memory', header: 'Memory', width: '6.5rem', align: 'end' },
+  { id: 'status', header: 'Status', width: '12rem' },
   { id: 'actions', header: '', width: '9rem', align: 'end' },
 ];
 
@@ -111,13 +140,32 @@ const IMAGE_COLUMNS: readonly TableColumn[] = [
   { id: 'tag', header: 'Image' },
   { id: 'size', header: 'Size', width: '8rem', align: 'end' },
   { id: 'used', header: 'Containers', width: '8rem', align: 'end' },
+  { id: 'actions', header: '', width: '6.5rem', align: 'end' },
 ];
+
+/**
+ * The Volumes table's columns (#974).
+ */
+const VOLUME_COLUMNS: readonly TableColumn[] = [
+  { id: 'name', header: 'Volume' },
+  { id: 'driver', header: 'Driver', width: '8rem' },
+  { id: 'used', header: 'Containers', width: '8rem', align: 'end' },
+  { id: 'actions', header: '', width: '4rem', align: 'end' },
+];
+
+/**
+ * How often the running containers' CPU and memory are read while the list shows (#974).
+ */
+const STATS_REFRESH_MS: number = 3_000;
 
 /**
  * The row menu's actions.
  */
 const MENU_LOGS: string = 'logs';
 const MENU_SHELL: string = 'shell';
+const MENU_RESTART: string = 'restart';
+const MENU_PAUSE: string = 'pause';
+const MENU_RESUME: string = 'resume';
 
 /**
  * The Containers tab: a thin dashboard over the containers backend contribution (#391). It lists
@@ -148,6 +196,9 @@ const MENU_SHELL: string = 'shell';
     ToolPanel,
     TooltipTrigger,
     ContainerLogsPane,
+    Checkbox,
+    ContainerPullDialog,
+    ContainerRunDialog,
   ],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
@@ -221,6 +272,47 @@ export class ContainersView implements OnInit, OnDestroy {
    * Gets the Images table's columns.
    */
   protected readonly imageColumns: readonly TableColumn[] = IMAGE_COLUMNS;
+
+  /**
+   * Gets the Volumes table's columns.
+   */
+  protected readonly volumeColumns: readonly TableColumn[] = VOLUME_COLUMNS;
+
+  /**
+   * Holds the volumes (#974).
+   */
+  protected readonly volumes: WritableSignal<readonly VolumeSummary[]> = signal<
+    readonly VolumeSummary[]
+  >([]);
+
+  /**
+   * Holds the latest CPU and memory reading of each running container, by id (#974).
+   */
+  protected readonly stats: WritableSignal<ReadonlyMap<string, ContainerStats>> = signal<
+    ReadonlyMap<string, ContainerStats>
+  >(new Map<string, ContainerStats>());
+
+  /**
+   * Holds the containers ticked for a bulk action (#974).
+   */
+  protected readonly checked: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Holds what the last action that failed said, shown until the next one.
+   */
+  protected readonly notice: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether the Pull dialog is open.
+   */
+  protected readonly pullOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the image the Run dialog was opened with, or null while it is closed.
+   */
+  protected readonly runImage: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the kind the side panel has chosen. Containers are shown to begin with.
@@ -299,8 +391,37 @@ export class ContainersView implements OnInit, OnDestroy {
         icon: Icon.CONTAINER_IMAGES,
         count: this.images().length,
       },
+      {
+        id: 'volumes',
+        label: 'Volumes',
+        icon: Icon.CONTAINER_VOLUMES,
+        count: this.volumes().length,
+      },
     ],
   );
+
+  /**
+   * Gets the Volumes table's rows: the volumes the search leaves, each with how many containers mount
+   * it (#974).
+   */
+  protected readonly volumeRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const text: string = this.query().trim().toLowerCase();
+    return this.volumes()
+      .filter(
+        (volume: VolumeSummary): boolean =>
+          text.length === 0 || volume.name.toLowerCase().includes(text),
+      )
+      .map((volume: VolumeSummary): TableRow => ({
+        id: volume.name,
+        data: {
+          volume,
+          usedBy: this.containers().filter(
+            (container: ContainerSummary): boolean =>
+              container.volumes?.includes(volume.name) === true,
+          ).length,
+        } satisfies VolumeEntry,
+      }));
+  });
 
   /**
    * Gets the Containers table's rows: the containers the running-only switch and the search leave.
@@ -344,9 +465,16 @@ export class ContainersView implements OnInit, OnDestroy {
   /**
    * Gets the heading, which names the list shown.
    */
-  protected readonly heading: Signal<string> = computed((): string =>
-    this.kind() === 'containers' ? 'Containers' : 'Images',
-  );
+  protected readonly heading: Signal<string> = computed((): string => {
+    switch (this.kind()) {
+      case 'containers':
+        return 'Containers';
+      case 'images':
+        return 'Images';
+      default:
+        return 'Volumes';
+    }
+  });
 
   /**
    * Gets the sentence under the heading: how many containers there are and how many run, or how many
@@ -359,6 +487,10 @@ export class ContainersView implements OnInit, OnDestroy {
         this.isRunning(container),
       ).length;
       return `${total} ${total === 1 ? 'container' : 'containers'}, ${running} running.`;
+    }
+    if (this.kind() === 'volumes') {
+      const total: number = this.volumes().length;
+      return `${total} ${total === 1 ? 'volume' : 'volumes'}.`;
     }
     const total: number = this.images().length;
     const bytes: number = this.images().reduce(
@@ -394,7 +526,17 @@ export class ContainersView implements OnInit, OnDestroy {
   protected readonly rowMenuItems: Signal<readonly MenuItem[]> = computed(
     (): readonly MenuItem[] => {
       const target: ContainerSummary | null = this.menuTarget();
+      const paused: boolean = target?.state === 'paused';
       return [
+        { id: MENU_RESTART, label: 'Restart', icon: Icon.RESTART },
+        paused
+          ? { id: MENU_RESUME, label: 'Resume', icon: Icon.PLAY }
+          : {
+              id: MENU_PAUSE,
+              label: 'Pause',
+              icon: Icon.PAUSE,
+              disabled: target === null || !this.isRunning(target),
+            },
         { id: MENU_LOGS, label: 'View Logs', icon: Icon.ARTICLE },
         // A shell needs the engine's own CLI on this machine, which Studio no longer downloads (#973).
         ...(this.client.engineCli() === null
@@ -499,9 +641,29 @@ export class ContainersView implements OnInit, OnDestroy {
   /**
    * Holds the handler the ribbon drives the active view through.
    */
+  /**
+   * Gets whether the selected container is paused (#974).
+   */
+  private readonly selectionPaused: Signal<boolean> = computed(
+    (): boolean => this.selectedContainer()?.state === 'paused',
+  );
+
   private readonly commandHandler: ContainersCommandHandler = {
     hasSelection: this.hasSelection,
     selectionRunning: this.selectionRunning,
+    selectionPaused: this.selectionPaused,
+    restart: (): void => {
+      const id: string | null = this.selectedId();
+      if (id !== null) {
+        this.restart(id);
+      }
+    },
+    togglePause: (): void => {
+      const container: ContainerSummary | undefined = this.selectedContainer();
+      if (container !== undefined) {
+        this.togglePause(container);
+      }
+    },
     start: (): void => this.startSelected(),
     stop: (): void => this.stopSelected(),
     remove: (): void => this.removeSelected(),
@@ -532,6 +694,28 @@ export class ContainersView implements OnInit, OnDestroy {
       }
     });
     inject(DestroyRef).onDestroy(unsubscribe);
+
+    // The running containers' CPU and memory are read while their list shows, and not otherwise:
+    // sampling takes the engine a moment per container (#974).
+    let statsTimer: ReturnType<typeof setInterval> | null = null;
+    const stopStats: () => void = (): void => {
+      if (statsTimer !== null) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
+    };
+    effect((): void => {
+      const showing: boolean =
+        this.isActive() && this.available() === true && this.kind() === 'containers';
+      untracked((): void => {
+        stopStats();
+        if (showing) {
+          void this.readStats();
+          statsTimer = setInterval((): void => void this.readStats(), STATS_REFRESH_MS);
+        }
+      });
+    });
+    inject(DestroyRef).onDestroy(stopStats);
 
     effect((): void => {
       if (this.isActive()) {
@@ -625,6 +809,10 @@ export class ContainersView implements OnInit, OnDestroy {
       this.viewLogs(target);
     } else if (id === MENU_SHELL) {
       this.openShell(target);
+    } else if (id === MENU_RESTART) {
+      this.restart(target.id);
+    } else if (id === MENU_PAUSE || id === MENU_RESUME) {
+      this.togglePause(target);
     }
   }
 
@@ -659,6 +847,247 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected remove(id: string): void {
     void this.actOn(id, (target: string): Promise<boolean> => this.client.remove(target));
+  }
+
+  /**
+   * Restarts a container (#974).
+   * @param id The container id.
+   */
+  protected restart(id: string): void {
+    void this.actOn(id, (target: string): Promise<boolean> => this.client.restart(target));
+  }
+
+  /**
+   * Pauses a running container, or resumes a paused one (#974).
+   * @param container The container.
+   */
+  protected togglePause(container: ContainerSummary): void {
+    void this.actOn(container.id, (target: string): Promise<boolean> =>
+      container.state === 'paused' ? this.client.unpause(target) : this.client.pause(target),
+    );
+  }
+
+  /**
+   * Ticks a container for a bulk action, or unticks it (#974).
+   * @param id The container id.
+   * @param on Whether it is ticked.
+   */
+  protected setChecked(id: string, on: boolean): void {
+    this.checked.update((checked: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(checked);
+      if (on) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Unticks every container (#974).
+   */
+  protected clearChecked(): void {
+    this.checked.set(new Set<string>());
+  }
+
+  /**
+   * Ticks every container the list shows, or unticks them all when they already are (#974).
+   */
+  protected toggleAllChecked(): void {
+    const shown: readonly string[] = this.containerRows().map((row: TableRow): string => row.id);
+    const all: boolean =
+      shown.length > 0 && shown.every((id: string): boolean => this.checked().has(id));
+    this.checked.set(new Set<string>(all ? [] : shown));
+  }
+
+  /**
+   * Runs one action on every ticked container, then reloads once (#974).
+   * @param action What to do.
+   * @returns Resolves once every container has answered.
+   */
+  protected async bulk(action: 'start' | 'stop' | 'restart' | 'remove'): Promise<void> {
+    const ids: readonly string[] = [...this.checked()];
+    if (ids.length === 0 || this.busy()) {
+      return;
+    }
+    this.log.info('containers.view', `Bulk ${action}`, ids.length);
+    this.busy.set(true);
+    try {
+      const results: readonly boolean[] = await Promise.all(
+        ids.map((id: string): Promise<boolean> => this.client[action](id)),
+      );
+      const failed: number = results.filter((ok: boolean): boolean => !ok).length;
+      this.notice.set(
+        failed === 0 ? null : `${failed} of ${ids.length} containers did not ${action}.`,
+      );
+      if (action === 'remove') {
+        this.checked.set(new Set<string>());
+      }
+      await this.load();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Removes an image (#974). The engine refuses one a container still uses, which is said rather than
+   * forced.
+   * @param entry The image.
+   * @returns Resolves once the engine has answered.
+   */
+  protected async removeImage(entry: ImageEntry): Promise<void> {
+    if (this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    try {
+      const removed: boolean = await this.client.removeImage(entry.image.id);
+      this.notice.set(
+        removed
+          ? null
+          : `${this.displayTag(entry.image)} could not be removed${entry.usedBy > 0 ? ': a container uses it' : ''}.`,
+      );
+      await this.load();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Removes a volume (#974). The engine refuses one a container still mounts.
+   * @param entry The volume.
+   * @returns Resolves once the engine has answered.
+   */
+  protected async removeVolume(entry: VolumeEntry): Promise<void> {
+    if (this.busy()) {
+      return;
+    }
+    this.busy.set(true);
+    try {
+      const removed: boolean = await this.client.removeVolume(entry.volume.name);
+      this.notice.set(
+        removed
+          ? null
+          : `${this.displayVolume(entry.volume)} could not be removed${entry.usedBy > 0 ? ': a container mounts it' : ''}.`,
+      );
+      await this.load();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Opens the Run dialog, with an image when it was opened from one (#974).
+   * @param image The image reference, or empty.
+   */
+  protected openRun(image: string = ''): void {
+    this.runImage.set(image);
+  }
+
+  /**
+   * Closes the Run dialog, showing the containers when one was run.
+   * @param id The new container's id, or null.
+   */
+  protected onRunClosed(id: string | null): void {
+    this.runImage.set(null);
+    if (id !== null) {
+      this.kind.set('containers');
+      this.selectedId.set(id);
+      void this.load();
+    }
+  }
+
+  /**
+   * Closes the Pull dialog, reloading the images when one was pulled.
+   * @param pulled Whether an image was pulled.
+   */
+  protected onPullClosed(pulled: boolean): void {
+    this.pullOpen.set(false);
+    if (pulled) {
+      void this.load();
+    }
+  }
+
+  /**
+   * Formats a container's published ports, as `8080→80` (#974).
+   * @param container The container.
+   * @returns Returns the ports, or a dash when it publishes none.
+   */
+  protected formatPorts(container: ContainerSummary): string {
+    const published: readonly ContainerPort[] = (container.ports ?? []).filter(
+      (port: ContainerPort): boolean => port.publicPort !== undefined,
+    );
+    const unique: Set<string> = new Set<string>(
+      published.map(
+        (port: ContainerPort): string =>
+          `${port.publicPort}→${port.privatePort}${port.protocol === 'tcp' ? '' : `/${port.protocol}`}`,
+      ),
+    );
+    return unique.size === 0 ? '—' : [...unique].join(', ');
+  }
+
+  /**
+   * Formats a running container's CPU use (#974).
+   * @param id The container id.
+   * @returns Returns the percentage, or a dash when it is not running or not yet read.
+   */
+  protected formatCpu(id: string): string {
+    const sample: ContainerStats | undefined = this.stats().get(id);
+    return sample === undefined ? '—' : `${sample.cpuPercent.toFixed(1)}%`;
+  }
+
+  /**
+   * Formats a running container's memory use (#974).
+   * @param id The container id.
+   * @returns Returns the size, or a dash when it is not running or not yet read.
+   */
+  protected formatMemory(id: string): string {
+    const sample: ContainerStats | undefined = this.stats().get(id);
+    return sample === undefined ? '—' : this.formatSize(sample.memoryBytes);
+  }
+
+  /**
+   * Builds the display name of a volume: its name, shortened when the engine made it up.
+   * @param volume The volume.
+   * @returns Returns the display name.
+   */
+  protected displayVolume(volume: VolumeSummary): string {
+    return volume.anonymous ? `${volume.name.slice(0, 12)}… (anonymous)` : volume.name;
+  }
+
+  /**
+   * Gets a Volumes table row's entry.
+   * @param row The row.
+   * @returns Returns the entry.
+   */
+  protected volumeOf(row: TableRow): VolumeEntry {
+    return row.data as VolumeEntry;
+  }
+
+  /**
+   * Gets whether every container the list shows is ticked.
+   * @returns Returns true when they all are.
+   */
+  protected allChecked(): boolean {
+    const shown: readonly TableRow[] = this.containerRows();
+    return shown.length > 0 && shown.every((row: TableRow): boolean => this.checked().has(row.id));
+  }
+
+  /**
+   * Reads the running containers' CPU and memory.
+   * @returns Resolves once they are shown.
+   */
+  private async readStats(): Promise<void> {
+    const running: readonly string[] = this.containers()
+      .filter((container: ContainerSummary): boolean => this.isRunning(container))
+      .map((container: ContainerSummary): string => container.id);
+    const samples: readonly ContainerStats[] = await this.client.stats(running);
+    this.stats.set(
+      new Map<string, ContainerStats>(
+        samples.map((sample: ContainerStats): [string, ContainerStats] => [sample.id, sample]),
+      ),
+    );
   }
 
   /**
@@ -868,6 +1297,7 @@ export class ContainersView implements OnInit, OnDestroy {
     if (!available) {
       this.containers.set([]);
       this.images.set([]);
+      this.volumes.set([]);
       if (this.noEngineInstalled()) {
         // Offered here rather than on construction, so the offer follows the discovery that there is
         // nothing to talk to rather than the mere existence of the tab.
@@ -875,13 +1305,24 @@ export class ContainersView implements OnInit, OnDestroy {
       }
       return;
     }
-    const [containers, images]: [ContainerSummary[], ImageSummary[]] = await Promise.all([
-      this.client.listContainers(),
-      this.client.listImages(),
-    ]);
+    const [containers, images, volumes]: [ContainerSummary[], ImageSummary[], VolumeSummary[]] =
+      await Promise.all([
+        this.client.listContainers(),
+        this.client.listImages(),
+        this.client.listVolumes(),
+      ]);
     this.log.debug('containers.view', 'Loaded snapshot', containers.length, images.length);
     this.containers.set(containers);
     this.images.set(images);
+    this.volumes.set(volumes);
+    // A ticked container that has gone is no longer something an action can act on.
+    const present: ReadonlySet<string> = new Set<string>(
+      containers.map((container: ContainerSummary): string => container.id),
+    );
+    this.checked.update(
+      (checked: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>([...checked].filter((id: string): boolean => present.has(id))),
+    );
     const id: string | null = this.selectedId();
     if (
       id !== null &&
