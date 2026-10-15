@@ -1,4 +1,5 @@
 import { signal, WritableSignal } from '@angular/core';
+import { ContainersClient } from '../client/containers-client';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
@@ -46,7 +47,14 @@ describe('ContainersRibbon', () => {
 
     await TestBed.configureTestingModule({
       imports: [ContainersRibbon],
-      providers: [{ provide: ContainersCommands, useValue: commandsStub }],
+      providers: [
+        { provide: ContainersCommands, useValue: commandsStub },
+        // The engine's CLI is installed, so Shell is offered (#973).
+        {
+          provide: ContainersClient,
+          useValue: { engineCli: (): string => '/usr/local/bin/docker' },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(ContainersRibbon);
@@ -112,5 +120,26 @@ describe('ContainersRibbon', () => {
     menu.dispatch('containers.refresh');
 
     expect(calls).toEqual(['start', 'stop', 'remove', 'viewLogs', 'shell', 'refresh']);
+  });
+
+  it('shell_isNotOfferedWithoutTheEnginesCli', async () => {
+    // #973: Studio no longer downloads the CLI, so a shell is offered only when one is installed.
+    const commands: ContainersCommands = TestBed.inject(ContainersCommands);
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [ContainersRibbon],
+      providers: [
+        { provide: ContainersCommands, useValue: commands },
+        { provide: ContainersClient, useValue: { engineCli: (): null => null } },
+      ],
+    }).compileComponents();
+    const bare: ComponentFixture<ContainersRibbon> = TestBed.createComponent(ContainersRibbon);
+    bare.detectChanges();
+
+    expect(
+      [...(bare.nativeElement as HTMLElement).querySelectorAll('app-ribbon-strip-button')].some(
+        (element: Element): boolean => element.textContent?.includes('Shell') === true,
+      ),
+    ).toBe(false);
   });
 });

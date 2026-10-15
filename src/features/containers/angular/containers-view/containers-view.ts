@@ -14,6 +14,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { ContainerLogsPane } from '../container-logs/container-logs';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -146,6 +147,7 @@ const MENU_SHELL: string = 'shell';
     Toggle,
     ToolPanel,
     TooltipTrigger,
+    ContainerLogsPane,
   ],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
@@ -394,12 +396,17 @@ export class ContainersView implements OnInit, OnDestroy {
       const target: ContainerSummary | null = this.menuTarget();
       return [
         { id: MENU_LOGS, label: 'View Logs', icon: Icon.ARTICLE },
-        {
-          id: MENU_SHELL,
-          label: 'Open Shell',
-          icon: Icon.TERMINAL,
-          disabled: target === null || !this.isRunning(target),
-        },
+        // A shell needs the engine's own CLI on this machine, which Studio no longer downloads (#973).
+        ...(this.client.engineCli() === null
+          ? []
+          : [
+              {
+                id: MENU_SHELL,
+                label: 'Open Shell',
+                icon: Icon.TERMINAL,
+                disabled: target === null || !this.isRunning(target),
+              },
+            ]),
       ];
     },
   );
@@ -655,17 +662,14 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
-   * Streams a container's logs (`<engine> logs -f`) in a terminal in the bottom panel. The engine's own
-   * CLI is used, so the command matches whatever engine the surface is actually talking to.
-   * @param container The container to tail.
+   * Shows a container's logs in the bottom panel, read through the engine's plugin and following the
+   * container as it writes (#973) — no terminal and no engine CLI needed.
+   * @param container The container to show.
    */
   protected viewLogs(container: ContainerSummary): void {
     this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
     this.terminalsHidden.set(false);
-    this.terminals.open(
-      `Logs: ${this.displayName(container)}`,
-      `${this.client.engineCli()} logs -f ${container.id}`,
-    );
+    this.terminals.openLogs(`Logs: ${this.displayName(container)}`, container.id);
   }
 
   /**
@@ -673,11 +677,16 @@ export class ContainersView implements OnInit, OnDestroy {
    * @param container The container to open a shell in.
    */
   protected openShell(container: ContainerSummary): void {
+    const cli: string | null = this.client.engineCli();
+    if (cli === null) {
+      // Not offered without the engine's CLI on this machine (#973); reached only from a stale menu.
+      return;
+    }
     this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
     this.terminalsHidden.set(false);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
-      `${this.client.engineCli()} exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
+      `"${cli}" exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
     );
   }
 

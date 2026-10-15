@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import { findEngineCli } from './engine-cli';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { ContainerEngineInfo } from '@shared/api/container-types';
@@ -141,7 +142,7 @@ export function describeEngines(
     displayName: engine.displayName,
     available: isEngineAvailable(engine, environment),
     inEffect: engine.id === inEffect,
-    cli: engine.cli,
+    cli: engine.cli === null ? null : findEngineCli(engine.cli),
     startCommand: engine.startCommand(platform),
   }));
 }

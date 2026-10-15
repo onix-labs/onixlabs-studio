@@ -5,11 +5,11 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { contributedContainerEngines } from '../plugins/contributed';
-import { ContainerEngine, ContainerEngineDescriptor, engineSocketPath } from './container-engine';
+import { pluginNodeRuntime } from '../../plugin-node-runtime';
+import { ContainerEngineDescriptor, engineSocketPath, StreamHandle } from './container-engine';
+import { ContainerEngineClient } from './container-engine-client';
 import { contributedEngines } from './container-engine-registry';
-import { DockerEngine } from './docker-engine';
 import { chooseEngine, describeEngines, selectedEngine } from './engine-selection';
-import { StreamHandle } from './socket-http-transport';
 
 /**
  * The container engine backend contribution — the first real {@link MainContribution}. It requests the
@@ -19,7 +19,8 @@ import { StreamHandle } from './socket-http-transport';
  * is the north-star this whole seam exists to prove.
  *
  * It is named for the capability rather than for an engine because it serves whichever engine is in
- * effect (#394); only the {@link DockerEngine} it drives is Docker-specific.
+ * effect (#394). Nothing here speaks to an engine any more (#973): the engine's own plugin does, as a
+ * process this drives through {@link ContainerEngineClient}, handed the socket the permission resolved.
  */
 export class ContainersContribution implements MainContribution {
   /**
@@ -52,7 +53,7 @@ export class ContainersContribution implements MainContribution {
   /**
    * The engine client in use, rebuilt whenever the engine in effect or its endpoint changes.
    */
-  private engine: ContainerEngine | null = null;
+  private engine: ContainerEngineClient | null = null;
 
   /**
    * Identifies the engine {@link engine} was built for, as engine identity plus resolved endpoint. Both
@@ -96,6 +97,12 @@ export class ContainersContribution implements MainContribution {
       ContainerChannel.Remove,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
         this.currentEngine(context)?.remove(String(id)) ?? Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.Logs,
+      (_event: IpcMainInvokeEvent, id: unknown, tail: unknown): Promise<unknown> =>
+        this.currentEngine(context)?.logs(String(id), typeof tail === 'number' ? tail : 500) ??
+        Promise.resolve({ lines: [], truncated: false }),
     );
     context.handle(
       ContainerChannel.Status,
@@ -151,7 +158,7 @@ export class ContainersContribution implements MainContribution {
    * to save a directory check on a call the user made.
    */
   private refreshContributedEngines(): void {
-    contributedEngines.replaceAll(contributedContainerEngines());
+    contributedEngines.replaceAll(contributedContainerEngines(pluginNodeRuntime));
   }
 
   /**
@@ -167,13 +174,17 @@ export class ContainersContribution implements MainContribution {
    * @param context The contribution context, which is the only door to the socket permission.
    * @returns Returns the engine client, or null when no engine is installed.
    */
-  private currentEngine(context: ContributionContext): ContainerEngine | null {
+  private currentEngine(context: ContributionContext): ContainerEngineClient | null {
     const descriptor: ContainerEngineDescriptor | null = selectedEngine();
-    if (descriptor === null) {
+    if (descriptor?.spawn == null) {
+      // No engine, or one built for an older Studio that has no process to run: either way there is
+      // nothing to talk to, and the surface reports the engine as not running until it is updated.
       this.releaseEngine();
       return null;
     }
-    const key: string = `${descriptor.id}@${engineSocketPath(descriptor) ?? ''}`;
+    // The entry point is part of the key: an update installs the plugin at a new path, and the process
+    // running the old one must give way to it.
+    const key: string = `${descriptor.id}@${engineSocketPath(descriptor) ?? ''}@${descriptor.spawn.args.join(' ')}`;
     if (this.engine === null || this.engineKey !== key) {
       this.adoptEngine(context, descriptor, key);
     }
@@ -189,9 +200,10 @@ export class ContainersContribution implements MainContribution {
     if (this.engine === null) {
       return;
     }
-    this.log?.info('no container engine is installed; releasing the engine client');
+    this.log?.info('no usable container engine is installed; releasing the engine client');
     this.watchHandle?.close();
     this.watchHandle = null;
+    this.engine.dispose();
     this.engine = null;
     this.engineKey = null;
   }
@@ -218,9 +230,10 @@ export class ContainersContribution implements MainContribution {
     const watching: boolean = this.watchHandle !== null;
     this.watchHandle?.close();
     this.watchHandle = null;
-    // Docker and Podman both serve the Docker Engine API, so one client speaks to either; the engine
-    // in effect decides only which socket it opens and which CLI the surface drives.
-    this.engine = new DockerEngine(socket);
+    // The engine's own plugin speaks to it (#973); Studio hands it the socket the permission resolved,
+    // so a plugin never decides for itself where it may connect.
+    this.engine?.dispose();
+    this.engine = new ContainerEngineClient(descriptor.id, descriptor.spawn!, socket.path);
     this.engineKey = key;
     if (watching && this.watchConsumers > 0) {
       // Consumers hold a watch on *the engine*, not on one connection to it, so a stream that was open
@@ -251,6 +264,7 @@ export class ContainersContribution implements MainContribution {
     this.watchHandle?.close();
     this.watchHandle = null;
     this.watchConsumers = 0;
+    this.engine?.dispose();
     this.engine = null;
     this.engineKey = null;
   }

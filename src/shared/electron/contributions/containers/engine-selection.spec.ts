@@ -59,7 +59,8 @@ function engine(id: string, priority: number, socket: string): ContainerEngineDe
     id,
     displayName: id === 'docker' ? 'Docker' : 'Podman',
     priority,
-    cli: `/plugins/${id}/bin/${id}`,
+    cli: id,
+    spawn: null,
     discovery: {
       hostVariable: id === 'docker' ? 'DOCKER_HOST' : 'CONTAINER_HOST',
       dockerContext: id === 'docker',

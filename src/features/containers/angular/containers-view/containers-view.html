@@ -233,9 +233,9 @@
     [maxSize]="640"
   >
     <app-tool-panel
-      title="Terminals"
+      title="Output"
       [icon]="Icon.TERMINAL"
-      closeLabel="Close terminals"
+      closeLabel="Close output"
       [flush]="true"
       (closed)="hideTerminals()"
     >
@@ -271,11 +271,18 @@
               class="containers__terminal-pane"
               [class.containers__terminal-pane--hidden]="session.id !== terminals.activeId()"
             >
-              <app-terminal
-                [terminalId]="session.id"
-                kind="run"
-                [isActive]="isActive() && session.id === terminals.activeId()"
-              />
+              @if (session.kind === 'logs') {
+                <app-container-logs
+                  [containerId]="session.containerId ?? ''"
+                  [isActive]="isActive() && session.id === terminals.activeId()"
+                />
+              } @else {
+                <app-terminal
+                  [terminalId]="session.id"
+                  kind="run"
+                  [isActive]="isActive() && session.id === terminals.activeId()"
+                />
+              }
             </div>
           }
         </div>

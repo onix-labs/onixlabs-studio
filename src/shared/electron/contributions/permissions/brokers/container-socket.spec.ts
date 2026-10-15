@@ -19,6 +19,7 @@ function podmanEngine(): ContainerEngineDescriptor {
     displayName: 'Podman',
     priority: 50,
     cli: '/plugins/podman-engine/bin/podman',
+    spawn: null,
     discovery: {
       hostVariable: 'CONTAINER_HOST',
       dockerContext: false,

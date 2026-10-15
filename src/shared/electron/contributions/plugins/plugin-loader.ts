@@ -963,25 +963,31 @@ export function toHostingDescriptors(
 export function toContainerEngineDescriptors(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
   localRoot?: string,
   installedVersion?: InstalledVersion,
 ): readonly ContainerEngineDescriptor[] {
   const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   const descriptors: ContainerEngineDescriptor[] = [];
   for (const engine of manifest.contributes.containerEngines ?? []) {
-    const cli: string | null = ops.isInstalled(provisioner())
+    const entryPoint: string | null = ops.isInstalled(provisioner())
       ? ops.target(provisioner(), engine.entryPoint)
       : null;
-    if (cli === null) {
+    if (entryPoint === null) {
       continue;
     }
+    // An engine with no command was built for a Studio that spoke the Engine API itself; it is listed,
+    // so the user sees it and is offered the update, but it has nothing to run (#973).
+    const spec: NodeRuntimeSpec | string | null =
+      engine.command === undefined
+        ? null
+        : toCommandSpec(engine.command, entryPoint, engine.displayName, nodeRuntime);
     descriptors.push({
       id: engine.id,
       displayName: engine.displayName,
       priority: engine.priority,
-      // The provisioned client, named by its absolute path rather than by a bare binary name: the
-      // point of provisioning it is that the surface no longer depends on one being on the PATH.
-      cli,
+      cli: engine.cli ?? null,
+      spawn: spec === null || typeof spec === 'string' ? null : spec,
       discovery: {
         hostVariable: engine.discovery.hostVariable,
         dockerContext: engine.discovery.dockerContext === true,

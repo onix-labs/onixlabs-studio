@@ -3,7 +3,7 @@ import * as http from 'node:http';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SocketHttpResponse, StreamHandle, SocketHttpTransport } from './socket-http-transport';
+import { SocketHttpResponse, StreamHandle, SocketHttpTransport } from './transport';
 
 /**
  * Distinguishes the socket file each test creates.

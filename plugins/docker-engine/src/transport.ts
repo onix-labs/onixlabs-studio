@@ -1,5 +1,5 @@
 import * as http from 'node:http';
-import { logger } from '../../logger';
+import { trace } from './log';
 
 /**
  * A buffered HTTP response: the status and the full body text.
@@ -14,6 +14,12 @@ export interface SocketHttpResponse {
    * The full response body as text.
    */
   readonly body: string;
+
+  /**
+   * The full response body as it arrived, for a body that is not text — the engine frames a
+   * container's log output with binary headers, which reading it as UTF-8 would mangle.
+   */
+  readonly bytes: Buffer;
 }
 
 /**
@@ -82,18 +88,24 @@ export class SocketHttpTransport implements SocketTransport {
    * @returns Returns the buffered response.
    */
   public request(method: string, path: string): Promise<SocketHttpResponse> {
-    logger.trace('SocketTransport', `${method} ${path}`);
+    trace('transport', `${method} ${path}`);
     return new Promise<SocketHttpResponse>(
       (resolve: (response: SocketHttpResponse) => void, reject: (error: Error) => void): void => {
         const request: http.ClientRequest = http.request(
           { socketPath: this.socketPath, method, path },
           (response: http.IncomingMessage): void => {
-            let body: string = '';
-            response.setEncoding('utf8');
-            response.on('data', (chunk: string): void => {
-              body += chunk;
+            const chunks: Buffer[] = [];
+            response.on('data', (chunk: Buffer): void => {
+              chunks.push(chunk);
             });
-            response.on('end', (): void => resolve({ statusCode: response.statusCode ?? 0, body }));
+            response.on('end', (): void => {
+              const bytes: Buffer = Buffer.concat(chunks);
+              resolve({
+                statusCode: response.statusCode ?? 0,
+                body: bytes.toString('utf8'),
+                bytes,
+              });
+            });
           },
         );
         request.on('error', reject);
@@ -117,7 +129,7 @@ export class SocketHttpTransport implements SocketTransport {
     onLine: (line: string) => void,
     onError: (error: Error) => void,
   ): StreamHandle {
-    logger.trace('SocketTransport', `Opening event stream ${method} ${path}`);
+    trace('transport', `Opening event stream ${method} ${path}`);
     let buffer: string = '';
     const request: http.ClientRequest = http.request(
       { socketPath: this.socketPath, method, path },
@@ -143,7 +155,7 @@ export class SocketHttpTransport implements SocketTransport {
     request.end();
     return {
       close: (): void => {
-        logger.trace('SocketTransport', 'Closing event stream');
+        trace('transport', 'Closing event stream');
         request.destroy();
       },
     };

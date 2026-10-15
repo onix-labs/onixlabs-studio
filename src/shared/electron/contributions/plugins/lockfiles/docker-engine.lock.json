@@ -1,0 +1,20 @@
+{
+  "name": "docker-engine",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "docker-engine",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/docker-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.0.0/onixlabs-docker-engine-30.0.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/docker-engine": {
+      "version": "30.0.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.0.0/onixlabs-docker-engine-30.0.0.tgz",
+      "integrity": "sha512-PYE/cxSfaFN50xAQ90O6NDWy/DzbcI2Ph8E5tFbDDP4RxUjx/69VR5Ay/FnKkEucxqmsH/TJJBtqsW+UAk7PYg=="
+    }
+  }
+}
