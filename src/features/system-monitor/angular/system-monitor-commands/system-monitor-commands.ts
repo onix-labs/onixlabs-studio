@@ -12,6 +12,16 @@ export interface SystemMonitorCommandHandler {
   readonly hasRecords: Signal<boolean>;
 
   /**
+   * Gets whether the docked agent is showing (#966).
+   */
+  readonly agentShown: Signal<boolean>;
+
+  /**
+   * Shows the docked agent, or hides it.
+   */
+  toggleAgent(): void;
+
+  /**
    * Reloads the sessions and the viewed session's records.
    */
   refresh(): void;
@@ -44,6 +54,13 @@ export class SystemMonitorCommands {
    */
   public readonly hasRecords: Signal<boolean> = computed(
     (): boolean => this.handler()?.hasRecords() ?? false,
+  );
+
+  /**
+   * Gets whether the active view's agent is showing.
+   */
+  public readonly agentShown: Signal<boolean> = computed(
+    (): boolean => this.handler()?.agentShown() ?? false,
   );
 
   /**
@@ -83,5 +100,12 @@ export class SystemMonitorCommands {
    */
   public copy(): void {
     this.handler()?.copy();
+  }
+
+  /**
+   * Shows or hides the active view's agent.
+   */
+  public toggleAgent(): void {
+    this.handler()?.toggleAgent();
   }
 }

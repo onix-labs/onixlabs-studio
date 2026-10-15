@@ -838,6 +838,23 @@ describe('toTurnRequest', () => {
     expect('blockedCommands' in plain).toBe(false);
   });
 
+  it('withholdsTheHarnessesOwnTools_fromATerminalOrAToolView_only', () => {
+    // 1.16.0 (#965): a terminal's or a tool view's agent works through Studio's tools alone. Omitted
+    // everywhere else, so those surfaces' envelopes are unchanged.
+    const { context } = contextFor();
+    const builtIns: (surface: AgentRunContext['surface']) => unknown = (
+      surface: AgentRunContext['surface'],
+    ): unknown =>
+      (toTurnRequest({ ...context, surface }) as unknown as Record<string, unknown>)[
+        'builtInTools'
+      ];
+
+    expect(builtIns('monitor')).toBe('none');
+    expect(builtIns('terminal')).toBe('none');
+    expect(builtIns('editor')).toBeUndefined();
+    expect(builtIns('project')).toBeUndefined();
+  });
+
   it('carriesAVendorsOwnSettingInTheOpaqueBagRatherThanAsANamedField', () => {
     // ⛔ A wire field called `claudeExecutable` would be the seam naming a vendor. The setting still
     // reaches the harness that understands it; the protocol simply does not know what it means.

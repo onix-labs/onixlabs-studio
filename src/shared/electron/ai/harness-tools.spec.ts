@@ -23,6 +23,12 @@ import {
   ASK_USER,
   LOAD_SKILL,
   PROPOSE_WORKSPACE,
+  LIST_LOG_SESSIONS,
+  QUERY_LOGS,
+  READ_SYSTEM_METRICS,
+  SET_LOG_LEVEL,
+  SEND_API_REQUEST,
+  OPEN_DOCUMENT,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -293,5 +299,67 @@ describe('describeOffer', () => {
 
     expect(names(offer)).not.toContain(SAVE_RUN_CONFIGURATIONS);
     expect(names(offer)).toContain(LIST_RUN_CONFIGURATIONS);
+  });
+
+  it('keepsAToolViewsAgentToItsViewsTools_theQuestionAndTheSkills', async () => {
+    // #964/#966. A tool view's agent gets its view's tools and nothing of Studio's at large: no
+    // workbench, run-configuration or hosting tools, and no word of them in its instructions.
+    const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({
+        surface: 'monitor',
+        workspaceRoot: null,
+        skills: [
+          {
+            name: 'triage',
+            description: 'How to triage logs.',
+            load: (): Promise<null> => Promise.resolve(null),
+          },
+        ],
+      }),
+    );
+
+    expect([...names(offer)].sort()).toEqual(
+      [
+        ASK_USER,
+        LOAD_SKILL,
+        LIST_LOG_SESSIONS,
+        QUERY_LOGS,
+        READ_SYSTEM_METRICS,
+        SET_LOG_LEVEL,
+      ].sort(),
+    );
+    expect(offer.systemPrompt).toContain('docked to the System Monitor');
+    expect(offer.systemPrompt).toContain('- triage: How to triage logs.');
+    expect(offer.systemPrompt).not.toContain(`"${OPEN_DOCUMENT}"`);
+  });
+
+  it('withholdsTheLogLevelFromAToolViewsChatTurn', async () => {
+    const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'monitor', mode: 'chat' }),
+    );
+
+    expect(names(offer)).toContain(QUERY_LOGS);
+    expect(names(offer)).not.toContain(SET_LOG_LEVEL);
+  });
+
+  it('asksBeforeTheApiExplorerSendsARequest', async () => {
+    // #965. Sending is a real call; until now only the prompt held the agent back.
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(false),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((): Promise<unknown> =>
+      Promise.resolve({ ok: true }),
+    );
+    const { invokeTool } = await import('./harness-tools');
+
+    const outcome: { result: string | null } = await invokeTool(
+      contextFor({ surface: 'api', requestPermission, bridge: { request } }),
+      SEND_API_REQUEST,
+      { id: 'r1' },
+    );
+
+    expect(requestPermission).toHaveBeenCalledWith(SEND_API_REQUEST, expect.any(String));
+    expect(request).not.toHaveBeenCalled();
+    expect(outcome.result).toBe('The user declined to run this tool.');
   });
 });

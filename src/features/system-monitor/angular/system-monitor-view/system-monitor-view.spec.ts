@@ -81,6 +81,23 @@ class FakeLog {
   public queries: LogQuery[] = [];
   public listener: ((record: LogRecord) => void) | null = null;
 
+  // The view provides the agent and its conversation (#966), which log through this service too.
+  public debug(): void {
+    // Intentionally empty.
+  }
+  public info(): void {
+    // Intentionally empty.
+  }
+  public warn(): void {
+    // Intentionally empty.
+  }
+  public error(): void {
+    // Intentionally empty.
+  }
+  public enabled(): boolean {
+    return false;
+  }
+
   public query(query: LogQuery = {}): Promise<LogRecord[]> {
     this.queries.push(query);
     return Promise.resolve(this.records);

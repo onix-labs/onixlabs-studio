@@ -45,6 +45,11 @@ export interface TurnRequest {
   readonly effort: string | null;
   readonly mode: 'chat' | 'agent';
   readonly surface: string;
+  /**
+   * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` asks for Studio's
+   * tools alone; Codex cannot drop its shell, so the turn runs read-only instead.
+   */
+  readonly builtInTools?: 'all' | 'none';
   readonly allowedWritePaths: readonly string[];
   readonly deniedWritePaths: readonly string[];
   readonly allowedNetworkLocations: readonly string[];

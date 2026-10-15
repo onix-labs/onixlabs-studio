@@ -11,6 +11,8 @@ interface FakeHandler {
   readonly refresh: Mock;
   readonly clearFilters: Mock;
   readonly copy: Mock;
+  readonly agent: WritableSignal<boolean>;
+  readonly toggleAgent: Mock;
 }
 
 /**
@@ -23,12 +25,16 @@ function fakeHandler(hasRecords: boolean = true): FakeHandler {
   const refresh: Mock = vi.fn();
   const clearFilters: Mock = vi.fn();
   const copy: Mock = vi.fn();
+  const agent: WritableSignal<boolean> = signal<boolean>(false);
+  const toggleAgent: Mock = vi.fn();
   return {
     records,
     refresh,
     clearFilters,
     copy,
-    handler: { hasRecords: records, refresh, clearFilters, copy },
+    agent,
+    toggleAgent,
+    handler: { hasRecords: records, agentShown: agent, toggleAgent, refresh, clearFilters, copy },
   };
 }
 
@@ -53,6 +59,18 @@ describe('SystemMonitorCommands', () => {
     expect(fake.refresh).toHaveBeenCalledOnce();
     expect(fake.clearFilters).toHaveBeenCalledOnce();
     expect(fake.copy).toHaveBeenCalledOnce();
+  });
+
+  it('agent_reflectsAndTogglesTheCurrentViewsAgent', () => {
+    // #966.
+    const commands: SystemMonitorCommands = new SystemMonitorCommands();
+    expect(commands.agentShown()).toBe(false);
+    const fake: FakeHandler = fakeHandler();
+    commands.register(fake.handler);
+    fake.agent.set(true);
+    expect(commands.agentShown()).toBe(true);
+    commands.toggleAgent();
+    expect(fake.toggleAgent).toHaveBeenCalledOnce();
   });
 
   it('hasRecords_reflectsTheCurrentHandler', () => {
