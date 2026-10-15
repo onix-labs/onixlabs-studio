@@ -27,6 +27,20 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import {
+  toolViewConversationContext,
+  ToolViewAgentPanel,
+} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { PluginManagerAgentCapabilities } from '../plugin-manager-agent/plugin-manager-agent-capabilities';
+import { PluginManagerAgentPanelState } from '../plugin-manager-agent/plugin-manager-agent-panel-state';
 import {
   ALL_PLUGINS,
   AVAILABLE_PLUGINS,
@@ -92,6 +106,15 @@ const COLUMNS: readonly TableColumn[] = [
     PluginAction,
     Table,
     TableRowDef,
+    ToolViewAgentPanel,
+  ],
+  // The agent and its conversation live on the VIEW, not the docked panel (#968), so a run outlives
+  // the panel being closed.
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'plugins' },
+    PluginManagerAgentCapabilities,
   ],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
@@ -125,10 +148,39 @@ export class PluginManagerView implements OnInit {
   });
 
   /**
-   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   * Registers the view's agent with Mission Control and the requests inbox for the tab's whole life.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'plugins',
+  });
+
+  /**
+   * Registers the capabilities the agent acts through, for the view's life.
+   */
+  private readonly agentCapabilities: PluginManagerAgentCapabilities = inject(
+    PluginManagerAgentCapabilities,
+  );
+
+  /**
+   * Holds whether the docked agent is showing, shared with the ribbon.
+   */
+  protected readonly agentPanel: PluginManagerAgentPanelState = inject(
+    PluginManagerAgentPanelState,
+  );
+
+  /**
+   * Gets the context the Plugin Manager's conversations are filed under.
+   */
+  protected readonly agentContext: ConversationContext = toolViewConversationContext('plugins');
+
+  /**
+   * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
+   * tab id is readable.
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.agentHost.register(this.tabId());
   }
 
   /**

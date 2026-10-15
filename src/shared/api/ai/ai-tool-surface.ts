@@ -385,6 +385,26 @@ export const SAVE_SKILL: string = 'save_skill';
 export const DELETE_SKILL: string = 'delete_skill';
 
 /**
+ * The Plugin Manager capability that lists the plugins: installed, available and waiting updates, with what each contributes (#968).
+ */
+export const LIST_PLUGINS: string = 'list_plugins';
+
+/**
+ * The Plugin Manager capability that reports the open workspaces' ecosystems and the languages they imply, to recommend plugins from (#968).
+ */
+export const READ_WORKSPACE_LANGUAGES: string = 'read_workspace_languages';
+
+/**
+ * The Plugin Manager capability that installs or updates a plugin through the consent window, which is its only gate (#968).
+ */
+export const INSTALL_PLUGIN: string = 'install_plugin';
+
+/**
+ * The Plugin Manager capability that uninstalls a plugin. Gated (#968).
+ */
+export const UNINSTALL_PLUGIN: string = 'uninstall_plugin';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -396,10 +416,18 @@ export type OpenDocumentFormat = 'markdown' | 'code';
  * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
  * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
  * owning document and works through the provider's built-in tools alone), or one of the tool views
- * (`monitor` — the System Monitor; `models` — the AI Manager, #964). It selects the tool set the providers expose for the run.
+ * (`monitor` — the System Monitor; `models` — the AI Manager; `plugins` — the Plugin Manager, #964). It selects the tool set the providers expose for the run.
  */
 export type AgentSurface =
-  'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project' | 'monitor' | 'models';
+  | 'editor'
+  | 'terminal'
+  | 'binary'
+  | 'api'
+  | 'workspace'
+  | 'project'
+  | 'monitor'
+  | 'models'
+  | 'plugins';
 
 /**
  * Every surface, in the order they are presented to a user choosing among them. The one list the
@@ -415,6 +443,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'project',
   'monitor',
   'models',
+  'plugins',
 ];
 
 /**
@@ -422,7 +451,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
  * its view's own tools, the clarifying question and the skills, and nothing else — no workbench, file,
  * terminal, run-configuration or hosting tools — so it cannot drift into work the view is not for.
  */
-export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor', 'models'];
+export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor', 'models', 'plugins'];
 
 /**
  * Determines whether a surface belongs to a tool view.

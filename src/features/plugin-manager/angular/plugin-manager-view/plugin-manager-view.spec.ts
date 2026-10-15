@@ -63,13 +63,15 @@ describe('PluginManagerView', () => {
       error: signal<string | null>(null).asReadonly(),
       // The real client's consent-gated install, reduced to its shape: ask the shared seam, and
       // install only on acceptance.
-      installWithConsent: async (id: string): Promise<void> => {
+      installWithConsent: async (id: string): Promise<'installed' | 'declined' | 'failed'> => {
         const plugin: PluginSummary | undefined = known().find(
           (candidate: PluginSummary): boolean => candidate.id === id,
         );
         if (plugin !== undefined && (await TestBed.inject(PluginConsent).request(plugin))) {
           stub.installed.push(id);
+          return 'installed';
         }
+        return 'declined';
       },
       uninstall: (id: string): Promise<void> => {
         stub.uninstalled.push(id);
