@@ -23,13 +23,6 @@
   padding: 0.75rem 1rem 0.5rem;
 }
 
-.model-manager__heading-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
 .model-manager__heading-title {
   // The shared `.section-label` sets the type; only the spacing is ours.
   margin: 0;

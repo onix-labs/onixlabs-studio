@@ -27,11 +27,19 @@ describe('CategoryList', () => {
    * Gets the rendered entries.
    * @returns Returns the entry buttons.
    */
-  function entries(): HTMLButtonElement[] {
+  function entries(): HTMLElement[] {
     return Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-        '.category-list__item',
-      ),
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.category-list__item'),
+    );
+  }
+
+  /**
+   * Gets the shared list's rows the entries sit in.
+   * @returns Returns the rows.
+   */
+  function rows(): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.list-row'),
     );
   }
 
@@ -40,7 +48,7 @@ describe('CategoryList', () => {
    * @param entry The entry.
    * @returns Returns the label and count, space-separated.
    */
-  function read(entry: HTMLButtonElement): string {
+  function read(entry: HTMLElement): string {
     return [
       entry.querySelector('.category-list__label')?.textContent?.trim(),
       entry.querySelector('.category-list__count')?.textContent?.trim(),
@@ -59,8 +67,10 @@ describe('CategoryList', () => {
   it('render_marksTheSelectedEntry_andIndentsNestedOnes', () => {
     const [installed, llama, available] = entries();
 
+    // #954. The selection is the shared list's: a fill on the row, not bold text.
     expect(available.classList.contains('category-list__item--selected')).toBe(true);
-    expect(available.getAttribute('aria-current')).toBe('true');
+    expect(rows()[2].classList.contains('active')).toBe(true);
+    expect(rows()[2].getAttribute('aria-selected')).toBe('true');
     expect(installed.classList.contains('category-list__item--selected')).toBe(false);
     expect(llama.classList.contains('category-list__item--nested')).toBe(true);
   });
@@ -84,8 +94,8 @@ describe('CategoryList', () => {
     const chosen: string[] = [];
     fixture.componentInstance.selectedIdChange.subscribe((id: string) => chosen.push(id));
 
-    const loaded: HTMLButtonElement = entries()[3];
-    expect(loaded.disabled).toBe(true);
+    const loaded: HTMLElement = rows()[3];
+    expect(loaded.getAttribute('aria-disabled')).toBe('true');
     loaded.click();
     expect(chosen).toEqual([]);
   });
@@ -107,8 +117,8 @@ describe('CategoryList', () => {
     fixture.detectChanges();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
 
-    expect(host.querySelectorAll('.category-list__divider')).toHaveLength(1);
-    const b: HTMLButtonElement = entries()[1];
+    expect(host.querySelectorAll('.list-row--divided')).toHaveLength(1);
+    const b: HTMLElement = entries()[1];
     expect(b.classList.contains('category-list__item--muted')).toBe(true);
     // A badge takes the count's place.
     expect(b.querySelector('.category-list__count')).toBeNull();

@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { signal, WritableSignal } from '@angular/core';
-import type { ProviderPage } from '@shared/api/ai-types';
-import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
@@ -85,9 +81,6 @@ describe('ModelManagerView', () => {
   let calls: RecordedCall[];
   let catalogResult: CatalogResult = CATALOG;
   let runningModels: readonly RunningModel[] = [LOADED];
-  const providerPages: WritableSignal<readonly ProviderPage[]> = signal<readonly ProviderPage[]>(
-    [],
-  );
 
   /**
    * Installs a recording stub bridge answering the runtime channels with fixed replies.
@@ -129,9 +122,6 @@ describe('ModelManagerView', () => {
    * @returns Returns the component fixture.
    */
   async function createView(): Promise<ComponentFixture<ModelManagerView>> {
-    TestBed.configureTestingModule({
-      providers: [{ provide: AiProviders, useValue: { pages: providerPages } }],
-    });
     const fixture: ComponentFixture<ModelManagerView> = TestBed.createComponent(ModelManagerView);
     fixture.componentRef.setInput('isActive', true);
     fixture.detectChanges();
@@ -161,18 +151,18 @@ describe('ModelManagerView', () => {
   function sideEntry(
     fixture: ComponentFixture<ModelManagerView>,
     group: ModelGroupId,
-  ): HTMLButtonElement | undefined {
+  ): HTMLElement | undefined {
     const labels: Readonly<Record<ModelGroupId, string>> = {
       installed: 'Installed',
       available: 'Available',
       loaded: 'Loaded',
     };
     return [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
         '.category-list__item',
       ),
     ].find(
-      (entry: HTMLButtonElement): boolean =>
+      (entry: HTMLElement): boolean =>
         entry.querySelector('.category-list__label')?.textContent?.trim() === labels[group],
     );
   }
@@ -204,7 +194,6 @@ describe('ModelManagerView', () => {
     delete (window as unknown as { bridge?: Bridge }).bridge;
     catalogResult = CATALOG;
     runningModels = [LOADED];
-    providerPages.set([]);
   });
 
   it('offers to install the runtime when no binary is present', async () => {
@@ -514,8 +503,12 @@ describe('ModelManagerView', () => {
     );
     const fixture: ComponentFixture<ModelManagerView> = await createView();
 
-    expect(sideEntry(fixture, 'loaded')?.disabled).toBe(true);
-    expect(sideEntry(fixture, 'installed')?.disabled).toBe(false);
+    expect(sideEntry(fixture, 'loaded')?.closest('.list-row')?.getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expect(
+      sideEntry(fixture, 'installed')?.closest('.list-row')?.getAttribute('aria-disabled'),
+    ).toBeNull();
   });
 
   it('saysWhatIsInstalledAndLoaded_underTheHeading', async () => {
@@ -566,36 +559,5 @@ describe('ModelManagerView', () => {
         (recorded.channel as ModelRuntimeChannel) === ModelRuntimeChannel.Remove,
     );
     expect(call?.args).toEqual(['qwen2.5-coder:7b']);
-  });
-
-  it('setUpAsAProvider_isOfferedOnlyWithAnOllamaPage_andOpensItInSettings', async () => {
-    // #948. Providers are Settings' business; Local Models points there once a plugin offers Ollama.
-    stubBridge(
-      { available: true, version: '0.32.14' },
-      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
-    );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const link: () => HTMLButtonElement | undefined = (): HTMLButtonElement | undefined =>
-      [...host.querySelectorAll<HTMLButtonElement>('.model-manager__heading-row button')].find(
-        (button: HTMLButtonElement): boolean => button.textContent?.includes('Provider') ?? false,
-      );
-    expect(link()).toBeUndefined();
-
-    providerPages.set([
-      {
-        id: 'ollama',
-        label: 'Ollama',
-        kinds: ['ollama'],
-        createKind: 'ollama',
-        methods: [],
-        description: '',
-      },
-    ]);
-    fixture.detectChanges();
-    const navigation: SettingsNavigation = TestBed.inject(SettingsNavigation);
-    link()?.click();
-
-    expect(navigation.requestedSection()).toBe('ai-provider-ollama');
   });
 });

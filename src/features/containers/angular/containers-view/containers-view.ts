@@ -17,6 +17,7 @@ import {
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
@@ -99,7 +100,7 @@ const CONTAINER_COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Name' },
   { id: 'image', header: 'Image' },
   { id: 'status', header: 'Status', width: '14rem' },
-  { id: 'actions', header: '', width: '7.5rem', align: 'end' },
+  { id: 'actions', header: '', width: '9rem', align: 'end' },
 ];
 
 /**
@@ -135,6 +136,7 @@ const MENU_SHELL: string = 'shell';
     AppIcon,
     CategoryList,
     CdkMenuTrigger,
+    Chip,
     Menu,
     PanelLayout,
     Panel,
@@ -703,6 +705,26 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected isRunning(container: ContainerSummary): boolean {
     return container.state === 'running';
+  }
+
+  /**
+   * Tones a container's status chip by its state: running is success, paused or restarting a warning,
+   * a dead container danger, and a stopped one neutral.
+   * @param container The container.
+   * @returns Returns the tone.
+   */
+  protected statusTone(container: ContainerSummary): ChipTone {
+    switch (container.state) {
+      case 'running':
+        return 'success';
+      case 'paused':
+      case 'restarting':
+        return 'warning';
+      case 'dead':
+        return 'danger';
+      default:
+        return 'neutral';
+    }
   }
 
   /**

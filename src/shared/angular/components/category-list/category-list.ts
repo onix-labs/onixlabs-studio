@@ -1,13 +1,16 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   InputSignal,
   model,
   ModelSignal,
   output,
   OutputEmitterRef,
+  Signal,
 } from '@angular/core';
+import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
@@ -85,12 +88,14 @@ export interface CategoryItem {
 /**
  * The list a tool's side panel shows (#949): an optional search field, a small uppercase title, and a
  * column of entries — each an icon, a label and an optional count or badge, one of them selected.
- * Entries can be grouped with dividers, nested, dimmed, or listed but disabled. The Plugin Manager
- * lists its filters in it and the AI Manager its models, profiles and skills (#948).
+ * Entries can be grouped with dividers, nested, dimmed, or listed but disabled. The entries are the
+ * shared {@link ListView}'s rows (#954), so they select, hover and take the keyboard as every other
+ * list in Studio does. The Plugin Manager lists its filters in it and the AI Manager its models,
+ * profiles and skills (#948).
  */
 @Component({
   selector: 'app-category-list',
-  imports: [AppIcon, TextField, TooltipTrigger],
+  imports: [AppIcon, ListView, TextField, TooltipTrigger],
   templateUrl: './category-list.html',
   styleUrl: './category-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -124,6 +129,11 @@ export class CategoryList {
     input.required<readonly CategoryItem[]>();
 
   /**
+   * Gets what the list says when it has no entries, or empty to say nothing.
+   */
+  public readonly emptyText: InputSignal<string> = input<string>('');
+
+  /**
    * Gets the identifier of the selected entry, or null when none is.
    */
   public readonly selectedId: InputSignal<string | null> = input<string | null>(null);
@@ -137,4 +147,25 @@ export class CategoryList {
    * Emits the identifier of the entry whose action button was pressed.
    */
   public readonly actionClick: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Gets the entries as the shared list's rows, carrying whether each is disabled or opens a group.
+   */
+  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.items().map((item: CategoryItem): ListRow => ({
+      id: item.id,
+      data: item,
+      disabled: item.disabled === true,
+      dividerBefore: item.dividerBefore === true,
+    })),
+  );
+
+  /**
+   * Reads a row's entry.
+   * @param row The row.
+   * @returns Returns the entry.
+   */
+  protected itemOf(row: ListRow): CategoryItem {
+    return row.data as CategoryItem;
+  }
 }

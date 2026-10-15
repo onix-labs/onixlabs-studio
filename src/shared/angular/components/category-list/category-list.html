@@ -14,48 +14,48 @@
   @if (title()) {
     <h3 class="category-list__title">{{ title() }}</h3>
   }
-  <ul class="category-list__items">
-    @for (item of items(); track item.id) {
-      @if (item.dividerBefore) {
-        <li class="category-list__divider" role="separator"></li>
-      }
-      <li class="category-list__row" [class.category-list__row--with-action]="item.action">
+  <!-- The entries are the shared list's rows, so selection, hover and keyboard read as every other
+       list in Studio does. -->
+  <app-list-view
+    [rows]="rows()"
+    [selectedId]="selectedId()"
+    [emptyText]="emptyText()"
+    (rowClick)="selectedIdChange.emit($event.id)"
+  >
+    <ng-template let-row>
+      @let item = itemOf(row);
+      <span
+        class="category-list__item"
+        [class.category-list__item--nested]="item.nested"
+        [class.category-list__item--muted]="item.muted"
+        [class.category-list__item--selected]="selectedId() === item.id"
+      >
+        <app-icon class="category-list__icon" [icon]="item.icon" />
+        <span class="category-list__label">{{ item.label }}</span>
+        @if (item.badge) {
+          <app-icon
+            class="category-list__badge"
+            [icon]="item.badge"
+            [attr.title]="item.badgeLabel ?? null"
+            [attr.aria-label]="item.badgeLabel ?? null"
+          />
+        } @else if (item.count !== undefined && item.count !== null) {
+          <span class="category-list__count">{{ item.count }}</span>
+        }
+      </span>
+      @if (item.action) {
         <button
           type="button"
-          class="category-list__item"
-          [class.category-list__item--nested]="item.nested"
-          [class.category-list__item--muted]="item.muted"
-          [class.category-list__item--selected]="selectedId() === item.id"
-          [attr.aria-current]="selectedId() === item.id ? 'true' : null"
-          [disabled]="item.disabled"
-          (click)="selectedIdChange.emit(item.id)"
+          class="category-list__action"
+          [attr.aria-label]="item.actionLabel ?? null"
+          [appTooltip]="item.actionLabel ?? ''"
+          (click)="$event.stopPropagation(); actionClick.emit(item.id)"
+          (keydown.enter)="$event.stopPropagation()"
+          (keydown.space)="$event.stopPropagation()"
         >
-          <app-icon class="category-list__icon" [icon]="item.icon" />
-          <span class="category-list__label">{{ item.label }}</span>
-          @if (item.badge) {
-            <app-icon
-              class="category-list__badge"
-              [icon]="item.badge"
-              [attr.title]="item.badgeLabel ?? null"
-              [attr.aria-label]="item.badgeLabel ?? null"
-            />
-          } @else if (item.count !== undefined && item.count !== null) {
-            <span class="category-list__count">{{ item.count }}</span>
-          }
+          <app-icon [icon]="item.action" />
         </button>
-        <!-- A sibling of the entry rather than inside it: a button cannot hold a button. -->
-        @if (item.action) {
-          <button
-            type="button"
-            class="category-list__action"
-            [attr.aria-label]="item.actionLabel ?? null"
-            [appTooltip]="item.actionLabel ?? ''"
-            (click)="actionClick.emit(item.id)"
-          >
-            <app-icon [icon]="item.action" />
-          </button>
-        }
-      </li>
-    }
-  </ul>
+      }
+    </ng-template>
+  </app-list-view>
 </div>

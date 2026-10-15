@@ -7,8 +7,8 @@
     [allowedEdges]="sideEdges"
     [movable]="false"
     [defaultSize]="240"
-    [minSize]="180"
-    [maxSize]="420"
+    [minSize]="240"
+    [maxSize]="480"
   >
     <app-category-list
       title="Containers"
@@ -18,16 +18,7 @@
       [items]="kindItems()"
       [selectedId]="kind()"
       (selectedIdChange)="showKind($event)"
-    >
-      <div categoryListFilters class="containers__running-only">
-        <span>Only show running containers</span>
-        <app-toggle
-          ariaLabel="Only show running containers"
-          [checked]="runningOnly()"
-          (checkedChange)="runningOnly.set($event)"
-        />
-      </div>
-    </app-category-list>
+    />
   </app-panel>
 
   <div main class="containers-main">
@@ -95,8 +86,20 @@
       }
     } @else {
       <header class="containers__header">
-        <h2 class="containers__title section-label">{{ heading() }}</h2>
-        <p class="containers__subtitle">{{ subtitle() }}</p>
+        <div class="containers__heading">
+          <h2 class="containers__title section-label">{{ heading() }}</h2>
+          <p class="containers__subtitle">{{ subtitle() }}</p>
+        </div>
+        @if (kind() === 'containers') {
+          <div class="containers__running-only">
+            <span>Only show running containers</span>
+            <app-toggle
+              ariaLabel="Only show running containers"
+              [checked]="runningOnly()"
+              (checkedChange)="runningOnly.set($event)"
+            />
+          </div>
+        }
       </header>
 
       <!-- One list at a time, chosen in the side panel, filling the rest of the view. -->
@@ -135,7 +138,11 @@
                 {{ container.image }}
               </button>
             </td>
-            <td class="containers__muted">{{ container.status }}</td>
+            <td>
+              <app-chip [tone]="statusTone(container)" [attr.title]="container.status">{{
+                container.status
+              }}</app-chip>
+            </td>
             <td>
               <span
                 class="containers__actions"
@@ -146,7 +153,6 @@
                 @if (isRunning(container)) {
                   <app-button
                     variant="none"
-                    size="small"
                     tone="warning"
                     [icon]="Icon.STOP"
                     [ariaLabel]="'Stop ' + displayName(container)"
@@ -157,7 +163,6 @@
                 } @else {
                   <app-button
                     variant="none"
-                    size="small"
                     tone="success"
                     [icon]="Icon.PLAY"
                     [ariaLabel]="'Start ' + displayName(container)"
@@ -168,23 +173,21 @@
                 }
                 <app-button
                   variant="none"
-                  size="small"
-                  [icon]="Icon.DOTS_THREE_BOLD"
-                  [ariaLabel]="'More actions for ' + displayName(container)"
-                  tooltip="More Actions"
-                  [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                  [cdkMenuPosition]="rowMenu.position()"
-                  (click)="menuTarget.set(container)"
-                />
-                <app-button
-                  variant="none"
-                  size="small"
                   tone="danger"
                   [icon]="Icon.TRASH_DUOTONE"
                   [ariaLabel]="'Remove ' + displayName(container)"
                   tooltip="Remove"
                   [disabled]="busy()"
                   (click)="remove(container.id)"
+                />
+                <app-button
+                  variant="none"
+                  [icon]="Icon.DOTS_THREE_BOLD"
+                  [ariaLabel]="'More actions for ' + displayName(container)"
+                  tooltip="More Actions"
+                  [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
+                  [cdkMenuPosition]="rowMenu.position()"
+                  (click)="menuTarget.set(container)"
                 />
               </span>
             </td>

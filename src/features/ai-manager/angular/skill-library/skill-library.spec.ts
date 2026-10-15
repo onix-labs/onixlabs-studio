@@ -133,31 +133,56 @@ describe('SkillLibrarySection', () => {
     expect(element().querySelector('.library__files li')?.textContent?.trim()).toBe('ref.md');
   });
 
-  it('add_thenSave_sendsTheDraft', async () => {
-    await addFromTheRibbon();
-
-    const name: HTMLInputElement = element().querySelector<HTMLInputElement>(
-      '.library__editor app-text-field input',
-    )!;
-    name.value = 'my-skill';
-    name.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    button('Save')?.click();
+  /**
+   * Edits the selected skill the way its fields do, then waits out the save's pause.
+   * @param patch The fields to change.
+   * @returns Resolves once the save has had its chance to run.
+   */
+  async function editAndPause(patch: Partial<SkillDraft>): Promise<void> {
+    const view: {
+      selected(): unknown;
+      edit(row: unknown, patch: Partial<SkillDraft>): void;
+    } = fixture.componentInstance as unknown as {
+      selected(): unknown;
+      edit(row: unknown, patch: Partial<SkillDraft>): void;
+    };
+    view.edit(view.selected(), patch);
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 700);
+    });
     await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('edit_savesItselfAMomentLater_withoutASaveButton', async () => {
+    // #954. A skill saves as it is edited, as a profile does.
+    await addFromTheRibbon();
+    expect(button('Save')).toBeUndefined();
+
+    await editAndPause({ name: 'my-skill', description: 'House style.' });
 
     expect(saved).toHaveLength(1);
-    expect(saved[0].name).toBe('my-skill');
+    expect(saved[0]).toMatchObject({ name: 'my-skill', description: 'House style.' });
+  });
+
+  it('edit_ofANewSkill_waitsForANameAndADescription', async () => {
+    await addFromTheRibbon();
+
+    await editAndPause({ name: 'my-skill' });
+
+    expect(saved).toHaveLength(0);
+    expect(element().querySelector('.library__notice')?.textContent).toContain(
+      'a name and a description',
+    );
   });
 
   it('save_whenRefused_showsTheReasonAndKeepsTheDraft', async () => {
-    saveError = 'The frontmatter has no description, so a model cannot tell when to use it.';
+    saveError = 'That name is not a valid folder name.';
     await addFromTheRibbon();
 
-    button('Save')?.click();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await editAndPause({ name: 'Bad Name', description: 'd' });
 
-    expect(element().querySelector('.library__error')?.textContent).toContain('no description');
+    expect(element().querySelector('.library__error')?.textContent).toContain('not a valid');
     expect(entries()).toHaveLength(1);
   });
 

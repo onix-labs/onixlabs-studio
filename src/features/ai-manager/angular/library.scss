@@ -42,6 +42,13 @@
   margin-block-end: 0.25rem;
 }
 
+.library__heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .library__title {
   // The shared `.section-label` sets the type; only the spacing is ours.
   margin: 0;

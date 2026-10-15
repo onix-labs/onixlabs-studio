@@ -48,6 +48,17 @@ export interface ListRow {
    * Gets the consumer's payload for the row, read by the projected row-content template.
    */
   readonly data: unknown;
+
+  /**
+   * Gets whether the row is listed but cannot be chosen: it is dimmed, and a click or key on it does
+   * nothing. Such as Local Models' Loaded while nothing is in memory (#954).
+   */
+  readonly disabled?: boolean;
+
+  /**
+   * Gets whether a divider separates the row from the group above it (#954).
+   */
+  readonly dividerBefore?: boolean;
 }
 
 /**
@@ -306,7 +317,17 @@ export class ListView {
    */
   protected activate(event: Event, row: ListRow): void {
     event.preventDefault();
-    this.rowClick.emit(row);
+    this.choose(row);
+  }
+
+  /**
+   * Reports a row as chosen, unless it is disabled.
+   * @param row The row.
+   */
+  protected choose(row: ListRow): void {
+    if (row.disabled !== true) {
+      this.rowClick.emit(row);
+    }
   }
 
   /**

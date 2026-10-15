@@ -6,8 +6,8 @@
     defaultEdge="left"
     [allowedEdges]="sideEdges"
     [movable]="false"
-    [defaultSize]="260"
-    [minSize]="180"
+    [defaultSize]="240"
+    [minSize]="240"
     [maxSize]="480"
   >
     <app-category-list
@@ -27,18 +27,35 @@
       <p class="library__notice library__notice--top" role="status">{{ text }}</p>
     }
     @if (selected(); as row) {
-      <!-- The selected skill, edited at full width. A skill is a file on disk and a save can be
-           refused, so edits are a draft committed with Save. -->
+      <!-- The selected skill, edited at full width. It saves itself a moment after each edit, as a
+           profile does; a refused save keeps the draft and says why. -->
       <div class="library__editor">
         <header class="library__header">
-          <h2 class="library__title section-label">
-            {{ row.stored?.name ?? (row.draft.name || 'New skill') }}
-          </h2>
+          <div class="library__heading-row">
+            <h2 class="library__title section-label">
+              {{ row.stored?.name ?? (row.draft.name || 'New skill') }}
+            </h2>
+            @if (row.stored) {
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.FOLDER_OPEN"
+                [label]="openInFileSystemLabel"
+                (click)="reveal(row)"
+              />
+            }
+          </div>
           <p class="library__subtitle">
             Instructions an agent loads when it decides a task needs them. Only the name and
             description are always in front of it.
           </p>
         </header>
+
+        @if (isIncomplete(row)) {
+          <p class="library__notice" role="status">
+            Give the skill a name and a description to save it.
+          </p>
+        }
 
         @if (row.stored?.problem; as problem) {
           <p class="library__alert" role="alert">Not offered to agents: {{ problem }}</p>
@@ -75,11 +92,11 @@
             One paragraph the agent always has in front of it, to decide whether this skill applies.
             Say what kind of task it is for.
           </span>
-          <app-textarea
+          <app-markdown-field
             [value]="row.draft.description"
-            [rows]="4"
+            [minRows]="3"
+            [expandable]="false"
             ariaLabel="Skill description"
-            placeholder="e.g. House style for C#: explicit types, file-scoped namespaces, XML doc comments. Use when writing or reviewing C#."
             (valueChange)="edit(row, { description: $event })"
           />
         </div>
@@ -117,33 +134,6 @@
         @if (row.error; as error) {
           <p class="library__error" role="alert">{{ error }}</p>
         }
-
-        <div class="library__footer">
-          <app-button-row align="start">
-            <app-button
-              variant="solid"
-              label="Save"
-              [disabled]="row.saving || !isDirty(row)"
-              [loading]="row.saving"
-              (click)="save(row)"
-            />
-            <app-button
-              [label]="row.stored ? 'Revert' : 'Discard'"
-              [disabled]="row.saving || (row.stored !== null && !isDirty(row))"
-              (click)="revert(row)"
-            />
-          </app-button-row>
-          @if (row.stored) {
-            <span class="library__footer-actions">
-              <app-button
-                variant="none"
-                [icon]="Icon.FOLDER_OPEN"
-                [label]="openInFileSystemLabel"
-                (click)="reveal(row)"
-              />
-            </span>
-          }
-        </div>
       </div>
     } @else {
       <div class="library__empty">
