@@ -460,21 +460,22 @@ describe('ContainersView', () => {
     });
 
     it('terminals_closingThePanelHidesIt_andTheNextSessionShowsItAgain', async () => {
+      // Driven through the view rather than the rendered panel: a rendered session mounts a real
+      // terminal, which needs browser APIs the test environment does not have.
       stubBridge({ available: true });
       const fixture: ComponentFixture<ContainersView> = await createView();
       const view: {
         terminalsHidden: WritableSignal<boolean>;
+        hideTerminals(): void;
         viewLogs(container: ContainerSummary): void;
       } = fixture.componentInstance as unknown as {
         terminalsHidden: WritableSignal<boolean>;
+        hideTerminals(): void;
         viewLogs(container: ContainerSummary): void;
       };
 
       view.viewLogs(CONTAINER);
-      fixture.detectChanges();
-      (fixture.nativeElement as HTMLElement)
-        .querySelector<HTMLButtonElement>('app-tool-panel [aria-label="Close terminals"]')
-        ?.click();
+      view.hideTerminals();
       expect(view.terminalsHidden()).toBe(true);
 
       view.viewLogs(STOPPED);

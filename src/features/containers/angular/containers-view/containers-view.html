@@ -234,7 +234,7 @@
       [icon]="Icon.TERMINAL"
       closeLabel="Close terminals"
       [flush]="true"
-      (closed)="terminalsHidden.set(true)"
+      (closed)="hideTerminals()"
     >
       <div class="containers__terminal">
         <div class="containers__terminal-tabs" role="tablist">

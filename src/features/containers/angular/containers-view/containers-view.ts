@@ -597,6 +597,13 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
+   * Hides the Terminals panel, keeping its sessions; the next session opened shows it again.
+   */
+  protected hideTerminals(): void {
+    this.terminalsHidden.set(true);
+  }
+
+  /**
    * Runs the row menu's choice on the container that opened it.
    * @param id The chosen item's id.
    */
