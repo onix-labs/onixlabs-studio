@@ -13,6 +13,7 @@ import {
   WebContents,
   WindowOpenHandlerResponse,
 } from 'electron';
+import { pluginNodeRuntime } from './plugin-node-runtime';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -1497,7 +1498,7 @@ class Program {
  * @returns Returns the command, arguments and environment.
  */
 function versionControlNodeRuntime(entryPoint: string): NodeRuntimeSpec {
-  return { command: process.execPath, args: [entryPoint], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  return pluginNodeRuntime(entryPoint);
 }
 
 Program.run();

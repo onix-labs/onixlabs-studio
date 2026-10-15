@@ -35,6 +35,12 @@ export enum ContainerChannel {
   Remove = 'container:remove',
 
   /**
+   * Reads a container's most recent log lines by id and how many (invoke), answered with
+   * `ContainerLogs` (#973). Logs come through the engine's own plugin, not a terminal.
+   */
+  Logs = 'container:logs',
+
+  /**
    * Reports whether the container engine is reachable, and its version when it is (invoke).
    */
   Status = 'container:status',

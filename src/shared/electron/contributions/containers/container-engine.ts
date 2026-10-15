@@ -1,3 +1,4 @@
+import type { ContainerLogs } from '@shared/api/container-engine-protocol';
 import {
   ContainerEvent,
   ContainerStatus,
@@ -5,8 +6,8 @@ import {
   ImageSummary,
 } from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
+import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
 import { contributedEngines } from './container-engine-registry';
-import { StreamHandle } from './socket-http-transport';
 import {
   DiscoveryEnvironment,
   EndpointDiscovery,
@@ -15,6 +16,16 @@ import {
   resolveEndpoint,
   ResolvedEndpoint,
 } from './socket-discovery';
+
+/**
+ * A handle to something running — an engine's event stream — that is stopped by closing it.
+ */
+export interface StreamHandle {
+  /**
+   * Stops it.
+   */
+  close(): void;
+}
 
 /**
  * The container engine slot's contract: everything the Containers surface asks of whatever is behind
@@ -60,6 +71,14 @@ export interface ContainerEngine {
   remove(id: string): Promise<boolean>;
 
   /**
+   * Reads a container's most recent log lines.
+   * @param id The container identifier.
+   * @param tail How many lines, at most.
+   * @returns Returns the lines, oldest first.
+   */
+  logs(id: string, tail: number): Promise<ContainerLogs>;
+
+  /**
    * Reports whether the engine is reachable, and what it is.
    * @returns Returns the status.
    */
@@ -90,10 +109,17 @@ export interface ContainerEngineDescriptor extends SlotEntry {
   readonly discovery: EndpointDiscovery;
 
   /**
-   * Gets the command-line tool that drives the engine directly, used for the operations that are a
-   * terminal session rather than an API call — following logs, opening a shell in a container.
+   * Gets the engine's command-line tool by command name — `docker`, `podman` — for the operations that
+   * are a terminal session rather than an API call, such as a shell in a container; or null when the
+   * plugin names none. Whether it is on this machine is asked separately, when it is needed.
    */
-  readonly cli: string;
+  readonly cli: string | null;
+
+  /**
+   * Gets how to run the plugin process that speaks to the engine (#973), or null when the installed
+   * plugin was built for an older Studio and has none — it is listed, and cannot be used until updated.
+   */
+  readonly spawn: NodeRuntimeSpec | null;
 
   /**
    * Gets the command the user runs to start the engine themselves on a platform, or null when there is

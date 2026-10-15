@@ -131,8 +131,14 @@ import {
  * `1.18.0` stops reading a declared AI model's `contextWindow`. A manifest is the author's claim at
  * release time rather than the provider's data, and a window shown in settings must be the provider's
  * own (agent protocol 1.13.0). Manifests that still declare one are accepted; the figure is ignored.
+ *
+ * `1.19.0` adds a container engine's optional `command` and `cli` (#973). An engine with a `command` is
+ * a plugin process speaking the container-engine protocol: the Engine API client left core, so the
+ * plugin talks to its engine and Studio talks to the plugin. `cli` names the engine's own command-line
+ * tool, looked for on the machine's PATH for the operations that are a terminal session. An engine
+ * without a `command` — one built for an older Studio — is listed but cannot be used until updated.
  */
-export const PLUGIN_API_VERSION: string = '1.18.0';
+export const PLUGIN_API_VERSION: string = '1.19.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -563,9 +569,9 @@ export interface ManifestEndpointDiscovery {
  * language server is chosen per language and a decoder per format, but an engine is chosen once for the
  * application because there is nothing to vary it by.
  *
- * The payload is the engine's **client CLI**, not the engine itself. Studio speaks the Engine API over
- * a socket the user's engine already serves; the CLI is needed only for the operations that are a
- * terminal session rather than an API call — following logs, opening a shell in a container.
+ * The payload is a **plugin process** that speaks the container-engine protocol (1.19.0, #973): it
+ * talks to the engine over the socket Studio resolves for it, and Studio talks to it. Before 1.19.0 the
+ * payload was the engine's client CLI and Studio spoke the Engine API itself.
  */
 export interface ManifestContainerEngine {
   /**
@@ -600,7 +606,20 @@ export interface ManifestContainerEngine {
   readonly startCommands?: Readonly<Record<string, string>>;
 
   /**
-   * Gets this contribution's own entry point within the installed payload — the client CLI — or
+   * Gets how the plugin process is run (1.19.0), or undefined for an engine built for an older Studio,
+   * which is listed but cannot be used until it is updated.
+   */
+  readonly command?: ManifestCommand;
+
+  /**
+   * Gets the engine's own command-line tool by command name — `docker`, `podman` — looked for on the
+   * machine's PATH for the operations that are a terminal session, such as a shell in a container
+   * (1.19.0). Undefined when there is none; those operations are then not offered.
+   */
+  readonly cli?: string;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload — the plugin process — or
    * undefined to use the provision's. See {@link ManifestLanguageServer.entryPoint}.
    */
   readonly entryPoint?: string;
@@ -1467,6 +1486,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         discovery: readDiscovery(entry['discovery'], `${path}.discovery`, errors),
         startCommands: readPlatformStrings(entry['startCommands'], `${path}.startCommands`, errors),
+        ...(entry['command'] === undefined
+          ? {}
+          : { command: readCommand(entry['command'], `${path}.command`, errors) ?? undefined }),
+        ...(typeof entry['cli'] === 'string' && entry['cli'].trim().length > 0
+          ? { cli: entry['cli'].trim() }
+          : {}),
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
       });
     },

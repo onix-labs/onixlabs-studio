@@ -2,6 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
+import type { ContainerLogs } from '@shared/api/container-engine-protocol';
 import {
   ContainerEngineInfo,
   ContainerSummary,
@@ -81,6 +82,19 @@ export class ContainersClient {
   }
 
   /**
+   * Reads a container's most recent log lines, through the engine's plugin (#973).
+   * @param id The container id.
+   * @param tail How many lines, at most.
+   * @returns Returns the lines, oldest first; none when they cannot be read.
+   */
+  public logs(id: string, tail: number): Promise<ContainerLogs> {
+    return (
+      this.bridge?.invoke<ContainerLogs>(ContainerChannel.Logs, id, tail) ??
+      Promise.resolve({ lines: [], truncated: false })
+    );
+  }
+
+  /**
    * Reports whether the container engine is reachable.
    * @returns Returns the engine status.
    */
@@ -140,17 +154,16 @@ export class ContainersClient {
   );
 
   /**
-   * Gets the command-line tool of the engine in effect, for the operations that are a terminal session
-   * rather than an API call.
+   * Gets the engine in effect's command-line tool on this machine, for the operations that are a
+   * terminal session — a shell in a container.
    *
-   * Empty when no engine is in effect, and deliberately not `docker`: the fallback made sense while
-   * Docker was compiled in and overwhelmingly likely, but an engine is now something the user installs,
-   * and guessing at a binary that may not exist would build a command that fails obscurely instead of
-   * an operation that is simply unavailable.
-   * @returns Returns the CLI path, or an empty string when no engine is in effect.
+   * Null when no engine is in effect or its tool is not installed (#973): Studio no longer downloads
+   * one, and guessing at a binary that may not exist would build a command that fails obscurely instead
+   * of an operation that is simply not offered.
+   * @returns Returns the CLI path, or null.
    */
-  public engineCli(): string {
-    return this.engineInEffect()?.cli ?? '';
+  public engineCli(): string | null {
+    return this.engineInEffect()?.cli ?? null;
   }
 
   /**

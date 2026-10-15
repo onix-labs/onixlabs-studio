@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ContainerEvent } from '@shared/api/container-types';
-import { ContainerSocket } from '../permissions/brokers/container-socket';
-import { DockerEngine, parseEvent } from './docker-engine';
-import { SocketHttpResponse, StreamHandle, SocketTransport } from './socket-http-transport';
+import { ContainerEvent } from './protocol';
+import { demuxLogs, DockerEngine, parseEvent } from './engine';
+import { SocketHttpResponse, StreamHandle, SocketTransport } from './transport';
 
 /**
  * A fake transport recording requests and exposing the opened streams, so the engine's mapping,
@@ -48,19 +47,11 @@ class FakeTransport implements SocketTransport {
 }
 
 /**
- * A socket handle whose path is irrelevant here because the transport is injected.
- */
-const SOCKET: ContainerSocket = {
-  path: '/unused.sock',
-  connect: (): Promise<never> => Promise.reject(new Error('unused')),
-};
-
-/**
  * Builds an engine over a fresh fake transport.
  */
 function engineWith(): { engine: DockerEngine; transport: FakeTransport } {
   const transport: FakeTransport = new FakeTransport();
-  return { engine: new DockerEngine(SOCKET, transport), transport };
+  return { engine: new DockerEngine('/unused.sock', transport), transport };
 }
 
 /**
@@ -72,7 +63,11 @@ function respondJson(
 ): (method: string, path: string) => Promise<SocketHttpResponse> {
   return (_method: string, requested: string): Promise<SocketHttpResponse> =>
     requested === path
-      ? Promise.resolve({ statusCode: 200, body: JSON.stringify(body) })
+      ? Promise.resolve({
+          statusCode: 200,
+          body: JSON.stringify(body),
+          bytes: Buffer.from(JSON.stringify(body)),
+        })
       : Promise.reject(new Error('unexpected path'));
 }
 
@@ -111,7 +106,7 @@ describe('DockerEngine', () => {
   it('listImages_returnsEmptyOnANon2xxStatus', async () => {
     const { engine, transport } = engineWith();
     transport.responder = (): Promise<SocketHttpResponse> =>
-      Promise.resolve({ statusCode: 500, body: 'nope' });
+      Promise.resolve({ statusCode: 500, body: 'nope', bytes: Buffer.from('nope') });
     expect(await engine.listImages()).toEqual([]);
   });
 
@@ -129,7 +124,7 @@ describe('DockerEngine', () => {
   it('start_stop_remove_issueTheRightRequestsAndReportSuccess', async () => {
     const { engine, transport } = engineWith();
     transport.responder = (): Promise<SocketHttpResponse> =>
-      Promise.resolve({ statusCode: 204, body: '' });
+      Promise.resolve({ statusCode: 204, body: '', bytes: Buffer.from('') });
 
     expect(await engine.start('abc')).toBe(true);
     expect(await engine.stop('abc')).toBe(true);
@@ -190,5 +185,53 @@ describe('parseEvent', () => {
 
   it('returnsNullForNonJson', () => {
     expect(parseEvent('<<not json>>')).toBeNull();
+  });
+});
+
+describe('DockerEngine.logs', () => {
+  /**
+   * Builds one framed log chunk, as the engine sends a container without a terminal.
+   * @param stream 1 for stdout, 2 for stderr.
+   * @param text The payload.
+   * @returns Returns the frame.
+   */
+  function frame(stream: number, text: string): Buffer {
+    const payload: Buffer = Buffer.from(text);
+    const header: Buffer = Buffer.alloc(8);
+    header[0] = stream;
+    header.writeUInt32BE(payload.length, 4);
+    return Buffer.concat([header, payload]);
+  }
+
+  it('demuxLogs_readsFramedOutput_andPlainTerminalOutput', () => {
+    expect(demuxLogs(Buffer.concat([frame(1, 'out one\n'), frame(2, 'err two\n')]))).toBe(
+      'out one\nerr two\n',
+    );
+    expect(demuxLogs(Buffer.from('plain text\n'))).toBe('plain text\n');
+  });
+
+  it('logs_asksForTheTailWithTimestamps_andSplitsTheLines', async () => {
+    const requests: string[] = [];
+    const bytes: Buffer = Buffer.concat([frame(1, 'a\n'), frame(1, 'b\n')]);
+    const engine: DockerEngine = new DockerEngine('/unused.sock', {
+      request: (_method: string, path: string): Promise<SocketHttpResponse> => {
+        requests.push(path);
+        return Promise.resolve({ statusCode: 200, body: bytes.toString('utf8'), bytes });
+      },
+      openStream: (): StreamHandle => ({ close: (): void => undefined }),
+    });
+
+    expect(await engine.logs('abc', 2)).toEqual({ lines: ['a', 'b'], truncated: true });
+    expect(requests).toEqual(['/containers/abc/logs?stdout=1&stderr=1&timestamps=1&tail=2']);
+  });
+
+  it('logs_answersNoLinesWhenTheContainerIsGone', async () => {
+    const engine: DockerEngine = new DockerEngine('/unused.sock', {
+      request: (): Promise<SocketHttpResponse> =>
+        Promise.resolve({ statusCode: 404, body: '', bytes: Buffer.alloc(0) }),
+      openStream: (): StreamHandle => ({ close: (): void => undefined }),
+    });
+
+    expect(await engine.logs('gone', 100)).toEqual({ lines: [], truncated: false });
   });
 });

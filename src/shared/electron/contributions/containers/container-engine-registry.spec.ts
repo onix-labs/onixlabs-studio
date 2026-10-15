@@ -13,7 +13,8 @@ function engine(id: string, priority: number = 10): ContainerEngineDescriptor {
     id,
     displayName: id,
     priority,
-    cli: `/plugins/${id}/bin/${id}`,
+    cli: id,
+    spawn: null,
     discovery: {
       hostVariable: 'CONTAINER_HOST',
       dockerContext: false,

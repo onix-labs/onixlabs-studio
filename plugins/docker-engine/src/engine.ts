@@ -1,12 +1,16 @@
 import {
-  ContainerSummary,
   ContainerEvent,
+  ContainerLogs,
   ContainerStatus,
+  ContainerSummary,
   ImageSummary,
-} from '@shared/api/container-types';
-import { ContainerSocket } from '../permissions/brokers/container-socket';
-import { ContainerEngine } from './container-engine';
-import { StreamHandle, SocketTransport, SocketHttpTransport } from './socket-http-transport';
+} from './protocol';
+import {
+  SocketHttpResponse,
+  SocketHttpTransport,
+  SocketTransport,
+  StreamHandle,
+} from './transport';
 
 /**
  * The raw container shape from `GET /containers/json`.
@@ -61,7 +65,7 @@ const MAX_BACKOFF_MS: number = 30_000;
  * and was renamed (#598). The line is between the layer that *implements* the protocol, named for it,
  * and the layer that carries bytes, named for that.
  */
-export class DockerEngine implements ContainerEngine {
+export class DockerEngine {
   /**
    * The transport the Engine API is spoken over.
    */
@@ -69,11 +73,12 @@ export class DockerEngine implements ContainerEngine {
 
   /**
    * Initializes a new instance of the {@link DockerEngine} class.
-   * @param socket The granted Docker socket handle (its path drives the default transport).
+   * @param socketPath The engine's socket, as Studio resolved it through the `container.socket`
+   * permission and passed at `initialize`.
    * @param transport The transport to use; defaults to HTTP over the socket path.
    */
-  public constructor(socket: ContainerSocket, transport?: SocketTransport) {
-    this.transport = transport ?? new SocketHttpTransport(socket.path);
+  public constructor(socketPath: string, transport?: SocketTransport) {
+    this.transport = transport ?? new SocketHttpTransport(socketPath);
   }
 
   /**
@@ -129,6 +134,32 @@ export class DockerEngine implements ContainerEngine {
    */
   public remove(id: string): Promise<boolean> {
     return this.act('DELETE', `/containers/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * Reads a container's most recent log lines, stdout and stderr together, each with its timestamp.
+   * Resolves no lines when the daemon is unreachable or the container is gone.
+   * @param id The container id.
+   * @param tail How many lines, at most.
+   * @returns Returns the lines, oldest first.
+   */
+  public async logs(id: string, tail: number): Promise<ContainerLogs> {
+    const lines: number = Math.max(1, Math.min(5_000, Math.floor(tail)));
+    try {
+      const response: SocketHttpResponse = await this.transport.request(
+        'GET',
+        `/containers/${encodeURIComponent(id)}/logs?stdout=1&stderr=1&timestamps=1&tail=${lines}`,
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return { lines: [], truncated: false };
+      }
+      const text: string[] = demuxLogs(response.bytes)
+        .split('\n')
+        .filter((line: string): boolean => line.length > 0);
+      return { lines: text, truncated: text.length >= lines };
+    } catch {
+      return { lines: [], truncated: false };
+    }
   }
 
   /**
@@ -247,4 +278,28 @@ export function parseEvent(line: string): ContainerEvent | null {
     action: raw.Action ?? '',
     id: raw.Actor?.ID ?? '',
   };
+}
+
+/**
+ * Reads a container's log body as text. A container without a terminal sends its output framed: each
+ * frame an eight-byte header — which stream, three zero bytes, then the payload's length — and the
+ * payload. One with a terminal sends plain text. The two are told apart by whether the body opens with
+ * a header. Exported for unit testing.
+ * @param bytes The body as it arrived.
+ * @returns Returns the text.
+ */
+export function demuxLogs(bytes: Buffer): string {
+  const framed: boolean =
+    bytes.length >= 8 && bytes[0] <= 2 && bytes[1] === 0 && bytes[2] === 0 && bytes[3] === 0;
+  if (!framed) {
+    return bytes.toString('utf8');
+  }
+  const parts: Buffer[] = [];
+  let offset: number = 0;
+  while (offset + 8 <= bytes.length) {
+    const size: number = bytes.readUInt32BE(offset + 4);
+    parts.push(bytes.subarray(offset + 8, offset + 8 + size));
+    offset += 8 + size;
+  }
+  return Buffer.concat(parts).toString('utf8');
 }

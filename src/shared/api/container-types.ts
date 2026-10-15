@@ -128,10 +128,11 @@ export interface ContainerEngineInfo {
   readonly inEffect: boolean;
 
   /**
-   * Gets the command-line tool that drives this engine, used for the operations that are a terminal
-   * session rather than an API call — following logs, opening a shell in a container.
+   * Gets the engine's command-line tool on this machine, by absolute path, for the operations that are
+   * a terminal session — a shell in a container — or null when it is not installed, in which case
+   * those operations are not offered (#973).
    */
-  readonly cli: string;
+  readonly cli: string | null;
 
   /**
    * Gets the command the user runs to start the engine themselves on this platform, or null when there

@@ -222,12 +222,15 @@ export function contributedHosting(
  * user can choose, and offering it would be offering a connection that cannot be made.
  * @returns Returns the descriptors.
  */
-export function contributedContainerEngines(): readonly ContainerEngineDescriptor[] {
+export function contributedContainerEngines(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly ContainerEngineDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
     toContainerEngineDescriptors(
       manifest,
       payloadProvisioner,
+      nodeRuntime,
       local.get(manifest.id),
       installedVersion,
     ),

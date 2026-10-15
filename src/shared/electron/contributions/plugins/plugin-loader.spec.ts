@@ -1093,10 +1093,12 @@ describe('a sideloaded plugin carrying its own payload', () => {
   });
 
   /**
-   * A sideloaded manifest contributing a container engine, whose payload is its client CLI.
+   * A sideloaded manifest contributing a container engine, whose payload is the engine's plugin
+   * process (#973).
+   * @param withCommand Whether the engine has a command, as one built for this Studio does.
    * @returns Returns the manifest.
    */
-  function engineManifest(): PluginManifest {
+  function engineManifest(withCommand: boolean = true): PluginManifest {
     return {
       ...decoderManifest(),
       id: 'local.engine',
@@ -1112,6 +1114,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
               sockets: { darwin: ['/run/local.sock'], linux: ['/run/local.sock'] },
             },
             startCommands: { darwin: 'local machine start' },
+            ...(withCommand ? { command: { kind: 'node' as const }, cli: 'localctl' } : {}),
           },
         ],
       },
@@ -1124,16 +1127,37 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 
     expect(descriptors).toHaveLength(1);
-    // The CLI is the provisioned client's absolute path, not a bare name: the point of provisioning it
-    // is that nothing has to be on the PATH.
-    expect(descriptors[0].cli).toBe(path.join(root, 'payload', 'main.js'));
+    // The plugin process runs under Studio's runtime; the CLI is a name, looked for when needed.
+    expect(descriptors[0].spawn).toMatchObject({
+      command: '/runtime',
+      args: [path.join(root, 'payload', 'main.js')],
+    });
+    expect(descriptors[0].cli).toBe('localctl');
     expect(descriptors[0].discovery.hostVariable).toBe('LOCAL_HOST');
     expect(descriptors[0].discovery.defaults('darwin')).toEqual(['/run/local.sock']);
     expect(descriptors[0].startCommand('darwin')).toBe('local machine start');
+  });
+
+  it('toContainerEngineDescriptors_listsAnEngineBuiltForAnOlderStudio_withNothingToRun', () => {
+    // #973: before 1.19.0 the payload was a CLI and Studio spoke the Engine API itself. Such an engine
+    // stays listed, so the user is offered its update, but there is no process to run.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(false),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0].spawn).toBeNull();
+    expect(descriptors[0].cli).toBeNull();
   });
 
   it('toContainerEngineDescriptors_reportsNoSocketsForAPlatformTheEngineOmits', () => {
@@ -1142,6 +1166,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 
@@ -1158,6 +1183,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 

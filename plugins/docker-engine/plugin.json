@@ -1,0 +1,42 @@
+{
+  "id": "docker-engine",
+  "name": "Docker",
+  "description": "Talk to a Docker-compatible container engine over its local socket.",
+  "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
+  "version": "30.0.0",
+  "apiVersion": "1.19.0",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+    "sha256": "bee5e27ae3e2246a894ad47c349d754834f6b978a8bf9c75fc47bc097bf365e0",
+    "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
+  },
+  "contributes": {
+    "containerEngines": [
+      {
+        "id": "docker",
+        "displayName": "Docker",
+        "priority": 100,
+        "discovery": {
+          "hostVariable": "DOCKER_HOST",
+          "dockerContext": true,
+          "sockets": {
+            "darwin": ["/var/run/docker.sock"],
+            "linux": ["/var/run/docker.sock"],
+            "win32": ["\\\\.\\pipe\\docker_engine"]
+          }
+        },
+        "startCommands": {
+          "darwin": "open -a Docker",
+          "linux": "sudo systemctl start docker"
+        },
+        "command": {
+          "kind": "node"
+        },
+        "cli": "docker",
+        "entryPoint": "node_modules/@onixlabs/docker-engine/main.js"
+      }
+    ]
+  },
+  "requires": []
+}

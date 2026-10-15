@@ -124,13 +124,13 @@ describe('ContainersClient', () => {
     expect(client.engineCli()).toBe('podman');
   });
 
-  it('engineCli_withNoEngineInEffect_isEmptyRatherThanGuessingDocker', () => {
+  it('engineCli_withNoEngineInEffect_isNullRatherThanGuessingDocker', () => {
     // Guessing at a binary that may not exist would build a command that fails obscurely, instead of
     // an operation that is simply unavailable.
     delete (window as unknown as { bridge?: unknown }).bridge;
     const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    expect(client.engineCli()).toBe('');
+    expect(client.engineCli()).toBeNull();
   });
 
   it('engineInEffect_reportsTheEngineTheSurfaceIsTalkingTo', async () => {
