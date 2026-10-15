@@ -1,76 +1,93 @@
-<div class="system-monitor">
-  <!-- CPU, GPU, Memory, Network and Disk tiles. CPU and Memory carry a machine (SYS) reading and this
-       app's share (APP) overlaid on one graph; Network and Disk split into two independently-scaled
-       graphs (Received/Sent, Read/Write); GPU shows N/A where unsupported. -->
-  <section class="system-monitor__tiles">
-    <app-metric-tile label="CPU" [channels]="cpuChannels()" />
-    <app-metric-tile label="GPU" [channels]="gpuChannels()" />
-    <app-metric-tile label="Memory" [suffix]="memoryTotal()" [channels]="memoryChannels()" />
-    <app-metric-tile label="Network" [channels]="networkChannels()" />
-    <app-metric-tile label="Disk" [channels]="diskChannels()" />
-  </section>
+<app-panel-layout class="system-monitor">
+  <!-- The resources (#951): the graphs stacked in a side panel beside the logs, which are what this
+       view is worked in. Part of the view, so the panel can be resized but not closed or moved. -->
+  <app-panel
+    panelId="system-monitor-resources"
+    defaultEdge="left"
+    [allowedEdges]="sideEdges"
+    [movable]="false"
+    [defaultSize]="340"
+    [minSize]="220"
+    [maxSize]="520"
+  >
+    <div class="system-monitor__resources">
+      <h3 class="system-monitor__resources-title">Resources</h3>
+      <!-- CPU, GPU, Memory, Network and Disk tiles. CPU and Memory carry a machine (SYS) reading and
+           this app's share (APP) overlaid on one graph; Network and Disk split into two
+           independently-scaled graphs (Received/Sent, Read/Write); GPU shows N/A where unsupported. -->
+      <section class="system-monitor__tiles">
+        <app-metric-tile label="CPU" [channels]="cpuChannels()" />
+        <app-metric-tile label="GPU" [channels]="gpuChannels()" />
+        <app-metric-tile label="Memory" [suffix]="memoryTotal()" [channels]="memoryChannels()" />
+        <app-metric-tile label="Network" [channels]="networkChannels()" />
+        <app-metric-tile label="Disk" [channels]="diskChannels()" />
+      </section>
+    </div>
+  </app-panel>
 
-  <section class="system-monitor__audit">
-    <header class="system-monitor__toolbar">
-      <app-dropdown
-        class="system-monitor__session"
-        ariaLabel="Session"
-        [options]="sessionOptions()"
-        [value]="selectedSessionValue()"
-        (valueChange)="selectSession($event)"
-      />
+  <div main class="system-monitor__main">
+    <section class="system-monitor__audit">
+      <header class="system-monitor__toolbar">
+        <app-dropdown
+          class="system-monitor__session"
+          ariaLabel="Session"
+          [options]="sessionOptions()"
+          [value]="selectedSessionValue()"
+          (valueChange)="selectSession($event)"
+        />
 
-      <div class="system-monitor__severities" role="group" aria-label="Filter by severity">
-        @for (severity of severities; track severity) {
-          <app-button
-            class="system-monitor__severity"
-            variant="outline"
-            size="small"
-            [label]="severityLabel(severity)"
-            [pressed]="isEnabled(severity)"
-            (click)="toggleSeverity(severity)"
-          />
+        <div class="system-monitor__severities" role="group" aria-label="Filter by severity">
+          @for (severity of severities; track severity) {
+            <app-button
+              class="system-monitor__severity"
+              variant="outline"
+              size="small"
+              [label]="severityLabel(severity)"
+              [pressed]="isEnabled(severity)"
+              (click)="toggleSeverity(severity)"
+            />
+          }
+        </div>
+
+        <app-text-field
+          class="system-monitor__search"
+          placeholder="Filter messages…"
+          ariaLabel="Filter messages"
+          [value]="text()"
+          (valueChange)="text.set($event)"
+          (escape)="clearText()"
+        />
+
+        @if (selectedCount() > 0) {
+          <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
+          <app-button-row class="system-monitor__selection-actions" align="start" size="small">
+            <app-button variant="outline" size="small" label="Copy" (click)="copy()" />
+            <app-button variant="none" size="small" label="Clear" (click)="clearSelection()" />
+          </app-button-row>
         }
-      </div>
 
-      <app-text-field
-        class="system-monitor__search"
-        placeholder="Filter messages…"
-        ariaLabel="Filter messages"
-        [value]="text()"
-        (valueChange)="text.set($event)"
-        (escape)="clearText()"
-      />
+        <span class="system-monitor__count">{{ filtered().length }} / {{ records().length }}</span>
+      </header>
 
-      @if (selectedCount() > 0) {
-        <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
-        <app-button-row class="system-monitor__selection-actions" align="start" size="small">
-          <app-button variant="outline" size="small" label="Copy" (click)="copy()" />
-          <app-button variant="none" size="small" label="Clear" (click)="clearSelection()" />
-        </app-button-row>
-      }
-
-      <span class="system-monitor__count">{{ filtered().length }} / {{ records().length }}</span>
-    </header>
-
-    <app-table
-      class="system-monitor__table"
-      [columns]="columns"
-      [rows]="rows()"
-      [selectedIds]="selected()"
-      emptyText="No log records match the current filters."
-      (rowClick)="toggleRow($event)"
-    >
-      <ng-template appTableRow let-row>
-        <td>
-          <app-chip class="system-monitor__badge" [tone]="severityTone(rec(row).severity)">
-            {{ severityLabel(rec(row).severity) }}
-          </app-chip>
-        </td>
-        <td class="system-monitor__where" [title]="origin(rec(row))">{{ rec(row).source }}</td>
-        <td class="system-monitor__message" [title]="rec(row).message">{{ rec(row).message }}</td>
-        <td class="system-monitor__time">{{ formatTime(rec(row).timestamp) }}</td>
-      </ng-template>
-    </app-table>
-  </section>
-</div>
+      <app-table
+        class="system-monitor__table"
+        [columns]="columns"
+        [rows]="rows()"
+        [selectedIds]="selected()"
+        emptyText="No log records match the current filters."
+        (rowClick)="toggleRow($event)"
+      >
+        <ng-template appTableRow let-row>
+          <td>
+            <app-chip class="system-monitor__badge" [tone]="severityTone(rec(row).severity)">
+              {{ severityLabel(rec(row).severity) }}
+            </app-chip>
+          </td>
+          <td class="system-monitor__where" [title]="origin(rec(row))">{{ rec(row).source }}</td>
+          <td class="system-monitor__message" [title]="rec(row).message">{{ rec(row).message }}</td>
+          <td class="system-monitor__time">{{ formatTime(rec(row).timestamp) }}</td>
+        </ng-template>
+      </app-table>
+    </section>
+  </div>
+</app-panel-layout>
