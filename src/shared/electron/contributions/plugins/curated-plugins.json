@@ -944,7 +944,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-        "sha256": "91539665e938671b7140c8be82806d5bcd7a08686b96bc8055aee61e6fe9ff13",
+        "sha256": "bee5e27ae3e2246a894ad47c349d754834f6b978a8bf9c75fc47bc097bf365e0",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
@@ -986,7 +986,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-        "sha256": "517e5cfafc507ababcdcbd2146af9e08b64243b15c599dc9225e946d2fd503d5",
+        "sha256": "f4b7c8c6f5eab60dca925081729c8d6a27763c2aa045f8ad7fdaff733968ca56",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {

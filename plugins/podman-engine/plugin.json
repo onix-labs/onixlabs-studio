@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-    "sha256": "517e5cfafc507ababcdcbd2146af9e08b64243b15c599dc9225e946d2fd503d5",
+    "sha256": "f4b7c8c6f5eab60dca925081729c8d6a27763c2aa045f8ad7fdaff733968ca56",
     "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
   },
   "contributes": {
