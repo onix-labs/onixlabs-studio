@@ -19,6 +19,10 @@ import {
   LIST_SKILL_TAGS,
   SAVE_SKILL,
   DELETE_SKILL,
+  LIST_PLUGINS,
+  READ_WORKSPACE_LANGUAGES,
+  INSTALL_PLUGIN,
+  UNINSTALL_PLUGIN,
   PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
@@ -149,6 +153,13 @@ import {
   saveSkill,
   searchModelCatalog,
 } from './ai-manager-tools';
+import {
+  installPlugin,
+  listPlugins,
+  PLUGIN_MANAGER_PROMPT_APPENDIX,
+  readWorkspaceLanguages,
+  uninstallPlugin,
+} from './plugin-manager-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -1364,6 +1375,56 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
 }
 
 /**
+ * Builds the Plugin Manager's tools (#968). Installing is not wrapped in the permission prompt: it
+ * raises the plugin's consent window, which asks the user the same question with the terms in front
+ * of them, and asking twice would teach them to click through both. Uninstalling is gated.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createPluginManagerTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_PLUGINS]: tool({
+      description:
+        "List the plugins: each one's id, name, description, state, version, any update waiting, and what it contributes — slots and the languages it serves.",
+      inputSchema: z.object({
+        filter: z
+          .enum(['all', 'installed', 'available', 'updates'])
+          .optional()
+          .describe('Which plugins to list; all when omitted.'),
+      }),
+      execute: (args: { filter?: string }): Promise<string> => listPlugins(context, args.filter),
+    }),
+    [READ_WORKSPACE_LANGUAGES]: tool({
+      description:
+        "Report the user's open workspaces: each one's folder, its ecosystem (dotnet, node, python, …) and the languages that implies.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readWorkspaceLanguages(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [INSTALL_PLUGIN]: tool({
+      description:
+        'Install a plugin, or update an installed one, by its id. Studio shows the user its terms first and installs only if they accept.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The plugin's id.") }),
+      execute: (args: { id: string }): Promise<string> => installPlugin(context, args.id),
+    }),
+    [UNINSTALL_PLUGIN]: tool({
+      description: 'Uninstall a plugin by its id.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The plugin's id.") }),
+      execute: gated(context, UNINSTALL_PLUGIN, (args: { id: string }): Promise<string> =>
+        uninstallPlugin(context, args.id),
+      ),
+    }),
+  };
+}
+
+/**
  * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
  * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
  * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
@@ -1394,6 +1455,8 @@ export function promptForSurface(
         return MONITOR_PROMPT_APPENDIX;
       case 'models':
         return AI_MANAGER_PROMPT_APPENDIX;
+      case 'plugins':
+        return PLUGIN_MANAGER_PROMPT_APPENDIX;
     }
   })();
   // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
@@ -1523,6 +1586,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createStudioTools(context);
       case 'monitor':
       case 'models':
+      case 'plugins':
         return createToolViewTools(context);
     }
   })();
@@ -1547,6 +1611,8 @@ async function createToolViewTools(context: AgentRunContext): Promise<ToolSet> {
       return createMonitorTools(context);
     case 'models':
       return createAiManagerTools(context);
+    case 'plugins':
+      return createPluginManagerTools(context);
     default:
       return {};
   }

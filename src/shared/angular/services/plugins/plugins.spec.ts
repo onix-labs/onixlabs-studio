@@ -86,10 +86,11 @@ describe('Plugins', () => {
     await service.refresh();
     const consent: PluginConsent = TestBed.inject(PluginConsent);
 
-    const done: Promise<void> = service.installWithConsent('rust-analyzer');
+    const done: Promise<'installed' | 'declined' | 'failed'> =
+      service.installWithConsent('rust-analyzer');
     expect(consent.pending()?.id).toBe('rust-analyzer');
     consent.accept();
-    await done;
+    expect(await done).toBe('installed');
 
     expect(invoked).toContainEqual({ channel: PluginChannel.Install, id: 'rust-analyzer' });
   });
@@ -100,9 +101,10 @@ describe('Plugins', () => {
     await service.refresh();
     const consent: PluginConsent = TestBed.inject(PluginConsent);
 
-    const done: Promise<void> = service.installWithConsent('rust-analyzer');
+    const done: Promise<'installed' | 'declined' | 'failed'> =
+      service.installWithConsent('rust-analyzer');
     consent.decline();
-    await done;
+    expect(await done).toBe('declined');
 
     expect(
       invoked.some((call): boolean => call.channel === (PluginChannel.Install as string)),

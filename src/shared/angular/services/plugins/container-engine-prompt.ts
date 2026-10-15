@@ -125,6 +125,6 @@ export class ContainerEnginePrompt {
       return Promise.resolve();
     }
     this.log.info('ContainerEnginePrompt', `Installing ${plugin.id} from the empty state`);
-    return this.plugins.installWithConsent(plugin.id);
+    return this.plugins.installWithConsent(plugin.id).then((): void => undefined);
   }
 }

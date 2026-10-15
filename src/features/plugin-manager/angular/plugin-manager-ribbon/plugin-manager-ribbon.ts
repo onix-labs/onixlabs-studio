@@ -7,6 +7,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { PluginManagerAgentPanelState } from '../plugin-manager-agent/plugin-manager-agent-panel-state';
 
 /**
  * The contextual ribbon shown while a Plugin Manager tab is active: reloading the catalogue. Searching,
@@ -41,6 +42,16 @@ export class PluginManagerRibbon {
   protected readonly busy: Signal<boolean> = this.plugins.busy;
 
   /**
+   * Holds whether the docked agent is showing (#968).
+   */
+  private readonly agentPanel: PluginManagerAgentPanelState = inject(PluginManagerAgentPanelState);
+
+  /**
+   * Gets whether the docked agent is showing.
+   */
+  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
+
+  /**
    * Contributes this tab's menu while the plugin-manager ribbon is mounted.
    */
   private readonly menu: void = contributeFeatureMenu(
@@ -65,5 +76,12 @@ export class PluginManagerRibbon {
    */
   protected onRefresh(): void {
     void this.plugins.refresh();
+  }
+
+  /**
+   * Shows or hides the docked agent.
+   */
+  protected onToggleAgent(): void {
+    this.agentPanel.toggle();
   }
 }

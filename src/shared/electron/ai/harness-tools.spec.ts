@@ -42,6 +42,10 @@ import {
   LIST_SKILL_TAGS,
   SAVE_SKILL,
   DELETE_SKILL,
+  LIST_PLUGINS,
+  READ_WORKSPACE_LANGUAGES,
+  INSTALL_PLUGIN,
+  UNINSTALL_PLUGIN,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -431,5 +435,43 @@ describe('describeOffer', () => {
       expect(requestPermission).toHaveBeenLastCalledWith(name, expect.any(String));
     }
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('keepsThePluginManagersAgentToPlugins_andAsksOnlyBeforeUninstalling', async () => {
+    // #968: installing raises the plugin's consent window, so it carries no second prompt.
+    const agent: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'plugins', workspaceRoot: null }),
+    );
+    const chat: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'plugins', mode: 'chat' }),
+    );
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(false),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((): Promise<unknown> =>
+      Promise.resolve({ available: true, outcome: 'declined' }),
+    );
+    const { invokeTool } = await import('./harness-tools');
+    const context: AgentRunContext = contextFor({
+      surface: 'plugins',
+      requestPermission,
+      bridge: { request },
+    });
+
+    expect([...names(agent)].sort()).toEqual(
+      [ASK_USER, LIST_PLUGINS, READ_WORKSPACE_LANGUAGES, INSTALL_PLUGIN, UNINSTALL_PLUGIN].sort(),
+    );
+    expect(agent.systemPrompt).toContain('docked to the Plugin Manager');
+    expect([...names(chat)].sort()).toEqual(
+      [ASK_USER, LIST_PLUGINS, READ_WORKSPACE_LANGUAGES].sort(),
+    );
+
+    await invokeTool(context, INSTALL_PLUGIN, { id: 'rust-analyzer' });
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledWith(INSTALL_PLUGIN, { id: 'rust-analyzer' });
+
+    await invokeTool(context, UNINSTALL_PLUGIN, { id: 'rust-analyzer' });
+    expect(requestPermission).toHaveBeenCalledWith(UNINSTALL_PLUGIN, expect.any(String));
+    expect(request).toHaveBeenCalledTimes(1);
   });
 });
