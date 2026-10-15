@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContainerEvent } from './protocol';
-import { demuxLogs, DockerEngine, parseEvent } from './engine';
+import { createBody, demuxLogs, DockerEngine, parseEvent, splitReference, statsOf } from './engine';
+import { ImagePullProgress } from './protocol';
 import { SocketHttpResponse, StreamHandle, SocketTransport } from './transport';
 
 /**
@@ -83,7 +84,15 @@ describe('DockerEngine', () => {
     ]);
 
     expect(await engine.listContainers()).toEqual([
-      { id: 'abc', names: ['web'], image: 'nginx', state: 'running', status: 'Up 2m' },
+      {
+        id: 'abc',
+        names: ['web'],
+        image: 'nginx',
+        state: 'running',
+        status: 'Up 2m',
+        ports: [],
+        volumes: [],
+      },
     ]);
   });
 
@@ -233,5 +242,173 @@ describe('DockerEngine.logs', () => {
     });
 
     expect(await engine.logs('gone', 100)).toEqual({ lines: [], truncated: false });
+  });
+});
+
+describe('DockerEngine P2 (#974)', () => {
+  /**
+   * Builds an engine over a transport that answers each path from a table.
+   * @param answers The status and body per request path.
+   * @param lines The lines a streamed request sends, if any.
+   * @returns Returns the engine and the requests it made.
+   */
+  /**
+   * An engine over a scripted transport, and the requests it was sent.
+   */
+  interface Answering {
+    engine: DockerEngine;
+    requests: { method: string; path: string; body?: unknown }[];
+  }
+
+  function engineAnswering(
+    answers: Record<string, { status: number; body: unknown }>,
+    lines: readonly string[] = [],
+  ): Answering {
+    const requests: { method: string; path: string; body?: unknown }[] = [];
+    const engine: DockerEngine = new DockerEngine('/unused.sock', {
+      request: (method: string, path: string, body?: unknown): Promise<SocketHttpResponse> => {
+        requests.push({ method, path, ...(body === undefined ? {} : { body }) });
+        const answer: { status: number; body: unknown } = answers[path] ?? {
+          status: 404,
+          body: {},
+        };
+        const text: string = JSON.stringify(answer.body);
+        return Promise.resolve({ statusCode: answer.status, body: text, bytes: Buffer.from(text) });
+      },
+      requestLines: (
+        method: string,
+        path: string,
+        onLine: (line: string) => void,
+      ): Promise<number> => {
+        requests.push({ method, path });
+        for (const line of lines) {
+          onLine(line);
+        }
+        return Promise.resolve(200);
+      },
+      openStream: (): StreamHandle => ({ close: (): void => undefined }),
+    });
+    return { engine, requests };
+  }
+
+  it('listContainers_reportsPortsCreatedAndNamedVolumes', async () => {
+    const { engine } = engineAnswering({
+      '/containers/json?all=1': {
+        status: 200,
+        body: [
+          {
+            Id: 'c1',
+            Names: ['/db'],
+            Created: 100,
+            Ports: [
+              { PrivatePort: 5432, PublicPort: 5432, Type: 'tcp', IP: '0.0.0.0' },
+              { PrivatePort: 9000, Type: 'tcp' },
+            ],
+            Mounts: [
+              { Type: 'volume', Name: 'pgdata' },
+              { Type: 'bind', Name: undefined },
+            ],
+          },
+        ],
+      },
+    });
+
+    const [container] = await engine.listContainers();
+
+    expect(container.ports).toEqual([
+      { privatePort: 5432, publicPort: 5432, protocol: 'tcp', ip: '0.0.0.0' },
+      { privatePort: 9000, protocol: 'tcp' },
+    ]);
+    expect(container.created).toBe(100);
+    expect(container.volumes).toEqual(['pgdata']);
+  });
+
+  it('statsOf_measuresCpuAsDockerStatsDoes_andLeavesOutReclaimableCache', () => {
+    expect(
+      statsOf('c1', {
+        cpu_stats: { cpu_usage: { total_usage: 300 }, system_cpu_usage: 2_000, online_cpus: 4 },
+        precpu_stats: { cpu_usage: { total_usage: 100 }, system_cpu_usage: 1_000 },
+        memory_stats: { usage: 1_000, limit: 8_000, stats: { inactive_file: 200 } },
+      }),
+    ).toEqual({ id: 'c1', cpuPercent: 80, memoryBytes: 800, memoryLimitBytes: 8_000 });
+    expect(statsOf('c2', {}).cpuPercent).toBe(0);
+  });
+
+  it('splitReference_separatesTheTag_butNotARegistryPort', () => {
+    expect(splitReference('postgres:16')).toEqual({ name: 'postgres', tag: '16' });
+    expect(splitReference('nginx')).toEqual({ name: 'nginx', tag: 'latest' });
+    expect(splitReference('localhost:5000/app')).toEqual({
+      name: 'localhost:5000/app',
+      tag: 'latest',
+    });
+    expect(splitReference('ghcr.io/o/n@sha256:abc')).toEqual({
+      name: 'ghcr.io/o/n@sha256:abc',
+      tag: '',
+    });
+  });
+
+  it('createBody_publishesPortsSetsEnvironmentAndMounts', () => {
+    expect(
+      createBody({
+        image: 'postgres:16',
+        ports: [{ host: 5433, container: 5432 }],
+        env: { A: 'b' },
+        volumes: [{ source: 'pgdata', target: '/data', readOnly: true }],
+      }),
+    ).toEqual({
+      Image: 'postgres:16',
+      Env: ['A=b'],
+      ExposedPorts: { '5432/tcp': {} },
+      HostConfig: {
+        PortBindings: { '5432/tcp': [{ HostPort: '5433' }] },
+        Binds: ['pgdata:/data:ro'],
+      },
+    });
+  });
+
+  it('run_createsThenStarts_andSaysWhenTheImageIsMissing', async () => {
+    const created: Answering = engineAnswering({
+      '/containers/create?name=db': { status: 201, body: { Id: 'new' } },
+      '/containers/new/start': { status: 204, body: {} },
+    });
+    expect(await created.engine.run({ image: 'postgres:16', name: 'db' })).toEqual({ id: 'new' });
+    expect(created.requests.map((request) => request.path)).toEqual([
+      '/containers/create?name=db',
+      '/containers/new/start',
+    ]);
+
+    const missing: Answering = engineAnswering({ '/containers/create': { status: 404, body: {} } });
+    expect(await missing.engine.run({ image: 'nope:1' })).toEqual({
+      error: 'There is no image "nope:1" on this machine. Pull it first.',
+    });
+  });
+
+  it('pullImage_reportsProgressAcrossLayers_andTheEnginesError', async () => {
+    const progress: ImagePullProgress[] = [];
+    const ok: Answering = engineAnswering({}, [
+      JSON.stringify({
+        id: 'l1',
+        status: 'Downloading',
+        progressDetail: { current: 5, total: 10 },
+      }),
+      JSON.stringify({ status: 'Done' }),
+    ]);
+
+    expect(await ok.engine.pullImage('postgres:16', (update) => progress.push(update))).toEqual({
+      ok: true,
+    });
+    expect(ok.requests[0].path).toBe('/images/create?fromImage=postgres&tag=16');
+    expect(progress.at(-1)).toMatchObject({
+      reference: 'postgres:16',
+      done: true,
+      current: 5,
+      total: 10,
+    });
+
+    const failed: Answering = engineAnswering({}, [JSON.stringify({ error: 'manifest unknown' })]);
+    expect(await failed.engine.pullImage('nope:1', (): void => undefined)).toEqual({
+      ok: false,
+      error: 'manifest unknown',
+    });
   });
 });

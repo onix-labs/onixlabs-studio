@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContainerEvent } from '@shared/api/container-types';
+import type { ContainerEvent, ImagePullProgress } from '@shared/api/container-types';
 
 vi.mock('electron', () => ({ app: { isPackaged: false, getPath: (): string => tmpdir() } }));
 
@@ -40,6 +40,14 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return write({ type: 'event', event: { type: 'container', action: 'start', id: 'c1' } });
     case 'watchStop':
       return answer(true);
+    case 'stats':
+      return answer(request.params.ids.map((id) => ({ id, cpuPercent: 1.5, memoryBytes: 10, memoryLimitBytes: 100 })));
+    case 'pullImage':
+      write({ type: 'pull', progress: { reference: request.params.reference, status: 'Downloading', current: 1, total: 2, done: false } });
+      write({ type: 'pull', progress: { reference: 'someone-else', status: 'Downloading', done: false } });
+      return answer({ ok: true });
+    case 'run':
+      return answer(request.params.request.image === 'missing' ? { error: 'Pull it first.' } : { id: 'new' });
     case 'crash':
       return process.exit(1);
     default:
@@ -125,6 +133,43 @@ describe('ContainerEngineClient', () => {
 
     await vi.waitFor(async (): Promise<void> => {
       expect((await client.status()).available).toBe(true);
+    });
+  });
+
+  it('routesAPullsProgressToItsCaller_andAnswersOnceItIsDone', async () => {
+    // #974.
+    const client: InstanceType<typeof ContainerEngineClient> = clientFor([
+      'containers',
+      'imagePull',
+    ]);
+    const progress: ImagePullProgress[] = [];
+
+    expect(
+      await client.pullImage('postgres:16', (update: ImagePullProgress): number =>
+        progress.push(update),
+      ),
+    ).toEqual({ ok: true });
+    expect(progress).toEqual([
+      { reference: 'postgres:16', status: 'Downloading', current: 1, total: 2, done: false },
+    ]);
+  });
+
+  it('samplesStats_andRunsContainers_whenThePluginOffersThem', async () => {
+    const offering: InstanceType<typeof ContainerEngineClient> = clientFor([
+      'containers',
+      'stats',
+      'run',
+    ]);
+    expect(await offering.stats(['c1'])).toEqual([
+      { id: 'c1', cpuPercent: 1.5, memoryBytes: 10, memoryLimitBytes: 100 },
+    ]);
+    expect(await offering.run({ image: 'postgres:16' })).toEqual({ id: 'new' });
+    expect(await offering.run({ image: 'missing' })).toEqual({ error: 'Pull it first.' });
+
+    const older: InstanceType<typeof ContainerEngineClient> = clientFor(['containers']);
+    expect(await older.stats(['c1'])).toEqual([]);
+    expect(await older.run({ image: 'postgres:16' })).toEqual({
+      error: 'The engine plugin cannot run containers.',
     });
   });
 

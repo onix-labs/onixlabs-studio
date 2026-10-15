@@ -1,9 +1,14 @@
 import {
   ContainerEvent,
   ContainerLogs,
+  ContainerPort,
+  ContainerStats,
   ContainerStatus,
   ContainerSummary,
+  ImagePullProgress,
   ImageSummary,
+  RunContainerRequest,
+  VolumeSummary,
 } from './protocol';
 import {
   SocketHttpResponse,
@@ -21,7 +26,62 @@ interface RawContainer {
   readonly Image?: string;
   readonly State?: string;
   readonly Status?: string;
+  readonly Created?: number;
+  readonly Ports?: readonly {
+    readonly PrivatePort?: number;
+    readonly PublicPort?: number;
+    readonly Type?: string;
+    readonly IP?: string;
+  }[];
+  readonly Mounts?: readonly { readonly Type?: string; readonly Name?: string }[];
 }
+
+/**
+ * The raw sample shape from `GET /containers/{id}/stats`, narrowed to what the summary reads.
+ */
+interface RawStats {
+  readonly cpu_stats?: RawCpu;
+  readonly precpu_stats?: RawCpu;
+  readonly memory_stats?: {
+    readonly usage?: number;
+    readonly limit?: number;
+    readonly stats?: { readonly cache?: number; readonly inactive_file?: number };
+  };
+}
+
+/**
+ * The raw CPU shape inside a stats sample.
+ */
+interface RawCpu {
+  readonly cpu_usage?: { readonly total_usage?: number; readonly percpu_usage?: readonly number[] };
+  readonly system_cpu_usage?: number;
+  readonly online_cpus?: number;
+}
+
+/**
+ * The raw volume shape from `GET /volumes`.
+ */
+interface RawVolume {
+  readonly Name?: string;
+  readonly Driver?: string;
+  readonly CreatedAt?: string;
+  readonly Labels?: Readonly<Record<string, string>> | null;
+}
+
+/**
+ * One progress line from `POST /images/create`.
+ */
+interface RawPullLine {
+  readonly id?: string;
+  readonly status?: string;
+  readonly error?: string;
+  readonly progressDetail?: { readonly current?: number; readonly total?: number };
+}
+
+/**
+ * How often, at most, a pull's progress is reported while it runs.
+ */
+const PULL_REPORT_MS: number = 250;
 
 /**
  * The raw image shape from `GET /images/json`.
@@ -93,7 +153,212 @@ export class DockerEngine {
       image: container.Image ?? '',
       state: container.State ?? '',
       status: container.Status ?? '',
+      ports: (container.Ports ?? [])
+        .filter((port): boolean => typeof port.PrivatePort === 'number')
+        .map((port): ContainerPort => ({
+          privatePort: port.PrivatePort!,
+          ...(typeof port.PublicPort === 'number' ? { publicPort: port.PublicPort } : {}),
+          protocol: port.Type ?? 'tcp',
+          ...(port.IP === undefined || port.IP.length === 0 ? {} : { ip: port.IP }),
+        })),
+      ...(typeof container.Created === 'number' ? { created: container.Created } : {}),
+      volumes: (container.Mounts ?? [])
+        .filter((mount): boolean => mount.Type === 'volume' && typeof mount.Name === 'string')
+        .map((mount): string => mount.Name!),
     }));
+  }
+
+  /**
+   * Samples the resource use of the containers named, all at once. A container that has stopped, or
+   * cannot be read, is left out rather than reported as idle.
+   * @param ids The container ids.
+   * @returns Returns a sample per container that answered.
+   */
+  public async stats(ids: readonly string[]): Promise<ContainerStats[]> {
+    const samples: (ContainerStats | null)[] = await Promise.all(
+      ids.map(async (id: string): Promise<ContainerStats | null> => {
+        const raw: RawStats | null = await this.getJson<RawStats>(
+          `/containers/${encodeURIComponent(id)}/stats?stream=false`,
+        );
+        return raw === null ? null : statsOf(id, raw);
+      }),
+    );
+    return samples.filter(
+      (sample: ContainerStats | null): sample is ContainerStats => sample !== null,
+    );
+  }
+
+  /**
+   * Lists the volumes. Returns an empty list when the daemon is unreachable.
+   * @returns Returns the volume summaries.
+   */
+  public async listVolumes(): Promise<VolumeSummary[]> {
+    const raw: { Volumes?: RawVolume[] | null } | null = await this.getJson<{
+      Volumes?: RawVolume[] | null;
+    }>('/volumes');
+    return (raw?.Volumes ?? []).map((volume: RawVolume): VolumeSummary => ({
+      name: volume.Name ?? '',
+      driver: volume.Driver ?? '',
+      createdAt: volume.CreatedAt ?? '',
+      anonymous: volume.Labels?.['com.docker.volume.anonymous'] !== undefined,
+    }));
+  }
+
+  /**
+   * Removes a volume. The engine refuses one a container still uses.
+   * @param name The volume's name.
+   * @returns Returns true when it was removed.
+   */
+  public removeVolume(name: string): Promise<boolean> {
+    return this.act('DELETE', `/volumes/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * Pauses a running container.
+   * @param id The container id.
+   * @returns Returns true when the daemon accepted the request.
+   */
+  public pause(id: string): Promise<boolean> {
+    return this.act('POST', `/containers/${encodeURIComponent(id)}/pause`);
+  }
+
+  /**
+   * Resumes a paused container.
+   * @param id The container id.
+   * @returns Returns true when the daemon accepted the request.
+   */
+  public unpause(id: string): Promise<boolean> {
+    return this.act('POST', `/containers/${encodeURIComponent(id)}/unpause`);
+  }
+
+  /**
+   * Restarts a container.
+   * @param id The container id.
+   * @returns Returns true when the daemon accepted the request.
+   */
+  public restart(id: string): Promise<boolean> {
+    return this.act('POST', `/containers/${encodeURIComponent(id)}/restart`);
+  }
+
+  /**
+   * Removes an image. Without `force` the engine refuses one a container still uses.
+   * @param id The image id or reference.
+   * @param force Whether to remove it even so.
+   * @returns Returns true when it was removed.
+   */
+  public removeImage(id: string, force: boolean): Promise<boolean> {
+    return this.act('DELETE', `/images/${encodeURIComponent(id)}?force=${force ? 1 : 0}`);
+  }
+
+  /**
+   * Downloads an image, reporting how far it has got as it goes and once more when it has finished.
+   * @param reference The image reference, such as `postgres:16`; `latest` when no tag is given.
+   * @param onProgress Receives the progress.
+   * @returns Returns whether it succeeded, and why not.
+   */
+  public async pullImage(
+    reference: string,
+    onProgress: (progress: ImagePullProgress) => void,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const { name, tag } = splitReference(reference);
+    const layers: Map<string, { current: number; total: number }> = new Map<
+      string,
+      { current: number; total: number }
+    >();
+    let status: string = 'Starting';
+    let error: string | undefined;
+    let lastReport: number = 0;
+    const report: (done: boolean) => void = (done: boolean): void => {
+      let current: number = 0;
+      let total: number = 0;
+      for (const layer of layers.values()) {
+        current += layer.current;
+        total += layer.total;
+      }
+      onProgress({
+        reference,
+        status,
+        ...(total > 0 ? { current, total } : {}),
+        done,
+        ...(error === undefined ? {} : { error }),
+      });
+    };
+    if (this.transport.requestLines === undefined) {
+      return { ok: false, error: 'This transport cannot stream a download.' };
+    }
+    try {
+      const statusCode: number = await this.transport.requestLines(
+        'POST',
+        `/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`,
+        (line: string): void => {
+          let raw: RawPullLine;
+          try {
+            raw = JSON.parse(line) as RawPullLine;
+          } catch {
+            return;
+          }
+          if (raw.error !== undefined) {
+            error = raw.error;
+            return;
+          }
+          status = raw.status ?? status;
+          if (raw.id !== undefined && raw.progressDetail?.total !== undefined) {
+            layers.set(raw.id, {
+              current: raw.progressDetail.current ?? 0,
+              total: raw.progressDetail.total,
+            });
+          }
+          const now: number = Date.now();
+          if (now - lastReport >= PULL_REPORT_MS) {
+            lastReport = now;
+            report(false);
+          }
+        },
+      );
+      if (error === undefined && (statusCode < 200 || statusCode >= 300)) {
+        error = `The engine refused the download (${statusCode}).`;
+      }
+    } catch (failure: unknown) {
+      error = failure instanceof Error ? failure.message : 'The engine could not be reached.';
+    }
+    status = error === undefined ? 'Downloaded' : 'Failed';
+    report(true);
+    return error === undefined ? { ok: true } : { ok: false, error };
+  }
+
+  /**
+   * Creates a container from an image and starts it.
+   * @param request What to run.
+   * @returns Returns the new container's id, or why it could not be run.
+   */
+  public async run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+    const query: string =
+      request.name === undefined || request.name.length === 0
+        ? ''
+        : `?name=${encodeURIComponent(request.name)}`;
+    let created: { statusCode: number; body: string };
+    try {
+      created = await this.transport.request(
+        'POST',
+        `/containers/create${query}`,
+        createBody(request),
+      );
+    } catch {
+      return { error: 'The engine could not be reached.' };
+    }
+    if (created.statusCode === 404) {
+      return { error: `There is no image "${request.image}" on this machine. Pull it first.` };
+    }
+    if (created.statusCode < 200 || created.statusCode >= 300) {
+      return {
+        error: engineMessage(created.body) ?? `The engine refused (${created.statusCode}).`,
+      };
+    }
+    const id: string = (JSON.parse(created.body) as { Id?: string }).Id ?? '';
+    if (!(await this.start(id))) {
+      return { id, error: 'The container was created but did not start.' };
+    }
+    return { id };
   }
 
   /**
@@ -302,4 +567,92 @@ export function demuxLogs(bytes: Buffer): string {
     offset += 8 + size;
   }
   return Buffer.concat(parts).toString('utf8');
+}
+
+/**
+ * Summarises one stats sample the way `docker stats` does: the CPU used since the previous sample the
+ * engine took, as a share of the whole machine scaled by its cores; and the memory in use, without the
+ * page cache the kernel can reclaim.
+ * @param id The container id.
+ * @param raw The sample.
+ * @returns Returns the summary.
+ */
+export function statsOf(id: string, raw: RawStats): ContainerStats {
+  const cpu: RawCpu = raw.cpu_stats ?? {};
+  const previous: RawCpu = raw.precpu_stats ?? {};
+  const cpuDelta: number =
+    (cpu.cpu_usage?.total_usage ?? 0) - (previous.cpu_usage?.total_usage ?? 0);
+  const systemDelta: number = (cpu.system_cpu_usage ?? 0) - (previous.system_cpu_usage ?? 0);
+  const cores: number = cpu.online_cpus ?? cpu.cpu_usage?.percpu_usage?.length ?? 1;
+  const memory: NonNullable<RawStats['memory_stats']> = raw.memory_stats ?? {};
+  const cache: number = memory.stats?.inactive_file ?? memory.stats?.cache ?? 0;
+  return {
+    id,
+    cpuPercent:
+      cpuDelta > 0 && systemDelta > 0
+        ? Math.round((cpuDelta / systemDelta) * cores * 1000) / 10
+        : 0,
+    memoryBytes: Math.max(0, (memory.usage ?? 0) - cache),
+    memoryLimitBytes: memory.limit ?? 0,
+  };
+}
+
+/**
+ * Splits an image reference into the name and tag the engine's create call takes. A digest stays on
+ * the name; a reference with no tag gets `latest`. A colon in a registry's host:port is not a tag.
+ * @param reference The reference.
+ * @returns Returns the name and the tag.
+ */
+export function splitReference(reference: string): { name: string; tag: string } {
+  const trimmed: string = reference.trim();
+  if (trimmed.includes('@')) {
+    return { name: trimmed, tag: '' };
+  }
+  const colon: number = trimmed.lastIndexOf(':');
+  return colon > trimmed.lastIndexOf('/')
+    ? { name: trimmed.slice(0, colon), tag: trimmed.slice(colon + 1) }
+    : { name: trimmed, tag: 'latest' };
+}
+
+/**
+ * Builds the engine's container-create body for a request.
+ * @param request What to run.
+ * @returns Returns the body.
+ */
+export function createBody(request: RunContainerRequest): Record<string, unknown> {
+  const exposed: Record<string, Record<string, never>> = {};
+  const bindings: Record<string, { HostPort: string }[]> = {};
+  for (const port of request.ports ?? []) {
+    const key: string = `${port.container}/${port.protocol ?? 'tcp'}`;
+    exposed[key] = {};
+    (bindings[key] ??= []).push({ HostPort: String(port.host) });
+  }
+  return {
+    Image: request.image,
+    Env: Object.entries(request.env ?? {}).map(
+      ([key, value]: [string, string]): string => `${key}=${value}`,
+    ),
+    ExposedPorts: exposed,
+    HostConfig: {
+      PortBindings: bindings,
+      Binds: (request.volumes ?? []).map(
+        (volume): string =>
+          `${volume.source}:${volume.target}${volume.readOnly === true ? ':ro' : ''}`,
+      ),
+    },
+  };
+}
+
+/**
+ * Reads the engine's own message out of an error body.
+ * @param body The body.
+ * @returns Returns the message, or undefined.
+ */
+function engineMessage(body: string): string | undefined {
+  try {
+    const message: unknown = (JSON.parse(body) as { message?: unknown }).message;
+    return typeof message === 'string' ? message : undefined;
+  } catch {
+    return undefined;
+  }
 }

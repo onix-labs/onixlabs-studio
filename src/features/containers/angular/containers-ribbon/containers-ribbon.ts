@@ -54,6 +54,11 @@ export class ContainersRibbon {
   protected readonly selectionRunning: Signal<boolean> = this.commands.selectionRunning;
 
   /**
+   * Gets whether the selected container is paused (#974).
+   */
+  protected readonly selectionPaused: Signal<boolean> = this.commands.selectionPaused;
+
+  /**
    * Gets whether a shell can be offered at all: it needs the engine's own CLI on this machine, which
    * Studio no longer downloads (#973).
    */
@@ -148,6 +153,22 @@ export class ContainersRibbon {
   protected onLogs(): void {
     this.log.info('containers.ribbon', 'View logs clicked');
     this.commands.viewLogs();
+  }
+
+  /**
+   * Restarts the selected container (#974).
+   */
+  protected onRestart(): void {
+    this.log.info('containers.ribbon', 'Restart clicked');
+    this.commands.restart();
+  }
+
+  /**
+   * Pauses or resumes the selected container (#974).
+   */
+  protected onTogglePause(): void {
+    this.log.info('containers.ribbon', 'Pause/resume clicked');
+    this.commands.togglePause();
   }
 
   /**

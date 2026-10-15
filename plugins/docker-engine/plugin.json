@@ -3,12 +3,12 @@
   "name": "Docker",
   "description": "Talk to a Docker-compatible container engine over its local socket.",
   "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
-  "version": "30.0.0",
+  "version": "30.1.0",
   "apiVersion": "1.19.0",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-    "sha256": "bee5e27ae3e2246a894ad47c349d754834f6b978a8bf9c75fc47bc097bf365e0",
+    "sha256": "f4deef6adb1d898af9c019f50a8f5e7221936d052cac7e5b76536a88f9628053",
     "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
   },
   "contributes": {

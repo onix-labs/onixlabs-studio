@@ -48,9 +48,20 @@ export interface SocketTransport {
    * error (for example the daemon being absent).
    * @param method The HTTP method.
    * @param path The request path (including any query string).
+   * @param body A body to send as JSON, if any.
    * @returns Returns the buffered response.
    */
-  request(method: string, path: string): Promise<SocketHttpResponse>;
+  request(method: string, path: string, body?: unknown): Promise<SocketHttpResponse>;
+
+  /**
+   * Performs one request whose response is a stream of newline-delimited lines — an image pull's
+   * progress — delivering each line as it arrives and resolving with the status once it ends.
+   * @param method The HTTP method.
+   * @param path The request path.
+   * @param onLine Receives each complete line.
+   * @returns Returns the status code; rejects on a connection error.
+   */
+  requestLines?(method: string, path: string, onLine: (line: string) => void): Promise<number>;
 
   /**
    * Opens a long-lived streaming request, delivering each newline-delimited body line to `onLine` and
@@ -85,14 +96,28 @@ export class SocketHttpTransport implements SocketTransport {
    * Performs one buffered request over the daemon socket.
    * @param method The HTTP method.
    * @param path The request path.
+   * @param body A body to send as JSON, if any.
    * @returns Returns the buffered response.
    */
-  public request(method: string, path: string): Promise<SocketHttpResponse> {
+  public request(method: string, path: string, body?: unknown): Promise<SocketHttpResponse> {
     trace('transport', `${method} ${path}`);
+    const payload: string | null = body === undefined ? null : JSON.stringify(body);
     return new Promise<SocketHttpResponse>(
       (resolve: (response: SocketHttpResponse) => void, reject: (error: Error) => void): void => {
         const request: http.ClientRequest = http.request(
-          { socketPath: this.socketPath, method, path },
+          {
+            socketPath: this.socketPath,
+            method,
+            path,
+            ...(payload === null
+              ? {}
+              : {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload),
+                  },
+                }),
+          },
           (response: http.IncomingMessage): void => {
             const chunks: Buffer[] = [];
             response.on('data', (chunk: Buffer): void => {
@@ -105,6 +130,54 @@ export class SocketHttpTransport implements SocketTransport {
                 body: bytes.toString('utf8'),
                 bytes,
               });
+            });
+          },
+        );
+        request.on('error', reject);
+        request.end(payload ?? undefined);
+      },
+    );
+  }
+
+  /**
+   * Performs one request whose response streams newline-delimited lines, delivering each as it
+   * arrives and resolving with the status when the response ends.
+   * @param method The HTTP method.
+   * @param path The request path.
+   * @param onLine Receives each complete line.
+   * @returns Returns the status code.
+   */
+  public requestLines(
+    method: string,
+    path: string,
+    onLine: (line: string) => void,
+  ): Promise<number> {
+    trace('transport', `${method} ${path} (streamed)`);
+    return new Promise<number>(
+      (resolve: (status: number) => void, reject: (error: Error) => void): void => {
+        let buffer: string = '';
+        const request: http.ClientRequest = http.request(
+          { socketPath: this.socketPath, method, path },
+          (response: http.IncomingMessage): void => {
+            response.setEncoding('utf8');
+            response.on('data', (chunk: string): void => {
+              buffer += chunk;
+              let newline: number = buffer.indexOf('\n');
+              while (newline >= 0) {
+                const line: string = buffer.slice(0, newline).trim();
+                buffer = buffer.slice(newline + 1);
+                if (line.length > 0) {
+                  onLine(line);
+                }
+                newline = buffer.indexOf('\n');
+              }
+            });
+            response.on('error', reject);
+            response.on('end', (): void => {
+              if (buffer.trim().length > 0) {
+                onLine(buffer.trim());
+              }
+              resolve(response.statusCode ?? 0);
             });
           },
         );

@@ -8,13 +8,13 @@
       "name": "docker-engine",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/docker-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.0.0/onixlabs-docker-engine-30.0.0.tgz"
+        "@onixlabs/docker-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.1.0/onixlabs-docker-engine-30.1.0.tgz"
       }
     },
     "node_modules/@onixlabs/docker-engine": {
-      "version": "30.0.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.0.0/onixlabs-docker-engine-30.0.0.tgz",
-      "integrity": "sha512-EdRWQLjEuTk9WGLCV+WPhal1dgea0Dua4n5A31KikH8dDlZO093fKeTXX3sjwV9I1AWUugPkAJjjMsZbLST3rQ=="
+      "version": "30.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-docker-engine-v30.1.0/onixlabs-docker-engine-30.1.0.tgz",
+      "integrity": "sha512-/X4EeOjn68rkQKeHm3BCTj4OKk/v2tP4Ll2R92g1tkCorR41NQS0cYqDY8u9w3dicx0KqXC9GoeqFHdj0NsQvg=="
     }
   }
 }

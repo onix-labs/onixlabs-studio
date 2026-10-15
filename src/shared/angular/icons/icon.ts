@@ -171,6 +171,11 @@ export class Icon {
   public static readonly CONTAINER_IMAGES: Icon = new Icon('ph-duotone ph-stack');
 
   /**
+   * The container engine's volumes (#974).
+   */
+  public static readonly CONTAINER_VOLUMES: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
    * Gets the System Monitor content icon.
    */
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');

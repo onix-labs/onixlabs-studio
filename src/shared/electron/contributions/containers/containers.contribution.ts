@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ContainerChannel } from '@shared/api/container-channels';
-import { ContainerEngineInfo } from '@shared/api/container-types';
+import { ContainerEngineInfo, RunContainerRequest } from '@shared/api/container-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
@@ -103,6 +103,62 @@ export class ContainersContribution implements MainContribution {
       (_event: IpcMainInvokeEvent, id: unknown, tail: unknown): Promise<unknown> =>
         this.currentEngine(context)?.logs(String(id), typeof tail === 'number' ? tail : 500) ??
         Promise.resolve({ lines: [], truncated: false }),
+    );
+    context.handle(
+      ContainerChannel.Stats,
+      (_event: IpcMainInvokeEvent, ids: unknown): Promise<unknown> =>
+        this.currentEngine(context)?.stats(
+          Array.isArray(ids)
+            ? ids.filter((id: unknown): id is string => typeof id === 'string')
+            : [],
+        ) ?? Promise.resolve([]),
+    );
+    context.handle(
+      ContainerChannel.ListVolumes,
+      (): Promise<unknown> => this.currentEngine(context)?.listVolumes() ?? Promise.resolve([]),
+    );
+    context.handle(
+      ContainerChannel.RemoveVolume,
+      (_event: IpcMainInvokeEvent, name: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.removeVolume(String(name)) ?? Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.Pause,
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.pause(String(id)) ?? Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.Unpause,
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.unpause(String(id)) ?? Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.Restart,
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.restart(String(id)) ?? Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.RemoveImage,
+      (_event: IpcMainInvokeEvent, id: unknown, force: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.removeImage(String(id), force === true) ??
+        Promise.resolve(false),
+    );
+    context.handle(
+      ContainerChannel.PullImage,
+      (_event: IpcMainInvokeEvent, reference: unknown): Promise<unknown> =>
+        this.currentEngine(context)?.pullImage(String(reference), (progress): void =>
+          context.send(ContainerChannel.PullProgress, progress),
+        ) ?? Promise.resolve({ ok: false, error: 'No container engine is installed.' }),
+    );
+    context.handle(
+      ContainerChannel.Run,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<unknown> => {
+        const run: RunContainerRequest | null = readRunRequest(request);
+        return run === null
+          ? Promise.resolve({ error: 'Say which image to run.' })
+          : (this.currentEngine(context)?.run(run) ??
+              Promise.resolve({ error: 'No container engine is installed.' }));
+      },
     );
     context.handle(
       ContainerChannel.Status,
@@ -274,3 +330,73 @@ export class ContainersContribution implements MainContribution {
  * The singleton containers contribution appended to the `mainContributions` manifest.
  */
 export const containersContribution: MainContribution = new ContainersContribution();
+
+/**
+ * Reads a run request out of what the renderer sent, keeping only well-formed parts: an image is
+ * required; ports must be whole numbers in range; volumes need a source and a target.
+ * @param value What was sent.
+ * @returns Returns the request, or null when there is no image.
+ */
+export function readRunRequest(value: unknown): RunContainerRequest | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  const image: unknown = record['image'];
+  if (typeof image !== 'string' || image.trim().length === 0) {
+    return null;
+  }
+  const port: (value: unknown) => number | null = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isInteger(value) && value > 0 && value < 65_536
+      ? value
+      : null;
+  const ports: RunContainerRequest['ports'] = (
+    Array.isArray(record['ports']) ? record['ports'] : []
+  )
+    .map((entry: unknown) =>
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {},
+    )
+    .filter(
+      (entry: Record<string, unknown>): boolean =>
+        port(entry['host']) !== null && port(entry['container']) !== null,
+    )
+    .map((entry: Record<string, unknown>) => ({
+      host: port(entry['host'])!,
+      container: port(entry['container'])!,
+      protocol: entry['protocol'] === 'udp' ? ('udp' as const) : ('tcp' as const),
+    }));
+  const env: Record<string, string> = {};
+  if (typeof record['env'] === 'object' && record['env'] !== null) {
+    for (const [key, entry] of Object.entries(record['env'] as Record<string, unknown>)) {
+      if (key.trim().length > 0 && typeof entry === 'string') {
+        env[key.trim()] = entry;
+      }
+    }
+  }
+  const volumes: RunContainerRequest['volumes'] = (
+    Array.isArray(record['volumes']) ? record['volumes'] : []
+  )
+    .map((entry: unknown) =>
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {},
+    )
+    .filter(
+      (entry: Record<string, unknown>): boolean =>
+        typeof entry['source'] === 'string' &&
+        entry['source'].trim().length > 0 &&
+        typeof entry['target'] === 'string' &&
+        entry['target'].startsWith('/'),
+    )
+    .map((entry: Record<string, unknown>) => ({
+      source: String(entry['source']).trim(),
+      target: String(entry['target']),
+      readOnly: entry['readOnly'] === true,
+    }));
+  const name: unknown = record['name'];
+  return {
+    image: image.trim(),
+    ...(typeof name === 'string' && name.trim().length > 0 ? { name: name.trim() } : {}),
+    ports,
+    env,
+    volumes,
+  };
+}

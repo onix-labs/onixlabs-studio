@@ -108,6 +108,12 @@ describe('ContainersView', () => {
         if ((channel as ContainerChannel) === ContainerChannel.ListImages) {
           return Promise.resolve(imaged as T);
         }
+        if (
+          (channel as ContainerChannel) === ContainerChannel.ListVolumes ||
+          (channel as ContainerChannel) === ContainerChannel.Stats
+        ) {
+          return Promise.resolve([] as T);
+        }
         return Promise.resolve(true as T);
       },
       send: (): void => undefined,
@@ -301,6 +307,41 @@ describe('ContainersView', () => {
     ).toBe(true);
   });
 
+  it('bulk_actsOnEveryTickedContainer_andTheRowMenuOffersPauseAndRestart', async () => {
+    // #974.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const view: {
+      setChecked(id: string, on: boolean): void;
+      bulk(action: 'restart'): Promise<void>;
+      menuTarget: WritableSignal<ContainerSummary | null>;
+      rowMenuItems(): readonly MenuItem[];
+    } = fixture.componentInstance as unknown as {
+      setChecked(id: string, on: boolean): void;
+      bulk(action: 'restart'): Promise<void>;
+      menuTarget: WritableSignal<ContainerSummary | null>;
+      rowMenuItems(): readonly MenuItem[];
+    };
+
+    view.setChecked('abc123', true);
+    view.setChecked('other', true);
+    await view.bulk('restart');
+
+    expect(
+      calls
+        .filter(
+          (call: RecordedCall): boolean =>
+            (call.channel as ContainerChannel) === ContainerChannel.Restart,
+        )
+        .map((call: RecordedCall): unknown => call.args[0]),
+    ).toEqual(['abc123', 'other']);
+
+    view.menuTarget.set(CONTAINER);
+    expect(view.rowMenuItems().map((item: MenuItem): string => item.id)).toEqual(
+      expect.arrayContaining(['restart', 'pause']),
+    );
+  });
+
   it('viewLogs_opensADockerLogsTerminalSession', async () => {
     stubBridge({ available: true });
     const fixture: ComponentFixture<ContainersView> = await createView();
@@ -384,7 +425,7 @@ describe('ContainersView', () => {
       const fixture: ComponentFixture<ContainersView> = await createView();
       const host: HTMLElement = fixture.nativeElement as HTMLElement;
 
-      expect(kinds(fixture)).toEqual(['Containers 2', 'Images 2']);
+      expect(kinds(fixture)).toEqual(['Containers 2', 'Images 2', 'Volumes 0']);
       expect(host.querySelectorAll('app-table')).toHaveLength(1);
       expect(names(fixture)).toEqual(['web', 'db']);
 

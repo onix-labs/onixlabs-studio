@@ -1,8 +1,12 @@
 import type {
   ContainerEvent,
+  ContainerStats,
   ContainerStatus,
   ContainerSummary,
+  ImagePullProgress,
   ImageSummary,
+  RunContainerRequest,
+  VolumeSummary,
 } from './container-types';
 
 // The container-engine protocol (#973): what Studio says to a container-engine plugin, and what it
@@ -15,6 +19,10 @@ import type {
 // plugin writes **event** lines — `{ "type": "event", "event": … }` — for the engine's event stream
 // while Studio is watching it.
 //
+// `1.1` (#974) adds stats, volumes, pause and resume, restart, removing and pulling images, and running
+// a new container, each behind a capability of its own, and `{ "type": "pull", "progress": … }` lines
+// while an image downloads. Adds only: a 1.0 plugin is simply never asked for them.
+//
 // The plugin speaks to the engine itself; Studio speaks to the plugin. The one thing Studio hands over
 // is the engine's socket, resolved through the `container.socket` permission and passed at
 // `initialize`, so a plugin never decides for itself where it may connect.
@@ -23,7 +31,7 @@ import type {
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const CONTAINER_ENGINE_PROTOCOL_VERSION: string = '1.0';
+export const CONTAINER_ENGINE_PROTOCOL_VERSION: string = '1.1';
 
 /**
  * Every capability an engine plugin can declare. A closed list: Studio asks for an operation only when
@@ -35,7 +43,27 @@ export const CONTAINER_ENGINE_CAPABILITIES: readonly [
   'lifecycle',
   'logs',
   'events',
-] = ['containers', 'images', 'lifecycle', 'logs', 'events'];
+  'stats',
+  'volumes',
+  'pause',
+  'restart',
+  'imageRemove',
+  'imagePull',
+  'run',
+] = [
+  'containers',
+  'images',
+  'lifecycle',
+  'logs',
+  'events',
+  'stats',
+  'volumes',
+  'pause',
+  'restart',
+  'imageRemove',
+  'imagePull',
+  'run',
+];
 
 /**
  * Identifies one capability.
@@ -141,6 +169,66 @@ export interface ContainerEngineOperations {
   };
 
   /**
+   * Samples the resource use of the running containers named (1.1).
+   */
+  readonly stats: {
+    readonly params: { readonly ids: readonly string[] };
+    readonly result: readonly ContainerStats[];
+  };
+
+  /**
+   * Lists the volumes (1.1).
+   */
+  readonly listVolumes: {
+    readonly params: Record<string, never>;
+    readonly result: readonly VolumeSummary[];
+  };
+
+  /**
+   * Removes a volume no container uses (1.1).
+   */
+  readonly removeVolume: { readonly params: { readonly name: string }; readonly result: boolean };
+
+  /**
+   * Pauses a running container (1.1).
+   */
+  readonly pause: { readonly params: { readonly id: string }; readonly result: boolean };
+
+  /**
+   * Resumes a paused container (1.1).
+   */
+  readonly unpause: { readonly params: { readonly id: string }; readonly result: boolean };
+
+  /**
+   * Restarts a container (1.1).
+   */
+  readonly restart: { readonly params: { readonly id: string }; readonly result: boolean };
+
+  /**
+   * Removes an image (1.1).
+   */
+  readonly removeImage: {
+    readonly params: { readonly id: string; readonly force: boolean };
+    readonly result: boolean;
+  };
+
+  /**
+   * Downloads an image, sending `pull` lines as it goes and answering once it has finished (1.1).
+   */
+  readonly pullImage: {
+    readonly params: { readonly reference: string };
+    readonly result: { readonly ok: boolean; readonly error?: string };
+  };
+
+  /**
+   * Creates a container from an image and starts it (1.1).
+   */
+  readonly run: {
+    readonly params: { readonly request: RunContainerRequest };
+    readonly result: { readonly id?: string; readonly error?: string };
+  };
+
+  /**
    * Starts sending the engine's events as event lines.
    */
   readonly watchStart: { readonly params: Record<string, never>; readonly result: boolean };
@@ -184,6 +272,15 @@ export const CONTAINER_ENGINE_OP_CAPABILITY: Readonly<
   logs: 'logs',
   watchStart: 'events',
   watchStop: 'events',
+  stats: 'stats',
+  listVolumes: 'volumes',
+  removeVolume: 'volumes',
+  pause: 'pause',
+  unpause: 'pause',
+  restart: 'restart',
+  removeImage: 'imageRemove',
+  pullImage: 'imagePull',
+  run: 'run',
 };
 
 /**
@@ -208,6 +305,14 @@ export type ContainerEngineResponse<Op extends ContainerEngineOp = ContainerEngi
 export interface ContainerEngineEventLine {
   readonly type: 'event';
   readonly event: ContainerEvent;
+}
+
+/**
+ * One pull line: how far an image download has got (1.1).
+ */
+export interface ContainerEnginePullLine {
+  readonly type: 'pull';
+  readonly progress: ImagePullProgress;
 }
 
 /**
