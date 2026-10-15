@@ -15,6 +15,7 @@ import {
   ModelManagerCommandHandler,
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
+import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
 import { AiManagerRibbon } from './ai-manager-ribbon';
 
 /**
@@ -130,7 +131,14 @@ describe('AiManagerRibbon (#948)', () => {
     TestBed.inject(ModelManagerCommands).register(handler);
     mount('models');
 
-    expect(labels()).toEqual(['Local Models', 'Prompt Profiles', 'Skills', 'Start', 'Refresh']);
+    expect(labels()).toEqual([
+      'Local Models',
+      'Prompt Profiles',
+      'Skills',
+      'Start',
+      'Refresh',
+      'Agent',
+    ]);
     press('Start');
     press('Refresh');
     expect(calls).toEqual(['start', 'refresh']);
@@ -164,7 +172,7 @@ describe('AiManagerRibbon (#948)', () => {
     TestBed.inject(AiLibraryCommands).register('profiles', handler);
     mount('profiles');
 
-    expect(labels()).toEqual(['Local Models', 'Prompt Profiles', 'Skills', 'New Profile']);
+    expect(labels()).toEqual(['Local Models', 'Prompt Profiles', 'Skills', 'New Profile', 'Agent']);
     press('New Profile');
     expect(add).toHaveBeenCalledTimes(1);
   });
@@ -183,6 +191,7 @@ describe('AiManagerRibbon (#948)', () => {
       'Import',
       'Open Folder',
       'Refresh',
+      'Agent',
     ]);
     press('New Skill');
     press('Import');
@@ -193,5 +202,18 @@ describe('AiManagerRibbon (#948)', () => {
     expect(importFrom).toHaveBeenCalledTimes(1);
     expect(openLibrary).toHaveBeenCalledTimes(1);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('agent_isTheLastButton_andTogglesTheDockedAgent', () => {
+    // #967: the Agent group goes last on every tool view's ribbon.
+    mount('profiles');
+    const state: AiManagerAgentPanelState = TestBed.inject(AiManagerAgentPanelState);
+    expect(labels().at(-1)).toBe('Agent');
+    expect(state.visible()).toBe(false);
+
+    press('Agent');
+
+    expect(state.visible()).toBe(true);
+    expect(state.mounted()).toBe(true);
   });
 });

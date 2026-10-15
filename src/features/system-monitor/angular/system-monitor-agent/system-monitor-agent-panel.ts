@@ -10,19 +10,18 @@ import {
   untracked,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
-import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
-import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
-import { Icon } from '@shared/angular/icons/icon';
+import {
+  toolViewConversationContext,
+  ToolViewAgentPanel,
+} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
 import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
 
 /**
  * The context every System Monitor conversation is filed under (#966): the tool view, keyed by its
  * agent surface, so its history is its own.
  */
-export const SYSTEM_MONITOR_CONVERSATION_CONTEXT: ConversationContext = {
-  kind: 'tool',
-  key: 'monitor',
-};
+export const SYSTEM_MONITOR_CONVERSATION_CONTEXT: ConversationContext =
+  toolViewConversationContext('monitor');
 
 /**
  * The notice a System Monitor conversation carries once (#966). Logs hold file paths, project names
@@ -37,28 +36,20 @@ const LOG_PRIVACY_DETAIL: string =
   'They can include file paths, project names and what Studio has been doing. With a local model they stay on this machine.';
 
 /**
- * The System Monitor's docked agent (#966): the shared conversation panel on the `monitor` surface,
- * under the panel chrome every docked agent wears. The conversation itself is provided by the view, so
- * a run outlives the panel being closed.
+ * The System Monitor's docked agent (#966): the shared tool-view agent panel on the `monitor` surface,
+ * adding the notice every System Monitor conversation carries.
  */
 @Component({
   selector: 'app-system-monitor-agent-panel',
-  imports: [ToolPanel, AgentConversationPanel],
+  imports: [ToolViewAgentPanel],
   template: `
-    <app-tool-panel
-      title="Agent"
-      [icon]="Icon.AGENT"
-      closeLabel="Close agent"
-      [flush]="true"
+    <app-tool-view-agent-panel
+      surface="monitor"
+      [context]="context"
+      [tabId]="tabId()"
+      [isActive]="isActive()"
       (closed)="closed.emit()"
-    >
-      <app-agent-conversation-panel
-        [tabId]="tabId()"
-        [isActive]="isActive()"
-        surface="monitor"
-        [context]="context"
-      />
-    </app-tool-panel>
+    />
   `,
   styles: `
     :host {
@@ -66,19 +57,10 @@ const LOG_PRIVACY_DETAIL: string =
       inline-size: 100%;
       block-size: 100%;
     }
-
-    app-agent-conversation-panel {
-      block-size: 100%;
-    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SystemMonitorAgentPanel {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Gets the conversation context, the same for every System Monitor conversation.
    */

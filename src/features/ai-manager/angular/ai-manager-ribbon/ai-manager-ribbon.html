@@ -98,4 +98,14 @@
       </app-ribbon-strip-group>
     }
   }
+
+  <app-ribbon-strip-group title="Agent">
+    <app-ribbon-strip-button
+      [icon]="Icon.AGENT"
+      label="Agent"
+      [toggle]="true"
+      [pressed]="agentShown()"
+      (action)="onToggleAgent()"
+    />
+  </app-ribbon-strip-group>
 </app-ribbon-overflow>

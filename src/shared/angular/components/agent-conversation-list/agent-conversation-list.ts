@@ -54,6 +54,7 @@ const AGENT_TYPE_LABELS: Readonly<Record<AgentConversationAgentType, string>> = 
   review: 'Review',
   search: 'Search',
   monitor: 'System Monitor',
+  models: 'AI Manager',
 };
 
 /**
@@ -67,6 +68,7 @@ const AGENT_TYPE_ORDER: readonly AgentConversationAgentType[] = [
   'review',
   'search',
   'monitor',
+  'models',
 ];
 
 /**

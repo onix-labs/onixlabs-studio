@@ -1,12 +1,37 @@
-<!-- One sub-view at a time, chosen on the ribbon (#948). Each brings its own side panel. -->
-@switch (section()) {
-  @case ('models') {
-    <app-model-manager-view [isActive]="isActive()" />
+<app-panel-layout class="ai-manager">
+  <!-- One sub-view at a time, chosen on the ribbon (#948). Each brings its own side panel. -->
+  <div main class="ai-manager__section">
+    @switch (section()) {
+      @case ('models') {
+        <app-model-manager-view [isActive]="isActive()" />
+      }
+      @case ('profiles') {
+        <app-prompt-profiles />
+      }
+      @case ('skills') {
+        <app-skill-library />
+      }
+    }
+  </div>
+
+  <!-- The AI Manager's own agent (#967), docked on the right across every sub-view. It mounts on
+       first show and stays mounted, so closing it keeps its conversation. -->
+  @if (agentPanel.mounted()) {
+    <app-panel
+      panelId="agent"
+      defaultEdge="right"
+      [visible]="agentPanel.visible()"
+      [defaultSize]="360"
+      [minSize]="240"
+      [maxSize]="900"
+    >
+      <app-tool-view-agent-panel
+        surface="models"
+        [context]="agentContext"
+        [tabId]="tabId()"
+        [isActive]="isActive() && agentPanel.visible()"
+        (closed)="agentPanel.hide()"
+      />
+    </app-panel>
   }
-  @case ('profiles') {
-    <app-prompt-profiles />
-  }
-  @case ('skills') {
-    <app-skill-library />
-  }
-}
+</app-panel-layout>

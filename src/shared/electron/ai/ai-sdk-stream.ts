@@ -6,6 +6,19 @@ import {
   QUERY_LOGS,
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
+  LIST_LOCAL_MODELS,
+  SEARCH_MODEL_CATALOG,
+  READ_MACHINE_FACTS,
+  DOWNLOAD_MODEL,
+  DELETE_MODEL,
+  LIST_PROMPT_PROFILES,
+  SAVE_PROMPT_PROFILE,
+  DELETE_PROMPT_PROFILE,
+  LIST_SKILLS,
+  READ_SKILL,
+  LIST_SKILL_TAGS,
+  SAVE_SKILL,
+  DELETE_SKILL,
   PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
@@ -120,6 +133,22 @@ import {
   readSystemMetrics,
   setLogLevel,
 } from './monitor-tools';
+import {
+  AI_MANAGER_PROMPT_APPENDIX,
+  deleteModel,
+  deletePromptProfile,
+  deleteSkill,
+  downloadModel,
+  listLocalModels,
+  listPromptProfiles,
+  listSkills,
+  listSkillTags,
+  readMachineFacts,
+  readSkill,
+  savePromptProfile,
+  saveSkill,
+  searchModelCatalog,
+} from './ai-manager-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -1167,6 +1196,174 @@ export async function createMonitorTools(context: AgentRunContext): Promise<Tool
 }
 
 /**
+ * Builds the AI Manager's tools (#967): the local models, the prompt profiles and the skill library.
+ * Chat mode reads only. Downloading, and every delete, are gated; writing a profile or a skill is not —
+ * it lands in the view the user is looking at, and is as easy to undo as it is to see.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createAiManagerTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_LOCAL_MODELS]: tool({
+      description:
+        'List the local model runtime, its installed and running models, and their disk use.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listLocalModels(context),
+    }),
+    [SEARCH_MODEL_CATALOG]: tool({
+      description:
+        "Search the catalogue of models that can be downloaded: each one's reference, size, parameters and description.",
+      inputSchema: z.object({
+        query: z.string().describe('What to search for, e.g. "qwen coder" or "embedding".'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('How many results; 20 when omitted.'),
+      }),
+      execute: (args: { query: string; limit?: number }): Promise<string> =>
+        searchModelCatalog(context, args.query, args.limit),
+    }),
+    [READ_MACHINE_FACTS]: tool({
+      description:
+        "Report the machine's memory, processor and architecture, to judge which models fit.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => Promise.resolve(readMachineFacts()),
+    }),
+    [LIST_PROMPT_PROFILES]: tool({
+      description:
+        "List the prompt profiles: each one's id, name, scope, whether it is on, and its instructions.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listPromptProfiles(context),
+    }),
+    [LIST_SKILLS]: tool({
+      description:
+        "List the skill library: each skill's name, description, scope, technologies, whether it is on, and any problem.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listSkills(context),
+    }),
+    [READ_SKILL]: tool({
+      description: 'Read one skill in full, instructions included.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The skill's name.") }),
+      execute: (args: { name: string }): Promise<string> => readSkill(context, args.name),
+    }),
+    [LIST_SKILL_TAGS]: tool({
+      description:
+        'List what a skill can be scoped to and tagged with: the surfaces, and the language and technology ids by category.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listSkillTags(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [DOWNLOAD_MODEL]: tool({
+      description:
+        'Start downloading a model by its catalogue reference. It runs in the background; tell the user its size first.',
+      inputSchema: z.object({
+        ref: z.string().min(1).describe('The catalogue reference, e.g. qwen3:8b.'),
+      }),
+      execute: gated(context, DOWNLOAD_MODEL, (args: { ref: string }): Promise<string> =>
+        downloadModel(context, args.ref),
+      ),
+    }),
+    [DELETE_MODEL]: tool({
+      description: "Delete an installed model's weights.",
+      inputSchema: z.object({ name: z.string().min(1).describe("The installed model's name.") }),
+      execute: gated(context, DELETE_MODEL, (args: { name: string }): Promise<string> =>
+        deleteModel(context, args.name),
+      ),
+    }),
+    [SAVE_PROMPT_PROFILE]: tool({
+      description:
+        'Create a prompt profile, or change one by its id. Anything not named is left as it was.',
+      inputSchema: z.object({
+        id: z.string().optional().describe('The profile to change; omit to create one.'),
+        name: z.string().optional().describe('Its display name.'),
+        instructions: z.string().optional().describe('The standing instructions, in Markdown.'),
+        surfaces: z
+          .array(
+            z.enum([
+              'editor',
+              'terminal',
+              'binary',
+              'api',
+              'workspace',
+              'project',
+              'monitor',
+              'models',
+            ]),
+          )
+          .optional()
+          .describe('The surfaces it applies on; omit or leave empty for everywhere.'),
+        languages: z
+          .array(z.string())
+          .optional()
+          .describe('Editor language ids it narrows to; omit or leave empty for every language.'),
+        enabled: z.boolean().optional().describe('Whether it is on.'),
+      }),
+      execute: (args: Record<string, unknown>): Promise<string> => savePromptProfile(context, args),
+    }),
+    [DELETE_PROMPT_PROFILE]: tool({
+      description: 'Delete a prompt profile by its id.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The profile's id.") }),
+      execute: gated(context, DELETE_PROMPT_PROFILE, (args: { id: string }): Promise<string> =>
+        deletePromptProfile(context, args.id),
+      ),
+    }),
+    [SAVE_SKILL]: tool({
+      description:
+        'Create a skill, or change one. Name it in lower-case letters, digits and hyphens. Anything not named is left as it was.',
+      inputSchema: z.object({
+        name: z.string().min(1).describe("The skill's name, which is also its folder's."),
+        previous_name: z.string().optional().describe('The current name, when renaming.'),
+        description: z
+          .string()
+          .optional()
+          .describe('One paragraph saying what kind of task it is for.'),
+        instructions: z.string().optional().describe('The instructions, in Markdown.'),
+        surfaces: z
+          .array(
+            z.enum([
+              'editor',
+              'terminal',
+              'binary',
+              'api',
+              'workspace',
+              'project',
+              'monitor',
+              'models',
+            ]),
+          )
+          .optional()
+          .describe('The surfaces it applies on; omit or leave empty for everywhere.'),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Language and technology ids from list_skill_tags; omit or leave empty for none.',
+          ),
+        enabled: z.boolean().optional().describe('Whether it is offered to agents.'),
+      }),
+      execute: (args: Record<string, unknown>): Promise<string> => saveSkill(context, args),
+    }),
+    [DELETE_SKILL]: tool({
+      description: 'Delete a skill, and its folder on disk.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The skill's name.") }),
+      execute: gated(context, DELETE_SKILL, (args: { name: string }): Promise<string> =>
+        deleteSkill(context, args.name),
+      ),
+    }),
+  };
+}
+
+/**
  * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
  * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
  * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
@@ -1195,6 +1392,8 @@ export function promptForSurface(
         return STUDIO_PROMPT_APPENDIX;
       case 'monitor':
         return MONITOR_PROMPT_APPENDIX;
+      case 'models':
+        return AI_MANAGER_PROMPT_APPENDIX;
     }
   })();
   // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
@@ -1323,6 +1522,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
       case 'editor':
         return createStudioTools(context);
       case 'monitor':
+      case 'models':
         return createToolViewTools(context);
     }
   })();
@@ -1345,6 +1545,8 @@ async function createToolViewTools(context: AgentRunContext): Promise<ToolSet> {
   switch (context.surface) {
     case 'monitor':
       return createMonitorTools(context);
+    case 'models':
+      return createAiManagerTools(context);
     default:
       return {};
   }

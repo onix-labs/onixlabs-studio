@@ -29,6 +29,19 @@ import {
   SET_LOG_LEVEL,
   SEND_API_REQUEST,
   OPEN_DOCUMENT,
+  LIST_LOCAL_MODELS,
+  SEARCH_MODEL_CATALOG,
+  READ_MACHINE_FACTS,
+  DOWNLOAD_MODEL,
+  DELETE_MODEL,
+  LIST_PROMPT_PROFILES,
+  SAVE_PROMPT_PROFILE,
+  DELETE_PROMPT_PROFILE,
+  LIST_SKILLS,
+  READ_SKILL,
+  LIST_SKILL_TAGS,
+  SAVE_SKILL,
+  DELETE_SKILL,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -361,5 +374,62 @@ describe('describeOffer', () => {
     expect(requestPermission).toHaveBeenCalledWith(SEND_API_REQUEST, expect.any(String));
     expect(request).not.toHaveBeenCalled();
     expect(outcome.result).toBe('The user declined to run this tool.');
+  });
+
+  it('keepsTheAiManagersAgentToModelsProfilesAndSkills_readingOnlyInChat', async () => {
+    // #967.
+    const reads: readonly string[] = [
+      LIST_LOCAL_MODELS,
+      SEARCH_MODEL_CATALOG,
+      READ_MACHINE_FACTS,
+      LIST_PROMPT_PROFILES,
+      LIST_SKILLS,
+      READ_SKILL,
+      LIST_SKILL_TAGS,
+    ];
+    const writes: readonly string[] = [
+      DOWNLOAD_MODEL,
+      DELETE_MODEL,
+      SAVE_PROMPT_PROFILE,
+      DELETE_PROMPT_PROFILE,
+      SAVE_SKILL,
+      DELETE_SKILL,
+    ];
+    const agent: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'models', workspaceRoot: null }),
+    );
+    const chat: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'models', mode: 'chat' }),
+    );
+
+    expect([...names(agent)].sort()).toEqual([ASK_USER, ...reads, ...writes].sort());
+    expect(agent.systemPrompt).toContain('docked to the AI Manager');
+    expect([...names(chat)].sort()).toEqual([ASK_USER, ...reads].sort());
+  });
+
+  it('asksBeforeTheAiManagersAgentDownloadsOrDeletes', async () => {
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(false),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((): Promise<unknown> =>
+      Promise.resolve({ available: true }),
+    );
+    const { invokeTool } = await import('./harness-tools');
+    const context: AgentRunContext = contextFor({
+      surface: 'models',
+      requestPermission,
+      bridge: { request },
+    });
+
+    for (const [name, input] of [
+      [DOWNLOAD_MODEL, { ref: 'qwen3:8b' }],
+      [DELETE_MODEL, { name: 'qwen3:8b' }],
+      [DELETE_PROMPT_PROFILE, { id: 'p1' }],
+      [DELETE_SKILL, { name: 'style' }],
+    ] as const) {
+      await invokeTool(context, name, input);
+      expect(requestPermission).toHaveBeenLastCalledWith(name, expect.any(String));
+    }
+    expect(request).not.toHaveBeenCalled();
   });
 });
