@@ -57,13 +57,6 @@
   min-block-size: 0;
 }
 
-// Rows get the Plugin Manager's room, so the two managers read alike; a catalogue row is two lines.
-// Scoped through the table's class so it outranks the table's own cell padding.
-.model-manager__table td {
-  padding-block: 0.5rem;
-  vertical-align: middle;
-}
-
 // Where the runtime came from, after the sentence: a fact for the curious rather than the headline.
 .model-manager__install {
   margin-inline-start: 0.25rem;

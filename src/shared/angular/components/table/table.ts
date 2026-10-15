@@ -72,6 +72,11 @@ export interface TableColumn {
 export type TableSortDirection = 'asc' | 'desc';
 
 /**
+ * How tall a table's data rows are.
+ */
+export type TableRowSize = 'compact' | 'comfortable';
+
+/**
  * A sort selection: the column being sorted and its direction.
  */
 export interface TableSort {
@@ -179,6 +184,12 @@ export class Table {
    * tree-like surface that still keeps its column headers. Defaults to false.
    */
   public readonly collapsible: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets how tall the data rows are: `compact` for dense lists such as a log, `comfortable` for a
+   * manager tool's list, whose rows carry chips, buttons or a second line. Defaults to compact.
+   */
+  public readonly rowSize: InputSignal<TableRowSize> = input<TableRowSize>('compact');
 
   /**
    * Gets whether alternate data rows are shaded, so a wide row can be followed across. The pattern

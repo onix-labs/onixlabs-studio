@@ -58,14 +58,6 @@
 // A row: the plugin's icon with its name and description stacked beside it, then one cell per column
 // ---------------------------------------------------------------------------------------------
 
-// A plugin row is two lines tall (name over description), so its cells get more room than the table's
-// default and every other cell centres against that height. Scoped through the table's class so it
-// outranks the table's own cell padding.
-.plugin-manager__table td.plugin-cell {
-  padding-block: 0.5rem;
-  vertical-align: middle;
-}
-
 .plugin-row__plugin {
   display: flex;
   align-items: center;

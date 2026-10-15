@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
 import {
   ContainerEngineInfo,
   ContainerStatus,
   ContainerSummary,
+  ImageSummary,
 } from '@shared/api/container-types';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
@@ -83,6 +85,12 @@ describe('ContainersView', () => {
    * @param engine The engine in effect, defaulting to Docker; null reports no engines at all, which is
    * what the renderer sees before the main process answers.
    */
+  /**
+   * Holds the containers and images the stub engine lists.
+   */
+  let listed: readonly ContainerSummary[] = [CONTAINER];
+  let imaged: readonly ImageSummary[] = [];
+
   function stubBridge(status: ContainerStatus, engine: ContainerEngineInfo | null = DOCKER): void {
     calls = [];
     const bridge: Bridge = {
@@ -95,10 +103,10 @@ describe('ContainersView', () => {
           return Promise.resolve(status as T);
         }
         if ((channel as ContainerChannel) === ContainerChannel.ListContainers) {
-          return Promise.resolve([CONTAINER] as T);
+          return Promise.resolve(listed as T);
         }
         if ((channel as ContainerChannel) === ContainerChannel.ListImages) {
-          return Promise.resolve([] as T);
+          return Promise.resolve(imaged as T);
         }
         return Promise.resolve(true as T);
       },
@@ -317,5 +325,160 @@ describe('ContainersView', () => {
 
     expect(terminals.sessions()).toHaveLength(1);
     expect(terminals.sessions()[0].name).toContain('shell');
+  });
+
+  describe('the side panel and table (#952)', () => {
+    const STOPPED: ContainerSummary = {
+      id: 'def456',
+      names: ['db'],
+      image: 'postgres:16',
+      state: 'exited',
+      status: 'Exited (0) 2 hours ago',
+    };
+    const NGINX: ImageSummary = { id: 'sha256:aaa', tags: ['nginx:latest'], size: 1024 };
+    const POSTGRES: ImageSummary = { id: 'sha256:bbb', tags: ['postgres:16'], size: 2048 };
+
+    beforeEach(() => {
+      listed = [CONTAINER, STOPPED];
+      imaged = [NGINX, POSTGRES];
+    });
+
+    afterEach(() => {
+      listed = [CONTAINER];
+      imaged = [];
+    });
+
+    /**
+     * Reads the side panel's entries.
+     * @param fixture The view.
+     * @returns Returns them as "Label count".
+     */
+    function kinds(fixture: ComponentFixture<ContainersView>): string[] {
+      return [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.category-list__item',
+        ),
+      ].map(
+        (entry: HTMLElement): string =>
+          `${entry.querySelector('.category-list__label')?.textContent?.trim()} ${entry
+            .querySelector('.category-list__count')
+            ?.textContent?.trim()}`,
+      );
+    }
+
+    /**
+     * Reads the shown table's first text column.
+     * @param fixture The view.
+     * @returns Returns the names (containers) or tags (images), in row order.
+     */
+    function names(fixture: ComponentFixture<ContainersView>): string[] {
+      return [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'tr.table-row .containers__name',
+        ),
+      ].map((cell: HTMLElement): string => cell.textContent?.trim() ?? '');
+    }
+
+    it('listsContainersAndImages_withCounts_andShowsOneTableAtATime', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(kinds(fixture)).toEqual(['Containers 2', 'Images 2']);
+      expect(host.querySelectorAll('app-table')).toHaveLength(1);
+      expect(names(fixture)).toEqual(['web', 'db']);
+
+      host.querySelectorAll<HTMLButtonElement>('.category-list__item')[1].click();
+      fixture.detectChanges();
+
+      expect(host.querySelectorAll('app-table')).toHaveLength(1);
+      expect(names(fixture)).toEqual(['nginx:latest', 'postgres:16']);
+    });
+
+    it('onlyShowRunning_hidesStoppedContainers', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('.containers__running-only input')
+        ?.click();
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['web']);
+    });
+
+    it('search_narrowsByNameOrImage', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+        '.category-list__search input',
+      )!;
+
+      input.value = 'postgres';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['db']);
+    });
+
+    it('imageLink_showsThatImageSelectedInTheImagesList', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      host.querySelector<HTMLButtonElement>('.containers__image-link')?.click();
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['nginx:latest', 'postgres:16']);
+      expect(
+        host.querySelector('tr.table-row--selected .containers__name')?.textContent?.trim(),
+      ).toBe('nginx:latest');
+    });
+
+    it('rowMenu_opensLogsForTheRowThatOpenedIt_andOffersAShellOnlyWhileItRuns', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const view: {
+        menuTarget: WritableSignal<ContainerSummary | null>;
+        rowMenuItems(): readonly MenuItem[];
+        onRowMenu(id: string): void;
+      } = fixture.componentInstance as unknown as {
+        menuTarget: WritableSignal<ContainerSummary | null>;
+        rowMenuItems(): readonly MenuItem[];
+        onRowMenu(id: string): void;
+      };
+      const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
+
+      view.menuTarget.set(STOPPED);
+      expect(view.rowMenuItems().find((item: MenuItem) => item.id === 'shell')?.disabled).toBe(
+        true,
+      );
+      view.onRowMenu('logs');
+
+      expect(terminals.sessions()).toHaveLength(1);
+      expect(terminals.sessions()[0].name).toContain('db');
+    });
+
+    it('terminals_closingThePanelHidesIt_andTheNextSessionShowsItAgain', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const view: {
+        terminalsHidden: WritableSignal<boolean>;
+        viewLogs(container: ContainerSummary): void;
+      } = fixture.componentInstance as unknown as {
+        terminalsHidden: WritableSignal<boolean>;
+        viewLogs(container: ContainerSummary): void;
+      };
+
+      view.viewLogs(CONTAINER);
+      fixture.detectChanges();
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('app-tool-panel [aria-label="Close terminals"]')
+        ?.click();
+      expect(view.terminalsHidden()).toBe(true);
+
+      view.viewLogs(STOPPED);
+      expect(view.terminalsHidden()).toBe(false);
+    });
   });
 });

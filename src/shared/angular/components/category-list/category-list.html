@@ -9,6 +9,8 @@
       (escape)="query.set('')"
     />
   }
+  <!-- A view's own filters beside the search, such as Containers' "Only show running". -->
+  <ng-content select="[categoryListFilters]" />
   @if (title()) {
     <h3 class="category-list__title">{{ title() }}</h3>
   }

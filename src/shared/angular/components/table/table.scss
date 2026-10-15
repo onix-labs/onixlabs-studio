@@ -118,6 +118,13 @@
   }
 }
 
+// Comfortable rows: room for chips, buttons and a second line, every cell centred against the row's
+// height. The manager tools' lists — plugins, models, containers — use it, so they read alike.
+.table--comfortable .table-row ::ng-deep td {
+  padding-block: 0.5rem;
+  vertical-align: middle;
+}
+
 // A full-width group header row.
 .table-group {
   transition: var(--hover-transition);

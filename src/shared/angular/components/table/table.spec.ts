@@ -1,7 +1,15 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { Table, TableColumn, TableGroupDef, TableRow, TableRowDef, TableSort } from './table';
+import {
+  Table,
+  TableColumn,
+  TableGroupDef,
+  TableRow,
+  TableRowDef,
+  TableRowSize,
+  TableSort,
+} from './table';
 
 @Component({
   imports: [Table, TableRowDef, TableGroupDef],
@@ -11,6 +19,7 @@ import { Table, TableColumn, TableGroupDef, TableRow, TableRowDef, TableSort } f
       [rows]="rows()"
       [collapsible]="collapsible()"
       [striped]="striped()"
+      [rowSize]="rowSize()"
       emptyText="Nothing here."
       (rowClick)="onRow($event)"
       (sortChange)="onSort($event)"
@@ -37,6 +46,7 @@ class TestHost {
   ]);
   public readonly collapsible: WritableSignal<boolean> = signal<boolean>(false);
   public readonly striped: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly rowSize: WritableSignal<TableRowSize> = signal<TableRowSize>('compact');
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
 
@@ -68,6 +78,19 @@ describe('Table', () => {
       'Name',
       'Value',
     ]);
+  });
+
+  it('rowSize_isCompactByDefault_andComfortableWhenAsked', () => {
+    // The manager tools' lists take their taller rows from the table itself, not from their own
+    // styles, so they cannot drift apart.
+    const table: () => HTMLElement = (): HTMLElement =>
+      (fixture.nativeElement as HTMLElement).querySelector('table.table')!;
+    expect(table().classList.contains('table--comfortable')).toBe(false);
+
+    fixture.componentInstance.rowSize.set('comfortable');
+    fixture.detectChanges();
+
+    expect(table().classList.contains('table--comfortable')).toBe(true);
   });
 
   it('renders data rows through the projected row template', () => {
