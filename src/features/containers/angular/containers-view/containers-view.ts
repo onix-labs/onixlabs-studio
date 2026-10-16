@@ -54,6 +54,7 @@ import {
 } from '../containers-commands/containers-commands';
 import { ContainersStatus } from '../containers-status/containers-status';
 import { ContainersClient } from '../client/containers-client';
+import { ReloadCoalescer } from './reload-coalescer';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import {
@@ -172,6 +173,11 @@ const VOLUME_COLUMNS: readonly TableColumn[] = [
  * How often the running containers' CPU and memory are read while the list shows (#974).
  */
 const STATS_REFRESH_MS: number = 3_000;
+
+/**
+ * How long a burst of engine events is allowed to settle before the list reloads once.
+ */
+const EVENT_RELOAD_DELAY_MS: number = 300;
 
 /**
  * The row menu's actions.
@@ -739,15 +745,19 @@ export class ContainersView implements OnInit, OnDestroy {
     void this.load();
 
     // A hidden view's per-event reload paid two IPC round-trips for a table nobody could see; the
-    // event marks it stale instead, and reactivation reloads once.
+    // event marks it stale instead, and reactivation reloads once. A burst of events — a compose
+    // project starting — reloads once after it settles, not once per event (audit P6).
     const unsubscribe: () => void = this.client.onEvents((): void => {
       if (this.isActive()) {
-        void this.load();
+        this.reloads.request();
       } else {
         this.staleWhileHidden = true;
       }
     });
-    inject(DestroyRef).onDestroy(unsubscribe);
+    inject(DestroyRef).onDestroy((): void => {
+      unsubscribe();
+      this.reloads.cancel();
+    });
 
     // The running containers' CPU and memory are read while their list shows, and not otherwise:
     // sampling takes the engine a moment per container (#974).
@@ -763,6 +773,8 @@ export class ContainersView implements OnInit, OnDestroy {
         this.isActive() && this.available() === true && this.kind() === 'containers';
       untracked((): void => {
         stopStats();
+        // A read still in flight from before is superseded: its figures must not land later.
+        this.statsTick += 1;
         if (showing) {
           void this.readStats();
           statsTimer = setInterval((): void => void this.readStats(), STATS_REFRESH_MS);
@@ -796,6 +808,26 @@ export class ContainersView implements OnInit, OnDestroy {
    * Holds whether engine events arrived while the tab was hidden, so reactivation reloads once.
    */
   private staleWhileHidden: boolean = false;
+
+  /**
+   * Folds a burst of engine events into one reload after it settles.
+   */
+  private readonly reloads: ReloadCoalescer = new ReloadCoalescer(
+    (): Promise<void> => this.load(),
+    EVENT_RELOAD_DELAY_MS,
+  );
+
+  /**
+   * Holds whether a stats read is in flight, so a slow engine never has ticks piling up behind each
+   * other (audit P1).
+   */
+  private statsInFlight: boolean = false;
+
+  /**
+   * Counts stats reads, so a read that was superseded — the list changed, or sampling stopped and
+   * started — does not land stale figures over fresh ones.
+   */
+  private statsTick: number = 0;
 
   /**
    * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
@@ -1188,15 +1220,34 @@ export class ContainersView implements OnInit, OnDestroy {
    * @returns Resolves once they are shown.
    */
   private async readStats(): Promise<void> {
+    // One read at a time: with fifty containers a tick is fifty engine requests, and an engine that
+    // takes longer than the interval to answer must not be asked again before it has.
+    if (this.statsInFlight) {
+      return;
+    }
     const running: readonly string[] = this.containers()
       .filter((container: ContainerSummary): boolean => this.isRunning(container))
       .map((container: ContainerSummary): string => container.id);
-    const samples: readonly ContainerStats[] = await this.client.stats(running);
-    this.stats.set(
-      new Map<string, ContainerStats>(
-        samples.map((sample: ContainerStats): [string, ContainerStats] => [sample.id, sample]),
-      ),
-    );
+    if (running.length === 0) {
+      this.stats.set(new Map<string, ContainerStats>());
+      return;
+    }
+    this.statsInFlight = true;
+    this.statsTick += 1;
+    const tick: number = this.statsTick;
+    try {
+      const samples: readonly ContainerStats[] = await this.client.stats(running);
+      if (tick !== this.statsTick) {
+        return;
+      }
+      this.stats.set(
+        new Map<string, ContainerStats>(
+          samples.map((sample: ContainerStats): [string, ContainerStats] => [sample.id, sample]),
+        ),
+      );
+    } finally {
+      this.statsInFlight = false;
+    }
   }
 
   /**

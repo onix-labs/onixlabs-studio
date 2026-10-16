@@ -102,6 +102,12 @@ interface RawEvent {
 }
 
 /**
+ * How many containers are sampled at once. Enough to keep a tick short, few enough that a tick is not
+ * fifty connections to the engine.
+ */
+const STATS_CONCURRENCY: number = 8;
+
+/**
  * The initial and maximum reconnect delays (ms) for the event watcher's capped exponential backoff.
  */
 const INITIAL_BACKOFF_MS: number = 1_000;
@@ -169,23 +175,50 @@ export class DockerEngine {
   }
 
   /**
-   * Samples the resource use of the containers named, all at once. A container that has stopped, or
-   * cannot be read, is left out rather than reported as idle.
+   * Holds the CPU counters of the last sample taken of each container, so the next sample's share is
+   * measured against it.
+   */
+  private readonly lastCpu: Map<string, RawCpu> = new Map<string, RawCpu>();
+
+  /**
+   * Samples the resource use of the containers named. A container that has stopped, or cannot be
+   * read, is left out rather than reported as idle.
+   *
+   * One snapshot each (`one-shot=true`): without it the engine takes two samples a second apart to fill
+   * in the CPU delta itself, which held one connection per container open for that second — fifty
+   * containers, fifty connections, every tick (audit P1). The delta is measured here instead, against
+   * the counters of the previous sample, so the first sample of a container reports no CPU and every
+   * later one reports its use since the last. At most {@link STATS_CONCURRENCY} requests run at once.
    * @param ids The container ids.
    * @returns Returns a sample per container that answered.
    */
   public async stats(ids: readonly string[]): Promise<ContainerStats[]> {
-    const samples: (ContainerStats | null)[] = await Promise.all(
-      ids.map(async (id: string): Promise<ContainerStats | null> => {
+    const samples: ContainerStats[] = [];
+    const queue: string[] = [...ids];
+    const worker: () => Promise<void> = async (): Promise<void> => {
+      for (let id: string | undefined = queue.shift(); id !== undefined; id = queue.shift()) {
         const raw: RawStats | null = await this.getJson<RawStats>(
-          `/containers/${encodeURIComponent(id)}/stats?stream=false`,
+          `/containers/${encodeURIComponent(id)}/stats?stream=false&one-shot=true`,
         );
-        return raw === null ? null : statsOf(id, raw);
-      }),
-    );
-    return samples.filter(
-      (sample: ContainerStats | null): sample is ContainerStats => sample !== null,
-    );
+        if (raw === null) {
+          this.lastCpu.delete(id);
+          continue;
+        }
+        samples.push(statsOf(id, raw, this.lastCpu.get(id)));
+        if (raw.cpu_stats !== undefined) {
+          this.lastCpu.set(id, raw.cpu_stats);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(STATS_CONCURRENCY, ids.length) }, worker));
+    // Forget containers that are no longer asked about, so the map does not grow with every
+    // container that ever ran.
+    for (const id of [...this.lastCpu.keys()]) {
+      if (!ids.includes(id)) {
+        this.lastCpu.delete(id);
+      }
+    }
+    return samples;
   }
 
   /**
@@ -570,26 +603,31 @@ export function demuxLogs(bytes: Buffer): string {
 }
 
 /**
- * Summarises one stats sample the way `docker stats` does: the CPU used since the previous sample the
- * engine took, as a share of the whole machine scaled by its cores; and the memory in use, without the
- * page cache the kernel can reclaim.
+ * Summarises one stats sample the way `docker stats` does: the CPU used since the previous sample, as
+ * a share of the whole machine scaled by its cores; and the memory in use, without the page cache the
+ * kernel can reclaim. The previous sample is the one this plugin took last, when it has one, else the
+ * one the engine reports beside the current (which a one-shot sample leaves empty).
  * @param id The container id.
  * @param raw The sample.
+ * @param lastCpu The CPU counters of the previous sample this plugin took, if any.
  * @returns Returns the summary.
  */
-export function statsOf(id: string, raw: RawStats): ContainerStats {
+export function statsOf(id: string, raw: RawStats, lastCpu?: RawCpu): ContainerStats {
   const cpu: RawCpu = raw.cpu_stats ?? {};
-  const previous: RawCpu = raw.precpu_stats ?? {};
+  // No previous sample at all — the first one-shot read of a container — measures nothing: reporting
+  // the counters since zero would show a lifetime average as if it were current use.
+  const previous: RawCpu | undefined = lastCpu ?? raw.precpu_stats;
+  const measurable: boolean = previous?.system_cpu_usage !== undefined;
   const cpuDelta: number =
-    (cpu.cpu_usage?.total_usage ?? 0) - (previous.cpu_usage?.total_usage ?? 0);
-  const systemDelta: number = (cpu.system_cpu_usage ?? 0) - (previous.system_cpu_usage ?? 0);
+    (cpu.cpu_usage?.total_usage ?? 0) - (previous?.cpu_usage?.total_usage ?? 0);
+  const systemDelta: number = (cpu.system_cpu_usage ?? 0) - (previous?.system_cpu_usage ?? 0);
   const cores: number = cpu.online_cpus ?? cpu.cpu_usage?.percpu_usage?.length ?? 1;
   const memory: NonNullable<RawStats['memory_stats']> = raw.memory_stats ?? {};
   const cache: number = memory.stats?.inactive_file ?? memory.stats?.cache ?? 0;
   return {
     id,
     cpuPercent:
-      cpuDelta > 0 && systemDelta > 0
+      measurable && cpuDelta > 0 && systemDelta > 0
         ? Math.round((cpuDelta / systemDelta) * cores * 1000) / 10
         : 0,
     memoryBytes: Math.max(0, (memory.usage ?? 0) - cache),

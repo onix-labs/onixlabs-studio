@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ContainerEvent } from './protocol';
+import { ContainerEvent, ContainerStats } from './protocol';
 import { createBody, demuxLogs, DockerEngine, parseEvent, splitReference, statsOf } from './engine';
 import { ImagePullProgress } from './protocol';
 import { SocketHttpResponse, StreamHandle, SocketTransport } from './transport';
@@ -332,6 +332,52 @@ describe('DockerEngine P2 (#974)', () => {
       }),
     ).toEqual({ id: 'c1', cpuPercent: 80, memoryBytes: 800, memoryLimitBytes: 8_000 });
     expect(statsOf('c2', {}).cpuPercent).toBe(0);
+    // Audit P1: a one-shot sample carries no `precpu_stats`; the previous sample this plugin took
+    // stands in for it.
+    expect(
+      statsOf(
+        'c3',
+        { cpu_stats: { cpu_usage: { total_usage: 300 }, system_cpu_usage: 2_000, online_cpus: 4 } },
+        { cpu_usage: { total_usage: 100 }, system_cpu_usage: 1_000 },
+      ).cpuPercent,
+    ).toBe(80);
+  });
+
+  it('stats_takesOneSnapshotEach_boundsConcurrency_andMeasuresCpuAgainstTheLastTick', async () => {
+    const { engine, transport } = engineWith();
+    let inFlight: number = 0;
+    let mostInFlight: number = 0;
+    let tick: number = 0;
+    transport.responder = async (_method: string, path: string): Promise<SocketHttpResponse> => {
+      inFlight += 1;
+      mostInFlight = Math.max(mostInFlight, inFlight);
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 2);
+      });
+      inFlight -= 1;
+      const body: string = JSON.stringify({
+        cpu_stats: {
+          cpu_usage: { total_usage: 100 * (tick + 1) },
+          system_cpu_usage: 1_000 * (tick + 1),
+          online_cpus: 2,
+        },
+        memory_stats: { usage: 500, limit: 1_000 },
+      });
+      return { statusCode: path.includes('gone') ? 404 : 200, body, bytes: Buffer.from(body) };
+    };
+    const ids: string[] = Array.from({ length: 20 }, (_, i: number): string => `c${i}`);
+
+    const first: readonly ContainerStats[] = await engine.stats([...ids, 'gone']);
+    tick = 1;
+    const second: readonly ContainerStats[] = await engine.stats(ids);
+
+    expect(transport.requests[0].path).toBe('/containers/c0/stats?stream=false&one-shot=true');
+    expect(mostInFlight).toBeLessThanOrEqual(8);
+    expect(first).toHaveLength(20);
+    // No previous sample: nothing to measure against yet.
+    expect(first[0].cpuPercent).toBe(0);
+    // Second tick: (200-100)/(2000-1000) × 2 cores.
+    expect(second.find((s: ContainerStats): boolean => s.id === 'c0')?.cpuPercent).toBe(20);
   });
 
   it('splitReference_separatesTheTag_butNotARegistryPort', () => {
