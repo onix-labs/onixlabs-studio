@@ -23,6 +23,7 @@ import {
   VolumeSummary,
 } from '@shared/api/container-types';
 import { logger } from '../../logger';
+import { pluginEnvironment } from '../../plugin-environment';
 import { pidJournal } from '../../pid-journal';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
 import { ContainerEngine, StreamHandle } from './container-engine';
@@ -393,7 +394,8 @@ export class ContainerEngineClient implements ContainerEngine {
     try {
       this.process = spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: this.spec.env === undefined ? process.env : { ...process.env, ...this.spec.env },
+        // Only what a program needs to run, never the user's whole shell (audit S6).
+        env: pluginEnvironment(this.spec.env),
       });
     } catch (error: unknown) {
       logger.warn('ContainerEngineClient', `Could not spawn '${this.id}'`, error);

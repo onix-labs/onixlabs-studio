@@ -11,6 +11,7 @@ import {
   VcsParams,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
+import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { VersionControlSpec } from './version-control-descriptor';
 import { VersionControlEndpoint } from './version-control-endpoint';
@@ -117,7 +118,8 @@ export class VersionControlClient implements VersionControlEndpoint {
     try {
       this.process = spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: this.spec.env === undefined ? process.env : { ...process.env, ...this.spec.env },
+        // Only what a program needs to run, never the user's whole shell (audit S6).
+        env: pluginEnvironment(this.spec.env),
       });
     } catch (error: unknown) {
       logger.warn('VersionControlClient', `Could not spawn '${this.id}'`, error);
