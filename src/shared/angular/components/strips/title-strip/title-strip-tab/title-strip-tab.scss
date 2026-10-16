@@ -2,7 +2,10 @@
   --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
   // The concave counterpart, sizing the active tab's feet. Same base radius as the convex top
   // corners, scaled by the concave multiplier so the scoops can be tuned independently.
-  --title-strip-tab-foot-radius: calc(10px * var(--concave-border-radius-multiplier));
+  --title-strip-tab-foot-radius: round(
+    calc(10px * var(--concave-border-radius-multiplier)),
+    var(--hairline)
+  );
 
   display: contents;
 
@@ -20,7 +23,7 @@
     user-select: none;
     color: var(--title-strip-tab-foreground-color);
     background-color: var(--title-strip-tab-background-color);
-    border: 0.0625rem solid transparent;
+    border: var(--hairline) solid transparent;
     border-block-end: none;
     border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
     corner-shape: var(--app-corner-shape, squircle);
@@ -49,7 +52,7 @@
 
     &[aria-selected='true'] {
       position: relative;
-      margin-block-end: -0.0625rem;
+      margin-block-end: calc(-1 * var(--hairline));
       color: var(--title-strip-tab-foreground-color--active);
       background-color: var(--title-strip-tab-background-color--active);
       border-color: var(--title-strip-border-color);
@@ -63,7 +66,7 @@
         box-sizing: content-box;
         block-size: var(--title-strip-tab-foot-radius);
         inline-size: var(--title-strip-tab-foot-radius);
-        margin-inline: -0.125rem;
+        margin-inline: calc(-2 * var(--hairline));
         bottom: 0;
         background: var(--title-strip-tab-background-color--active);
         mask: none;
@@ -73,27 +76,31 @@
       }
 
       &::before {
-        left: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+        left: calc(
+          -1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, var(--hairline))
+        );
         mask: radial-gradient(
           circle at top left,
           transparent var(--title-strip-tab-foot-radius),
           #000 var(--title-strip-tab-foot-radius)
         );
         border-start-start-radius: var(--title-strip-tab-foot-radius);
-        border-block-start: 0.0625rem solid var(--title-strip-border-color);
-        border-inline-start: 0.0625rem solid var(--title-strip-border-color);
+        border-block-start: var(--hairline) solid var(--title-strip-border-color);
+        border-inline-start: var(--hairline) solid var(--title-strip-border-color);
       }
 
       &::after {
-        right: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+        right: calc(
+          -1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, var(--hairline))
+        );
         mask: radial-gradient(
           circle at top right,
           transparent var(--title-strip-tab-foot-radius),
           #000 var(--title-strip-tab-foot-radius)
         );
         border-start-end-radius: var(--title-strip-tab-foot-radius);
-        border-block-start: 0.0625rem solid var(--title-strip-border-color);
-        border-inline-end: 0.0625rem solid var(--title-strip-border-color);
+        border-block-start: var(--hairline) solid var(--title-strip-border-color);
+        border-inline-end: var(--hairline) solid var(--title-strip-border-color);
       }
 
       button {

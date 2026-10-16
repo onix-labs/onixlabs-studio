@@ -106,23 +106,6 @@ export class Icon {
    */
   public static readonly LOCK_OPEN: Icon = new Icon('ph-bold ph-lock-simple-open');
 
-  // --- Title strip: window controls ---
-
-  /**
-   * Gets the window-minimize icon.
-   */
-  public static readonly WINDOW_MINIMIZE: Icon = new Icon('ph ph-minus');
-
-  /**
-   * Gets the window-maximize icon.
-   */
-  public static readonly WINDOW_MAXIMIZE: Icon = new Icon('ph ph-square');
-
-  /**
-   * Gets the window-close icon.
-   */
-  public static readonly WINDOW_CLOSE: Icon = new Icon('ph ph-x');
-
   // --- Content types (tabs, welcome, document wells) ---
 
   /**

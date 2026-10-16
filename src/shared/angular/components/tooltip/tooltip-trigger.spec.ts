@@ -50,6 +50,17 @@ describe('TooltipTrigger', () => {
   }
 
   /**
+   * Moves focus to the control as the keyboard does. A synthetic focus event is not focus the browser
+   * judges `:focus-visible`, so the control answers that question as keyboard focus would.
+   */
+  function keyboardFocus(): void {
+    vi.spyOn(control(), 'matches').mockImplementation(
+      (selector: string): boolean => selector === ':focus-visible',
+    );
+    control().dispatchEvent(new FocusEvent('focus'));
+  }
+
+  /**
    * Reads the text of the open bubble, which renders in the overlay outside the fixture.
    * @returns Returns the bubble's text, or null when no bubble is open.
    */
@@ -115,14 +126,36 @@ describe('TooltipTrigger', () => {
   });
 
   it('focus_whenTheControlIsNamed_showsTheNameBeneathIt', () => {
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
 
     expect(bubbleText()).toBe('New chat');
   });
 
-  it('blur_whenShowing_takesTheBubbleAway', () => {
+  it('focus_whenNotFromTheKeyboard_showsNothing', () => {
+    // 🔥 A window given focus back hands it to the button last clicked, with a fresh focus event. That
+    // used to put the button's name back up wherever the pointer was, with nothing coming to take it
+    // down again.
     control().dispatchEvent(new FocusEvent('focus'));
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBeNull();
+  });
+
+  it('windowBlur_whenShowing_takesTheBubbleAway', () => {
+    // A window that loses focus stops hearing about the pointer, so no mouseleave is coming.
+    control().dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+    expect(bubbleText()).toBe('New chat');
+
+    window.dispatchEvent(new FocusEvent('blur'));
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBeNull();
+  });
+
+  it('blur_whenShowing_takesTheBubbleAway', () => {
+    keyboardFocus();
     fixture.detectChanges();
     expect(bubbleText()).toBe('New chat');
 
@@ -135,7 +168,7 @@ describe('TooltipTrigger', () => {
   it('click_whenShowing_takesTheBubbleAway', () => {
     // A control that has been pressed has answered for itself; the bubble would only be in the way of
     // whatever the press opened.
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
 
     control().click();
@@ -148,7 +181,7 @@ describe('TooltipTrigger', () => {
     settings.set('accessibility.showTooltips', false);
     fixture.detectChanges();
 
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
 
     expect(bubbleText()).toBeNull();
@@ -159,7 +192,7 @@ describe('TooltipTrigger', () => {
     fixture.componentInstance.name.set(undefined);
     fixture.detectChanges();
 
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
 
     expect(bubbleText()).toBeNull();
@@ -169,15 +202,15 @@ describe('TooltipTrigger', () => {
     fixture.componentInstance.name.set('   ');
     fixture.detectChanges();
 
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
 
     expect(bubbleText()).toBeNull();
   });
 
   it('focus_whenAlreadyShowing_doesNotStackASecondBubble', () => {
-    control().dispatchEvent(new FocusEvent('focus'));
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
+    keyboardFocus();
     fixture.detectChanges();
 
     expect(document.querySelectorAll('app-tooltip').length).toBe(1);
@@ -185,7 +218,7 @@ describe('TooltipTrigger', () => {
 
   it('destroy_whileShowing_takesTheBubbleWithTheControl', () => {
     // A toolbar that re-lays out under the pointer destroys the control; the overlay would outlive it.
-    control().dispatchEvent(new FocusEvent('focus'));
+    keyboardFocus();
     fixture.detectChanges();
     expect(bubbleText()).toBe('New chat');
 

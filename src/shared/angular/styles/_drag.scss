@@ -10,7 +10,10 @@
 .tab-chip {
   --title-strip-tab-border-radius: calc(10px * var(--border-radius-multiplier));
   // Concave counterpart for the chip's feet, mirroring the live tab (see title-strip-tab.scss).
-  --title-strip-tab-foot-radius: calc(10px * var(--concave-border-radius-multiplier));
+  --title-strip-tab-foot-radius: round(
+    calc(10px * var(--concave-border-radius-multiplier)),
+    var(--hairline)
+  );
 
   position: relative;
   // CDK renders the preview as a popover, whose UA style is `overflow: auto`. That would clip the
@@ -28,7 +31,7 @@
   padding-inline-start: 0.5rem;
   color: var(--title-strip-tab-foreground-color--active);
   background-color: var(--title-strip-tab-background-color--active);
-  border: 0.0625rem solid var(--title-strip-border-color);
+  border: var(--hairline) solid var(--title-strip-border-color);
   border-block-end: none;
   border-radius: var(--title-strip-tab-border-radius) var(--title-strip-tab-border-radius) 0 0;
   corner-shape: var(--app-corner-shape, squircle);
@@ -45,7 +48,7 @@
     box-sizing: content-box;
     block-size: var(--title-strip-tab-foot-radius);
     inline-size: var(--title-strip-tab-foot-radius);
-    margin-inline: -0.125rem;
+    margin-inline: calc(-2 * var(--hairline));
     bottom: 0;
     background: var(--title-strip-tab-background-color--active);
     mask: none;
@@ -55,27 +58,27 @@
   }
 
   &::before {
-    left: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    left: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top left,
       transparent var(--title-strip-tab-foot-radius),
       #000 var(--title-strip-tab-foot-radius)
     );
     border-start-start-radius: var(--title-strip-tab-foot-radius);
-    border-block-start: 0.0625rem solid var(--title-strip-border-color);
-    border-inline-start: 0.0625rem solid var(--title-strip-border-color);
+    border-block-start: var(--hairline) solid var(--title-strip-border-color);
+    border-inline-start: var(--hairline) solid var(--title-strip-border-color);
   }
 
   &::after {
-    right: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    right: calc(-1 * var(--title-strip-tab-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top right,
       transparent var(--title-strip-tab-foot-radius),
       #000 var(--title-strip-tab-foot-radius)
     );
     border-start-end-radius: var(--title-strip-tab-foot-radius);
-    border-block-start: 0.0625rem solid var(--title-strip-border-color);
-    border-inline-end: 0.0625rem solid var(--title-strip-border-color);
+    border-block-start: var(--hairline) solid var(--title-strip-border-color);
+    border-inline-end: var(--hairline) solid var(--title-strip-border-color);
   }
 
   // The leading icon holds its size; the title takes the slack and collapses, mirroring a live tab.

@@ -1,19 +1,9 @@
 /**
- * Names the window IPC channels: the custom title-bar's control operations, which act on the
+ * Names the window IPC channels: the window operations the shell drives itself, which act on the
  * requesting window. The shared window client and the main-process handlers name their channels
  * from here, over the generic {@link import('./bridge').Bridge} transport.
  */
 export enum WindowChannel {
-  /**
-   * Minimizes the requesting window (renderer→main, send).
-   */
-  Minimize = 'window:minimize',
-
-  /**
-   * Toggles the requesting window between its maximized and restored states (renderer→main, send).
-   */
-  ToggleMaximize = 'window:toggle-maximize',
-
   /**
    * Closes the requesting window (renderer→main, send).
    */
@@ -36,6 +26,13 @@ export enum WindowChannel {
    * stands in for it (renderer→main, send).
    */
   Hide = 'window:hide',
+
+  /**
+   * Sets the colour of the system caption-button glyphs that Windows draws over every window, so
+   * they follow the application's theme rather than the system's (renderer→main, send). Ignored on
+   * other platforms.
+   */
+  SetCaptionSymbolColor = 'window:set-caption-symbol-color',
 }
 
 /**

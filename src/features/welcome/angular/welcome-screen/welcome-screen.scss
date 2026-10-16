@@ -129,7 +129,7 @@
   // the panel's top border beneath it, and its feet — anchored to the tab's true bottom — land on that
   // border. A transparent bottom border instead let the panel's line show through across the tab and
   // lifted the feet 1px off the border, so they never met it.
-  margin-block-end: -0.0625rem;
+  margin-block-end: calc(-1 * var(--hairline));
   padding: 0.7rem 1rem;
   font: inherit;
   font-size: 0.9rem;
@@ -137,7 +137,7 @@
   text-align: start;
   color: var(--wl-muted);
   background: transparent;
-  border: 0.0625rem solid transparent;
+  border: var(--hairline) solid transparent;
   border-block-end: none;
   // The document tabs' own radius and corner shape: squircle, or round when the user's UI settings
   // choose it. Without the shape the same radius draws a plain round corner, which reads wider.
@@ -197,7 +197,7 @@
     box-sizing: content-box;
     block-size: var(--dock-panel-foot-radius);
     inline-size: var(--dock-panel-foot-radius);
-    margin-inline: -0.125rem;
+    margin-inline: calc(-2 * var(--hairline));
     background:
       linear-gradient(rgba(var(--accent-color-rgb), 0.1), rgba(var(--accent-color-rgb), 0.1)),
       var(--wl-panel);
@@ -205,27 +205,27 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top left,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-start-start-radius: var(--dock-panel-foot-radius);
-    border-block-start: 0.0625rem solid var(--accent-color);
-    border-inline-start: 0.0625rem solid var(--accent-color);
+    border-block-start: var(--hairline) solid var(--accent-color);
+    border-inline-start: var(--hairline) solid var(--accent-color);
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top right,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-start-end-radius: var(--dock-panel-foot-radius);
-    border-block-start: 0.0625rem solid var(--accent-color);
-    border-inline-end: 0.0625rem solid var(--accent-color);
+    border-block-start: var(--hairline) solid var(--accent-color);
+    border-inline-end: var(--hairline) solid var(--accent-color);
   }
 
   // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
@@ -253,7 +253,7 @@
     linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.1) 0, transparent 12rem),
     radial-gradient(60% 55% at 50% 100%, rgba(var(--accent-color-rgb), 0.2), transparent 100%),
     var(--wl-panel);
-  border: 0.0625rem solid var(--accent-color);
+  border: var(--hairline) solid var(--accent-color);
   border-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);
 }

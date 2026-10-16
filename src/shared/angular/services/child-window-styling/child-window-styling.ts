@@ -1,4 +1,5 @@
 import { inject, OnDestroy, Service } from '@angular/core';
+import { applyDevicePixel, trackDevicePixel } from '@shared/angular/services/display/device-pixel';
 import { Log } from '@shared/angular/services/log/log';
 import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/overlay-scrollbars';
 
@@ -8,6 +9,7 @@ import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/o
  */
 const MIRRORED_ROOT_ATTRIBUTES: readonly string[] = [
   'data-theme-mode',
+  'data-platform',
   'data-corners',
   'data-reduced-gpu',
   'style',
@@ -63,6 +65,7 @@ export class ChildWindowStyling implements OnDestroy {
       doc.head.appendChild(this.cloneStyleNode(node, doc));
     }
     this.applyRootAttributes(doc);
+    trackDevicePixel(child);
     this.scrollbars.attach(doc);
     this.children.add(child);
     this.ensureObservers();
@@ -118,6 +121,11 @@ export class ChildWindowStyling implements OnDestroy {
       } else {
         doc.documentElement.setAttribute(name, value);
       }
+    }
+    // The mirrored `style` carries the opener's device pixel, which is wrong for a child on a display
+    // with a different scale; the child's own is stated over it.
+    if (doc.defaultView !== null) {
+      applyDevicePixel(doc.defaultView);
     }
   }
 

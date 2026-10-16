@@ -4,7 +4,7 @@ import { WindowChannel } from '@shared/api/window-channels';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Represents the renderer-side wrapper around the app-shell chrome: window controls and the host
+ * Represents the renderer-side wrapper around the app-shell chrome: window operations and the host
  * platform. Window operations are driven over the generic {@link Bridge} transport (`window.bridge`);
  * `platform` is read from the static {@link Window.host} object.
  *
@@ -27,27 +27,6 @@ export class Studio {
    * Gets the operating system platform, or 'browser' when running outside Electron.
    */
   public readonly platform: string = window.host?.platform ?? 'browser';
-
-  /**
-   * Gets a value indicating whether custom window controls should be shown. They are shown on
-   * Windows and Linux, which lack the native inset window controls that macOS provides.
-   */
-  public readonly showWindowControls: boolean =
-    this.platform === 'win32' || this.platform === 'linux';
-
-  /**
-   * Minimizes the application window.
-   */
-  public minimizeWindow(): void {
-    this.bridge?.send(WindowChannel.Minimize);
-  }
-
-  /**
-   * Toggles the application window between its maximized and restored states.
-   */
-  public toggleMaximizeWindow(): void {
-    this.bridge?.send(WindowChannel.ToggleMaximize);
-  }
 
   /**
    * Closes the application window.
@@ -82,5 +61,16 @@ export class Studio {
    */
   public setWindowMovable(movable: boolean): void {
     this.bridge?.send(WindowChannel.SetMovable, movable);
+  }
+
+  /**
+   * Sets the colour of the caption-button glyphs Windows draws over every window. A no-op elsewhere,
+   * where the platform draws no such buttons over the content.
+   * @param color The glyph colour, as a `#rrggbb` hex string.
+   */
+  public setCaptionSymbolColor(color: string): void {
+    if (this.platform === 'win32') {
+      this.bridge?.send(WindowChannel.SetCaptionSymbolColor, color);
+    }
   }
 }

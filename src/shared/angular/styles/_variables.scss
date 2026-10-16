@@ -29,7 +29,7 @@
   // --tab-foot-reach nudges how far each foot reaches toward the rail (raise to close a hairline
   // gap, lower if the foot overlaps the tab corner).
   --tab-foot-corner-shape: superellipse(-2.3);
-  --tab-foot-reach: 0.0625rem;
+  --tab-foot-reach: var(--hairline);
 }
 
 // Reduced-GPU feature gate. Set by the Display service (data-reduced-gpu="true" on <html>) when the
@@ -45,6 +45,19 @@
 :root {
   --border-radius-multiplier: 1;
   --concave-border-radius-multiplier: 1;
+
+  // One device pixel, as a CSS length: 1px at 100% and 200% display scale, 0.8px at 125%, 0.667px
+  // at 150%. `--device-pixel` is kept current by script (see `device-pixel.ts`); 1px stands in until
+  // it is.
+  //
+  // 🔥 The active-tab feet are drawn from several boxes that must meet exactly: the tab's own side
+  // border, each foot's curved border, and the rail the tab stands on. The browser draws a border at
+  // a whole number of device pixels (a 1px border is 1 device pixel at 125%, not 1.25) but places
+  // boxes and masks at the exact fraction. At 100% and 200% the two agree; at any other scale they
+  // drift apart by a fraction of a pixel, and every join steps or doubles. Every length in that
+  // geometry — the seam borders, the overlaps, the offsets and the foot radii — is therefore a whole
+  // number of these, so nothing is left for the browser to round.
+  --hairline: var(--device-pixel, 1px);
 
   --font-sans:
     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell,
@@ -208,7 +221,10 @@
   --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));
   // The concave counterpart, sizing the active dock tab's feet. Same base radius as the convex
   // corner, scaled by the concave multiplier so the scoops can be tuned independently.
-  --dock-panel-foot-radius: calc(0.5rem * var(--concave-border-radius-multiplier));
+  --dock-panel-foot-radius: round(
+    calc(0.5rem * var(--concave-border-radius-multiplier)),
+    var(--hairline)
+  );
 
   // The big ribbon button's geometry, shared by ALL FOUR big variants — the plain button, the menu
   // button, the split button and the actions button — so they cannot drift apart. A big button is an

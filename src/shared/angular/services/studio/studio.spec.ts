@@ -18,11 +18,11 @@ describe('Studio', () => {
     expect(service.platform).toBe('browser');
   });
 
-  it('showWindowControls_whenRunningOutsideElectron_isFalse', () => {
-    expect(service.showWindowControls).toBe(false);
+  it('closeWindow_whenBridgeAbsent_doesNotThrow', () => {
+    expect((): void => service.closeWindow()).not.toThrow();
   });
 
-  it('minimizeWindow_whenBridgeAbsent_doesNotThrow', () => {
-    expect((): void => service.minimizeWindow()).not.toThrow();
+  it('setCaptionSymbolColor_whenRunningOutsideElectron_doesNotThrow', () => {
+    expect((): void => service.setCaptionSymbolColor('#adb5bd')).not.toThrow();
   });
 });

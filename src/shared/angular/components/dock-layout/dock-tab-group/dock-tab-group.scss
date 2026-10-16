@@ -280,7 +280,7 @@
   position: relative;
   color: var(--dock-tab-foreground-color);
   background: transparent;
-  border: 0.0625rem solid transparent;
+  border: var(--hairline) solid transparent;
 
   &:hover {
     color: var(--dock-tab-foreground-color--active);
@@ -305,7 +305,7 @@
   box-sizing: content-box;
   block-size: var(--dock-panel-foot-radius);
   inline-size: var(--dock-panel-foot-radius);
-  margin-inline: -0.125rem;
+  margin-inline: calc(-2 * var(--hairline));
   background: var(--dock-tab-background-color--active);
   // Concave scoops, not convex box corners — kept off the --app-corner-shape gate; they share the
   // --tab-foot-* knobs (see styles/_variables.scss). Fallback preserves squircle-mode appearance.
@@ -324,8 +324,8 @@
 // inside it — and the status strip caps the bottom. The outer frame follows the accent seam.
 :host(.dock-tab-group--documents) .dock-tab-group__body {
   background: var(--dock-tab-background-color--active);
-  border-block-start: 0.0625rem solid var(--dock-seam-color);
-  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-start: var(--hairline) solid var(--dock-seam-color);
+  border-inline: var(--hairline) solid var(--dock-seam-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);
@@ -337,8 +337,8 @@
 }
 
 :host(.dock-tab-group--documents) .dock-tab-group__status-strip {
-  border-block-end: 0.0625rem solid var(--dock-seam-color);
-  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-end: var(--hairline) solid var(--dock-seam-color);
+  border-inline: var(--hairline) solid var(--dock-seam-color);
   // No line across its top (#882): the strip continues the document's own surface.
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
@@ -350,7 +350,7 @@
   border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
   // Every tab carries the 1px overlap so they all share one margin-box height; otherwise the
   // active tab's shorter box drops 1px below the others under the strip's flex-end alignment.
-  margin-block-end: -0.0625rem;
+  margin-block-end: calc(-1 * var(--hairline));
 }
 
 :host(.dock-tab-group--documents) .dock-tab--active {
@@ -360,42 +360,42 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top left,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-start-start-radius: var(--dock-panel-foot-radius);
-    border-block-start: 0.0625rem solid var(--dock-seam-color);
-    border-inline-start: 0.0625rem solid var(--dock-seam-color);
+    border-block-start: var(--hairline) solid var(--dock-seam-color);
+    border-inline-start: var(--hairline) solid var(--dock-seam-color);
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at top right,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-start-end-radius: var(--dock-panel-foot-radius);
-    border-block-start: 0.0625rem solid var(--dock-seam-color);
-    border-inline-end: 0.0625rem solid var(--dock-seam-color);
+    border-block-start: var(--hairline) solid var(--dock-seam-color);
+    border-inline-end: var(--hairline) solid var(--dock-seam-color);
   }
 }
 
 // --- Tool panels: title on top, strip on the bottom, feet flaring up into the panel's bottom ---
 :host(.dock-tab-group--tool) .dock-tab-group__title {
-  border-block-start: 0.0625rem solid var(--dock-seam-color);
-  border-inline: 0.0625rem solid var(--dock-seam-color);
+  border-block-start: var(--hairline) solid var(--dock-seam-color);
+  border-inline: var(--hairline) solid var(--dock-seam-color);
   border-start-start-radius: var(--dock-panel-radius);
   border-start-end-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);
 }
 
 :host(.dock-tab-group--tool) .dock-tab-group__body {
-  border-inline: 0.0625rem solid var(--dock-seam-color);
-  border-block-end: 0.0625rem solid var(--dock-seam-color);
+  border-inline: var(--hairline) solid var(--dock-seam-color);
+  border-block-end: var(--hairline) solid var(--dock-seam-color);
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);
@@ -458,7 +458,7 @@
   border-radius: 0 0 var(--dock-panel-radius) var(--dock-panel-radius);
   // Mirror of the document overlap, so every tab shares one margin-box height under the strip's
   // flex-start alignment and the active tab is not shifted relative to the others.
-  margin-block-start: -0.0625rem;
+  margin-block-start: calc(-1 * var(--hairline));
 }
 
 :host(.dock-tab-group--tool) .dock-tab--active {
@@ -468,26 +468,26 @@
   }
 
   &::before {
-    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at bottom left,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-end-start-radius: var(--dock-panel-foot-radius);
-    border-block-end: 0.0625rem solid var(--dock-seam-color);
-    border-inline-start: 0.0625rem solid var(--dock-seam-color);
+    border-block-end: var(--hairline) solid var(--dock-seam-color);
+    border-inline-start: var(--hairline) solid var(--dock-seam-color);
   }
 
   &::after {
-    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, var(--hairline)));
     mask: radial-gradient(
       circle at bottom right,
       transparent var(--dock-panel-foot-radius),
       #000 var(--dock-panel-foot-radius)
     );
     border-end-end-radius: var(--dock-panel-foot-radius);
-    border-block-end: 0.0625rem solid var(--dock-seam-color);
-    border-inline-end: 0.0625rem solid var(--dock-seam-color);
+    border-block-end: var(--hairline) solid var(--dock-seam-color);
+    border-inline-end: var(--hairline) solid var(--dock-seam-color);
   }
 }

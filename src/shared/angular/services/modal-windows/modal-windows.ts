@@ -3,6 +3,7 @@ import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-c
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Describes the window a modal asks for: how it is sized and chromed, and whether it hangs off the
@@ -209,6 +210,11 @@ export class ModalWindows implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the app-shell wrapper, read for the platform the window is chromed for.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
    * Holds the open modal windows.
    */
   private readonly children: Set<Window> = new Set<Window>();
@@ -247,15 +253,18 @@ export class ModalWindows implements OnDestroy {
     // the styling service, which would wipe anything written there. A dragless window reserves no
     // inset, so the panel's `padding-block-start: max(panel-padding, drag-height)` falls back to the
     // plain panel padding and its content sits flush to the top.
+    // A window in the native title bar (Linux) is moved by that bar and has its controls in it, so
+    // it is dragless too.
+    const dragless: boolean = request.dragless === true || this.studio.platform === 'linux';
     doc.body.style.setProperty(
       '--modal-window-drag-height',
-      request.dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
+      dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
     );
 
     // The drag strip is both the band that moves the frameless window and the inset its controls sit
     // in; a dragless window wants neither, so it is left out entirely rather than rendered at zero
     // height.
-    if (!request.dragless) {
+    if (!dragless) {
       const drag: HTMLElement = doc.createElement('div');
       drag.className = 'modal-window__drag';
       doc.body.appendChild(drag);
