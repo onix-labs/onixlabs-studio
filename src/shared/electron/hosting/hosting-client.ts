@@ -12,6 +12,7 @@ import {
   isHostingCapability,
 } from '@shared/api/hosting-protocol';
 import { logger } from '../logger';
+import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { HostingSpec } from './hosting-descriptor';
 import { HostingCredentialSource, HostingEndpoint } from './hosting-endpoint';
@@ -125,7 +126,8 @@ export class HostingClient implements HostingEndpoint {
     try {
       this.process = spawn(this.spec.command, [...this.spec.args], {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: this.spec.env === undefined ? process.env : { ...process.env, ...this.spec.env },
+        // Only what a program needs to run, never the user's whole shell (audit S6).
+        env: pluginEnvironment(this.spec.env),
       });
     } catch (error: unknown) {
       logger.warn('HostingClient', `Could not spawn '${this.id}'`, error);
