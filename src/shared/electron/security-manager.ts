@@ -78,8 +78,9 @@ export class SecurityManager {
 
   /**
    * Builds the Content-Security-Policy header value. Scripts, styles, fonts and workers are locked to
-   * the app and the few schemes Monaco/Milkdown require; remote connections are forbidden in
-   * production (relaxed only for the dev server). The `img-src` directive follows the user's policy.
+   * the app and the few schemes Monaco/Milkdown require; remote connections and form submissions are
+   * forbidden in production (connections relaxed only for the dev server). The `img-src` directive
+   * follows the user's policy.
    * @returns Returns the CSP header value.
    */
   private buildContentSecurityPolicy(): string {
@@ -95,6 +96,10 @@ export class SecurityManager {
       "object-src 'none'",
       "base-uri 'self'",
       "frame-src 'none'",
+      // The app has no forms to submit anywhere. Not covered by `default-src`, so said outright: a
+      // form injected through a markdown file would otherwise carry what the user typed into it off to
+      // its action on submit (audit S5).
+      "form-action 'none'",
     ].join('; ');
   }
 

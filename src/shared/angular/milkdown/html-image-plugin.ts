@@ -16,6 +16,7 @@ import type { Node as ProseMirrorNode, NodeType } from '@milkdown/prose/model';
 import type { MarkdownNode, NodeSchema, ParserState, SerializerState } from '@milkdown/transformer';
 import type { Root, RootContent, Paragraph, Html, Parent } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { sanitizeHtmlBlock } from './html-block-sanitizer';
 
 /**
  * Number of children that indicates an empty paragraph node.
@@ -143,10 +144,12 @@ export const htmlImageNode: $Node = $node('html_image', (): NodeSchema => ({
     wrapper.setAttribute('data-value', value);
     wrapper.className = 'html-image-block rendered';
 
-    // Create a container for the rendered content
+    // Create a container for the rendered content. The markup comes from the file, which is
+    // untrusted, so it is cleaned first: an image and its layout get through, nothing that can run,
+    // navigate, restyle the window or take input does.
     const content: HTMLDivElement = document.createElement('div');
     content.className = 'html-image-content';
-    content.innerHTML = value;
+    content.innerHTML = sanitizeHtmlBlock(value);
     wrapper.appendChild(content);
 
     return wrapper;

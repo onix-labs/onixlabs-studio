@@ -99,7 +99,10 @@ function getMermaidConfig(isDark: boolean): MermaidConfig {
   return {
     startOnLoad: false,
     theme: isDark ? 'dark' : 'default',
-    securityLevel: 'loose',
+    // Strict: labels are sanitised and link targets checked. `loose` returned the SVG unsanitised with
+    // `javascript:` links intact, and bought nothing — its one feature, `click` callbacks, needs
+    // `bindFunctions`, which nothing here calls (audit S5).
+    securityLevel: 'strict',
     fontFamily: MERMAID_FONT,
     // Inject CSS to ensure text sizing consistency
     themeCSS: MERMAID_THEME_CSS,
