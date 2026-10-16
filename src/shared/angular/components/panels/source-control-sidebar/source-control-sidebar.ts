@@ -14,6 +14,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import type { HostingCapability } from '@shared/api/hosting-protocol';
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { RepositoryRestricted } from '../repository-restricted/repository-restricted';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
@@ -561,6 +563,7 @@ interface SectionDef {
     TreeView,
     IssueAgentConfirm,
     VersionControlMissing,
+    RepositoryRestricted,
     Chip,
     PanelStatus,
   ],
@@ -601,6 +604,20 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected readonly needsPlugin: Signal<boolean> = computed(
     (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
+
+  /**
+   * Holds the workspace's version-control binding, which knows whether the folder is a repository the
+   * user has not trusted; null outside a workspace tab.
+   */
+  private readonly workspaceGit: WorkspaceGit | null = inject(WorkspaceGit, { optional: true });
+
+  /**
+   * Gets whether the folder is a repository the user has not trusted, so the rail shows only the
+   * restricted state.
+   */
+  protected readonly restricted: Signal<boolean> = computed(
+    (): boolean => this.workspaceGit?.isRestricted() === true && !this.repository.isBound(),
   );
 
   /**

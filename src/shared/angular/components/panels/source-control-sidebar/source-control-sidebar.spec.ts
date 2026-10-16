@@ -762,7 +762,7 @@ describe('SourceControlSidebar', () => {
     }).compileComponents();
 
     repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
 
     fixture = TestBed.createComponent(SourceControlSidebar);

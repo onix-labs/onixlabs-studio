@@ -414,7 +414,7 @@ describe('Repository', () => {
     });
     repository = TestBed.inject(Repository);
     notifications = TestBed.inject(Notifications);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
   });
 
@@ -1275,7 +1275,7 @@ describe('Repository visibility gating', () => {
       ],
     });
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     const readsAfterBind: number = commitReads;
 
@@ -1322,7 +1322,7 @@ describe('Repository capabilities', () => {
       ],
     });
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
 
     // Not yet known: nothing is hidden for a plugin that is merely slow to answer.
     expect(repository.supports('stash')).toBe(true);
@@ -1391,7 +1391,7 @@ describe('Repository history (#882)', () => {
       ],
     });
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     return repository;
   }
@@ -1481,7 +1481,7 @@ describe('Repository graph colours (#882)', () => {
       ],
     });
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     const node: (id: string) => GraphNode = (id: string): GraphNode =>
       repository.graph().find((candidate: GraphNode): boolean => candidate.id === id)!;

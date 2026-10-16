@@ -76,7 +76,7 @@ describe('DiffOpener', () => {
         return Promise.resolve({ original: 'before', modified: 'after' });
       },
       isBound: bound,
-      info: signal<RepositoryInfo | null>({ root: '/repo', name: 'repo' }),
+      info: signal<RepositoryInfo | null>({ root: '/repo', name: 'repo', trust: 'trusted' }),
       unstaged,
       staged: signal<readonly GitFileChange[]>([]),
       conflicted: signal<readonly GitFileChange[]>([]),

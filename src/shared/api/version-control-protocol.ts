@@ -554,6 +554,9 @@ export interface VcsPushTarget {
  * - `unsupported`: the operation needs a capability the plugin did not advertise. The host answers this
  *   itself, without asking the plugin.
  * - `refused`: the host would not send the request — a root that is not open, or a malformed request.
+ * - `untrusted`: the host would not send the request because the user has not said they trust the
+ *   repository, or has said they do not. The host answers this itself; the plugin never runs in such
+ *   a repository.
  */
 export type VcsErrorCode =
   | 'conflicted'
@@ -562,7 +565,8 @@ export type VcsErrorCode =
   | 'no-operation'
   | 'skip-unsupported'
   | 'unsupported'
-  | 'refused';
+  | 'refused'
+  | 'untrusted';
 
 /**
  * Describes what a plugin says it is, in answer to `initialize`.

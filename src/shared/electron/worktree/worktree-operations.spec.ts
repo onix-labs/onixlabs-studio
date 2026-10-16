@@ -108,6 +108,8 @@ describe('WorktreeOperations', () => {
       new VersionControlHost({
         descriptors: (): readonly VersionControlDescriptor[] => [GIT_PLUGIN],
         roots: workspace,
+        // Every fixture repository is one this spec made, so each is trusted the way a clone is.
+        trust: { decisionFor: (): 'trusted' => 'trusted' },
         executableFor: (): null => null,
       }),
     );

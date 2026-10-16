@@ -17,6 +17,7 @@ import { ContentHost } from '@shared/angular/components/content-host/content-hos
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
+import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
@@ -38,6 +39,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ContentHost,
     ModalBackdropView,
     PluginConsentHost,
+    RepositoryTrustHost,
     AboutHost,
     SetupWizardHost,
     WelcomeScreen,

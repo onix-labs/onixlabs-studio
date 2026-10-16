@@ -35,6 +35,7 @@ function client(
     detect: (): Promise<null> => Promise.resolve(null),
     listPlugins: (): Promise<readonly []> => Promise.resolve([]),
     setExecutable: (): Promise<null> => Promise.resolve(null),
+    setTrust: (): Promise<'trusted'> => Promise.resolve('trusted'),
     request: <Op extends VersionControlOp>(
       _root: string,
       op: Op,

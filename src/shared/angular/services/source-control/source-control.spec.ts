@@ -45,7 +45,7 @@ describe('SourceControl', () => {
   });
 
   it('resolveRepository_forwardsTheFolderAndReturnsTheRepository', async () => {
-    const info: RepositoryInfo = { root: '/repos/studio', name: 'studio' };
+    const info: RepositoryInfo = { root: '/repos/studio', name: 'studio', trust: 'trusted' };
     stubBridge(info);
     const service: SourceControl = TestBed.inject(SourceControl);
 
@@ -84,5 +84,17 @@ describe('SourceControl', () => {
       { channel: SourceControlChannel.Request, args: ['/repos/studio', 'log', { limit: 10 }] },
     ]);
     expect(result).toEqual(answer);
+  });
+
+  it('setTrust_forwardsTheRootAndDecision', async () => {
+    stubBridge('trusted');
+    const service: SourceControl = TestBed.inject(SourceControl);
+
+    const result: string | undefined = await service.client?.setTrust('/repos/studio', 'trusted');
+
+    expect(calls).toEqual([
+      { channel: SourceControlChannel.SetTrust, args: ['/repos/studio', 'trusted'] },
+    ]);
+    expect(result).toBe('trusted');
   });
 });

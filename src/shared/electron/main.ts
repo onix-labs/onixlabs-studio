@@ -119,6 +119,7 @@ import { CloneManager } from '@shared/electron/clone/clone-manager';
 import { NewProjectManager } from '@shared/electron/new-project/new-project-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
+import { RepositoryTrust } from './repository-trust';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -325,6 +326,15 @@ class Program {
     path.join(app.getPath('userData'), 'trusted-paths.json'),
   );
 
+  /**
+   * Holds which repositories the user trusts enough for version control to run in them. Distinct from
+   * {@link trustedPaths}, which records folders the user chose in a dialog: choosing to open a folder
+   * is not the same as trusting what is in it.
+   */
+  private readonly repositoryTrust: RepositoryTrust = new RepositoryTrust(
+    path.join(app.getPath('userData'), 'repository-trust.json'),
+  );
+
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
@@ -381,6 +391,7 @@ class Program {
   private readonly versionControlHost: VersionControlHost = new VersionControlHost({
     descriptors: () => contributedVersionControl(versionControlNodeRuntime),
     roots: this.workspaceContext,
+    trust: this.repositoryTrust,
     executableFor: (pluginId: string): VersionControlExecutableChoice | null =>
       this.versionControlSettings.executableFor(pluginId),
   });
@@ -398,6 +409,7 @@ class Program {
   private readonly versionControlManager: VersionControlManager = new VersionControlManager(
     this.versionControlHost,
     this.versionControlSettings,
+    this.repositoryTrust,
   );
 
   /**
