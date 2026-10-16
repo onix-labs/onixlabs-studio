@@ -1,33 +1,37 @@
 #!/usr/bin/env node
-// The Codex agent harness: OpenAI's Codex SDK, driven in its own process, speaking Studio's agent
-// protocol (#653).
+// The Codex agent harness: OpenAI's Codex, driven as an app-server in its own process, speaking
+// Studio's agent protocol (#653).
 //
-// The first port to go for **parity** rather than for a demonstration. `CodexAgentProvider` is 658
-// lines against Claude's 2,922, and almost all of that is turn translation rather than the hooks, tool
-// policy and MCP machinery that make Claude's port a longer job — which is why Codex is the harness
-// that proves the seam.
+// ## Why the app-server and not the SDK
 //
-// ## What is deliberately absent, and why that is not a loss
+// The Codex SDK runs `codex exec`, which runs a turn to completion on its own: it never asks anyone
+// before a command runs or a file changes, so Studio's posture, its per-tool policy and its permission
+// card were all passed over. The app-server is the CLI's interactive face — the one the Codex desktop
+// app and IDE extensions speak — and it puts every such action to its client as a request. This
+// harness answers those requests the way the Claude harness answers `canUseTool`: under the user's
+// settings, through Studio's prompt, with Studio keeping the audit record.
 //
-// The in-core provider carries `resolveBundledCodexExecutable`: 54 lines that exist only because the
-// SDK sits inside `app.asar`, where a native binary cannot be spawned, so it needs an `asarUnpack`ed
-// copy passed as `codexPathOverride`. **A plugin has no asar.** Its `node_modules` are a real directory
-// under the user's data folder, so the SDK resolves its own per-platform binary exactly as it does in a
-// development run. The workaround was a consequence of being in core, and moving out deletes it rather
-// than porting it.
+// ⛔ Execution never happens here. Codex runs its own commands inside its own sandbox; Studio's tools
+// are served to it over a loopback MCP server (#854) and run by Studio.
 
-import type {
-  Codex,
-  CodexOptions,
-  ThreadEvent,
-  ThreadItem,
-  ThreadOptions,
-} from '@openai/codex-sdk';
-import { createInterface } from 'node:readline';
-import { CodexModels, readCodexModels } from './codex-models';
-import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { type AppServerProcess, spawnAppServer } from './app-server';
+import { findCodexExecutable } from './codex-executable';
+import { CodexModels, readCodexModels } from './codex-models';
+import {
+  auditSource,
+  COMMAND_TOOL,
+  decideCommand,
+  decideFileChange,
+  decidePermissions,
+  type Decision,
+  EDIT_TOOL,
+  policyFor,
+  type TurnPolicy,
+} from './policy';
 import {
   type Answer,
   type HarnessMessage,
@@ -57,18 +61,9 @@ const STUDIO_TOKEN_VARIABLE: string = 'STUDIO_TOOLS_TOKEN';
 const STUDIO_TOOL_TIMEOUT_SECONDS: number = 900;
 
 /**
- * Codex CLI notices Studio turns off, as raw `--config` overrides.
- *
- * Carried over verbatim from the in-core provider, and for the reason recorded there: with an
- * under-development feature enabled in the user's own `~/.codex/config.toml`, the CLI emits a warning
- * that reached the transcript joined onto the front of the model's reply with no separator (#541). The
- * model appeared to say something it had not.
- *
- * ⛔ Suppressed at the source rather than stripped afterwards. Matching a notice by its text means
- * tracking someone else's wording forever, and getting it wrong either leaves the noise or eats a real
- * first line of a reply.
+ * How this harness names itself to Codex, which records it against each thread.
  */
-const SUPPRESSED_CLI_NOTICES: readonly string[] = ['suppress_unstable_features_warning=true'];
+const ORIGINATOR: string = 'onixlabs_studio';
 
 /**
  * Writes one protocol message to Studio.
@@ -87,6 +82,14 @@ function emit(event: Record<string, unknown>): void {
 }
 
 /**
+ * Writes a diagnostic line, which Studio keeps in its log.
+ * @param message The line.
+ */
+function note(message: string): void {
+  process.stderr.write(`[codex-harness] ${message}\n`);
+}
+
+/**
  * Holds the answers Studio owes this harness, by call id.
  */
 const awaiting: Map<string, (answer: Answer) => void> = new Map<string, (answer: Answer) => void>();
@@ -97,29 +100,37 @@ const awaiting: Map<string, (answer: Answer) => void> = new Map<string, (answer:
 let calls: number = 0;
 
 /**
- * Holds the Codex client, built once the first turn has told us how to authenticate.
+ * Holds the running app-server, started on the first turn and kept across turns — this harness is a
+ * `live-harness`.
  */
-let client: Codex | null = null;
+let server: AppServerProcess | null = null;
 
 /**
- * Holds the conversation thread, kept across turns — this harness is a `live-harness`.
- */
-let thread: ReturnType<Codex['startThread']> | null = null;
-
-/**
- * Holds the thread id once Codex has reported one, so a resumed session is reported only once.
- */
-let reportedThreadId: string | null = null;
-
-/**
- * Holds the turn in flight, so an abort knows what to cancel.
- */
-let running: { requestId: string; controller: AbortController } | null = null;
-
-/**
- * Holds the server that gives Codex Studio's own tools, started with the client (#854).
+ * Holds the server that gives Codex Studio's own tools, started with the app-server (#854).
  */
 let studioTools: StudioMcpServer | null = null;
+
+/**
+ * Holds the Codex thread, once one has been started or resumed.
+ */
+let threadId: string | null = null;
+
+/**
+ * Holds the turn in flight: Studio's run, Codex's turn, and how to settle it.
+ */
+let running: {
+  readonly turn: TurnRequest;
+  readonly policy: TurnPolicy;
+  turnId: string | null;
+  usage: { inputTokens: number; outputTokens: number; contextWindow: number | null } | null;
+  failure: string | null;
+  readonly done: (outcome: 'completed' | 'failed') => void;
+} | null = null;
+
+/**
+ * Holds, per Codex item, why its action was allowed, for the audit record written when it completes.
+ */
+const allowed: Map<string, string> = new Map<string, string>();
 
 /**
  * Asks Studio a blocking question and resolves with its answer.
@@ -140,9 +151,7 @@ function ask(requestId: string, request: Request): Promise<Answer> {
  * Determines whether the machine has a local Codex login.
  *
  * Asked here rather than of Studio, because it is a question about **this** process's environment: the
- * CLI reads its own credential store, and the harness is the thing running beside it. Studio's own
- * `hasCodexLogin` answers the same question for the in-core provider, and deliberately does not cross
- * the wire — a harness that can look is not told.
+ * CLI reads its own credential store, and the harness is the thing running beside it.
  * @returns Returns true when a Codex login is present.
  */
 function hasLocalLogin(): boolean {
@@ -159,76 +168,8 @@ function codexHome(): string {
 }
 
 /**
- * Builds the Codex client options for a turn.
- *
- * ⛔ No `codexPathOverride`. See the note at the top of this file: the override exists only for a build
- * where the SDK lives inside an asar archive, which a plugin never does.
- * @param turn The turn envelope.
- * @returns Returns the client options.
- */
-async function clientOptionsFor(turn: TurnRequest): Promise<CodexOptions> {
-  const options: CodexOptions = { configOverrides: [...SUPPRESSED_CLI_NOTICES] };
-  if (hasLocalLogin()) {
-    return options;
-  }
-  // No local login, so the CLI needs a key — and the key is Studio's, held in its encrypted store. This
-  // is the round-trip protocol 1.1.0 exists for: asked at the point of use rather than handed over in
-  // the turn envelope, so it never rides the wire for a harness that did not need it.
-  const answer: Answer = await ask(turn.requestId, { kind: 'credential' });
-  if (answer.kind === 'credential' && answer.apiKey !== null) {
-    options.apiKey = answer.apiKey;
-  }
-  return options;
-}
-
-/**
- * Builds the Codex thread options from a turn envelope.
- *
- * Confinement is enforced through Codex's sandbox: a chat turn is read-only; an agent turn may write,
- * but only within the working directory plus the paths Studio permitted. The boundary is Studio's to
- * decide and this harness's to apply — which is why it rides in the envelope rather than being left to
- * the harness's own configuration.
- * @param turn The turn envelope.
- * @returns Returns the thread options.
- */
-function threadOptionsFor(turn: TurnRequest): ThreadOptions {
-  // A turn Studio keeps off this harness's own tools (#965) — a terminal's or a tool view's — runs
-  // read-only too: Codex cannot withhold its shell, so the next best thing is a shell that cannot write.
-  const readOnly: boolean =
-    turn.mode === 'chat' || turn.surface === 'terminal' || turn.builtInTools === 'none';
-  const options: ThreadOptions = {
-    model: turn.model,
-    sandboxMode: readOnly ? 'read-only' : 'workspace-write',
-    workingDirectory: turn.workspaceRoot ?? homedir(),
-    approvalPolicy: 'never',
-    // A Studio workspace is not necessarily a git repository.
-    skipGitRepoCheck: true,
-  };
-  // `max` is excluded: Codex's range tops out at `xhigh`, and Studio already clamps to what the
-  // handshake declared. This guards the type rather than the value.
-  if (turn.effort !== null && turn.effort !== 'max') {
-    options.modelReasoningEffort = turn.effort as ThreadOptions['modelReasoningEffort'];
-  }
-  if (turn.allowedWritePaths.length > 0) {
-    options.additionalDirectories = [...turn.allowedWritePaths];
-  }
-  // ⚠️ Codex's sandbox has one network switch, not a host list, so a configured allow list cannot be
-  // expressed and the honest mapping is to fail closed. A deny list alone is left as-is: it narrows
-  // nothing this harness can act on, and cutting the network entirely over one denied host would be a
-  // surprise out of proportion to what was asked. Carried over from the in-core provider unchanged.
-  if (turn.allowedNetworkLocations.length > 0) {
-    options.networkAccessEnabled = false;
-  }
-  return options;
-}
-
-/**
  * Assembles the prompt Studio's own providers assemble, from the envelope's context attachments.
- *
- * ⚠️ Reproduced rather than imported. It is 24 lines of string assembly over fields the envelope already
- * carries, and a harness that shares code with Studio is a harness that cannot be extracted — which is
- * the property this whole exercise is protecting. Kept identical so an attached file reads the same
- * whichever provider runs it.
+ * Kept identical so an attached file reads the same whichever provider runs it.
  * @param turn The turn envelope.
  * @returns Returns the assembled prompt.
  */
@@ -246,7 +187,7 @@ function promptFor(turn: TurnRequest): string {
       .join('\n');
     sections.push(
       'The user attached the following context. Read the files and explore the folders with your ' +
-        `file tools (Read, Glob, Grep) as needed to answer:\n${lines}`,
+        `file tools as needed to answer:\n${lines}`,
     );
   }
   for (const reference of turn.contextPaths) {
@@ -265,158 +206,45 @@ function promptFor(turn: TurnRequest): string {
 }
 
 /**
- * Reports the thread id the first time Codex names one.
- * @param threadId The thread id.
- * @param requestId The run reporting it.
+ * Reads a record out of an unknown value.
+ * @param value The value.
+ * @returns Returns the record, empty when the value is not one.
  */
-function reportThread(threadId: string, requestId: string): void {
-  if (threadId.length === 0 || threadId === reportedThreadId) {
-    return;
-  }
-  reportedThreadId = threadId;
-  emit({ requestId, kind: 'session', sessionId: threadId });
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 /**
- * Tracks how much of each streaming item has already been emitted, so an update emits only the new
- * suffix. Codex sends the whole text each time; Studio's transcript takes deltas.
+ * Reads a string field, or a fallback.
+ * @param value The record.
+ * @param key The field.
+ * @param fallback What to return when the field is not a string.
+ * @returns Returns the string.
  */
-const emitted: Map<string, number> = new Map<string, number>();
-
-/**
- * Emits the unseen tail of a streaming text item.
- * @param id The item id.
- * @param text The item's full text so far.
- * @param kind Which transcript stream it belongs to.
- * @param requestId The run it belongs to.
- */
-function emitTextDelta(
-  id: string,
-  text: string,
-  kind: 'text' | 'thinking',
-  requestId: string,
-): void {
-  const already: number = emitted.get(id) ?? 0;
-  if (text.length <= already) {
-    return;
-  }
-  emitted.set(id, text.length);
-  emit({ requestId, kind, delta: text.slice(already) });
+function text(value: Record<string, unknown>, key: string, fallback: string = ''): string {
+  const field: unknown = value[key];
+  return typeof field === 'string' ? field : fallback;
 }
 
 /**
- * Translates one Codex thread item into Studio's transcript events.
- * @param item The thread item.
- * @param completed Whether the item has reached its terminal state.
- * @param requestId The run it belongs to.
- */
-function translateItem(item: ThreadItem, completed: boolean, requestId: string): void {
-  const toolEnd: (ok: boolean, output?: string) => void = (ok: boolean, output?: string): void =>
-    void emit({ requestId, kind: 'tool-end', toolId: item.id, ok, detail: output ?? '' });
-  const toolStart: (name: string, detail: string) => void = (name: string, detail: string): void =>
-    void emit({ requestId, kind: 'tool-start', toolId: item.id, name, detail });
-  switch (item.type) {
-    case 'agent_message':
-      emitTextDelta(item.id, item.text, 'text', requestId);
-      break;
-    case 'reasoning':
-      emitTextDelta(item.id, item.text, 'thinking', requestId);
-      break;
-    case 'command_execution':
-      if (completed) {
-        toolEnd(item.status === 'completed', item.aggregated_output);
-      } else {
-        toolStart('Shell', item.command);
-      }
-      break;
-    case 'file_change':
-      if (completed) {
-        toolEnd(item.status === 'completed');
-      } else {
-        toolStart(
-          'Edit',
-          item.changes
-            .map(
-              (change: { path: string; kind: string }): string => `${change.kind} ${change.path}`,
-            )
-            .join(', '),
-        );
-      }
-      break;
-    case 'mcp_tool_call':
-      if (completed) {
-        // By status, not by `error`: a successful call arrives with `error: null`, which an
-        // `=== undefined` test read as a failure for every Studio tool (found by the #854 probe).
-        toolEnd(item.status === 'completed');
-      } else {
-        toolStart(`${item.server} / ${item.tool}`, item.tool);
-      }
-      break;
-    case 'web_search':
-      if (completed) {
-        toolEnd(true);
-      } else {
-        toolStart('Web search', item.query);
-      }
-      break;
-    case 'error':
-      if (completed) {
-        emit({ requestId, kind: 'text', delta: item.message });
-      }
-      break;
-    // todo_list carries no transcript content.
-  }
-}
-
-/**
- * Translates one Codex thread event.
- * @param event The event.
- * @param requestId The run it belongs to.
- */
-function translateEvent(event: ThreadEvent, requestId: string): void {
-  switch (event.type) {
-    case 'thread.started':
-      reportThread(event.thread_id, requestId);
-      break;
-    case 'item.started':
-    case 'item.updated':
-    case 'item.completed':
-      translateItem(event.item, event.type === 'item.completed', requestId);
-      break;
-    case 'turn.completed':
-      emit({
-        requestId,
-        kind: 'usage',
-        inputTokens: event.usage.input_tokens ?? 0,
-        outputTokens: event.usage.output_tokens ?? 0,
-      });
-      break;
-    case 'turn.failed':
-      throw new Error(event.error.message);
-    case 'error':
-      throw new Error(event.message);
-    // turn.started carries no transcript content.
-  }
-}
-
-/**
- * Gives Codex Studio's own tools and Studio's instructions (#854): starts the server that serves the
- * tools, points the CLI at it, and passes the instructions as the session's developer instructions.
- *
- * The tool list is not fixed here — the server asks Studio afresh at each `tools/list`, for the turn in
- * flight. The instructions are: Codex takes them once, when the client is made, so a live session
- * carries the first turn's (the Claude harness has the same limit).
+ * Starts the app-server and Studio's tool server on the first turn.
  * @param turn The first turn.
- * @param options The client options built so far.
- * @returns Returns the options with Studio's tools and instructions added.
+ * @returns Returns the server, or the reason it could not start.
  */
-async function withStudioTools(turn: TurnRequest, options: CodexOptions): Promise<CodexOptions> {
+async function ensureServer(turn: TurnRequest): Promise<AppServerProcess | string> {
+  if (server !== null) {
+    return server;
+  }
+  const executable: { readonly path: string } | { readonly error: string } = findCodexExecutable();
+  if ('error' in executable) {
+    return executable.error;
+  }
   studioTools ??= await startStudioMcpServer({
     describe: async (): Promise<readonly StudioTool[]> => {
       if (running === null) {
         return [];
       }
-      const answer: Answer = await ask(running.requestId, { kind: 'tools' });
+      const answer: Answer = await ask(running.turn.requestId, { kind: 'tools' });
       return answer.kind === 'tools' ? answer.tools : [];
     },
     invoke: async (
@@ -426,61 +254,144 @@ async function withStudioTools(turn: TurnRequest, options: CodexOptions): Promis
       if (running === null) {
         return { result: null, error: 'No turn is running, so Studio cannot run the tool.' };
       }
-      const answer: Answer = await ask(running.requestId, { kind: 'tool', name, input });
+      const answer: Answer = await ask(running.turn.requestId, { kind: 'tool', name, input });
       return answer.kind === 'tool'
         ? { result: answer.result, error: answer.error }
         : { result: null, error: 'Studio did not run the tool.' };
     },
   });
-  const offer: Answer = await ask(turn.requestId, { kind: 'tools' });
-  const instructions: string = offer.kind === 'tools' ? offer.systemPrompt : '';
-  return {
-    ...options,
-    config: {
-      ...(options.config ?? {}),
-      mcp_servers: {
-        [STUDIO_SERVER]: {
-          url: studioTools.url,
-          bearer_token_env_var: STUDIO_TOKEN_VARIABLE,
-          tool_timeout_sec: STUDIO_TOOL_TIMEOUT_SECONDS,
-          // 🔑 Codex's own approval is waived for Studio's tools, because Studio applies the user's
-          // per-tool policy and raises the permission prompt itself. Without it the CLI refuses every
-          // call outright: "requires approval, but approval policy is never" (verified, CLI 0.160).
-          default_tools_approval_mode: 'approve',
-        },
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  env[STUDIO_TOKEN_VARIABLE] = studioTools.token;
+  env['CODEX_INTERNAL_ORIGINATOR_OVERRIDE'] = ORIGINATOR;
+  if (!hasLocalLogin()) {
+    // No local login, so the CLI needs a key — and the key is Studio's, held in its encrypted store.
+    // Asked at the point of use rather than handed over in the turn envelope.
+    const answer: Answer = await ask(turn.requestId, { kind: 'credential' });
+    if (answer.kind === 'credential' && answer.apiKey !== null) {
+      env['CODEX_API_KEY'] = answer.apiKey;
+    }
+  }
+  const started: AppServerProcess = spawnAppServer(
+    executable.path,
+    env,
+    {
+      onNotification: (method: string, params: unknown): void => onNotification(method, params),
+      onRequest: (method: string, params: unknown): Promise<unknown> => onRequest(method, params),
+      onClose: (error: Error | null): void => {
+        note(`app-server closed${error === null ? '' : `: ${error.message}`}`);
+        server = null;
+        threadId = null;
+        if (running !== null) {
+          running.failure ??= error?.message ?? 'Codex stopped unexpectedly.';
+          running.done('failed');
+        }
       },
-      ...(instructions.length === 0 ? {} : { developer_instructions: instructions }),
     },
-    // ⚠️ Given an `env`, the SDK passes nothing else from this process — so the whole environment is
-    // carried, with the token added.
-    env: {
-      ...(Object.fromEntries(
-        Object.entries(process.env).filter(
-          (entry: [string, string | undefined]): entry is [string, string] =>
-            entry[1] !== undefined,
-        ),
-      ) as Record<string, string>),
-      [STUDIO_TOKEN_VARIABLE]: studioTools.token,
+    (line: string): void => note(`codex: ${line}`),
+  );
+  server = started;
+  try {
+    await started.connection.request('initialize', {
+      clientInfo: { name: 'onixlabs-studio', title: 'ONIXLabs Studio', version: PROTOCOL_VERSION },
+      capabilities: { experimentalApi: true, requestAttestation: false },
+    });
+  } catch (error: unknown) {
+    started.stop();
+    server = null;
+    return `Codex could not start: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return started;
+}
+
+/**
+ * Builds the thread configuration Codex is given: Studio's tools, and the notices Studio turns off.
+ * @param policy The turn's confinement.
+ * @returns Returns the configuration.
+ */
+function threadConfig(policy: TurnPolicy): Record<string, unknown> {
+  return {
+    // Carried over from the SDK days: with an under-development feature enabled in the user's own
+    // config, the CLI's warning reached the transcript joined onto the model's reply (#541).
+    suppress_unstable_features_warning: true,
+    mcp_servers: {
+      [STUDIO_SERVER]: {
+        url: studioTools!.url,
+        bearer_token_env_var: STUDIO_TOKEN_VARIABLE,
+        tool_timeout_sec: STUDIO_TOOL_TIMEOUT_SECONDS,
+        // Codex's own approval is waived for Studio's tools, because Studio applies the user's per-tool
+        // policy and raises the permission prompt itself.
+        default_tools_approval_mode: 'approve',
+      },
     },
+    ...(policy.webSearch === 'disabled' ? { web_search: 'disabled' } : {}),
   };
 }
 
 /**
- * Opens the thread on the first turn, resuming a persisted one when the envelope names it.
- * @param turn The turn envelope.
+ * Builds the sandbox Codex runs a turn's commands in.
+ * @param policy The turn's confinement.
+ * @returns Returns the sandbox policy.
  */
-async function openThread(turn: TurnRequest): Promise<void> {
-  if (client === null) {
-    // ⚠️ Imported, not required: the SDK is ESM-only and exports nothing but an `import` condition, so
-    // the `require` a CommonJS bundle makes of a static import cannot resolve it on any Node.
-    const { Codex: CodexClient } = await import('@openai/codex-sdk');
-    client = new CodexClient(await withStudioTools(turn, await clientOptionsFor(turn)));
+function sandboxPolicy(policy: TurnPolicy): Record<string, unknown> {
+  return policy.sandbox === 'read-only'
+    ? { type: 'readOnly', networkAccess: policy.networkAccess }
+    : {
+        type: 'workspaceWrite',
+        writableRoots: [...policy.writableRoots],
+        networkAccess: policy.networkAccess,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      };
+}
+
+/**
+ * Opens the thread on the first turn: a new one, or the persisted one the envelope names, resumed or
+ * forked.
+ * @param turn The turn envelope.
+ * @param policy The turn's confinement.
+ * @param instructions Studio's instructions for the surface and mode.
+ * @returns Returns the thread id, or the reason there is none.
+ */
+async function ensureThread(
+  turn: TurnRequest,
+  policy: TurnPolicy,
+  instructions: string,
+): Promise<string> {
+  if (threadId !== null) {
+    return threadId;
   }
-  const options: ThreadOptions = threadOptionsFor(turn);
-  thread =
-    turn.resumeSessionId !== null
-      ? client.resumeThread(turn.resumeSessionId, options)
-      : client.startThread(options);
+  const common: Record<string, unknown> = {
+    ...(turn.model.length > 0 ? { model: turn.model } : {}),
+    cwd: turn.workspaceRoot ?? homedir(),
+    approvalPolicy: policy.approvalPolicy,
+    sandbox: policy.sandbox,
+    config: threadConfig(policy),
+    ...(instructions.length > 0 ? { developerInstructions: instructions } : {}),
+  };
+  const method: string =
+    turn.resumeSessionId === null
+      ? 'thread/start'
+      : turn.forkSession
+        ? 'thread/fork'
+        : 'thread/resume';
+  const params: Record<string, unknown> =
+    turn.resumeSessionId === null ? common : { ...common, threadId: turn.resumeSessionId };
+  const response: Record<string, unknown> = record(
+    await server!.connection.request(method, params),
+  );
+  const thread: Record<string, unknown> = record(response['thread']);
+  const id: string = text(thread, 'id');
+  if (id.length === 0) {
+    throw new Error('Codex did not name the thread it started.');
+  }
+  threadId = id;
+  emit({ requestId: turn.requestId, kind: 'session', sessionId: id });
+  return id;
 }
 
 /**
@@ -488,35 +399,350 @@ async function openThread(turn: TurnRequest): Promise<void> {
  * @param turn The turn envelope.
  */
 async function runTurn(turn: TurnRequest): Promise<void> {
-  const controller: AbortController = new AbortController();
-  running = { requestId: turn.requestId, controller };
+  const policy: TurnPolicy = policyFor(turn);
+  let settle: (outcome: 'completed' | 'failed') => void = (): void => undefined;
+  const finished: Promise<'completed' | 'failed'> = new Promise<'completed' | 'failed'>(
+    (resolve: (outcome: 'completed' | 'failed') => void): void => {
+      settle = resolve;
+    },
+  );
+  running = {
+    turn,
+    policy,
+    turnId: null,
+    usage: null,
+    failure: null,
+    done: (outcome: 'completed' | 'failed'): void => settle(outcome),
+  };
   try {
-    if (thread === null) {
-      await openThread(turn);
+    const started: AppServerProcess | string = await ensureServer(turn);
+    if (typeof started === 'string') {
+      throw new Error(started);
     }
-    const stream: Awaited<ReturnType<NonNullable<typeof thread>['runStreamed']>> =
-      await thread!.runStreamed(promptFor(turn), { signal: controller.signal });
-    for await (const event of stream.events) {
-      translateEvent(event, turn.requestId);
+    const offer: Answer = await ask(turn.requestId, { kind: 'tools' });
+    const instructions: string = offer.kind === 'tools' ? offer.systemPrompt : '';
+    const thread: string = await ensureThread(turn, policy, instructions);
+    const response: Record<string, unknown> = record(
+      await started.connection.request('turn/start', {
+        threadId: thread,
+        input: [{ type: 'text', text: promptFor(turn), text_elements: [] }],
+        ...(turn.model.length > 0 ? { model: turn.model } : {}),
+        // `max` is excluded: Codex's range tops out at `xhigh`.
+        ...(turn.effort !== null && turn.effort !== 'max' ? { effort: turn.effort } : {}),
+        approvalPolicy: policy.approvalPolicy,
+        sandboxPolicy: sandboxPolicy(policy),
+      }),
+    );
+    running.turnId = text(record(response['turn']), 'id') || null;
+    const outcome: 'completed' | 'failed' = await finished;
+    if (outcome === 'failed') {
+      throw new Error(running.failure ?? 'Codex did not finish the turn.');
     }
-    send({ type: 'turn.completed', requestId: turn.requestId, sessionId: reportedThreadId });
-  } catch (error: unknown) {
-    // An aborted turn is not a failure: Studio already knows it stopped the run, and reporting it as an
-    // error would land a stopped turn in the transcript as a red one.
-    if (controller.signal.aborted) {
-      send({ type: 'turn.completed', requestId: turn.requestId, sessionId: reportedThreadId });
-    } else {
-      send({
-        type: 'turn.failed',
+    if (running.usage !== null) {
+      emit({
         requestId: turn.requestId,
-        error: error instanceof Error ? error.message : String(error),
+        kind: 'usage',
+        inputTokens: running.usage.inputTokens,
+        outputTokens: running.usage.outputTokens,
+        costUsd: null,
+        ...(running.usage.contextWindow === null
+          ? {}
+          : { contextWindow: running.usage.contextWindow }),
       });
     }
+    send({ type: 'turn.completed', requestId: turn.requestId, sessionId: threadId });
+  } catch (error: unknown) {
+    send({
+      type: 'turn.failed',
+      requestId: turn.requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   } finally {
     running = null;
-    emitted.clear();
-    awaiting.clear();
+    allowed.clear();
   }
+}
+
+/**
+ * Stops the turn in flight, leaving the thread open so the next turn continues the conversation.
+ */
+function abortTurn(): void {
+  if (running === null || server === null) {
+    return;
+  }
+  if (running.turnId !== null && threadId !== null) {
+    void server.connection
+      .request('turn/interrupt', { threadId, turnId: running.turnId })
+      .catch((error: unknown): void => note(`interrupt failed: ${String(error)}`));
+  } else {
+    // Nothing has started on Codex's side yet; settle the run as finished rather than wait.
+    running.done('completed');
+  }
+}
+
+/**
+ * Translates one Codex item, starting or completing, into Studio's transcript events.
+ * @param item The item.
+ * @param completed Whether the item has reached its terminal state.
+ */
+function translateItem(item: Record<string, unknown>, completed: boolean): void {
+  if (running === null) {
+    return;
+  }
+  const requestId: string = running.turn.requestId;
+  const id: string = text(item, 'id');
+  const toolStart: (name: string, detail: string) => void = (name: string, detail: string): void =>
+    emit({ requestId, kind: 'tool-start', toolId: id, name, detail });
+  const toolEnd: (ok: boolean, output?: string) => void = (ok: boolean, output?: string): void =>
+    emit({ requestId, kind: 'tool-end', toolId: id, ok, detail: output ?? '' });
+  const status: string = text(item, 'status');
+  switch (item['type']) {
+    case 'commandExecution': {
+      const command: string = text(item, 'command');
+      if (!completed) {
+        toolStart('Shell', command);
+      } else {
+        toolEnd(status === 'completed', text(item, 'aggregatedOutput'));
+        audit(id, COMMAND_TOOL, command, status);
+      }
+      break;
+    }
+    case 'fileChange': {
+      const changes: readonly Record<string, unknown>[] = Array.isArray(item['changes'])
+        ? (item['changes'] as readonly unknown[]).map(record)
+        : [];
+      const detail: string = changes
+        .map(
+          (change: Record<string, unknown>): string =>
+            `${text(record(change['kind']), 'type', 'change')} ${text(change, 'path')}`,
+        )
+        .join(', ');
+      if (!completed) {
+        toolStart('Edit', detail);
+      } else {
+        toolEnd(status === 'completed');
+        audit(id, EDIT_TOOL, detail, status);
+      }
+      break;
+    }
+    case 'mcpToolCall':
+      if (!completed) {
+        toolStart(`${text(item, 'server')} / ${text(item, 'tool')}`, text(item, 'tool'));
+      } else {
+        toolEnd(status === 'completed');
+      }
+      break;
+    case 'webSearch':
+      if (!completed) {
+        toolStart('Web search', text(item, 'query'));
+      } else {
+        toolEnd(true);
+      }
+      break;
+    case 'agentMessage':
+      // Streamed as deltas; the completed item repeats the text, so nothing is emitted here.
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Records an action that ran to Studio's audit log, with why it was allowed.
+ * @param itemId The Codex item.
+ * @param name The tool's display name.
+ * @param detail What it did.
+ * @param status How it ended; a declined action never ran and is not recorded.
+ */
+function audit(itemId: string, name: string, detail: string, status: string): void {
+  if (running === null || status === 'declined') {
+    return;
+  }
+  // An action that reached completion without ever asking ran inside the sandbox on Codex's own
+  // judgement: under `never` because the posture allows everything, otherwise because Codex deems it
+  // a safe read.
+  const source: string =
+    allowed.get(itemId) ??
+    (running.turn.permissionPosture === 'auto-all' ? 'posture' : 'gated-or-auto');
+  allowed.delete(itemId);
+  send({ type: 'audit', requestId: running.turn.requestId, name, detail, source });
+}
+
+/**
+ * Handles a notification from Codex.
+ * @param method The method.
+ * @param params The parameters.
+ */
+function onNotification(method: string, params: unknown): void {
+  const body: Record<string, unknown> = record(params);
+  if (running === null) {
+    return;
+  }
+  const requestId: string = running.turn.requestId;
+  switch (method) {
+    case 'item/started':
+      translateItem(record(body['item']), false);
+      break;
+    case 'item/completed':
+      translateItem(record(body['item']), true);
+      break;
+    case 'item/agentMessage/delta':
+      emit({ requestId, kind: 'text', delta: text(body, 'delta') });
+      break;
+    case 'item/reasoning/summaryTextDelta':
+    case 'item/reasoning/textDelta':
+      emit({ requestId, kind: 'thinking', delta: text(body, 'delta') });
+      break;
+    case 'thread/tokenUsage/updated': {
+      const usage: Record<string, unknown> = record(body['tokenUsage']);
+      const last: Record<string, unknown> = record(usage['last']);
+      running.usage = {
+        inputTokens: typeof last['inputTokens'] === 'number' ? last['inputTokens'] : 0,
+        outputTokens: typeof last['outputTokens'] === 'number' ? last['outputTokens'] : 0,
+        contextWindow:
+          typeof usage['modelContextWindow'] === 'number' ? usage['modelContextWindow'] : null,
+      };
+      break;
+    }
+    case 'error': {
+      const failure: Record<string, unknown> = record(body['error']);
+      if (body['willRetry'] !== true) {
+        running.failure = text(failure, 'message', 'Codex reported an error.');
+      }
+      break;
+    }
+    case 'turn/completed': {
+      const turn: Record<string, unknown> = record(body['turn']);
+      if (running.turnId !== null && text(turn, 'id') !== running.turnId) {
+        break;
+      }
+      const status: string = text(turn, 'status');
+      if (status === 'failed') {
+        const failure: Record<string, unknown> = record(turn['error']);
+        running.failure ??= text(failure, 'message', 'Codex did not finish the turn.');
+        running.done('failed');
+      } else {
+        // An interrupted turn is not a failure: Studio already knows it stopped the run.
+        running.done('completed');
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+/**
+ * Answers a request from Codex: an approval, a question for the user, or something this harness does
+ * not offer.
+ * @param method The method.
+ * @param params The parameters.
+ * @returns Returns the answer.
+ */
+async function onRequest(method: string, params: unknown): Promise<unknown> {
+  const body: Record<string, unknown> = record(params);
+  switch (method) {
+    case 'item/commandExecution/requestApproval': {
+      const decision: Decision =
+        running === null ? refusedAfterTurn() : decideCommand(running.turn);
+      const detail: string = text(body, 'command') || text(body, 'reason', 'a command');
+      return { decision: await settleApproval(text(body, 'itemId'), decision, detail) };
+    }
+    case 'item/fileChange/requestApproval': {
+      const decision: Decision =
+        running === null ? refusedAfterTurn() : decideFileChange(running.turn);
+      const detail: string = text(body, 'reason', 'file changes in the workspace');
+      return { decision: await settleApproval(text(body, 'itemId'), decision, detail) };
+    }
+    case 'item/permissions/requestApproval': {
+      const decision: Decision = decidePermissions();
+      note(`declined a permissions request: ${decision.kind === 'decline' ? decision.reason : ''}`);
+      // Grants nothing: an empty profile for this turn only.
+      return { permissions: {}, scope: 'turn' };
+    }
+    case 'item/tool/requestUserInput':
+      return answerQuestions(body);
+    case 'mcpServer/elicitation/request':
+      return { action: 'decline', content: null, _meta: null };
+    default:
+      throw new Error(`${method} is not something this harness answers.`);
+  }
+}
+
+/**
+ * The decision for an approval that arrives with no turn running — after an abort, say.
+ * @returns Returns a refusal.
+ */
+function refusedAfterTurn(): Decision {
+  return { kind: 'decline', reason: 'The turn is no longer running.' };
+}
+
+/**
+ * Carries a decision out: accepts, declines, or puts it to the user and does what they said.
+ * @param itemId The Codex item, so the audit record can say why it ran.
+ * @param decision The decision.
+ * @param detail What the user is shown.
+ * @returns Returns Codex's decision word.
+ */
+async function settleApproval(
+  itemId: string,
+  decision: Decision,
+  detail: string,
+): Promise<'accept' | 'decline'> {
+  if (decision.kind === 'decline') {
+    note(`declined: ${decision.reason}`);
+    return 'decline';
+  }
+  if (decision.kind === 'accept') {
+    allowed.set(itemId, auditSource(decision));
+    return 'accept';
+  }
+  if (running === null) {
+    return 'decline';
+  }
+  const answer: Answer = await ask(running.turn.requestId, {
+    kind: 'permission',
+    name: decision.tool,
+    detail,
+  });
+  const granted: boolean = answer.kind === 'permission' && answer.granted;
+  if (granted) {
+    allowed.set(itemId, auditSource(decision));
+  }
+  return granted ? 'accept' : 'decline';
+}
+
+/**
+ * Puts Codex's questions to the user one at a time, through Studio's input prompt.
+ * @param body The request's parameters.
+ * @returns Returns the answers, keyed by question id.
+ */
+async function answerQuestions(body: Record<string, unknown>): Promise<unknown> {
+  const answers: Record<string, { answers: string[] }> = {};
+  if (running === null) {
+    return { answers };
+  }
+  const questions: readonly Record<string, unknown>[] = Array.isArray(body['questions'])
+    ? (body['questions'] as readonly unknown[]).map(record)
+    : [];
+  for (const question of questions) {
+    const options: readonly Record<string, unknown>[] = Array.isArray(question['options'])
+      ? (question['options'] as readonly unknown[]).map(record)
+      : [];
+    const choices: string[] = options
+      .map((option: Record<string, unknown>): string => text(option, 'label'))
+      .filter((label: string): boolean => label.length > 0);
+    const header: string = text(question, 'header');
+    const asked: string = text(question, 'question');
+    const answer: Answer = await ask(running.turn.requestId, {
+      kind: 'input',
+      question: header.length > 0 && !asked.startsWith(header) ? `${header}: ${asked}` : asked,
+      choices,
+    });
+    const reply: string | null = answer.kind === 'input' ? answer.answer : null;
+    answers[text(question, 'id')] = { answers: reply === null ? [] : [reply] };
+  }
+  return { answers };
 }
 
 /**
@@ -533,15 +759,13 @@ function receive(message: HostMessage): void {
           // ⛔ Must match the manifest, or Studio refuses the harness. It has already decided to hold
           // this process open on the manifest's word.
           sessionModel: 'live-harness',
-          // Only `discover` (#866). The SDK takes one input per turn, so there is no `steer` (Studio
-          // queues it for the next turn instead); the claude.ai bridge behind `remote-control` is
-          // Anthropic's; and nothing here backgrounds work for `task.stop` to name.
+          // Only `discover` (#866): the claude.ai bridge behind `remote-control` is Anthropic's, and
+          // nothing here backgrounds work for `task.stop` to name.
           answers: ['discover'],
           images: false,
           efforts: ['low', 'medium', 'high', 'xhigh'],
           resumable: true,
-          // Every window is `context_window` from the CLI's own list of the account's models — the
-          // provider's figure for that model, never one this plugin worked out.
+          // Every window is `context_window` from the CLI's own list of the account's models.
           guaranteedContextWindows: true,
         },
       });
@@ -556,9 +780,7 @@ function receive(message: HostMessage): void {
       break;
     }
     case 'turn.abort':
-      // Cancels the turn and leaves the thread open, which is what makes this a session rather than a
-      // sequence of runs: the next turn continues the same conversation.
-      running?.controller.abort();
+      abortTurn();
       break;
     case 'discover':
       void readCodexModels(codexHome()).then((found: CodexModels): void =>
@@ -567,9 +789,7 @@ function receive(message: HostMessage): void {
       break;
     case 'steer':
     case 'remote-control':
-      // Both declined at the handshake, so Studio has already handled them — a steer is queued for the
-      // next turn and remote control is never aimed here. Reaching this would be Studio ignoring the
-      // handshake, which is worth neither crashing over nor acting on.
+      // Both declined at the handshake, so Studio has already handled them.
       break;
   }
 }
@@ -586,4 +806,8 @@ lines.on('line', (line: string): void => {
   }
 });
 // End of input is Studio closing the pipe, which is how a harness is asked to stop.
-lines.on('close', (): void => process.exit(0));
+lines.on('close', (): void => {
+  server?.stop();
+  studioTools?.close();
+  process.exit(0);
+});
