@@ -2,6 +2,7 @@ import { ipcMain, IpcMainInvokeEvent, OpenDialogReturnValue, WebContents } from 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CloneChannel, CloneOutcome, CloneRequest } from '@shared/api/clone-channels';
+import { redactSecrets, stripUrlCredentials } from '@shared/api/redaction';
 import { STUDIO_DIR } from '@shared/api/studio';
 import type { VersionControlResponse } from '@shared/api/version-control-protocol';
 import {
@@ -126,9 +127,12 @@ export class CloneManager {
         error: 'No version-control plugin is installed. Install Git from the Plugin Manager.',
       };
     }
+    // A URL may carry a token (`https://user:token@host/…`). It is used as given, since that is how
+    // the user chose to authenticate, but it is never written down: not in the log, which the System
+    // Monitor's agent reads, and not in an error, which the renderer shows (audit S7).
     logger.info(
       'CloneManager',
-      `Cloning ${parsed.url} into ${destination} (${parsed.layout}${parsed.branch === undefined ? '' : `, ${parsed.branch}`})`,
+      `Cloning ${stripUrlCredentials(parsed.url)} into ${destination} (${parsed.layout}${parsed.branch === undefined ? '' : `, ${parsed.branch}`})`,
     );
     const outcome: CloneOutcome =
       parsed.layout === 'worktree'
@@ -137,10 +141,12 @@ export class CloneManager {
     if (outcome.ok) {
       this.trusted.remember(outcome.path);
       logger.info('CloneManager', `Cloned into ${outcome.path}`);
-    } else {
-      logger.warn('CloneManager', `Clone failed: ${outcome.error}`);
+      return outcome;
     }
-    return outcome;
+    // The plugin's error can echo the command line it ran, URL and all.
+    const error: string = redactSecrets(outcome.error);
+    logger.warn('CloneManager', `Clone failed: ${error}`);
+    return { ok: false, error };
   }
 
   /**
@@ -200,9 +206,11 @@ export class CloneManager {
     try {
       const studio: string = path.join(destination, STUDIO_DIR);
       fs.mkdirSync(studio, { recursive: true });
+      // The container remembers where its checkouts come from, not how the first one authenticated:
+      // a token in the URL would otherwise sit in a file on disk for as long as the container exists.
       fs.writeFileSync(
         path.join(studio, WORKTREE_CONFIG_FILE),
-        serializeWorktreeConfig(defaultWorktreeConfig(request.url, [{ id }])),
+        serializeWorktreeConfig(defaultWorktreeConfig(stripUrlCredentials(request.url), [{ id }])),
         'utf8',
       );
     } catch (error: unknown) {

@@ -4,6 +4,7 @@ import {
   READ_SYSTEM_METRICS,
   SET_LOG_LEVEL,
 } from '@shared/api/ai-types';
+import { redactSecrets } from '@shared/api/redaction';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
 
@@ -77,7 +78,9 @@ export function clampLogLimit(limit: number | undefined): number {
  * @returns Returns the line.
  */
 export function formatLogRecord(record: ReportedRecord): string {
-  const message: string = (record.message ?? '').replace(/\s+/g, ' ').trim();
+  // ⛔ Masked here, at the one point a record leaves for the model: a log line can carry a token — a
+  // clone URL, a header a plugin echoed — and this is the tool that sends it to a provider (audit S7).
+  const message: string = redactSecrets((record.message ?? '').replace(/\s+/g, ' ').trim());
   const shown: string =
     message.length > MAX_MESSAGE_CHARS ? `${message.slice(0, MAX_MESSAGE_CHARS)}…` : message;
   const where: string = [record.origin, record.window].filter(Boolean).join('/');

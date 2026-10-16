@@ -179,6 +179,30 @@ describe('CloneManager', () => {
     expect(trusted).toEqual([container]);
   });
 
+  it('neverWritesDownATokenCarriedInTheUrl', async () => {
+    // Audit S7: the URL is used as given — that is how the user chose to authenticate — but a failed
+    // clone's error echoes the command line, and a worktree container keeps its origin on disk.
+    const url: string = 'https://me:ghp_abcdefghijklmnopqrstuvwxyz0123@github.com/a/b.git';
+    host.failWith = `Command failed: git clone -- ${url} /dest`;
+    const failed: CloneOutcome = await manager().clone({ url, name: 'b', layout: 'flat' });
+    expect(failed).toEqual({
+      ok: false,
+      error: 'Command failed: git clone -- https://[redacted]@github.com/a/b.git /dest',
+    });
+    expect(host.clones[0].url).toBe(url);
+
+    host.failWith = null;
+    const container: string = path.join(parent, 'c');
+    const made: CloneOutcome = await manager().clone({ url, name: 'c', layout: 'worktree' });
+    expect(made).toEqual({ ok: true, path: container });
+    const written: string = fs.readFileSync(
+      path.join(container, '.studio', 'worktree.json'),
+      'utf8',
+    );
+    expect(written).not.toContain('ghp_');
+    expect(parseWorktreeConfig(JSON.parse(written)).origin).toBe('https://github.com/a/b.git');
+  });
+
   it('removesTheContainer_whenItsCloneFails', async () => {
     host.failWith = 'Authentication failed';
 
