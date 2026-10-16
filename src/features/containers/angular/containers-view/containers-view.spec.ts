@@ -12,6 +12,7 @@ import {
   ImageSummary,
 } from '@shared/api/container-types';
 import { PluginSummary } from '@shared/api/plugin-channels';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
@@ -79,6 +80,8 @@ describe('ContainersView', () => {
   let calls: RecordedCall[];
   let offers: number;
   let installs: number;
+  let onScreen: WritableSignal<boolean>;
+  let pushes: Map<string, (...args: unknown[]) => void>;
 
   /**
    * Installs a recording stub bridge answering status/list channels with fixed replies.
@@ -129,8 +132,12 @@ describe('ContainersView', () => {
         return Promise.resolve((channel.startsWith('container:') ? true : undefined) as T);
       },
       send: (): void => undefined,
-      on: (): (() => void) => (): void => undefined,
+      on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+        pushes.set(channel, listener);
+        return (): void => undefined;
+      },
     };
+    pushes = new Map<string, (...args: unknown[]) => void>();
     (window as unknown as { bridge: Bridge }).bridge = bridge;
   }
 
@@ -142,10 +149,12 @@ describe('ContainersView', () => {
   function stubPrompt(candidates: readonly PluginSummary[] = []): void {
     offers = 0;
     installs = 0;
+    onScreen = signal<boolean>(true);
     // Reset first, so a test that wants candidates can re-stub over the default one every test gets.
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
+        { provide: DocumentVisibility, useValue: { visible: onScreen } },
         {
           provide: ContainerEnginePrompt,
           useValue: {
@@ -292,6 +301,35 @@ describe('ContainersView', () => {
 
     expect(text).toContain("Podman isn't running");
     expect(offers).toBe(0);
+  });
+
+  it('whenTheWindowLeavesTheScreen_statsAndEventReloadsPause_andReturningCatchesUpOnce', async () => {
+    // Audit P4: the tab stays active behind another app or on another desktop; its feeds should not.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const count: (channel: ContainerChannel) => number = (channel: ContainerChannel): number =>
+      calls.filter((call: RecordedCall): boolean => (call.channel as ContainerChannel) === channel)
+        .length;
+    const stats: number = count(ContainerChannel.Stats);
+    const lists: number = count(ContainerChannel.ListContainers);
+    expect(stats).toBeGreaterThan(0);
+
+    onScreen.set(false);
+    fixture.detectChanges();
+    pushes.get(ContainerChannel.Events)?.({ type: 'start' });
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 400);
+    });
+    expect(count(ContainerChannel.Stats)).toBe(stats);
+    expect(count(ContainerChannel.ListContainers)).toBe(lists);
+
+    onScreen.set(true);
+    fixture.detectChanges();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+    expect(count(ContainerChannel.ListContainers)).toBe(lists + 1);
+    expect(count(ContainerChannel.Stats)).toBeGreaterThan(stats);
   });
 
   it('listsContainersWhenTheDaemonIsUp', async () => {

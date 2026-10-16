@@ -29,6 +29,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
 import {
   createViewInjectorRegistrar,
@@ -267,6 +268,19 @@ export class ContainersView implements OnInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds whether the window is on screen. The tab in front of a minimised or covered window is
+   * still "active"; nothing it shows can be seen, so its reloads and stats pause (audit P4).
+   */
+  private readonly onScreen: Signal<boolean> = inject(DocumentVisibility).visible;
+
+  /**
+   * Gets whether the view can be seen: its tab is in front and the window is on screen.
+   */
+  private readonly showing: Signal<boolean> = computed(
+    (): boolean => this.isActive() && this.onScreen(),
+  );
 
   /**
    * Holds the ribbon command registry the active view registers its handler with.
@@ -746,9 +760,10 @@ export class ContainersView implements OnInit, OnDestroy {
 
     // A hidden view's per-event reload paid two IPC round-trips for a table nobody could see; the
     // event marks it stale instead, and reactivation reloads once. A burst of events — a compose
-    // project starting — reloads once after it settles, not once per event (audit P6).
+    // project starting — reloads once after it settles, not once per event (audit P6). Hidden means
+    // behind another tab or in a window off screen alike (audit P4).
     const unsubscribe: () => void = this.client.onEvents((): void => {
-      if (this.isActive()) {
+      if (this.showing()) {
         this.reloads.request();
       } else {
         this.staleWhileHidden = true;
@@ -770,7 +785,7 @@ export class ContainersView implements OnInit, OnDestroy {
     };
     effect((): void => {
       const showing: boolean =
-        this.isActive() && this.available() === true && this.kind() === 'containers';
+        this.showing() && this.available() === true && this.kind() === 'containers';
       untracked((): void => {
         stopStats();
         // A read still in flight from before is superseded: its figures must not land later.
@@ -791,15 +806,21 @@ export class ContainersView implements OnInit, OnDestroy {
       }
     });
 
+    // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
     effect((): void => {
       if (this.isActive()) {
         this.commands.register(this.commandHandler);
-        if (this.staleWhileHidden) {
-          this.staleWhileHidden = false;
-          untracked((): void => void this.load());
-        }
       } else {
         this.commands.unregister(this.commandHandler);
+      }
+    });
+
+    // Coming back into view — the tab brought to the front, or the window back on screen — catches
+    // up on whatever the engine reported meanwhile, in one reload.
+    effect((): void => {
+      if (this.showing() && this.staleWhileHidden) {
+        this.staleWhileHidden = false;
+        untracked((): void => void this.load());
       }
     });
   }
