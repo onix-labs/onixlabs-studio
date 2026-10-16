@@ -405,6 +405,56 @@ export const INSTALL_PLUGIN: string = 'install_plugin';
 export const UNINSTALL_PLUGIN: string = 'uninstall_plugin';
 
 /**
+ * The Containers capability that lists the containers, with each one's state, ports, mounts and, while it runs, its CPU and memory (#969).
+ */
+export const LIST_CONTAINERS: string = 'list_containers';
+
+/**
+ * The Containers capability that lists the images on this machine (#969).
+ */
+export const LIST_CONTAINER_IMAGES: string = 'list_container_images';
+
+/**
+ * The Containers capability that lists the volumes, and which containers mount each (#969).
+ */
+export const LIST_CONTAINER_VOLUMES: string = 'list_container_volumes';
+
+/**
+ * The Containers capability that reads a container's most recent log lines, to explain why it stopped (#969).
+ */
+export const READ_CONTAINER_LOGS: string = 'read_container_logs';
+
+/**
+ * The Containers capability that starts, stops, restarts, pauses or resumes a container. Not gated: each is undone by another (#969).
+ */
+export const CONTROL_CONTAINER: string = 'control_container';
+
+/**
+ * The Containers capability that removes a container. Gated (#969).
+ */
+export const REMOVE_CONTAINER: string = 'remove_container';
+
+/**
+ * The Containers capability that downloads an image. Gated (#969).
+ */
+export const PULL_IMAGE: string = 'pull_image';
+
+/**
+ * The Containers capability that removes an image. Gated (#969).
+ */
+export const REMOVE_IMAGE: string = 'remove_image';
+
+/**
+ * The Containers capability that removes a volume and the data in it. Gated (#969).
+ */
+export const REMOVE_VOLUME: string = 'remove_volume';
+
+/**
+ * The Containers capability that runs a new container from an image, with its ports, environment and mounts. Gated (#969).
+ */
+export const RUN_CONTAINER: string = 'run_container';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -416,7 +466,7 @@ export type OpenDocumentFormat = 'markdown' | 'code';
  * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
  * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
  * owning document and works through the provider's built-in tools alone), or one of the tool views
- * (`monitor` — the System Monitor; `models` — the AI Manager; `plugins` — the Plugin Manager, #964). It selects the tool set the providers expose for the run.
+ * (`monitor` — the System Monitor; `models` — the AI Manager; `plugins` — the Plugin Manager; `containers` — the Containers view, #964). It selects the tool set the providers expose for the run.
  */
 export type AgentSurface =
   | 'editor'
@@ -427,7 +477,8 @@ export type AgentSurface =
   | 'project'
   | 'monitor'
   | 'models'
-  | 'plugins';
+  | 'plugins'
+  | 'containers';
 
 /**
  * Every surface, in the order they are presented to a user choosing among them. The one list the
@@ -444,6 +495,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'monitor',
   'models',
   'plugins',
+  'containers',
 ];
 
 /**
@@ -451,7 +503,12 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
  * its view's own tools, the clarifying question and the skills, and nothing else — no workbench, file,
  * terminal, run-configuration or hosting tools — so it cannot drift into work the view is not for.
  */
-export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = ['monitor', 'models', 'plugins'];
+export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = [
+  'monitor',
+  'models',
+  'plugins',
+  'containers',
+];
 
 /**
  * Determines whether a surface belongs to a tool view.

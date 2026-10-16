@@ -1,8 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('electron', () => ({ app: { isPackaged: false, getPath: (): string => '/tmp' } }));
-
-const { readRunRequest } = await import('./containers.contribution');
+import { describe, expect, it } from 'vitest';
+import { readRunRequest } from './container-run-request';
 
 describe('readRunRequest', () => {
   it('keepsOnlyTheWellFormedParts', () => {

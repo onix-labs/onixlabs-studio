@@ -139,8 +139,14 @@ async function probeExecutable(
       definition.args,
       { timeout: PROBE_TIMEOUT_MS, env: environment },
     );
-    // Some tools (java) print their version on stderr, which is not an error here.
-    return { id, status: 'ok', detail: firstLine(stdout.length > 0 ? stdout : stderr) };
+    // Some tools (java) print their version on stderr, which is not an error here. One that answers
+    // with nothing at all (dotnet, now and then, on a fresh machine) is still found, and says so.
+    const version: string = firstLine(stdout.length > 0 ? stdout : stderr);
+    return {
+      id,
+      status: 'ok',
+      detail: version.length > 0 ? version : 'Installed; it did not say which version.',
+    };
   } catch (error: unknown) {
     return {
       id,

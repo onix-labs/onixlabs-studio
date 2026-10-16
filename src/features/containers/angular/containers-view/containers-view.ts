@@ -55,6 +55,21 @@ import {
 import { ContainersStatus } from '../containers-status/containers-status';
 import { ContainersClient } from '../client/containers-client';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import {
+  toolViewConversationContext,
+  ToolViewAgentPanel,
+} from '@shared/angular/components/panels/tool-view-agent-panel/tool-view-agent-panel';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { ContainersAgentCapabilities } from '../containers-agent/containers-agent-capabilities';
+import { ContainersAgentPanelState } from '../containers-agent/containers-agent-panel-state';
 
 /**
  * What the Containers tab's status strip reports.
@@ -199,10 +214,19 @@ const MENU_RESUME: string = 'resume';
     Checkbox,
     ContainerPullDialog,
     ContainerRunDialog,
+    ToolViewAgentPanel,
   ],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
-  providers: [ContainerTerminals],
+  // The agent and its conversation live on the VIEW, not the docked panel (#969), so a run outlives
+  // the panel being closed.
+  providers: [
+    ContainerTerminals,
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'containers' },
+    ContainersAgentCapabilities,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContainersView implements OnInit, OnDestroy {
@@ -252,6 +276,28 @@ export class ContainersView implements OnInit, OnDestroy {
    * Holds the offer to install a container engine, raised when the tab finds none installed.
    */
   private readonly enginePrompt: ContainerEnginePrompt = inject(ContainerEnginePrompt);
+
+  /**
+   * Holds the file-system service, whose native dialog confirms a removal.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
+   * Registers the capabilities the view's agent acts through, for the view's life (#969).
+   */
+  private readonly agentCapabilities: ContainersAgentCapabilities = inject(
+    ContainersAgentCapabilities,
+  );
+
+  /**
+   * Holds whether the docked agent is showing, shared with the ribbon.
+   */
+  protected readonly agentPanel: ContainersAgentPanelState = inject(ContainersAgentPanelState);
+
+  /**
+   * Gets the context the Containers view's conversations are filed under.
+   */
+  protected readonly agentContext: ConversationContext = toolViewConversationContext('containers');
 
   /**
    * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
@@ -589,6 +635,14 @@ export class ContainersView implements OnInit, OnDestroy {
   });
 
   /**
+   * Registers the view's agent with Mission Control and the requests inbox for the tab's whole life.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'containers',
+  });
+
+  /**
    * Gets whether no container engine is installed at all, as opposed to one being installed and not
    * running (#595).
    *
@@ -717,6 +771,14 @@ export class ContainersView implements OnInit, OnDestroy {
     });
     inject(DestroyRef).onDestroy(stopStats);
 
+    // What the agent changes shows at once: a pulled image or a removed volume raises no container
+    // event to reload on (#969).
+    effect((): void => {
+      if (this.agentCapabilities.changes() > 0) {
+        untracked((): void => void this.load());
+      }
+    });
+
     effect((): void => {
       if (this.isActive()) {
         this.commands.register(this.commandHandler);
@@ -736,15 +798,17 @@ export class ContainersView implements OnInit, OnDestroy {
   private staleWhileHidden: boolean = false;
 
   /**
-   * Deregisters the ribbon handler and stops any readiness poll when the tab closes.
-   */
-  /**
-   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
+   * tab id is readable.
    */
   public ngOnInit(): void {
     this.statusHost.register(this.tabId());
+    this.agentHost.register(this.tabId());
   }
 
+  /**
+   * Deregisters the ribbon handler when the tab closes.
+   */
   public ngOnDestroy(): void {
     this.log.info('containers.view', 'Containers view destroyed');
     this.commands.unregister(this.commandHandler);
@@ -845,8 +909,33 @@ export class ContainersView implements OnInit, OnDestroy {
    * Removes a container.
    * @param id The container id.
    */
-  protected remove(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.client.remove(target));
+  protected async remove(id: string): Promise<void> {
+    const container: ContainerSummary | undefined = this.containers().find(
+      (candidate: ContainerSummary): boolean => candidate.id === id,
+    );
+    const name: string = container === undefined ? id.slice(0, 12) : this.displayName(container);
+    if (
+      !(await this.confirmRemoval(
+        `Remove ${name}?`,
+        `“${name}” will be removed.`,
+        'Its own files go with it; its volumes stay.',
+      ))
+    ) {
+      return;
+    }
+    await this.actOn(id, (target: string): Promise<boolean> => this.client.remove(target));
+  }
+
+  /**
+   * Asks the user before something is removed (#969): a removed container or volume cannot be got
+   * back.
+   * @param title The dialog's title.
+   * @param message The question.
+   * @param detail What goes with it.
+   * @returns Returns whether the user agreed.
+   */
+  private confirmRemoval(title: string, message: string, detail: string): Promise<boolean> {
+    return this.fileSystem.confirmDestructive({ title, message, detail, confirmLabel: 'Remove' });
   }
 
   /**
@@ -911,6 +1000,16 @@ export class ContainersView implements OnInit, OnDestroy {
     if (ids.length === 0 || this.busy()) {
       return;
     }
+    if (
+      action === 'remove' &&
+      !(await this.confirmRemoval(
+        `Remove ${ids.length} ${ids.length === 1 ? 'container' : 'containers'}?`,
+        `The ${ids.length === 1 ? 'ticked container' : `${ids.length} ticked containers`} will be removed.`,
+        'Their own files go with them; their volumes stay.',
+      ))
+    ) {
+      return;
+    }
     this.log.info('containers.view', `Bulk ${action}`, ids.length);
     this.busy.set(true);
     try {
@@ -961,6 +1060,16 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected async removeVolume(entry: VolumeEntry): Promise<void> {
     if (this.busy()) {
+      return;
+    }
+    const name: string = this.displayVolume(entry.volume);
+    if (
+      !(await this.confirmRemoval(
+        'Remove volume?',
+        `“${name}” will be removed.`,
+        'The data in it cannot be got back.',
+      ))
+    ) {
       return;
     }
     this.busy.set(true);
@@ -1225,7 +1334,7 @@ export class ContainersView implements OnInit, OnDestroy {
   private removeSelected(): void {
     const id: string | null = this.selectedId();
     if (id !== null) {
-      this.remove(id);
+      void this.remove(id);
     }
   }
 

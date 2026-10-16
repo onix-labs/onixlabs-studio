@@ -9,6 +9,7 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { ContainersCommands } from '../containers-commands/containers-commands';
 import { ContainersClient } from '../client/containers-client';
+import { ContainersAgentPanelState } from '../containers-agent/containers-agent-panel-state';
 
 /**
  * The contextual ribbon shown while a Containers tab is active. Its actions drive the active view's
@@ -57,6 +58,16 @@ export class ContainersRibbon {
    * Gets whether the selected container is paused (#974).
    */
   protected readonly selectionPaused: Signal<boolean> = this.commands.selectionPaused;
+
+  /**
+   * Holds whether the docked agent is showing (#969).
+   */
+  private readonly agentPanel: ContainersAgentPanelState = inject(ContainersAgentPanelState);
+
+  /**
+   * Gets whether the docked agent is showing.
+   */
+  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
 
   /**
    * Gets whether a shell can be offered at all: it needs the engine's own CLI on this machine, which
@@ -185,5 +196,12 @@ export class ContainersRibbon {
   protected onRefresh(): void {
     this.log.info('containers.ribbon', 'Refresh clicked');
     this.commands.refresh();
+  }
+
+  /**
+   * Shows or hides the docked agent.
+   */
+  protected onToggleAgent(): void {
+    this.agentPanel.toggle();
   }
 }
