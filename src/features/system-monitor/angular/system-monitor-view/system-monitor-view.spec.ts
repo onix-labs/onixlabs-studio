@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TableRow } from '@shared/angular/components/table/table';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
 import { MetricsSample } from '@shared/api/system-monitor-channels';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
@@ -16,10 +17,15 @@ import { SystemMonitorView } from './system-monitor-view';
 class FakeMetrics {
   public started: number = 0;
   public stopped: number = 0;
+  public rates: number[] = [];
   public listener: ((sample: MetricsSample) => void) | null = null;
 
   public start(): void {
     this.started += 1;
+  }
+
+  public setRate(intervalMs: number): void {
+    this.rates.push(intervalMs);
   }
 
   public stop(): void {
@@ -193,6 +199,8 @@ describe('SystemMonitorView', () => {
   }
 
   afterEach(() => {
+    // The refresh-rate tests write a setting; settings persist in local storage across tests.
+    globalThis.localStorage?.clear();
     TestBed.resetTestingModule();
   });
 
@@ -409,6 +417,30 @@ describe('SystemMonitorView', () => {
     fixture.componentRef.setInput('isActive', false);
     fixture.detectChanges();
     expect(metrics.stopped).toBeGreaterThan(startedWhileActive);
+  });
+
+  it('refreshRate_isSentBeforeSamplingStarts_andAChangeRetimesWithoutRestarting', async () => {
+    await create();
+    // Audit P3: the user's rate reaches the backend ahead of the first start, so the loop never runs
+    // at the wrong rate; changing it afterwards is one rate message, not a stop and a start.
+    expect(metrics.rates).toEqual([1000]);
+    expect(metrics.started).toBe(1);
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 500);
+    fixture.detectChanges();
+    expect(metrics.rates).toEqual([1000, 500]);
+    expect(metrics.started).toBe(1);
+    expect(metrics.stopped).toBe(0);
+  });
+
+  it('refreshRate_paused_stopsSampling_andResumesWhenARateIsChosenAgain', async () => {
+    await create();
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 0);
+    fixture.detectChanges();
+    expect(metrics.stopped).toBe(1);
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 4000);
+    fixture.detectChanges();
+    expect(metrics.started).toBe(2);
+    expect(metrics.rates.at(-1)).toBe(4000);
   });
 
   it('sample_updatesTheTileValuesAndHistories', async () => {

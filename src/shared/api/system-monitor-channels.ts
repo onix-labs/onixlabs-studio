@@ -21,12 +21,44 @@ export enum SystemMonitorChannel {
    * Pushes one metrics sample to the renderer (main→renderer).
    */
   Sample = 'system-monitor:sample',
+
+  /**
+   * Sets how often samples are taken (renderer→main, fire-and-forget), carrying a
+   * {@link SamplingRate}. Shared by every consumer, like the loop itself: the last rate set wins,
+   * and a loop already running is re-timed at once.
+   */
+  Rate = 'system-monitor:rate',
 }
 
 /**
  * The number of samples the tiles keep for their sparklines.
  */
 export const METRICS_HISTORY: number = 60;
+
+/**
+ * How often samples are taken unless the user chose otherwise, in milliseconds: once a second, the
+ * rate the sparklines were drawn for.
+ */
+export const DEFAULT_SAMPLE_INTERVAL_MS: number = 1_000;
+
+/**
+ * The shortest and longest sampling interval the backend accepts, in milliseconds. A rate outside
+ * this range is clamped to it, so a stray value cannot make the backend spin or go quiet for good.
+ */
+export const SAMPLE_INTERVAL_RANGE_MS: { readonly min: number; readonly max: number } = {
+  min: 250,
+  max: 10_000,
+};
+
+/**
+ * Describes how often the backend should sample.
+ */
+export interface SamplingRate {
+  /**
+   * Gets the time between samples, in milliseconds.
+   */
+  readonly intervalMs: number;
+}
 
 /**
  * Describes machine memory use at a moment.

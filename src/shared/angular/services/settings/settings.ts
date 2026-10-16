@@ -761,6 +761,14 @@ export class Settings {
   );
 
   /**
+   * Gets how often the System Monitor samples the machine while showing, in milliseconds, or 0 when
+   * the user paused it.
+   */
+  public readonly systemMonitorRefreshRate: Signal<number> = this.value(
+    'systemMonitor.refreshRate',
+  );
+
+  /**
    * Holds the last override map applied from another window's write, so the auto-persist effect can
    * tell an externally-sourced state (which must not be written back) from a local edit. The browser
    * never fires the storage notification in the writing window, so this guard only ever suppresses
