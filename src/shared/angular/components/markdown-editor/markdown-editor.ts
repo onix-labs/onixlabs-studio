@@ -29,6 +29,7 @@ import type { Parser } from '@milkdown/transformer';
 import { createStudioCrepe } from '@shared/angular/milkdown/create-studio-crepe';
 import { installImageResolver } from '@shared/angular/milkdown/media-source';
 import { renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
+import { sanitizeHtmlBlock } from '@shared/angular/milkdown/html-block-sanitizer';
 import { Log } from '@shared/angular/services/log/log';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -746,7 +747,9 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     block.setAttribute('data-value', value);
     const content: HTMLElement | null = block.querySelector<HTMLElement>('.html-image-content');
     if (content !== null) {
-      content.innerHTML = value;
+      // Cleaned exactly as on open: the document keeps what was typed, the window renders only what
+      // is safe to render.
+      content.innerHTML = sanitizeHtmlBlock(value);
     }
 
     this.emitCurrentMarkdown();

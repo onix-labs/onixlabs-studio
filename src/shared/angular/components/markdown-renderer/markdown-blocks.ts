@@ -131,6 +131,31 @@ function ensureExtensions(): void {
 }
 
 /**
+ * What the transcript's sanitiser forbids beyond DOMPurify's defaults. A model's reply is rendered
+ * into the same window as everything else: a `<style>` in it would restyle the whole window, not the
+ * bubble (it could cover a permission card's Deny button), and a form or control invites typing that
+ * a submit then sends away. Neither has a place in prose (audit S5).
+ */
+const TRANSCRIPT_FORBIDDEN_TAGS: readonly string[] = [
+  'style',
+  'form',
+  'input',
+  'button',
+  'textarea',
+  'select',
+  'option',
+];
+
+/**
+ * Sanitises rendered prose for the transcript.
+ * @param html The HTML marked produced.
+ * @returns Returns the HTML with scripts, handlers and the forbidden tags removed.
+ */
+function sanitize(html: string): string {
+  return DOMPurify.sanitize(html, { FORBID_TAGS: [...TRANSCRIPT_FORBIDDEN_TAGS] });
+}
+
+/**
  * The most rendered blocks held in the render cache. One top-level markdown token — a paragraph, a
  * heading, a list, a table — is one entry, so a long assistant reply contributes a few hundred and an
  * all-day session settles well inside this.
@@ -175,9 +200,7 @@ let blockCacheChars: number = 0;
  * @returns Returns the sanitised HTML.
  */
 function renderToken(token: Token): string {
-  return cached(token.type + ' ' + token.raw, (): string =>
-    DOMPurify.sanitize(marked.parser([token])),
-  );
+  return cached(token.type + ' ' + token.raw, (): string => sanitize(marked.parser([token])));
 }
 
 /**
@@ -227,7 +250,7 @@ function renderRun(group: readonly Token[]): string {
   for (const token of group) {
     key += token.type + ' ' + token.raw;
   }
-  return cached(key, (): string => DOMPurify.sanitize(marked.parser(group as Token[])));
+  return cached(key, (): string => sanitize(marked.parser(group as Token[])));
 }
 
 /**
