@@ -22,6 +22,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -187,6 +188,12 @@ export class SystemMonitorView implements OnInit {
    * Holds the metrics client the tiles sample through.
    */
   private readonly metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+
+  /**
+   * Holds how often the machine is sampled while the monitor shows, in milliseconds, or 0 when the
+   * user paused it (the Refresh rate setting).
+   */
+  private readonly refreshRate: Signal<number> = inject(Settings).systemMonitorRefreshRate;
 
   /**
    * Holds the most recent metrics sample, or null before the first arrives.
@@ -649,31 +656,54 @@ export class SystemMonitorView implements OnInit {
       this.accept(sample),
     );
 
+    // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
+    let sampling: boolean = false;
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribeSamples);
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
-    destroy.onDestroy((): void => this.metrics.stop());
+    destroy.onDestroy((): void => {
+      if (sampling) {
+        this.metrics.stop();
+      }
+    });
 
-    // Sampling, the live record stream and the ribbon handler follow the tab's visibility: nothing
-    // is sampled and no record push is processed while the monitor is hidden (the performance-audit
-    // posture). Reactivation reloads the viewed session first, catching up on whatever was recorded
-    // while the stream was down.
+    // The live record stream and the ribbon handler follow the tab's visibility: no record push is
+    // processed while the monitor is hidden (the performance-audit posture). Reactivation reloads the
+    // viewed session first, catching up on whatever was recorded while the stream was down.
     effect((): void => {
       const active: boolean = this.isActive();
       // The reactive dependency is the visibility alone: the catch-up reload reads the selected
-      // session synchronously, and tracking that here would re-run this effect (and double-start
-      // the ref-counted sampling) every time the viewed session changes.
+      // session synchronously, and tracking that here would re-run this effect every time the viewed
+      // session changes.
       untracked((): void => {
         if (active) {
           this.commands.register(this.commandHandler);
-          this.metrics.start();
           this.subscribeToLiveRecords();
         } else {
           this.commands.unregister(this.commandHandler);
-          this.metrics.stop();
           this.unsubscribeFromLiveRecords();
         }
+      });
+    });
+
+    // Sampling follows the tab's visibility and the user's refresh rate: nothing is sampled while the
+    // monitor is hidden or paused, and a rate change re-times a running loop without restarting it
+    // (restarting would reset the CPU baseline and blank a tick). The backend's ref-count sees one
+    // start per stop, whatever the rate does in between.
+    effect((): void => {
+      const rate: number = this.refreshRate();
+      const wanted: boolean = this.isActive() && rate > 0;
+      untracked((): void => {
+        if (wanted) {
+          this.metrics.setRate(rate);
+        }
+        if (wanted && !sampling) {
+          this.metrics.start();
+        } else if (!wanted && sampling) {
+          this.metrics.stop();
+        }
+        sampling = wanted;
       });
     });
   }

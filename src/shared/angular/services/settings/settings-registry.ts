@@ -124,6 +124,8 @@ export interface SettingsValues {
   readonly 'ai.claudeExecutablePath': string;
 
   readonly 'missionControl.tileScrollMode': TileScrollMode;
+
+  readonly 'systemMonitor.refreshRate': number;
 }
 
 /**
@@ -1056,6 +1058,31 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'into-view',
+      },
+    ],
+  },
+  {
+    id: 'system-monitor',
+    label: 'System Monitor',
+    settings: [
+      {
+        key: 'systemMonitor.refreshRate',
+        title: 'Refresh rate',
+        description:
+          'How often the System Monitor reads the machine while it is showing. A faster rate shows ' +
+          'changes sooner and costs a little more to gather; Paused keeps the last readings on ' +
+          'screen and reads nothing.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '500', label: 'High (twice a second)' },
+            { value: '1000', label: 'Normal (every second)' },
+            { value: '4000', label: 'Low (every 4 seconds)' },
+            { value: '0', label: 'Paused' },
+          ],
+        },
+        default: 1000,
       },
     ],
   },

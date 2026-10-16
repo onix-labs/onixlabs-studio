@@ -1,6 +1,10 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { MetricsSample, SystemMonitorChannel } from '@shared/api/system-monitor-channels';
+import {
+  MetricsSample,
+  SamplingRate,
+  SystemMonitorChannel,
+} from '@shared/api/system-monitor-channels';
 
 /**
  * The renderer client for the System Monitor metrics backend contribution (#398): a thin, typed
@@ -27,6 +31,15 @@ export class SystemMonitorMetrics {
    */
   public stop(): void {
     this.bridge?.send(SystemMonitorChannel.Stop);
+  }
+
+  /**
+   * Tells the backend how often to sample. Takes effect at once on a running loop.
+   * @param intervalMs The time between samples, in milliseconds.
+   */
+  public setRate(intervalMs: number): void {
+    const rate: SamplingRate = { intervalMs };
+    this.bridge?.send(SystemMonitorChannel.Rate, rate);
   }
 
   /**
