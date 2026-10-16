@@ -2312,6 +2312,9 @@ export class Agent {
       actions,
       key: `agent:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
+      // Seen on the desktop while the user is elsewhere, watching or not (#927).
+      desktop: true,
+      ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
 
@@ -2367,6 +2370,9 @@ export class Agent {
       actions,
       key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
+      // Seen on the desktop while the user is elsewhere, watching or not (#927).
+      desktop: true,
+      ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
 

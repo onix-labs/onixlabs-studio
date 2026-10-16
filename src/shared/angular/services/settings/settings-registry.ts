@@ -66,6 +66,7 @@ export interface SettingsValues {
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
+  readonly 'notifications.desktop': boolean;
   readonly 'notifications.stacking': NotificationStacking;
   readonly 'notifications.colour': NotificationColour;
   readonly 'notifications.whenMuted': MutedNotifications;
@@ -388,6 +389,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Answering stays in the conversation; the toast jumps to the asking tab.',
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'notifications.desktop',
+        title: 'System notifications',
+        description:
+          'While Studio is in the background, show errors, finished agents, runs and builds, and ' +
+          "agents waiting on you in the system's notification centre. Clicking one brings Studio " +
+          'back to what it is about.',
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'notifications.stacking',

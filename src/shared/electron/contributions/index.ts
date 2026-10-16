@@ -1,6 +1,7 @@
 import { MainContribution } from './main-contribution';
 import { apiClientContribution } from './api-client/api-client.contribution';
 import { containersContribution } from './containers/containers.contribution';
+import { desktopNotificationsContribution } from './desktop-notifications/desktop-notifications.contribution';
 import { modelRuntimeContribution } from './model-runtime/model-runtime.contribution';
 import { pluginsContribution } from './plugins/plugins.contribution';
 import { systemMonitorContribution } from './system-monitor/system-monitor.contribution';
@@ -17,6 +18,7 @@ import { systemMonitorContribution } from './system-monitor/system-monitor.contr
 export const mainContributions: readonly MainContribution[] = [
   apiClientContribution,
   containersContribution,
+  desktopNotificationsContribution,
   modelRuntimeContribution,
   pluginsContribution,
   systemMonitorContribution,

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
 
+import { DesktopNotifications } from './desktop-notifications';
 import { Notification, Notifications } from './notifications';
 
 describe('Notifications', () => {
@@ -260,5 +261,47 @@ describe('Notifications', () => {
 
   it('startsUnmuted', () => {
     expect(service.muted()).toBe(false);
+  });
+});
+
+describe('Notifications on the desktop', () => {
+  let service: Notifications;
+  let shown: string[];
+
+  beforeEach(() => {
+    shown = [];
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: DesktopNotifications,
+          useValue: { show: (title: string): void => void shown.push(title) },
+        },
+      ],
+    });
+    service = TestBed.inject(Notifications);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('sendsErrorsAndWhatIsFlagged_butNotEveryPassingMessage', () => {
+    // #927: an agent finishing is worth leaving another app for; "Fetched all remotes" is not.
+    service.notify({ severity: 'error', title: 'Build failed' });
+    service.notify({ severity: 'success', title: 'Agent finished — Fix it', desktop: true });
+    service.notify({ severity: 'info', title: 'Fetched all remotes' });
+
+    expect(shown).toEqual(['Build failed', 'Agent finished — Fix it']);
+  });
+
+  it('staysQuietWhileMuted_unlessErrorsAreLetThrough', () => {
+    service.setMuted(true);
+    service.notify({ severity: 'success', title: 'Agent finished — Fix it', desktop: true });
+    service.notify({ severity: 'error', title: 'Build failed' });
+    expect(shown).toEqual([]);
+
+    TestBed.inject(Settings).set('notifications.whenMuted', 'errors');
+    service.notify({ severity: 'error', title: 'Build failed' });
+    expect(shown).toEqual(['Build failed']);
   });
 });

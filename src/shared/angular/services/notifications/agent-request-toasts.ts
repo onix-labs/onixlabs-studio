@@ -7,6 +7,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { DesktopNotifications } from './desktop-notifications';
 import { Notifications } from './notifications';
 
 /**
@@ -50,6 +51,47 @@ export class AgentRequestToasts {
    * toast and a manually dismissed toast is not raised again while its ask still waits.
    */
   private readonly raised: Set<string> = new Set<string>();
+
+  /**
+   * Holds the bridge to the operating system's notification centre.
+   */
+  private readonly desktop: DesktopNotifications = inject(DesktopNotifications);
+
+  /**
+   * Holds the entry keys already announced on the desktop, so each ask is announced once while it
+   * waits however often the user leaves Studio.
+   */
+  private readonly announced: Set<string> = new Set<string>();
+
+  /**
+   * Announces each pending ask on the desktop while Studio is in the background (#927) — whatever the
+   * toast setting, since an agent waiting on the user is the moment worth leaving another app for.
+   */
+  private readonly announce: ReturnType<typeof effect> = effect((): void => {
+    const pending: readonly AgentRequestEntry[] = this.requests.entries();
+    const keys: ReadonlySet<string> = new Set<string>(
+      pending.map((entry: AgentRequestEntry): string => entry.key),
+    );
+    for (const key of [...this.announced]) {
+      if (!keys.has(key)) {
+        this.announced.delete(key);
+      }
+    }
+    if (this.desktop.focused()) {
+      return;
+    }
+    for (const entry of pending) {
+      if (!this.announced.has(entry.key)) {
+        this.announced.add(entry.key);
+        const tabId: string | null = entry.tabId;
+        this.desktop.show(
+          `Agent asks — ${entry.label}`,
+          this.heading(entry),
+          tabId === null ? undefined : (): void => this.tabs.activate(tabId),
+        );
+      }
+    }
+  });
 
   /**
    * Keeps the toast set in step with the pending asks that deserve one.
