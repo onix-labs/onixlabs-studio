@@ -6,11 +6,13 @@
 // that applies it. A harness that computed its own allowed paths would be a harness deciding what the
 // user permitted, which is exactly backwards.
 //
-// ⛔ Textual `..`-normalised containment, not a sandbox. It does not resolve symlinks, so a symlink
-// planted inside a root is out of its remit — the OS sandbox (see `sandboxFor`) covers the shell path,
-// which is the one this cannot range-check anyway.
+// ⛔ `..`-normalised containment of paths taken to where they really are — symbolic links followed —
+// not a sandbox. A link planted inside a root that points outside it names a place outside it, and a
+// write through it is a write to that place (audit S8). The OS sandbox (see `sandboxFor`) covers the
+// shell path, which is the one this cannot range-check anyway.
 
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /**
  * The built-in file-writing tools whose target path must stay within the run's allowed roots.
@@ -53,6 +55,31 @@ export function writeTargetPath(input: unknown): string | null {
 }
 
 /**
+ * Resolves a path to where it really is: symbolic links followed, for as much of the path as exists.
+ * A write's target usually does not exist yet, so the longest existing prefix is resolved and the rest
+ * appended.
+ * @param resolved An absolute, `..`-normalised path.
+ * @returns Returns the real path, or the path as given when nothing of it exists.
+ */
+export function realPathOf(resolved: string): string {
+  let existing: string = resolved;
+  const trailing: string[] = [];
+  while (!existsSync(existing)) {
+    const parent: string = dirname(existing);
+    if (parent === existing) {
+      return resolved;
+    }
+    trailing.unshift(existing.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)));
+    existing = parent;
+  }
+  try {
+    return join(realpathSync.native(existing), ...trailing);
+  } catch {
+    return resolved;
+  }
+}
+
+/**
  * Determines whether a resolved target equals or sits beneath a resolved root.
  * @param resolvedTarget The already-resolved absolute target.
  * @param resolvedRoot The already-resolved absolute root.
@@ -79,8 +106,10 @@ export function isWriteWithinRoots(target: string, roots: readonly string[]): bo
   if (roots.length === 0) {
     return true;
   }
-  const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(roots[0], target);
-  return roots.some((root: string): boolean => isWithin(resolvedTarget, resolve(root)));
+  const resolvedTarget: string = realPathOf(
+    isAbsolute(target) ? resolve(target) : resolve(roots[0], target),
+  );
+  return roots.some((root: string): boolean => isWithin(resolvedTarget, realPathOf(resolve(root))));
 }
 
 /**
@@ -99,19 +128,24 @@ export function isWriteDenied(target: string, denyList: readonly string[], base:
   if (denyList.length === 0) {
     return false;
   }
-  const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
-  const segments: readonly string[] = resolvedTarget
-    .split(sep)
-    .filter((segment: string): boolean => segment.length > 0);
-  return denyList.some((entry: string): boolean => {
-    if (entry.length === 0) {
-      return false;
-    }
-    if (isAbsolute(entry)) {
-      const resolvedEntry: string = resolve(entry);
-      return resolvedTarget === resolvedEntry || isWithin(resolvedTarget, resolvedEntry);
-    }
-    return segments.includes(entry);
+  const named: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
+  // Both the name and the place: a link cannot reach a denied place under another name, and a denied
+  // segment in the name itself still counts.
+  const candidates: readonly string[] = [...new Set<string>([named, realPathOf(named)])];
+  return candidates.some((resolvedTarget: string): boolean => {
+    const segments: readonly string[] = resolvedTarget
+      .split(sep)
+      .filter((segment: string): boolean => segment.length > 0);
+    return denyList.some((entry: string): boolean => {
+      if (entry.length === 0) {
+        return false;
+      }
+      if (isAbsolute(entry)) {
+        const resolvedEntry: string = realPathOf(resolve(entry));
+        return resolvedTarget === resolvedEntry || isWithin(resolvedTarget, resolvedEntry);
+      }
+      return segments.includes(entry);
+    });
   });
 }
 
