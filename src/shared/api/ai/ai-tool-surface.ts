@@ -350,7 +350,8 @@ export const DELETE_MODEL: string = 'delete_model';
 export const LIST_PROMPT_PROFILES: string = 'list_prompt_profiles';
 
 /**
- * The AI Manager capability that creates or changes a prompt profile (#967).
+ * The AI Manager capability that creates or changes a prompt profile (#967). Gated: a profile is a
+ * standing instruction every later agent obeys.
  */
 export const SAVE_PROMPT_PROFILE: string = 'save_prompt_profile';
 
@@ -375,7 +376,8 @@ export const READ_SKILL: string = 'read_skill';
 export const LIST_SKILL_TAGS: string = 'list_skill_tags';
 
 /**
- * The AI Manager capability that creates or changes a skill (#967).
+ * The AI Manager capability that creates or changes a skill (#967). Gated: a skill is an instruction
+ * a later agent loads on its own judgement.
  */
 export const SAVE_SKILL: string = 'save_skill';
 

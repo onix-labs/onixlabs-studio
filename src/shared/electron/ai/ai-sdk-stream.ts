@@ -1237,9 +1237,43 @@ export async function createMonitorTools(context: AgentRunContext): Promise<Tool
 }
 
 /**
+ * The most characters of a standing instruction the permission card quotes.
+ */
+const INSTRUCTION_PREVIEW_CHARS: number = 80;
+
+/**
+ * Describes a prompt profile or skill being written, for the permission card and the audit record:
+ * its name, and the first line of what it will tell future agents — the part the user is being asked
+ * to stand behind.
+ * @param args The tool's input.
+ * @returns Returns the description.
+ */
+export function describeStandingInstruction(args: Record<string, unknown>): string {
+  const name: string =
+    typeof args['name'] === 'string' && args['name'].length > 0
+      ? args['name']
+      : typeof args['id'] === 'string'
+        ? args['id']
+        : 'unnamed';
+  const instructions: string =
+    typeof args['instructions'] === 'string' ? args['instructions'].trim() : '';
+  if (instructions.length === 0) {
+    return name;
+  }
+  const firstLine: string = instructions.split('\n', 1)[0].trim();
+  const preview: string =
+    firstLine.length > INSTRUCTION_PREVIEW_CHARS
+      ? `${firstLine.slice(0, INSTRUCTION_PREVIEW_CHARS - 1)}…`
+      : firstLine;
+  return `${name}: "${preview}"`;
+}
+
+/**
  * Builds the AI Manager's tools (#967): the local models, the prompt profiles and the skill library.
- * Chat mode reads only. Downloading, and every delete, are gated; writing a profile or a skill is not —
- * it lands in the view the user is looking at, and is as easy to undo as it is to see.
+ * Chat mode reads only. Downloading, every delete, and writing a profile or a skill are gated. A
+ * profile is a standing instruction every later agent obeys — on surfaces with file and shell tools —
+ * and a skill is one an agent loads on its own judgement, so neither is written without the user
+ * seeing what it says first (audit S9).
  * @param context The run context the tools act through.
  * @returns Returns the tool set.
  */
@@ -1349,7 +1383,12 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
           .describe('Editor language ids it narrows to; omit or leave empty for every language.'),
         enabled: z.boolean().optional().describe('Whether it is on.'),
       }),
-      execute: (args: Record<string, unknown>): Promise<string> => savePromptProfile(context, args),
+      execute: gated(
+        context,
+        SAVE_PROMPT_PROFILE,
+        (args: Record<string, unknown>): Promise<string> => savePromptProfile(context, args),
+        describeStandingInstruction,
+      ),
     }),
     [DELETE_PROMPT_PROFILE]: tool({
       description: 'Delete a prompt profile by its id.',
@@ -1392,7 +1431,12 @@ export async function createAiManagerTools(context: AgentRunContext): Promise<To
           ),
         enabled: z.boolean().optional().describe('Whether it is offered to agents.'),
       }),
-      execute: (args: Record<string, unknown>): Promise<string> => saveSkill(context, args),
+      execute: gated(
+        context,
+        SAVE_SKILL,
+        (args: Record<string, unknown>): Promise<string> => saveSkill(context, args),
+        describeStandingInstruction,
+      ),
     }),
     [DELETE_SKILL]: tool({
       description: 'Delete a skill, and its folder on disk.',
