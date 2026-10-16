@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { DesktopNotifications } from './desktop-notifications';
 
 /**
  * The maximum number of toasts held at once. An arrival beyond the cap evicts the oldest transient
@@ -94,6 +95,19 @@ export interface NotificationRequest {
    * Gets where the notification surfaces, or undefined for the default (toast and history both).
    */
   readonly route?: NotificationRoute;
+
+  /**
+   * Gets whether the notification also goes to the operating system's notification centre while
+   * Studio is in the background (#927): finished or failed work the user may be waiting on, rather
+   * than every passing message. Errors always do; undefined means no for everything else.
+   */
+  readonly desktop?: boolean;
+
+  /**
+   * Brings what the notification is about into view, run when its desktop notification is clicked —
+   * the tab whose agent finished, say. Undefined when bringing Studio forward is enough.
+   */
+  readonly reveal?: () => void;
 }
 
 /**
@@ -161,6 +175,11 @@ export class Notifications {
    * Holds the settings, read for what still pops up while muted.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the bridge to the operating system's notification centre.
+   */
+  private readonly desktop: DesktopNotifications = inject(DesktopNotifications);
 
   /**
    * Holds whether notifications are muted. Session-only by design: Studio starts unmuted every launch.
@@ -242,6 +261,13 @@ export class Notifications {
       this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
         this.insert(current, notification),
       );
+    }
+    // Muted means quiet everywhere: what would not pop up in Studio does not pop up on the desktop.
+    if (
+      (request.desktop === true || notification.severity === 'error') &&
+      !this.silenced(notification.severity)
+    ) {
+      this.desktop.show(notification.title, notification.detail, request.reveal);
     }
     if (route !== 'toast-only') {
       this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>

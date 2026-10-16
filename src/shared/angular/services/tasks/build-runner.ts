@@ -472,6 +472,8 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         severity: 'success',
         title: `Run finished — ${task.label}`,
         key: `run:${sessionId}`,
+        desktop: true,
+        reveal: (): void => this.sessions.activateAndReveal(sessionId),
       });
       return;
     }
@@ -483,6 +485,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         { label: 'Show terminal', run: (): void => this.sessions.activateAndReveal(sessionId) },
       ],
       key: `run:${sessionId}`,
+      reveal: (): void => this.sessions.activateAndReveal(sessionId),
     });
   }
 
@@ -687,6 +690,8 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         title: 'Build succeeded',
         detail: task.label,
         key: `build:${this.buildSessionId}`,
+        desktop: true,
+        reveal: (): void => this.sessions.activateAndReveal(this.buildSessionId),
       });
       return;
     }
@@ -702,6 +707,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         },
       ],
       key: `build:${this.buildSessionId}`,
+      reveal: (): void => this.sessions.activateAndReveal(this.buildSessionId),
     });
   }
 

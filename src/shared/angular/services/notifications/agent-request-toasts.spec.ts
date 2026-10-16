@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -9,6 +10,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentRequestToasts } from './agent-request-toasts';
+import { DesktopNotifications } from './desktop-notifications';
 import { Notification, Notifications } from './notifications';
 
 /**
@@ -112,5 +114,64 @@ describe('AgentRequestToasts', () => {
 
     expect(tabs.activeTab()?.id).toBe(owning.id);
     expect(notifications.toasts().length).toBe(0);
+  });
+});
+
+describe('AgentRequestToasts on the desktop', () => {
+  let entries: WritableSignal<readonly AgentRequestEntry[]>;
+  let focused: WritableSignal<boolean>;
+  let shown: { title: string; body?: string; reveal?: () => void }[];
+
+  beforeEach(() => {
+    entries = signal<readonly AgentRequestEntry[]>([]);
+    focused = signal<boolean>(true);
+    shown = [];
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: AgentRequests, useValue: { entries } },
+        {
+          provide: DesktopNotifications,
+          useValue: {
+            focused,
+            show: (title: string, body?: string, reveal?: () => void): void =>
+              void shown.push({ title, body, reveal }),
+          },
+        },
+      ],
+    });
+    TestBed.inject(AgentRequestToasts);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  /**
+   * Flushes the bridge's effects.
+   */
+  function tick(): void {
+    TestBed.inject(ApplicationRef).tick();
+  }
+
+  it('announcesAWaitingAgentOnceWhileStudioIsInTheBackground_whateverTheToastSetting', () => {
+    // #927: the toast setting is off by default; the desktop announcement does not depend on it.
+    entries.set([ask('a1', 'tab-1', 'Workspace')]);
+    tick();
+    expect(shown).toEqual([]);
+
+    focused.set(false);
+    tick();
+    expect(shown.map((entry) => entry.title)).toEqual(['Agent asks — Workspace']);
+    expect(shown[0].body).toBe('Allow Bash?');
+
+    focused.set(true);
+    tick();
+    focused.set(false);
+    tick();
+    expect(shown.length).toBe(1);
+
+    const activate: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Tabs), 'activate');
+    shown[0].reveal?.();
+    expect(activate).toHaveBeenCalledWith('tab-1');
   });
 });
