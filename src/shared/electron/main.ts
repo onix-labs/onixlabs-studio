@@ -829,23 +829,6 @@ class Program {
    * resolves the window from the request sender so it always acts on the requesting window.
    */
   private registerIpcHandlers(): void {
-    ipcMain.on(WindowChannel.Minimize, (event: IpcMainEvent): void => {
-      BrowserWindow.fromWebContents(event.sender)?.minimize();
-    });
-
-    ipcMain.on(WindowChannel.ToggleMaximize, (event: IpcMainEvent): void => {
-      const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
-      if (targetWindow === null) {
-        return;
-      }
-
-      if (targetWindow.isMaximized()) {
-        targetWindow.unmaximize();
-      } else {
-        targetWindow.maximize();
-      }
-    });
-
     ipcMain.on(WindowChannel.Close, (event: IpcMainEvent): void => {
       BrowserWindow.fromWebContents(event.sender)?.close();
     });
@@ -870,6 +853,19 @@ class Program {
 
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
+
+    ipcMain.on(
+      WindowChannel.SetCaptionSymbolColor,
+      (_event: IpcMainEvent, color: unknown): void => {
+        // A plain hex colour only: it goes straight to the native overlay, which has no use for the
+        // rest of CSS and no way to report a value it could not parse.
+        if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) {
+          return;
+        }
+
+        this.windows.setOverlaySymbolColor(color);
+      },
+    );
 
     ipcMain.on(AppChannel.ConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);

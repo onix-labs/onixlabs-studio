@@ -29,13 +29,18 @@
   background: var(--settings-background-color);
 }
 
-// The window is `hiddenInset`, so it has no title bar of its own and the platform draws its controls
-// over the leading end of this band. It is the wizard's only drag region, which is what makes the
+// The window has no title bar of its own on macOS and Windows, which draw their controls over this
+// band (the leading end on macOS, the trailing end on Windows). It is the wizard's only drag region, which is what makes the
 // window move from where every other window on the system does. Its height clears the controls.
 .setup__titlebar {
   flex: none;
   block-size: 2.75rem;
   -webkit-app-region: drag;
+}
+
+// Linux keeps the native title bar, which already moves the window and holds its controls.
+:host-context(:root[data-platform='linux']) .setup__titlebar {
+  display: none;
 }
 
 .setup__columns {

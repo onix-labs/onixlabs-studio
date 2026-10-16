@@ -62,14 +62,22 @@ export interface AuxiliaryWindowPosition {
  * Holds the structural styles for the auxiliary window's own chrome (title bar + content column).
  * Everything else — colours, fonts, component styles — comes from the application stylesheets the
  * opener mirrors into the child, so the window tracks the app's theme tokens.
+ *
+ * The title bar leaves room for the platform's window controls: macOS insets its traffic lights over
+ * the leading end, Windows draws its caption buttons over the trailing end (the titlebar-area insets).
+ * Linux keeps the native title bar, which already names the window, so the bar is not drawn there.
  */
 const AUX_STYLES: string = `
   body { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
          background: var(--root-content-background-color); }
   .aux-window__titlebar { display: flex; align-items: center; flex: none;
-    padding-block: 0.75rem; padding-inline: 5.5rem 0.75rem;
+    padding-block: 0.75rem;
+    padding-inline: 0.75rem
+      max(0.75rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
     background: var(--title-strip-background-color);
     -webkit-app-region: drag; user-select: none; }
+  :root[data-platform='darwin'] .aux-window__titlebar { padding-inline-start: 5.5rem; }
+  :root[data-platform='linux'] .aux-window__titlebar { display: none; }
   .aux-window__title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; font-size: 0.8rem; font-weight: 600;
     color: var(--title-strip-button-foreground-color--hover); }

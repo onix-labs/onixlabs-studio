@@ -138,6 +138,18 @@ export class WindowManager {
   private static readonly MODAL_MIN_HEIGHT: number = 120;
 
   /**
+   * Holds the height (DIP) of the Windows caption-button overlay: the height of the main window's
+   * title strip, so the buttons fill it top to bottom as they would a native title bar.
+   */
+  private static readonly OVERLAY_HEIGHT: number = 40;
+
+  /**
+   * Holds the colour of the Windows caption-button glyphs, which follows the application's theme.
+   * Starts with the dark theme's, which is the default.
+   */
+  private overlaySymbolColor: string = '#adb5bd';
+
+  /**
    * Holds the registered windows.
    */
   private readonly registry: WindowRegistry<BrowserWindow> = new WindowRegistry<BrowserWindow>();
@@ -313,8 +325,7 @@ export class WindowManager {
       minWidth: WindowManager.MIN_WIDTH,
       minHeight: WindowManager.MIN_HEIGHT,
       show: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
       webPreferences: {
         preload: this.options.preloadPath,
         contextIsolation: true,
@@ -432,8 +443,7 @@ export class WindowManager {
       ...(rect !== null ? { x: rect.x, y: rect.y } : {}),
       minWidth: WindowManager.POPOUT_MIN_WIDTH,
       minHeight: WindowManager.POPOUT_MIN_HEIGHT,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
     };
   }
 
@@ -543,9 +553,62 @@ export class WindowManager {
       closable: parseFeatureFlag(features, 'closable', true),
       minimizable: false,
       fullscreenable: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
     };
+  }
+
+  /**
+   * Builds the title-bar options every window shares, which differ by platform.
+   *
+   * - macOS hides the title bar and insets the traffic lights over the content, which leaves room for
+   *   them at the leading end of each window's strip.
+   * - Windows hides the title bar too, but keeps the system's own caption buttons, drawn over the
+   *   trailing end of the content (the window controls overlay). They behave as caption buttons do
+   *   everywhere else on Windows — snap layouts on the maximize button included. The overlay is
+   *   transparent, so each window's own strip shows through it whatever colour that strip is.
+   * - Everywhere else keeps the native frame: Linux window managers put their buttons where the user
+   *   configured them, so there is no corner the content could reliably leave free for them.
+   * @returns Returns the title-bar constructor options for the current platform.
+   */
+  private chrome(): Electron.BrowserWindowConstructorOptions {
+    switch (process.platform) {
+      case 'darwin':
+        return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 14 } };
+      case 'win32':
+        return { titleBarStyle: 'hidden', titleBarOverlay: this.overlay() };
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * Builds the Windows caption-button overlay in the current theme's colours.
+   * @returns Returns the overlay options.
+   */
+  private overlay(): Electron.TitleBarOverlay {
+    return {
+      color: '#00000000',
+      symbolColor: this.overlaySymbolColor,
+      height: WindowManager.OVERLAY_HEIGHT,
+    };
+  }
+
+  /**
+   * Recolours the Windows caption buttons of every window, and of every window opened after, to suit
+   * the application's theme. Does nothing on other platforms, which draw no overlay.
+   * @param symbolColor The CSS colour of the button glyphs.
+   */
+  public setOverlaySymbolColor(symbolColor: string): void {
+    if (process.platform !== 'win32' || symbolColor === this.overlaySymbolColor) {
+      return;
+    }
+    logger.debug('WindowManager.setOverlaySymbolColor', `caption glyphs now ${symbolColor}`);
+    this.overlaySymbolColor = symbolColor;
+    for (const entry of this.registry.all()) {
+      if (!entry.window.isDestroyed()) {
+        entry.window.setTitleBarOverlay(this.overlay());
+      }
+    }
   }
 
   /**

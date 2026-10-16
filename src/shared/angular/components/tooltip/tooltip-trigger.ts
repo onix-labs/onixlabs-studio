@@ -69,7 +69,7 @@ const TOOLTIP_POSITIONS: readonly ConnectedPosition[] = [
   host: {
     '(mouseenter)': 'onShow()',
     '(mouseleave)': 'onLeave()',
-    '(focus)': 'onShow()',
+    '(focus)': 'onFocus()',
     '(blur)': 'onLeave()',
     // A control that has been pressed has answered for itself; the bubble would only be in the way of
     // whatever the press opened.
@@ -143,6 +143,17 @@ export class TooltipTrigger {
   };
 
   /**
+   * Holds the listener attached to the control's window while the bubble is open, which takes the
+   * bubble away when the window loses focus.
+   *
+   * 🔥 A window that loses focus stops hearing about the pointer: the user who points at a control
+   * and then switches to another application or takes a screenshot never produces the mouseleave that
+   * would close the bubble. It stayed
+   * over the control until the pointer next came back and left again.
+   */
+  private readonly blurHandler: () => void = (): void => this.onLeave();
+
+  /**
    * Initializes a new instance of the {@link TooltipTrigger} class, tearing down any open bubble with
    * the control. A control can be destroyed while its bubble is open — a toolbar that re-lays out
    * under the pointer, a panel that closes — and the overlay would outlive it.
@@ -169,6 +180,23 @@ export class TooltipTrigger {
       (element as Partial<HTMLButtonElement>).disabled === true ||
       element.getAttribute('aria-disabled') === 'true'
     );
+  }
+
+  /**
+   * Opens the bubble when focus reaches the control from the keyboard.
+   *
+   * 🔥 Only from the keyboard. A pressed button keeps focus, and a window given focus back — when a
+   * modal closes, when the user returns from another application — hands it back to that button with
+   * a fresh focus event. Opening on every focus therefore put the name of the last button clicked
+   * back up wherever the pointer happened to be, and nothing was coming to take it down: the pointer
+   * had already left, and the focus would not move until the user clicked something else.
+   * `:focus-visible` is the browser's own judgement of focus the user should be shown, which is
+   * keyboard focus and not the restored focus of a click.
+   */
+  protected onFocus(): void {
+    if (this.element.nativeElement.matches(':focus-visible')) {
+      this.onShow();
+    }
   }
 
   /**
@@ -199,15 +227,19 @@ export class TooltipTrigger {
     });
     const bubble: ComponentRef<Tooltip> = this.overlayRef.attach(new ComponentPortal(Tooltip));
     bubble.setInput('text', text);
-    this.element.nativeElement.ownerDocument.addEventListener('keydown', this.escapeHandler);
+    const doc: Document = this.element.nativeElement.ownerDocument;
+    doc.addEventListener('keydown', this.escapeHandler);
+    doc.defaultView?.addEventListener('blur', this.blurHandler);
   }
 
   /**
-   * Closes the bubble, and with it the document Escape listener that existed to dismiss it.
+   * Closes the bubble, and with it the listeners that existed to dismiss it.
    */
   protected onLeave(): void {
     if (this.overlayRef !== null) {
-      this.element.nativeElement.ownerDocument.removeEventListener('keydown', this.escapeHandler);
+      const doc: Document = this.element.nativeElement.ownerDocument;
+      doc.removeEventListener('keydown', this.escapeHandler);
+      doc.defaultView?.removeEventListener('blur', this.blurHandler);
     }
     this.overlayRef?.dispose();
     this.overlayRef = null;
