@@ -1494,7 +1494,8 @@ class Program {
     // profile, so exports such as `GITHUB_TOKEN` and an enriched `PATH` would be missing from the
     // agent's Bash and the terminal. Hydrate `process.env` before any manager reads it (the managers
     // resolve their env lazily at spawn time, and this runs ahead of every field initializer).
-    hydrateLoginShellEnvironment();
+    // Remembered between launches, so a cold start does not wait on the shell's profile (audit P2).
+    hydrateLoginShellEnvironment(path.join(app.getPath('userData'), 'shell-environment.json'));
     // After the shell's PATH is in place, since that is usually the only one Python is on. Not
     // awaited: nothing at start-up needs the answer, and a debug session is minutes away.
     void hydratePythonRuntime();
