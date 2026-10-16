@@ -571,6 +571,11 @@ export class Icon {
   public static readonly OPEN_EXTERNAL_BOLD: Icon = new Icon('ph-bold ph-arrow-square-out');
 
   /**
+   * Gets the open-editor glyph on the agent composer's button that opens the Markdown Prompt Editor.
+   */
+  public static readonly COMPOSER_OPEN_EDITOR: Icon = new Icon('ph-duotone ph-arrow-square-out');
+
+  /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
    */
   public static readonly MATH: Icon = new Icon('ph ph-function');
