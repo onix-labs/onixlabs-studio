@@ -46,6 +46,16 @@ import {
   READ_WORKSPACE_LANGUAGES,
   INSTALL_PLUGIN,
   UNINSTALL_PLUGIN,
+  LIST_CONTAINERS,
+  LIST_CONTAINER_IMAGES,
+  LIST_CONTAINER_VOLUMES,
+  READ_CONTAINER_LOGS,
+  CONTROL_CONTAINER,
+  REMOVE_CONTAINER,
+  PULL_IMAGE,
+  REMOVE_IMAGE,
+  REMOVE_VOLUME,
+  RUN_CONTAINER,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -472,6 +482,65 @@ describe('describeOffer', () => {
 
     await invokeTool(context, UNINSTALL_PLUGIN, { id: 'rust-analyzer' });
     expect(requestPermission).toHaveBeenCalledWith(UNINSTALL_PLUGIN, expect.any(String));
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('keepsTheContainersAgentToContainers_andAsksBeforePullingRunningOrRemoving', async () => {
+    // #969: starting, stopping and the like are each undone by another, so they do not ask.
+    const agent: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'containers', workspaceRoot: null }),
+    );
+    const chat: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'containers', mode: 'chat' }),
+    );
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(false),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((): Promise<unknown> =>
+      Promise.resolve({ available: true, name: 'db', state: 'running' }),
+    );
+    const { invokeTool } = await import('./harness-tools');
+    const context: AgentRunContext = contextFor({
+      surface: 'containers',
+      requestPermission,
+      bridge: { request },
+    });
+    const reads: readonly string[] = [
+      ASK_USER,
+      LIST_CONTAINERS,
+      LIST_CONTAINER_IMAGES,
+      LIST_CONTAINER_VOLUMES,
+      READ_CONTAINER_LOGS,
+    ];
+
+    expect([...names(agent)].sort()).toEqual(
+      [
+        ...reads,
+        CONTROL_CONTAINER,
+        RUN_CONTAINER,
+        PULL_IMAGE,
+        REMOVE_CONTAINER,
+        REMOVE_IMAGE,
+        REMOVE_VOLUME,
+      ].sort(),
+    );
+    expect(agent.systemPrompt).toContain('docked to the Containers view');
+    expect([...names(chat)].sort()).toEqual([...reads].sort());
+
+    await invokeTool(context, CONTROL_CONTAINER, { id: 'db', action: 'start' });
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    for (const [name, input] of [
+      [PULL_IMAGE, { reference: 'postgres:16' }],
+      [RUN_CONTAINER, { image: 'postgres:16' }],
+      [REMOVE_CONTAINER, { id: 'db' }],
+      [REMOVE_IMAGE, { id: 'postgres:16' }],
+      [REMOVE_VOLUME, { name: 'pgdata' }],
+    ] as const) {
+      await invokeTool(context, name, input);
+      expect(requestPermission).toHaveBeenCalledWith(name, expect.any(String));
+    }
     expect(request).toHaveBeenCalledTimes(1);
   });
 });

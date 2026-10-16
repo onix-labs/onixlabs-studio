@@ -67,7 +67,8 @@ export type AgentConversationAgentType =
   | 'search'
   | 'monitor'
   | 'models'
-  | 'plugins';
+  | 'plugins'
+  | 'containers';
 
 /**
  * Identifies the kind of context a conversation is associated with. `global` is the standalone "new

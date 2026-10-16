@@ -353,6 +353,27 @@
     }
   </div>
 
+  <!-- The Containers view's own agent (#969), docked on the right. It mounts on first show and stays
+       mounted, so closing it keeps its conversation. -->
+  @if (agentPanel.mounted()) {
+    <app-panel
+      panelId="agent"
+      defaultEdge="right"
+      [visible]="agentPanel.visible()"
+      [defaultSize]="360"
+      [minSize]="240"
+      [maxSize]="900"
+    >
+      <app-tool-view-agent-panel
+        surface="containers"
+        [context]="agentContext"
+        [tabId]="tabId()"
+        [isActive]="isActive() && agentPanel.visible()"
+        (closed)="agentPanel.hide()"
+      />
+    </app-panel>
+  }
+
   <!-- A row's further actions, shared by every row: the ⋮ button records which container it opened
        for before the menu shows. -->
   <app-menu #rowMenu [items]="rowMenuItems()" placement="down-end" (selected)="onRowMenu($event)" />

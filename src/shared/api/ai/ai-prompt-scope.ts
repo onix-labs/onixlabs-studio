@@ -38,6 +38,7 @@ export const AGENT_SURFACE_LABELS: Readonly<Record<AgentSurface, string>> = {
   monitor: 'System Monitor',
   models: 'AI Manager',
   plugins: 'Plugin Manager',
+  containers: 'Containers',
 };
 
 /**

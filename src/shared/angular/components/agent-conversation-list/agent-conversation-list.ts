@@ -56,6 +56,7 @@ const AGENT_TYPE_LABELS: Readonly<Record<AgentConversationAgentType, string>> = 
   monitor: 'System Monitor',
   models: 'AI Manager',
   plugins: 'Plugin Manager',
+  containers: 'Containers',
 };
 
 /**
@@ -71,6 +72,7 @@ const AGENT_TYPE_ORDER: readonly AgentConversationAgentType[] = [
   'monitor',
   'models',
   'plugins',
+  'containers',
 ];
 
 /**

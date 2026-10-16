@@ -4,6 +4,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
+import { FileChannel } from '@shared/api/file-channels';
 import {
   ContainerEngineInfo,
   ContainerStatus,
@@ -89,10 +90,16 @@ describe('ContainersView', () => {
    * Holds the containers and images the stub engine lists.
    */
   let listed: readonly ContainerSummary[] = [CONTAINER];
+
+  /**
+   * Holds what the user answers when asked to confirm a removal.
+   */
+  let confirms: boolean = true;
   let imaged: readonly ImageSummary[] = [];
 
   function stubBridge(status: ContainerStatus, engine: ContainerEngineInfo | null = DOCKER): void {
     calls = [];
+    confirms = true;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
@@ -114,7 +121,12 @@ describe('ContainersView', () => {
         ) {
           return Promise.resolve([] as T);
         }
-        return Promise.resolve(true as T);
+        if ((channel as FileChannel) === FileChannel.ConfirmDestructive) {
+          return Promise.resolve(confirms as T);
+        }
+        // The engine's actions succeed; anything else — the docked agent's providers and
+        // conversations (#969) — has nothing to say.
+        return Promise.resolve((channel.startsWith('container:') ? true : undefined) as T);
       },
       send: (): void => undefined,
       on: (): (() => void) => (): void => undefined,
@@ -305,6 +317,34 @@ describe('ContainersView', () => {
           (call.channel as ContainerChannel) === ContainerChannel.Start,
       ),
     ).toBe(true);
+  });
+
+  it('remove_asksFirst_andRemovesNothingWhenTheUserSaysNo', async () => {
+    // #969: a removed container cannot be got back.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const view: { remove(id: string): Promise<void> } = fixture.componentInstance as unknown as {
+      remove(id: string): Promise<void>;
+    };
+    const removals: () => number = (): number =>
+      calls.filter(
+        (call: RecordedCall): boolean =>
+          (call.channel as ContainerChannel) === ContainerChannel.Remove,
+      ).length;
+
+    confirms = false;
+    await view.remove('abc123');
+    expect(
+      calls.some(
+        (call: RecordedCall): boolean =>
+          (call.channel as FileChannel) === FileChannel.ConfirmDestructive,
+      ),
+    ).toBe(true);
+    expect(removals()).toBe(0);
+
+    confirms = true;
+    await view.remove('abc123');
+    expect(removals()).toBe(1);
   });
 
   it('bulk_actsOnEveryTickedContainer_andTheRowMenuOffersPauseAndRestart', async () => {

@@ -23,6 +23,16 @@ import {
   READ_WORKSPACE_LANGUAGES,
   INSTALL_PLUGIN,
   UNINSTALL_PLUGIN,
+  LIST_CONTAINERS,
+  LIST_CONTAINER_IMAGES,
+  LIST_CONTAINER_VOLUMES,
+  READ_CONTAINER_LOGS,
+  CONTROL_CONTAINER,
+  REMOVE_CONTAINER,
+  PULL_IMAGE,
+  REMOVE_IMAGE,
+  REMOVE_VOLUME,
+  RUN_CONTAINER,
   PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
@@ -70,6 +80,7 @@ import {
   type InsertPlacement,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
+import type { RunContainerRequest } from '@shared/api/container-types';
 import {
   ASK_USER_DESCRIPTION,
   PROPOSE_WORKSPACE_DESCRIPTION,
@@ -160,6 +171,19 @@ import {
   readWorkspaceLanguages,
   uninstallPlugin,
 } from './plugin-manager-tools';
+import {
+  CONTAINERS_PROMPT_APPENDIX,
+  controlContainer,
+  listContainerImages,
+  listContainers,
+  listContainerVolumes,
+  pullImage,
+  readContainerLogs,
+  removeContainer,
+  removeImage,
+  removeVolume,
+  runContainer,
+} from './containers-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -1425,6 +1449,137 @@ export async function createPluginManagerTools(context: AgentRunContext): Promis
 }
 
 /**
+ * Builds the Containers view's tools (#969). Starting, stopping, restarting, pausing and resuming are
+ * not wrapped in the permission prompt: each is undone by another. Pulling, running and removing are
+ * gated — a pull can be gigabytes, a run can publish ports and mount folders, and a removed volume's
+ * data is gone.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createContainersTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const id: ReturnType<typeof z.string> = z.string().min(1).describe("The container's name or id.");
+  const readTools: ToolSet = {
+    [LIST_CONTAINERS]: tool({
+      description:
+        "List the containers: each one's id, name, image, state, status, published ports, mounted volumes, and CPU and memory while it runs.",
+      inputSchema: z.object({
+        runningOnly: z.boolean().optional().describe('List only running containers.'),
+      }),
+      execute: (args: { runningOnly?: boolean }): Promise<string> =>
+        listContainers(context, args.runningOnly),
+    }),
+    [LIST_CONTAINER_IMAGES]: tool({
+      description:
+        "List the images on this machine: each one's id, tags, size and the containers using it.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listContainerImages(context),
+    }),
+    [LIST_CONTAINER_VOLUMES]: tool({
+      description: "List the volumes: each one's name, driver, and the containers mounting it.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listContainerVolumes(context),
+    }),
+    [READ_CONTAINER_LOGS]: tool({
+      description: "Read a container's most recent log lines, oldest first.",
+      inputSchema: z.object({
+        id,
+        tail: z
+          .number()
+          .int()
+          .min(1)
+          .max(2000)
+          .optional()
+          .describe('How many lines, at most; 200 when omitted.'),
+      }),
+      execute: (args: { id: string; tail?: number }): Promise<string> =>
+        readContainerLogs(context, args.id, args.tail),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [CONTROL_CONTAINER]: tool({
+      description: 'Start, stop, restart, pause or resume a container.',
+      inputSchema: z.object({
+        id,
+        action: z.enum(['start', 'stop', 'restart', 'pause', 'resume']),
+      }),
+      execute: (args: { id: string; action: string }): Promise<string> =>
+        controlContainer(context, args.id, args.action),
+    }),
+    [RUN_CONTAINER]: tool({
+      description:
+        'Run a new container from an image on this machine, and start it. Pull the image first when it is not here.',
+      inputSchema: z.object({
+        image: z.string().min(1).describe('The image, as in postgres:16.'),
+        name: z
+          .string()
+          .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/)
+          .optional()
+          .describe("The container's name."),
+        ports: z
+          .array(
+            z.object({
+              host: z.number().int().min(1).max(65535),
+              container: z.number().int().min(1).max(65535),
+              protocol: z.enum(['tcp', 'udp']).optional(),
+            }),
+          )
+          .optional()
+          .describe('Ports to publish: the port on this machine, and the port inside.'),
+        env: z.record(z.string(), z.string()).optional().describe('Environment variables.'),
+        volumes: z
+          .array(
+            z.object({
+              source: z.string().min(1).describe('A volume name, or a folder on this machine.'),
+              target: z.string().startsWith('/').describe('Where it mounts inside.'),
+              readOnly: z.boolean().optional(),
+            }),
+          )
+          .optional()
+          .describe('What to mount.'),
+      }),
+      execute: gated(context, RUN_CONTAINER, (args: RunContainerRequest): Promise<string> =>
+        runContainer(context, args),
+      ),
+    }),
+    [PULL_IMAGE]: tool({
+      description: 'Download an image, as in postgres:16. Waits until it has arrived.',
+      inputSchema: z.object({ reference: z.string().min(1).describe('The image reference.') }),
+      execute: gated(context, PULL_IMAGE, (args: { reference: string }): Promise<string> =>
+        pullImage(context, args.reference),
+      ),
+    }),
+    [REMOVE_CONTAINER]: tool({
+      description: 'Remove a container, stopping it first when it runs.',
+      inputSchema: z.object({ id }),
+      execute: gated(context, REMOVE_CONTAINER, (args: { id: string }): Promise<string> =>
+        removeContainer(context, args.id),
+      ),
+    }),
+    [REMOVE_IMAGE]: tool({
+      description: 'Remove an image by its tag or id. Refused while a container uses it.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The image's tag or id.") }),
+      execute: gated(context, REMOVE_IMAGE, (args: { id: string }): Promise<string> =>
+        removeImage(context, args.id),
+      ),
+    }),
+    [REMOVE_VOLUME]: tool({
+      description:
+        'Remove a volume and the data in it, which cannot be got back. Refused while a container mounts it.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The volume's name.") }),
+      execute: gated(context, REMOVE_VOLUME, (args: { name: string }): Promise<string> =>
+        removeVolume(context, args.name),
+      ),
+    }),
+  };
+}
+
+/**
  * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
  * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
  * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
@@ -1457,6 +1612,8 @@ export function promptForSurface(
         return AI_MANAGER_PROMPT_APPENDIX;
       case 'plugins':
         return PLUGIN_MANAGER_PROMPT_APPENDIX;
+      case 'containers':
+        return CONTAINERS_PROMPT_APPENDIX;
     }
   })();
   // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
@@ -1587,6 +1744,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
       case 'monitor':
       case 'models':
       case 'plugins':
+      case 'containers':
         return createToolViewTools(context);
     }
   })();
@@ -1613,6 +1771,8 @@ async function createToolViewTools(context: AgentRunContext): Promise<ToolSet> {
       return createAiManagerTools(context);
     case 'plugins':
       return createPluginManagerTools(context);
+    case 'containers':
+      return createContainersTools(context);
     default:
       return {};
   }
