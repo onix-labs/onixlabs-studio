@@ -44,6 +44,22 @@ describe('monitor tools', () => {
     expect(line).not.toContain('\n');
   });
 
+  it('formatLogRecord_masksASecretBeforeItLeavesForTheModel', () => {
+    // Audit S7: a clone URL with a token, or a header a plugin echoed, is in the log; the agent
+    // sends what it reads to a provider.
+    const line: string = formatLogRecord({
+      timestamp: '2026-10-16T09:00:00.000Z',
+      severity: 'warning',
+      origin: 'main',
+      source: 'CloneManager',
+      message:
+        'Clone failed: git clone -- https://me:ghp_abcdefghijklmnopqrstuvwxyz0123@github.com/a/b',
+    });
+
+    expect(line).not.toContain('ghp_');
+    expect(line).toContain('https://[redacted]@github.com/a/b');
+  });
+
   it('queryLogs_sendsTheClampedQuery_andListsTheRecordsNewestFirst', async () => {
     const { context, request } = contextAnswering({
       available: true,
