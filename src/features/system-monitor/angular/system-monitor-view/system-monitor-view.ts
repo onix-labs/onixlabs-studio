@@ -22,6 +22,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
   createViewInjectorRegistrar,
@@ -194,6 +195,12 @@ export class SystemMonitorView implements OnInit {
    * user paused it (the Refresh rate setting).
    */
   private readonly refreshRate: Signal<number> = inject(Settings).systemMonitorRefreshRate;
+
+  /**
+   * Holds whether the window is on screen. A tab in front of a minimised or covered window is still
+   * "active"; nothing it shows can be seen, so its feeds pause (audit P4).
+   */
+  private readonly onScreen: Signal<boolean> = inject(DocumentVisibility).visible;
 
   /**
    * Holds the most recent metrics sample, or null before the first arrives.
@@ -668,32 +675,40 @@ export class SystemMonitorView implements OnInit {
       }
     });
 
-    // The live record stream and the ribbon handler follow the tab's visibility: no record push is
-    // processed while the monitor is hidden (the performance-audit posture). Reactivation reloads the
-    // viewed session first, catching up on whatever was recorded while the stream was down.
+    // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
     effect((): void => {
-      const active: boolean = this.isActive();
+      if (this.isActive()) {
+        this.commands.register(this.commandHandler);
+      } else {
+        this.commands.unregister(this.commandHandler);
+      }
+    });
+
+    // The live record stream follows what can be seen: no record push is processed while the monitor
+    // is hidden behind another tab or the window is off screen (the performance-audit posture).
+    // Reactivation reloads the viewed session first, catching up on whatever was recorded while the
+    // stream was down.
+    effect((): void => {
+      const showing: boolean = this.isActive() && this.onScreen();
       // The reactive dependency is the visibility alone: the catch-up reload reads the selected
       // session synchronously, and tracking that here would re-run this effect every time the viewed
       // session changes.
       untracked((): void => {
-        if (active) {
-          this.commands.register(this.commandHandler);
+        if (showing) {
           this.subscribeToLiveRecords();
         } else {
-          this.commands.unregister(this.commandHandler);
           this.unsubscribeFromLiveRecords();
         }
       });
     });
 
-    // Sampling follows the tab's visibility and the user's refresh rate: nothing is sampled while the
-    // monitor is hidden or paused, and a rate change re-times a running loop without restarting it
-    // (restarting would reset the CPU baseline and blank a tick). The backend's ref-count sees one
-    // start per stop, whatever the rate does in between.
+    // Sampling follows what can be seen and the user's refresh rate: nothing is sampled while the
+    // monitor is hidden, the window is off screen or the rate is paused, and a rate change re-times a
+    // running loop without restarting it (restarting would reset the CPU baseline and blank a tick).
+    // The backend's ref-count sees one start per stop, whatever the rate does in between.
     effect((): void => {
       const rate: number = this.refreshRate();
-      const wanted: boolean = this.isActive() && rate > 0;
+      const wanted: boolean = this.isActive() && this.onScreen() && rate > 0;
       untracked((): void => {
         if (wanted) {
           this.metrics.setRate(rate);

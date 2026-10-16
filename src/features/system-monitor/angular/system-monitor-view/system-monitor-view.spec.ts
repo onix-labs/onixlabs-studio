@@ -1,8 +1,9 @@
-import { Signal, WritableSignal } from '@angular/core';
+import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TableRow } from '@shared/angular/components/table/table';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
@@ -172,6 +173,7 @@ describe('SystemMonitorView', () => {
   let view: Testable;
   let fake: FakeLog;
   let metrics: FakeMetrics;
+  let onScreen: WritableSignal<boolean>;
 
   /**
    * Creates the view with the fake log and metrics and the given seeded records, and settles the
@@ -183,11 +185,13 @@ describe('SystemMonitorView', () => {
     fake = new FakeLog();
     fake.records = records;
     metrics = new FakeMetrics();
+    onScreen = signal<boolean>(true);
     await TestBed.configureTestingModule({
       imports: [SystemMonitorView],
       providers: [
         { provide: Log, useValue: fake },
         { provide: SystemMonitorMetrics, useValue: metrics },
+        { provide: DocumentVisibility, useValue: { visible: onScreen } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(SystemMonitorView);
@@ -417,6 +421,27 @@ describe('SystemMonitorView', () => {
     fixture.componentRef.setInput('isActive', false);
     fixture.detectChanges();
     expect(metrics.stopped).toBeGreaterThan(startedWhileActive);
+  });
+
+  it('whenTheWindowLeavesTheScreen_samplingAndTheLiveStreamPause_andResumeWhenItReturns', async () => {
+    // Audit P4: the tab stays active behind another app or on another desktop; its feeds should not.
+    await create([record({ id: 1 })]);
+    expect(metrics.started).toBe(1);
+    expect(fake.listener).not.toBeNull();
+    const queries: number = fake.queries.length;
+
+    onScreen.set(false);
+    fixture.detectChanges();
+    expect(metrics.stopped).toBe(1);
+    expect(fake.listener).toBeNull();
+    expect(TestBed.inject(SystemMonitorCommands).hasRecords()).toBe(true);
+
+    onScreen.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(metrics.started).toBe(2);
+    expect(fake.listener).not.toBeNull();
+    expect(fake.queries.length).toBeGreaterThan(queries);
   });
 
   it('refreshRate_isSentBeforeSamplingStarts_andAChangeRetimesWithoutRestarting', async () => {
