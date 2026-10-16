@@ -23,6 +23,27 @@ describe('findBlockedCommand', () => {
     }
   });
 
+  it('seesThroughQuotesEscapesShellsAndValues_whichUsedToSlipPast', () => {
+    // Audit S10: each of these ran `gh` and passed the check.
+    for (const line of [
+      'sh -c "gh auth token"',
+      'bash -lc gh',
+      "zsh -c 'gh pr list'",
+      'eval gh auth token',
+      'npx gh auth status',
+      'g\\h auth token',
+      '"g"h auth token',
+      "'gh' auth token",
+      'G=gh; $G auth token',
+      'git -c core.pager=gh log',
+      'find . -exec gh \\;',
+      'find . -name x -execdir gh {} +',
+      'xargs -I{} gh issue view {}',
+    ]) {
+      expect(findBlockedCommand(line, BLOCKED), line).toBe('gh');
+    }
+  });
+
   it('letsALineThatOnlyMentionsTheName_through', () => {
     for (const line of [
       'git log --grep gh',
