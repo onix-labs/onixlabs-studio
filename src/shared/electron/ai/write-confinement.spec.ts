@@ -1,7 +1,11 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   CONFINED_WRITE_TOOLS,
   isWriteDenied,
   isWriteWithinRoots,
+  realPathOf,
   writeTargetPath,
 } from './write-confinement';
 
@@ -74,6 +78,64 @@ describe('write-confinement', () => {
     it('isWriteWithinRoots_whenNoRoots_isUnconfined', () => {
       // An empty root set means confinement is inactive (e.g. a no-workspace run).
       expect(isWriteWithinRoots('/etc/passwd', [])).toBe(true);
+    });
+  });
+
+  describe('symbolic links (audit S8)', () => {
+    let base: string;
+    let root: string;
+    let outside: string;
+
+    beforeEach(() => {
+      base = fs.mkdtempSync(path.join(os.tmpdir(), 'confinement-'));
+      root = path.join(base, 'ws');
+      outside = path.join(base, 'elsewhere');
+      fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+      fs.mkdirSync(outside);
+      // A link inside the workspace that points outside it: checked out of a cloned repository, or
+      // made by the agent's own shell, which the OS sandbox allows as a write inside cwd.
+      fs.symlinkSync(outside, path.join(root, 'out'));
+      // A link inside the workspace that stays inside it.
+      fs.symlinkSync(path.join(root, 'src'), path.join(root, 'source'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(base, { recursive: true, force: true });
+    });
+
+    it('isWriteWithinRoots_whenALinkInsideTheRootPointsOutside_isFalse', () => {
+      expect(isWriteWithinRoots(path.join(root, 'out', 'plugin.json'), [root])).toBe(false);
+      expect(isWriteWithinRoots('out/nested/deeper.txt', [root])).toBe(false);
+      expect(isWriteWithinRoots(path.join(root, 'out'), [root])).toBe(false);
+    });
+
+    it('isWriteWithinRoots_whenALinkStaysInsideTheRoot_isTrue', () => {
+      expect(isWriteWithinRoots(path.join(root, 'source', 'a.ts'), [root])).toBe(true);
+    });
+
+    it('isWriteWithinRoots_whenTheRootItselfIsReachedThroughALink_stillContainsItsFiles', () => {
+      // macOS: `/var/…` is `/private/var/…`. The root and the target resolve the same way.
+      const linkedRoot: string = path.join(base, 'ws-link');
+      fs.symlinkSync(root, linkedRoot);
+      expect(isWriteWithinRoots(path.join(linkedRoot, 'src', 'a.ts'), [root])).toBe(true);
+      expect(isWriteWithinRoots(path.join(root, 'src', 'a.ts'), [linkedRoot])).toBe(true);
+      expect(isWriteWithinRoots(path.join(linkedRoot, 'out', 'x'), [linkedRoot])).toBe(false);
+    });
+
+    it('isWriteDenied_whenALinkReachesADeniedPlace_isTrue', () => {
+      const secrets: string = path.join(root, 'secrets');
+      fs.mkdirSync(secrets);
+      fs.symlinkSync(secrets, path.join(root, 'harmless'));
+      expect(isWriteDenied(path.join(root, 'harmless', 'key.pem'), ['secrets'], root)).toBe(true);
+      expect(isWriteDenied(path.join(root, 'harmless', 'key.pem'), [secrets], root)).toBe(true);
+      expect(isWriteDenied(path.join(root, 'src', 'a.ts'), ['secrets'], root)).toBe(false);
+    });
+
+    it('realPathOf_resolvesTheLongestExistingPrefix_andLeavesTheRest', () => {
+      expect(realPathOf(path.join(root, 'out', 'new', 'file.txt'))).toBe(
+        path.join(fs.realpathSync.native(outside), 'new', 'file.txt'),
+      );
+      expect(realPathOf('/no/such/place/anywhere')).toBe('/no/such/place/anywhere');
     });
   });
 
