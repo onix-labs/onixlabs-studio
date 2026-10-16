@@ -1,6 +1,6 @@
 {
   "name": "@onixlabs/docker-engine",
-  "version": "30.1.0",
+  "version": "30.2.0",
   "private": true,
   "description": "Talk to a Docker-compatible container engine over its local socket.",
   "type": "commonjs",

@@ -1,5 +1,5 @@
 {
-  "revision": 45,
+  "revision": 46,
   "plugins": [
     {
       "id": "pyright",
@@ -939,12 +939,12 @@
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
-      "version": "30.1.0",
+      "version": "30.2.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-        "sha256": "f4deef6adb1d898af9c019f50a8f5e7221936d052cac7e5b76536a88f9628053",
+        "sha256": "cbf1ee60b3a251d376f0fa62a90763d224dc503b9eeafed49bd9917442b372d7",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
@@ -981,12 +981,12 @@
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
-      "version": "7.1.0",
+      "version": "7.2.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-        "sha256": "134f6d6a8f4a952aa282be4bac9cd6466d51b5a4f76ae710702d888a0a48921c",
+        "sha256": "4d2ef48bd234e24f8def53b8604b149d0754fcc2aa69517805b0945838791b2c",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {
