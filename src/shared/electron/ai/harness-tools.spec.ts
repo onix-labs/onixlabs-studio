@@ -79,6 +79,8 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): AgentRunC
     systemPromptExtra: '',
     skills: [],
     workspaceRoot: '/ws',
+    allowedWritePaths: [],
+    deniedWritePaths: [],
     permissionPosture: 'prompt',
     bridge: { request: (): Promise<unknown> => Promise.resolve('') },
     emit: (): void => undefined,
@@ -531,16 +533,68 @@ describe('describeOffer', () => {
     expect(requestPermission).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledTimes(1);
 
-    for (const [name, input] of [
-      [PULL_IMAGE, { reference: 'postgres:16' }],
-      [RUN_CONTAINER, { image: 'postgres:16' }],
-      [REMOVE_CONTAINER, { id: 'db' }],
-      [REMOVE_IMAGE, { id: 'postgres:16' }],
-      [REMOVE_VOLUME, { name: 'pgdata' }],
+    // Audit S3: each card shows what it asks about — the image, the container, the volume — never a
+    // bare tool name.
+    for (const [name, input, shown] of [
+      [PULL_IMAGE, { reference: 'postgres:16' }, 'postgres:16'],
+      [RUN_CONTAINER, { image: 'postgres:16' }, 'postgres:16'],
+      [REMOVE_CONTAINER, { id: 'db' }, 'db'],
+      [REMOVE_IMAGE, { id: 'postgres:16' }, 'postgres:16'],
+      [REMOVE_VOLUME, { name: 'pgdata' }, 'pgdata'],
     ] as const) {
       await invokeTool(context, name, input);
-      expect(requestPermission).toHaveBeenCalledWith(name, expect.any(String));
+      expect(requestPermission).toHaveBeenCalledWith(name, expect.stringContaining(shown));
     }
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('runContainer_showsItsMountsOnTheCard_andRefusesOneOutsideTheWriteArea', async () => {
+    const requestPermission: ReturnType<typeof vi.fn> = vi.fn((): Promise<boolean> =>
+      Promise.resolve(true),
+    );
+    const request: ReturnType<typeof vi.fn> = vi.fn((): Promise<unknown> =>
+      Promise.resolve({ available: true, id: 'abc123def456' }),
+    );
+    const { invokeTool } = await import('./harness-tools');
+    const context: AgentRunContext = contextFor({
+      surface: 'containers',
+      workspaceRoot: '/ws',
+      allowedWritePaths: [],
+      deniedWritePaths: [],
+      requestPermission,
+      bridge: { request },
+    });
+
+    const inside: { result: string | null; error: string | null } = await invokeTool(
+      context,
+      RUN_CONTAINER,
+      {
+        image: 'postgres:16',
+        name: 'db',
+        ports: [{ host: 5432, container: 5432 }],
+        volumes: [{ source: '/ws/data', target: '/var/lib/postgresql/data' }],
+      },
+    );
+    expect(inside.error).toBeNull();
+    expect(requestPermission).toHaveBeenCalledWith(
+      RUN_CONTAINER,
+      expect.stringContaining('mounts /ws/data -> /var/lib/postgresql/data'),
+    );
+    expect(requestPermission).toHaveBeenCalledWith(
+      RUN_CONTAINER,
+      expect.stringContaining('publishes 5432->5432/tcp'),
+    );
+
+    requestPermission.mockClear();
+    request.mockClear();
+    const outside: { result: string | null; error: string | null } = await invokeTool(
+      context,
+      RUN_CONTAINER,
+      { image: 'alpine', volumes: [{ source: '/', target: '/host' }] },
+    );
+    // Refused before the prompt: a fixed boundary is not a question.
+    expect(outside.result).toContain('outside the agent');
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
 });

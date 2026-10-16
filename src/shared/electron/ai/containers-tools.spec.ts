@@ -3,7 +3,8 @@ import type { AgentRunContext } from './agent-provider';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { listContainers, pullImage, readContainerLogs } = await import('./containers-tools');
+const { listContainers, pullImage, readContainerLogs, refuseUnconfinedMounts } =
+  await import('./containers-tools');
 
 /**
  * Builds a run context whose bridge answers with the given value, recording what it was asked.
@@ -20,6 +21,21 @@ function contextAnswering(answer: unknown, asked: (number | undefined)[] = []): 
       },
     },
   } as unknown as AgentRunContext;
+}
+
+/**
+ * Builds a run context with a write area.
+ * @param workspaceRoot The workspace root, or null for none.
+ * @param allowedWritePaths The user's allowed write paths.
+ * @param deniedWritePaths The user's denied write paths.
+ * @returns Returns the context.
+ */
+function confined(
+  workspaceRoot: string | null,
+  allowedWritePaths: readonly string[] = [],
+  deniedWritePaths: readonly string[] = [],
+): AgentRunContext {
+  return { workspaceRoot, allowedWritePaths, deniedWritePaths } as unknown as AgentRunContext;
 }
 
 describe('Containers tools', () => {
@@ -52,5 +68,61 @@ describe('Containers tools', () => {
     expect(await listContainers(contextAnswering({ available: false }), undefined)).toContain(
       'not open',
     );
+  });
+
+  describe('refuseUnconfinedMounts', () => {
+    it('allowsFoldersInsideTheWriteArea_andNamedVolumesAnywhere', () => {
+      const context: AgentRunContext = confined('/ws', ['/shared']);
+      expect(
+        refuseUnconfinedMounts(context, {
+          image: 'postgres:16',
+          volumes: [
+            { source: '/ws/data', target: '/data' },
+            { source: './cache', target: '/cache' },
+            { source: '/shared/models', target: '/models', readOnly: true },
+            { source: 'pgdata', target: '/var/lib/postgresql/data' },
+          ],
+        }),
+      ).toBeNull();
+      expect(refuseUnconfinedMounts(context, { image: 'nginx' })).toBeNull();
+    });
+
+    it('refusesAFolderOutsideTheArea_evenReadOnly_andNeverAsksFirst', () => {
+      // Audit S3: `/:/host` or the engine's own socket used to reach the prompt, which showed nothing.
+      const context: AgentRunContext = confined('/ws');
+      for (const source of ['/', '/var/run/docker.sock', '/ws/../etc', '~/.ssh', '/Users/me']) {
+        expect(
+          refuseUnconfinedMounts(context, {
+            image: 'alpine',
+            volumes: [{ source, target: '/host', readOnly: true }],
+          }),
+        ).toContain('outside the agent');
+      }
+    });
+
+    it('refusesADeniedPath_insideTheArea', () => {
+      expect(
+        refuseUnconfinedMounts(confined('/ws', [], ['.env']), {
+          image: 'alpine',
+          volumes: [{ source: '/ws/.env', target: '/env' }],
+        }),
+      ).toContain('outside the agent');
+    });
+
+    it('withNoWorkspace_refusesEveryFolder_butNotAVolume', () => {
+      const context: AgentRunContext = confined(null);
+      expect(
+        refuseUnconfinedMounts(context, {
+          image: 'alpine',
+          volumes: [{ source: '/tmp/x', target: '/x' }],
+        }),
+      ).toContain('outside the agent');
+      expect(
+        refuseUnconfinedMounts(context, {
+          image: 'alpine',
+          volumes: [{ source: 'cache', target: '/x' }],
+        }),
+      ).toBeNull();
+    });
   });
 });

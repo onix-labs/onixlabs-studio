@@ -181,9 +181,11 @@ import {
   readContainerLogs,
   removeContainer,
   removeImage,
+  refuseUnconfinedMounts,
   removeVolume,
   runContainer,
 } from './containers-tools';
+import { describeRunRequest } from '@shared/api/container-run-request';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -317,17 +319,21 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
  * @param context The run context (carries the posture and the permission round-trip).
  * @param name The tool name shown on the permission prompt.
  * @param execute The gated executor.
+ * @param describe Renders the input for the prompt and the audit record; defaults to the common
+ * one-line summary. A tool whose input the summary cannot do justice to — a container run, whose
+ * mounts are the whole question — supplies its own.
  * @returns Returns the wrapped executor.
  */
 function gated<TArgs>(
   context: AgentRunContext,
   name: string,
   execute: (args: TArgs) => Promise<string>,
+  describe: (args: TArgs) => string = summarizeToolInput,
 ): (args: TArgs) => Promise<string> {
   return async (args: TArgs): Promise<string> => {
     // Per-tool default policy (#309), consulted ahead of the posture: `deny` refuses, `allow` runs
     // without prompting, and an unset tool (or `ask`) falls through to the posture/prompt below.
-    const detail: string = summarizeToolInput(args);
+    const detail: string = describe(args);
     const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
     if (policy === 'deny') {
       logger.debug('ai-sdk-stream.gated', `Tool "${name}" refused by Deny policy`);
@@ -1543,9 +1549,20 @@ export async function createContainersTools(context: AgentRunContext): Promise<T
           .optional()
           .describe('What to mount.'),
       }),
-      execute: gated(context, RUN_CONTAINER, (args: RunContainerRequest): Promise<string> =>
-        runContainer(context, args),
-      ),
+      execute: ((): ((args: RunContainerRequest) => Promise<string>) => {
+        const run: (args: RunContainerRequest) => Promise<string> = gated(
+          context,
+          RUN_CONTAINER,
+          (args: RunContainerRequest): Promise<string> => runContainer(context, args),
+          describeRunRequest,
+        );
+        // A mount outside the write area is refused before the prompt, not put to the user: the area
+        // is a fixed boundary (audit S3).
+        return (args: RunContainerRequest): Promise<string> => {
+          const refusal: string | null = refuseUnconfinedMounts(context, args);
+          return refusal === null ? run(args) : Promise.resolve(refusal);
+        };
+      })(),
     }),
     [PULL_IMAGE]: tool({
       description: 'Download an image, as in postgres:16. Waits until it has arrived.',
