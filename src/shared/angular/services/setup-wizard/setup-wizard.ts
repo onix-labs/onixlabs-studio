@@ -394,15 +394,6 @@ export class SetupWizard {
   private readonly currentId: WritableSignal<string> = signal<string>('welcome');
 
   /**
-   * Holds the leaves present when the catalogue first loaded this run, or null until it has. An
-   * upgrade shows only leaves that were not there then — a plugin installed during this pass, whose
-   * configuration the user has not yet seen — rather than every language and provider they set up
-   * long ago.
-   */
-  private readonly baseline: WritableSignal<ReadonlySet<string> | null> =
-    signal<ReadonlySet<string> | null>(null);
-
-  /**
    * Gets whether the wizard is running, and therefore whether its window is presented. The welcome
    * screen reads this to stand aside: both want the same cold start, and the wizard comes first.
    */
@@ -519,9 +510,7 @@ export class SetupWizard {
    * way, an upgrade would read them before they existed.
    */
   public readonly steps: Signal<readonly SetupStep[]> = computed((): readonly SetupStep[] => {
-    const leaves: readonly SetupStep[] = this.leaves().filter((leaf: SetupStep): boolean =>
-      this.leafApplies(leaf),
-    );
+    const leaves: readonly SetupStep[] = this.leaves();
     return SETUP_STEPS.filter((step: SetupStep): boolean => this.applies(step)).flatMap(
       (root: SetupStep): readonly SetupStep[] => [
         root,
@@ -583,18 +572,6 @@ export class SetupWizard {
       `Running setup for ${this.version} (${this.mode}, last seen ${this.lastSeen ?? 'never'})`,
     );
     this.running.set(true);
-    // The baseline is taken once both catalogues have answered, not at construction: at a cold start
-    // neither has loaded yet, and a baseline of "nothing installed" would make every long-standing
-    // leaf look freshly installed on the very upgrade the delta exists to keep short.
-    effect((): void => {
-      if (this.baseline() !== null || this.plugins.busy() || !this.lspSettings.catalogueLoaded()) {
-        return;
-      }
-      const present: ReadonlySet<string> = new Set<string>(
-        this.leaves().map((leaf: SetupStep): string => leaf.id),
-      );
-      untracked((): void => this.baseline.set(present));
-    });
     effect((): void => {
       if (this.plugins.plugins().some(needsConfirming)) {
         untracked((): void => void this.confirmCapabilities());
@@ -643,7 +620,10 @@ export class SetupWizard {
    *
    * The summary and plugin steps always run. They are not about settings but about the machine,
    * and the machine changes underneath Studio without any version doing so — a runtime uninstalled, a
-   * credential expired. A version bump is as good a moment as any to look again.
+   * credential expired. A version bump is as good a moment as any to look again. For the same
+   * reason every leaf beneath them runs too, not only those installed during this pass: an upgrade
+   * that hid the providers and languages already installed left nothing beneath their roots to
+   * configure, and the rail read as a flat list.
    * @param step The root to test.
    * @returns Returns true when the step should be presented.
    */
@@ -658,22 +638,6 @@ export class SetupWizard {
       return true;
     }
     return this.hasNewSettings(step, this.lastSeen);
-  }
-
-  /**
-   * Decides whether a leaf runs this time: always on a first run, and on an upgrade only when it was
-   * not there when the catalogue first loaded — that is, its plugin was installed during this pass.
-   * Until the baseline exists nothing is known about what is new, so nothing is shown rather than
-   * everything.
-   * @param leaf The leaf to test.
-   * @returns Returns true when the leaf should be presented.
-   */
-  private leafApplies(leaf: SetupStep): boolean {
-    if (this.mode === 'first-run') {
-      return true;
-    }
-    const baseline: ReadonlySet<string> | null = this.baseline();
-    return baseline !== null && !baseline.has(leaf.id);
   }
 
   /**

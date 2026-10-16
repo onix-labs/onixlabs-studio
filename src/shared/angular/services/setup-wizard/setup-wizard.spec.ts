@@ -155,7 +155,7 @@ function runningGit(capabilities: readonly VersionControlCapability[]): SourceCo
 }
 
 /**
- * Builds the service over a stubbed catalogue, then settles its effects so the baseline is taken.
+ * Builds the service over a stubbed catalogue, then settles its effects.
  * @param installed What is installed.
  * @param sourceControl The version-control client, or undefined for the real one (no bridge).
  * @returns Returns the service.
@@ -577,9 +577,9 @@ describe('SetupWizard', () => {
       expect(wizard.current()?.id).toBe('debug-adapter');
     });
 
-    it('steps_onAnUpgrade_leaveOutLeavesThatWereAlreadyThere', () => {
-      // A language set up long ago is not something the upgrade has to say about; only what was
-      // installed during this pass is unseen.
+    it('steps_onAnUpgrade_includeLeavesThatWereAlreadyThere', () => {
+      // A plugin installed long ago still has a provider to sign in to and a language to set up, and
+      // the machine may have changed underneath it since; hiding it left its root with nothing beneath.
       localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
       const installed: Installed = nothingInstalled();
       installed.languages.set(['csharp']);
@@ -587,8 +587,8 @@ describe('SetupWizard', () => {
 
       const wizard: SetupWizard = buildWith(installed);
 
-      expect(ids(wizard)).not.toContain('language-server/csharp');
-      expect(ids(wizard)).not.toContain('agent-harness/anthropic');
+      expect(ids(wizard)).toContain('language-server/csharp');
+      expect(ids(wizard)).toContain('agent-harness/anthropic');
     });
 
     it('steps_onAnUpgrade_growALeafForAPluginInstalledDuringThePass', () => {
@@ -600,20 +600,20 @@ describe('SetupWizard', () => {
       installed.languages.set(['csharp', 'rust']);
 
       expect(ids(wizard)).toContain('language-server/rust');
-      expect(ids(wizard)).not.toContain('language-server/csharp');
+      expect(ids(wizard)).toContain('language-server/csharp');
     });
 
-    it('steps_onAnUpgradeBeforeTheCatalogueHasLoaded_showNoLeavesRatherThanAll', () => {
-      // At a cold start neither catalogue has answered; a baseline of "nothing installed" would make
-      // every long-standing leaf look new on exactly the upgrade the delta is meant to keep short.
+    it('steps_onAnUpgradeBeforeTheCatalogueHasLoaded_growLeavesOnceItAnswers', () => {
+      // At a cold start neither catalogue has answered; the leaves arrive with it rather than never.
       localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
       const installed: Installed = nothingInstalled();
       installed.loaded.set(false);
-      installed.languages.set(['csharp']);
-
       const wizard: SetupWizard = buildWith(installed);
 
-      expect(ids(wizard)).not.toContain('language-server/csharp');
+      installed.languages.set(['csharp']);
+      installed.loaded.set(true);
+
+      expect(ids(wizard)).toContain('language-server/csharp');
     });
   });
 
