@@ -1,6 +1,39 @@
 import type { RunContainerRequest } from './container-types';
 
 /**
+ * Describes a run request in one line for the permission card and the audit log: the image, the
+ * container's name, every published port and every mount. The mounts are the part that matters —
+ * a folder mounted into a container is a folder the container can read, and write unless the mount
+ * is read-only — so none is left out, however long the line gets.
+ * @param request The run request.
+ * @returns Returns the description.
+ */
+export function describeRunRequest(request: RunContainerRequest): string {
+  const parts: string[] = [request.image];
+  if (request.name !== undefined && request.name.length > 0) {
+    parts.push(`as ${request.name}`);
+  }
+  const ports: readonly string[] = (request.ports ?? []).map(
+    (port): string => `${port.host}->${port.container}/${port.protocol ?? 'tcp'}`,
+  );
+  if (ports.length > 0) {
+    parts.push(`publishes ${ports.join(', ')}`);
+  }
+  const mounts: readonly string[] = (request.volumes ?? []).map(
+    (volume): string =>
+      `${volume.source} -> ${volume.target}${volume.readOnly === true ? ' (read-only)' : ''}`,
+  );
+  if (mounts.length > 0) {
+    parts.push(`mounts ${mounts.join(', ')}`);
+  }
+  const variables: number = Object.keys(request.env ?? {}).length;
+  if (variables > 0) {
+    parts.push(`${variables} environment variable${variables === 1 ? '' : 's'}`);
+  }
+  return parts.join('; ');
+}
+
+/**
  * Reads a run request out of what was sent — by the renderer to main, or by an agent to the
  * Containers view (#969) —, keeping only well-formed parts: an image is
  * required; ports must be whole numbers in range; volumes need a source and a target.

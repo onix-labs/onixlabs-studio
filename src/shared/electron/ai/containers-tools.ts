@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import {
   CONTROL_CONTAINER,
   LIST_CONTAINER_IMAGES,
@@ -13,6 +14,7 @@ import {
 import type { RunContainerRequest } from '@shared/api/container-types';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
+import { isWriteDenied, isWriteWithinRoots } from './write-confinement';
 
 // The Containers agent's tools (#969). The renderer acts through the same client the view's buttons
 // use, so what the agent does is what a click would do, and the list it shows follows at once.
@@ -209,6 +211,66 @@ export function removeImage(context: AgentRunContext, id: string): Promise<strin
  */
 export function removeVolume(context: AgentRunContext, name: string): Promise<string> {
   return ask(context, REMOVE_VOLUME, { name }, (): string => `Removed the volume ${name}.`);
+}
+
+/**
+ * Determines whether a mount's source names a folder on this machine rather than a named volume. A
+ * volume's name holds no path separator; anything with one, an absolute path, or a home-relative
+ * path is a folder.
+ * @param source The mount's source.
+ * @returns Returns true when the source is a folder.
+ */
+function isHostFolder(source: string): boolean {
+  return (
+    isAbsolute(source) ||
+    source.includes('/') ||
+    source.includes('\\') ||
+    source.startsWith('~') ||
+    source.startsWith('.')
+  );
+}
+
+/**
+ * Refuses a run that mounts a folder outside the agent's write area (audit S3).
+ *
+ * ⛔ A mount is a write: the container reads the folder, and writes it unless the mount is read-only.
+ * So a mount is held to the same fixed boundary as a file write — the workspace root and the user's
+ * allowed write paths, minus their denied paths — and a mount outside it is refused here, before the
+ * permission prompt, rather than put to the user: widening the area is a settings decision, not a
+ * card. A read-only mount is held to it too, since a folder the container can read is a folder the
+ * agent can read. With no workspace open there is no area, so no folder may be mounted at all; named
+ * volumes are the engine's and are not folders.
+ * @param context The agent run context.
+ * @param request What the agent wants to run.
+ * @returns Returns the refusal, or null when every mount is within the area.
+ */
+export function refuseUnconfinedMounts(
+  context: AgentRunContext,
+  request: RunContainerRequest,
+): string | null {
+  const roots: readonly string[] = [
+    ...(context.workspaceRoot === null ? [] : [context.workspaceRoot]),
+    ...context.allowedWritePaths,
+  ];
+  for (const volume of request.volumes ?? []) {
+    if (!isHostFolder(volume.source)) {
+      continue;
+    }
+    const blocked: boolean =
+      volume.source.startsWith('~') ||
+      roots.length === 0 ||
+      !isWriteWithinRoots(volume.source, roots) ||
+      isWriteDenied(volume.source, context.deniedWritePaths, roots[0]);
+    if (blocked) {
+      logger.info('ContainersTools', `Refused a mount of ${volume.source}: outside the write area`);
+      return (
+        `Blocked: mounting "${volume.source}" is outside the agent's allowed write area (the ` +
+        'workspace root and your allowed write paths). This is a fixed safety boundary — add the ' +
+        'folder to your allowed write paths to permit it, or mount a named volume instead.'
+      );
+    }
+  }
+  return null;
 }
 
 /**

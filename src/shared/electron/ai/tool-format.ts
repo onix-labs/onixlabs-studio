@@ -11,39 +11,79 @@ export function prettyToolName(name: string): string {
 }
 
 /**
- * Produces a one-line summary of a tool's input by surfacing the most descriptive common field
- * (a path, pattern, command, query, or URL), or an empty string when none is present.
+ * The most characters a one-line summary carries.
+ */
+const MAX_SUMMARY_CHARS: number = 120;
+
+/**
+ * The input keys worth putting in a one-line summary, most specific first.
+ *
+ * `description` precedes `prompt` so a Task (sub-agent) call summarises as its short description
+ * rather than its full delegated prompt. The trailing keys cover Studio's own tools: terminal input,
+ * binary bytes and assembly, the ask-user question, and the tool views' targets — an image to pull,
+ * a container, volume, model, skill or plugin to remove, a log level to set (#969).
+ */
+const SUMMARY_KEYS: readonly string[] = [
+  'file_path',
+  'path',
+  'pattern',
+  'command',
+  'query',
+  'url',
+  'description',
+  'prompt',
+  'text',
+  'bytes',
+  'assembly',
+  'question',
+  'image',
+  'reference',
+  'ref',
+  'name',
+  'id',
+  'level',
+];
+
+/**
+ * Produces a one-line summary of a tool's input: the most descriptive common field (a path, pattern,
+ * command, query, URL, or the thing a tool-view tool acts on), else the whole input as compact JSON,
+ * so a permission prompt never asks the user to allow something it does not show.
  * @param input The tool input.
- * @returns Returns the summary.
+ * @returns Returns the summary, empty only for an input with nothing in it.
  */
 export function summarizeToolInput(input: unknown): string {
   if (input === null || typeof input !== 'object') {
     return '';
   }
   const record: Record<string, unknown> = input as Record<string, unknown>;
-  // `description` precedes `prompt` so a Task (sub-agent) call summarises as its short description
-  // rather than its full delegated prompt. The trailing keys cover the studio tools: terminal input,
-  // binary bytes/assembly, and the ask-user question.
-  for (const key of [
-    'file_path',
-    'path',
-    'pattern',
-    'command',
-    'query',
-    'url',
-    'description',
-    'prompt',
-    'text',
-    'bytes',
-    'assembly',
-    'question',
-  ]) {
+  for (const key of SUMMARY_KEYS) {
     const value: unknown = record[key];
     if (typeof value === 'string' && value.length > 0) {
-      return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+      return clampSummary(value);
     }
   }
-  return '';
+  // ⛔ Nothing recognisable, so the input itself. A card that read "Allow run_container?" with no
+  // detail asked the user to approve a mount of their whole disk blind (audit S3).
+  const entries: [string, unknown][] = Object.entries(record).filter(
+    ([, value]: [string, unknown]): boolean => value !== undefined,
+  );
+  if (entries.length === 0) {
+    return '';
+  }
+  try {
+    return clampSummary(JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Clamps a summary to one line's worth.
+ * @param value The summary.
+ * @returns Returns the summary, shortened with an ellipsis when over the limit.
+ */
+function clampSummary(value: string): string {
+  return value.length > MAX_SUMMARY_CHARS ? `${value.slice(0, MAX_SUMMARY_CHARS - 3)}...` : value;
 }
 
 /**
