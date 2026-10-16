@@ -6,6 +6,7 @@ import {
   SourceControlClient,
 } from '@shared/api/source-control-channels';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
@@ -79,10 +80,16 @@ describe('WorkspaceGit', () => {
   let staged: string[][];
   let watched: string[];
   let fireWatch: () => void;
+  let trustAnswer: boolean;
+  let trustAsked: RepositoryInfo[];
+  let trustGranted: string[];
 
   beforeEach(() => {
     root = signal<DirectoryListing | null>(null);
-    resolved = { root: '/repo', name: 'repo' };
+    resolved = { root: '/repo', name: 'repo', trust: 'trusted' };
+    trustAnswer = true;
+    trustAsked = [];
+    trustGranted = [];
     closed = [];
     watched = [];
     const handlers: ((event: DirectoryChangeEvent) => void)[] = [];
@@ -149,6 +156,23 @@ describe('WorkspaceGit', () => {
             isInstalled: pluginInstalled,
             offer: (repository: DetectedRepository): void => {
               offers.push(repository);
+            },
+          },
+        },
+        {
+          provide: RepositoryTrust,
+          useValue: {
+            ensureTrusted: (info: RepositoryInfo): Promise<boolean> => {
+              if (info.trust !== 'unknown') {
+                return Promise.resolve(info.trust === 'trusted');
+              }
+              trustAsked.push(info);
+              return Promise.resolve(trustAnswer);
+            },
+            trust: (repositoryRoot: string): Promise<boolean> => {
+              trustGranted.push(repositoryRoot);
+              resolved = { root: repositoryRoot, name: 'repo', trust: 'trusted' };
+              return Promise.resolve(true);
             },
           },
         },
@@ -272,7 +296,12 @@ describe('WorkspaceGit', () => {
   it('stateFor_findsTheState_whenTheWorkspaceWasOpenedThroughASymlink', async () => {
     // #862: macOS opens /var/… as /private/var/…. The repository answers in real paths; the explorers
     // hold the symlinked ones — they must still meet.
-    resolved = { root: '/private/repo', name: 'repo', realDirectory: '/private/repo' };
+    resolved = {
+      root: '/private/repo',
+      name: 'repo',
+      realDirectory: '/private/repo',
+      trust: 'trusted',
+    };
     root.set(listing('/repo'));
     await bind();
 
@@ -319,11 +348,52 @@ describe('WorkspaceGit', () => {
     await bind();
     expect(git.isRepository()).toBe(false);
 
-    resolved = { root: '/repo', name: 'repo' };
+    resolved = { root: '/repo', name: 'repo', trust: 'trusted' };
     pluginInstalled.set(true);
     await bind();
 
     expect(git.isRepository()).toBe(true);
+  });
+
+  it('bind_whenTheRepositoryIsNotYetTrusted_asksFirst_andBindsOnYes', async () => {
+    resolved = { root: '/repo', name: 'repo', trust: 'unknown' };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(trustAsked.map((info: RepositoryInfo): string => info.root)).toEqual(['/repo']);
+    expect(git.isRepository()).toBe(true);
+    expect(git.isRestricted()).toBe(false);
+  });
+
+  it('bind_whenTheRepositoryIsNotTrusted_readsNothing_andSaysSo', async () => {
+    // The main process would refuse every read anyway; the explorer shows why rather than looking
+    // like a plain folder, and releases its hold on the repository.
+    resolved = { root: '/repo', name: 'repo', trust: 'unknown' };
+    trustAnswer = false;
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.isRepository()).toBe(false);
+    expect(git.isRestricted()).toBe(true);
+    expect(git.branch()).toBeNull();
+    expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
+    expect(closed).toEqual(['/repo']);
+  });
+
+  it('trustRepository_bindsARestrictedRepository', async () => {
+    resolved = { root: '/repo', name: 'repo', trust: 'restricted' };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.isRestricted()).toBe(true);
+    expect(trustAsked).toEqual([]);
+
+    await git.trustRepository();
+    await settle();
+
+    expect(trustGranted).toEqual(['/repo']);
+    expect(git.isRestricted()).toBe(false);
+    expect(git.isRepository()).toBe(true);
+    expect(git.branch()).toBe('main');
   });
 
   it('bind_whenFolderIsNoRepositoryAtAll_offersNothing', async () => {

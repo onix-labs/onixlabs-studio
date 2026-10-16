@@ -1,7 +1,10 @@
 <!-- A repository no installed plugin can read shows only what is missing and the way to get it: a
      composer and an empty change list would offer a commit that cannot happen (#818). -->
 <app-version-control-missing />
-@if (!needsPlugin()) {
+<!-- A repository the user has not trusted shows only that, and the way to trust it: nothing is read
+     from it until they do. -->
+<app-repository-restricted />
+@if (!needsPlugin() && !restricted()) {
   <app-panel-toolbar>
     <app-button
       variant="none"

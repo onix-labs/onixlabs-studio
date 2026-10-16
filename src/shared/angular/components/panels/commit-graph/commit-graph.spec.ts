@@ -272,7 +272,7 @@ describe('CommitGraph', () => {
     }).compileComponents();
 
     repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
 
     fixture = TestBed.createComponent(CommitGraph);
@@ -479,7 +479,7 @@ describe('CommitGraph edge order (#882)', () => {
       ],
     }).compileComponents();
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     const fixture: ComponentFixture<CommitGraph> = TestBed.createComponent(CommitGraph);
     fixture.componentRef.setInput('panel', {
@@ -530,7 +530,7 @@ describe('CommitGraph ref labels', () => {
       ],
     }).compileComponents();
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     const fixture: ComponentFixture<CommitGraph> = TestBed.createComponent(CommitGraph);
     fixture.componentRef.setInput('panel', {

@@ -12,6 +12,7 @@ import {
   VersionControlResponse,
   VcsParams,
 } from '@shared/api/version-control-protocol';
+import type { RepositoryTrustDecision } from '@shared/api/source-control-channels';
 import { logger } from '../logger';
 import { VersionControlClient } from './version-control-client';
 import { VersionControlEndpoint } from './version-control-endpoint';
@@ -51,6 +52,18 @@ export interface VersionControlRoots {
 }
 
 /**
+ * The part of the repository-trust store a request's root is checked against.
+ */
+export interface RepositoryTrustSource {
+  /**
+   * Gets what the user decided about a folder, or `unknown` when they have not been asked.
+   * @param target The folder to test.
+   * @returns Returns the decision in force for the folder.
+   */
+  decisionFor(target: unknown): RepositoryTrustDecision;
+}
+
+/**
  * Describes a running plugin and what it may be asked.
  */
 interface RunningPlugin {
@@ -84,6 +97,13 @@ export interface VersionControlHostOptions {
    * Gets the open workspace roots every repository path must lie within.
    */
   readonly roots: VersionControlRoots;
+
+  /**
+   * Gets whether the user trusts each repository's contents. A plugin runs in a repository only once
+   * the user has said so: a repository can carry settings and scripts its tool runs the moment it
+   * looks at the folder.
+   */
+  readonly trust: RepositoryTrustSource;
 
   /**
    * Gets the user's choice of which tool a plugin runs, or null for the plugin's default.
@@ -142,6 +162,11 @@ export interface OpenedRepository {
  *   A repository is opened by {@link openRepository} and reference-counted, because several surfaces
  *   (a repository tab and a workspace tab) can open the same one independently — the registry
  *   `GitManager` kept until #816;
+ * - the user must have said they trust the repository. Until they have — and for good if they said
+ *   they do not — no request reaches the plugin, because the tool it runs would read the repository's
+ *   own settings, and a repository's settings can name commands (Git's `core.fsmonitor`, its hooks
+ *   path, an `ext::` transport) that run the moment the tool looks at it. Opening a repository only
+ *   asks the plugin where its root is, which reads no such setting;
  * - a request needing a capability the plugin did not both declare and confirm is refused without the
  *   plugin ever seeing it;
  * - identical concurrent reads are answered by one request.
@@ -331,6 +356,17 @@ export class VersionControlHost {
   }
 
   /**
+   * Determines whether a path is the root of a repository that is open right now — what a trust
+   * decision from the renderer may name, so an untrusted renderer cannot decide about a folder nobody
+   * opened.
+   * @param root The candidate root.
+   * @returns Returns true when it is an open repository's root.
+   */
+  public isOpen(root: unknown): boolean {
+    return typeof root === 'string' && root.length > 0 && this.repositories.has(path.resolve(root));
+  }
+
+  /**
    * Gets the version-control systems' own directory names across every contributed plugin, for the
    * directory watcher and write confinement.
    * @returns Returns the distinct names.
@@ -382,7 +418,7 @@ export class VersionControlHost {
    * @returns Returns the confirmed capabilities and description, or the reason there are none.
    */
   public async describe(root: string): Promise<PluginDescription> {
-    const refusal: string | null = this.refuseRoot(root);
+    const refusal: string | null = this.refuseRoot(root) ?? this.refuseUntrusted(root);
     if (refusal !== null) {
       return { ok: false, error: refusal };
     }
@@ -435,6 +471,10 @@ export class VersionControlHost {
     if (refusal !== null) {
       return refused(refusal);
     }
+    const distrust: string | null = this.refuseUntrusted(root);
+    if (distrust !== null) {
+      return untrusted(distrust);
+    }
     const resolvedRoot: string = path.resolve(root);
     const descriptor: VersionControlDescriptor | null = this.pluginFor(resolvedRoot);
     if (descriptor === null) {
@@ -469,6 +509,14 @@ export class VersionControlHost {
       const refusal: string | null = this.refuseRoot(target);
       if (refusal !== null) {
         return refused(refusal);
+      }
+      // A clone writes a checkout into a container the user has (or has not) trusted; resolving a
+      // root reads nothing the repository controls, so it is answered either way.
+      if (op === 'clone' && typeof target === 'string') {
+        const distrust: string | null = this.refuseUntrusted(target);
+        if (distrust !== null) {
+          return untrusted(distrust);
+        }
       }
     }
     const descriptor: VersionControlDescriptor | undefined = this.options
@@ -722,6 +770,23 @@ export class VersionControlHost {
       ? null
       : 'That folder is not an open repository or workspace.';
   }
+
+  /**
+   * Checks that the user trusts the repository a request names. Asked after {@link refuseRoot}, so
+   * the path is already absolute and open.
+   * @param target The repository root, or a path within it.
+   * @returns Returns the reason it is refused, or null when the repository is trusted.
+   */
+  private refuseUntrusted(target: string): string | null {
+    const decision: RepositoryTrustDecision = this.options.trust.decisionFor(target);
+    if (decision === 'trusted') {
+      return null;
+    }
+    logger.debug('VersionControlHost', `Refused a request in ${decision} repository ${target}`);
+    return decision === 'restricted'
+      ? 'This repository is not trusted, so version control is not run in it.'
+      : 'This repository has not been trusted yet, so version control is not run in it.';
+  }
 }
 
 /**
@@ -731,4 +796,13 @@ export class VersionControlHost {
  */
 function refused<Op extends VersionControlOp>(error: string): VersionControlResponse<Op> {
   return { id: 0, ok: false, error, code: 'refused' };
+}
+
+/**
+ * Builds the host's refusal of a request in a repository the user has not trusted.
+ * @param error The reason.
+ * @returns Returns the failure.
+ */
+function untrusted<Op extends VersionControlOp>(error: string): VersionControlResponse<Op> {
+  return { id: 0, ok: false, error, code: 'untrusted' };
 }

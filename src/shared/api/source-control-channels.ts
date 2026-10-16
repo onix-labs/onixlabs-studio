@@ -59,7 +59,22 @@ export enum SourceControlChannel {
    * Sets which tool a version-control plugin runs, restarting it so the choice takes effect.
    */
   SetExecutable = 'source-control:set-executable',
+
+  /**
+   * Records whether the user trusts an opened repository, which decides whether version control runs
+   * in it at all.
+   */
+  SetTrust = 'source-control:set-trust',
 }
+
+/**
+ * Says whether the user trusts a repository's contents enough for version control to run in it.
+ *
+ * A repository can carry settings and scripts its tool runs the moment it looks at the folder, so
+ * Studio asks before the first look. `trusted` lets the tool run; `restricted` keeps it out, and the
+ * panels say so; `unknown` means the user has not been asked yet, and the renderer asks.
+ */
+export type RepositoryTrustDecision = 'trusted' | 'restricted' | 'unknown';
 
 /**
  * Describes what the plugin serving a repository can do.
@@ -169,6 +184,12 @@ export interface RepositoryInfo {
    * folder by a symlinked path (macOS `/var` → `/private/var`) maps its paths through this pair.
    */
   readonly realDirectory?: string;
+
+  /**
+   * Gets whether the user trusts the repository. Version control runs in it only when `trusted`; the
+   * renderer asks when `unknown`, and shows why nothing is read when `restricted`.
+   */
+  readonly trust: RepositoryTrustDecision;
 }
 
 /**
@@ -176,6 +197,11 @@ export interface RepositoryInfo {
  * from another by reading a tool's prose. The values are the protocol's error codes.
  */
 export enum SourceControlCode {
+  /**
+   * A request refused because the user has not trusted the repository, or has restricted it.
+   */
+  Untrusted = 'untrusted',
+
   /**
    * An unforced branch delete refused because the branch still holds commits of its own.
    */
@@ -280,4 +306,15 @@ export interface SourceControlClient {
     pluginId: string,
     executable: VersionControlExecutableChoice | null,
   ): Promise<VersionControlPluginInfo | null>;
+
+  /**
+   * Records the user's answer to "do you trust this repository?" for an opened repository.
+   * @param root The repository root.
+   * @param decision Whether version control may run in it.
+   * @returns Returns the decision in force afterwards, which is `unknown` when the root was refused.
+   */
+  setTrust(
+    root: string,
+    decision: Exclude<RepositoryTrustDecision, 'unknown'>,
+  ): Promise<RepositoryTrustDecision>;
 }

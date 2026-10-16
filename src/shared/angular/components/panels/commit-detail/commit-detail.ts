@@ -30,7 +30,9 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { RepositoryRestricted } from '../repository-restricted/repository-restricted';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -104,6 +106,7 @@ type WorkingRowData =
     PanelToolbar,
     TreeView,
     VersionControlMissing,
+    RepositoryRestricted,
   ],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
@@ -121,6 +124,21 @@ export class CommitDetail {
    */
   protected readonly needsPlugin: Signal<boolean> = computed(
     (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
+
+  /**
+   * Holds the workspace's version-control binding, which knows whether the folder is a repository the
+   * user has not trusted; null outside a workspace tab.
+   */
+  private readonly workspaceGit: WorkspaceGit | null = inject(WorkspaceGit, { optional: true });
+
+  /**
+   * Gets whether the folder is a repository the user has not trusted, so the panel shows only the
+   * restricted state: a composer over a repository nothing is read from would offer a commit that
+   * cannot happen.
+   */
+  protected readonly restricted: Signal<boolean> = computed(
+    (): boolean => this.workspaceGit?.isRestricted() === true && !this.repository.isBound(),
   );
 
   /**

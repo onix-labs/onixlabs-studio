@@ -96,6 +96,7 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
@@ -660,6 +661,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * time a source-control action is taken, and powering the reused commit panel and push/pull.
    */
   private readonly repository: Repository = inject(Repository);
+
+  /**
+   * Holds the trust question every repository is asked before version control first runs in it.
+   */
+  private readonly repositoryTrust: RepositoryTrust = inject(RepositoryTrust);
 
   /**
    * Holds this tab's scoped diff store, swept of diffs whose dock panels have been closed.
@@ -2020,6 +2026,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     const info: RepositoryInfo | null = await (this.sourceControlApi?.resolveRepository(path) ??
       Promise.resolve(null));
     if (info === null) {
+      return false;
+    }
+    // A repository the user has not trusted is not acted on: the main process would refuse anyway,
+    // and the explorer's own binding has already shown why.
+    if (!(await this.repositoryTrust.ensureTrusted(info))) {
+      void this.sourceControlApi?.closeRepository(info.root);
       return false;
     }
     // A concurrent action may have bound it while resolving; balance this resolve's extra hold.

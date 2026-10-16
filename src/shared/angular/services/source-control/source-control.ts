@@ -4,6 +4,7 @@ import {
   DetectedRepository,
   RepositoryCapabilities,
   RepositoryInfo,
+  RepositoryTrustDecision,
   SourceControlChannel,
   SourceControlClient,
   VersionControlPluginInfo,
@@ -46,6 +47,11 @@ function createClient(bridge: Bridge): SourceControlClient {
       executable: VersionControlExecutableChoice | null,
     ): Promise<VersionControlPluginInfo | null> =>
       bridge.invoke(SourceControlChannel.SetExecutable, pluginId, executable),
+    setTrust: (
+      root: string,
+      decision: Exclude<RepositoryTrustDecision, 'unknown'>,
+    ): Promise<RepositoryTrustDecision> =>
+      bridge.invoke(SourceControlChannel.SetTrust, root, decision),
   };
 }
 

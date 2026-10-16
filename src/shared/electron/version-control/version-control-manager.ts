@@ -4,6 +4,7 @@ import {
   DetectedRepository,
   RepositoryCapabilities,
   RepositoryInfo,
+  RepositoryTrustDecision,
   SourceControlChannel,
   VersionControlPluginInfo,
 } from '@shared/api/source-control-channels';
@@ -15,6 +16,7 @@ import {
   VcsParams,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
+import { RepositoryTrust } from '../repository-trust';
 import { VersionControlDescriptor } from './version-control-descriptor';
 import { OpenedRepository, PluginDescription, VersionControlHost } from './version-control-host';
 import { readExecutableChoice, VersionControlSettings } from './version-control-settings';
@@ -40,13 +42,24 @@ export class VersionControlManager {
   private readonly settings: VersionControlSettings;
 
   /**
+   * Holds which repositories the user trusts.
+   */
+  private readonly trust: RepositoryTrust;
+
+  /**
    * Initializes the manager.
    * @param host The version-control host.
    * @param settings Which tool each plugin runs.
+   * @param trust Which repositories the user trusts.
    */
-  public constructor(host: VersionControlHost, settings: VersionControlSettings) {
+  public constructor(
+    host: VersionControlHost,
+    settings: VersionControlSettings,
+    trust: RepositoryTrust,
+  ) {
     this.host = host;
     this.settings = settings;
+    this.trust = trust;
   }
 
   /**
@@ -102,6 +115,11 @@ export class VersionControlManager {
         executable: unknown,
       ): Promise<VersionControlPluginInfo | null> => this.setExecutable(pluginId, executable),
     );
+    ipcMain.handle(
+      SourceControlChannel.SetTrust,
+      (_event: IpcMainInvokeEvent, root: unknown, decision: unknown): RepositoryTrustDecision =>
+        this.setTrust(root, decision),
+    );
   }
 
   /**
@@ -129,7 +147,29 @@ export class VersionControlManager {
       root: opened.root,
       name: opened.name,
       ...(real !== null && real !== directory ? { realDirectory: real } : {}),
+      trust: this.trust.decisionFor(opened.root),
     };
+  }
+
+  /**
+   * Records the user's answer to "do you trust this repository?". Only for a repository that is open
+   * right now, so the renderer cannot decide about a folder nobody opened; the answer is what the host
+   * reads from then on.
+   * @param root The repository root, untrusted.
+   * @param decision The answer, untrusted.
+   * @returns Returns the decision in force afterwards, `unknown` when the request was refused.
+   */
+  private setTrust(root: unknown, decision: unknown): RepositoryTrustDecision {
+    if (
+      typeof root !== 'string' ||
+      !this.host.isOpen(root) ||
+      (decision !== 'trusted' && decision !== 'restricted')
+    ) {
+      logger.warn('VersionControlManager', 'Refused a malformed repository trust decision');
+      return 'unknown';
+    }
+    this.trust.decide(root, decision);
+    return this.trust.decisionFor(root);
   }
 
   /**

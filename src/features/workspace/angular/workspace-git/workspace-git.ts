@@ -1,10 +1,11 @@
-import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import {
   DetectedRepository,
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
@@ -93,6 +94,11 @@ export class WorkspaceGit {
   private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
 
   /**
+   * Holds the trust question every repository is asked before version control first runs in it.
+   */
+  private readonly trust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
    * Holds whether a version-control plugin was installed at the last binding, so installing one
    * re-resolves a folder that resolved to nothing before.
    */
@@ -175,14 +181,29 @@ export class WorkspaceGit {
   private readonly boundSignal: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the root of a repository the user has not trusted, or null when the folder is no such
+   * repository: either it is trusted and bound, or it is not a repository at all.
+   */
+  private readonly restrictedRoot: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
    * Gets the current branch, or null when detached or the folder is not a repository.
    */
   public readonly branch: Signal<string | null> = this.branchSignal.asReadonly();
 
   /**
-   * Gets a value indicating whether the open folder is a git repository.
+   * Gets a value indicating whether the open folder is a git repository the user trusts, so that
+   * version control runs in it.
    */
   public readonly isRepository: Signal<boolean> = this.boundSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether the open folder is a repository the user has not trusted, so
+   * version control is kept out of it and the panels say so.
+   */
+  public readonly isRestricted: Signal<boolean> = computed(
+    (): boolean => this.restrictedRoot() !== null,
+  );
 
   /**
    * Wires the effect that resolves and reads git status when the open folder changes.
@@ -331,6 +352,23 @@ export class WorkspaceGit {
   }
 
   /**
+   * Trusts the restricted repository, after which the folder is bound and read like any other. The
+   * way back in for a user who did not trust the repository when first asked.
+   * @returns Returns a promise that resolves once the folder has been bound.
+   */
+  public async trustRepository(): Promise<void> {
+    const root: string | null = this.restrictedRoot();
+    if (root === null || !(await this.trust.trust(root))) {
+      return;
+    }
+    this.restrictedRoot.set(null);
+    // Resolve the folder again rather than reusing the earlier answer: the earlier resolve was
+    // released when the repository was refused.
+    this.lastWorkspaceRoot = undefined;
+    await this.bindTo(this.workspace.root()?.path ?? null);
+  }
+
+  /**
    * Releases the bound repository and clears the status. Called by the directory view on teardown.
    */
   public dispose(): void {
@@ -365,6 +403,28 @@ export class WorkspaceGit {
     if (info === null) {
       this.release();
       await this.offerPlugin(workspaceRoot);
+      return;
+    }
+    // Nothing reads the repository until the user has said they trust it: its own settings can name
+    // commands the tool runs on its first look. The main process refuses every read until then; this
+    // is where the question is put, and where a refusal is shown rather than silently read as "not a
+    // repository".
+    if (!(await this.trust.ensureTrusted(info))) {
+      void this.api?.closeRepository(info.root);
+      if (this.lastWorkspaceRoot !== workspaceRoot) {
+        return;
+      }
+      this.release();
+      this.restrictedRoot.set(info.root);
+      this.log.info(
+        'source-control',
+        'Repository is not trusted; version control stays off',
+        info.root,
+      );
+      return;
+    }
+    if (this.lastWorkspaceRoot !== workspaceRoot) {
+      void this.api?.closeRepository(info.root);
       return;
     }
     if (this.boundRoot !== info.root) {
@@ -464,6 +524,7 @@ export class WorkspaceGit {
     this.provider = null;
     this.pathAlias = null;
     this.boundSignal.set(false);
+    this.restrictedRoot.set(null);
     this.pathState.set(new Map<string, ExplorerScmState>());
     this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
