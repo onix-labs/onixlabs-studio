@@ -266,6 +266,55 @@ describe('ScrollbarLayer', () => {
     expect(scrollBy).toHaveBeenCalledWith({ left: 0, top: 40 });
   });
 
+  it('looksUpTheAreasStyleOnce_perRedraw', () => {
+    // #980 P8: each redraw used to resolve the area's computed style four times.
+    scroller.style.overflowX = 'auto';
+    lay(scroller, { clientWidth: 206, clientHeight: 206, scrollWidth: 412, scrollHeight: 412 });
+    hover(row);
+    const looked: Element[] = [];
+    const original: typeof window.getComputedStyle = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (element: Element): CSSStyleDeclaration => {
+      looked.push(element);
+      return original(element);
+    };
+
+    try {
+      layer.update();
+    } finally {
+      window.getComputedStyle = original;
+    }
+
+    expect(looked.filter((element: Element): boolean => element === scroller)).toHaveLength(1);
+    expect(thumb('vertical').style.height).toBe('96px');
+  });
+
+  it('measuresEveryArea_beforeWritingAnyBar', () => {
+    // #980 P8: interleaving one area's writes with the next area's reads forced a layout per area.
+    const second: HTMLElement = document.createElement('div');
+    second.style.overflowY = 'auto';
+    second.appendChild(document.createElement('div'));
+    document.body.appendChild(second);
+    lay(second, { left: 200, top: 20, clientWidth: 100, clientHeight: 206, scrollHeight: 412 });
+    scroller.dispatchEvent(new Event('scroll'));
+    second.dispatchEvent(new Event('scroll'));
+    const written: boolean[] = [];
+    const read: () => DOMRect = second.getBoundingClientRect.bind(second);
+    second.getBoundingClientRect = (): DOMRect => {
+      written.push(
+        [...document.querySelectorAll<HTMLElement>('.app-scrollbars__frame')].some(
+          (element: HTMLElement): boolean => element.style.left !== '',
+        ),
+      );
+      return read();
+    };
+
+    layer.update();
+
+    expect(written).toEqual([false]);
+    expect(document.querySelectorAll('.app-scrollbars__frame--shown')).toHaveLength(2);
+    second.remove();
+  });
+
   it('takesTheBarAway_whenTheAreaLeavesTheDocument', () => {
     hover(row);
 

@@ -121,6 +121,37 @@ const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
 };
 
 /**
+ * One audit row's display strings, built once per record so change detection only reads them (#980
+ * P5).
+ */
+interface AuditEntry {
+  /**
+   * Gets the record the row shows.
+   */
+  readonly record: LogRecord;
+
+  /**
+   * Gets the severity badge's label.
+   */
+  readonly severityLabel: string;
+
+  /**
+   * Gets the severity badge's tone.
+   */
+  readonly tone: ChipTone;
+
+  /**
+   * Gets the "Where" tooltip: the record's origin and, for a renderer record, its window.
+   */
+  readonly origin: string;
+
+  /**
+   * Gets the record's time, formatted.
+   */
+  readonly time: string;
+}
+
+/**
  * The System Monitor tab. This phase (epic #395 P2 / #397) is the per-session **log audit**: a live,
  * filterable table of every log record — main-process and every renderer window — for the selected app
  * session, sourced from the P1 logging service. The live session streams in over the record push; a
@@ -602,10 +633,18 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Gets the filtered records adapted to the table's row shape, oldest first.
+   * Holds each record's table row, built the first time the record is shown, so a filter change or a
+   * live append re-uses every row already built instead of re-formatting it. Keyed weakly, so a
+   * session's rows go when its records do.
+   */
+  private readonly rowCache: WeakMap<LogRecord, TableRow> = new WeakMap<LogRecord, TableRow>();
+
+  /**
+   * Gets the filtered records adapted to the table's row shape, oldest first. Each row carries its
+   * {@link AuditEntry} display strings, so the template formats nothing.
    */
   protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    this.filtered().map((record: LogRecord): TableRow => ({ id: String(record.id), data: record })),
+    this.filtered().map((record: LogRecord): TableRow => this.rowFor(record)),
   );
 
   /**
@@ -731,18 +770,28 @@ export class SystemMonitorView implements OnInit {
     if (this.liveRecordsUnsubscribe !== null) {
       return;
     }
-    this.liveRecordsUnsubscribe = this.log.onRecord((record: LogRecord): void => {
-      if (!this.viewingLive() || record.sessionId !== this.currentSessionId()) {
+    // A flush window's batch lands in ONE write (#980 P5): a write per record would copy the whole
+    // buffer and re-run the filter and row mapping once per record.
+    this.liveRecordsUnsubscribe = this.log.onRecords((batch: readonly LogRecord[]): void => {
+      if (!this.viewingLive()) {
         return;
       }
+      const session: string | null = this.currentSessionId();
       this.records.update((records: readonly LogRecord[]): readonly LogRecord[] => {
         // Ids are strictly monotonic within a session and the buffer is held oldest-first, so the
         // last record holds the highest id. A record's broadcast and the initial query reply travel
         // on separate IPC channels and can arrive out of order, so a record already included in the
         // loaded snapshot can be broadcast afterwards; appending it again would duplicate a row id
         // and trip Angular's @for tracking (NG0955). Only append records newer than the last held.
-        const last: LogRecord | undefined = records[records.length - 1];
-        return last !== undefined && record.id <= last.id ? records : [...records, record];
+        let lastId: number = records[records.length - 1]?.id ?? Number.NEGATIVE_INFINITY;
+        const fresh: LogRecord[] = [];
+        for (const record of batch) {
+          if (record.sessionId === session && record.id > lastId) {
+            fresh.push(record);
+            lastId = record.id;
+          }
+        }
+        return fresh.length === 0 ? records : [...records, ...fresh];
       });
     });
     void this.loadRecords();
@@ -924,12 +973,34 @@ export class SystemMonitorView implements OnInit {
   }
 
   /**
-   * Reads a table row's record payload.
+   * Reads a table row's display strings.
    * @param row The table row.
-   * @returns Returns the row's log record.
+   * @returns Returns the row's audit entry.
    */
-  protected rec(row: TableRow): LogRecord {
-    return row.data as LogRecord;
+  protected entryOf(row: TableRow): AuditEntry {
+    return row.data as AuditEntry;
+  }
+
+  /**
+   * Gets a record's table row, building it (and formatting its display strings) only the first time
+   * the record is shown.
+   * @param record The record.
+   * @returns Returns the row.
+   */
+  private rowFor(record: LogRecord): TableRow {
+    let row: TableRow | undefined = this.rowCache.get(record);
+    if (row === undefined) {
+      const entry: AuditEntry = {
+        record,
+        severityLabel: this.severityLabel(record.severity),
+        tone: this.severityTone(record.severity),
+        origin: this.origin(record),
+        time: this.formatTime(record.timestamp),
+      };
+      row = { id: String(record.id), data: entry };
+      this.rowCache.set(record, row);
+    }
+    return row;
   }
 
   /**
@@ -946,7 +1017,7 @@ export class SystemMonitorView implements OnInit {
    * @param severity The severity.
    * @returns Returns the tone.
    */
-  protected severityTone(severity: Severity): ChipTone {
+  private severityTone(severity: Severity): ChipTone {
     return SEVERITY_TONES[severity];
   }
 
@@ -955,16 +1026,17 @@ export class SystemMonitorView implements OnInit {
    * @param record The record.
    * @returns Returns the tooltip text.
    */
-  protected origin(record: LogRecord): string {
+  private origin(record: LogRecord): string {
     return record.window ? `${record.origin} · ${record.window}` : record.origin;
   }
 
   /**
-   * Formats a record timestamp as a locale time with milliseconds.
+   * Formats a record timestamp as a locale time. About 1.5 µs a call, so it runs once per record (in
+   * {@link rowFor}), never per change-detection pass.
    * @param timestamp The ISO-8601 timestamp.
-   * @returns Returns the formatted time.
+   * @returns Returns the formatted time, or the timestamp itself when it does not parse.
    */
-  protected formatTime(timestamp: string): string {
+  private formatTime(timestamp: string): string {
     const date: Date = new Date(timestamp);
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleTimeString();
   }

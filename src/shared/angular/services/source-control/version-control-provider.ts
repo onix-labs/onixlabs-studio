@@ -591,12 +591,25 @@ export class VersionControlProvider implements SourceControlProvider {
   }
 
   /**
-   * Reads one version of a file, empty when it does not exist there or could not be read.
+   * Reads one version of a file, empty when it does not exist there or could not be read. A version
+   * the plugin refused to read — one too large to show (#980) — reads as the plugin's reason instead,
+   * so the diff says why that side has nothing in it.
    * @param filePath The repository-relative path.
    * @param version The version.
    * @returns Returns the contents.
    */
   private async contents(filePath: string, version: VcsFileVersion): Promise<string> {
-    return (await this.read('readFile', { path: filePath, version }))?.content ?? '';
+    if (this.api === undefined) {
+      return '';
+    }
+    const response: VersionControlResponse<'readFile'> = await this.api.request(
+      this.root,
+      'readFile',
+      { path: filePath, version },
+    );
+    if (response.ok) {
+      return response.result.content ?? '';
+    }
+    return response.code === 'refused' ? response.error : '';
   }
 }

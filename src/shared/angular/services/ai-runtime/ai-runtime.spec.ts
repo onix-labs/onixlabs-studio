@@ -222,6 +222,25 @@ describe('AiRuntime', () => {
     expect(bridgeReplies[0].error).toBe('nope');
   });
 
+  it('registerCapability_aStaleRelease_leavesANewerRegistrationOfTheSameName', async () => {
+    // #980 S12: a view torn down after its replacement registered must not unregister the replacement.
+    stubBridge();
+    const runtime: AiRuntime = TestBed.inject(AiRuntime);
+    const echo: (input: unknown) => unknown = (input: unknown): unknown => input;
+    const releaseOld: () => void = runtime.registerCapability('echo', echo);
+    const releaseNew: () => void = runtime.registerCapability('echo', echo);
+
+    releaseOld();
+    fireBridgeRequest({ requestId: 'b4', capability: 'echo', input: 'still here' });
+    await flush();
+    releaseNew();
+    fireBridgeRequest({ requestId: 'b5', capability: 'echo', input: 'gone' });
+    await flush();
+
+    expect(bridgeReplies[0]).toEqual({ requestId: 'b4', ok: true, result: 'still here' });
+    expect(bridgeReplies[1].ok).toBe(false);
+  });
+
   it('respondPermission_whenCalled_forwardsTheReply', () => {
     stubBridge();
     const runtime: AiRuntime = TestBed.inject(AiRuntime);

@@ -1,4 +1,12 @@
-import { MarkdownBlock, renderMarkdownBlocks, resetMarkdownCache } from './markdown-blocks';
+import { marked, Token } from 'marked';
+import { MockInstance } from 'vitest';
+
+import {
+  lexMarkdown,
+  MarkdownBlock,
+  renderMarkdownBlocks,
+  resetMarkdownCache,
+} from './markdown-blocks';
 
 /**
  * A document exercising every top-level construct the transcript renders, so the cache is proved
@@ -178,5 +186,201 @@ describe('markdown-blocks', () => {
     const blocks: MarkdownBlock[] = renderMarkdownBlocks('Mass energy: $E = mc^2$.\n');
 
     expect((blocks[0] as { html: string }).html).toContain('katex');
+  });
+
+  // Every case here lexes or renders the reply once per character it streams, which is quick alone but
+  // can outlast the default 5s budget when the whole suite shares the machine.
+  describe('incremental lexing', { timeout: 30_000 }, () => {
+    /**
+     * A reply exercising the constructs whose meaning a later line can change, streamed so every one
+     * of them is caught half-written: setext headings (`===` / `---` arriving under prose), a list
+     * turning loose, a table whose header lands before its delimiter row, fences left open mid-stream
+     * (backtick and tilde, one closed by a longer fence), indented code that cannot interrupt a
+     * paragraph, lazy blockquote continuation, block math, and raw HTML.
+     */
+    const STREAMED: string = [
+      '# Title',
+      '',
+      'An opening paragraph with **bold**, `code`, $x^2$ and a [link](https://example.test).',
+      'It runs over two lines',
+      '===',
+      '',
+      'Another paragraph that becomes',
+      'a second-level heading',
+      '---',
+      '',
+      '---',
+      '',
+      '- one',
+      '- two',
+      '',
+      '- three, which makes the list loose',
+      '  continued lazily',
+      '',
+      '1. first',
+      '2. second',
+      '   - nested',
+      '',
+      '| col a | col b |',
+      '| :---- | ----: |',
+      '| 1 | 2 |',
+      '| 3 | 4 |',
+      'trailing row text',
+      '',
+      '> a quote',
+      'lazy continuation',
+      '> > nested quote',
+      '',
+      '```ts',
+      'const open: boolean = true;',
+      '',
+      'function f(): void {}',
+      '```',
+      '',
+      'A paragraph',
+      '    that indented code cannot interrupt',
+      '',
+      '    real indented code',
+      '',
+      '~~~~',
+      'tilde fence',
+      '~~~',
+      'still inside',
+      '~~~~~',
+      '',
+      '$$',
+      'E = mc^2',
+      '$$',
+      '',
+      'Prices like $5 and $$10 stay prose.',
+      '',
+      '<details>',
+      '',
+      'Inside **details**.',
+      '',
+      '</details>',
+      '',
+      'Term',
+      ': not a definition list',
+      '',
+      '***',
+      'Final paragraph with a trailing fence',
+      '',
+      '```',
+      'never closed',
+    ].join('\n');
+
+    /**
+     * Lexes text in one go, as the non-incremental path did — the reference every step must match.
+     * @param text The markdown text.
+     * @returns Returns the top-level tokens.
+     */
+    function fullLex(text: string): Token[] {
+      return [...marked.Lexer.lex(text)];
+    }
+
+    /**
+     * Streams a document in chunks, asserting the incremental lex equals a full lex at every step.
+     * @param text The document.
+     * @param sizes The chunk sizes, cycled.
+     * @returns Returns how many steps re-lexed less than their whole text.
+     */
+    function streamAndCompare(text: string, sizes: readonly number[]): number {
+      const lexer: MockInstance = vi.spyOn(marked, 'lexer');
+      let partial: number = 0;
+      let end: number = 0;
+      let step: number = 0;
+      try {
+        while (end < text.length) {
+          end = Math.min(text.length, end + sizes[step % sizes.length]);
+          step++;
+          const prefix: string = text.slice(0, end);
+          lexer.mockClear();
+          const tokens: Token[] = lexMarkdown(prefix);
+          expect(tokens, `at offset ${end}`).toEqual(fullLex(prefix));
+          if (
+            lexer.mock.calls.every((call: unknown[]): boolean => (call[0] as string) !== prefix)
+          ) {
+            partial++;
+          }
+        }
+      } finally {
+        lexer.mockRestore();
+      }
+      return partial;
+    }
+
+    it('lexMarkdown_whenAReplyStreamsCharacterByCharacter_matchesAFullLexAtEveryStep', () => {
+      const partial: number = streamAndCompare(STREAMED, [1]);
+
+      // The point of the exercise: flushes re-lex only the tail. The exception is the prose `$$10`:
+      // marked clips that paragraph at the block-math opener and splices the rest back on with a
+      // newline that is not in the source, so token sources stop indexing the text and every flush
+      // after it lexes whole (correct, just not faster).
+      expect(partial).toBeGreaterThan(STREAMED.indexOf('$$10') * 0.95);
+    });
+
+    it('lexMarkdown_whenAReplyStreamsInUnevenChunks_matchesAFullLexAtEveryStep', () => {
+      streamAndCompare(STREAMED, [7, 1, 23, 3, 64, 2, 11, 40, 5]);
+      resetMarkdownCache();
+      streamAndCompare(STREAMED + '\n\n' + KITCHEN_SINK, [13, 4, 31, 9]);
+    });
+
+    it('renderMarkdownBlocks_whenAReplyStreams_rendersWhatAFullLexRenders', () => {
+      for (let end: number = 1; end <= STREAMED.length; end++) {
+        const prefix: string = STREAMED.slice(0, end);
+        const streamed: MarkdownBlock[] = renderMarkdownBlocks(prefix);
+        // Forgetting every remembered lex forces the full path, which then seeds the next step.
+        resetMarkdownCache();
+        expect(streamed, `at offset ${end}`).toEqual(renderMarkdownBlocks(prefix));
+      }
+    });
+
+    it('lexMarkdown_whenALaterDefinitionResolvesAnEarlierReference_matchesAFullLex', () => {
+      // A reference definition reaches back across blocks: `[docs]` above only becomes a link once
+      // the definition below arrives, so a stream that defines links must not reuse settled tokens.
+      const text: string = [
+        'See [docs] for more.',
+        '',
+        'Another paragraph.',
+        '',
+        '[docs]: https://example.test "Docs"',
+        '',
+        'And [docs] again, then more prose.',
+        '',
+        '[docs]: https://duplicate.test',
+        '',
+        'Last.',
+      ].join('\n');
+
+      streamAndCompare(text, [1]);
+    });
+
+    it('lexMarkdown_whenAnInlineTagStaysOpen_matchesAFullLex', () => {
+      // An unclosed `<a …>` stops later paragraphs autolinking; `<code>` stops their escaping.
+      const text: string = [
+        'Open <a href="https://example.test"> anchor.',
+        '',
+        'A bare https://example.test url.',
+        '',
+        'Then <code> raw & text.',
+        '',
+        'More & more https://example.test text.',
+      ].join('\n');
+
+      streamAndCompare(text, [1]);
+    });
+
+    it('lexMarkdown_whenTheTextNoLongerExtendsThePrevious_lexesItWhole', () => {
+      lexMarkdown('# One\n\nTwo\n\nThree\n\nFour');
+
+      expect(lexMarkdown('# One\n\nTwo changed\n\nThree')).toEqual(
+        fullLex('# One\n\nTwo changed\n\nThree'),
+      );
+    });
+
+    it('lexMarkdown_whenTheTextHasCarriageReturns_matchesAFullLex', () => {
+      streamAndCompare('# A\r\n\r\nFirst para\r\nline\r\n===\r\n\r\n- a\r\n- b\r\n', [1]);
+    });
   });
 });

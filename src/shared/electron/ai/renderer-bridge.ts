@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
+import { BrowserWindow, ipcMain, IpcMainEvent, WebContents } from 'electron';
 import type { AiBridgeReply, AiBridgeScope } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
 import { logger } from '../logger';
@@ -27,6 +27,11 @@ interface PendingRequest {
    * Holds the timeout that fails the request if the renderer never answers.
    */
   readonly timer: NodeJS.Timeout;
+
+  /**
+   * Removes the listeners that fail the request when its window goes away.
+   */
+  readonly detach: () => void;
 }
 
 /**
@@ -98,7 +103,7 @@ export class RendererBridge {
     scope?: AiBridgeScope,
   ): Promise<unknown> {
     const window: BrowserWindow | null = this.windowGetter();
-    if (window === null) {
+    if (window === null || window.isDestroyed() || window.webContents.isDestroyed()) {
       logger.warn('RendererBridge.request', `No window available for capability "${capability}"`);
       return Promise.reject(new Error('No window is available to handle the capability request.'));
     }
@@ -106,15 +111,25 @@ export class RendererBridge {
     logger.trace('RendererBridge.request', `Dispatching capability "${capability}" (${requestId})`);
     return new Promise<unknown>(
       (resolve: (result: unknown) => void, reject: (error: Error) => void): void => {
-        const timer: NodeJS.Timeout = setTimeout((): void => {
-          this.pending.delete(requestId);
-          logger.error(
-            'RendererBridge.request',
-            `Capability "${capability}" timed out after ${timeoutMs}ms`,
+        const contents: WebContents = window.webContents;
+        // A window that closes, or a renderer that crashes, will never reply: fail the request at
+        // once rather than leaving the run waiting out the whole timeout for an answer that cannot come.
+        const onGone: () => void = (): void => {
+          this.fail(
+            requestId,
+            `The window closed before the capability "${capability}" could answer.`,
           );
-          reject(new Error(`The capability "${capability}" timed out.`));
+        };
+        contents.once('destroyed', onGone);
+        contents.once('render-process-gone', onGone);
+        const detach: () => void = (): void => {
+          contents.removeListener('destroyed', onGone);
+          contents.removeListener('render-process-gone', onGone);
+        };
+        const timer: NodeJS.Timeout = setTimeout((): void => {
+          this.fail(requestId, `The capability "${capability}" timed out.`);
         }, timeoutMs);
-        this.pending.set(requestId, { resolve, reject, timer });
+        this.pending.set(requestId, { resolve, reject, timer, detach });
         window.webContents.send(AiChannel.BridgeRequest, {
           requestId,
           capability,
@@ -126,16 +141,44 @@ export class RendererBridge {
   }
 
   /**
+   * Fails a pending request without a reply — it timed out, or its window went away.
+   * @param requestId The request's correlation id.
+   * @param message The error the request is rejected with.
+   */
+  private fail(requestId: string, message: string): void {
+    const pending: PendingRequest | undefined = this.take(requestId);
+    if (pending === undefined) {
+      return;
+    }
+    logger.error('RendererBridge.fail', `${message} (${requestId})`);
+    pending.reject(new Error(message));
+  }
+
+  /**
+   * Removes a pending request and releases its timer and window listeners, so it settles once.
+   * @param requestId The request's correlation id.
+   * @returns Returns the request, or undefined when it has already settled.
+   */
+  private take(requestId: string): PendingRequest | undefined {
+    const pending: PendingRequest | undefined = this.pending.get(requestId);
+    if (pending === undefined) {
+      return undefined;
+    }
+    clearTimeout(pending.timer);
+    pending.detach();
+    this.pending.delete(requestId);
+    return pending;
+  }
+
+  /**
    * Settles the pending request matching a reply.
    * @param reply The renderer's reply.
    */
   private settle(reply: AiBridgeReply): void {
-    const pending: PendingRequest | undefined = this.pending.get(reply.requestId);
+    const pending: PendingRequest | undefined = this.take(reply.requestId);
     if (pending === undefined) {
       return;
     }
-    clearTimeout(pending.timer);
-    this.pending.delete(reply.requestId);
     if (reply.ok) {
       logger.trace('RendererBridge.settle', `Capability reply resolved (${reply.requestId})`);
       pending.resolve(reply.result);
