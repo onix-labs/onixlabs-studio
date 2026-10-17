@@ -50,6 +50,7 @@ type SettingsSectionId =
   | 'ai-skills'
   | 'mission-control'
   | 'system-monitor'
+  | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
   // Providers branch a list of companies core shipped rather than a list of what is installed.
@@ -300,6 +301,12 @@ export class SettingsView {
       label: 'System Monitor',
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
+    },
+    {
+      id: 'plugins',
+      label: 'Plugin Manager',
+      icon: Icon.PLUGINS,
+      children: [{ id: 'plugins-general', label: 'General', sectionId: 'plugins' }],
     },
   ];
 

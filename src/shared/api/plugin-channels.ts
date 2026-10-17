@@ -36,6 +36,16 @@ export enum PluginChannel {
   CatalogueRevision = 'plugins:catalogue-revision',
 
   /**
+   * Reports whether sideloaded plugins are loaded, this launch and from the next (invoke).
+   */
+  GetSideloading = 'plugins:get-sideloading',
+
+  /**
+   * Sets and persists whether sideloaded plugins are loaded; takes effect on the next launch (invoke).
+   */
+  SetSideloading = 'plugins:set-sideloading',
+
+  /**
    * Notifies the renderer that a plugin's install state changed (main→renderer, send).
    */
   Changed = 'plugins:changed',
@@ -366,6 +376,39 @@ export interface PluginActionResult {
    * Gets the failure reason, when the action did not succeed.
    */
   readonly error: string | null;
+}
+
+/**
+ * Reports whether the plugins the user placed in the plugins folder by hand are loaded (#979).
+ *
+ * A sideloaded plugin skips the integrity check every catalogue plugin goes through, and replaces a
+ * catalogue entry of the same id, so a packaged build loads none unless the user turns the switch on.
+ * The development app always loads them: running a plugin built locally is what it is for. The choice
+ * is read once at launch, before any plugin is resolved, so a change takes effect on the next launch —
+ * which is why the choice and what is in force are reported separately.
+ */
+export interface SideloadingState {
+  /**
+   * Gets a value indicating whether sideloaded plugins will be loaded from the next launch: what the
+   * switch shows.
+   */
+  readonly enabled: boolean;
+
+  /**
+   * Gets a value indicating whether sideloaded plugins were loaded this launch.
+   */
+  readonly inForce: boolean;
+
+  /**
+   * Gets a value indicating whether the choice is fixed, which it is in the development app (always
+   * on), so the switch is shown but cannot be changed.
+   */
+  readonly locked: boolean;
+
+  /**
+   * Gets how many sideloaded plugins were found on disk and not loaded this launch.
+   */
+  readonly skipped: number;
 }
 
 /**

@@ -74,7 +74,11 @@ import { bindAgentHosting } from './agent-hosting';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { mergeModels, type ReportedModel } from './model-merge';
-import { PermissionRuleStore } from './permission-rule-store';
+import {
+  PermissionRuleStore,
+  permissionRuleKey,
+  permissionRuleScope,
+} from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
 import { retirementFor, type Retirement } from './live-session-retirement';
@@ -100,6 +104,12 @@ interface PendingPermission {
    * Gets the workspace root of the asking run, or null for none.
    */
   readonly workspaceRoot: string | null;
+
+  /**
+   * Gets the key a workspace or always grant is remembered by, or null when the grant can only be
+   * remembered for the session (#979).
+   */
+  readonly ruleKey: string | null;
 }
 
 /**
@@ -941,7 +951,13 @@ export class AiManager {
       request.allowedWritePaths,
       true,
     );
-    const deniedWritePaths: readonly string[] = sanitizeWritePaths(request.deniedWritePaths, false);
+    // ⛔ Studio's own user-data directory is always denied (#979): it holds the plugins Studio loads at
+    // launch and the settings that decide what it trusts, so an agent writing there could run code
+    // outside every agent boundary on the next start.
+    const deniedWritePaths: readonly string[] = [
+      ...sanitizeWritePaths(request.deniedWritePaths, false),
+      app.getPath('userData'),
+    ];
     const allowedNetworkLocations: readonly string[] = sanitizeNetworkLocations(
       request.allowedNetworkLocations,
     );
@@ -1750,7 +1766,12 @@ export class AiManager {
     cancel?: AbortSignal,
     change?: AiProposedChange,
   ): Promise<boolean> {
-    if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
+    // A command tool's rule names its exact command (#979); a session grant still covers the tool.
+    const ruleKey: string | null = permissionRuleKey(name, detail);
+    if (
+      this.sessionAllowed.has(name) ||
+      (ruleKey !== null && this.rules.isAllowed(ruleKey, workspaceRoot))
+    ) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
       return Promise.resolve(true);
     }
@@ -1765,7 +1786,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, workspaceRoot });
+      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey });
       if (signal.aborted) {
         settle(false);
         return;
@@ -1795,6 +1816,7 @@ export class AiManager {
         name,
         detail,
         hasWorkspace: workspaceRoot !== null,
+        remembers: permissionRuleScope(name, detail),
         ...(change === undefined ? {} : { change }),
       });
     });
@@ -1842,8 +1864,14 @@ export class AiManager {
       );
       if (reply.remember === 'session') {
         this.sessionAllowed.add(pending.name);
+      } else if (pending.ruleKey === null) {
+        // The prompt only offered the session; a longer scope cannot name the whole command.
+        logger.warn(
+          'AiManager.resolvePermission',
+          `Ignoring ${reply.remember} grant for "${pending.name}": only the session can remember it`,
+        );
       } else {
-        this.rules.remember(pending.name, reply.remember, pending.workspaceRoot);
+        this.rules.remember(pending.ruleKey, reply.remember, pending.workspaceRoot);
       }
     }
     pending.settle(reply.granted);

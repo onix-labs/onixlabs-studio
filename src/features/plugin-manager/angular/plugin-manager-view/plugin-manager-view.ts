@@ -52,6 +52,8 @@ import {
 } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Sideloading } from '@shared/angular/services/plugins/sideloading';
+import { SideloadingState } from '@shared/api/plugin-channels';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -189,6 +191,11 @@ export class PluginManagerView implements OnInit {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
+   * Holds the sideloading switch's client, read for whether plugins placed by hand were left out.
+   */
+  private readonly sideloading: Sideloading = inject(Sideloading);
+
+  /**
    * Gets the browsing state: the search text, the side panel's filter and the column sort.
    */
   protected readonly browse: PluginBrowse = inject(PluginBrowse);
@@ -265,12 +272,26 @@ export class PluginManagerView implements OnInit {
   /**
    * Gets the sentence under the heading: how many plugins are listed, and where choosing between two
    * that provide the same thing happens — which is the one thing this view deliberately does not do.
+   * When plugins placed in the plugins folder by hand were left out this launch (#979), it says so and
+   * where to turn them on, since otherwise they would simply be missing with no reason given.
    */
   protected readonly summary: Signal<string> = computed((): string => {
     const shown: number = this.browse.visible().length;
     const noun: string = shown === 1 ? 'plugin' : 'plugins';
     const scope: string = this.browse.narrowed() ? 'match your filters' : 'available';
-    return `${shown} ${noun} ${scope}. Where two installed plugins provide the same thing, choose between them in Settings.`;
+    const summary: string = `${shown} ${noun} ${scope}. Where two installed plugins provide the same thing, choose between them in Settings.`;
+    const sideloading: SideloadingState = this.sideloading.state();
+    if (sideloading.inForce || sideloading.skipped === 0) {
+      return summary;
+    }
+    const skipped: string =
+      sideloading.skipped === 1
+        ? '1 plugin placed in the plugins folder by hand was not loaded'
+        : `${sideloading.skipped} plugins placed in the plugins folder by hand were not loaded`;
+    const remedy: string = sideloading.enabled
+      ? 'restart Studio to load them'
+      : 'turn on Load sideloaded plugins in Settings to load them';
+    return `${summary} ${skipped}: ${remedy}.`;
   });
 
   /**

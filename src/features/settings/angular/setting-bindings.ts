@@ -4,6 +4,7 @@ import type { ImageSourcePolicy } from '@shared/api/security-channels';
 import { Display } from '@shared/angular/services/display/display';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Security } from '@shared/angular/services/security/security';
+import { Sideloading } from '@shared/angular/services/plugins/sideloading';
 import { Accent, Theme, ThemeMode } from '@shared/angular/services/theme/theme';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsKey } from '@shared/angular/services/settings/settings-registry';
@@ -52,7 +53,8 @@ export interface SettingBinding {
 /**
  * Resolves a {@link SettingBinding} for a setting key, routing to the service that owns the value.
  *
- * Settings-owned keys bind to the Settings store; foreign owners (Theme, Display, Security, LSP) bind
+ * Settings-owned keys bind to the Settings store; foreign owners (Theme, Display, Security, LSP,
+ * Plugins) bind
  * to their own services. This is what lets the generic renderer drive settings that do not live in the
  * Settings store, without the renderer knowing about those services.
  */
@@ -83,6 +85,8 @@ export class SettingBindings {
         return this.displayBinding();
       case 'security':
         return this.securityBinding();
+      case 'plugins':
+        return this.sideloadingBinding();
       case 'lsp':
         return this.lspBinding(key);
       default:
@@ -151,6 +155,24 @@ export class SettingBindings {
         void security.setImagePolicy(value as ImageSourcePolicy);
       },
       disabled: signal(!security.isAvailable).asReadonly(),
+    };
+  }
+
+  /**
+   * Builds a binding backed by the Sideloading service (the "Load sideloaded plugins" switch). The
+   * choice is persisted by the main process and read at launch, so a change reports as pending a
+   * restart until the application relaunches; in the development app it is always on and locked.
+   * @returns Returns the binding.
+   */
+  private sideloadingBinding(): SettingBinding {
+    const sideloading: Sideloading = this.injector.get(Sideloading);
+    return {
+      value: sideloading.enabled,
+      set: (value: unknown): void => {
+        void sideloading.setEnabled(value === true);
+      },
+      disabled: sideloading.locked,
+      restartPending: sideloading.restartRequired,
     };
   }
 

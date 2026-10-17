@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { PluginSummary } from '@shared/api/plugin-channels';
+import { PluginSummary, SideloadingState } from '@shared/api/plugin-channels';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Sideloading } from '@shared/angular/services/plugins/sideloading';
 
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { PluginManagerView } from './plugin-manager-view';
@@ -52,8 +53,12 @@ describe('PluginManagerView', () => {
    * question in its own window, so the terms are asserted through that window's content host rather
    * than anywhere in the view.
    * @param plugins The plugins the client reports.
+   * @param sideloading The sideloading state main reports; by default nothing was left out.
    */
-  function render(plugins: readonly PluginSummary[]): void {
+  function render(
+    plugins: readonly PluginSummary[],
+    sideloading: SideloadingState = { enabled: true, inForce: true, locked: true, skipped: 0 },
+  ): void {
     const known: WritableSignal<readonly PluginSummary[]> = signal(plugins);
     stub = { installed: [], uninstalled: [] };
     windows = new FakeModalWindows();
@@ -83,6 +88,7 @@ describe('PluginManagerView', () => {
       providers: [
         { provide: Plugins, useValue: client },
         { provide: ModalWindows, useValue: windows },
+        { provide: Sideloading, useValue: { state: signal(sideloading).asReadonly() } },
       ],
     });
     fixture = TestBed.createComponent(PluginManagerView);
@@ -293,6 +299,38 @@ describe('PluginManagerView', () => {
 
     choose('Available');
     expect(names()).toEqual(['Alpha', 'Delta']);
+  });
+
+  it('summary_whenSideloadedPluginsWereLeftOut_saysHowManyAndWhereToTurnThemOn', () => {
+    // #979: a packaged build skips plugins placed by hand unless the user turns the switch on.
+    render([summary()], { enabled: false, inForce: false, locked: false, skipped: 2 });
+    const subtitle: () => string = (): string =>
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.plugin-manager__subtitle')
+        ?.textContent?.trim() ?? '';
+
+    expect(subtitle()).toContain(
+      '2 plugins placed in the plugins folder by hand were not loaded: turn on Load sideloaded ' +
+        'plugins in Settings to load them.',
+    );
+  });
+
+  it('summary_whenTheSwitchIsOnButNotYetInForce_asksForARestart', () => {
+    render([summary()], { enabled: true, inForce: false, locked: false, skipped: 1 });
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.plugin-manager__subtitle')
+        ?.textContent,
+    ).toContain('1 plugin placed in the plugins folder by hand was not loaded: restart Studio');
+  });
+
+  it('summary_whenNothingWasLeftOut_saysNothingAboutSideloading', () => {
+    render([summary()]);
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.plugin-manager__subtitle')
+        ?.textContent,
+    ).not.toContain('plugins folder');
   });
 
   it('sidePanel_searchesTheList', () => {
