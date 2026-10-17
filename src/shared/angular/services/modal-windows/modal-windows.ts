@@ -1,9 +1,12 @@
 import { inject, OnDestroy, Service } from '@angular/core';
-import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-channels';
+import {
+  childWindowName,
+  MODAL_UNPARENTED_FEATURE,
+  MODAL_WINDOW_URL,
+} from '@shared/api/window-channels';
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
-import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Describes the window a modal asks for: how it is sized and chromed, and whether it hangs off the
@@ -159,8 +162,9 @@ export interface ModalWindow {
  * component styles — comes from the application stylesheets mirrored into the child, so a modal
  * tracks the app's theme tokens exactly as the window that raised it does.
  *
- * The drag strip is the band the platform's window controls sit in: it makes the window movable
- * (there is no title bar to grab) and its height is the inset the panel leaves for the controls.
+ * The drag strip is the band the window's controls sit in — the platform's own on macOS and Windows,
+ * Studio's on Linux (drawn by the modal's host): it makes the window movable (there is no title bar to
+ * grab) and its height is the inset the panel leaves for the controls.
  */
 const MODAL_STYLES: string = `
   html, body { block-size: 100%; }
@@ -210,11 +214,6 @@ export class ModalWindows implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the app-shell wrapper, read for the platform the window is chromed for.
-   */
-  private readonly studio: Studio = inject(Studio);
-
-  /**
    * Holds the open modal windows.
    */
   private readonly children: Set<Window> = new Set<Window>();
@@ -235,9 +234,10 @@ export class ModalWindows implements OnDestroy {
    * platform refused) — the caller then falls back to presenting the modal in its own window.
    */
   public open(request: ModalWindowRequest, owner: Window): ModalWindow | null {
+    // Named, so the window's own controls can address it (see `Studio.closeWindow`).
     const child: Window | null = owner.open(
       MODAL_WINDOW_URL,
-      '_blank',
+      childWindowName(),
       this.features(request, owner),
     );
     if (child?.document == null) {
@@ -253,9 +253,7 @@ export class ModalWindows implements OnDestroy {
     // the styling service, which would wipe anything written there. A dragless window reserves no
     // inset, so the panel's `padding-block-start: max(panel-padding, drag-height)` falls back to the
     // plain panel padding and its content sits flush to the top.
-    // A window in the native title bar (Linux) is moved by that bar and has its controls in it, so
-    // it is dragless too.
-    const dragless: boolean = request.dragless === true || this.studio.platform === 'linux';
+    const dragless: boolean = request.dragless === true;
     doc.body.style.setProperty(
       '--modal-window-drag-height',
       dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,

@@ -106,6 +106,28 @@ export class Icon {
    */
   public static readonly LOCK_OPEN: Icon = new Icon('ph-bold ph-lock-simple-open');
 
+  // --- Window controls (drawn by Studio on Linux) ---
+
+  /**
+   * Gets the minimize-window icon.
+   */
+  public static readonly WINDOW_MINIMIZE: Icon = new Icon('ph-bold ph-minus');
+
+  /**
+   * Gets the maximize-window icon, shown while the window is not maximized.
+   */
+  public static readonly WINDOW_MAXIMIZE: Icon = new Icon('ph-bold ph-square');
+
+  /**
+   * Gets the restore-window icon, shown in place of maximize while the window is maximized.
+   */
+  public static readonly WINDOW_RESTORE: Icon = new Icon('ph-bold ph-copy-simple');
+
+  /**
+   * Gets the close-window icon.
+   */
+  public static readonly WINDOW_CLOSE: Icon = new Icon('ph-bold ph-x');
+
   // --- Content types (tabs, welcome, document wells) ---
 
   /**

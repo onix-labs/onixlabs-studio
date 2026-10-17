@@ -826,12 +826,36 @@ class Program {
 
   /**
    * Registers the IPC handlers for renderer-initiated window control requests. Each handler
-   * resolves the window from the request sender so it always acts on the requesting window.
+   * resolves the window from the request sender so it always acts on the requesting window — or, for
+   * the window controls, on the child window the request names (see `WindowManager.targetWindow`).
    */
   private registerIpcHandlers(): void {
-    ipcMain.on(WindowChannel.Close, (event: IpcMainEvent): void => {
-      BrowserWindow.fromWebContents(event.sender)?.close();
+    ipcMain.on(WindowChannel.Close, (event: IpcMainEvent, name: unknown): void => {
+      this.windows.targetWindow(event.sender, name)?.close();
     });
+
+    ipcMain.on(WindowChannel.Minimize, (event: IpcMainEvent, name: unknown): void => {
+      this.windows.targetWindow(event.sender, name)?.minimize();
+    });
+
+    ipcMain.on(WindowChannel.ToggleMaximize, (event: IpcMainEvent, name: unknown): void => {
+      const target: BrowserWindow | null = this.windows.targetWindow(event.sender, name);
+      if (target === null) {
+        return;
+      }
+
+      if (target.isMaximized()) {
+        target.unmaximize();
+      } else {
+        target.maximize();
+      }
+    });
+
+    ipcMain.handle(
+      WindowChannel.IsMaximized,
+      (event: IpcMainInvokeEvent, name: unknown): boolean =>
+        this.windows.targetWindow(event.sender, name)?.isMaximized() ?? false,
+    );
 
     ipcMain.on(WindowChannel.Show, (event: IpcMainEvent): void => {
       this.windows.claimMainPresence();
@@ -1104,9 +1128,9 @@ class Program {
       'did-create-window',
       (window: BrowserWindow, details: Electron.DidCreateWindowDetails): void => {
         if (details.url === MODAL_WINDOW_URL) {
-          this.windows.adoptModalWindow(window);
+          this.windows.adoptModalWindow(window, details.frameName);
         } else {
-          this.windows.adoptAuxiliaryWindow(window);
+          this.windows.adoptAuxiliaryWindow(window, details.frameName);
         }
       },
     );

@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
+import { WindowControls } from '@shared/angular/components/window-controls/window-controls';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
 import { windowScopedCdkProviders } from '@shared/angular/services/window-scope/window-scope';
 
@@ -37,6 +38,18 @@ export interface ModalWindowConfig {
    * the room it is given and the user resizes the window.
    */
   readonly fill: boolean;
+
+  /**
+   * Gets a value indicating whether the window may be maximized: a filling modal with no size
+   * ceiling. Read by the window controls Studio draws on Linux.
+   */
+  readonly maximizable: boolean;
+
+  /**
+   * Gets a value indicating whether the window may be closed from its own chrome. A blocking modal
+   * may not. Read by the window controls Studio draws on Linux.
+   */
+  readonly closable: boolean;
 }
 
 /**
@@ -57,13 +70,19 @@ export const MODAL_WINDOW_CONFIG: InjectionToken<ModalWindowConfig> =
  */
 @Component({
   selector: 'app-modal-window-host',
-  imports: [NgTemplateOutlet, ModalBackdropView],
+  imports: [NgTemplateOutlet, ModalBackdropView, WindowControls],
   template: `
     <div class="modal-window-host__panel">
       <div #content class="modal-window-host__content">
         <ng-container [ngTemplateOutlet]="config.content" [ngTemplateOutletInjector]="injector" />
       </div>
     </div>
+    <app-window-controls
+      class="modal-window-host__controls"
+      [minimizable]="false"
+      [maximizable]="config.maximizable"
+      [closable]="config.closable"
+    />
     <app-modal-backdrop />
   `,
   host: {
