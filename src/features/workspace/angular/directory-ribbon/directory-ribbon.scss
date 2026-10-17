@@ -14,11 +14,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-.directory-ribbon__confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-}
 // The Save As dialog's Default box, sitting between the name field and the actions.
 .directory-ribbon__prompt-check {
   display: flex;

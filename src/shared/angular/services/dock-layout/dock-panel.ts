@@ -35,12 +35,6 @@ export interface DockPanel {
   readonly component: Type<unknown>;
 
   /**
-   * Gets a value indicating whether the panel renders its own tool strip in its body, so the dock
-   * chrome omits the default strip for it. Defaults to false (the panel uses the shared strip).
-   */
-  readonly ownsToolStrip?: boolean;
-
-  /**
    * Gets whether the panel's document has unsaved changes, driving the tab's dirty marker. Present
    * only for panels backed by an editable document; absent for tool panels.
    */
@@ -53,4 +47,13 @@ export interface DockPanel {
    * @returns Returns a promise resolving true to close, or false to keep the panel open.
    */
   confirmClose?(): Promise<boolean>;
+
+  /**
+   * Saves the panel's document, for a panel whose document the host's own document store does not
+   * hold (an image in a workspace's well), so the host's Save and Save All still reach it. Absent for
+   * tool panels and for documents the host already saves through its store.
+   * @returns Returns a promise resolving true when the document was saved; false when the save failed
+   * or was cancelled.
+   */
+  save?(): Promise<boolean>;
 }

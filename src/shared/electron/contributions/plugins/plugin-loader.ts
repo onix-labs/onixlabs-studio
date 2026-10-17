@@ -11,6 +11,8 @@ import {
   ManifestLanguageServer,
   ManifestRequirement,
   ManifestResult,
+  ManifestVersionControl,
+  ManifestHosting,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -41,8 +43,13 @@ import {
 } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { pythonRuntime } from '../../provisioning/python-runtime';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { bundledLockfile } from './bundled-lockfiles';
+import {
+  VersionControlDescriptor,
+  VersionControlResolution,
+} from '../../version-control/version-control-descriptor';
+import { HostingDescriptor, HostingResolution } from '../../hosting/hosting-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -385,8 +392,10 @@ export function payloadOps(
       // Nothing to fetch: the payload is already beside the manifest.
       ensure: (): Promise<string | null> => Promise.resolve(local),
       // Removing it is the user's business, since they placed it by hand. Deleting a directory they
-      // manage from under them would be a surprise, so this reports success and touches nothing.
-      remove: (): Promise<void> => Promise.resolve(),
+      // manage from under them would be a surprise, so this touches nothing — and refuses, naming the
+      // folder, rather than reporting a removal that did not happen.
+      remove: (): Promise<void> =>
+        Promise.reject(new HandPlacedPluginError(localRoot ?? path.dirname(local))),
     };
   }
   // The version on disk when one is recorded and differs, the offered one otherwise. Read per call:
@@ -485,7 +494,32 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       ...(harness.providers === undefined ? {} : { providers: harness.providers }),
     }),
   );
-  return [...servers, ...adapters, ...decoders, ...engines, ...harnesses];
+  const versionControl: readonly PluginContribution[] = (
+    manifest.contributes.versionControl ?? []
+  ).map((system: ManifestVersionControl): PluginContribution => ({
+    slot: 'version-control',
+    id: system.id,
+    displayName: system.displayName,
+    priority: system.priority,
+    capabilities: system.capabilities,
+  }));
+  const hosting: readonly PluginContribution[] = (manifest.contributes.hosting ?? []).map(
+    (host: ManifestHosting): PluginContribution => ({
+      slot: 'hosting',
+      id: host.id,
+      displayName: host.displayName,
+      priority: host.priority,
+    }),
+  );
+  return [
+    ...servers,
+    ...adapters,
+    ...decoders,
+    ...engines,
+    ...versionControl,
+    ...hosting,
+    ...harnesses,
+  ];
 }
 
 /**
@@ -564,7 +598,16 @@ function toSpec(
     // bundle needs no Node on the machine.
     const spec: ReturnType<LanguageServerContext['nodePackageServer']> =
       context.nodePackageServer(entryPoint);
-    return resolved({ ...spec, args: [...spec.args, ...(command.args ?? [])], env: command.env });
+    return resolved({
+      ...spec,
+      args: [...spec.args, ...(command.args ?? [])],
+      // The runtime's own environment first, so a manifest cannot accidentally unset what the runtime
+      // needs to start at all — the same ordering the decoders and harnesses use, for the same reason.
+      // Replacing it instead drops `ELECTRON_RUN_AS_NODE`, and the Electron binary then launches a
+      // second Studio, which hands the entry point to the running one as a file to open — the server
+      // never starts and the user gets its launcher script in a tab.
+      env: { ...spec.env, ...command.env },
+    });
   }
   if (command.kind === 'python') {
     // Python is the user's, not Studio's, so this is the one kind that can fail for a reason the
@@ -575,7 +618,7 @@ function toSpec(
       : resolved({
           command: runtime.command,
           args: [...runtime.args, ...(command.args ?? [])],
-          env: command.env,
+          env: { ...command.env },
         });
   }
   return resolved({ command: entryPoint, args: command.args ?? [], env: command.env });
@@ -744,41 +787,162 @@ export function toDecoderDescriptors(
             `${decoder.displayName} is not installed — install it in Plugins.`,
           );
         }
-        if (decoder.command.kind === 'node') {
-          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
-          return {
-            available: true,
-            spec: {
-              command: runtime.command,
-              args: [...runtime.args, ...(decoder.command.args ?? [])],
-              // The runtime's own environment first, so a manifest cannot accidentally unset what the
-              // runtime needs to start at all.
-              env: { ...runtime.env, ...decoder.command.env },
-            },
-          };
-        }
-        if (decoder.command.kind === 'python') {
-          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
-          return python === null
-            ? decoderUnavailable(
-                `${decoder.displayName} needs Python 3.8+, which was not found on this machine.`,
-              )
-            : {
-                available: true,
-                spec: {
-                  command: python.command,
-                  args: [...python.args, ...(decoder.command.args ?? [])],
-                  env: decoder.command.env,
-                },
-              };
-        }
-        return {
-          available: true,
-          spec: { command: entryPoint, args: decoder.command.args ?? [], env: decoder.command.env },
-        };
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          decoder.command,
+          entryPoint,
+          decoder.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string' ? decoderUnavailable(spec) : { available: true, spec };
       },
     }),
   );
+}
+
+/**
+ * Turns a contribution's command into how to spawn it, given where its entry point was installed.
+ *
+ * Shared by every contribution point whose payload Studio spawns and speaks a protocol to, so a `node`
+ * or `python` payload runs the same way whichever seam it fills.
+ * @param command The contribution's command.
+ * @param entryPoint The installed entry point.
+ * @param displayName The contribution's display name, for the reason it cannot run.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the spawn specification, or the reason the contribution cannot run.
+ */
+function toCommandSpec(
+  command: ManifestCommand,
+  entryPoint: string,
+  displayName: string,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): NodeRuntimeSpec | string {
+  if (command.kind === 'node') {
+    const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+    return {
+      command: runtime.command,
+      args: [...runtime.args, ...(command.args ?? [])],
+      // The runtime's own environment first, so a manifest cannot accidentally unset what the runtime
+      // needs to start at all.
+      env: { ...runtime.env, ...command.env },
+    };
+  }
+  if (command.kind === 'python') {
+    const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+    return python === null
+      ? `${displayName} needs Python 3.8+, which was not found on this machine.`
+      : {
+          command: python.command,
+          args: [...python.args, ...(command.args ?? [])],
+          env: command.env,
+        };
+  }
+  return { command: entryPoint, args: command.args ?? [], env: command.env };
+}
+
+/**
+ * Turns a manifest's version-control systems into descriptors the version-control host can start
+ * (#815).
+ *
+ * Like a decoder, a plugin that is not installed stays registered and resolves to unavailable, so the
+ * surface can say why and offer the install rather than behaving as though nothing were there.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toVersionControlDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly VersionControlDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.versionControl ?? []).map(
+    (system: ManifestVersionControl): VersionControlDescriptor => ({
+      id: system.id,
+      displayName: system.displayName,
+      priority: system.priority,
+      markers: system.markers,
+      metadataDirectories: system.metadataDirectories,
+      metadataSignals: system.metadataSignals ?? [],
+      capabilities: system.capabilities,
+      executableModes: system.executableModes,
+      resolve: (): VersionControlResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), system.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${system.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          system.command,
+          entryPoint,
+          system.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's code hosts into descriptors the hosting host can start (#819).
+ *
+ * Like a version-control system, a plugin that is not installed stays registered and resolves to
+ * unavailable, so a surface can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toHostingDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly HostingDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.hosting ?? []).map((host: ManifestHosting): HostingDescriptor => ({
+    id: host.id,
+    displayName: host.displayName,
+    priority: host.priority,
+    hosts: host.hosts,
+    capabilities: host.capabilities,
+    authModes: host.authModes,
+    commandLineTools: host.commandLineTools,
+    resolve: (): HostingResolution => {
+      const entryPoint: string | null = ops.isInstalled(provisioner())
+        ? ops.target(provisioner(), host.entryPoint)
+        : null;
+      if (entryPoint === null) {
+        return {
+          available: false,
+          reason: `${host.displayName} is not installed — install it in Plugins.`,
+        };
+      }
+      const spec: NodeRuntimeSpec | string = toCommandSpec(
+        host.command,
+        entryPoint,
+        host.displayName,
+        nodeRuntime,
+      );
+      return typeof spec === 'string'
+        ? { available: false, reason: spec }
+        : { available: true, spec };
+    },
+  }));
 }
 
 /**
@@ -799,25 +963,31 @@ export function toDecoderDescriptors(
 export function toContainerEngineDescriptors(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
   localRoot?: string,
   installedVersion?: InstalledVersion,
 ): readonly ContainerEngineDescriptor[] {
   const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   const descriptors: ContainerEngineDescriptor[] = [];
   for (const engine of manifest.contributes.containerEngines ?? []) {
-    const cli: string | null = ops.isInstalled(provisioner())
+    const entryPoint: string | null = ops.isInstalled(provisioner())
       ? ops.target(provisioner(), engine.entryPoint)
       : null;
-    if (cli === null) {
+    if (entryPoint === null) {
       continue;
     }
+    // An engine with no command was built for a Studio that spoke the Engine API itself; it is listed,
+    // so the user sees it and is offered the update, but it has nothing to run (#973).
+    const spec: NodeRuntimeSpec | string | null =
+      engine.command === undefined
+        ? null
+        : toCommandSpec(engine.command, entryPoint, engine.displayName, nodeRuntime);
     descriptors.push({
       id: engine.id,
       displayName: engine.displayName,
       priority: engine.priority,
-      // The provisioned client, named by its absolute path rather than by a bare binary name: the
-      // point of provisioning it is that the surface no longer depends on one being on the PATH.
-      cli,
+      cli: engine.cli ?? null,
+      spawn: spec === null || typeof spec === 'string' ? null : spec,
       discovery: {
         hostVariable: engine.discovery.hostVariable,
         dockerContext: engine.discovery.dockerContext === true,

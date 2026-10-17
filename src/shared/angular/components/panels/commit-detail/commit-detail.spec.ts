@@ -77,6 +77,14 @@ class StubGenerator {
  * mutations the pane invokes.
  */
 class StubRepository {
+  /**
+   * Answers every capability as supported, as the real repository does while it is not yet known.
+   * @returns Returns true.
+   */
+  public supports(): boolean {
+    return true;
+  }
+
   public readonly selectedCommit: WritableSignal<GitCommit | null> = signal<GitCommit | null>(null);
 
   /**

@@ -1,8 +1,10 @@
 import { inject, Service } from '@angular/core';
 import {
+  type AiBridgeScope,
   DELETE_RUN_CONFIGURATIONS,
   LIST_RUN_CONFIGURATIONS,
   SAVE_RUN_CONFIGURATIONS,
+  UNSCOPED_BRIDGE_REQUEST,
 } from '@shared/api/ai-types';
 import {
   findRunConfigurationIssues,
@@ -102,37 +104,57 @@ export class AgentRunConfigurationCapabilities {
    * run-configuration capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(LIST_RUN_CONFIGURATIONS, (): ListResult => this.list());
+    this.runtime.registerCapability(
+      LIST_RUN_CONFIGURATIONS,
+      (_input: unknown, scope: AiBridgeScope): Promise<ListResult> => this.list(scope),
+    );
     this.runtime.registerCapability(
       SAVE_RUN_CONFIGURATIONS,
-      (input: unknown): Promise<WriteResult> => this.save(input),
+      (input: unknown, scope: AiBridgeScope): Promise<WriteResult> => this.save(input, scope),
     );
     this.runtime.registerCapability(
       DELETE_RUN_CONFIGURATIONS,
-      (input: unknown): Promise<WriteResult> => this.remove(input),
+      (input: unknown, scope: AiBridgeScope): Promise<WriteResult> => this.remove(input, scope),
     );
   }
 
   /**
-   * Lists the open workspace's run configurations.
+   * Resolves the workspace a request authors for: the run's own workspace root. Only a request that
+   * carries no scope at all (an older main process) falls back to the focused workspace.
+   *
+   * ⛔ Never the focused workspace for a scoped run: an agent in a background workspace would otherwise
+   * rewrite the Run dropdown of whichever workspace the user is looking at.
+   * @param scope The run the request comes from.
+   * @returns Returns the root, or null when the run has none.
+   */
+  private rootFor(scope: AiBridgeScope): string | null {
+    return scope === UNSCOPED_BRIDGE_REQUEST
+      ? this.activeWorkspace.rootPath()
+      : scope.workspaceRoot;
+  }
+
+  /**
+   * Lists the run's workspace's run configurations.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ListResult}.
    */
-  private list(): ListResult {
-    const root: string | null = this.activeWorkspace.rootPath();
+  private async list(scope: AiBridgeScope): Promise<ListResult> {
+    const root: string | null = this.rootFor(scope);
     if (root === null) {
       return { available: false, configurations: [] };
     }
-    return { available: true, root, configurations: this.studio.runConfigurations() };
+    return { available: true, root, configurations: await this.studio.loadRunConfigurations(root) };
   }
 
   /**
    * Creates or updates run configurations, matching by id: a known id is replaced in place (so the
    * user's ordering is preserved), an unknown one is appended.
    * @param input The capability input, carrying a `configurations` array.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link WriteResult}.
    */
-  private async save(input: unknown): Promise<WriteResult> {
-    const root: string | null = this.activeWorkspace.rootPath();
+  private async save(input: unknown, scope: AiBridgeScope): Promise<WriteResult> {
+    const root: string | null = this.rootFor(scope);
     if (root === null) {
       return { ok: false, error: 'No workspace folder is open, so there is nowhere to save.' };
     }
@@ -154,7 +176,7 @@ export class AgentRunConfigurationCapabilities {
       incoming.push(parsed);
     }
 
-    const merged: RunConfiguration[] = [...this.studio.runConfigurations()];
+    const merged: RunConfiguration[] = [...(await this.studio.loadRunConfigurations(root))];
     for (const configuration of incoming) {
       const existing: number = merged.findIndex(
         (candidate: RunConfiguration): boolean => candidate.id === configuration.id,
@@ -171,7 +193,7 @@ export class AgentRunConfigurationCapabilities {
       return { ok: false, error: `The configurations were not saved: ${issues.join(' ')}` };
     }
 
-    await this.studio.saveRunConfigurations(merged);
+    await this.studio.saveRunConfigurationsFor(root, merged);
     this.log.info('workspace.run', 'Agent saved run configurations', incoming.length);
     return {
       ok: true,
@@ -185,10 +207,11 @@ export class AgentRunConfigurationCapabilities {
    * so the agent can tell a typo from a completed deletion. A deletion that would leave a compound
    * naming a missing member is refused, keeping the file sound.
    * @param input The capability input, carrying an `ids` array.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link WriteResult}.
    */
-  private async remove(input: unknown): Promise<WriteResult> {
-    const root: string | null = this.activeWorkspace.rootPath();
+  private async remove(input: unknown, scope: AiBridgeScope): Promise<WriteResult> {
+    const root: string | null = this.rootFor(scope);
     if (root === null) {
       return { ok: false, error: 'No workspace folder is open, so there is nothing to delete.' };
     }
@@ -198,7 +221,7 @@ export class AgentRunConfigurationCapabilities {
     if (ids.length === 0) {
       return { ok: false, error: 'No configuration ids were supplied.' };
     }
-    const current: readonly RunConfiguration[] = this.studio.runConfigurations();
+    const current: readonly RunConfiguration[] = await this.studio.loadRunConfigurations(root);
     const missing: readonly string[] = ids.filter(
       (id: string): boolean =>
         !current.some((configuration: RunConfiguration): boolean => configuration.id === id),
@@ -215,7 +238,7 @@ export class AgentRunConfigurationCapabilities {
       return { ok: false, error: `The configurations were not deleted: ${issues.join(' ')}` };
     }
 
-    await this.studio.saveRunConfigurations(remaining);
+    await this.studio.saveRunConfigurationsFor(root, remaining);
     this.log.info('workspace.run', 'Agent deleted run configurations', ids.length);
     return { ok: true, ids, configurations: remaining };
   }

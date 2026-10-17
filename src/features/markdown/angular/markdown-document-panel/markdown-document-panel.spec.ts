@@ -1,4 +1,6 @@
 import { Component } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FileInfo } from '@shared/api/file-channels';
@@ -86,11 +88,16 @@ describe('MarkdownDocumentPanel', () => {
     fixture.componentInstance.documentId = wellId;
     fixture.detectChanges();
 
-    const button: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[aria-label="Open in Tab"]',
-    );
-    expect(button).not.toBeNull();
-    button?.click();
+    // Open in Tab is on the strip's menu (#882): choose it there.
+    const strip: {
+      menuItems(): { label: string }[];
+      onMenu(id: string): void;
+    } = fixture.debugElement.query(By.directive(MarkdownToolstrip)).componentInstance as {
+      menuItems(): { label: string }[];
+      onMenu(id: string): void;
+    };
+    expect(strip.menuItems()[0].label).toBe('Open in Tab');
+    strip.onMenu('markdown.openInTab');
 
     const tab: Tab | undefined = TestBed.inject(Tabs).findByResource('markdown', '/ws/notes.md');
     expect(tab).toBeDefined();

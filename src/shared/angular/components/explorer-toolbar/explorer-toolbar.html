@@ -22,14 +22,18 @@
       tooltip="Collapse All"
       (click)="collapseAll.emit()"
     />
-    <app-button
-      variant="none"
-      [icon]="Icon.DOTS_THREE_BOLD"
-      ariaLabel="More Actions"
-      tooltip="More Actions"
-      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
-      [cdkMenuPosition]="moreMenu.position()"
-    />
+    <!-- A panel's own strip buttons, after the folding every explorer shares and before its menu. -->
+    <ng-content />
+    @if (moreItems().length > 0) {
+      <app-button
+        variant="none"
+        [icon]="Icon.DOTS_THREE_BOLD"
+        ariaLabel="More Actions"
+        tooltip="More Actions"
+        [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+        [cdkMenuPosition]="moreMenu.position()"
+      />
+    }
   </div>
 </div>
 

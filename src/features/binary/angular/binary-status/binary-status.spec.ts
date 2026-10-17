@@ -45,8 +45,14 @@ describe('BinaryStatusStrip', () => {
     status.publish(CONTEXT);
     fixture.detectChanges();
 
-    expect(segmentsOf(fixture, 0)).toEqual(['/ws/blob.bin', 'PE · x64']);
-    expect(segmentsOf(fixture, 1)).toEqual(['OVR', 'Offset 0xA', 'Sel 3', '100 bytes']);
+    expect(segmentsOf(fixture, 0)).toEqual(['/ws/blob.bin']);
+    expect(segmentsOf(fixture, 1)).toEqual([
+      'PE · x64',
+      'OVR',
+      'Offset 0000:000A',
+      '3 bytes selected',
+      '100 bytes',
+    ]);
   });
 
   it('publish_whenDirtyAndInserting_marksThePathAndShowsInsertMode', () => {
@@ -54,14 +60,35 @@ describe('BinaryStatusStrip', () => {
     fixture.detectChanges();
 
     expect(segmentsOf(fixture, 0)[0]).toBe('/ws/blob.bin ●');
-    expect(segmentsOf(fixture, 1)[0]).toBe('INS');
+    expect(segmentsOf(fixture, 1)[1]).toBe('INS');
   });
 
   it('publish_whenThereIsNoCursor_showsAnEmptyOffset', () => {
     status.publish({ ...CONTEXT, offset: null });
     fixture.detectChanges();
 
-    expect(segmentsOf(fixture, 1)[1]).toBe('Offset —');
+    expect(segmentsOf(fixture, 1)[2]).toBe('Offset —');
+  });
+
+  it('showsNoSelection_whileOnlyTheCaretsByteIsSelected (#882)', () => {
+    status.publish({ ...CONTEXT, selectionLength: 1 });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 1)).toEqual(['PE · x64', 'OVR', 'Offset 0000:000A', '100 bytes']);
+  });
+
+  it('writesTheOffsetAsTheGutterDoes (#882)', () => {
+    status.publish({ ...CONTEXT, offset: 0x1a5a40 });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 1)[2]).toBe('Offset 001A:5A40');
+  });
+
+  it('describesALargeFile_byItsFriendlySizeThenTheExactCount (#882)', () => {
+    status.publish({ ...CONTEXT, size: 2_271_456 });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 1).at(-1)).toBe('2.2 MB (2,271,456 bytes)');
   });
 
   it('clear_whenCalled_removesEverySegment', () => {

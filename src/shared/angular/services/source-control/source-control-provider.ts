@@ -1,6 +1,79 @@
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
-import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
-import { ParsedRefs, ParsedStatus } from './git-output';
+import {
+  GitBranch,
+  GitCommit,
+  GitFileChange,
+  GitRemote,
+  GitStash,
+  GitTag,
+} from '../repository/repository-data';
+
+/**
+ * Describes a repository's working-tree status.
+ */
+export interface ParsedStatus {
+  /**
+   * Gets the current branch name, or null when the head is detached.
+   */
+  readonly branch: string | null;
+
+  /**
+   * Gets the upstream branch name, or null when there is none.
+   */
+  readonly upstream: string | null;
+
+  /**
+   * Gets the number of commits ahead of the upstream.
+   */
+  readonly ahead: number;
+
+  /**
+   * Gets the number of commits behind the upstream.
+   */
+  readonly behind: number;
+
+  /**
+   * Gets the staged changes (index versus HEAD).
+   */
+  readonly staged: readonly GitFileChange[];
+
+  /**
+   * Gets the unstaged changes (working tree versus index), including untracked files.
+   */
+  readonly unstaged: readonly GitFileChange[];
+
+  /**
+   * Gets the paths left conflicted by an unfinished merge or rebase. Kept apart from the other two: a
+   * conflicted path is not a change waiting to be staged, and cannot be committed as it stands.
+   */
+  readonly conflicted: readonly GitFileChange[];
+
+  /**
+   * Gets the paths the version-control system ignores, relative to the repository root — a whole
+   * ignored directory as one entry ending in `/` (#860). Absent or empty when the plugin does not report them.
+   */
+  readonly ignored?: readonly string[];
+}
+
+/**
+ * Describes a repository's refs: local branches, remotes with their branches, and tags.
+ */
+export interface ParsedRefs {
+  /**
+   * Gets the local branches.
+   */
+  readonly branches: readonly GitBranch[];
+
+  /**
+   * Gets the remotes, grouped by remote name.
+   */
+  readonly remotes: readonly GitRemote[];
+
+  /**
+   * Gets the tags.
+   */
+  readonly tags: readonly GitTag[];
+}
 
 /**
  * Describes a push: which branch goes where, and whether the push claims the upstream.
@@ -60,11 +133,10 @@ export interface FileDiff {
 }
 
 /**
- * Abstracts a version-control backend for a single opened repository. {@link GitProvider} is the first
- * implementation; other systems (for example SVN) would implement the same interface, so the
- * source-control surfaces (the repository tab and the workspace's lightweight integration) consume
- * any provider uniformly. The read-only operations of the first slice are defined here; mutating and
- * network operations are added in later slices.
+ * Abstracts a version-control backend for a single opened repository, so the source-control surfaces
+ * (the repository tab and the workspace's lightweight integration) consume any system uniformly.
+ * {@link import('./version-control-provider').VersionControlProvider} implements it over the
+ * version-control protocol, whichever plugin answers (#816).
  */
 export interface SourceControlProvider {
   /**
@@ -88,9 +160,10 @@ export interface SourceControlProvider {
   /**
    * Reads the commit history (newest first) with parents and ref decorations.
    * @param limit The maximum number of commits to read.
+   * @param all Whether to read every branch's history rather than only the checked-out branch's.
    * @returns Returns the commits.
    */
-  getCommits(limit: number): Promise<GitCommit[]>;
+  getCommits(limit: number, all?: boolean): Promise<GitCommit[]>;
 
   /**
    * Reads the branches, remotes, and tags.

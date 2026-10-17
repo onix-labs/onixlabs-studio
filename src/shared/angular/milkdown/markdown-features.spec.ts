@@ -60,16 +60,17 @@ interface BootedEditor {
  * Boots the application's markdown editor — via the same factory the shared markdown-editor component
  * uses — with the given markdown as its initial content.
  * @param markdown The initial markdown source.
+ * @param resizableImages Whether Crepe's resizable image block is enabled; off unless a spec needs it.
  * @returns Returns the booted editor.
  */
-async function boot(markdown: string): Promise<BootedEditor> {
+async function boot(markdown: string, resizableImages: boolean = false): Promise<BootedEditor> {
   const root: HTMLDivElement = document.createElement('div');
   document.body.appendChild(root);
   const deps: Pick<MonacoCodeBlockDeps, 'monaco' | 'highlighter'> = fakeDeps();
   const crepe: Crepe = createStudioCrepe({
     root,
     defaultValue: markdown,
-    resizableImages: false,
+    resizableImages,
     monaco: deps.monaco,
     highlighter: deps.highlighter,
   });
@@ -426,7 +427,8 @@ describe('markdown features', () => {
   describe('images', () => {
     it('renders_aMarkdownImage_asAnImgElement', async () => {
       await withEditor('![alt text](pic.png)\n', ({ root }): void => {
-        const image: HTMLImageElement | null = root.querySelector<HTMLImageElement>('p img[alt]');
+        // prosemirror-view 1.42 flanks inline nodes with `img.ProseMirror-separator` cursor helpers.
+        const image: HTMLImageElement | null = root.querySelector<HTMLImageElement>('p img[src]');
         expect(image?.getAttribute('src')).toBe('pic.png');
         expect(image?.getAttribute('alt')).toBe('alt text');
       });
@@ -442,6 +444,20 @@ describe('markdown features', () => {
     it('roundTrips_markdownAndHtmlImages_unchanged', async () => {
       await expectRoundTrip('![alt text](pic.png)\n');
       await expectRoundTrip('<img src="pic.png" width="100" alt="p">\n');
+    });
+
+    it('roundTrips_aTitledImage_keepingItsTitle', async () => {
+      await expectRoundTrip('![alt text](pic.png "A title")\n');
+    });
+
+    it('parses_anUntitledImage_intoTheResizableImageBlock', async () => {
+      // Crepe's image block carries the title as its caption, and an untitled image has none.
+      const editor: BootedEditor = await boot('![alt text](pic.png)\n', true);
+      try {
+        expect(editor.crepe.getMarkdown()).toContain('(pic.png)');
+      } finally {
+        await editor.dispose();
+      }
     });
   });
 

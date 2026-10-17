@@ -149,6 +149,58 @@ export class StudioConfig {
   }
 
   /**
+   * Reads the run configurations of a specific workspace root — which need not be the focused one.
+   * For an agent docked in a background workspace, which must author THAT workspace's Run dropdown
+   * rather than the one the user happens to be looking at.
+   * @param root The workspace root.
+   * @returns Returns the root's run configurations (empty when it has none, or outside Electron).
+   */
+  public async loadRunConfigurations(root: string): Promise<readonly RunConfiguration[]> {
+    if (root === this.activeWorkspace.rootPath()) {
+      return this.runConfigurations();
+    }
+    const snapshot: StudioSnapshot | null = await this.loadSnapshot(root);
+    return snapshot?.workspace.runConfigurations ?? [];
+  }
+
+  /**
+   * Replaces the run configurations of a specific workspace root, preserving the rest of its shared
+   * configuration. The focused root goes through {@link saveRunConfigurations}, so its snapshot updates
+   * at once; another root is written directly, and its own view picks the change up from the `.studio`
+   * watch.
+   * @param root The workspace root.
+   * @param configurations The new run configurations.
+   * @returns Returns a promise that resolves once the write is issued.
+   */
+  public async saveRunConfigurationsFor(
+    root: string,
+    configurations: readonly RunConfiguration[],
+  ): Promise<void> {
+    if (root === this.activeWorkspace.rootPath()) {
+      return this.saveRunConfigurations(configurations);
+    }
+    if (this.bridge === undefined) {
+      return;
+    }
+    const snapshot: StudioSnapshot = (await this.loadSnapshot(root)) ?? emptySnapshot();
+    const workspace: StudioWorkspace = { ...snapshot.workspace, runConfigurations: configurations };
+    this.log.info('StudioConfig', `Saved run configurations for '${root}'`, configurations.length);
+    await this.bridge.invoke(StudioChannel.SaveWorkspace, root, workspace);
+  }
+
+  /**
+   * Loads a root's `.studio` snapshot without making it current.
+   * @param root The workspace root.
+   * @returns Returns the snapshot, or null when there is none or outside Electron.
+   */
+  private async loadSnapshot(root: string): Promise<StudioSnapshot | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    return this.bridge.invoke<StudioSnapshot | null>(StudioChannel.Load, root);
+  }
+
+  /**
    * Selects a run configuration, persisting the choice to the per-developer `workspace.user.json`.
    * @param id The id of the run configuration to select, or undefined to clear the selection.
    * @returns Returns a promise that resolves once the write is issued.

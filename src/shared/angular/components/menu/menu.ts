@@ -15,8 +15,26 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { MenuPointerGuard } from './menu-pointer-guard';
 import { MENU_POSITIONS, MenuPlacement } from './menu-position';
+
+/**
+ * Describes a secondary action a {@link MenuItem} carries as a trailing button — closing the document
+ * a row names, say.
+ */
+export interface MenuItemAction {
+  /**
+   * Gets the action's icon.
+   */
+  readonly icon: Icon;
+
+  /**
+   * Gets the action's verb (for example `Close`), prefixed to the row's label for the button's
+   * accessible name and tooltip.
+   */
+  readonly label: string;
+}
 
 /**
  * Describes one selectable row in a {@link Menu}.
@@ -86,6 +104,13 @@ export interface MenuItem {
    * as state without competing with the label (for example `(running)` on a start/stop row).
    */
   readonly status?: string;
+
+  /**
+   * Gets the secondary action shown as a trailing button on the row, if any. Acting on it emits
+   * through {@link Menu.actioned} rather than {@link Menu.selected}, and leaves the menu open so the
+   * next row can be acted on in turn.
+   */
+  readonly action?: MenuItemAction;
 }
 
 /**
@@ -113,7 +138,7 @@ export interface MenuChoice {
  */
 @Component({
   selector: 'app-menu',
-  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger, MenuPointerGuard],
+  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger, MenuPointerGuard, TooltipTrigger],
   templateUrl: './menu.html',
   styleUrl: './menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -161,6 +186,12 @@ export class Menu {
   public readonly chosen: OutputEmitterRef<MenuChoice> = output<MenuChoice>();
 
   /**
+   * Emits the row's id together with the data the menu was opened with when a row's trailing
+   * {@link MenuItem.action} is used.
+   */
+  public readonly actioned: OutputEmitterRef<MenuChoice> = output<MenuChoice>();
+
+  /**
    * Gets the panel template the caller's trigger opens through `cdkMenuTriggerFor`.
    *
    * It is the same template each submenu opens, so the caller's trigger and every nested row build
@@ -203,5 +234,14 @@ export class Menu {
   protected onSelect(id: string, data: unknown): void {
     this.selected.emit(id);
     this.chosen.emit({ id, data });
+  }
+
+  /**
+   * Emits the given row's trailing action.
+   * @param id The row's id.
+   * @param data The data the menu was opened with.
+   */
+  protected onAction(id: string, data: unknown): void {
+    this.actioned.emit({ id, data });
   }
 }

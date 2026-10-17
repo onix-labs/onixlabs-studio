@@ -1,13 +1,16 @@
 // The forge capability's IPC channels and renderer-facing client. The renderer's Forge service and the
-// main-process ForgeContribution both name their channels from here, carried over the generic
-// window.bridge transport. The backend is contributed through the main-process contribution registry
-// (#389); it is not a core manager.
+// main-process HostingManager both name their channels from here, carried over the generic
+// window.bridge transport. Behind them is the hosting host: every request is answered by whichever
+// hosting plugin serves the repository's host (#819, #820), and with none installed there is no forge.
 //
 // Every network call and every credential lives in the main process. The renderer can ask for a token
 // to be stored or cleared, and can read the resulting status — it can never read the token back.
 
+import { HostedAccount, HostedRepository, HostingAuthMode } from './hosting-protocol';
 import {
-  ForgeAuthStatus,
+  ForgeCloseReason,
+  ForgeHostAccount,
+  ForgeRepositoryCapabilities,
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
@@ -27,19 +30,32 @@ export enum ForgeChannel {
   Detect = 'forge:detect',
 
   /**
-   * Reads the current authentication status, verifying the resolved credential against the forge
-   * (invoke).
+   * Says what a repository allows — its plugin's capabilities narrowed to the repository's own — or
+   * null when no installed plugin serves it (invoke).
    */
-  AuthStatus = 'forge:auth-status',
+  Describe = 'forge:describe',
 
   /**
-   * Stores a personal access token, encrypted at rest, and returns the resulting status (invoke).
+   * Lists every host the installed hosting plugins serve, with how each is signed in, verifying each
+   * credential against its host (invoke).
+   */
+  Hosts = 'forge:hosts',
+
+  /**
+   * Chooses how a plugin signs in to one of its hosts, restarting the plugin, and returns the host's
+   * resulting account (invoke).
+   */
+  SetAuthMode = 'forge:set-auth-mode',
+
+  /**
+   * Stores a personal access token for a host, encrypted at rest, and returns the host's resulting
+   * account (invoke).
    */
   SetToken = 'forge:set-token',
 
   /**
-   * Clears the stored token and returns the resulting status — which may still be authenticated, when
-   * a `gh` CLI login remains (invoke).
+   * Clears the token stored for a host and returns its resulting account — which may still be
+   * authenticated, when the host's CLI login remains (invoke).
    */
   ClearToken = 'forge:clear-token',
 
@@ -59,6 +75,16 @@ export enum ForgeChannel {
   IssueComments = 'forge:issue-comments',
 
   /**
+   * Closes or reopens an issue the user chose (invoke).
+   */
+  SetIssueState = 'forge:set-issue-state',
+
+  /**
+   * Comments on an issue as the user (invoke).
+   */
+  CommentOnIssue = 'forge:comment-on-issue',
+
+  /**
    * Lists a repository's recent CI/CD workflow runs (invoke).
    */
   WorkflowRuns = 'forge:workflow-runs',
@@ -72,6 +98,21 @@ export enum ForgeChannel {
    * Cancels a CI/CD workflow run that is in flight (invoke).
    */
   CancelWorkflowRun = 'forge:cancel-workflow-run',
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and their organisations (invoke, #805).
+   */
+  Accounts = 'forge:accounts',
+
+  /**
+   * Lists an account's repositories on a host (invoke, #805).
+   */
+  Repositories = 'forge:repositories',
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it (invoke, #805).
+   */
+  StarredRepositories = 'forge:starred-repositories',
 }
 
 /**
@@ -86,23 +127,47 @@ export interface ForgeClient {
   detect(remoteUrl: string): Promise<ForgeRepositoryRef | null>;
 
   /**
-   * Reads the current authentication status.
-   * @returns Returns the status.
+   * Says what a repository allows.
+   * @param repository The repository.
+   * @returns Returns the capabilities, or null when no installed plugin serves it.
    */
-  authStatus(): Promise<ForgeAuthStatus>;
+  describe(repository: ForgeRepositoryRef): Promise<ForgeRepositoryCapabilities | null>;
 
   /**
-   * Stores a personal access token.
+   * Lists every host the installed hosting plugins serve, with how each is signed in.
+   * @returns Returns the hosts, highest-priority plugin first.
+   */
+  hosts(): Promise<readonly ForgeHostAccount[]>;
+
+  /**
+   * Chooses how a plugin signs in to one of its hosts.
+   * @param pluginId The plugin.
+   * @param host The host.
+   * @param mode The way to sign in, or null to let the plugin decide.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
+   */
+  setAuthMode(
+    pluginId: string,
+    host: string,
+    mode: HostingAuthMode | null,
+  ): Promise<ForgeHostAccount | null>;
+
+  /**
+   * Stores a personal access token for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
    * @param token The token to store; a blank token clears it instead.
-   * @returns Returns the resulting status.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
    */
-  setToken(token: string): Promise<ForgeAuthStatus>;
+  setToken(pluginId: string, host: string, token: string): Promise<ForgeHostAccount | null>;
 
   /**
-   * Clears the stored token.
-   * @returns Returns the resulting status.
+   * Clears the token stored for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
    */
-  clearToken(): Promise<ForgeAuthStatus>;
+  clearToken(pluginId: string, host: string): Promise<ForgeHostAccount | null>;
 
   /**
    * Lists a repository's open pull requests.
@@ -130,6 +195,36 @@ export interface ForgeClient {
   ): Promise<ForgeResult<readonly ForgeIssueComment[]>>;
 
   /**
+   * Closes or reopens an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param state The state to put it in.
+   * @param reason Why it is being closed, where the host records one; ignored when reopening.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
+   * @returns Returns the issue as it now stands, or the reason it could not be changed.
+   */
+  setIssueState(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: ForgeCloseReason,
+    duplicateOf?: number,
+  ): Promise<ForgeResult<ForgeIssue>>;
+
+  /**
+   * Comments on an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param body The comment, as Markdown.
+   * @returns Returns the posted comment, or the reason it could not be posted.
+   */
+  commentOnIssue(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<ForgeResult<ForgeIssueComment>>;
+
+  /**
    * Lists a repository's recent CI/CD workflow runs.
    * @param repository The repository to read.
    * @returns Returns the runs, or the reason they could not be read.
@@ -142,7 +237,7 @@ export interface ForgeClient {
    * @param runId The run to re-run.
    * @returns Returns nothing on success, or the reason it could not be started.
    */
-  rerunWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
+  rerunWorkflowRun(repository: ForgeRepositoryRef, runId: string): Promise<ForgeResult<void>>;
 
   /**
    * Cancels a CI/CD workflow run that is in flight.
@@ -150,5 +245,27 @@ export interface ForgeClient {
    * @param runId The run to cancel.
    * @returns Returns nothing on success, or the reason it could not be cancelled.
    */
-  cancelWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
+  cancelWorkflowRun(repository: ForgeRepositoryRef, runId: string): Promise<ForgeResult<void>>;
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and the organisations they belong to.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @returns Returns the accounts, or the reason they could not be read.
+   */
+  accounts(host: string): Promise<ForgeResult<readonly HostedAccount[]>>;
+
+  /**
+   * Lists an account's repositories on a host.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @param account The account's login.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  repositories(host: string, account: string): Promise<ForgeResult<readonly HostedRepository[]>>;
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  starredRepositories(host: string): Promise<ForgeResult<readonly HostedRepository[]>>;
 }

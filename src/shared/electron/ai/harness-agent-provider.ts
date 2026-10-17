@@ -1,20 +1,24 @@
 import type {
+  AiProposedChange,
   AgentContextRef,
   AiEffort,
   AiEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
 import type {
   HarnessAnswer,
   HarnessCapabilities,
+  HarnessModel,
   HarnessTool,
   TurnContextRef,
   TurnImage,
   TurnRequest,
 } from '@shared/api/agent-protocol';
+import { withholdsBuiltInTools } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type {
   AgentAuth,
@@ -27,7 +31,6 @@ import type {
 } from './agent-provider';
 import { HarnessHost, HarnessModelReport, HarnessTransport, refusalFor } from './harness-host';
 import { describeOffer, invokeTool } from './harness-tools';
-import { composeUserPrompt } from './prompt-layers';
 
 /**
  * How long {@link HarnessAgentSession.panicStop} gives a harness to settle its turns before the
@@ -278,7 +281,9 @@ export class HarnessAgentProvider implements AgentProvider {
               : refusalFor(request),
           ),
       });
-      return report;
+      return report === null || capabilities.guaranteedContextWindows === true
+        ? report
+        : withoutContextWindows(report);
     } finally {
       host.close();
     }
@@ -315,12 +320,11 @@ export class HarnessAgentProvider implements AgentProvider {
         throw new Error(`${this.definition.label} could not be started.`);
       }
       this.declared = capabilities;
-      // Steering is only offered when the harness said it takes it; otherwise the renderer queues the
-      // message for the next turn, exactly as it does for an in-core provider with no steer handler.
       // Steering is offered only when the harness listed it; otherwise the renderer queues the message
-      // for the next turn, exactly as it does for an in-core provider with no steer handler.
+      // for the next turn, exactly as it does for an in-core provider with no steer handler. A harness
+      // older than 1.5.0 sends no list at all, which reads as "answers none of the optional messages".
       context.setSteerHandler(
-        capabilities.answers.includes('steer')
+        (capabilities.answers ?? []).includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
@@ -456,7 +460,7 @@ export class HarnessAgentSession implements AgentSession {
     try {
       const capabilities: HarnessCapabilities | null = host.capabilities;
       context.setSteerHandler(
-        capabilities?.answers.includes('steer') === true
+        (capabilities?.answers ?? []).includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
@@ -711,6 +715,43 @@ export class HarnessAgentSession implements AgentSession {
 }
 
 /**
+ * Reads the file change a permission request proposes (protocol 1.15.0), which a plugin wrote and so is
+ * checked rather than trusted: a path, and either a whole content or replacements, each of the right
+ * type. Anything else proposes nothing, and the prompt shows the request's name and detail as before.
+ * @param value The request's `change`, as the plugin sent it.
+ * @returns Returns the change, or undefined for none.
+ */
+export function readProposedChange(value: unknown): AiProposedChange | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const { path, content, edits } = value as Record<string, unknown>;
+  if (typeof path !== 'string' || path.length === 0) {
+    return undefined;
+  }
+  if (typeof content === 'string') {
+    return { path, content };
+  }
+  if (!Array.isArray(edits) || edits.length === 0) {
+    return undefined;
+  }
+  const replacements: { oldText: string; newText: string; replaceAll?: boolean }[] = [];
+  for (const entry of edits as readonly unknown[]) {
+    const fields: Record<string, unknown> =
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};
+    if (typeof fields['oldText'] !== 'string' || typeof fields['newText'] !== 'string') {
+      return undefined;
+    }
+    replacements.push({
+      oldText: fields['oldText'],
+      newText: fields['newText'],
+      ...(fields['replaceAll'] === true ? { replaceAll: true } : {}),
+    });
+  }
+  return { path, edits: replacements };
+}
+
+/**
  * Puts a harness's question to the user and returns the answer in the protocol's shape.
  *
  * Module-level rather than a method, because a live session answers a question exactly as a transient
@@ -732,6 +773,7 @@ export async function answerRequest(
         text(asked['name'], 'Action'),
         text(asked['detail'], ''),
         dismiss,
+        readProposedChange(asked['change']),
       );
       return { kind: 'permission', granted };
     }
@@ -740,6 +782,7 @@ export async function answerRequest(
         text(asked['question'], ''),
         toChoices(asked['choices']),
         dismiss,
+        toSelection(asked['selection']),
       );
       return { kind: 'input', answer };
     }
@@ -804,6 +847,24 @@ export async function answerRequest(
 }
 
 /**
+ * Drops the context windows from a discovery report whose harness did not declare them guaranteed.
+ *
+ * ⛔ Not a fallback, a refusal. A harness that never said its windows are the provider's own may have
+ * guessed them, and a guess shown as a model's capacity is a lie the user cannot see through — every
+ * Claude model read 200K once the CLI stopped tagging its 1M models. No window is the honest answer.
+ * @param report The report as the harness sent it.
+ * @returns Returns the report with every model's window removed.
+ */
+function withoutContextWindows(report: HarnessModelReport): HarnessModelReport {
+  return {
+    ...report,
+    models: report.models.map(({ id, label }: HarnessModel): HarnessModel =>
+      label === undefined ? { id } : { id, label },
+    ),
+  };
+}
+
+/**
  * Reads a field a harness sent as text, refusing anything that is not a string.
  *
  * ⚠️ Not `String(value)`. These strings reach the **permission prompt** — the one surface in Studio
@@ -858,6 +919,16 @@ function toChoices(value: unknown): readonly AiInputChoice[] {
 }
 
 /**
+ * Reads the selection on an `input` request (protocol 1.14.0). Only `'multiple'` changes anything; a
+ * harness that omits it, or sends something unknown, asks for one choice as every harness did before.
+ * @param value The `selection` field as the harness sent it.
+ * @returns Returns `'multiple'`, or undefined for one choice.
+ */
+function toSelection(value: unknown): AiInputSelection | undefined {
+  return value === 'multiple' ? 'multiple' : undefined;
+}
+
+/**
  * Builds the turn envelope from a run context, dropping everything that cannot cross a wire.
  *
  * The field names match `AgentRunContext` deliberately, so this reads as a projection rather than a
@@ -872,9 +943,7 @@ export function toTurnRequest(
 ): TurnRequest {
   return {
     requestId: context.requestId,
-    // The user's standing instructions ride inside the prompt (#300), so a harness that reads only
-    // the fields it has always read still delivers them.
-    prompt: composeUserPrompt(context),
+    prompt: context.prompt,
     workspaceRoot: context.workspaceRoot,
     model: context.model,
     agentSessionId: context.agentSessionId,
@@ -891,6 +960,11 @@ export function toTurnRequest(
     resumeSessionAt: context.resumeSessionAt,
     permissionPosture: context.permissionPosture,
     toolPolicies: { ...context.toolPolicies },
+    ...((context.blockedCommands ?? []).length === 0
+      ? {}
+      : { blockedCommands: [...context.blockedCommands] }),
+    // A terminal's or a tool view's agent works through Studio's tools alone (#965).
+    ...(withholdsBuiltInTools(context.surface) ? { builtInTools: 'none' as const } : {}),
     images: context.images.map((image: AiImageRef): TurnImage => ({
       mediaType: image.mediaType,
       data: image.data,

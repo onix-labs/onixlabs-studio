@@ -30,10 +30,17 @@ import {
   toLanguageServerDescriptors,
   toPluginDescriptor,
   toProvision,
+  toVersionControlDescriptors,
+  toHostingDescriptors,
   validManifests,
 } from './plugin-loader';
+import {
+  VersionControlDescriptor,
+  VersionControlResolution,
+} from '../../version-control/version-control-descriptor';
+import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
-import { PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
 
 /**
  * Builds a well-formed manifest for a sideloaded plugin.
@@ -548,6 +555,44 @@ describe('plugin loader', () => {
       );
       expect(resolution.spec?.command).toBe('/electron');
       expect(resolution.spec?.args).toEqual(['/installed/server.js', '--stdio', '--extra']);
+      // The runtime is the Electron binary, which is a Node interpreter only while this is set. A
+      // manifest that declares no environment of its own must not blank it: without it the spawn
+      // launches a second Studio, whose argv the running instance opens as a document — the server
+      // never starts and the user gets its launcher script in a tab.
+      expect(resolution.spec?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+    });
+
+    it('keepsTheRuntimeEnvironmentWhenAManifestDeclaresItsOwn', async () => {
+      writePlugin(
+        'jsonls',
+        manifest({
+          id: 'jsonls',
+          contributes: {
+            languageServers: [
+              {
+                id: 'jsonls',
+                displayName: 'JSON',
+                languages: ['json'],
+                command: { kind: 'node', env: { NODE_OPTIONS: '--max-old-space-size=4096' } },
+              },
+            ],
+          },
+        }),
+      );
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/server.js'),
+      );
+
+      // A manifest adds to the runtime's environment rather than replacing it, so a plugin cannot
+      // unset what the runtime needs to start at all.
+      expect(resolution.spec?.env).toEqual({
+        ELECTRON_RUN_AS_NODE: '1',
+        NODE_OPTIONS: '--max-old-space-size=4096',
+      });
     });
 
     it('reportsNotInstalledRatherThanSpawningNothing', async () => {
@@ -786,6 +831,16 @@ describe('a sideloaded plugin carrying its own payload', () => {
     expect(ops.target(nothingDownloaded)).toBe(path.join(root, 'payload', 'main.js'));
   });
 
+  it('payloadOps_refusesToRemoveAPayloadPlacedByHand_namingItsFolder', async () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const ops: PayloadOps = payloadOps(decoderManifest(), root);
+
+    // Removing it is the user's business; reporting a removal that did not happen is not.
+    await expect(ops.remove(nothingDownloaded)).rejects.toEqual(new HandPlacedPluginError(root));
+    expect(ops.isInstalled(nothingDownloaded)).toBe(true);
+  });
+
   it('payloadOps_fallsBackToTheProvisionerWhenNoPayloadIsPresent', () => {
     // An empty sideload directory must not claim the plugin is installed, or the Plugin Manager would
     // report a working plugin that cannot run.
@@ -901,10 +956,149 @@ describe('a sideloaded plugin carrying its own payload', () => {
   });
 
   /**
-   * A sideloaded manifest contributing a container engine, whose payload is its client CLI.
+   * A sideloaded manifest contributing a version-control system (#815).
    * @returns Returns the manifest.
    */
-  function engineManifest(): PluginManifest {
+  function versionControlManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.git',
+      contributes: {
+        versionControl: [
+          {
+            id: 'local.git',
+            displayName: 'Local Git',
+            priority: 100,
+            markers: ['.git'],
+            metadataDirectories: ['.git'],
+            capabilities: ['stash', 'clone'],
+            executableModes: ['installed', 'custom'],
+            command: { kind: 'node', env: { GIT_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toVersionControlDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly VersionControlDescriptor[] = toVersionControlDescriptors(
+      versionControlManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.git',
+      markers: ['.git'],
+      capabilities: ['stash', 'clone'],
+      executableModes: ['installed', 'custom'],
+    });
+    const resolution: VersionControlResolution = descriptors[0].resolve();
+    expect(resolution).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', GIT_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toVersionControlDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly VersionControlDescriptor[] = toVersionControlDescriptors(
+      versionControlManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local Git is not installed — install it in Plugins.',
+    });
+  });
+
+  /**
+   * A sideloaded manifest contributing a code host (#819).
+   * @returns Returns the manifest.
+   */
+  function hostingManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.github',
+      contributes: {
+        hosting: [
+          {
+            id: 'local.github',
+            displayName: 'Local GitHub',
+            priority: 100,
+            hosts: ['github.com'],
+            capabilities: ['issues', 'ciRuns'],
+            authModes: ['cli', 'studio'],
+            commandLineTools: ['gh'],
+            command: { kind: 'node', env: { GITHUB_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toHostingDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly HostingDescriptor[] = toHostingDescriptors(
+      hostingManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.github',
+      hosts: ['github.com'],
+      capabilities: ['issues', 'ciRuns'],
+      authModes: ['cli', 'studio'],
+    });
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', GITHUB_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toHostingDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly HostingDescriptor[] = toHostingDescriptors(
+      hostingManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local GitHub is not installed — install it in Plugins.',
+    });
+  });
+
+  /**
+   * A sideloaded manifest contributing a container engine, whose payload is the engine's plugin
+   * process (#973).
+   * @param withCommand Whether the engine has a command, as one built for this Studio does.
+   * @returns Returns the manifest.
+   */
+  function engineManifest(withCommand: boolean = true): PluginManifest {
     return {
       ...decoderManifest(),
       id: 'local.engine',
@@ -920,6 +1114,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
               sockets: { darwin: ['/run/local.sock'], linux: ['/run/local.sock'] },
             },
             startCommands: { darwin: 'local machine start' },
+            ...(withCommand ? { command: { kind: 'node' as const }, cli: 'localctl' } : {}),
           },
         ],
       },
@@ -932,16 +1127,37 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 
     expect(descriptors).toHaveLength(1);
-    // The CLI is the provisioned client's absolute path, not a bare name: the point of provisioning it
-    // is that nothing has to be on the PATH.
-    expect(descriptors[0].cli).toBe(path.join(root, 'payload', 'main.js'));
+    // The plugin process runs under Studio's runtime; the CLI is a name, looked for when needed.
+    expect(descriptors[0].spawn).toMatchObject({
+      command: '/runtime',
+      args: [path.join(root, 'payload', 'main.js')],
+    });
+    expect(descriptors[0].cli).toBe('localctl');
     expect(descriptors[0].discovery.hostVariable).toBe('LOCAL_HOST');
     expect(descriptors[0].discovery.defaults('darwin')).toEqual(['/run/local.sock']);
     expect(descriptors[0].startCommand('darwin')).toBe('local machine start');
+  });
+
+  it('toContainerEngineDescriptors_listsAnEngineBuiltForAnOlderStudio_withNothingToRun', () => {
+    // #973: before 1.19.0 the payload was a CLI and Studio spoke the Engine API itself. Such an engine
+    // stays listed, so the user is offered its update, but there is no process to run.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(false),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0].spawn).toBeNull();
+    expect(descriptors[0].cli).toBeNull();
   });
 
   it('toContainerEngineDescriptors_reportsNoSocketsForAPlatformTheEngineOmits', () => {
@@ -950,6 +1166,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 
@@ -966,6 +1183,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
     const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
       engineManifest(),
       (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
       root,
     );
 

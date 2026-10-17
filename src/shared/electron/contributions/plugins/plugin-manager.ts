@@ -1,7 +1,8 @@
 import { PluginActionResult, PluginState, PluginSummary } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
-import { PluginStore } from './plugin-store';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { PluginInstallEvents } from './plugin-install-events';
+import { PluginInstallRecord, PluginStore } from './plugin-store';
 
 /**
  * Owns the plugin model's first two layers: the catalogue of what is **available**, and the state of
@@ -32,16 +33,36 @@ export class PluginManager {
   private readonly busy: Set<string> = new Set<string>();
 
   /**
+   * Holds the listeners told when a plugin's state changes: an action starting or finishing.
+   */
+  private readonly listeners: Set<() => void> = new Set<() => void>();
+
+  /**
+   * Holds the identifiers of plugins already logged as described from the catalogue rather than from
+   * their install, so a list pushed on every state change does not repeat the warning.
+   */
+  private readonly warnedUnconfirmed: Set<string> = new Set<string>();
+
+  /**
+   * Holds where completed installs and removals are announced, or undefined to announce nothing.
+   */
+  private readonly events: PluginInstallEvents | undefined;
+
+  /**
    * Initializes a new instance of the {@link PluginManager} class.
    * @param descriptors The available plugins.
    * @param context The surface descriptors detect and install themselves through.
    * @param store The record of what Studio installed.
+   * @param events Where completed installs and removals are announced, so the hosts stop what they
+   * left behind (#881); undefined to announce nothing.
    */
   public constructor(
     descriptors: readonly PluginDescriptor[],
     context: PluginContext,
     store: PluginStore,
+    events?: PluginInstallEvents,
   ) {
+    this.events = events;
     this.descriptors = new Map<string, PluginDescriptor>(
       descriptors.map((descriptor: PluginDescriptor): [string, PluginDescriptor] => [
         descriptor.id,
@@ -50,6 +71,36 @@ export class PluginManager {
     );
     this.context = context;
     this.store = store;
+  }
+
+  /**
+   * Registers a listener told whenever a plugin's state changes — when an install or uninstall
+   * starts, so the plugin reads as busy for as long as it is, and again when it finishes. Without the
+   * first of those the busy state existed only inside an action nobody could observe: the list was
+   * pushed once the work was over, by which time busy had already been cleared, so no view ever saw
+   * a plugin installing.
+   * @param listener The listener.
+   * @returns Returns a function that removes the listener.
+   */
+  public onChanged(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => void this.listeners.delete(listener);
+  }
+
+  /**
+   * Marks a plugin busy, or clears it, telling the listeners either way.
+   * @param id The plugin identifier.
+   * @param busy Whether an action is now in flight for it.
+   */
+  private setBusy(id: string, busy: boolean): void {
+    if (busy) {
+      this.busy.add(id);
+    } else {
+      this.busy.delete(id);
+    }
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   /**
@@ -85,7 +136,7 @@ export class PluginManager {
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is already installing.` };
     }
-    this.busy.add(id);
+    this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Installing ${id}`);
       const installedPath: string | null = await descriptor.install(this.context);
@@ -106,14 +157,29 @@ export class PluginManager {
       // it. Pruning here is what makes an update a replacement rather than an accumulation — and it
       // happens only after the new one verified, so a failed update leaves the working install alone.
       await descriptor.pruneOtherVersions?.(this.context);
-      this.store.add({ id, version: descriptor.version ?? 'unknown', installedPath });
+      const replaced: PluginInstallRecord | null = this.store.get(id);
+      // The descriptor describes exactly the version that just landed, so this is the moment to keep
+      // what it contributes. Once the catalogue moves on, nothing else can say (#878).
+      this.store.add({
+        id,
+        version: descriptor.version ?? 'unknown',
+        installedPath,
+        contributions: descriptor.contributions,
+      });
       logger.info('PluginManager', `Installed ${id} at ${installedPath}`);
+      // Announced only once the record names the new version, so a host that restarts on hearing it
+      // starts what was just installed rather than racing the record to the old one (#881).
+      this.events?.emit({
+        pluginId: id,
+        kind: 'installed',
+        contributions: [...(replaced?.contributions ?? []), ...descriptor.contributions],
+      });
       return { success: true, state: 'installed', error: null };
     } catch (error: unknown) {
       logger.error('PluginManager', `Install threw for ${id}`, error);
       return { success: false, state: 'available', error: `${descriptor.name} failed to install.` };
     } finally {
-      this.busy.delete(id);
+      this.setBusy(id, false);
     }
   }
 
@@ -130,13 +196,29 @@ export class PluginManager {
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is busy.` };
     }
-    this.busy.add(id);
+    this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Uninstalling ${id}`);
+      const removed: PluginInstallRecord | null = this.store.get(id);
       await descriptor.uninstall(this.context);
       this.store.remove(id);
+      // The files are gone, but a host's process for them is not until it is told (#881). A plugin
+      // placed by hand never reaches here — its removal refuses — so its process rightly keeps running.
+      this.events?.emit({
+        pluginId: id,
+        kind: 'removed',
+        contributions: removed?.contributions ?? descriptor.contributions,
+      });
       return { success: true, state: 'available', error: null };
     } catch (error: unknown) {
+      if (error instanceof HandPlacedPluginError) {
+        logger.warn('PluginManager', `${id} was placed by hand in ${error.directory}; not removed`);
+        return {
+          success: false,
+          state: 'installed',
+          error: `${descriptor.name} was added by hand, in ${error.directory}. To remove it, delete that folder and restart Studio.`,
+        };
+      }
       logger.error('PluginManager', `Uninstall threw for ${id}`, error);
       return {
         success: false,
@@ -144,27 +226,49 @@ export class PluginManager {
         error: `${descriptor.name} could not be removed.`,
       };
     } finally {
-      this.busy.delete(id);
+      this.setBusy(id, false);
     }
   }
 
   /**
    * Builds a plugin's summary, resolving its current state.
+   *
+   * ⛔ An installed plugin's contributions come from its install record, not the descriptor. The
+   * descriptor is the catalogue's entry, and once the index describes a newer version every surface
+   * gating on a capability over-reported: the project wizard offered `init` to a Git that could not do
+   * it (#878). A record from before snapshots existed matches the descriptor when the versions agree;
+   * when they do not, nothing on this side can say, so the summary is marked unconfirmed for the
+   * surfaces that can ask the running plugin.
    * @param descriptor The plugin to summarise.
    * @returns Returns the summary.
    */
   private async summarise(descriptor: PluginDescriptor): Promise<PluginSummary> {
     const state: PluginState = await this.stateOf(descriptor);
+    const record: PluginInstallRecord | null = this.store.get(descriptor.id);
+    const installed: PluginInstallRecord | null = state === 'installed' ? record : null;
+    const unconfirmed: boolean =
+      installed !== null &&
+      installed.contributions === undefined &&
+      installed.version !== descriptor.version;
+    if (unconfirmed && !this.warnedUnconfirmed.has(descriptor.id)) {
+      this.warnedUnconfirmed.add(descriptor.id);
+      logger.warn(
+        'PluginManager',
+        `${descriptor.id} ${installed?.version} was installed before Studio recorded its contributions; ` +
+          `describing it from the catalogue's ${descriptor.version} until it is updated`,
+      );
+    }
     return {
       id: descriptor.id,
       name: descriptor.name,
       description: descriptor.description,
       state,
-      contributions: descriptor.contributions,
+      contributions: installed?.contributions ?? descriptor.contributions,
+      ...(unconfirmed ? { contributionsUnconfirmed: true } : {}),
       version: descriptor.version,
       detail: state === 'installed' ? null : (descriptor.detail ?? null),
       origin: descriptor.origin ?? null,
-      installedVersion: this.store.get(descriptor.id)?.version ?? null,
+      installedVersion: record?.version ?? null,
     };
   }
 

@@ -1,6 +1,18 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ApiHistoryEntry } from '@shared/api/api-client-types';
@@ -14,10 +26,12 @@ import { ApiWorkspace } from '../../api-workspace/api-workspace';
  *
  * History is session state, not saved state: it is deliberately not persisted with the collections,
  * because a record of what was sent is a working note rather than part of the user's document.
+ *
+ * Its tool strip (#882) filters the sends by name or address, and clears them.
  */
 @Component({
   selector: 'app-api-history-panel',
-  imports: [Button, DatePipe],
+  imports: [Button, DatePipe, PanelToolbar, TextField],
   templateUrl: './api-history-panel.html',
   styleUrl: './api-history-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -42,6 +56,27 @@ export class ApiHistoryPanel {
    * Holds the icon tokens used by the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the filter typed into the strip.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the sends the filter keeps: those whose name or address holds it, ignoring case.
+   */
+  protected readonly entries: Signal<readonly ApiHistoryEntry[]> = computed(
+    (): readonly ApiHistoryEntry[] => {
+      const needle: string = this.query().trim().toLowerCase();
+      const history: readonly ApiHistoryEntry[] = this.workspace.history();
+      return needle.length === 0
+        ? history
+        : history.filter(
+            (entry: ApiHistoryEntry): boolean =>
+              entry.name.toLowerCase().includes(needle) || entry.url.toLowerCase().includes(needle),
+          );
+    },
+  );
 
   /**
    * Re-opens the saved request a history entry came from. An entry whose request has since been

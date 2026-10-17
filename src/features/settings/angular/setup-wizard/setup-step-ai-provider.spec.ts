@@ -67,16 +67,6 @@ describe('SetupStepAiProvider', () => {
   }
 
   /**
-   * Reads the names shown in the step's rows.
-   * @returns Returns the names in render order.
-   */
-  function names(): readonly string[] {
-    return Array.from(host.querySelectorAll('.ai__name')).map(
-      (element: Element): string => element.textContent?.trim() ?? '',
-    );
-  }
-
-  /**
    * Renders the step and settles it.
    * @returns Returns a promise that resolves once the view has settled.
    */
@@ -117,104 +107,55 @@ describe('SetupStepAiProvider', () => {
     expect(button('Subscription')).toBeUndefined();
   });
 
-  it('render_whenNothingIsConfigured_offersTheSignInMethods', async () => {
+  it('render_showsTheSettingsPagesConfigurations_withEverySignInMethod', async () => {
     known.set([harness('installed')]);
     await render();
 
+    // The settings page's own list, not a wizard version of it.
+    expect(host.querySelector('app-ai-provider-configurations')).not.toBeNull();
     expect(button('Subscription')).toBeDefined();
     expect(button('API Key')).toBeDefined();
-    expect(button('Check this provider')).toBeUndefined();
   });
 
-  it('choose_whenAMethodIsClicked_createsAConfigurationNamingThePluginAndMakesItActive', async () => {
+  it('add_keepsEverySignInMethodOnOffer_andOpensTheNewConfiguration', async () => {
     known.set([harness('installed')]);
     await render();
 
     button('Subscription')?.click();
     fixture.detectChanges();
 
-    const settings: Settings = TestBed.inject(Settings);
-    const active: AiConnection | undefined = settings.aiActiveConnection();
+    // A provider with two ways in can be given both: using one must not take the other away.
+    expect(button('Subscription')).toBeDefined();
+    expect(button('API Key')).toBeDefined();
+    expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
+  });
+
+  it('add_whenNothingIsActive_makesTheConfigurationNamingThePluginTheActiveOne', async () => {
+    known.set([harness('installed')]);
+    await render();
+
+    button('Subscription')?.click();
+    fixture.detectChanges();
+
+    const active: AiConnection | undefined = TestBed.inject(Settings).aiActiveConnection();
     expect(active?.kind).toBe('anthropic');
     expect(active?.auth).toBe('claude-login');
     // 🔑 The configuration names the harness from the moment it exists, which is what makes it
     // runnable; a wizard that left this for the user to repair in Settings would not be onboarding.
     expect(active?.harnessId).toBe('test.claude-harness');
-    // And the step has moved on to the credential and the check.
-    expect(button('Check this provider')).toBeDefined();
-    expect(button('Subscription')).toBeUndefined();
   });
 
-  it('change_whenClicked_goesBackToChoosingWithTheExistingConfigurationOnOffer', async () => {
+  it('add_whenSomethingIsAlreadyActive_leavesTheUsersChoiceAlone', async () => {
     known.set([harness('installed')]);
     await render();
+    button('Subscription')?.click();
+    fixture.detectChanges();
+    const first: string = TestBed.inject(Settings).aiActiveConnectionId();
+
     button('API Key')?.click();
     fixture.detectChanges();
 
-    button('Change')?.click();
-    fixture.detectChanges();
-
-    // The configuration just made is offered back, beside the sign-in methods, rather than
-    // silently orphaned in Settings.
-    expect(names()).toEqual(['Anthropic (Anthropic API)', 'How you sign in']);
-    expect(button('Use')).toBeDefined();
-    expect(button('Subscription')).toBeDefined();
-  });
-
-  it('use_whenClicked_returnsToVerifyingThatConfiguration', async () => {
-    known.set([harness('installed')]);
-    await render();
-    button('API Key')?.click();
-    fixture.detectChanges();
-    button('Change')?.click();
-    fixture.detectChanges();
-
-    button('Use')?.click();
-    fixture.detectChanges();
-
-    expect(button('Check this provider')).toBeDefined();
-    expect(button('Use')).toBeUndefined();
-  });
-
-  it('verify_whenTheProviderDoesNotAnswer_saysSoAgainstThatConfiguration', async () => {
-    known.set([harness('installed')]);
-    await render();
-    button('API Key')?.click();
-    fixture.detectChanges();
-    const connections: AiConnections = TestBed.inject(AiConnections);
-    vi.spyOn(connections, 'refreshAuth').mockResolvedValue(undefined);
-    vi.spyOn(connections, 'authStatus').mockReturnValue({
-      source: 'none',
-      available: false,
-      hasStoredKey: false,
-      detail: 'No credential.',
-    });
-
-    await (fixture.componentInstance as unknown as { verify(): Promise<void> }).verify();
-    fixture.detectChanges();
-
-    expect(host.querySelector('.ai__verdict')?.textContent).toContain('did not answer');
-    expect(host.querySelector('.ai__verdict--bad')).not.toBeNull();
-  });
-
-  it('verify_whenTheProviderAnswers_saysTheAgentIsReady', async () => {
-    known.set([harness('installed')]);
-    await render();
-    button('API Key')?.click();
-    fixture.detectChanges();
-    const connections: AiConnections = TestBed.inject(AiConnections);
-    vi.spyOn(connections, 'refreshAuth').mockResolvedValue(undefined);
-    vi.spyOn(connections, 'authStatus').mockReturnValue({
-      source: 'api-key',
-      available: true,
-      hasStoredKey: true,
-      detail: 'Using the stored key.',
-    });
-
-    await (fixture.componentInstance as unknown as { verify(): Promise<void> }).verify();
-    fixture.detectChanges();
-
-    expect(host.querySelector('.ai__verdict')?.textContent).toContain('ready to use');
-    expect(host.querySelector('.ai__verdict--bad')).toBeNull();
+    expect(TestBed.inject(AiConnections).connectionsForKinds(['anthropic']).length).toBe(2);
+    expect(TestBed.inject(Settings).aiActiveConnectionId()).toBe(first);
   });
 });

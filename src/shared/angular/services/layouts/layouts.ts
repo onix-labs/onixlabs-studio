@@ -101,6 +101,15 @@ interface StoredLayout {
 const LAYOUTS_KEY: string = 'layout.presets';
 
 /**
+ * Built-in layouts whose template has since been renamed: a saved layout still carrying its template's
+ * old name takes the new one, so it reads as the template now does (#941, "Source Control" became
+ * "Version Control"). A layout the user renamed keeps their name.
+ */
+const RENAMED_TEMPLATES: readonly { templateId: string; from: string; to: string }[] = [
+  { templateId: 'source-control', from: 'Source Control', to: 'Version Control' },
+];
+
+/**
  * Holds the storage key the per-root active-layout picks persist under.
  */
 const ACTIVE_KEY: string = 'layout.active-presets';
@@ -693,9 +702,23 @@ export class Layouts {
         typeof (entry as StoredLayout).layout === 'object' &&
         (entry as StoredLayout).layout !== null
       ) {
-        layouts.push(entry as StoredLayout);
+        layouts.push(renamed(entry as StoredLayout));
       }
     }
     return layouts;
   }
+}
+
+/**
+ * Gives a saved layout its template's new name when it still carries the old one.
+ * @param layout The saved layout.
+ * @returns Returns the layout, renamed or as it was.
+ */
+function renamed(layout: StoredLayout): StoredLayout {
+  const rename: { templateId: string; from: string; to: string } | undefined =
+    RENAMED_TEMPLATES.find(
+      (entry: { templateId: string; from: string }): boolean =>
+        entry.templateId === layout.templateId && entry.from === layout.name,
+    );
+  return rename === undefined ? layout : { ...layout, name: rename.to };
 }

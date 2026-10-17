@@ -1,6 +1,39 @@
 import type { ToolSet } from 'ai';
 import {
   ASK_USER,
+  isToolViewSurface,
+  LIST_LOG_SESSIONS,
+  QUERY_LOGS,
+  READ_SYSTEM_METRICS,
+  SET_LOG_LEVEL,
+  LIST_LOCAL_MODELS,
+  SEARCH_MODEL_CATALOG,
+  READ_MACHINE_FACTS,
+  DOWNLOAD_MODEL,
+  DELETE_MODEL,
+  LIST_PROMPT_PROFILES,
+  SAVE_PROMPT_PROFILE,
+  DELETE_PROMPT_PROFILE,
+  LIST_SKILLS,
+  READ_SKILL,
+  LIST_SKILL_TAGS,
+  SAVE_SKILL,
+  DELETE_SKILL,
+  LIST_PLUGINS,
+  READ_WORKSPACE_LANGUAGES,
+  INSTALL_PLUGIN,
+  UNINSTALL_PLUGIN,
+  LIST_CONTAINERS,
+  LIST_CONTAINER_IMAGES,
+  LIST_CONTAINER_VOLUMES,
+  READ_CONTAINER_LOGS,
+  CONTROL_CONTAINER,
+  REMOVE_CONTAINER,
+  PULL_IMAGE,
+  REMOVE_IMAGE,
+  REMOVE_VOLUME,
+  RUN_CONTAINER,
+  PROPOSE_WORKSPACE,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
@@ -18,6 +51,9 @@ import {
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
   OPEN_DOCUMENT,
+  READ_DOCUMENT,
+  EDIT_DOCUMENT,
+  REPLACE_DOCUMENT,
   OPEN_FILE,
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
@@ -44,8 +80,11 @@ import {
   type InsertPlacement,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
+import type { RunContainerRequest } from '@shared/api/container-types';
 import {
   ASK_USER_DESCRIPTION,
+  PROPOSE_WORKSPACE_DESCRIPTION,
+  proposeWorkspace,
   ASK_USER_PROMPT_APPENDIX,
   API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
@@ -65,6 +104,9 @@ import {
   WORKBENCH_PROMPT_APPENDIX,
   WORKSPACE_PROMPT_APPENDIX,
   openDocument,
+  readDocument,
+  editDocument,
+  replaceDocument,
   openFile,
   openDiff,
   listOpenDocuments,
@@ -97,7 +139,53 @@ import {
   READ_ONLY_APPENDIX,
 } from './studio-tools';
 import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { createHostingTools, hostingPromptAppendix } from './hosting-tools';
 import { createSkillTools } from './skill-tools';
+import {
+  listLogSessions,
+  MONITOR_PROMPT_APPENDIX,
+  queryLogs,
+  readSystemMetrics,
+  setLogLevel,
+} from './monitor-tools';
+import {
+  AI_MANAGER_PROMPT_APPENDIX,
+  deleteModel,
+  deletePromptProfile,
+  deleteSkill,
+  downloadModel,
+  listLocalModels,
+  listPromptProfiles,
+  listSkills,
+  listSkillTags,
+  readMachineFacts,
+  readSkill,
+  savePromptProfile,
+  saveSkill,
+  searchModelCatalog,
+} from './ai-manager-tools';
+import {
+  installPlugin,
+  listPlugins,
+  PLUGIN_MANAGER_PROMPT_APPENDIX,
+  readWorkspaceLanguages,
+  uninstallPlugin,
+} from './plugin-manager-tools';
+import {
+  CONTAINERS_PROMPT_APPENDIX,
+  controlContainer,
+  listContainerImages,
+  listContainers,
+  listContainerVolumes,
+  pullImage,
+  readContainerLogs,
+  removeContainer,
+  removeImage,
+  refuseUnconfinedMounts,
+  removeVolume,
+  runContainer,
+} from './containers-tools';
+import { describeRunRequest } from '@shared/api/container-run-request';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -200,9 +288,24 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
           .describe(
             'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
           ),
+        multiple: z
+          .boolean()
+          .optional()
+          .describe(
+            'True when the user may pick several choices at once (the choices are not mutually exclusive); the answer is then the picked labels joined with ", ". Omit when exactly one choice applies.',
+          ),
       }),
-      execute: (args: { question: string; choices?: AiInputChoice[] }): Promise<string> =>
-        askUser(context, args.question, args.choices ?? []),
+      execute: (args: {
+        question: string;
+        choices?: AiInputChoice[];
+        multiple?: boolean;
+      }): Promise<string> =>
+        askUser(
+          context,
+          args.question,
+          args.choices ?? [],
+          args.multiple === true ? 'multiple' : 'single',
+        ),
     }),
   };
 }
@@ -216,17 +319,21 @@ export async function createAskUserTool(context: AgentRunContext): Promise<ToolS
  * @param context The run context (carries the posture and the permission round-trip).
  * @param name The tool name shown on the permission prompt.
  * @param execute The gated executor.
+ * @param describe Renders the input for the prompt and the audit record; defaults to the common
+ * one-line summary. A tool whose input the summary cannot do justice to — a container run, whose
+ * mounts are the whole question — supplies its own.
  * @returns Returns the wrapped executor.
  */
 function gated<TArgs>(
   context: AgentRunContext,
   name: string,
   execute: (args: TArgs) => Promise<string>,
+  describe: (args: TArgs) => string = summarizeToolInput,
 ): (args: TArgs) => Promise<string> {
   return async (args: TArgs): Promise<string> => {
     // Per-tool default policy (#309), consulted ahead of the posture: `deny` refuses, `allow` runs
     // without prompting, and an unset tool (or `ask`) falls through to the posture/prompt below.
-    const detail: string = summarizeToolInput(args);
+    const detail: string = describe(args);
     const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
     if (policy === 'deny') {
       logger.debug('ai-sdk-stream.gated', `Tool "${name}" refused by Deny policy`);
@@ -307,7 +414,7 @@ export async function createWorkspaceTools(context: AgentRunContext): Promise<To
     }),
     [READ_SOURCE_CONTROL_STATUS]: tool({
       description:
-        "Read the workspace's source-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
+        "Read the workspace's version-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
       inputSchema: z.object({}),
       execute: (): Promise<string> => readSourceControlStatus(context),
     }),
@@ -623,7 +730,7 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
   return {
     [OPEN_DOCUMENT]: tool({
       description:
-        'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible. Use it instead of pasting anything long into the conversation. Returns an id to pass to save_document.',
+        'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible. Use it instead of pasting anything long into the conversation. To change it later, revise it with edit_document or replace_document rather than opening another. Returns the id those tools and save_document take.',
       inputSchema: z.object({
         format: z
           .enum(['markdown', 'code'])
@@ -645,6 +752,51 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
         language?: string;
       }): Promise<string> =>
         openDocument(context, args.format, args.title, args.content, args.language),
+    }),
+    // Not gated, like open_document: the target is the agent's own unsaved draft, so revising it is
+    // no more consequential than having written it — and the renderer refuses any other document.
+    [READ_DOCUMENT]: tool({
+      description:
+        'Read the current text of a document you opened with open_document, including any edits the user has made to it since. Read it before revising it.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+      }),
+      execute: (args: { id: string }): Promise<string> => readDocument(context, args.id),
+    }),
+    [EDIT_DOCUMENT]: tool({
+      description:
+        'Revise a document you opened with open_document, in place in its tab: replace one exact occurrence of a string (or every occurrence with replace_all). Use this — not a new open_document — when the user asks for changes to a document you already opened. The old string must match uniquely; include surrounding context to disambiguate.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+        old_string: z
+          .string()
+          .min(1)
+          .describe('The exact text to replace; must match the document verbatim.'),
+        new_string: z.string().describe('The replacement text (empty deletes the matched text).'),
+        replace_all: z
+          .boolean()
+          .optional()
+          .describe(
+            'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+          ),
+      }),
+      execute: (args: {
+        id: string;
+        old_string: string;
+        new_string: string;
+        replace_all?: boolean;
+      }): Promise<string> =>
+        editDocument(context, args.id, args.old_string, args.new_string, args.replace_all ?? false),
+    }),
+    [REPLACE_DOCUMENT]: tool({
+      description:
+        'Replace the whole text of a document you opened with open_document, in place in its tab. Prefer edit_document for targeted changes; use this for a rewrite.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+        text: z.string().describe('The new full text of the document.'),
+      }),
+      execute: (args: { id: string; text: string }): Promise<string> =>
+        replaceDocument(context, args.id, args.text),
     }),
     [SAVE_DOCUMENT]: tool({
       description:
@@ -853,7 +1005,11 @@ export async function createApiTools(context: AgentRunContext): Promise<ToolSet>
       description:
         'Send a saved request and return its status, headers and body. This makes a real call to a real service.',
       inputSchema: z.object({ id: z.string().min(1).describe('The id of the request to send.') }),
-      execute: (args: { id: string }): Promise<string> => sendApiRequest(context, args.id),
+      // Gated (#965): sending is a real call to a real service, and the posture is what decides
+      // whether the user is asked first. Until then only the prompt held the agent back.
+      execute: gated(context, SEND_API_REQUEST, (args: { id: string }): Promise<string> =>
+        sendApiRequest(context, args.id),
+      ),
     }),
     [SET_API_VARIABLE]: tool({
       description:
@@ -1004,6 +1160,487 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
 }
 
 /**
+ * Builds the System Monitor's tools (#966): reading the log audit and the resource readings, and —
+ * outside chat mode — changing the log level, gated because it is a setting that outlasts the run.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createMonitorTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_LOG_SESSIONS]: tool({
+      description: "List the app's log sessions (one per run of the app), newest first.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listLogSessions(context),
+    }),
+    [QUERY_LOGS]: tool({
+      description:
+        'Read log records, newest first. Filter narrowly — by severity, a phrase, a time window — and widen only when that finds nothing.',
+      inputSchema: z.object({
+        session: z
+          .string()
+          .optional()
+          .describe('A session id from list_log_sessions; omit for the current run.'),
+        severities: z
+          .array(z.enum(['trace', 'debug', 'info', 'warning', 'error']))
+          .optional()
+          .describe('Only these severities; omit for all of them.'),
+        text: z
+          .string()
+          .optional()
+          .describe('Only records whose message or source contains this, ignoring case.'),
+        since: z.string().optional().describe('Only records at or after this ISO-8601 time.'),
+        until: z.string().optional().describe('Only records at or before this ISO-8601 time.'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(300)
+          .optional()
+          .describe('How many records to return, at most 300; 100 when omitted.'),
+      }),
+      execute: (args: {
+        session?: string;
+        severities?: string[];
+        text?: string;
+        since?: string;
+        until?: string;
+        limit?: number;
+      }): Promise<string> => queryLogs(context, args),
+    }),
+    [READ_SYSTEM_METRICS]: tool({
+      description:
+        'Summarise the recent CPU, memory, GPU, network and disk readings: the latest, and the low, average and high over the sampled window.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readSystemMetrics(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [SET_LOG_LEVEL]: tool({
+      description:
+        "Change how much the app logs. 'auto' is the default; 'trace' and 'debug' write far more and should be set back afterwards.",
+      inputSchema: z.object({
+        level: z
+          .enum(['auto', 'trace', 'debug', 'info', 'warning', 'error'])
+          .describe('The least severe records to keep.'),
+      }),
+      execute: gated(context, SET_LOG_LEVEL, (args: { level: string }): Promise<string> =>
+        setLogLevel(context, args.level),
+      ),
+    }),
+  };
+}
+
+/**
+ * The most characters of a standing instruction the permission card quotes.
+ */
+const INSTRUCTION_PREVIEW_CHARS: number = 80;
+
+/**
+ * Describes a prompt profile or skill being written, for the permission card and the audit record:
+ * its name, and the first line of what it will tell future agents — the part the user is being asked
+ * to stand behind.
+ * @param args The tool's input.
+ * @returns Returns the description.
+ */
+export function describeStandingInstruction(args: Record<string, unknown>): string {
+  const name: string =
+    typeof args['name'] === 'string' && args['name'].length > 0
+      ? args['name']
+      : typeof args['id'] === 'string'
+        ? args['id']
+        : 'unnamed';
+  const instructions: string =
+    typeof args['instructions'] === 'string' ? args['instructions'].trim() : '';
+  if (instructions.length === 0) {
+    return name;
+  }
+  const firstLine: string = instructions.split('\n', 1)[0].trim();
+  const preview: string =
+    firstLine.length > INSTRUCTION_PREVIEW_CHARS
+      ? `${firstLine.slice(0, INSTRUCTION_PREVIEW_CHARS - 1)}…`
+      : firstLine;
+  return `${name}: "${preview}"`;
+}
+
+/**
+ * Builds the AI Manager's tools (#967): the local models, the prompt profiles and the skill library.
+ * Chat mode reads only. Downloading, every delete, and writing a profile or a skill are gated. A
+ * profile is a standing instruction every later agent obeys — on surfaces with file and shell tools —
+ * and a skill is one an agent loads on its own judgement, so neither is written without the user
+ * seeing what it says first (audit S9).
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createAiManagerTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_LOCAL_MODELS]: tool({
+      description:
+        'List the local model runtime, its installed and running models, and their disk use.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listLocalModels(context),
+    }),
+    [SEARCH_MODEL_CATALOG]: tool({
+      description:
+        "Search the catalogue of models that can be downloaded: each one's reference, size, parameters and description.",
+      inputSchema: z.object({
+        query: z.string().describe('What to search for, e.g. "qwen coder" or "embedding".'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('How many results; 20 when omitted.'),
+      }),
+      execute: (args: { query: string; limit?: number }): Promise<string> =>
+        searchModelCatalog(context, args.query, args.limit),
+    }),
+    [READ_MACHINE_FACTS]: tool({
+      description:
+        "Report the machine's memory, processor and architecture, to judge which models fit.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => Promise.resolve(readMachineFacts()),
+    }),
+    [LIST_PROMPT_PROFILES]: tool({
+      description:
+        "List the prompt profiles: each one's id, name, scope, whether it is on, and its instructions.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listPromptProfiles(context),
+    }),
+    [LIST_SKILLS]: tool({
+      description:
+        "List the skill library: each skill's name, description, scope, technologies, whether it is on, and any problem.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listSkills(context),
+    }),
+    [READ_SKILL]: tool({
+      description: 'Read one skill in full, instructions included.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The skill's name.") }),
+      execute: (args: { name: string }): Promise<string> => readSkill(context, args.name),
+    }),
+    [LIST_SKILL_TAGS]: tool({
+      description:
+        'List what a skill can be scoped to and tagged with: the surfaces, and the language and technology ids by category.',
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listSkillTags(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [DOWNLOAD_MODEL]: tool({
+      description:
+        'Start downloading a model by its catalogue reference. It runs in the background; tell the user its size first.',
+      inputSchema: z.object({
+        ref: z.string().min(1).describe('The catalogue reference, e.g. qwen3:8b.'),
+      }),
+      execute: gated(context, DOWNLOAD_MODEL, (args: { ref: string }): Promise<string> =>
+        downloadModel(context, args.ref),
+      ),
+    }),
+    [DELETE_MODEL]: tool({
+      description: "Delete an installed model's weights.",
+      inputSchema: z.object({ name: z.string().min(1).describe("The installed model's name.") }),
+      execute: gated(context, DELETE_MODEL, (args: { name: string }): Promise<string> =>
+        deleteModel(context, args.name),
+      ),
+    }),
+    [SAVE_PROMPT_PROFILE]: tool({
+      description:
+        'Create a prompt profile, or change one by its id. Anything not named is left as it was.',
+      inputSchema: z.object({
+        id: z.string().optional().describe('The profile to change; omit to create one.'),
+        name: z.string().optional().describe('Its display name.'),
+        instructions: z.string().optional().describe('The standing instructions, in Markdown.'),
+        surfaces: z
+          .array(
+            z.enum([
+              'editor',
+              'terminal',
+              'binary',
+              'api',
+              'workspace',
+              'project',
+              'monitor',
+              'models',
+            ]),
+          )
+          .optional()
+          .describe('The surfaces it applies on; omit or leave empty for everywhere.'),
+        languages: z
+          .array(z.string())
+          .optional()
+          .describe('Editor language ids it narrows to; omit or leave empty for every language.'),
+        enabled: z.boolean().optional().describe('Whether it is on.'),
+      }),
+      execute: gated(
+        context,
+        SAVE_PROMPT_PROFILE,
+        (args: Record<string, unknown>): Promise<string> => savePromptProfile(context, args),
+        describeStandingInstruction,
+      ),
+    }),
+    [DELETE_PROMPT_PROFILE]: tool({
+      description: 'Delete a prompt profile by its id.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The profile's id.") }),
+      execute: gated(context, DELETE_PROMPT_PROFILE, (args: { id: string }): Promise<string> =>
+        deletePromptProfile(context, args.id),
+      ),
+    }),
+    [SAVE_SKILL]: tool({
+      description:
+        'Create a skill, or change one. Name it in lower-case letters, digits and hyphens. Anything not named is left as it was.',
+      inputSchema: z.object({
+        name: z.string().min(1).describe("The skill's name, which is also its folder's."),
+        previous_name: z.string().optional().describe('The current name, when renaming.'),
+        description: z
+          .string()
+          .optional()
+          .describe('One paragraph saying what kind of task it is for.'),
+        instructions: z.string().optional().describe('The instructions, in Markdown.'),
+        surfaces: z
+          .array(
+            z.enum([
+              'editor',
+              'terminal',
+              'binary',
+              'api',
+              'workspace',
+              'project',
+              'monitor',
+              'models',
+            ]),
+          )
+          .optional()
+          .describe('The surfaces it applies on; omit or leave empty for everywhere.'),
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Language and technology ids from list_skill_tags; omit or leave empty for none.',
+          ),
+        enabled: z.boolean().optional().describe('Whether it is offered to agents.'),
+      }),
+      execute: gated(
+        context,
+        SAVE_SKILL,
+        (args: Record<string, unknown>): Promise<string> => saveSkill(context, args),
+        describeStandingInstruction,
+      ),
+    }),
+    [DELETE_SKILL]: tool({
+      description: 'Delete a skill, and its folder on disk.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The skill's name.") }),
+      execute: gated(context, DELETE_SKILL, (args: { name: string }): Promise<string> =>
+        deleteSkill(context, args.name),
+      ),
+    }),
+  };
+}
+
+/**
+ * Builds the Plugin Manager's tools (#968). Installing is not wrapped in the permission prompt: it
+ * raises the plugin's consent window, which asks the user the same question with the terms in front
+ * of them, and asking twice would teach them to click through both. Uninstalling is gated.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createPluginManagerTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_PLUGINS]: tool({
+      description:
+        "List the plugins: each one's id, name, description, state, version, any update waiting, and what it contributes — slots and the languages it serves.",
+      inputSchema: z.object({
+        filter: z
+          .enum(['all', 'installed', 'available', 'updates'])
+          .optional()
+          .describe('Which plugins to list; all when omitted.'),
+      }),
+      execute: (args: { filter?: string }): Promise<string> => listPlugins(context, args.filter),
+    }),
+    [READ_WORKSPACE_LANGUAGES]: tool({
+      description:
+        "Report the user's open workspaces: each one's folder, its ecosystem (dotnet, node, python, …) and the languages that implies.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readWorkspaceLanguages(context),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [INSTALL_PLUGIN]: tool({
+      description:
+        'Install a plugin, or update an installed one, by its id. Studio shows the user its terms first and installs only if they accept.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The plugin's id.") }),
+      execute: (args: { id: string }): Promise<string> => installPlugin(context, args.id),
+    }),
+    [UNINSTALL_PLUGIN]: tool({
+      description: 'Uninstall a plugin by its id.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The plugin's id.") }),
+      execute: gated(context, UNINSTALL_PLUGIN, (args: { id: string }): Promise<string> =>
+        uninstallPlugin(context, args.id),
+      ),
+    }),
+  };
+}
+
+/**
+ * Builds the Containers view's tools (#969). Starting, stopping, restarting, pausing and resuming are
+ * not wrapped in the permission prompt: each is undone by another. Pulling, running and removing are
+ * gated — a pull can be gigabytes, a run can publish ports and mount folders, and a removed volume's
+ * data is gone.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createContainersTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const id: ReturnType<typeof z.string> = z.string().min(1).describe("The container's name or id.");
+  const readTools: ToolSet = {
+    [LIST_CONTAINERS]: tool({
+      description:
+        "List the containers: each one's id, name, image, state, status, published ports, mounted volumes, and CPU and memory while it runs.",
+      inputSchema: z.object({
+        runningOnly: z.boolean().optional().describe('List only running containers.'),
+      }),
+      execute: (args: { runningOnly?: boolean }): Promise<string> =>
+        listContainers(context, args.runningOnly),
+    }),
+    [LIST_CONTAINER_IMAGES]: tool({
+      description:
+        "List the images on this machine: each one's id, tags, size and the containers using it.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listContainerImages(context),
+    }),
+    [LIST_CONTAINER_VOLUMES]: tool({
+      description: "List the volumes: each one's name, driver, and the containers mounting it.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listContainerVolumes(context),
+    }),
+    [READ_CONTAINER_LOGS]: tool({
+      description: "Read a container's most recent log lines, oldest first.",
+      inputSchema: z.object({
+        id,
+        tail: z
+          .number()
+          .int()
+          .min(1)
+          .max(2000)
+          .optional()
+          .describe('How many lines, at most; 200 when omitted.'),
+      }),
+      execute: (args: { id: string; tail?: number }): Promise<string> =>
+        readContainerLogs(context, args.id, args.tail),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [CONTROL_CONTAINER]: tool({
+      description: 'Start, stop, restart, pause or resume a container.',
+      inputSchema: z.object({
+        id,
+        action: z.enum(['start', 'stop', 'restart', 'pause', 'resume']),
+      }),
+      execute: (args: { id: string; action: string }): Promise<string> =>
+        controlContainer(context, args.id, args.action),
+    }),
+    [RUN_CONTAINER]: tool({
+      description:
+        'Run a new container from an image on this machine, and start it. Pull the image first when it is not here.',
+      inputSchema: z.object({
+        image: z.string().min(1).describe('The image, as in postgres:16.'),
+        name: z
+          .string()
+          .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/)
+          .optional()
+          .describe("The container's name."),
+        ports: z
+          .array(
+            z.object({
+              host: z.number().int().min(1).max(65535),
+              container: z.number().int().min(1).max(65535),
+              protocol: z.enum(['tcp', 'udp']).optional(),
+            }),
+          )
+          .optional()
+          .describe('Ports to publish: the port on this machine, and the port inside.'),
+        env: z.record(z.string(), z.string()).optional().describe('Environment variables.'),
+        volumes: z
+          .array(
+            z.object({
+              source: z.string().min(1).describe('A volume name, or a folder on this machine.'),
+              target: z.string().startsWith('/').describe('Where it mounts inside.'),
+              readOnly: z.boolean().optional(),
+            }),
+          )
+          .optional()
+          .describe('What to mount.'),
+      }),
+      execute: ((): ((args: RunContainerRequest) => Promise<string>) => {
+        const run: (args: RunContainerRequest) => Promise<string> = gated(
+          context,
+          RUN_CONTAINER,
+          (args: RunContainerRequest): Promise<string> => runContainer(context, args),
+          describeRunRequest,
+        );
+        // A mount outside the write area is refused before the prompt, not put to the user: the area
+        // is a fixed boundary (audit S3).
+        return (args: RunContainerRequest): Promise<string> => {
+          const refusal: string | null = refuseUnconfinedMounts(context, args);
+          return refusal === null ? run(args) : Promise.resolve(refusal);
+        };
+      })(),
+    }),
+    [PULL_IMAGE]: tool({
+      description: 'Download an image, as in postgres:16. Waits until it has arrived.',
+      inputSchema: z.object({ reference: z.string().min(1).describe('The image reference.') }),
+      execute: gated(context, PULL_IMAGE, (args: { reference: string }): Promise<string> =>
+        pullImage(context, args.reference),
+      ),
+    }),
+    [REMOVE_CONTAINER]: tool({
+      description: 'Remove a container, stopping it first when it runs.',
+      inputSchema: z.object({ id }),
+      execute: gated(context, REMOVE_CONTAINER, (args: { id: string }): Promise<string> =>
+        removeContainer(context, args.id),
+      ),
+    }),
+    [REMOVE_IMAGE]: tool({
+      description: 'Remove an image by its tag or id. Refused while a container uses it.',
+      inputSchema: z.object({ id: z.string().min(1).describe("The image's tag or id.") }),
+      execute: gated(context, REMOVE_IMAGE, (args: { id: string }): Promise<string> =>
+        removeImage(context, args.id),
+      ),
+    }),
+    [REMOVE_VOLUME]: tool({
+      description:
+        'Remove a volume and the data in it, which cannot be got back. Refused while a container mounts it.',
+      inputSchema: z.object({ name: z.string().min(1).describe("The volume's name.") }),
+      execute: gated(context, REMOVE_VOLUME, (args: { name: string }): Promise<string> =>
+        removeVolume(context, args.name),
+      ),
+    }),
+  };
+}
+
+/**
  * Selects the system-prompt appendix for a run: the terminal, binary, or (default) editor surface
  * guidance, plus the ask-user guidance every surface carries, plus the read-only note on a chat-mode
  * run. Shared by the AI-SDK-backed providers so the run-to-prompt mapping lives in one place and
@@ -1030,12 +1667,29 @@ export function promptForSurface(
         return PROJECT_PROMPT_APPENDIX;
       case 'editor':
         return STUDIO_PROMPT_APPENDIX;
+      case 'monitor':
+        return MONITOR_PROMPT_APPENDIX;
+      case 'models':
+        return AI_MANAGER_PROMPT_APPENDIX;
+      case 'plugins':
+        return PLUGIN_MANAGER_PROMPT_APPENDIX;
+      case 'containers':
+        return CONTAINERS_PROMPT_APPENDIX;
     }
   })();
   // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
   // instruction to ask rather than guess still applies, but naming a Studio tool it was not given
   // would point the model at something absent from its list.
   const withAsk: string = `${base}\n\n${options.nativeAsk === true ? CLARIFYING_QUESTION_APPENDIX : ASK_USER_PROMPT_APPENDIX}`;
+  // A tool view's agent holds its view's tools and nothing of Studio's at large (#964), so it is told
+  // about nothing else: no workbench, no run configurations, no hosting. Describing tools it was not
+  // given would only invite it to reach for them.
+  if (isToolViewSurface(surface)) {
+    const scoped: string =
+      context.mode === 'chat' ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
+    const listed: string = skillsAppendix(context);
+    return withSystemPromptExtra(listed.length === 0 ? scoped : `${scoped}\n\n${listed}`, context);
+  }
   const studio: string = ((): string => {
     // The workbench tools are registered on every surface, so every surface is told about them —
     // except in chat mode, where they are withheld and describing them would only invite a refusal.
@@ -1051,11 +1705,57 @@ export function promptForSurface(
       ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
       : withWorkbench;
   })();
+  // The hosting tools' guidance rides with the rest of Studio's, and only where they are offered —
+  // both are derived from `offeredHostingTools`, so they cannot disagree (#852).
+  const hosting: string = hostingPromptAppendix(context);
+  const withHosting: string = hosting.length === 0 ? studio : `${studio}\n\n${hosting}`;
   // The user's layers come last, and in this order: the skills listing describes a tool the model
   // holds, so it belongs with Studio's tool guidance; the standing text is the user's own voice and
   // reads as such only once everything Studio has to say is above it.
   const skills: string = skillsAppendix(context);
-  return withSystemPromptExtra(skills.length === 0 ? studio : `${studio}\n\n${skills}`, context);
+  return withSystemPromptExtra(
+    skills.length === 0 ? withHosting : `${withHosting}\n\n${skills}`,
+    context,
+  );
+}
+
+/**
+ * Builds the standalone agent tab's own tool (#876): offering the user a workspace for the project the
+ * agent has been planning with them.
+ * @param context The run context the tool acts through.
+ * @returns Returns the tool set.
+ */
+export async function createProjectTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [PROPOSE_WORKSPACE]: tool({
+      description: PROPOSE_WORKSPACE_DESCRIPTION,
+      inputSchema: z.object({
+        name: z
+          .string()
+          .min(1)
+          .max(100)
+          .describe(
+            "The project's folder name: letters, digits, dots, hyphens and underscores, e.g. invoice-tracker.",
+          ),
+        summary: z
+          .string()
+          .max(2000)
+          .optional()
+          .describe('A sentence or two saying what the project is, shown on the card.'),
+        handoff: z
+          .string()
+          .min(1)
+          .max(256 * 1024)
+          .describe(
+            "Markdown for the workspace's agent: the plan, the decisions made and why, and what to do first.",
+          ),
+      }),
+      execute: (args: { name: string; summary?: string; handoff: string }): Promise<string> =>
+        Promise.resolve(proposeWorkspace(context, args)),
+    }),
+  };
 }
 
 /**
@@ -1067,6 +1767,15 @@ export function promptForSurface(
  */
 export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
   const askUserTool: ToolSet = await createAskUserTool(context);
+  // A tool view's agent is kept to its view (#964): its own tools, the clarifying question and the
+  // skills — none of the workbench, run-configuration or hosting tools every other surface carries.
+  if (isToolViewSurface(context.surface)) {
+    return {
+      ...askUserTool,
+      ...(await createSkillTools(context)),
+      ...(await createToolViewTools(context)),
+    };
+  }
   // The workbench tools ride on every surface — see createWorkbenchTools.
   const workbenchTools: ToolSet = await createWorkbenchTools(context);
   // The run-configuration tools ride on the workspace-scoped surfaces only, and decide that for
@@ -1074,22 +1783,30 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
   // The skill tool rides on every surface and decides for itself whether it applies (#301).
   const skillTools: ToolSet = await createSkillTools(context);
+  // The hosting tools ride wherever the run works in a hosted repository, and decide for themselves
+  // which operations the repository allows (#852).
+  const hostingTools: ToolSet = await createHostingTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
         return createTerminalTools(context);
       case 'binary':
         return createBinaryTools(context);
-      // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
-      // so a project run carries only the ask-user tool (a documented limitation of those providers).
       case 'api':
         return createApiTools(context);
       case 'workspace':
         return createWorkspaceTools(context);
+      // The standalone agent has no owning document, and the AI-SDK providers have no built-in tools:
+      // a project run carries the ask-user tool and the one that moves the plan into a workspace.
       case 'project':
-        return Promise.resolve({});
+        return createProjectTools(context);
       case 'editor':
         return createStudioTools(context);
+      case 'monitor':
+      case 'models':
+      case 'plugins':
+      case 'containers':
+        return createToolViewTools(context);
     }
   })();
   return {
@@ -1097,6 +1814,27 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     ...workbenchTools,
     ...runConfigurationTools,
     ...skillTools,
+    ...hostingTools,
     ...surfaceTools,
   };
+}
+
+/**
+ * Builds a tool view's own tools (#964), by its surface. Empty for any other surface.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+async function createToolViewTools(context: AgentRunContext): Promise<ToolSet> {
+  switch (context.surface) {
+    case 'monitor':
+      return createMonitorTools(context);
+    case 'models':
+      return createAiManagerTools(context);
+    case 'plugins':
+      return createPluginManagerTools(context);
+    case 'containers':
+      return createContainersTools(context);
+    default:
+      return {};
+  }
 }

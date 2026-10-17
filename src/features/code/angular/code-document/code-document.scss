@@ -27,7 +27,8 @@ app-text-editor {
 }
 
 // The breakpoint condition/logpoint editor floats over the top-right of the editor, opened from a
-// right-click (or Alt-click) on a breakpoint glyph.
+// right-click (or Alt-click) on a breakpoint glyph. It is as wide as its three equal-width actions
+// need (three 6rem buttons, two gaps and the padding), so the row never spills out of the card.
 .breakpoint-editor {
   position: absolute;
   inset-block-start: 0.5rem;
@@ -36,11 +37,11 @@ app-text-editor {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  inline-size: 17rem;
+  inline-size: 20.5rem;
   padding: 0.75rem;
   font-size: 0.8rem;
   color: var(--gray-900);
-  background: var(--gray-50);
+  background: var(--gray-100);
   border: 0.0625rem solid var(--gray-300);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
@@ -48,7 +49,7 @@ app-text-editor {
 }
 
 :host-context([data-theme-mode='dark']) .breakpoint-editor {
-  color: var(--gray-50);
+  color: var(--gray-100);
   background: var(--gray-850, var(--gray-900));
   border-color: var(--gray-700);
 }
@@ -77,9 +78,7 @@ app-text-editor {
   color: var(--gray-400);
 }
 
+// The button row lays the actions out; the card only spaces them a little further from the toggle.
 .breakpoint-editor__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.4rem;
   margin-block-start: 0.25rem;
 }

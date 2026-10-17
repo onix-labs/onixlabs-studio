@@ -1,4 +1,5 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -34,6 +35,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AgentComposerShortcuts } from '@shared/angular/components/agent-composer-shortcuts/agent-composer-shortcuts';
@@ -183,6 +185,7 @@ interface ContextChip {
   selector: 'app-agent-composer',
   imports: [
     Button,
+    ButtonRow,
     AppIcon,
     Modal,
     ModalContent,
@@ -355,14 +358,17 @@ export class AgentComposer {
   });
 
   /**
-   * Gets the meter's fill level, driving its colour across three even bands as the window fills — a
-   * visible cue to compact: `ok` (success) at 0–33%, `warn` (warning) at 34–66%, `high` (error) at
-   * 67–100%.
+   * Gets the meter's fill level, driving its colour as the window fills — a visible cue to compact:
+   * `ok` (success) at 0–49%, `warn` (warning) at 50–74%, `high` (error) at 75–100%.
+   *
+   * The bands are deliberately uneven. Headroom is only worth warning about once it is half spent, and
+   * the last quarter is where a turn starts risking a truncated window, so the red band is narrow and
+   * late rather than a third of the meter.
    */
   protected readonly contextLevel: Signal<'ok' | 'warn' | 'high'> = computed(
     (): 'ok' | 'warn' | 'high' => {
       const percent: number = this.contextPercent();
-      return percent >= 67 ? 'high' : percent >= 34 ? 'warn' : 'ok';
+      return percent >= 75 ? 'high' : percent >= 50 ? 'warn' : 'ok';
     },
   );
 
@@ -381,7 +387,8 @@ export class AgentComposer {
     if (pending > 0) {
       base = `${base} · includes ≈${pending.toLocaleString()} tokens of attached selection`;
     }
-    const cost: number = this.agent.costUsd();
+    // Spend only for a connection billed by the token: a subscription's reported cost is notional.
+    const cost: number = this.agent.billedPerToken() ? this.agent.costUsd() : 0;
     return cost > 0 ? `${base} · ${formatCost(cost)}` : base;
   });
 
@@ -673,10 +680,14 @@ export class AgentComposer {
   }
 
   /**
-   * Watches this composer's own host element and records whether it is on screen, mirroring the
-   * transcript's gate: a hidden tab, an inactive dock stack and an off-viewport tile all report the
-   * same way, and none needs a host to say so. Where there is no observer the composer simply stays
-   * "shown" and ticks as it always did.
+   * Watches this composer and records whether it is on screen, mirroring the transcript's gate: a
+   * hidden tab, an inactive dock stack and an off-viewport tile all report the same way, and none needs
+   * a host to say so. Where there is no observer the composer simply stays "shown" and ticks as it
+   * always did.
+   *
+   * ⛔ The form is watched, not the host. The host is `display: contents`, so it has no box, and an
+   * element with no box never intersects anything: watching it read the composer as always off screen,
+   * and the run clock banked every second without ever showing one (it sat at 0:00).
    */
   private watchOnScreen(): void {
     if (typeof IntersectionObserver === 'undefined') {
@@ -690,7 +701,9 @@ export class AgentComposer {
         }
       },
     );
-    observer.observe(this.host.nativeElement);
+    afterNextRender((): void => {
+      observer.observe(this.host.nativeElement.firstElementChild ?? this.host.nativeElement);
+    });
     inject(DestroyRef).onDestroy((): void => observer.disconnect());
   }
 

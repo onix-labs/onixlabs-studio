@@ -159,10 +159,10 @@
         </div>
       </div>
 
-      <div class="configure__actions">
-        <app-button label="Cancel" (click)="onCancel()" />
+      <app-button-row class="configure__actions">
         <app-button variant="solid" label="Save" (click)="onSave()" />
-      </div>
+        <app-button label="Cancel" (click)="onCancel()" />
+      </app-button-row>
     </div>
 
     <!-- Declared INSIDE this dialog's content so it is raised from the Run Configurations window: it
@@ -178,9 +178,9 @@
       <ng-template appModalContent>
         <div class="configure-auto">
           <h2 class="configure__title">Auto-configure</h2>
-          <div class="configure__actions">
+          <app-button-row class="configure__actions">
             <app-button label="Close" (click)="onAutoConfigureClose()" />
-          </div>
+          </app-button-row>
         </div>
       </ng-template>
     </app-modal>

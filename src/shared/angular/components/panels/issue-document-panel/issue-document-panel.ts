@@ -2,22 +2,41 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
+
+/**
+ * Identifies the strip menu's commands.
+ */
+const MENU_OPEN_IN_BROWSER: string = 'issue.openInBrowser';
+const MENU_COPY_LINK: string = 'issue.copyLink';
 import { ForgeIssue, ForgeIssueComment } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
+import { IssueStateConfirm } from '@shared/angular/components/panels/issue-state-confirm/issue-state-confirm';
+import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
+import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore, OpenIssue } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Chip } from '@shared/angular/components/chip/chip';
 
 /**
  * Hosts one issue as a document in the well.
@@ -32,7 +51,17 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [AppIcon, Button, MarkdownRenderer, PanelToolbar, IssueAgentConfirm],
+  imports: [
+    Chip,
+    Button,
+    CdkMenuTrigger,
+    IssueAgentConfirm,
+    IssueStateConfirm,
+    MarkdownField,
+    MarkdownRenderer,
+    Menu,
+    PanelToolbar,
+  ],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,6 +86,50 @@ export class IssueDocumentPanel {
    * Holds the seam that starts a conversation about this issue, shared with the rail's row menu.
    */
   private readonly issueAgent: IssueAgent = inject(IssueAgent);
+
+  /**
+   * Holds the seam that closes, reopens and comments on the issue (#890).
+   */
+  private readonly issueActions: IssueActions = inject(IssueActions);
+
+  /**
+   * Holds the forge-backed repository, which says what its host allows.
+   */
+  private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
+
+  /**
+   * Holds the comment being written.
+   */
+  protected readonly draft: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets whether the host lets the issue be closed and reopened from here.
+   */
+  protected readonly canSetState: Signal<boolean> = computed((): boolean =>
+    this.forgeRepository.supports('setIssueState'),
+  );
+
+  /**
+   * Gets whether the host lets the issue be commented on from here.
+   */
+  protected readonly canComment: Signal<boolean> = computed((): boolean =>
+    this.forgeRepository.supports('commentOnIssue'),
+  );
+
+  /**
+   * Gets whether a request about this issue is in flight, so its controls wait for the answer.
+   */
+  protected readonly busy: Signal<boolean> = computed((): boolean => {
+    const issue: ForgeIssue | null = this.issue();
+    return issue !== null && this.issueActions.busy().has(issue.number);
+  });
+
+  /**
+   * Gets whether the comment being written says anything.
+   */
+  protected readonly hasDraft: Signal<boolean> = computed(
+    (): boolean => this.draft().trim().length > 0,
+  );
 
   /**
    * Gets the icon set, exposed for the template.
@@ -97,20 +170,118 @@ export class IssueDocumentPanel {
    * The same seam the issue's row in the rail asks through, so the opening message and the warning
    * about discarding a transcript are one behaviour offered from two places.
    */
-  protected openInAgent(): void {
-    const issue: ForgeIssue | null = this.issue();
-    if (issue !== null) {
-      this.issueAgent.open(issue);
+  /**
+   * Holds the dock layout, which says whether this issue is the active document in its well.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the well's status strip, which shows what the issue is (#882).
+   */
+  private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
+   * Gets whether this issue is the active document in its well, so it alone fills the status strip.
+   */
+  private readonly isActive: Signal<boolean> = computed((): boolean => {
+    const id: string = this.panel().id;
+    return findStackOfPanel(this.dockState.layout(), id)?.active === id;
+  });
+
+  /**
+   * Gets the strip menu's items.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
+    const hasUrl: boolean = (this.issue()?.url ?? '').length > 0;
+    return [
+      {
+        id: MENU_OPEN_IN_BROWSER,
+        label: 'Open in Browser',
+        icon: Icon.OPEN_EXTERNAL,
+        disabled: !hasUrl,
+      },
+      { id: MENU_COPY_LINK, label: 'Copy Link', icon: Icon.COPY, disabled: !hasUrl },
+    ];
+  });
+
+  /**
+   * Initializes a new instance of the {@link IssueDocumentPanel} class, publishing what the issue is —
+   * its state, number, conversation and last update — to the well's status strip while it is the
+   * active document (#882).
+   */
+  public constructor() {
+    effect((): void => {
+      const issue: ForgeIssue | null = this.issue();
+      const id: string = this.panel().id;
+      if (!this.isActive() || issue === null) {
+        this.documentStatus.clear(id);
+        return;
+      }
+      const open: boolean = issue.state === 'open';
+      this.documentStatus.set(id, {
+        chip: {
+          text: open ? 'Open' : 'Closed',
+          tone: open ? 'success' : 'accent',
+          title: "The issue's state",
+        },
+        details: [
+          { text: `#${issue.number}`, title: 'Issue number' },
+          {
+            text: `${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`,
+            title: 'Comments',
+          },
+          { text: `Updated ${this.formatDate(issue.updatedAt)}`, title: 'Last updated' },
+        ],
+      });
+    });
+    inject(DestroyRef).onDestroy((): void => this.documentStatus.clear(this.panel().id));
+  }
+
+  /**
+   * Runs a command chosen from the strip's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMenu(id: string): void {
+    const url: string = this.issue()?.url ?? '';
+    if (url.length === 0) {
+      return;
+    }
+    if (id === MENU_OPEN_IN_BROWSER) {
+      void this.shell.openExternal(url);
+    } else if (id === MENU_COPY_LINK) {
+      void navigator.clipboard.writeText(url).catch((): void => undefined);
     }
   }
 
   /**
-   * Opens the issue on the forge.
+   * Asks to close the issue, or to reopen it when it is closed.
    */
-  protected openExternally(): void {
-    const url: string = this.issue()?.url ?? '';
-    if (url.length > 0) {
-      void this.shell.openExternal(url);
+  protected toggleState(): void {
+    const issue: ForgeIssue | null = this.issue();
+    if (issue !== null) {
+      this.issueActions.requestToggle(issue);
+    }
+  }
+
+  /**
+   * Posts the comment being written, clearing it once the host has it.
+   * @returns Returns a promise that resolves once the comment is posted or has failed.
+   */
+  protected async postComment(): Promise<void> {
+    const issue: ForgeIssue | null = this.issue();
+    const body: string = this.draft().trim();
+    if (issue === null || body.length === 0) {
+      return;
+    }
+    if (await this.issueActions.comment(issue, body)) {
+      this.draft.set('');
+    }
+  }
+
+  protected openInAgent(): void {
+    const issue: ForgeIssue | null = this.issue();
+    if (issue !== null) {
+      this.issueAgent.open(issue);
     }
   }
 

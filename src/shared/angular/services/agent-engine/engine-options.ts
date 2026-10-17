@@ -18,6 +18,11 @@ const ENGINE_SEPARATOR: string = '::';
 const NO_MODELS_LABEL: string = 'No models available';
 
 /**
+ * Follows a retired model's label in the picker (#866).
+ */
+const RETIRED_SUFFIX: string = '(no longer offered)';
+
+/**
  * Represents a provider/model pair recovered from an engine option value.
  */
 export interface EngineSelection {
@@ -86,11 +91,47 @@ export function engineOptions(providers: readonly AiProviderInfo[]): readonly Dr
             disabled: true,
           },
         ]
-      : provider.models.map((model: AiModelInfo): DropdownOption => ({
-          value: engineOptionValue(provider.id, model.id),
-          label: model.label,
-          group: provider.label,
-        })),
+      : provider.models.map((model: AiModelInfo): DropdownOption =>
+          // A retired model stays listed until the user removes it in settings, but cannot be
+          // picked: the provider no longer runs it (#866). Still shown, so a conversation already
+          // on it shows why, rather than a blank picker.
+          model.retired === true
+            ? {
+                value: engineOptionValue(provider.id, model.id),
+                label: `${model.label} ${RETIRED_SUFFIX}`,
+                group: provider.label,
+                disabled: true,
+              }
+            : {
+                value: engineOptionValue(provider.id, model.id),
+                label: model.label,
+                group: provider.label,
+              },
+        ),
+  );
+}
+
+/**
+ * Gets the model a conversation starts on with a provider: its default, unless the provider no longer
+ * offers that model, in which case the first one it still offers (#866). The saved default is not
+ * changed — that stays the user's to change in settings — but a conversation does not start on a model
+ * that cannot run.
+ * @param provider The provider, or undefined before the providers load.
+ * @returns Returns the model id, empty when there is none.
+ */
+export function startingModel(provider: AiProviderInfo | undefined): string {
+  if (provider === undefined) {
+    return '';
+  }
+  const preferred: AiModelInfo | undefined = provider.models.find(
+    (model: AiModelInfo): boolean => model.id === provider.defaultModelId,
+  );
+  if (preferred?.retired !== true) {
+    return provider.defaultModelId;
+  }
+  return (
+    provider.models.find((model: AiModelInfo): boolean => model.retired !== true)?.id ??
+    provider.defaultModelId
   );
 }
 

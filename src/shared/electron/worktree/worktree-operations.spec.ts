@@ -10,12 +10,43 @@ import {
   serializeWorktreeConfig,
   WORKTREE_CONFIG_FILE,
   WorktreeCheckoutInfo,
+  WorktreeBranch,
   WorktreeCheckoutStatus,
   WorktreeConfig,
   WorktreeDescriptor,
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { TrustedPaths } from '../trusted-paths';
+import { GitVersionControl } from '../../../../plugins/git/src/git';
+import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+
+/**
+ * The Git plugin, run in-process: the worktree mechanics are tested against real git through the real
+ * host, exactly the path every checkout takes in the app — minus the process boundary, which the host's
+ * own specs cover.
+ */
+const GIT_PLUGIN: VersionControlDescriptor = {
+  id: 'onixlabs.git',
+  displayName: 'Git',
+  priority: 100,
+  markers: ['.git'],
+  metadataDirectories: ['.git'],
+  metadataSignals: [],
+  capabilities: [
+    'stagingArea',
+    'stash',
+    'tags',
+    'remotes',
+    'merge',
+    'rebase',
+    'clone',
+    'parallelCheckouts',
+    'identity',
+  ],
+  executableModes: ['installed', 'custom'],
+  resolve: () => ({ available: true, create: () => new GitVersionControl() }),
+};
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
 
@@ -73,6 +104,14 @@ describe('WorktreeOperations', () => {
         trashed.push(target);
         await fs.rm(target, { recursive: true, force: true });
       },
+      // Real git behind the real host: the same path every checkout takes in the app (#816).
+      new VersionControlHost({
+        descriptors: (): readonly VersionControlDescriptor[] => [GIT_PLUGIN],
+        roots: workspace,
+        // Every fixture repository is one this spec made, so each is trusted the way a clone is.
+        trust: { decisionFor: (): 'trusted' => 'trusted' },
+        executableFor: (): null => null,
+      }),
     );
   });
 
@@ -160,7 +199,8 @@ describe('WorktreeOperations', () => {
       const config: WorktreeConfig = parseWorktreeConfig(
         JSON.parse(await fs.readFile(path.join(root, STUDIO_DIR, WORKTREE_CONFIG_FILE), 'utf8')),
       );
-      expect(config.checkouts).toEqual([{ id, alias: undefined }]);
+      // Named after the branch it was converted on, so its label does not follow later checkouts.
+      expect(config.checkouts).toEqual([{ id, alias: 'main' }]);
     });
 
     it('refusesUnopenedNonRepositoryAndAlreadyPromotedRoots', GIT_TEST_TIMEOUT, async () => {
@@ -174,7 +214,7 @@ describe('WorktreeOperations', () => {
       const notRepo: WorktreeOutcome<WorktreeDescriptor> = await operations.promote(plain);
       expect(notRepo.ok).toBe(false);
       if (!notRepo.ok) {
-        expect(notRepo.error).toContain('not a git repository');
+        expect(notRepo.error).toContain('not a repository');
       }
 
       const { root } = await promoteFixture();
@@ -316,6 +356,21 @@ describe('WorktreeOperations', () => {
       expect(statuses?.[0].behind).toBeNull();
     });
 
+    it('listsEachCheckoutsOwnLocalBranches', GIT_TEST_TIMEOUT, async () => {
+      // Each checkout is a clone of its own, so the Repository panel lists each one's branches
+      // beneath it — read here, beside the rest of its status.
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      await git(path.join(root, id), 'branch', 'feat/x');
+
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+
+      expect(statuses?.[0].branches.map((branch: WorktreeBranch): string => branch.name)).toEqual([
+        'feat/x',
+        'main',
+      ]);
+    });
+
     it('returnsNullForRootsThatAreNotContainers', async () => {
       const plain: string = path.join(base, 'plain');
       await fs.mkdir(plain);
@@ -341,6 +396,203 @@ describe('WorktreeOperations', () => {
       workspace.addRoot(plain);
 
       expect(await operations.branches(plain)).toBeNull();
+    });
+
+    it('listsTheBranchesOfEveryWorktree_notOnlyTheFirsts', GIT_TEST_TIMEOUT, async () => {
+      // Each worktree is a clone of its own: a branch made in the second, never pushed, is unknown
+      // to the first — and was missing from the New Worktree picker.
+      const { root } = await promoteFixture();
+      const second: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {});
+      if (!second.ok) {
+        throw new Error(second.error);
+      }
+      await git(path.join(root, second.value.id), 'branch', 'only-in-second');
+
+      expect(await operations.branches(root)).toContain('only-in-second');
+    });
+  });
+
+  describe('addCheckout from another worktree', () => {
+    it(
+      'fetchesABranchOnlyAnotherWorktreeHas_ratherThanMakingANewOne',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        // Cloned from the first worktree, asking for the branch by name would have created a new
+        // branch of that name off main. It is the second worktree's branch, commit and all.
+        const { root } = await promoteFixture();
+        const second: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(
+          root,
+          {},
+        );
+        if (!second.ok) {
+          throw new Error(second.error);
+        }
+        const secondDir: string = path.join(root, second.value.id);
+        await git(secondDir, 'checkout', '-q', '-b', 'side');
+        await fs.writeFile(path.join(secondDir, 'side.txt'), 'side\n', 'utf8');
+        await git(secondDir, 'add', '.');
+        await git(secondDir, '-c', 'user.email=s@s', '-c', 'user.name=S', 'commit', '-qm', 'side');
+        await git(secondDir, 'checkout', '-q', 'main');
+
+        const third: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+          branch: 'side',
+        });
+
+        expect(third.ok).toBe(true);
+        if (!third.ok) {
+          return;
+        }
+        const thirdDir: string = path.join(root, third.value.id);
+        expect(third.value.branch).toBe('side');
+        // The second worktree's commit came with it.
+        await expect(fs.readFile(path.join(thirdDir, 'side.txt'), 'utf8')).resolves.toBe('side\n');
+      },
+    );
+  });
+
+  describe('addCheckout default names', () => {
+    it(
+      'namesAnUnnamedWorktreeAfterItsBranch_numberedWhenTheNameIsTaken',
+      GIT_TEST_TIMEOUT,
+      async () => {
+        // The converted worktree is "main"; a bare add clones main again, so it is "main 2". One
+        // started on a new branch takes that branch's name.
+        const { root } = await promoteFixture();
+
+        const bare: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {});
+        const branched: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+          branch: 'feat/x',
+        });
+
+        expect(bare.ok && bare.value.alias).toBe('main 2');
+        expect(branched.ok && branched.value.alias).toBe('feat/x');
+      },
+    );
+  });
+
+  describe('createBranch', () => {
+    it('makesTheBranchInTheNamedCheckout_checkingItOutWhenAsked', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      expect((await operations.createBranch(root, id, 'kept', false)).ok).toBe(true);
+      expect((await operations.createBranch(root, id, 'switched', true)).ok).toBe(true);
+
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+      expect(statuses?.[0].branches.map((branch: WorktreeBranch): string => branch.name)).toEqual([
+        'kept',
+        'main',
+        'switched',
+      ]);
+      expect(statuses?.[0].branch).toBe('switched');
+    });
+
+    it('refusesACheckoutThatIsNotRegistered', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      expect((await operations.createBranch(root, '../evil', 'x', false)).ok).toBe(false);
+    });
+  });
+
+  describe('deleteBranch', () => {
+    /**
+     * Lists a checkout's local branch names.
+     * @param root The container root.
+     * @returns Returns the names.
+     */
+    async function branchesOf(root: string): Promise<string[]> {
+      const statuses: readonly WorktreeCheckoutStatus[] | null = await operations.status(root);
+      return (statuses?.[0].branches ?? []).map((branch: WorktreeBranch): string => branch.name);
+    }
+
+    it('deletesABranchInTheNamedCheckout', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      await git(path.join(root, id), 'branch', 'merged');
+
+      const outcome: WorktreeOutcome<null> = await operations.deleteBranch(
+        root,
+        id,
+        'merged',
+        false,
+      );
+
+      expect(outcome.ok).toBe(true);
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('refusesTheBranchTheCheckoutHasCheckedOut', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      const outcome: WorktreeOutcome<null> = await operations.deleteBranch(root, id, 'main', true);
+
+      expect(outcome).toMatchObject({ ok: false });
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('codesARefusalForUnmergedCommits_andDeletesWhenForced', GIT_TEST_TIMEOUT, async () => {
+      // The panel asks before losing work, so the refusal has to be recognisable as that one.
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+      const checkout: string = path.join(root, id);
+      await git(checkout, 'checkout', '-b', 'unmerged');
+      await fs.writeFile(path.join(checkout, 'work.txt'), 'work\n', 'utf8');
+      await git(checkout, 'add', '.');
+      await git(
+        checkout,
+        '-c',
+        'user.email=spec@studio',
+        '-c',
+        'user.name=Spec',
+        'commit',
+        '-m',
+        'work',
+      );
+      await git(checkout, 'checkout', 'main');
+
+      const refused: WorktreeOutcome<null> = await operations.deleteBranch(
+        root,
+        id,
+        'unmerged',
+        false,
+      );
+      expect(refused).toMatchObject({ ok: false, code: 'branch-not-merged' });
+
+      expect((await operations.deleteBranch(root, id, 'unmerged', true)).ok).toBe(true);
+      expect(await branchesOf(root)).toEqual(['main']);
+    });
+
+    it('refusesACheckoutThatIsNotRegistered', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      expect((await operations.deleteBranch(root, '../evil', 'main', false)).ok).toBe(false);
+      expect((await operations.deleteBranch(root, 'not-a-checkout', 'main', false)).ok).toBe(false);
+    });
+  });
+
+  describe('renameCheckout', () => {
+    it('setsTheAlias_trimmed', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      const outcome: WorktreeOutcome<null> = await operations.renameCheckout(
+        root,
+        id,
+        '  default ',
+      );
+
+      expect(outcome.ok).toBe(true);
+      expect((await operations.describe(root))?.checkouts[0].alias).toBe('default');
+    });
+
+    it('refusesAnEmptyName_andUnregisteredIds', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const id: string = descriptor.checkouts[0].id;
+
+      expect((await operations.renameCheckout(root, id, '   ')).ok).toBe(false);
+      expect((await operations.renameCheckout(root, '../evil', 'x')).ok).toBe(false);
+      expect((await operations.describe(root))?.checkouts[0].alias).toBe('main');
     });
   });
 

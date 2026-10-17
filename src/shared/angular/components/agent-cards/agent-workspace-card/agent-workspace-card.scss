@@ -1,0 +1,186 @@
+:host {
+  display: block;
+  // The actions lay themselves out by the card's own width (see the permission card).
+  container-type: inline-size;
+}
+
+.agent__workspace-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--agent-card-title-color);
+}
+
+.agent__workspace-summary {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--body-foreground-color);
+  opacity: 0.8;
+}
+
+// The details: a label column beside the fields, as a settings row lays them out.
+.agent__workspace-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-block-start: 0.75rem;
+}
+
+.agent__workspace-label {
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// The name field spans its column, as the dropdowns beneath it do; the atom's own width is a default
+// for a consumer to override.
+.agent__workspace-field {
+  inline-size: 100%;
+}
+
+.agent__workspace-location {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+// A long place loses its start rather than its end, which is the folder it names. The box runs right
+// to left so the ellipsis lands on the left; the path inside is isolated back to left to right, so its
+// slashes stay where they are.
+.agent__workspace-path {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: 0.82rem;
+
+  bdi {
+    direction: ltr;
+  }
+}
+
+.agent__workspace-path--empty {
+  font-style: italic;
+  opacity: 0.6;
+}
+
+.agent__workspace-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+// Narrow — a docked Agent panel: the labels go above their fields rather than beside them.
+@container (inline-size <= 22.5rem) {
+  .agent__workspace-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+}
+
+.agent__workspace-hint,
+.agent__workspace-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.agent__workspace-hint {
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__workspace-error {
+  color: var(--change-margin-deleted);
+}
+
+.agent__workspace-toggle {
+  display: block;
+  text-align: start;
+  margin-block-start: 0.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--accent-color);
+  cursor: pointer;
+}
+
+// The handoff scrolls inside the card rather than pushing the conversation down by a page of plan, at
+// the card's own text size: headings a document would set large stay modest here.
+.agent__workspace-handoff {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-block-size: 16rem;
+  overflow: auto;
+  margin-block-start: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__workspace-actions {
+  margin-block-start: 0.75rem;
+}
+
+// Narrow — a docked Agent panel: the buttons share the full width, as a question card's do.
+@container (inline-size <= 22.5rem) {
+  .agent__workspace-actions {
+    inline-size: auto;
+    margin-inline-start: 0;
+  }
+}
+
+.agent__workspace-state {
+  display: block;
+  margin-block-start: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--agent-card-state-color);
+  word-break: break-word;
+}
+
+// Rendered Markdown carries no emulated-encapsulation attribute, so it is styled through ::ng-deep.
+:host ::ng-deep .agent__workspace-handoff {
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0.6rem 0 0.35rem;
+    line-height: 1.3;
+  }
+
+  h1 {
+    font-size: 1.05rem;
+  }
+
+  h2 {
+    font-size: 0.95rem;
+  }
+
+  h3,
+  h4 {
+    font-size: 0.88rem;
+  }
+
+  p,
+  ul,
+  ol {
+    margin: 0 0 0.5rem;
+  }
+
+  ul,
+  ol {
+    padding-inline-start: 1.2rem;
+  }
+
+  > :first-child h1:first-child {
+    margin-block-start: 0;
+  }
+}

@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import type { WritableSignal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AboutFacts, Help } from '@shared/angular/services/help/help';
@@ -21,7 +22,7 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
  */
 @Component({
   selector: 'app-about-modal',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal
@@ -71,14 +72,14 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
             </div>
           </dl>
           <p class="about__licence">MIT licensed · Copyright © 2026 ONIXLabs</p>
-          <div class="about__actions">
+          <app-button-row>
+            <app-button variant="solid" label="Close" (click)="close()" />
             <app-button
               [label]="copied() ? 'Copied' : 'Copy'"
               tooltip="Copy these versions, ready to paste into an issue"
               (click)="copy()"
             />
-            <app-button variant="solid" label="Close" (click)="close()" />
-          </div>
+          </app-button-row>
         </div>
       </ng-template>
     </app-modal>
@@ -156,12 +157,6 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
         text-align: center;
         font-size: 0.78rem;
         color: var(--muted-foreground-color, var(--body-foreground-color));
-      }
-
-      .about__actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.6rem;
       }
     `,
   ],

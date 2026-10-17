@@ -77,14 +77,15 @@
   white-space: nowrap;
 }
 
+// A model the provider stopped offering (#866): kept until the user removes it, so say why it is
+// disabled in the picker.
+.conn-editor__model-retired {
+  font-size: 0.72rem;
+  color: var(--warning-color);
+}
+
 .conn-editor__model-ctx {
   font-size: 0.75rem;
   color: var(--settings-muted-foreground-color);
   font-variant-numeric: tabular-nums;
-}
-
-.conn-editor__footer {
-  display: flex;
-  justify-content: flex-end;
-  padding-block-start: 0.6rem;
 }

@@ -154,6 +154,26 @@ describe('workspace studio tools', () => {
         input: { tabId: 'term-3', text: 'ls', submit: true },
       });
     });
+
+    it('writeTerminalInput_refusesABlockedCommand_beforeItReachesAShell', async () => {
+      // #853: the AI SDK providers have no shell of their own, so this is where `gh` is kept out.
+      const { context, calls } = contextWith({ ok: true, output: 'done' });
+      const blocked: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+      const answer: string = await writeTerminalInput(blocked, 'cd x && gh pr create', true, 't');
+
+      expect(answer).toContain('`gh` is blocked');
+      expect(calls).toEqual([]);
+    });
+
+    it('writeTerminalInput_letsTextThatIsNotSubmittedThrough', async () => {
+      // Typing without pressing Enter runs nothing.
+      const { context, calls } = contextWith({ ok: true, output: 'typed' });
+      const blocked: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+      expect(await writeTerminalInput(blocked, 'gh', false, 't')).toBe('typed');
+      expect(calls).toHaveLength(1);
+    });
   });
 
   describe('tree tools', () => {

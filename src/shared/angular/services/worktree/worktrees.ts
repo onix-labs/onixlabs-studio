@@ -33,12 +33,28 @@ function createClient(bridge: Bridge): WorktreeClient {
       bridge.invoke(WorktreeChannel.AddCheckout, root, options),
     removeCheckout: (root: string, id: string): Promise<WorktreeOutcome<null>> =>
       bridge.invoke(WorktreeChannel.RemoveCheckout, root, id),
+    renameCheckout: (root: string, id: string, alias: string): Promise<WorktreeOutcome<null>> =>
+      bridge.invoke(WorktreeChannel.RenameCheckout, root, id, alias),
     openCheckout: (root: string, id: string): Promise<WorktreeOutcome<string>> =>
       bridge.invoke(WorktreeChannel.OpenCheckout, root, id),
     status: (root: string): Promise<readonly WorktreeCheckoutStatus[] | null> =>
       bridge.invoke(WorktreeChannel.Status, root),
     branches: (root: string): Promise<readonly string[] | null> =>
       bridge.invoke(WorktreeChannel.Branches, root),
+    deleteBranch: (
+      root: string,
+      id: string,
+      name: string,
+      force: boolean,
+    ): Promise<WorktreeOutcome<null>> =>
+      bridge.invoke(WorktreeChannel.DeleteBranch, root, id, name, force),
+    createBranch: (
+      root: string,
+      id: string,
+      name: string,
+      checkout: boolean,
+    ): Promise<WorktreeOutcome<null>> =>
+      bridge.invoke(WorktreeChannel.CreateBranch, root, id, name, checkout),
   };
 }
 

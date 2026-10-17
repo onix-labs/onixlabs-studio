@@ -16,6 +16,7 @@ import { PanelEdge } from './panel-types';
         defaultEdge="right"
         [allowedEdges]="allEdges"
         [visible]="visible()"
+        [resizable]="resizable()"
         [defaultSize]="200"
       >
         <div class="side-content">SIDE</div>
@@ -34,6 +35,7 @@ class PanelLayoutHost {
   // The re-home test moves the panel to the bottom edge, so the stub panel allows every edge.
   public readonly allEdges: readonly PanelEdge[] = ['left', 'right', 'top', 'bottom'];
   public readonly visible: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly resizable: WritableSignal<boolean> = signal<boolean>(true);
   public readonly extraMounted: WritableSignal<boolean> = signal<boolean>(false);
 }
 
@@ -64,6 +66,25 @@ describe('PanelLayout', () => {
     expect(panel?.getAttribute('data-edge')).toBe('right');
     expect(panel?.parentElement).toBe(wrapperOf(host, 'right'));
     expect(host.querySelector('.side-content')?.textContent).toContain('SIDE');
+  });
+
+  it('grip_whenThePanelItResizesIsNotResizable_isNotOffered', async () => {
+    // #949. A panel can hold its size; the edge grip that would resize it is not shown.
+    const { fixture, host } = await createHost();
+    const grip: () => HTMLElement = (): HTMLElement =>
+      wrapperOf(host, 'right').querySelector<HTMLElement>('.panel-layout__grip')!;
+    expect(grip().classList.contains('panel-layout__grip--fixed')).toBe(false);
+
+    fixture.componentInstance.resizable.set(false);
+    await fixture.whenStable();
+
+    expect(grip().classList.contains('panel-layout__grip--fixed')).toBe(true);
+    const before: string = wrapperOf(host, 'right').style.width;
+    grip().dispatchEvent(new MouseEvent('mousedown', { clientX: 500, bubbles: true }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 400 }));
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    await fixture.whenStable();
+    expect(wrapperOf(host, 'right').style.width).toBe(before);
   });
 
   it('render_stacksSameEdgePanelsInOrderInsideOneWrapper', async () => {
@@ -149,6 +170,47 @@ describe('PanelLayout', () => {
 
     // Cap: half of jsdom's 1024px viewport wins over the oversized stored width.
     expect(wrapperOf(host, 'right').style.width).toBe('512px');
+  });
+
+  it('edgeSizes_whenTheLayoutIsShort_holdABottomStackBackSoTheMainAreaKeepsItsMinimum', async () => {
+    // jsdom has no ResizeObserver; stand one in that hands its callback back so the test can report
+    // a height, as the platform would after layout.
+    const captured: { notify: ResizeObserverCallback | null } = { notify: null };
+    class FakeResizeObserver {
+      public constructor(callback: ResizeObserverCallback) {
+        captured.notify = callback;
+      }
+      public observe(): void {
+        // Nothing to watch under jsdom.
+      }
+      public disconnect(): void {
+        // Nothing to release under jsdom.
+      }
+    }
+    const original: typeof ResizeObserver | undefined = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      const { fixture, host } = await createHost('layout-short-spec');
+      TestBed.inject(PanelArrangements).move('layout-short-spec', 'side', 'bottom');
+      await fixture.whenStable();
+
+      // Unmeasured, the stack renders at its 200px default: only the viewport bounds it.
+      expect(wrapperOf(host, 'bottom').style.height).toBe('200px');
+
+      // A 260px layout has 140px to spare once the main area keeps its 120px minimum.
+      const layout: HTMLElement = host.querySelector<HTMLElement>('app-panel-layout')!;
+      Object.defineProperty(layout, 'clientHeight', { value: 260, configurable: true });
+      captured.notify?.([], {} as unknown as ResizeObserver);
+      await fixture.whenStable();
+
+      expect(wrapperOf(host, 'bottom').style.height).toBe('140px');
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+      } else {
+        globalThis.ResizeObserver = original;
+      }
+    }
   });
 
   it('grip_whileDragged_carriesTheActiveClass', async () => {

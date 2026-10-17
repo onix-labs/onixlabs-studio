@@ -1,0 +1,46 @@
+{
+  "id": "podman-engine",
+  "name": "Podman",
+  "description": "Talk to a Podman container engine over its local socket.",
+  "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
+  "version": "7.2.0",
+  "apiVersion": "1.19.0",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+    "sha256": "4d2ef48bd234e24f8def53b8604b149d0754fcc2aa69517805b0945838791b2c",
+    "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
+  },
+  "contributes": {
+    "containerEngines": [
+      {
+        "id": "podman",
+        "displayName": "Podman",
+        "priority": 50,
+        "discovery": {
+          "hostVariable": "CONTAINER_HOST",
+          "dockerContext": false,
+          "sockets": {
+            "darwin": [
+              "${HOME}/.local/share/containers/podman/machine/podman.sock",
+              "/run/podman/podman.sock"
+            ],
+            "linux": ["${XDG_RUNTIME_DIR}/podman/podman.sock", "/run/podman/podman.sock"],
+            "win32": ["\\\\.\\pipe\\podman-machine-default"]
+          }
+        },
+        "startCommands": {
+          "darwin": "podman machine start",
+          "linux": "systemctl --user start podman.socket",
+          "win32": "podman machine start"
+        },
+        "command": {
+          "kind": "node"
+        },
+        "cli": "podman",
+        "entryPoint": "node_modules/@onixlabs/podman-engine/main.js"
+      }
+    ]
+  },
+  "requires": []
+}

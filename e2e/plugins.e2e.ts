@@ -5,16 +5,15 @@ import { modalWindow } from './helpers';
 /**
  * Opens the Plugin Manager from the welcome screen.
  *
- * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen is a single-open
- * accordion with Get Started open, and the Plugin Manager lives under Tools — so the group has to be expanded
- * before its actions exist in the DOM at all.
+ * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen opens on its Get
+ * Started section, and the Plugin Manager is a card in the Tools section — so that tab is chosen first.
  * @param app The Electron application.
  * @param page The main window.
  */
 async function openPlugins(app: ElectronApplication, page: Page): Promise<void> {
   const welcome: Page = await modalWindow(app);
-  await welcome.getByRole('button', { name: 'Tools' }).click();
-  await welcome.getByText('Plugin Manager', { exact: true }).click();
+  await welcome.getByRole('tab', { name: 'Tools & Settings' }).click();
+  await welcome.locator('.welcome__tool', { hasText: 'Plugin Manager' }).click();
   await expect(page.locator('app-plugin-manager-view')).toBeVisible();
 }
 
@@ -26,8 +25,20 @@ async function openPlugins(app: ElectronApplication, page: Page): Promise<void> 
  */
 function pluginRow(page: Page, name: string): Locator {
   return page
-    .locator('.plugin-row')
+    .locator('tr.table-row')
     .filter({ has: page.locator('.plugin-row__name', { hasText: name }) });
+}
+
+/**
+ * Chooses one of the Plugin Manager's side-panel filters (#950).
+ * @param page The main window.
+ * @param label The filter's label, such as "Installed" or "Available".
+ */
+async function openGroup(page: Page, label: string): Promise<void> {
+  await page
+    .locator('.category-list__item')
+    .filter({ has: page.locator('.category-list__label', { hasText: new RegExp(`^${label}$`) }) })
+    .click();
 }
 
 /**
@@ -41,6 +52,7 @@ function pluginRow(page: Page, name: string): Locator {
 test.describe('the plugin catalogue', () => {
   test('offersTheDebugAdaptersAsPluginsRatherThanShippingThem', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Available');
 
     // Core ships no debug adapter. Both of these are entries in the curated index, and reaching the
     // catalogue at all is what proves the contribution point is wired rather than merely declared —
@@ -54,6 +66,7 @@ test.describe('the plugin catalogue', () => {
 
   test('reportsTheDebuggersAsNotInstalledOnAFreshProfile', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Available');
     const row: Locator = pluginRow(page, 'Python Debugger (debugpy)');
 
     // The point of the delivery model: a fresh installation carries no debugger, and says so, rather
@@ -68,6 +81,7 @@ test.describe('a sideloaded plugin', () => {
 
   test('reachesTheCatalogueBesideTheIndexedOnes', async ({ app, page }) => {
     await openPlugins(app, page);
+    await openGroup(page, 'Installed');
     const row: Locator = pluginRow(page, 'Zig Debugger');
 
     // Nothing in core knows this adapter exists: its manifest alone put it there, which is the whole

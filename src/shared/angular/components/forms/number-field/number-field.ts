@@ -16,6 +16,10 @@ import {
   templateUrl: './number-field.html',
   styleUrl: './number-field.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.number-field--full]': 'fullWidth()',
+    '[class.number-field--no-spinner]': '!spinner()',
+  },
 })
 export class NumberField {
   /**
@@ -44,11 +48,70 @@ export class NumberField {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the hint shown while the field is empty, or undefined for none.
+   */
+  public readonly placeholder: InputSignal<string | undefined> = input<string>();
+
+  /**
+   * Gets the accessible name of the field, or undefined when a surrounding label names it.
+   */
+  public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
+   * Gets a value indicating whether zero means "nothing entered": shown as an empty field, so the
+   * placeholder shows, and reported as zero when the field is cleared. For a field naming something by
+   * number, where zero is never a real answer.
+   */
+  public readonly zeroIsEmpty: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the value is reported as it is typed rather than when the field is
+   * left, so a control that depends on it (a button it enables) answers at once. A value outside the
+   * bounds is not reported until the field is left, where it is clamped.
+   */
+  public readonly live: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the field fills its container's width rather than sizing to a
+   * few digits.
+   */
+  public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the up/down stepper is shown. Off for a number that names
+   * something (an issue), where stepping to the next one is never what is meant.
+   */
+  public readonly spinner: InputSignal<boolean> = input<boolean>(true);
+
+  /**
+   * Handles typing in the underlying input, reporting the value at once when the field is live and
+   * the value is within its bounds.
+   * @param event The DOM input event raised by the input.
+   */
+  protected onInput(event: Event): void {
+    if (!this.live()) {
+      return;
+    }
+    const text: string = (event.target as HTMLInputElement).value;
+    const raw: number = text.trim().length === 0 ? 0 : Number(text);
+    if (!Number.isNaN(raw) && this.clamp(raw) === raw) {
+      this.value.set(raw);
+    } else if (this.zeroIsEmpty() && raw === 0) {
+      this.value.set(0);
+    }
+  }
+
+  /**
    * Handles a change on the underlying input, clamping the entered value and updating the model.
    * @param event The DOM change event raised by the input.
    */
   protected onChange(event: Event): void {
-    const raw: number = Number((event.target as HTMLInputElement).value);
+    const text: string = (event.target as HTMLInputElement).value;
+    const raw: number = Number(text);
+    if (this.zeroIsEmpty() && (text.trim().length === 0 || raw === 0)) {
+      this.value.set(0);
+      return;
+    }
     this.value.set(this.clamp(Number.isNaN(raw) ? 0 : raw));
   }
 

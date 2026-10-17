@@ -13,6 +13,7 @@ import {
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
 import {
+  type AiBridgeScope,
   CREATE_FILE,
   CREATE_FOLDER,
   DELETE_PATH,
@@ -283,53 +284,81 @@ export class WorkbenchAgentCapabilities {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds which run opened each agent document, keyed by document id: the owner key of the run (see
+   * {@link ownerKey}). What confines saving and revising a document to the agent that wrote it.
+   */
+  private readonly owners: Map<string, string> = new Map<string, string>();
+
+  /**
    * Registers the capabilities. Deliberately never released — see the class remarks.
    */
   public constructor() {
-    this.runtime.registerCapability(OPEN_DOCUMENT, (input: unknown): OpenDocumentResult =>
-      this.openDocument(input),
+    this.runtime.registerCapability(
+      OPEN_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): OpenDocumentResult => this.openDocument(input, scope),
     );
-    this.runtime.registerCapability(SAVE_DOCUMENT, (input: unknown): Promise<SaveDocumentResult> =>
-      this.saveDocument(input),
+    this.runtime.registerCapability(
+      SAVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): Promise<SaveDocumentResult> =>
+        this.saveDocument(input, scope),
     );
-    this.runtime.registerCapability(OPEN_TERMINAL, (input: unknown): OpenTerminalResult =>
-      this.openTerminal(input),
+    this.runtime.registerCapability(
+      OPEN_TERMINAL,
+      (input: unknown, scope: AiBridgeScope): OpenTerminalResult => this.openTerminal(input, scope),
     );
-    this.runtime.registerCapability(OPEN_FILE, (input: unknown): Promise<OpenFileResult> =>
-      this.openFile(input),
+    this.runtime.registerCapability(
+      OPEN_FILE,
+      (input: unknown, scope: AiBridgeScope): Promise<OpenFileResult> =>
+        this.openFile(input, scope),
     );
     // The workspace surface's own view of its well (#713). Registered here with the other well-based
     // capabilities: they resolve the well the same way, and the surface that offers them is decided in
     // the main process.
-    this.runtime.registerCapability(LIST_OPEN_DOCUMENTS, (): ListOpenDocumentsResult =>
-      this.listOpenDocuments(),
+    this.runtime.registerCapability(
+      LIST_OPEN_DOCUMENTS,
+      (_input: unknown, scope: AiBridgeScope): ListOpenDocumentsResult =>
+        this.listOpenDocuments(scope),
     );
-    this.runtime.registerCapability(OPEN_DIFF, (input: unknown): Promise<OpenDiffResult> =>
-      this.openDiff(input),
+    this.runtime.registerCapability(
+      OPEN_DIFF,
+      (input: unknown, scope: AiBridgeScope): Promise<OpenDiffResult> =>
+        this.openDiff(input, scope),
     );
-    this.runtime.registerCapability(READ_SOURCE_CONTROL_STATUS, (): SourceControlStatusResult =>
-      this.readSourceControlStatus(),
+    this.runtime.registerCapability(
+      READ_SOURCE_CONTROL_STATUS,
+      (_input: unknown, scope: AiBridgeScope): SourceControlStatusResult =>
+        this.readSourceControlStatus(scope),
     );
-    this.runtime.registerCapability(LIST_TERMINALS, (): ListTerminalsResult =>
-      this.listTerminals(),
+    this.runtime.registerCapability(
+      LIST_TERMINALS,
+      (_input: unknown, scope: AiBridgeScope): ListTerminalsResult => this.listTerminals(scope),
     );
     // Acting on the tree (#713 phase 4): the Explorer's own operations, reached through the well so
     // the Explorer reflects them, and confined by the main process to the open workspace.
-    this.runtime.registerCapability(CREATE_FILE, (input: unknown): Promise<TreeMutationResult> =>
-      this.createFile(input),
+    this.runtime.registerCapability(
+      CREATE_FILE,
+      (input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> =>
+        this.createFile(input, scope),
     );
-    this.runtime.registerCapability(CREATE_FOLDER, (input: unknown): Promise<TreeMutationResult> =>
-      this.createFolder(input),
+    this.runtime.registerCapability(
+      CREATE_FOLDER,
+      (input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> =>
+        this.createFolder(input, scope),
     );
-    this.runtime.registerCapability(RENAME_PATH, (input: unknown): Promise<TreeMutationResult> =>
-      this.renamePath(input),
+    this.runtime.registerCapability(
+      RENAME_PATH,
+      (input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> =>
+        this.renamePath(input, scope),
     );
-    this.runtime.registerCapability(DELETE_PATH, (input: unknown): Promise<TreeMutationResult> =>
-      this.deletePath(input),
+    this.runtime.registerCapability(
+      DELETE_PATH,
+      (input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> =>
+        this.deletePath(input, scope),
     );
     this.runtime.registerCapability(
       REVEAL_IN_EXPLORER,
-      (input: unknown): Promise<TreeMutationResult> => this.revealInExplorer(input),
+      (input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> =>
+        this.revealInExplorer(input, scope),
     );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }
@@ -342,9 +371,10 @@ export class WorkbenchAgentCapabilities {
    * when one is already there. Creating the entry first therefore wins the race without depending on
    * it — the view finds the document already populated instead of replacing it with an empty one.
    * @param input The tool input: format, title, content and optional language.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link OpenDocumentResult}.
    */
-  private openDocument(input: unknown): OpenDocumentResult {
+  private openDocument(input: unknown, scope: AiBridgeScope): OpenDocumentResult {
     const args: {
       format?: unknown;
       title?: unknown;
@@ -368,8 +398,38 @@ export class WorkbenchAgentCapabilities {
     this.documents.ensure(tab.id, title);
     this.documents.setContent(tab.id, content);
     this.documents.setLanguage(tab.id, this.languageFor(format, args.language));
+    this.owners.set(tab.id, this.ownerKey(scope));
     this.log.info('workbench.agent', `Agent opened a ${format} document`, tab.id, title);
     return { ok: true, id: tab.id, title };
+  }
+
+  /**
+   * Decides whether a run may act on a document: only one it opened itself, through
+   * {@link OPEN_DOCUMENT}, and only while that document is still open. Never a document the user
+   * opened, and never one another agent — another workspace's — opened.
+   * @param id The document's id, as {@link OPEN_DOCUMENT} returned it.
+   * @param scope The run's bridge scope.
+   * @returns Returns null when the run may act on it, or the refusal to report.
+   */
+  public refuseDocument(id: string, scope: AiBridgeScope): string | null {
+    if (this.documents.get(id) === undefined) {
+      this.owners.delete(id);
+      return `No open document with id "${id}". It may have been closed; open a new one instead.`;
+    }
+    if (this.owners.get(id) !== this.ownerKey(scope)) {
+      this.log.warn('workbench.agent', 'Agent refused a document it did not open', id);
+      return `The document "${id}" was not opened by you, so you cannot change it.`;
+    }
+    return null;
+  }
+
+  /**
+   * Derives the key a run's documents are owned under.
+   * @param scope The run's bridge scope.
+   * @returns Returns the key.
+   */
+  private ownerKey(scope: AiBridgeScope): string {
+    return scope.owningTabId ?? '';
   }
 
   /**
@@ -393,13 +453,15 @@ export class WorkbenchAgentCapabilities {
   /**
    * Offers to save a document the agent opened, through the operating system's save dialog.
    * @param input The tool input: the id of the document to save.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link SaveDocumentResult}.
    */
-  private async saveDocument(input: unknown): Promise<SaveDocumentResult> {
+  private async saveDocument(input: unknown, scope: AiBridgeScope): Promise<SaveDocumentResult> {
     const args: { id?: unknown } = input ?? {};
     const id: string = typeof args.id === 'string' ? args.id : '';
-    if (this.documents.get(id) === undefined) {
-      return { ok: false, error: `No open document with id "${id}".` };
+    const refusal: string | null = this.refuseDocument(id, scope);
+    if (refusal !== null) {
+      return { ok: false, error: refusal };
     }
     const saved: boolean = await this.documents.saveAs(id);
     if (!saved) {
@@ -421,15 +483,16 @@ export class WorkbenchAgentCapabilities {
    * workspace the user is not looking at (an agent docked to a terminal reaches the last active one),
    * and opening a file into a tab nobody can see is indistinguishable from doing nothing.
    * @param input The tool input: the path to open.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link OpenFileResult}.
    */
-  private async openFile(input: unknown): Promise<OpenFileResult> {
+  private async openFile(input: unknown, scope: AiBridgeScope): Promise<OpenFileResult> {
     const args: { path?: unknown } = input ?? {};
     const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
     if (requested.length === 0) {
       return { ok: false, error: 'No path was given.' };
     }
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope);
     if (well === null) {
       return {
         ok: false,
@@ -453,10 +516,11 @@ export class WorkbenchAgentCapabilities {
 
   /**
    * Lists the documents open in the active workspace's well (#713).
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ListOpenDocumentsResult}.
    */
-  private listOpenDocuments(): ListOpenDocumentsResult {
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+  private listOpenDocuments(scope: AiBridgeScope): ListOpenDocumentsResult {
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope);
     if (well === null) {
       return { ok: false, error: 'No workspace is open, so there is no document well to list.' };
     }
@@ -468,15 +532,16 @@ export class WorkbenchAgentCapabilities {
   /**
    * Opens a changed file's diff into the active workspace's well and brings the tab forward (#713).
    * @param input The tool input: the path whose diff to open.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link OpenDiffResult}.
    */
-  private async openDiff(input: unknown): Promise<OpenDiffResult> {
+  private async openDiff(input: unknown, scope: AiBridgeScope): Promise<OpenDiffResult> {
     const args: { path?: unknown } = input ?? {};
     const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
     if (requested.length === 0) {
       return { ok: false, error: 'No path was given.' };
     }
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope);
     if (well === null) {
       return {
         ok: false,
@@ -496,10 +561,11 @@ export class WorkbenchAgentCapabilities {
 
   /**
    * Reads the active workspace's source-control state (#713).
+   * @param scope The run the request comes from.
    * @returns Returns the {@link SourceControlStatusResult}.
    */
-  private readSourceControlStatus(): SourceControlStatusResult {
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+  private readSourceControlStatus(scope: AiBridgeScope): SourceControlStatusResult {
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope);
     if (well === null) {
       return { ok: false, error: 'No workspace is open, so there is no repository to read.' };
     }
@@ -509,17 +575,21 @@ export class WorkbenchAgentCapabilities {
   /**
    * Resolves the well and the absolute path a tree operation acts on.
    * @param input The tool input.
+   * @param scope The run the request comes from.
    * @returns Returns the well and path, or the refusal to report.
    */
   private resolveTreeTarget(
     input: unknown,
+    scope: AiBridgeScope,
   ): { readonly well: WorkspaceWell; readonly path: string } | { readonly error: string } {
     const args: { path?: unknown } = input ?? {};
     const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
     if (requested.length === 0) {
       return { error: 'No path was given.' };
     }
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+    // No fallback: a tree mutation acts on the run's own workspace or on none. Following the user's
+    // focus here would let an agent create or delete files in a workspace it does not belong to.
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope, false);
     if (well === null) {
       return { error: 'No workspace is open.' };
     }
@@ -529,11 +599,12 @@ export class WorkbenchAgentCapabilities {
   /**
    * Creates a file in the active workspace (#713).
    * @param input The tool input: the path, and optionally the content.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link TreeMutationResult}.
    */
-  private async createFile(input: unknown): Promise<TreeMutationResult> {
+  private async createFile(input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> {
     const target: { well: WorkspaceWell; path: string } | { error: string } =
-      this.resolveTreeTarget(input);
+      this.resolveTreeTarget(input, scope);
     if ('error' in target) {
       return { ok: false, error: target.error };
     }
@@ -551,11 +622,12 @@ export class WorkbenchAgentCapabilities {
   /**
    * Creates a folder in the active workspace (#713).
    * @param input The tool input: the path.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link TreeMutationResult}.
    */
-  private async createFolder(input: unknown): Promise<TreeMutationResult> {
+  private async createFolder(input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> {
     const target: { well: WorkspaceWell; path: string } | { error: string } =
-      this.resolveTreeTarget(input);
+      this.resolveTreeTarget(input, scope);
     if ('error' in target) {
       return { ok: false, error: target.error };
     }
@@ -570,11 +642,12 @@ export class WorkbenchAgentCapabilities {
   /**
    * Renames an entry in the active workspace (#713).
    * @param input The tool input: the path and the new name.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link TreeMutationResult}.
    */
-  private async renamePath(input: unknown): Promise<TreeMutationResult> {
+  private async renamePath(input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> {
     const target: { well: WorkspaceWell; path: string } | { error: string } =
-      this.resolveTreeTarget(input);
+      this.resolveTreeTarget(input, scope);
     if ('error' in target) {
       return { ok: false, error: target.error };
     }
@@ -597,11 +670,12 @@ export class WorkbenchAgentCapabilities {
   /**
    * Deletes an entry in the active workspace (#713).
    * @param input The tool input: the path.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link TreeMutationResult}.
    */
-  private async deletePath(input: unknown): Promise<TreeMutationResult> {
+  private async deletePath(input: unknown, scope: AiBridgeScope): Promise<TreeMutationResult> {
     const target: { well: WorkspaceWell; path: string } | { error: string } =
-      this.resolveTreeTarget(input);
+      this.resolveTreeTarget(input, scope);
     if ('error' in target) {
       return { ok: false, error: target.error };
     }
@@ -618,11 +692,15 @@ export class WorkbenchAgentCapabilities {
   /**
    * Reveals an entry in the active workspace's Explorer (#713).
    * @param input The tool input: the path.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link TreeMutationResult}.
    */
-  private async revealInExplorer(input: unknown): Promise<TreeMutationResult> {
+  private async revealInExplorer(
+    input: unknown,
+    scope: AiBridgeScope,
+  ): Promise<TreeMutationResult> {
     const target: { well: WorkspaceWell; path: string } | { error: string } =
-      this.resolveTreeTarget(input);
+      this.resolveTreeTarget(input, scope);
     if ('error' in target) {
       return { ok: false, error: target.error };
     }
@@ -655,11 +733,13 @@ export class WorkbenchAgentCapabilities {
    * is open (#713) — so the conversation and the terminal it drives share a tab — and otherwise as a
    * top-level terminal tab.
    * @param input The tool input: whether the terminal belongs in the workspace.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link OpenTerminalResult}.
    */
-  private openTerminal(input: unknown): OpenTerminalResult {
+  private openTerminal(input: unknown, scope: AiBridgeScope): OpenTerminalResult {
     const args: { workspace?: unknown } = input ?? {};
-    const well: WorkspaceWell | null = args.workspace === true ? this.workspace.activeWell() : null;
+    const well: WorkspaceWell | null =
+      args.workspace === true ? this.workspace.wellForRun(scope, false) : null;
     if (well !== null) {
       const terminal: WellTerminal = well.openTerminal();
       this.tabs.activate(well.tabId);
@@ -673,10 +753,13 @@ export class WorkbenchAgentCapabilities {
 
   /**
    * Lists the active workspace's terminals (#713).
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ListTerminalsResult}.
    */
-  private listTerminals(): ListTerminalsResult {
-    const well: WorkspaceWell | null = this.workspace.activeWell();
+  private listTerminals(scope: AiBridgeScope): ListTerminalsResult {
+    // No fallback: listing another workspace's terminals is how one workspace's agent came to read
+    // what another's was running.
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope, false);
     if (well === null) {
       return { ok: false, error: 'No workspace is open, so there are no workspace terminals.' };
     }

@@ -9,7 +9,6 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import {
   MENU_SEPARATOR,
@@ -27,6 +26,7 @@ import { WorkspaceSourceControlCommands } from '@features/workspace/angular/work
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -55,6 +55,7 @@ import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbo
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 
@@ -64,18 +65,19 @@ import { Radio } from '@shared/angular/components/forms/radio/radio';
 const SAVE_ALL: string = 'save-all';
 
 /**
- * Identifies the Stash item in the Source Control group's Commit split button menu.
+ * Identifies the Stash item in the Version Control group's Commit split button menu.
  */
 const COMMIT_STASH: string = 'stash';
 
 /**
- * Represents the contextual ribbon shown when a directory tab is active, in group order: File, Edit,
- * View, Run, Solution, Target (when the provider declares one), and Source Control.
+ * Represents the contextual ribbon shown when a directory tab is active, in group order: File, View,
+ * Solution, and Version Control.
  *
  * File saves the well's documents through the {@link WorkspaceDocumentCommands} seam — the well is
- * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. Edit
- * routes through the {@link EditorCommands} seam, and holds the document-level actions — the clipboard
- * trio, the history pair, and Find. View drives layout presets: the big button applies the DEFAULT
+ * backed by a per-view documents service this shell-rendered ribbon cannot resolve directly. There is
+ * no Edit group: the clipboard and history actions belong to the document they act on, so each
+ * editor's own strip carries them, and the workspace-wide Find stays on the application menu's Edit
+ * section. View drives layout presets: the big button applies the DEFAULT
  * preset (named on its face) and its menu lists every preset, while Save, Save As and Manage write
  * them. Solution is the single group for launching the project. Start is a split button: its face runs
  * the workspace's default configuration (falling back to the effective selection) in one press, and its
@@ -85,9 +87,9 @@ const COMMIT_STASH: string = 'stash';
  * face flips to Stop, red-toned, as soon as anything is in flight, and cancels every run rather than
  * only what it started. Configure opens the run configurations dialog where those are authored. (The
  * Debug and Build/Rebuild/Clean seams remain wired on this component but are not currently surfaced,
- * pending where they land in the run-configuration model.) Source Control is the workspace's one-stop
- * git group, dispatching through the {@link SourceControlCommands} and
- * {@link WorkspaceSourceControlCommands} seams.
+ * pending where they land in the run-configuration model.) Version Control is the workspace's one-stop
+ * group for the repository-wide actions — Commit, Fetch, Pull and Push — dispatching through the
+ * {@link SourceControlCommands} and {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
   selector: 'app-directory-ribbon',
@@ -95,6 +97,7 @@ const COMMIT_STASH: string = 'stash';
     Radio,
     TextField,
     Button,
+    ButtonRow,
     AppIcon,
     Dropdown,
     RibbonStripOverflow,
@@ -141,8 +144,10 @@ export class DirectoryRibbon {
           // is routed by Chromium to whatever holds focus, so every control serves its own chord. A
           // feature entry claiming one of those accelerators REPLACES the core's (AppMenu.withoutClaimed)
           // and then runs the TAB's command wherever the caret happens to be, which is what broke ⌘C/⌘V
-          // over and over. The ribbon's own clipboard and history buttons remain: pressing one is an
-          // explicit instruction to act on this view rather than on whatever has focus.
+          // over and over. Each editor's own strip carries clipboard and history buttons instead:
+          // pressing one is an explicit instruction to act on that document rather than on whatever
+          // has focus. Find stays here because it opens the workspace's Search panel, and this is
+          // the only place it is reachable from now that the ribbon has no Edit group.
           {
             id: 'directory.find',
             label: 'Find…',
@@ -153,15 +158,13 @@ export class DirectoryRibbon {
       },
       {
         id: 'source-control',
-        label: 'Source Control',
+        label: 'Version Control',
         items: [
           { id: 'directory.commit', label: 'Commit…', run: (): void => this.onCommit() },
           MENU_SEPARATOR,
+          { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
           { id: 'directory.pull', label: 'Pull', run: (): void => this.onPull() },
           { id: 'directory.push', label: 'Push', run: (): void => this.onPush() },
-          { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
-          MENU_SEPARATOR,
-          { id: 'directory.promote', label: 'Promote Worktree', run: (): void => this.onPromote() },
         ],
       },
       {
@@ -218,11 +221,6 @@ export class DirectoryRibbon {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the editor command seam the Edit group dispatches through.
-   */
-  private readonly commands: EditorCommands = inject(EditorCommands);
 
   /**
    * Holds the workspace find seam the Find command reveals the Search panel through.
@@ -295,6 +293,11 @@ export class DirectoryRibbon {
   private readonly debugger: Debugger = inject(Debugger);
 
   /**
+   * Holds the notification centre, which says why a Debug configuration could not start.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
    * Holds the active workspace's `.studio` configuration, the source of the run dropdown's items.
    */
   private readonly studio: StudioConfig = inject(StudioConfig);
@@ -321,14 +324,15 @@ export class DirectoryRibbon {
   private readonly picked: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the source-control seam the Source Control group dispatches through to the active workspace.
+   * Holds the source-control seam the Version Control group dispatches through to the active
+   * workspace.
    */
   private readonly sourceControl: WorkspaceSourceControlCommands = inject(
     WorkspaceSourceControlCommands,
   );
 
   /**
-   * Gets whether the active workspace's open folder is a git repository, enabling the Source Control
+   * Gets whether the active workspace's open folder is a git repository, enabling the Version Control
    * group's actions.
    */
   protected readonly hasRepository: Signal<boolean> = this.sourceControl.hasRepository;
@@ -504,7 +508,7 @@ export class DirectoryRibbon {
    * dropdown row — started it.
    */
   protected readonly anyRunning: Signal<boolean> = computed(
-    (): boolean => this.activeRuns().length > 0,
+    (): boolean => this.activeRuns().length > 0 || this.debugger.running(),
   );
 
   /**
@@ -536,59 +540,8 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether the Debug button can launch: the active provider declares a debug adapter, a run
-   * configuration is selected, and no debug session is already running. Providers that declare no
-   * adapter (or none at all) leave the button disabled rather than launching a session that would
-   * immediately report it has nowhere to attach.
-   */
-  protected readonly canDebug: Signal<boolean> = computed((): boolean => {
-    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
-    return (
-      this.capabilities()?.debug != null &&
-      configuration !== undefined &&
-      // A compound starts several processes; there is no single program to attach to.
-      !isCompoundConfiguration(configuration) &&
-      !this.debugger.running()
-    );
-  });
-
-  /**
-   * Cuts the selection in the focused editor.
-   */
-  protected onCut(): void {
-    this.commands.cut();
-  }
-
-  /**
-   * Copies the selection in the focused editor.
-   */
-  protected onCopy(): void {
-    this.commands.copy();
-  }
-
-  /**
-   * Pastes into the focused editor.
-   */
-  protected onPaste(): void {
-    this.commands.paste();
-  }
-
-  /**
-   * Undoes the last edit in the focused editor.
-   */
-  protected onUndo(): void {
-    this.commands.undo();
-  }
-
-  /**
-   * Redoes the last undone edit in the focused editor.
-   */
-  protected onRedo(): void {
-    this.commands.redo();
-  }
-
-  /**
-   * Reveals the workspace's multi-file Search panel.
+   * Reveals the workspace's multi-file Search panel. Reached from the application menu's Edit
+   * section, the ribbon no longer carrying an Edit group of its own.
    */
   protected onFind(): void {
     this.log.info('workspace.ribbon', 'Find in Files invoked');
@@ -629,10 +582,7 @@ export class DirectoryRibbon {
       this.pendingRunConfiguration.set(configuration);
       return;
     }
-    this.log.info('workspace.run', 'Run configuration started', configuration.name);
-    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-      restart: false,
-    });
+    this.start(configuration);
   }
 
   /**
@@ -669,7 +619,12 @@ export class DirectoryRibbon {
         (leaf: RunConfiguration): string => leaf.id,
       ),
     );
-    return this.activeRuns().some((run): boolean => leafIds.has(run.taskId));
+    // One debug session runs at a time, so a Debug configuration is running while the debugger is.
+    const debugging: boolean =
+      configuration.mode === 'debug' &&
+      !isCompoundConfiguration(configuration) &&
+      this.debugger.running();
+    return debugging || this.activeRuns().some((run): boolean => leafIds.has(run.taskId));
   }
 
   /**
@@ -734,17 +689,6 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Launches the selected run configuration under the debugger on the active workspace.
-   */
-  protected onDebug(): void {
-    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
-    if (configuration !== undefined) {
-      this.log.info('workspace.run', 'Debug launch requested', configuration.name);
-      this.debugger.launch(configuration);
-    }
-  }
-
-  /**
    * Opens the Configure dialog to edit the workspace's run configurations.
    */
   protected onConfigure(): void {
@@ -767,10 +711,7 @@ export class DirectoryRibbon {
     if (configuration === undefined) {
       return;
     }
-    this.log.info('workspace.run', 'Run configuration started', configuration.name);
-    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-      restart: false,
-    });
+    this.start(configuration);
   }
 
   /**
@@ -789,9 +730,7 @@ export class DirectoryRibbon {
     if (this.isConfigurationRunning(configuration)) {
       this.stopConfiguration(configuration);
     } else {
-      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-        restart: false,
-      });
+      this.start(configuration);
     }
   }
 
@@ -801,6 +740,9 @@ export class DirectoryRibbon {
    * @param configuration The configuration to stop.
    */
   private stopConfiguration(configuration: RunConfiguration): void {
+    if (configuration.mode === 'debug' && this.debugger.running()) {
+      this.debugger.stop();
+    }
     const leafIds: ReadonlySet<string> = new Set<string>(
       expandRunConfiguration(configuration, this.studio.runConfigurations()).map(
         (leaf: RunConfiguration): string => leaf.id,
@@ -819,6 +761,45 @@ export class DirectoryRibbon {
   protected onStop(): void {
     this.log.info('workspace.run', 'Stop all runs requested', this.activeRuns().length);
     this.builds.cancelAll();
+    if (this.debugger.running()) {
+      this.debugger.stop();
+    }
+  }
+
+  /**
+   * Starts a configuration the way it asks to be started: under the debugger when its mode is Debug,
+   * as an ordinary run otherwise. Every Start path comes here — the button's face, the dropdown, Run.
+   *
+   * The ribbon's Debug button went when the Solution group became a dropdown, and with it the only way
+   * to the debugger: a configuration set to Debug in Configure was saved as one and then run like any
+   * other, so no adapter was ever asked to start. A compound runs as before, its members as runs.
+   * @param configuration The configuration to start.
+   */
+  private start(configuration: RunConfiguration): void {
+    if (configuration.mode === 'debug' && !isCompoundConfiguration(configuration)) {
+      if (this.debugger.running()) {
+        this.log.info('workspace.run', 'Debug launch refused: a session is already running');
+        return;
+      }
+      if (this.capabilities()?.debug == null) {
+        // Said where it is seen: the session itself only writes this to the Debug output.
+        this.notifications.notify({
+          severity: 'warning',
+          title: `Can't debug "${configuration.name}"`,
+          detail:
+            "This workspace's project declares no debugger. Install one from the Plugin Manager, or " +
+            'set the configuration to Run in Configure.',
+        });
+        return;
+      }
+      this.log.info('workspace.run', 'Debug launch requested', configuration.name);
+      this.debugger.launch(configuration);
+      return;
+    }
+    this.log.info('workspace.run', 'Run configuration started', configuration.name);
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: false,
+    });
   }
 
   /**
@@ -833,7 +814,7 @@ export class DirectoryRibbon {
    * Opens the active workspace's repository in the full source-control view.
    */
   protected onOpenSourceControl(): void {
-    this.log.info('source-control', 'Open in Source Control invoked');
+    this.log.info('source-control', 'Open in Version Control invoked');
     this.sourceControl.openInSourceControl();
   }
 
@@ -862,7 +843,7 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Holds the repository command facade behind the Source Control group, served by the active
+   * Holds the repository command facade behind the Version Control group, served by the active
    * workspace's registered handler.
    */
   private readonly repositoryCommands: SourceControlCommands = inject(SourceControlCommands);
@@ -900,41 +881,6 @@ export class DirectoryRibbon {
   protected onStash(): void {
     this.log.info('source-control', 'Stash invoked');
     this.repositoryCommands.stash();
-  }
-
-  /**
-   * Gets whether the active view can promote its repository into a worktree container (an ordinary
-   * repository workspace can; a checkout inside a container cannot).
-   */
-  protected readonly canPromote: Signal<boolean> = this.repositoryCommands.canPromoteToWorktree;
-
-  /**
-   * Holds whether the promote confirmation is open.
-   */
-  protected readonly promoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Opens the promote confirmation: promotion restructures the folder on disk, so it is never run
-   * from a bare button press.
-   */
-  protected onPromote(): void {
-    this.promoteConfirmOpen.set(true);
-  }
-
-  /**
-   * Confirms the promotion.
-   */
-  protected confirmPromote(): void {
-    this.promoteConfirmOpen.set(false);
-    this.log.info('source-control', 'Promote to worktree confirmed');
-    this.repositoryCommands.promoteToWorktree();
-  }
-
-  /**
-   * Cancels the promotion.
-   */
-  protected cancelPromote(): void {
-    this.promoteConfirmOpen.set(false);
   }
 
   /**

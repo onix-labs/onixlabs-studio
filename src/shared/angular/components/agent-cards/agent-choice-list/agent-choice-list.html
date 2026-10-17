@@ -1,0 +1,34 @@
+<div
+  class="agent__ask-options"
+  [attr.role]="selection() === 'multiple' ? 'group' : 'radiogroup'"
+  [attr.aria-label]="ariaLabel()"
+>
+  @for (choice of choices(); track choice.value) {
+    <!-- The label wraps the control's projected native input, associating them at runtime; the lint
+         rule cannot see through the component boundary. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="agent__ask-option">
+      @if (selection() === 'multiple') {
+        <app-checkbox
+          class="agent__ask-option-dial"
+          [checked]="selected().includes(choice.value)"
+          (checkedChange)="choose.emit(choice.value)"
+        />
+      } @else {
+        <app-radio
+          class="agent__ask-option-dial"
+          [name]="name()"
+          [checked]="selected().includes(choice.value)"
+          [ariaLabel]="choice.label"
+          (checkedChange)="$event && choose.emit(choice.value)"
+        />
+      }
+      <span class="agent__ask-option-text">
+        <span class="agent__ask-option-label">{{ choice.label }}</span>
+        @if (choice.description) {
+          <span class="agent__ask-option-desc">{{ choice.description }}</span>
+        }
+      </span>
+    </label>
+  }
+</div>

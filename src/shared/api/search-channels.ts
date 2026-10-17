@@ -15,6 +15,117 @@ export enum SearchChannel {
    * `@`-mention picker (renderer→main, invoke).
    */
   ListFiles = 'search:list-files',
+
+  /**
+   * Replaces matches of a query in a workspace's files on disk (renderer→main, invoke).
+   */
+  Replace = 'search:replace',
+}
+
+/**
+ * Names the one match a single Replace changes: where ripgrep reported it.
+ */
+export interface ReplaceTarget {
+  /**
+   * Gets the absolute path of the file holding the match.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the one-based line of the match.
+   */
+  readonly line: number;
+
+  /**
+   * Gets the one-based column of the match, as ripgrep reports it: its byte offset into the line, plus
+   * one.
+   */
+  readonly column: number;
+}
+
+/**
+ * Defines a request to replace matches of a query in a workspace's files.
+ *
+ * Either {@link target} names the one match to change (Replace), or it is absent and every match of the
+ * query in each of {@link files} is changed (Replace All). Replace All re-reads each file rather than
+ * trusting the results list, because ripgrep lists only the first match on a line.
+ */
+export interface ReplaceRequest {
+  /**
+   * Gets the text (or, when {@link regexp} is set, the pattern) to replace.
+   */
+  readonly query: string;
+
+  /**
+   * Gets the absolute path of the workspace root the files lie in; must be an open workspace root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets a value indicating whether the match is case-sensitive.
+   */
+  readonly caseSensitive: boolean;
+
+  /**
+   * Gets a value indicating whether only whole words match.
+   */
+  readonly wholeWord: boolean;
+
+  /**
+   * Gets a value indicating whether {@link query} is a regular expression. When it is, the replacement
+   * may name the pattern's groups (`$1`, `$<name>`); otherwise it is taken literally.
+   */
+  readonly regexp: boolean;
+
+  /**
+   * Gets the text each match is replaced with.
+   */
+  readonly replacement: string;
+
+  /**
+   * Gets the absolute paths of the files to replace in.
+   */
+  readonly files: readonly string[];
+
+  /**
+   * Gets the one match to replace, or undefined to replace every match in {@link files}.
+   */
+  readonly target?: ReplaceTarget;
+}
+
+/**
+ * Names a file a replace could not change, and why.
+ */
+export interface ReplaceFailure {
+  /**
+   * Gets the absolute path of the file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the reason, for the user.
+   */
+  readonly reason: string;
+}
+
+/**
+ * Reports what a replace did.
+ */
+export interface ReplaceResponse {
+  /**
+   * Gets how many matches were replaced.
+   */
+  readonly replaced: number;
+
+  /**
+   * Gets how many files were written.
+   */
+  readonly files: number;
+
+  /**
+   * Gets the files that could not be changed, each with its reason.
+   */
+  readonly failed: readonly ReplaceFailure[];
 }
 
 /**
@@ -136,4 +247,11 @@ export interface SearchClient {
    * @returns Returns the relative paths (empty for an unknown root).
    */
   listFiles(root: string): Promise<readonly string[]>;
+
+  /**
+   * Replaces matches of a query in a workspace's files on disk.
+   * @param request The replace request.
+   * @returns Returns what was replaced, and what could not be.
+   */
+  replace(request: ReplaceRequest): Promise<ReplaceResponse>;
 }

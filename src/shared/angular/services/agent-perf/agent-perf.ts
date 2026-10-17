@@ -196,28 +196,32 @@ export class AgentPerf {
     ) {
       return;
     }
-    const avgRebuildMs: number = this.rebuilds > 0 ? this.rebuildMsTotal / this.rebuilds : 0;
-    const avgKeystrokeMs: number =
-      this.keystrokes > 0 ? this.keystrokeMsTotal / this.keystrokes : 0;
-    const avgGrowMs: number = this.keystrokes > 0 ? this.growMsTotal / this.keystrokes : 0;
-    this.log.debug(
-      'perf.agent-transcript',
-      'transcript perf (last 1s)',
-      `rowsRebuilds/s=${this.rebuilds}`,
-      `avgRebuildMs=${avgRebuildMs.toFixed(2)}`,
-      `maxRebuildMs=${this.rebuildMsMax.toFixed(2)}`,
-      `items=${this.lastItems}`,
-      `rows=${this.lastRows}`,
-      `streamFlushes/s=${this.flushes}`,
-      `keystrokes/s=${this.keystrokes}`,
-      `avgKeystrokeMs=${avgKeystrokeMs.toFixed(2)}`,
-      `maxKeystrokeMs=${this.keystrokeMsMax.toFixed(2)}`,
-      `avgGrowMs=${avgGrowMs.toFixed(2)}`,
-      `maxGrowMs=${this.growMsMax.toFixed(2)}`,
-      `longTasks=${this.longTasks}`,
-      `maxLongTaskMs=${this.longTaskMsMax.toFixed(0)}`,
-      `liveTranscripts=${this.liveTranscripts}`,
-    );
+    // Built only when it will be kept: at the default floor this debug record is dropped, and the
+    // counters are reset regardless so a window never carries into the next.
+    if (this.log.enabled('debug')) {
+      const avgRebuildMs: number = this.rebuilds > 0 ? this.rebuildMsTotal / this.rebuilds : 0;
+      const avgKeystrokeMs: number =
+        this.keystrokes > 0 ? this.keystrokeMsTotal / this.keystrokes : 0;
+      const avgGrowMs: number = this.keystrokes > 0 ? this.growMsTotal / this.keystrokes : 0;
+      this.log.debug(
+        'perf.agent-transcript',
+        'transcript perf (last 1s)',
+        `rowsRebuilds/s=${this.rebuilds}`,
+        `avgRebuildMs=${avgRebuildMs.toFixed(2)}`,
+        `maxRebuildMs=${this.rebuildMsMax.toFixed(2)}`,
+        `items=${this.lastItems}`,
+        `rows=${this.lastRows}`,
+        `streamFlushes/s=${this.flushes}`,
+        `keystrokes/s=${this.keystrokes}`,
+        `avgKeystrokeMs=${avgKeystrokeMs.toFixed(2)}`,
+        `maxKeystrokeMs=${this.keystrokeMsMax.toFixed(2)}`,
+        `avgGrowMs=${avgGrowMs.toFixed(2)}`,
+        `maxGrowMs=${this.growMsMax.toFixed(2)}`,
+        `longTasks=${this.longTasks}`,
+        `maxLongTaskMs=${this.longTaskMsMax.toFixed(0)}`,
+        `liveTranscripts=${this.liveTranscripts}`,
+      );
+    }
     this.rebuilds = 0;
     this.rebuildMsTotal = 0;
     this.rebuildMsMax = 0;

@@ -34,9 +34,7 @@
       }
     }
 
-    <span class="tree-name" [class.bold]="data.kind === 'collection' || data.kind === 'group'">
-      {{ data.label }}
-    </span>
+    <span class="tree-name">{{ data.label }}</span>
 
     @if (data.active) {
       <span class="api-explorer__active" title="The active environment">active</span>
@@ -63,15 +61,15 @@
       (enter)="confirmRename()"
       (escape)="cancelRename()"
     />
-    <div class="api-explorer__dialog-actions">
-      <app-button label="Cancel" (click)="cancelRename()" />
+    <app-button-row class="api-explorer__dialog-actions">
       <app-button
         variant="solid"
         label="Rename"
         [disabled]="!canRename()"
         (click)="confirmRename()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelRename()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -86,9 +84,9 @@
   <ng-template appModalContent>
     <h2 class="api-explorer__dialog-title">Delete “{{ deleteTarget()?.label }}”?</h2>
     <p class="api-explorer__dialog-message">{{ deleteConsequence() }}</p>
-    <div class="api-explorer__dialog-actions">
-      <app-button label="Cancel" (click)="cancelDelete()" />
+    <app-button-row class="api-explorer__dialog-actions">
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelDelete()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

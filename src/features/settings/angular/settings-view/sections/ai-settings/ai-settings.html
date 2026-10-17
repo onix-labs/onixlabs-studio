@@ -70,6 +70,13 @@
 
     <app-ai-tool-policies />
 
+    <app-setting-row
+      label="Keep agents off the code host's command-line tool"
+      description="While a code-hosting plugin serves the repository, agents may not run that host's own command-line tool (gh for GitHub) and go through the plugin instead, which asks before it changes anything. Enforced for Claude and for providers that run commands through Studio's terminal; Codex is only told."
+    >
+      <app-setting-control key="ai.blockHostCommandLine" />
+    </app-setting-row>
+
     <app-ai-write-paths />
 
     <app-ai-network-locations />
@@ -78,62 +85,7 @@
 
 <!-- Provider: one company's page — a list of configurations the user adds per authentication method. -->
 @if (view() === 'provider') {
-  @if (page(); as page) {
-    <section class="ai-group">
-      <div class="ai-connections">
-        <div class="ai-connections__head">
-          <div class="ai-connections__heading">
-            <h4 class="ai-connections__title">Configurations</h4>
-            <p class="ai-connections__subtitle">{{ page.description }}</p>
-          </div>
-          <div class="ai-connections__add">
-            @for (method of page.methods; track method.auth) {
-              <app-button
-                variant="solid"
-                [icon]="Icon.PLUS"
-                [label]="method.buttonLabel"
-                (click)="addConfiguration(method)"
-              />
-            }
-          </div>
-        </div>
-
-        @if (!isAvailable) {
-          <p class="ai-connections__hint">
-            Credentials and model discovery are only available inside Studio.
-          </p>
-        }
-
-        <ul class="ai-connections__list">
-          @for (connection of pageConnections(); track connection.id) {
-            <li class="ai-connections__item">
-              <button
-                type="button"
-                class="ai-connections__toggle"
-                [attr.aria-expanded]="isExpanded(connection.id)"
-                (click)="toggle(connection.id)"
-              >
-                <app-icon
-                  class="ai-connections__status"
-                  [class.ai-connections__status--ok]="status(connection.id).available"
-                  [icon]="status(connection.id).available ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
-                />
-                <span class="ai-connections__label">{{ connection.label }}</span>
-                <app-icon
-                  class="ai-connections__chevron"
-                  [class.ai-connections__chevron--open]="isExpanded(connection.id)"
-                  [icon]="Icon.CARET_DOWN"
-                />
-              </button>
-              @if (isExpanded(connection.id)) {
-                <div class="ai-connections__body">
-                  <app-ai-connection-editor [connection]="connection" />
-                </div>
-              }
-            </li>
-          }
-        </ul>
-      </div>
-    </section>
-  }
+  <section class="ai-group">
+    <app-ai-provider-configurations [pageId]="providerId()" />
+  </section>
 }

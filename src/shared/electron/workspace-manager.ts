@@ -24,6 +24,7 @@ import {
   PackageSourceInfo,
 } from '@shared/api/package-management';
 import { FileInfo } from '@shared/api/file-channels';
+import { imageMimeTypeOf } from '@shared/api/image-formats';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { PackageChannel } from '@shared/api/package-channels';
 import {
@@ -687,10 +688,13 @@ export class WorkspaceManager {
   }
 
   /**
-   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes. It
-   * streams each span — original ranges copied from the current file, added ranges from the supplied
-   * buffer — to a temporary file, then atomically renames it over the original, so memory stays bounded
-   * however large the file. Honoured only for trusted paths or files within an open workspace.
+   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes and
+   * for writing an edited image. It streams each span — original ranges copied from the current file,
+   * added ranges from the supplied buffer — to a temporary file, then atomically renames it over the
+   * original, so memory stays bounded however large the file. The current file is opened only when a
+   * span reads from it, so a write made entirely of added bytes may create a file that does not exist
+   * yet (an image exported to a new path). Honoured only for trusted paths or files within an open
+   * workspace.
    * @param filePath The absolute path of the file to rewrite.
    * @param spans The spans that make up the new file content, in order.
    * @param added The added buffer the `added` spans index into.
@@ -714,7 +718,9 @@ export class WorkspaceManager {
     let source: FileHandle | undefined;
     let temp: FileHandle | undefined;
     try {
-      source = await fs.open(resolved, 'r');
+      if (runs.some((run: BinarySpan): boolean => run.source === 'original')) {
+        source = await fs.open(resolved, 'r');
+      }
       temp = await fs.open(tempPath, 'w');
       const chunk: Buffer = Buffer.alloc(64 * 1024);
       for (const run of runs) {
@@ -735,6 +741,9 @@ export class WorkspaceManager {
           }
           await temp.write(addedBuffer, run.start, run.length);
         } else {
+          if (source === undefined) {
+            return false;
+          }
           let position: number = run.start;
           let remaining: number = run.length;
           while (remaining > 0) {
@@ -756,7 +765,7 @@ export class WorkspaceManager {
       }
       await temp.close();
       temp = undefined;
-      await source.close();
+      await source?.close();
       source = undefined;
       await fs.rename(tempPath, resolved);
       logger.info('WorkspaceManager.writePieces', `Rewrote ${resolved} (${runs.length} spans)`);
@@ -934,16 +943,23 @@ export class WorkspaceManager {
   }
 
   /**
-   * Reads a file and classifies it as text or binary. Binary files are recognised but not decoded,
-   * so the renderer can decline to open them in a text editor.
+   * Reads a file and classifies it as an image, text or binary. Images and binary files are
+   * recognised but not decoded, so the renderer can route them to the image viewer or the hex editor.
    * @param filePath The absolute path of the file to read.
-   * @returns Returns a text-file or binary selection.
+   * @returns Returns an image, text-file or binary selection.
    */
   private async readFileSelection(filePath: string): Promise<OpenSelection> {
+    const stats: Stats = await fs.stat(filePath);
+    // An image is recognised by its extension before its contents are sniffed: a PNG would otherwise
+    // sniff as binary and an SVG as text, and both belong in the image viewer. The extension list is
+    // the one the media protocol serves, so every file classified here is one the viewer can display.
+    if (imageMimeTypeOf(filePath) !== undefined) {
+      logger.debug('WorkspaceManager.readFileSelection', `${filePath} classified image`);
+      return { kind: 'image', path: filePath };
+    }
     // A text file past the cap opens in the binary/hex editor, which reads it in windows on demand:
     // decoding a multi-hundred-megabyte log into one string, shipping it over IPC, and mounting it
     // in Monaco would stall the whole application.
-    const stats: Stats = await fs.stat(filePath);
     if (stats.size > MAX_TEXT_FILE_BYTES || (await this.isBinaryFile(filePath))) {
       logger.debug(
         'WorkspaceManager.readFileSelection',

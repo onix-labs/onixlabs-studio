@@ -20,6 +20,9 @@
           [listing]="entry.listing"
           [checkoutId]="entry.id"
           [layoutRoot]="session.root()"
+          [adoptConversation]="
+            carried()?.checkoutId === entry.id ? (carried()?.conversationId ?? null) : null
+          "
         />
       </div>
     }

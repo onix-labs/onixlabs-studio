@@ -66,6 +66,13 @@ export class MarkdownDocumentPanel {
   /**
    * Gets whether the backing document has a file path, and so can also be opened as its own tab.
    */
+  /**
+   * Gets the document's path, or null while it is untitled, for the strip's file commands.
+   */
+  protected readonly filePath: Signal<string | null> = computed(
+    (): string | null => this.document()?.filePath() ?? null,
+  );
+
   protected readonly hasFilePath: Signal<boolean> = computed(
     (): boolean => (this.document()?.filePath() ?? null) !== null,
   );

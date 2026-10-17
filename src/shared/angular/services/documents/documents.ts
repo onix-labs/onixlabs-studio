@@ -848,7 +848,6 @@ export class Documents implements UnsavedWorkSource {
     const markdown: boolean = entry.language() === 'markdown';
     this.dockPanels.update(id, {
       icon: markdown ? Icon.MARKDOWN : Icon.CODE,
-      ownsToolStrip: markdown,
     });
   }
 

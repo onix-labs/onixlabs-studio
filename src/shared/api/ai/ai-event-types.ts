@@ -161,6 +161,69 @@ export interface AiPermissionEvent extends AiEventBase {
    * remember the decision for that workspace.
    */
   readonly hasWorkspace: boolean;
+
+  /**
+   * Gets the change to a file the tool would make, when it is one that writes a file and the harness
+   * said what it would write (#891), so the prompt can show it before the user decides.
+   */
+  readonly change?: AiProposedChange;
+}
+
+/**
+ * Describes a change a tool proposes to a file (#891): the whole new content of a write, or the
+ * replacements of an edit, in order.
+ */
+export interface AiProposedChange {
+  /**
+   * Gets the file the change is to.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file's whole new content, for a write.
+   */
+  readonly content?: string;
+
+  /**
+   * Gets the replacements, in order, for an edit.
+   */
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
+}
+
+/**
+ * Offers the user a workspace for the project an agent has been planning in its own tab (#876): the
+ * name it suggests, and the handoff it wrote for the workspace's agent. The user completes and makes it
+ * from the card; the run does not wait for them.
+ */
+export interface AiWorkspaceProposalEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'workspace-proposal';
+
+  /**
+   * Gets the proposal's identifier.
+   */
+  readonly proposalId: string;
+
+  /**
+   * Gets the name the agent suggests for the project's folder.
+   */
+  readonly name: string;
+
+  /**
+   * Gets a line or two saying what the project is, or undefined for none.
+   */
+  readonly summary?: string;
+
+  /**
+   * Gets the handoff, as Markdown: the plan, the decisions made, and what to do first.
+   */
+  readonly handoff: string;
 }
 
 /**
@@ -199,6 +262,12 @@ export interface AiInputChoice {
 }
 
 /**
+ * How many of a question's suggested answers the user may pick: one (an OR choice, drawn as radios) or
+ * any number (an AND choice, drawn as checkboxes and answered with every picked label).
+ */
+export type AiInputSelection = 'single' | 'multiple';
+
+/**
  * Asks the user a question the agent needs answered before it continues. Raised by the in-app
  * `ask_user` tool; the provider blocks on the answer exactly as it blocks on a permission decision.
  * Answered with an `AiInputReply` carrying the {@link inputId}.
@@ -224,6 +293,11 @@ export interface AiInputRequestEvent extends AiEventBase {
    * answer is always accepted, so the choices are suggestions rather than a closed set.
    */
   readonly choices: readonly AiInputChoice[];
+
+  /**
+   * Gets how many of the choices the user may pick, or undefined for one.
+   */
+  readonly selection?: AiInputSelection;
 }
 
 /**
@@ -371,6 +445,12 @@ export interface AiUsageEvent extends AiEventBase {
    * AI-SDK providers do not), or null when unknown.
    */
   readonly costUsd: number | null;
+
+  /**
+   * Gets the context window the model ran with, in tokens, when the provider reports one (protocol
+   * 1.12.0). It outranks the model list's figure, which a provider can only guess before a turn runs.
+   */
+  readonly contextWindow?: number;
 }
 
 /**
@@ -676,4 +756,5 @@ export type AiEvent =
   | AiTaskProgressEvent
   | AiTaskUpdatedEvent
   | AiBackgroundTaskEvent
-  | AiRemoteMessageEvent;
+  | AiRemoteMessageEvent
+  | AiWorkspaceProposalEvent;

@@ -5,7 +5,8 @@ import { ASK_USER } from '@shared/api/ai/ai-tool-surface';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { HarnessAgentProvider, toTurnRequest } = await import('./harness-agent-provider');
+const { HarnessAgentProvider, readProposedChange, toTurnRequest } =
+  await import('./harness-agent-provider');
 type ProviderType = InstanceType<typeof HarnessAgentProvider>;
 
 /**
@@ -29,9 +30,10 @@ class ScriptedHarness {
   public events: unknown[] = [];
 
   /**
-   * Holds the host messages the harness declares it answers.
+   * Holds the host messages the harness declares it answers, or undefined for a harness older than
+   * 1.5.0, which sends no list.
    */
-  public declaredAnswers: readonly string[] = ['steer', 'discover', 'remote-control'];
+  public declaredAnswers: readonly string[] | undefined = ['steer', 'discover', 'remote-control'];
 
   /**
    * Holds the protocol version the harness declares.
@@ -46,7 +48,15 @@ class ScriptedHarness {
   /**
    * Holds the models the harness reports when asked.
    */
-  public declaredModels: readonly { id: string; label?: string }[] = [{ id: 'm1' }];
+  public declaredModels: readonly { id: string; label?: string; contextWindow?: number }[] = [
+    { id: 'm1' },
+  ];
+
+  /**
+   * Holds whether the harness declares its models' context windows guaranteed, or undefined for one
+   * that says nothing.
+   */
+  public guaranteedContextWindows: boolean | undefined = undefined;
 
   /**
    * Holds whether the provider closed the transport.
@@ -91,6 +101,7 @@ class ScriptedHarness {
           images: true,
           efforts: ['low', 'high'],
           resumable: true,
+          guaranteedContextWindows: this.guaranteedContextWindows,
         },
       });
       return;
@@ -234,7 +245,6 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     allowedWritePaths: ['/ws'],
     language: null,
     systemPromptExtra: '',
-    userPromptExtra: '',
     skills: [],
     deniedWritePaths: ['/ws/secrets'],
     allowedNetworkLocations: ['example.com'],
@@ -322,6 +332,29 @@ describe('HarnessAgentProvider', () => {
     ]);
   });
 
+  it('run_carriesAProposedFileChangeToThePrompt', async () => {
+    // 1.15.0 (#891): the prompt shows the change before the user decides.
+    harness.requests = [
+      {
+        kind: 'permission',
+        name: 'Edit',
+        detail: '/ws/a.ts',
+        change: { path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] },
+      },
+    ];
+    const asked: unknown[] = [];
+    const { context } = contextFor({
+      requestPermission: (...args: unknown[]): Promise<boolean> => {
+        asked.push(args[3]);
+        return Promise.resolve(true);
+      },
+    });
+
+    await provider.run(context);
+
+    expect(asked).toEqual([{ path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] }]);
+  });
+
   it('run_carriesEachChoicesExplanationThroughToThePrompt', async () => {
     // 1.9.0 widened a choice from a bare label to `{ label, description }`. `AiInputChoice` always had
     // somewhere to put the explanation and the wire was flattening it away — which is most of what
@@ -347,6 +380,32 @@ describe('HarnessAgentProvider', () => {
       { label: 'Rebase', description: 'keeps history linear' },
       { label: 'Merge' },
     ]);
+  });
+
+  it('run_asksForSeveralChoices_onlyWhenTheHarnessSaysSo', async () => {
+    // 1.14.0: an AND question reached the user as an OR, drawn as radios. Only 'multiple' changes
+    // anything — an older harness, or a value Studio does not know, still asks for one choice.
+    harness.requests = [
+      { kind: 'input', question: 'which?', choices: ['a', 'b'], selection: 'multiple' },
+      { kind: 'input', question: 'which?', choices: ['a', 'b'] },
+      { kind: 'input', question: 'which?', choices: ['a', 'b'], selection: 'all-of-them' },
+    ];
+    const selections: unknown[] = [];
+    const { context } = contextFor({
+      requestInput: (
+        _question: string,
+        _choices: unknown,
+        _cancel?: AbortSignal,
+        selection?: unknown,
+      ): Promise<string | null> => {
+        selections.push(selection);
+        return Promise.resolve('a');
+      },
+    });
+
+    await provider.run(context);
+
+    expect(selections).toEqual(['multiple', undefined, undefined]);
   });
 
   it('run_stillAcceptsTheBareLabelsEveryOlderHarnessSends', async () => {
@@ -587,6 +646,17 @@ describe('HarnessAgentProvider', () => {
     expect(steerHandlers[0]).toBeNull();
   });
 
+  it('run_runsATurnForAHarnessThatSendsNoAnswersList', async () => {
+    // 🐛 A harness older than 1.5.0 sends no `answers`. The protocol reads that as "answers only the
+    // mandatory messages"; reading `.includes` off it failed every turn instead.
+    harness.declaredAnswers = undefined;
+    const { context, steerHandlers } = contextFor();
+
+    await provider.run(context);
+
+    expect(steerHandlers[0]).toBeNull();
+  });
+
   it('run_registersASteerHandlerWhenTheHarnessTakesIt', async () => {
     const { context, steerHandlers } = contextFor();
 
@@ -648,6 +718,27 @@ describe('HarnessAgentProvider', () => {
     expect(report?.detail).toBeNull();
   });
 
+  it('discoverModels_dropsTheWindowsOfAHarnessThatDidNotGuaranteeThem', async () => {
+    // ⛔ A window a harness may have guessed is shown as no window: every Claude model read 200K.
+    harness.declaredModels = [
+      { id: 'opus', label: 'Opus 5.5', contextWindow: 200_000 },
+      { id: 'local', contextWindow: 32_768 },
+    ];
+
+    const report: AgentModelReport | null = await provider.discoverModels({ apiKey: null });
+
+    expect(report?.models).toEqual([{ id: 'opus', label: 'Opus 5.5' }, { id: 'local' }]);
+  });
+
+  it('discoverModels_keepsTheWindowsOfAHarnessThatGuaranteesThem', async () => {
+    harness.guaranteedContextWindows = true;
+    harness.declaredModels = [{ id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000 }];
+
+    const report: AgentModelReport | null = await provider.discoverModels({ apiKey: null });
+
+    expect(report?.models).toEqual([{ id: 'gpt-5.5', label: 'GPT-5.5', contextWindow: 272_000 }]);
+  });
+
   it('discoverModels_doesNotAskAHarnessThatDidNotDeclareIt', async () => {
     // ⛔ The guard that stops an unimplemented message hanging. `discover` must be answered, and a
     // harness ignoring one it never heard of would leave this awaiting a reply that never comes.
@@ -693,19 +784,17 @@ describe('toTurnRequest', () => {
     expect(turn['setSteerHandler']).toBeUndefined();
   });
 
-  it('composesTheUsersStandingInstructionsIntoThePromptRatherThanANewField', () => {
-    // #300. Inside the prompt, not beside it: a harness that reads only the fields it has always
-    // read still delivers them, which is what spares every published plugin a release.
-    const { context } = contextFor({ userPromptExtra: '### House\nBritish English.' });
+  it('sendsThePromptAsTheUserTypedIt', () => {
+    // #948. Standing instructions go with Studio's own, never beneath the message: nothing is added
+    // to what the user typed.
+    const { context } = contextFor();
 
     const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
       string,
       unknown
     >;
 
-    expect(turn['prompt']).toMatch(/^do the thing\n\n---\n/);
-    expect(turn['prompt']).toMatch(/### House\nBritish English\.$/);
-    expect(turn['userPromptExtra']).toBeUndefined();
+    expect(turn['prompt']).toBe('do the thing');
   });
 
   it('carriesEveryFieldAHarnessNeedsToReachParityWithAnInCoreProvider', () => {
@@ -728,6 +817,42 @@ describe('toTurnRequest', () => {
     expect(turn['agentShell']).toBe('/bin/zsh');
     expect(turn['owningTabId']).toBe('tab-2');
     expect(turn['resumeSessionAt']).toBeNull();
+  });
+
+  it('carriesTheBlockedCommands_onlyWhenThereAreAny', () => {
+    // 1.11.0 (#853): the code host's CLI the user keeps agents off. Omitted when empty, so a harness
+    // written before it sees exactly the envelope it always did.
+    const { context } = contextFor();
+    const blocking: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+    const turn: Record<string, unknown> = toTurnRequest(blocking) as unknown as Record<
+      string,
+      unknown
+    >;
+    const plain: Record<string, unknown> = toTurnRequest({
+      ...context,
+      blockedCommands: [],
+    }) as unknown as Record<string, unknown>;
+
+    expect(turn['blockedCommands']).toEqual(['gh']);
+    expect('blockedCommands' in plain).toBe(false);
+  });
+
+  it('withholdsTheHarnessesOwnTools_fromATerminalOrAToolView_only', () => {
+    // 1.16.0 (#965): a terminal's or a tool view's agent works through Studio's tools alone. Omitted
+    // everywhere else, so those surfaces' envelopes are unchanged.
+    const { context } = contextFor();
+    const builtIns: (surface: AgentRunContext['surface']) => unknown = (
+      surface: AgentRunContext['surface'],
+    ): unknown =>
+      (toTurnRequest({ ...context, surface }) as unknown as Record<string, unknown>)[
+        'builtInTools'
+      ];
+
+    expect(builtIns('monitor')).toBe('none');
+    expect(builtIns('terminal')).toBe('none');
+    expect(builtIns('editor')).toBeUndefined();
+    expect(builtIns('project')).toBeUndefined();
   });
 
   it('carriesAVendorsOwnSettingInTheOpaqueBagRatherThanAsANamedField', () => {
@@ -862,6 +987,18 @@ describe('HarnessAgentSession', () => {
         (message: Record<string, unknown>): boolean => message['type'] === 'remote-control',
       ),
     ).toBe(false);
+    expect(session.alive).toBe(true);
+  });
+
+  it('turn_runsForAHarnessThatSendsNoAnswersList', async () => {
+    // 🐛 The live-session half of the same fault: a harness older than 1.5.0 failed every turn.
+    harness.declaredAnswers = undefined;
+    const { context, steerHandlers } = contextFor();
+    const session: AgentSession = provider.openSession(context);
+
+    await session.turn(context);
+
+    expect(steerHandlers[0]).toBeNull();
     expect(session.alive).toBe(true);
   });
 
@@ -1003,5 +1140,29 @@ describe('HarnessAgentSession', () => {
 
     expect(harness.closed).toBe(true);
     expect(session.alive).toBe(false);
+  });
+});
+
+describe('readProposedChange', () => {
+  it('readsAWrite_andAnEdit', () => {
+    expect(readProposedChange({ path: '/a', content: 'x' })).toEqual({ path: '/a', content: 'x' });
+    expect(
+      readProposedChange({ path: '/a', edits: [{ oldText: 'a', newText: 'b', replaceAll: true }] }),
+    ).toEqual({ path: '/a', edits: [{ oldText: 'a', newText: 'b', replaceAll: true }] });
+  });
+
+  it('refusesWhatAPluginGotWrong_ratherThanShowingSomethingMisleading', () => {
+    // A plugin wrote it, so it is checked: anything off proposes nothing, and the prompt is as before.
+    for (const value of [
+      undefined,
+      'a path',
+      { content: 'no path' },
+      { path: '/a' },
+      { path: '/a', edits: [] },
+      { path: '/a', edits: [{ oldText: 'a' }] },
+      { path: '/a', edits: [{ oldText: 1, newText: 'b' }] },
+    ]) {
+      expect(readProposedChange(value)).toBeUndefined();
+    }
   });
 });

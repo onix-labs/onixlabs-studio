@@ -9,17 +9,19 @@ import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings
 import { AGENT_KEYBINDINGS } from './agent-keybindings';
 import { AgentEditorCapabilities } from './agent-editor-capabilities/agent-editor-capabilities';
 import { AgentRibbon } from './agent-ribbon/agent-ribbon';
+import { AgentStatusStrip } from './agent-status/agent-status-strip';
 import { AgentView } from './agent-view/agent-view';
 
 /**
  * Describes the agent feature's contribution to the application shell: the standalone agent-chat view
- * mounted for each agent tab and its contextual ribbon. The shell renders both by looking the `agent`
+ * mounted for each agent tab, its contextual ribbon, and its status-strip readout. The shell renders both by looking the `agent`
  * type up in the feature registry, with no hard-coded knowledge of the feature.
  */
 const agentFeature: FeatureDescriptor = {
   type: 'agent',
   view: AgentView,
   ribbon: AgentRibbon,
+  status: AgentStatusStrip,
 };
 
 /**

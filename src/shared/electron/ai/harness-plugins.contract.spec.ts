@@ -94,6 +94,17 @@ describe('the Claude harness plugin', () => {
     const chosen: AiConnection = { ...builtIn, harnessId: id };
     expect(descriptor.serves(chosen)).toBe(true);
   });
+
+  it('asksForTheReasoningSummary', () => {
+    // ⛔ Without this the SDK leaves Claude Code's thinking display at its `omitted` default, and every
+    // thinking block reaches Studio signed and empty — a "Thought process" row with nothing behind it
+    // (#711). The harness has no specs of its own, so the option is pinned here, at the source.
+    const source: string = readFileSync(
+      path.join(process.cwd(), 'plugins', 'claude-harness', 'src', 'options.ts'),
+      'utf8',
+    );
+    expect(source).toMatch(/thinking:\s*\{[^}]*display:\s*'summarized'/);
+  });
 });
 /**
  * Guards the claims that make a harness plugin *installable*, as opposed to merely well-formed.

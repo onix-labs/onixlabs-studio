@@ -8,7 +8,10 @@
 // The low-level `captureShellEnvironment` is deliberately separable so a later per-agent shell setting
 // (issue #318) can source a specific shell's profile the same way.
 
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { execFile, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -125,6 +128,178 @@ export function captureShellEnvironment(
 }
 
 /**
+ * A capture remembered between launches: which shell it came from, what its profile files looked like
+ * when it was taken, and what it found.
+ */
+export interface ShellEnvironmentCache {
+  /**
+   * Gets the shell the environment was captured from.
+   */
+  readonly shell: string;
+
+  /**
+   * Gets the modification time of each profile file the capture depended on, or null for one that did
+   * not exist. The capture is as fresh as these.
+   */
+  readonly stamps: Readonly<Record<string, number | null>>;
+
+  /**
+   * Gets the captured variables.
+   */
+  readonly variables: Readonly<Record<string, string>>;
+}
+
+/**
+ * Lists the files a shell reads when it starts as a login and interactive shell — the ones whose
+ * change can change what a capture would find — for the shell's family, plus the system-wide path
+ * lists macOS composes `PATH` from. A file that does not exist is listed too: its appearing is a
+ * change.
+ * @param shell The shell executable.
+ * @param home The user's home folder.
+ * @returns Returns the files.
+ */
+export function profileFilesFor(shell: string, home: string): readonly string[] {
+  const name: string = basename(shell);
+  const system: string[] = ['/etc/paths', '/etc/paths.d', '/etc/profile', '/etc/zshenv'];
+  if (name === 'zsh') {
+    const zdot: string = process.env['ZDOTDIR'] ?? home;
+    return [
+      ...system,
+      '/etc/zprofile',
+      '/etc/zshrc',
+      '/etc/zlogin',
+      join(zdot, '.zshenv'),
+      join(zdot, '.zprofile'),
+      join(zdot, '.zshrc'),
+      join(zdot, '.zlogin'),
+    ];
+  }
+  if (name === 'fish') {
+    return [...system, '/etc/fish/config.fish', join(home, '.config', 'fish', 'config.fish')];
+  }
+  return [
+    ...system,
+    '/etc/bashrc',
+    '/etc/bash.bashrc',
+    join(home, '.bash_profile'),
+    join(home, '.bash_login'),
+    join(home, '.profile'),
+    join(home, '.bashrc'),
+  ];
+}
+
+/**
+ * Reads the modification time of each file, or null for one that does not exist.
+ * @param files The files.
+ * @returns Returns the stamps, keyed by file.
+ */
+export function profileStamps(files: readonly string[]): Record<string, number | null> {
+  const stamps: Record<string, number | null> = {};
+  for (const file of files) {
+    try {
+      stamps[file] = statSync(file).mtimeMs;
+    } catch {
+      stamps[file] = null;
+    }
+  }
+  return stamps;
+}
+
+/**
+ * Determines whether two sets of stamps describe the same files at the same times.
+ * @param a One set.
+ * @param b The other.
+ * @returns Returns true when nothing differs.
+ */
+export function sameStamps(
+  a: Readonly<Record<string, number | null>>,
+  b: Readonly<Record<string, number | null>>,
+): boolean {
+  const keys: string[] = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length && keys.every((key: string): boolean => a[key] === b[key])
+  );
+}
+
+/**
+ * Reads a remembered capture, or null when there is none or it cannot be read.
+ * @param file The cache file.
+ * @returns Returns the cache, or null.
+ */
+export function readShellEnvironmentCache(file: string): ShellEnvironmentCache | null {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    const record: Record<string, unknown> = parsed as Record<string, unknown>;
+    if (
+      typeof record['shell'] !== 'string' ||
+      typeof record['stamps'] !== 'object' ||
+      record['stamps'] === null ||
+      typeof record['variables'] !== 'object' ||
+      record['variables'] === null
+    ) {
+      return null;
+    }
+    const variables: Record<string, string> = {};
+    for (const [key, value] of Object.entries(record['variables'] as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        variables[key] = value;
+      }
+    }
+    const stamps: Record<string, number | null> = {};
+    for (const [key, value] of Object.entries(record['stamps'] as Record<string, unknown>)) {
+      stamps[key] = typeof value === 'number' ? value : null;
+    }
+    return { shell: record['shell'], stamps, variables };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remembers a capture for the next launch, best-effort.
+ * @param file The cache file.
+ * @param cache The capture.
+ */
+export function writeShellEnvironmentCache(file: string, cache: ShellEnvironmentCache): void {
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(cache), { encoding: 'utf8', mode: 0o600 });
+  } catch (error: unknown) {
+    logger.warn('shell-env', 'Could not remember the shell environment', error);
+  }
+}
+
+/**
+ * Captures a shell's environment without blocking, for refreshing a remembered capture after the
+ * profile files changed.
+ * @param shell The shell executable.
+ * @param timeoutMs How long the shell may take.
+ * @returns Returns the captured variables, or null when the capture could not be completed.
+ */
+function captureShellEnvironmentAsync(
+  shell: string,
+  timeoutMs: number,
+): Promise<Record<string, string> | null> {
+  const script: string = `echo "${ENV_DELIMITER}"; env; echo "${ENV_DELIMITER}"`;
+  return new Promise<Record<string, string> | null>((resolve): void => {
+    try {
+      execFile(
+        shell,
+        ['-l', '-i', '-c', script],
+        { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env: process.env },
+        (error: Error | null, stdout: string): void =>
+          resolve(error !== null ? null : parseEnvironment(stdout)),
+      );
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
  * Per-shell cache of captured environments, so a per-run consumer (the configurable agent shell,
  * #318) sources each shell's profile at most once per session rather than spawning it every run. The
  * installed shells' profiles do not change within a session; a restart re-captures.
@@ -230,11 +405,19 @@ export function sanitizeAgentShell(value: unknown): string | null {
  * real launch environment is never clobbered — except `PATH`, which is merged so the shell's enriched
  * search path takes effect. Any failure leaves `process.env` untouched.
  *
+ * Capturing means starting the user's shell and waiting for its profile, which with a tool manager or
+ * a framework in it takes a second or two — on every launch, before the window exists (audit P2). So
+ * the capture is remembered between launches, stamped with the profile files it depended on: while
+ * they are unchanged the remembered capture is applied at once; when one has changed the remembered
+ * capture is still applied at once and a fresh one is taken in the background for the next launch;
+ * only the very first launch waits.
+ *
  * Skipped by default when `TERM` is set, since a terminal launch has already sourced the profile; set
  * `STUDIO_FORCE_SHELL_ENV=1` to capture regardless (useful when running from an IDE), or
  * `STUDIO_DISABLE_SHELL_ENV=1` to turn the capture off entirely.
+ * @param cacheFile The file the capture is remembered in, or undefined to capture every time.
  */
-export function hydrateLoginShellEnvironment(): void {
+export function hydrateLoginShellEnvironment(cacheFile?: string): void {
   if (process.platform === 'win32') {
     return;
   }
@@ -250,20 +433,56 @@ export function hydrateLoginShellEnvironment(): void {
   }
 
   const shell: string = resolveDefaultShell();
+  const files: readonly string[] = profileFilesFor(shell, homedir());
+  const stamps: Record<string, number | null> = profileStamps(files);
+  const remembered: ShellEnvironmentCache | null =
+    cacheFile === undefined ? null : readShellEnvironmentCache(cacheFile);
+  process.env[CAPTURED_MARKER] = '1';
+
+  if (remembered !== null && remembered.shell === shell) {
+    apply(remembered.variables, shell, 'remembered');
+    if (sameStamps(remembered.stamps, stamps)) {
+      return;
+    }
+    // A profile changed since: this launch runs with what was remembered, the next with what is there.
+    logger.info('shell-env', `Shell profile changed; refreshing the remembered environment`);
+    void captureShellEnvironmentAsync(shell, 5000).then((captured): void => {
+      if (captured !== null && cacheFile !== undefined) {
+        writeShellEnvironmentCache(cacheFile, { shell, stamps, variables: captured });
+      }
+    });
+    return;
+  }
+
   logger.debug('shell-env', `Hydrating login shell environment from ${shell}`);
   const captured: Record<string, string> | null = captureShellEnvironment(shell);
-  process.env[CAPTURED_MARKER] = '1';
   if (!captured) {
     logger.warn('shell-env', `Shell environment capture from ${shell} failed; using inherited env`);
     return;
   }
+  apply(captured, shell, 'captured');
+  if (cacheFile !== undefined) {
+    writeShellEnvironmentCache(cacheFile, { shell, stamps, variables: captured });
+  }
+}
 
-  // Fill gaps only, never clobbering the real launch environment; PATH is merged.
+/**
+ * Lays captured variables into `process.env`: gaps only, never clobbering the real launch
+ * environment; `PATH` merged.
+ * @param variables The captured variables.
+ * @param shell The shell they came from, for the log.
+ * @param how Whether they were remembered or freshly captured, for the log.
+ */
+function apply(
+  variables: Readonly<Record<string, string>>,
+  shell: string,
+  how: 'remembered' | 'captured',
+): void {
   const before: number = Object.keys(process.env).length;
-  Object.assign(process.env, applyCapturedEnvironment(process.env, captured, false));
+  Object.assign(process.env, applyCapturedEnvironment(process.env, variables, false));
   const added: number = Object.keys(process.env).length - before;
   logger.info(
     'shell-env',
-    `Hydrated shell environment from ${shell} (+${added} vars, PATH merged)`,
+    `Hydrated shell environment from ${shell} (${how}, +${added} vars, PATH merged)`,
   );
 }

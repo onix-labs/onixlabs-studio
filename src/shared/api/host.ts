@@ -4,6 +4,8 @@
 // asynchronous bridge: the host platform, and the display/GPU startup snapshot resolved by the main
 // process before the window was created. Keep this module platform-neutral (types only).
 
+import type { Severity } from './log-channels';
+
 /**
  * Identifies how much of the GPU rendering path the interface uses — one ladder replacing what were
  * three independent dials (hardware acceleration, modern UI features, workspace texture), because
@@ -142,4 +144,11 @@ export interface HostEnv {
    * Gets the display/GPU startup snapshot resolved before the first paint.
    */
   readonly display: DisplayStartup;
+
+  /**
+   * Gets the log severity floor in force when the window opened, so the renderer's logging filters
+   * before it builds or forwards a record from its very first one. Changed later through the log
+   * level setting, which adopts the floor the main process replies with.
+   */
+  readonly logFloor: Severity;
 }

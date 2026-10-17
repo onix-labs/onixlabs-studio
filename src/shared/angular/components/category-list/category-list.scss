@@ -1,0 +1,173 @@
+// A tool's side list: the search and a view's own filters, a small title, then the entries as the
+// shared list's rows. It fills its panel; the rows scroll on their own when they outgrow it.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  padding: 0.5rem;
+}
+
+.category-list__search {
+  flex: none;
+  // The field's host carries its default width; the side panel's search spans the panel.
+  inline-size: 100%;
+  margin-block-end: 0.75rem;
+}
+
+.category-list__title {
+  flex: none;
+  margin: 0 0 0.5rem;
+  padding-inline: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The entries are the shared list's rows (#954), dressed here as the side panel's own: taller, rounded,
+// a little apart, with an accent-tinted surface on hover and selection — as the hand-built list had —
+// while the list itself keeps owning selection, hover state and the keyboard. Scoped to this host, so
+// every other shared list keeps its compact rows. The rows belong to the shared list's view, so they
+// are reached through ::ng-deep.
+// ---------------------------------------------------------------------------------------------
+
+:host ::ng-deep .list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+:host ::ng-deep .list-row {
+  position: relative;
+  min-block-size: 0;
+  padding: 0.75rem 0.625rem;
+  // Transparent rather than absent, so selecting a row cannot nudge the list by a pixel.
+  border: 0.0625rem solid transparent;
+  border-radius: calc(4px * var(--border-radius-multiplier));
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+
+  // Selected: the accent surface and border, and the accent's text colour — but not bold.
+  &.active {
+    border-color: var(--accent-surface-border-color);
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+  }
+
+  &.list-row--disabled {
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+
+  // A hairline in the gap above the row that opens a group, rather than across the rounded row itself.
+  &.list-row--divided {
+    margin-block-start: 0.75rem;
+    padding-block-start: 0.75rem;
+    box-shadow: none;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0.25rem;
+      inset-block-start: -0.4375rem;
+      border-block-start: 0.0625rem solid var(--settings-border-color);
+    }
+  }
+}
+
+// An entry's content inside its row: icon, label, then a count or badge at the trailing end.
+.category-list__item {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+
+  // An entry beneath another is indented one step, so the two levels read apart.
+  &--nested {
+    padding-inline-start: 1.125rem;
+  }
+
+  // Switched off, but still there to choose and edit.
+  &--muted .category-list__label {
+    color: var(--form-muted-foreground-color);
+  }
+
+  &--selected .category-list__count {
+    color: var(--accent-color);
+  }
+}
+
+.category-list__icon {
+  flex: none;
+}
+
+.category-list__label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-list__badge {
+  flex: none;
+  color: var(--warning-color);
+}
+
+.category-list__count {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+// ---------------------------------------------------------------------------------------------
+// An entry's action button, such as a bin: at the row's trailing end, shown while the row is hovered,
+// focused or selected, so a list at rest stays quiet. The row belongs to the shared list, so its states
+// are reached through ::ng-deep.
+// ---------------------------------------------------------------------------------------------
+
+.category-list__action {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: calc(4px * var(--border-radius-multiplier));
+  background: transparent;
+  color: var(--accent-color);
+  cursor: pointer;
+  opacity: 0;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+
+  &:focus-visible {
+    opacity: 1;
+    outline: none;
+    box-shadow: 0 0 0 0.0625rem var(--accent-color);
+  }
+}
+
+:host ::ng-deep .list-row:hover .category-list__action,
+:host ::ng-deep .list-row:focus-within .category-list__action,
+:host ::ng-deep .list-row.active .category-list__action {
+  opacity: 1;
+}

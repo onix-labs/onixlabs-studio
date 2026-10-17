@@ -1,0 +1,516 @@
+@use '../welcome' as *;
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// Clone and accounts down the left; the repository browser filling the right.
+.source {
+  display: grid;
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  gap: 1.5rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.source__side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-block-size: 0;
+  padding-inline-end: 1.25rem;
+  overflow-y: auto;
+  border-inline-end: 0.0625rem solid var(--wl-border);
+}
+
+.source__block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.source__heading {
+  @include section-title;
+
+  transition: color 120ms ease;
+}
+
+.source__heading-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.source__header {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  font: inherit;
+}
+
+// The accordion header, as in the original welcome screen's Get Started and Tools: the section's title
+// and a caret that turns to point down when open, both brightening on hover.
+.source__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.15rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+
+    .source__heading,
+    .source__caret {
+      color: var(--wl-text);
+    }
+  }
+}
+
+.source__caret {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--wl-muted);
+  transition: color 120ms ease;
+}
+
+.source__field {
+  @include field;
+  @include control-metrics;
+}
+
+.source__error {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--danger-color);
+  word-break: break-word;
+}
+
+.source__spin {
+  animation: source-spin 1s linear infinite;
+}
+
+@keyframes source-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+// "Clone as": the same dropdown as Get Started's recent-items filter.
+.source__layout-choice {
+  @include dropdown;
+}
+
+.source__clone {
+  @include primary-button;
+  @include control-metrics;
+}
+
+.source__secondary {
+  @include secondary-button;
+
+  margin-block-start: 0.5rem;
+}
+
+.source__notice {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--wl-muted);
+  border: 0.0625rem dashed var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+// An account: a list row like the repositories', picked as the list's filter. Hover and the picked
+// account share the accent look.
+.source__account {
+  @include list-row;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
+  }
+}
+
+.source__account--picked {
+  @include list-row-active;
+}
+
+// A host served but not signed in: the same row, opening Settings to sign in.
+.source__account--signed-out .source__account-kind {
+  color: var(--accent-color);
+}
+
+.source__account-name {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wl-text);
+}
+
+.source__account-kind {
+  font-size: 0.74rem;
+  color: var(--wl-muted);
+}
+
+.source__accounts-empty {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--wl-faint);
+}
+
+.source__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// Styled as the sidebar's section titles, padded to sit level with them.
+.source__title {
+  padding: 0.2rem 0.15rem;
+}
+
+// The list's panel, with the selected repository's details beside it.
+.source__body {
+  display: flex;
+  flex: 1;
+  gap: 0.8rem;
+  min-block-size: 0;
+}
+
+.source__panel {
+  @include list-panel;
+}
+
+// One row, as in Recent Items: the filter at a fixed width, the search filling the rest.
+.source__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.source__filter {
+  @include dropdown;
+
+  flex: 0 0 12rem;
+  min-inline-size: 0;
+}
+
+.source__search {
+  @include field;
+  @include control-metrics;
+
+  flex: 1 1 auto;
+
+  input:disabled {
+    opacity: 0.5;
+  }
+}
+
+.source__list-frame {
+  @include scroll-frame;
+}
+
+.source__list {
+  @include scroller;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// A row as in Recent Items: the icon on its mount, the name over the full name, and when it changed.
+.welcome__repository {
+  @include list-row;
+
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  padding-inline-end: 0.75rem;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
+
+    .welcome__repository-icon {
+      @include list-icon-active;
+    }
+  }
+}
+
+// The selected repository keeps the hover look, so it stays marked while the pointer is elsewhere.
+.welcome__repository--selected {
+  @include list-row-active;
+
+  .welcome__repository-icon {
+    @include list-icon-active;
+  }
+}
+
+.welcome__repository-icon {
+  @include list-icon;
+}
+
+.welcome__repository-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+.welcome__repository-name,
+.welcome__repository-owner {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.welcome__repository-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wl-text);
+}
+
+.welcome__repository-owner {
+  font-size: 0.76rem;
+  color: var(--wl-faint);
+}
+
+.welcome__repository-time {
+  flex: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--wl-faint);
+}
+
+// The panel draws the box; its body scrolls inside it.
+.source__detail {
+  display: flex;
+  flex: 0 0 16rem;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: hidden;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+// The middle scrolls; the name above and the actions below stay where they are.
+.source__detail-body {
+  @include scroller;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.9rem;
+}
+
+.source__detail-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.9rem 0.9rem 0.6rem;
+}
+
+.source__detail-foot {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem 0.9rem;
+}
+
+.source__detail-title {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+// The button aligns with the name's first line rather than the header's middle.
+.source__detail-close {
+  flex: none;
+  margin-block-start: -0.2rem;
+}
+
+.source__detail-name {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--wl-text);
+}
+
+.source__detail-owner,
+.source__detail-description {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--wl-muted);
+}
+
+// Starred, Fork, Archived: neutral chips stating what kind of repository it is; Archived is a warning,
+// since it is read-only and worth noticing before cloning to work on it.
+.source__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.source__topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Each topic, as an accent chip.
+.source__topic {
+  display: flex;
+}
+
+// The homepage, as a link-styled button: it opens in the browser.
+.source__detail-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: start;
+  color: var(--accent-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  i {
+    flex: none;
+  }
+
+  span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    text-decoration: underline;
+  }
+}
+
+.source__open {
+  @include control-metrics;
+
+  justify-content: center;
+  margin-block-start: 0;
+}
+
+.source__detail-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.8rem;
+  margin: 0.3rem 0;
+  font-size: 0.78rem;
+
+  dt {
+    color: var(--wl-faint);
+  }
+
+  dd {
+    margin: 0;
+    text-align: end;
+    color: var(--wl-text);
+  }
+}
+
+.source__empty {
+  @include empty-state;
+
+  border: 0.0625rem dashed var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.source__empty-title {
+  @include empty-title;
+}
+
+.source__empty-hint {
+  @include empty-hint;
+}
+
+// The indeterminate sweep under "Reading your repositories…", as wide as a line of the hint.
+.source__empty-progress {
+  inline-size: min(14rem, 100%);
+}
+
+// A narrow window stacks the side above the browser and drops the detail panel beneath the list.
+@container welcome-panel (max-width: 50rem) {
+  .source {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(16rem, 1fr);
+  }
+
+  .source__side {
+    padding-inline-end: 0;
+    border-inline-end: none;
+  }
+
+  .source__body {
+    flex-direction: column;
+  }
+
+  .source__detail {
+    flex-basis: auto;
+  }
+
+  // Stacked, the panel is as tall as its content, so the body does not scroll inside it.
+  .source__detail-body {
+    flex: none;
+  }
+}

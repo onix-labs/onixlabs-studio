@@ -1,12 +1,19 @@
 @if (issue(); as issue) {
+  <!-- The issue's state is what it IS, so it is a chip on the status strip (#882); the strip is what
+       can be done with it: close or reopen it (#890), hand it to an agent, or the menu every document
+       strip ends with. -->
   <app-panel-toolbar>
-    <span class="issue__state" [class]="'issue__state--' + issue.state">
-      <app-icon [icon]="issue.state === 'open' ? Icon.INFO : Icon.SUCCESS_FILL" />
-      {{ issue.state }}
-    </span>
     <span class="panel-toolbar__spacer"></span>
-    <!-- The issue row's context menu offers these two, in this order; the document the row opens
-         offers the same two, so what an issue can do does not depend on where it is being read. -->
+    @if (canSetState()) {
+      <app-button
+        variant="none"
+        [icon]="issue.state === 'open' ? Icon.ISSUE_CLOSE : Icon.ISSUE_REOPEN"
+        [label]="issue.state === 'open' ? 'Close Issue' : 'Reopen Issue'"
+        [loading]="busy()"
+        [disabled]="busy()"
+        (click)="toggleState()"
+      />
+    }
     <app-button
       variant="none"
       [icon]="Icon.AGENT"
@@ -16,14 +23,17 @@
     />
     <app-button
       variant="none"
-      [icon]="Icon.OPEN_EXTERNAL"
-      ariaLabel="Open on GitHub"
-      tooltip="Open on GitHub"
-      (click)="openExternally()"
+      [icon]="Icon.DOTS_THREE_BOLD"
+      ariaLabel="More Actions"
+      tooltip="More Actions"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
     />
   </app-panel-toolbar>
+  <app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
 
   <app-issue-agent-confirm />
+  <app-issue-state-confirm />
 
   <div class="issue__scroll">
     <header class="issue__header">
@@ -46,7 +56,7 @@
           <dt>Labels</dt>
           <dd>
             @for (label of issue.labels; track label) {
-              <span class="issue__label">{{ label }}</span>
+              <app-chip class="issue__label">{{ label }}</app-chip>
             }
           </dd>
         </div>
@@ -96,6 +106,28 @@
             <app-markdown-renderer [text]="comment.body" />
           </article>
         }
+      }
+
+      <!-- Where the thread ends, as on the host: the next turn is written under the last one. -->
+      @if (canComment()) {
+        <div class="issue__compose">
+          <app-markdown-field
+            [value]="draft()"
+            [minRows]="4"
+            [disabled]="busy()"
+            ariaLabel="Comment"
+            (valueChange)="draft.set($event)"
+          >
+            <app-button
+              markdownFieldAction
+              variant="solid"
+              label="Comment"
+              [loading]="busy()"
+              [disabled]="busy() || !hasDraft()"
+              (click)="postComment()"
+            />
+          </app-markdown-field>
+        </div>
       }
     </section>
   </div>

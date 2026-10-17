@@ -33,7 +33,9 @@ export class CodeStatusStrip {
   protected readonly leading: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
       const context: CodeContext | null = this.status.context();
-      return context === null ? [] : [{ id: 'code-path', text: context.path ?? 'New Document' }];
+      return context === null
+        ? []
+        : [{ id: 'code-path', text: context.path ?? 'New Document', shrink: 'start' }];
     },
   );
 

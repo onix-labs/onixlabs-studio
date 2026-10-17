@@ -118,6 +118,7 @@ describe('AgentChat', () => {
       contextTokens,
       contextWindow,
       costUsd: signal<number>(0),
+      billedPerToken: signal<boolean>(true),
       pendingContextTokens,
       contextPaths,
       send: (
@@ -250,24 +251,8 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__empty app-button')).not.toBeNull();
   });
 
-  it('confirmChoice_whenAChoiceIsSelected_answersWithIt', () => {
-    const item: AgentItem = {
-      id: 'item-2',
-      kind: 'input-request',
-      text: '',
-      inputId: 'q1',
-      inputQuestion: 'Which approach?',
-      inputChoices: [{ label: 'A' }, { label: 'B', description: 'the bold one' }],
-      inputState: 'pending',
-    };
-
-    component.selectChoice('B');
-    component.confirmChoice(item);
-
-    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
-  });
-
-  it('confirmChoice_whenNothingIsSelected_isIgnored', () => {
+  it('answerInput_passesTheCardsAnswerToTheAgent', () => {
+    // The card owns selecting and confirming (see AgentQuestionCard); the chat only forwards.
     const item: AgentItem = {
       id: 'item-2',
       kind: 'input-request',
@@ -278,25 +263,35 @@ describe('AgentChat', () => {
       inputState: 'pending',
     };
 
-    component.confirmChoice(item);
+    component.answerInput(item, 'B');
+    component.answerInput(item, null);
 
-    expect(inputAnswers).toEqual([]);
+    expect(inputAnswers).toEqual([
+      { id: 'item-2', answer: 'B' },
+      { id: 'item-2', answer: null },
+    ]);
   });
 
-  it('skipInput_whenCalled_declinesTheQuestion', () => {
-    const item: AgentItem = {
-      id: 'item-2',
-      kind: 'input-request',
-      text: '',
-      inputId: 'q1',
-      inputQuestion: 'Which approach?',
-      inputChoices: [],
-      inputState: 'pending',
-    };
+  it('questionCard_whenAChoiceIsPickedAndConfirmed_answersThroughTheAgent', () => {
+    items.set([
+      {
+        id: 'item-2',
+        kind: 'input-request',
+        text: '',
+        inputId: 'q1',
+        inputQuestion: 'Which approach?',
+        inputChoices: [{ label: 'A' }, { label: 'B', description: 'the bold one' }],
+        inputState: 'pending',
+      },
+    ]);
+    fixture.detectChanges();
 
-    component.skipInput(item);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    host.querySelectorAll<HTMLInputElement>('.agent__ask input[type="radio"]')[1].click();
+    fixture.detectChanges();
+    host.querySelector<HTMLButtonElement>('.agent__ask app-button button')!.click();
 
-    expect(inputAnswers).toEqual([{ id: 'item-2', answer: null }]);
+    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
   });
 
   /**
@@ -417,7 +412,7 @@ describe('AgentChat', () => {
     expect(writes).toEqual(['the answer']);
   });
 
-  it('respond_whenARememberScopeIsPicked_carriesItOnAGrantOnly', () => {
+  it('respond_passesTheCardsAnswerAndScopeToTheAgent', () => {
     const item: AgentItem = {
       id: 'item-9',
       kind: 'permission',
@@ -425,32 +420,15 @@ describe('AgentChat', () => {
       permissionId: 'p1',
       permissionName: 'Bash',
       permissionState: 'pending',
-      permissionHasWorkspace: true,
     };
 
-    component.setRemember('item-9', 'session');
-    component.respond(item, true);
-    component.respond(item, false);
+    component.respond(item, { granted: true, remember: 'session' });
+    component.respond(item, { granted: false });
 
     expect(permissionResponses).toEqual([
       { id: 'item-9', granted: true, remember: 'session' },
-      { id: 'item-9', granted: false, remember: 'session' },
+      { id: 'item-9', granted: false },
     ]);
-  });
-
-  it('rememberOptions_whenTheRunHasNoWorkspace_omitTheWorkspaceScope', () => {
-    const values: (hasWorkspace: boolean) => string[] = (hasWorkspace: boolean): string[] =>
-      component
-        .rememberOptions({
-          id: 'item-9',
-          kind: 'permission',
-          text: '',
-          permissionHasWorkspace: hasWorkspace,
-        })
-        .map((option: { value: string }): string => option.value);
-
-    expect(values(true)).toEqual(['once', 'session', 'workspace', 'always']);
-    expect(values(false)).toEqual(['once', 'session', 'always']);
   });
 
   it('thinking_whenSettled_showsTheWordsInTheOpenWithTheirCount', () => {
@@ -570,6 +548,53 @@ describe('AgentChat', () => {
     expect(row?.querySelector('.agent__node-icon--notice')).not.toBeNull();
     expect(row?.classList.contains('agent__row--up')).toBe(true);
     expect(host.querySelector('.agent__notice-icon')).toBeNull();
+  });
+
+  it('promptCards_sitOnTheRail_eachBesideItsOwnNode', () => {
+    // A prompt is the agent stopping at a point in its run to ask, so it sits on the rail where that
+    // point is: a node of its own, joined to the rows either side, with no card off to one side.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-2',
+        kind: 'permission',
+        text: '',
+        permissionName: 'Bash',
+        permissionDetail: 'npm run lint',
+        permissionState: 'pending',
+      },
+      {
+        id: 'item-3',
+        kind: 'input-request',
+        text: '',
+        inputQuestion: 'Which?',
+        inputState: 'pending',
+      },
+      {
+        id: 'item-4',
+        kind: 'edit-decision',
+        text: '',
+        decisionName: 'a.ts',
+        decisionState: 'pending',
+      },
+      { id: 'item-5', kind: 'error', text: 'Request failed' },
+    ]);
+    fixture.detectChanges();
+
+    const rows: readonly Element[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.agent__messages > .agent__row'),
+    );
+    expect(rows).toHaveLength(5);
+    const glyphs: readonly string[] = rows
+      .slice(1)
+      .map((row: Element): string => row.querySelector('.agent__node-icon i')?.className ?? '');
+    expect(glyphs[0]).toContain('ph-shield');
+    expect(glyphs[1]).toContain('ph-question');
+    expect(glyphs[2]).toContain('ph-git-diff');
+    expect(glyphs[3]).toContain('ph-x-circle');
+    expect(rows[1].classList.contains('agent__row--up')).toBe(true);
+    expect(rows[3].classList.contains('agent__row--down')).toBe(true);
+    expect(rows[4].querySelector('.agent__node-icon--failed')).not.toBeNull();
   });
 
   it('notice_withoutDetail_rendersTheChipAloneWithNothingToExpand', () => {

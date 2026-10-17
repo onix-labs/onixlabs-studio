@@ -48,8 +48,10 @@ export type ButtonTone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 
  * - `medium` — the standard button, sized for a dialog's action row.
  * - `small` — dense chrome: the quiet affordances revealed on a hovered row, and the remove controls
  *   on a chip. Big enough to hit, small enough not to dominate what it acts on.
+ * - `large` — a screen's primary actions, where they are the thing the screen is for: the setup
+ *   wizard's Back and Next. Taller, with more room around the label.
  */
-export type ButtonSize = 'medium' | 'small';
+export type ButtonSize = 'medium' | 'small' | 'large';
 
 /**
  * Represents the application's button: THE button, used everywhere a button is used.
@@ -78,6 +80,7 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--tone-info]': "tone() === 'info'",
     '[class.button--tone-neutral]': "tone() === 'neutral'",
     '[class.button--small]': "size() === 'small'",
+    '[class.button--large]': "size() === 'large'",
     '[class.button--icon-only]': 'isIconOnly()',
     '[class.button--pressed]': 'pressed() === true',
     '[class.button--loading]': 'loading()',
@@ -100,7 +103,8 @@ export class Button {
 
   /**
    * Gets how large the button is drawn. Dense chrome — a row's hover affordances, a chip's remove
-   * control — states `small`; everything else is the standard size.
+   * control — states `small`; a screen's primary actions may state `large`; everything else is the
+   * standard size.
    */
   public readonly size: InputSignal<ButtonSize> = input<ButtonSize>('medium');
 

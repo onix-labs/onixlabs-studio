@@ -1,4 +1,5 @@
 import type {
+  AiProposedChange,
   AgentContextRef,
   AgentMode,
   AgentSurface,
@@ -6,6 +7,7 @@ import type {
   AiEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiPermissionPosture,
   AiRemoteControlMode,
@@ -13,6 +15,8 @@ import type {
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import type { AuditGrantSource } from './agent-audit-log';
+import type { HostingOp, HostingParams, HostingResponse } from '@shared/api/hosting-protocol';
+import type { RunHosting } from '../hosting/hosting-agent-access';
 
 /**
  * The outcome of an edit-decision round-trip as the provider sees it: apply or don't. The
@@ -89,6 +93,22 @@ export interface OfferedSkill {
    * @returns Returns the content, or null when the skill has since gone from the library.
    */
   load(): Promise<{ readonly body: string; readonly files: readonly string[] } | null>;
+}
+
+/**
+ * Describes the hosted repository a run works in, with the run's own way to reach the plugin serving
+ * it (#852). `request` is bound to the run: its permission posture, per-tool policies and permission
+ * prompt gate an agent's writes, and a write that goes through is audited — a tool calls it and
+ * handles none of that itself.
+ */
+export interface AgentHosting extends RunHosting {
+  /**
+   * Sends one request to the plugin serving the repository, as this run.
+   * @param op The operation.
+   * @param params Its parameters.
+   * @returns Returns the plugin's answer, or why it was refused.
+   */
+  request<Op extends HostingOp>(op: Op, params: HostingParams<Op>): Promise<HostingResponse<Op>>;
 }
 
 /**
@@ -224,17 +244,24 @@ export interface AgentRunContext {
   readonly systemPromptExtra: string;
 
   /**
-   * Gets the user's standing instructions for the user message, or empty when no prompt profile
-   * matches (#300). Composed beneath the prompt when the turn envelope is built, so every harness
-   * receives them without the wire carrying a second field.
-   */
-  readonly userPromptExtra: string;
-
-  /**
    * Gets the skills in scope for this run (#301): the ones a model is told about, and may load. Empty
    * when the library has none that apply, in which case no skill tool is offered either.
    */
   readonly skills: readonly OfferedSkill[];
+
+  /**
+   * Gets the hosted repository the run works in and a way to reach the plugin serving it (#852), or
+   * null when the workspace is in no repository an installed hosting plugin serves — in which case no
+   * hosting tool is offered and the prompt says nothing of them.
+   */
+  readonly hosting: AgentHosting | null;
+
+  /**
+   * Gets the commands the agent may not run (#853): the code host's own command-line tools, when the
+   * user keeps agents off them and a hosting plugin serves the run's repository — so the agent goes
+   * through the plugin's tools instead. Empty otherwise. Each harness enforces it as it can.
+   */
+  readonly blockedCommands: readonly string[];
 
   /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the
@@ -288,9 +315,15 @@ export interface AgentRunContext {
    * @param detail A one-line summary of what the action will do.
    * @param cancel An optional signal that dismisses the local prompt and resolves false when aborted —
    *   used when a remote peer answers the same permission first, so Studio's prompt clears.
+   * @param change The file change the action would make, for the prompt to show (#891).
    * @returns Returns true when the user grants permission.
    */
-  requestPermission(name: string, detail: string, cancel?: AbortSignal): Promise<boolean>;
+  requestPermission(
+    name: string,
+    detail: string,
+    cancel?: AbortSignal,
+    change?: AiProposedChange,
+  ): Promise<boolean>;
 
   /**
    * Records an executed mutating/exec action to the audit log (#308/#311). Called at the execution
@@ -311,12 +344,15 @@ export interface AgentRunContext {
    * @param choices The suggested answers, or empty for a free-form question.
    * @param cancel An optional signal that dismisses the local prompt and resolves null when aborted —
    *   used when a remote peer answers the same question first, so Studio's prompt clears.
+   * @param selection How many of the choices the user may pick; one when omitted. Several picks are
+   *   answered as their labels joined with ", ".
    * @returns Returns the user's answer, or null when they declined.
    */
   requestInput(
     question: string,
     choices: readonly AiInputChoice[],
     cancel?: AbortSignal,
+    selection?: AiInputSelection,
   ): Promise<string | null>;
 
   /**
@@ -538,7 +574,8 @@ export interface AgentModelReport {
    *
    * ⛔ `contextWindow` is the provider's to report (protocol 1.10.0). Core used to resolve it from the
    * model id against a table naming `gpt-4o`, `claude-opus-4-8` and the rest — which is exactly the
-   * provider knowledge that cannot live here. Undefined falls back to one neutral default.
+   * provider knowledge that cannot live here. Undefined means unknown, and stays unknown: Studio shows
+   * no window rather than a default (protocol 1.13.0).
    */
   readonly models: readonly { id: string; label?: string; contextWindow?: number }[];
 

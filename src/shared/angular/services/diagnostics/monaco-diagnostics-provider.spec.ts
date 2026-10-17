@@ -105,6 +105,39 @@ describe('MonacoDiagnosticsProvider', () => {
     ]);
   });
 
+  it('connect_whenAMarkerHasNoSource_namesTheCheckerThatOwnsIt', async () => {
+    setElectron(true);
+    // Monaco's built-in checkers leave the source blank; the owner says which raised the marker.
+    const marker: (owner: string, source?: string) => unknown = (
+      owner: string,
+      source?: string,
+    ): unknown => ({
+      resource: { path: '/ws/a', toString: (): string => `inmemory://model/${owner}` },
+      message: 'Problem',
+      severity: 8,
+      startLineNumber: 1,
+      startColumn: 1,
+      owner,
+      ...(source === undefined ? {} : { source }),
+    });
+    const provider: MonacoDiagnosticsProvider = new MonacoDiagnosticsProvider(
+      fakeMonaco([marker('typescript'), marker('json', ''), marker('css', 'stylelint')]),
+      editors,
+    );
+
+    let received: readonly Diagnostic[] = [];
+    provider.connect((diagnostics: readonly Diagnostic[]): void => {
+      received = diagnostics;
+    });
+    await tick();
+
+    expect(received.map((diagnostic: Diagnostic): string => diagnostic.source)).toEqual([
+      'typescript',
+      'json',
+      'stylelint',
+    ]);
+  });
+
   it('connect_whenMarkerResourceRegistered_resolvesTheDocument', async () => {
     setElectron(true);
     editors.register('inmemory://model/7', {

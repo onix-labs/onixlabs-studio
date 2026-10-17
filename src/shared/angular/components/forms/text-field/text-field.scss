@@ -68,6 +68,28 @@
   }
 }
 
+// The inline variant: a row's label turned into a field. It takes the label's place in the row's flex
+// line and the text size around it, so the name does not jump when editing starts, and draws a hairline
+// accent box throughout — focused or not — because the whole point is that the row is being edited.
+:host(.text-field--inline) {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  inline-size: auto;
+}
+
+:host(.text-field--inline) .text-field {
+  block-size: 1.375rem;
+  padding: 0 0.25rem;
+  font-size: inherit;
+  border-color: var(--accent-color);
+  border-radius: calc(0.2rem * var(--border-radius-multiplier));
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent-color);
+  }
+}
+
 // A search field's glyph sits inside the box at the leading edge, with the text inset past it.
 .text-field__glyph {
   position: absolute;

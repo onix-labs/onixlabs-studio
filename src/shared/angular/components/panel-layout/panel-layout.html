@@ -12,6 +12,7 @@
     role="separator"
     aria-orientation="vertical"
     [class.panel-layout__grip--active]="activeGrip() === 'left'"
+    [class.panel-layout__grip--fixed]="!gripEnabled().left"
     (mousedown)="onGripDown('left', $event)"
   ></div>
 </div>
@@ -28,6 +29,7 @@
     role="separator"
     aria-orientation="vertical"
     [class.panel-layout__grip--active]="activeGrip() === 'right'"
+    [class.panel-layout__grip--fixed]="!gripEnabled().right"
     (mousedown)="onGripDown('right', $event)"
   ></div>
 </div>
@@ -44,6 +46,7 @@
     role="separator"
     aria-orientation="horizontal"
     [class.panel-layout__grip--active]="activeGrip() === 'top'"
+    [class.panel-layout__grip--fixed]="!gripEnabled().top"
     (mousedown)="onGripDown('top', $event)"
   ></div>
 </div>
@@ -60,6 +63,7 @@
     role="separator"
     aria-orientation="horizontal"
     [class.panel-layout__grip--active]="activeGrip() === 'bottom'"
+    [class.panel-layout__grip--fixed]="!gripEnabled().bottom"
     (mousedown)="onGripDown('bottom', $event)"
   ></div>
 </div>

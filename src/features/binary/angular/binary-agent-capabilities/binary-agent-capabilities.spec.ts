@@ -8,6 +8,7 @@ import {
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
   WRITE_BINARY_ASSEMBLY,
+  UNSCOPED_BRIDGE_REQUEST,
 } from '@shared/api/ai-types';
 import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
@@ -188,7 +189,7 @@ describe('BinaryAgentCapabilities', () => {
    * @returns Returns the awaited capability result.
    */
   async function run(name: string, input: Record<string, unknown> = {}): Promise<unknown> {
-    return await registered.get(name)?.({ tabId: 'tab-1', ...input });
+    return await registered.get(name)?.({ tabId: 'tab-1', ...input }, UNSCOPED_BRIDGE_REQUEST);
   }
 
   beforeEach(() => {

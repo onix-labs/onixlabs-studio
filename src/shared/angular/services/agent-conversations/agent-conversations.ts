@@ -32,6 +32,32 @@ export class AgentConversations implements AgentConversationClient {
   public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
+   * Holds each open conversation's way of saving a change it has not saved yet.
+   */
+  private readonly pendingSaves: Set<() => Promise<void>> = new Set<() => Promise<void>>();
+
+  /**
+   * Registers an open conversation's way of saving a change it is holding back, so the window can
+   * save it before it closes.
+   * @param save Saves the conversation's held-back change, if it has one.
+   * @returns Returns a function that removes the registration.
+   */
+  public registerPendingSave(save: () => Promise<void>): () => void {
+    this.pendingSaves.add(save);
+    return (): void => void this.pendingSaves.delete(save);
+  }
+
+  /**
+   * Saves every open conversation's held-back change now.
+   * @returns Returns a promise that resolves once every save has been handed over.
+   */
+  public async savePending(): Promise<void> {
+    await Promise.all(
+      [...this.pendingSaves].map((save: () => Promise<void>): Promise<void> => save()),
+    );
+  }
+
+  /**
    * Lists the summaries of the conversations stored for a context, newest first.
    * @param contextId The context identifier to list conversations for.
    * @returns Returns the summaries (empty outside Electron).

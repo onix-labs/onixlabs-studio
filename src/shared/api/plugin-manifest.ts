@@ -1,4 +1,16 @@
 import { DECODER_FORMATS } from './decoder-protocol';
+import {
+  HOSTING_AUTH_MODES,
+  HostingAuthMode,
+  HostingCapability,
+  isHostingCapability,
+} from './hosting-protocol';
+import {
+  isVersionControlCapability,
+  VERSION_CONTROL_EXECUTABLE_MODES,
+  type VersionControlCapability,
+  type VersionControlExecutableMode,
+} from './version-control-protocol';
 
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
@@ -91,8 +103,42 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * carried their model ids — so a binary shipped provider pages for agents it had no way to run (#653).
  * Declared on the harness rather than through a seam of its own, because the plugin that runs Claude is
  * the plugin that knows Anthropic.
+ *
+ * `1.13.0` adds the `versionControl` contribution point (#815), the sixth slot: Git and every other
+ * version-control system become plugins, because core runs no tool of its own (#804). Keyed by the
+ * **marker** a repository carries (`.git`, `.svn`, `.hg`), so several can be installed at once and each
+ * folder is served by the one it belongs to. Adds only, on the same terms as every minor before it.
+ *
+ * `1.14.0` adds a version-control system's optional `metadataSignals` (#817): which entries inside its
+ * metadata directories mean something a surface shows has changed. Core used to name git's own —
+ * `HEAD`, `index`, `refs/**` — to keep a fetch's object churn from flooding every explorer; with git a
+ * plugin, the plugin says. Absent means every change counts, which is noisy but never stale.
+ *
+ * `1.15.0` adds the `hosting` contribution point (#819), the seventh slot: where a repository is hosted
+ * — GitHub, GitLab, Bitbucket — becomes a plugin, as version control did. Keyed by the **host names** a
+ * plugin serves (`github.com`), matched against a repository's remote, which replaces the host table
+ * core kept for GitHub. Adds only, on the same terms as every minor before it.
+ *
+ * `1.16.0` adds four hosting capabilities (#851) — `createIssue`, `commentOnIssue`, `setIssueState` and
+ * `createPullRequest` — the first writes beyond CI, so a plugin can open and close issues, comment, and
+ * open pull requests for agents and the UI. The capability list is closed, so a manifest declaring one
+ * must say it needs this version: an older build would refuse the manifest rather than ignore the word.
+ *
+ * `1.17.0` adds a hosting contribution's optional `commandLineTools` (#853): the host's own CLI by
+ * command name (`gh`), so Studio can keep agents off it when the user asks — they then go through the
+ * plugin, which asks before it changes anything. The plugin names its tool; core names none. Adds only.
+ *
+ * `1.18.0` stops reading a declared AI model's `contextWindow`. A manifest is the author's claim at
+ * release time rather than the provider's data, and a window shown in settings must be the provider's
+ * own (agent protocol 1.13.0). Manifests that still declare one are accepted; the figure is ignored.
+ *
+ * `1.19.0` adds a container engine's optional `command` and `cli` (#973). An engine with a `command` is
+ * a plugin process speaking the container-engine protocol: the Engine API client left core, so the
+ * plugin talks to its engine and Studio talks to the plugin. `cli` names the engine's own command-line
+ * tool, looked for on the machine's PATH for the operations that are a terminal session. An engine
+ * without a `command` — one built for an older Studio — is listed but cannot be used until updated.
  */
-export const PLUGIN_API_VERSION: string = '1.12.0';
+export const PLUGIN_API_VERSION: string = '1.19.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -358,6 +404,138 @@ export interface ManifestDecoder {
 }
 
 /**
+ * Describes a version-control system a plugin contributes (#815).
+ *
+ * Keyed by the **marker** a repository carries rather than chosen once for the application: a machine
+ * can hold Git and Subversion working copies side by side, and which plugin serves a folder is a fact
+ * about the folder.
+ */
+export interface ManifestVersionControl {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `Git`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick between plugins claiming the same marker, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the names of the entries that mark a repository's root, such as `.git`. A folder holding one
+   * is served by this plugin.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the names of the version-control system's own directories inside a repository, such as
+   * `.git`. Studio watches them to notice a commit made outside it, and its agents may not write into
+   * them — so core learns them from here rather than naming any tool's layout itself.
+   */
+  readonly metadataDirectories: readonly string[];
+
+  /**
+   * Gets the patterns, relative to a metadata directory, whose changes mean something a surface shows
+   * has changed — for git, `HEAD`, `*_HEAD`, `index`, `packed-refs` and `refs/**`. Changes to anything
+   * else in a metadata directory (git's `objects`, its logs and lock files) are dropped before they
+   * reach a subscriber, so a fetch does not refresh every explorer. `*` matches within one path
+   * segment and `**` any number of segments. Undefined when every change counts.
+   */
+  readonly metadataSignals?: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically, like a harness's
+   * `sessionModel`, because the UI draws its controls before any process has started; the handshake
+   * then narrows them to what the running plugin actually confirms.
+   */
+  readonly capabilities: readonly VersionControlCapability[];
+
+  /**
+   * Gets where the plugin's tool may come from, which Settings offers the user to choose between, or
+   * empty when there is no choice to make.
+   */
+  readonly executableModes: readonly VersionControlExecutableMode[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a code host a plugin contributes (#819): GitHub, GitLab, Bitbucket, a self-hosted forge.
+ *
+ * Keyed by the **host names** it serves rather than chosen once for the application: a machine can hold
+ * repositories on github.com and on a company's GitHub Enterprise server side by side, and which plugin
+ * serves a repository is a fact about its remote.
+ */
+export interface ManifestHosting {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `GitHub`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick between plugins serving the same host, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the host names the plugin serves, lowercased, such as `github.com`. A repository whose remote
+   * points at one is served by this plugin, and Studio hands the plugin credentials for these hosts and
+   * no others.
+   */
+  readonly hosts: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically because the UI draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms, and each repository narrows them again to what it allows.
+   */
+  readonly capabilities: readonly HostingCapability[];
+
+  /**
+   * Gets the ways the plugin can sign in, which Settings offers the user to choose between per host, or
+   * empty when there is no choice to make.
+   */
+  readonly authModes: readonly HostingAuthMode[];
+
+  /**
+   * Gets the host's own command-line tools — `gh` for GitHub — by command name, or empty when it has
+   * none (#853). Optional: Studio uses it only to keep agents off them when the user asks it to, so an
+   * agent goes through the plugin instead. Core names no tool of its own; the plugin says.
+   */
+  readonly commandLineTools: readonly string[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes how a contributed container engine's socket is found, as data.
  *
  * This is the shape core already resolves against (#593), lifted verbatim: the variable that names the
@@ -391,9 +569,9 @@ export interface ManifestEndpointDiscovery {
  * language server is chosen per language and a decoder per format, but an engine is chosen once for the
  * application because there is nothing to vary it by.
  *
- * The payload is the engine's **client CLI**, not the engine itself. Studio speaks the Engine API over
- * a socket the user's engine already serves; the CLI is needed only for the operations that are a
- * terminal session rather than an API call — following logs, opening a shell in a container.
+ * The payload is a **plugin process** that speaks the container-engine protocol (1.19.0, #973): it
+ * talks to the engine over the socket Studio resolves for it, and Studio talks to it. Before 1.19.0 the
+ * payload was the engine's client CLI and Studio spoke the Engine API itself.
  */
 export interface ManifestContainerEngine {
   /**
@@ -428,7 +606,20 @@ export interface ManifestContainerEngine {
   readonly startCommands?: Readonly<Record<string, string>>;
 
   /**
-   * Gets this contribution's own entry point within the installed payload — the client CLI — or
+   * Gets how the plugin process is run (1.19.0), or undefined for an engine built for an older Studio,
+   * which is listed but cannot be used until it is updated.
+   */
+  readonly command?: ManifestCommand;
+
+  /**
+   * Gets the engine's own command-line tool by command name — `docker`, `podman` — looked for on the
+   * machine's PATH for the operations that are a terminal session, such as a shell in a container
+   * (1.19.0). Undefined when there is none; those operations are then not offered.
+   */
+  readonly cli?: string;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload — the plugin process — or
    * undefined to use the provision's. See {@link ManifestLanguageServer.entryPoint}.
    */
   readonly entryPoint?: string;
@@ -601,11 +792,6 @@ export interface ManifestAiModel {
    * Gets the display name.
    */
   readonly label: string;
-
-  /**
-   * Gets the context window in tokens.
-   */
-  readonly contextWindow: number;
 }
 
 /**
@@ -749,6 +935,16 @@ export interface ManifestContributions {
    * Gets the agent harnesses contributed.
    */
   readonly agentHarnesses?: readonly ManifestAgentHarness[];
+
+  /**
+   * Gets the version-control systems contributed.
+   */
+  readonly versionControl?: readonly ManifestVersionControl[];
+
+  /**
+   * Gets the code hosts contributed.
+   */
+  readonly hosting?: readonly ManifestHosting[];
 }
 
 /**
@@ -1290,6 +1486,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         discovery: readDiscovery(entry['discovery'], `${path}.discovery`, errors),
         startCommands: readPlatformStrings(entry['startCommands'], `${path}.startCommands`, errors),
+        ...(entry['command'] === undefined
+          ? {}
+          : { command: readCommand(entry['command'], `${path}.command`, errors) ?? undefined }),
+        ...(typeof entry['cli'] === 'string' && entry['cli'].trim().length > 0
+          ? { cli: entry['cli'].trim() }
+          : {}),
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
       });
     },
@@ -1318,19 +1520,95 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const versionControl: ManifestVersionControl[] = [];
+  readContributionList(
+    source['versionControl'],
+    'contributes.versionControl',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      versionControl.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readEntryNames(entry['markers'], `${path}.markers`, true, errors),
+        metadataDirectories: readEntryNames(
+          entry['metadataDirectories'],
+          `${path}.metadataDirectories`,
+          false,
+          errors,
+        ),
+        metadataSignals: readSignals(entry['metadataSignals'], `${path}.metadataSignals`, errors),
+        capabilities: readCapabilities(entry['capabilities'], `${path}.capabilities`, errors),
+        executableModes: readExecutableModes(
+          entry['executableModes'],
+          `${path}.executableModes`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
+  const hosting: ManifestHosting[] = [];
+  readContributionList(
+    source['hosting'],
+    'contributes.hosting',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      hosting.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        hosts: readHosts(entry['hosts'], `${path}.hosts`, errors),
+        capabilities: readHostingCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
+          errors,
+        ),
+        authModes: readAuthModes(entry['authModes'], `${path}.authModes`, errors),
+        commandLineTools: readCommandLineTools(
+          entry['commandLineTools'],
+          `${path}.commandLineTools`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
     decoders.length === 0 &&
     containerEngines.length === 0 &&
-    agentHarnesses.length === 0
+    agentHarnesses.length === 0 &&
+    versionControl.length === 0 &&
+    hosting.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine or agent harness',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system or code host',
     );
   }
-  return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
+  return {
+    languageServers,
+    debugAdapters,
+    decoders,
+    containerEngines,
+    agentHarnesses,
+    versionControl,
+    hosting,
+  };
 }
 
 /**
@@ -1518,6 +1796,234 @@ function readFormats(value: unknown, path: string, errors: Errors): readonly str
 }
 
 /**
+ * Matches a single directory-entry name: no separators, and not `.` or `..`. A marker is looked up
+ * beside a candidate root, so a name that could climb out of it would let a manifest probe anywhere.
+ */
+const ENTRY_NAME_PATTERN: RegExp = /^(?!\.{1,2}$)[^/\\]+$/;
+
+/**
+ * Validates a list of directory-entry names — a version-control plugin's markers or metadata
+ * directories.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param required Whether the list must be present and non-empty.
+ * @param errors The failure collector.
+ * @returns Returns the names, or an empty array when absent or invalid.
+ */
+function readEntryNames(
+  value: unknown,
+  path: string,
+  required: boolean,
+  errors: Errors,
+): readonly string[] {
+  if (value === undefined && !required) {
+    return [];
+  }
+  if (!Array.isArray(value) || (required && value.length === 0)) {
+    errors.add(path, required ? 'must be a non-empty array of names' : 'must be an array of names');
+    return [];
+  }
+  if (
+    !value.every(
+      (entry: unknown): boolean => typeof entry === 'string' && ENTRY_NAME_PATTERN.test(entry),
+    )
+  ) {
+    errors.add(path, 'must contain only single entry names, without separators');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a version-control plugin's metadata signal patterns: relative paths of non-empty segments,
+ * none of them `.` or `..`, so a pattern cannot reach outside the metadata directory it describes.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the patterns, or undefined when absent or invalid.
+ */
+function readSignals(value: unknown, path: string, errors: Errors): readonly string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const valid: (pattern: unknown) => boolean = (pattern: unknown): boolean =>
+    typeof pattern === 'string' &&
+    pattern
+      .split('/')
+      .every(
+        (segment: string): boolean => segment.length > 0 && segment !== '.' && segment !== '..',
+      );
+  if (!Array.isArray(value) || value.length === 0 || !value.every(valid)) {
+    errors.add(path, 'must be a non-empty array of relative patterns');
+    return undefined;
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a version-control plugin's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly VersionControlCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isVersionControlCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly VersionControlCapability[];
+}
+
+/**
+ * Validates where a version-control plugin's tool may come from.
+ * @param value The candidate array, or undefined for no choice.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the modes, or an empty array when absent or invalid.
+ */
+function readExecutableModes(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly VersionControlExecutableMode[] {
+  if (value === undefined) {
+    return [];
+  }
+  const modes: readonly string[] = VERSION_CONTROL_EXECUTABLE_MODES;
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && modes.includes(entry))
+  ) {
+    errors.add(path, `must be an array of ${modes.join(', ')}`);
+    return [];
+  }
+  return value as readonly VersionControlExecutableMode[];
+}
+
+/**
+ * Matches a host name a hosting plugin may serve: lowercase DNS labels separated by dots, with an
+ * optional port. Lowercase because remotes are matched lowercased, so a declared `GitHub.com` would
+ * silently never match.
+ */
+const HOST_NAME_PATTERN: RegExp =
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/;
+
+/**
+ * Validates the host names a hosting plugin serves.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the host names, or an empty array when invalid.
+ */
+function readHosts(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (entry: unknown): boolean => typeof entry === 'string' && HOST_NAME_PATTERN.test(entry),
+    )
+  ) {
+    errors.add(path, 'must be a non-empty array of lowercase host names');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a hosting plugin's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readHostingCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly HostingCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isHostingCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly HostingCapability[];
+}
+
+/**
+ * Matches the bare name of a command a user runs: a word, with dots, dashes and underscores — not a
+ * path, nor anything with a space or a shell metacharacter in it.
+ */
+const COMMAND_NAME: RegExp = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Validates a hosting plugin's command-line tools: bare command names, which Studio matches against
+ * the commands an agent runs, so a path or a shell fragment would never match — or match too much.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the names, or an empty array when absent or invalid.
+ */
+function readCommandLineTools(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && COMMAND_NAME.test(entry))
+  ) {
+    errors.add(path, 'must be an array of command names, such as "gh" — no paths or spaces');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates the ways a hosting plugin can sign in.
+ * @param value The candidate array, or undefined for no choice.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the modes, or an empty array when absent or invalid.
+ */
+function readAuthModes(value: unknown, path: string, errors: Errors): readonly HostingAuthMode[] {
+  if (value === undefined) {
+    return [];
+  }
+  const modes: readonly string[] = HOSTING_AUTH_MODES;
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && modes.includes(entry))
+  ) {
+    errors.add(path, `must be an array of ${modes.join(', ')}`);
+    return [];
+  }
+  return value as readonly HostingAuthMode[];
+}
+
+/**
  * Validates the connection authentication kinds a harness serves.
  *
  * ⚠️ Deliberately **not** checked against a closed list, unlike a decoder's formats. A connection's
@@ -1625,16 +2131,13 @@ function readAiModels(
     return undefined;
   }
   const models: ManifestAiModel[] = [];
+  // ⛔ A declared `contextWindow` is not read (plugin API 1.18.0). A manifest is the author's claim at
+  // release time, not the provider's data, so a window written into one is a guess; and manifests
+  // published before this still carry one, so it is tolerated rather than refused.
   readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
-    const window: unknown = entry['contextWindow'];
-    if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
-      errors.add(`${at}.contextWindow`, 'must be a positive number of tokens');
-      return;
-    }
     models.push({
       id: readString(entry, 'id', `${at}.`, errors),
       label: readString(entry, 'label', `${at}.`, errors),
-      contextWindow: window,
     });
   });
   return models;

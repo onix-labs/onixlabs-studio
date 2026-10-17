@@ -8,6 +8,7 @@ import { MutationResult } from '@shared/angular/services/source-control/source-c
 import {
   ForgeIssue,
   ForgePullRequest,
+  ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
@@ -18,7 +19,7 @@ import { ForgeRepository, ForgeSection } from './forge-repository';
  * The repository the fake forge detects.
  */
 const REFERENCE: ForgeRepositoryRef = {
-  kind: 'github',
+  provider: 'GitHub',
   host: 'github.com',
   owner: 'onix-labs',
   name: 'onixlabs-studio',
@@ -37,7 +38,7 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
     url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
     draft: false,
     headRef: 'feature/thing',
-    headRefspec: 'refs/pull/7/head',
+    fetchRef: 'refs/pull/7/head',
     checks: 'succeeded',
     ...overrides,
   };
@@ -50,7 +51,7 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
  */
 function run(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
   return {
-    id: 99,
+    id: '99',
     name: 'CI',
     status: 'succeeded',
     url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
@@ -88,6 +89,19 @@ class FakeForge {
   public detect(remoteUrl: string): Promise<ForgeRepositoryRef | null> {
     this.detected.push(remoteUrl);
     return Promise.resolve(this.forgeUrls.includes(remoteUrl) ? REFERENCE : null);
+  }
+
+  /**
+   * Holds what {@link describe} says the repository allows, or null for no plugin.
+   */
+  public capabilities: ForgeRepositoryCapabilities | null = {
+    provider: 'GitHub',
+    capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
+    closeReasons: [],
+  };
+
+  public describe(): Promise<ForgeRepositoryCapabilities | null> {
+    return Promise.resolve(this.capabilities);
   }
 
   /**
@@ -149,6 +163,31 @@ class FakeForge {
     this.commands.push(`cancel:${runId}`);
     return Promise.resolve({ ok: true, value: undefined });
   }
+
+  public setIssueState(
+    _: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: string,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    this.commands.push(`${state}:${issueNumber}${reason === undefined ? '' : `:${reason}`}`);
+    return Promise.resolve({
+      ok: true,
+      value: {
+        number: issueNumber,
+        title: 'Something is broken',
+        author: 'matthew',
+        url: `https://github.com/onix-labs/onixlabs-studio/issues/${issueNumber}`,
+        labels: [],
+        assignees: [],
+        state,
+        body: '',
+        createdAt: '2026-08-01T10:00:00Z',
+        updatedAt: '2026-10-13T10:00:00Z',
+        commentCount: 0,
+      },
+    });
+  }
 }
 
 /**
@@ -199,6 +238,37 @@ describe('ForgeRepository', () => {
 
       await expect(service.detect()).resolves.toEqual(REFERENCE);
       expect(service.repositoryRef()).toEqual(REFERENCE);
+      expect(service.hasForge()).toBe(true);
+    });
+
+    it('readsWhatTheRepositoryAllows_andSupportsEverythingUntilItKnows', async () => {
+      forge.capabilities = {
+        provider: 'GitHub',
+        capabilities: ['pullRequests', 'ciRuns'],
+        closeReasons: [],
+      };
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+      // Nothing known yet: a control should not flicker away while the answer is fetched.
+      expect(service.supports('issues')).toBe(true);
+
+      await service.detect();
+      await Promise.resolve();
+
+      expect(service.supports('pullRequests')).toBe(true);
+      expect(service.supports('issues')).toBe(false);
+    });
+
+    it('detectsOnItsOwn_whenTheRemotesChange', async () => {
+      // The forge sections appear as soon as a plugin can serve them, without being opened first.
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+      TestBed.tick();
+      await Promise.resolve();
+
+      expect(forge.detected).toContain('https://github.com/onix-labs/onixlabs-studio.git');
       expect(service.hasForge()).toBe(true);
     });
 
@@ -372,8 +442,8 @@ describe('ForgeRepository', () => {
 
       expect(service.workflowRuns().state).toBe('ready');
       expect(
-        service.workflowRuns().items.map((entry: ForgeWorkflowRun): number => entry.id),
-      ).toEqual([99]);
+        service.workflowRuns().items.map((entry: ForgeWorkflowRun): string => entry.id),
+      ).toEqual(['99']);
     });
 
     it('everySectionReportsTheSameUnhappyState', async () => {
@@ -394,23 +464,44 @@ describe('ForgeRepository', () => {
 
     it('rerun_issuesTheCommandAndReReadsTheRuns', async () => {
       await service.loadWorkflowRuns();
-      forge.runResult = { ok: true, value: [run({ id: 100, status: 'queued' })] };
+      forge.runResult = { ok: true, value: [run({ id: '100', status: 'queued' })] };
 
       await service.rerun(run());
 
       expect(forge.commands).toEqual(['rerun:99']);
       // The forge starts a NEW run, so the list is what shows the result.
       expect(
-        service.workflowRuns().items.map((entry: ForgeWorkflowRun): number => entry.id),
-      ).toEqual([100]);
+        service.workflowRuns().items.map((entry: ForgeWorkflowRun): string => entry.id),
+      ).toEqual(['100']);
     });
 
     it('cancel_issuesTheCommand', async () => {
       await service.loadWorkflowRuns();
 
-      await service.cancel(run({ id: 42 }));
+      await service.cancel(run({ id: '42' }));
 
       expect(forge.commands).toEqual(['cancel:42']);
+    });
+
+    it('setIssueState_closesTheIssueAndReReadsTheList', async () => {
+      await service.loadIssues();
+      forge.issueResult = { ok: true, value: [] };
+
+      const result: ForgeResult<ForgeIssue> = await service.setIssueState(
+        12,
+        'closed',
+        'completed',
+      );
+
+      expect(forge.commands).toEqual(['closed:12:completed']);
+      expect(result.ok && result.value.state).toBe('closed');
+      // The section lists open issues, so a closed one leaves it.
+      expect(service.issues().items).toEqual([]);
+    });
+
+    it('issueWrites_failWithoutTouchingTheForge_whenNoRepositoryWasDetected', async () => {
+      expect((await service.setIssueState(12, 'closed')).ok).toBe(false);
+      expect(forge.commands).toEqual([]);
     });
 
     it('runCommands_failWithoutTouchingTheForge_whenNoRepositoryWasDetected', async () => {

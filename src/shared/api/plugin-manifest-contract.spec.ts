@@ -30,6 +30,14 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.10.0': 'bfaf9d60a6dec7cd63abaf5e63fb28cbc67ad1bc85f55e41231e9725f991c35d',
   '1.11.0': 'c1d32ae1b89f75ffe7bf6780d2544df503567775df172730165fa37937bc66c1',
   '1.12.0': '2d7fecd6cdbeb33d81f8fe2ee0e6b5645994d945b3f5c7cdd596715b39cdf400',
+  '1.13.0': '5e579c63b36d119cdd68270ede7faf3339f4318e14e3d7903c3b23b724def76f',
+  '1.14.0': '0bb0f2fe3350f95cfdb17b6c502fb32899f4defdacd33c9a6e3053e4bd65b2a8',
+  '1.15.0': '8fc65a66adb7c8604adb889a8a084c17a40a5df2f3400c97247d9ec020df23fa',
+  // The same shape as 1.15.0: what changed is the closed list of hosting capabilities (#851).
+  '1.16.0': '8fc65a66adb7c8604adb889a8a084c17a40a5df2f3400c97247d9ec020df23fa',
+  '1.17.0': '78cf93349a6999d28eb28405aa783460b193c3ba857443f04f2e9f32de094e07',
+  '1.18.0': '791ccdb952a907c8b3c74d3d1f382933c4a71af100dc9ff3614d0ff5210dc552',
+  '1.19.0': 'f04620539f8783ebe5d5d0e32acc8c5d08c556cf0d2b57694ae37cd627d60337',
 };
 
 /**

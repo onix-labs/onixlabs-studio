@@ -8,6 +8,7 @@ import {
 } from '@shared/api/project-system';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { ProjectActionOptions } from '@shared/angular/services/tasks/builds';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
@@ -16,6 +17,7 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -323,6 +325,29 @@ describe('SolutionPanel', () => {
       expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
     });
 
+    it('contextMenuFor_aModifiedFile_offersShowDiff_andChoosingItOpensTheDiff', () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'canShowDiff').mockImplementation(
+        (path: string): boolean => path === '/root/A/g.cs',
+      );
+      const open: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(DiffOpener), 'openPath')
+        .mockResolvedValue(null);
+      const changed: SolutionRow = makeRow({ kind: 'file', path: '/root/A/g.cs' });
+
+      expect(menuIds(changed)).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+        'solution-menu.sep-vcs',
+        'show-diff',
+      ]);
+      expect(menuIds(makeRow({ kind: 'file', path: '/root/A/h.cs' }))).not.toContain('show-diff');
+
+      component.onContextAction({ itemId: 'show-diff', row: treeRow(changed) });
+      expect(open).toHaveBeenCalledWith('/root/A/g.cs');
+    });
+
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }));
       expect(ids).toEqual(['edit-project', 'copy-path', 'copy-relative-path', 'reveal']);
@@ -403,57 +428,77 @@ describe('SolutionPanel', () => {
       expect(shell.revealed).toEqual(['/root/A/Sub']);
     });
 
-    it('onContextAction_rename_opensThePromptSeededWithTheCurrentName', () => {
+    /**
+     * Commits the folder being renamed with a name, as the tree reports it.
+     * @param row The row the edit was made on.
+     * @param value The trimmed name.
+     * @returns Returns a promise that resolves once the rename has been attempted.
+     */
+    function commit(row: SolutionRow, value: string): Promise<void> {
+      return component.commitRename({ row: treeRow(row), value });
+    }
+
+    it('onContextAction_rename_editsTheFoldersOwnRow', () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
 
-      // Seeded rather than blank: the common edit adjusts a word rather than replacing the name.
+      // The row's field is seeded with the label, not blank: the common edit adjusts a word.
       expect(component.renameTarget()?.key).toBe('/Core');
-      expect(component.renameName()).toBe('Core');
+      expect(component.renameTarget()?.label).toBe('Core');
     });
 
-    it('submitRename_renamesTheFolderAndClosesThePrompt', async () => {
+    it('commitRename_renamesTheFolderAndEndsTheEdit', async () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('Kernel');
-      await component.submitRename();
+      await commit(row, 'Kernel');
 
       expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
       expect(component.renameTarget()).toBeNull();
     });
 
-    it('submitRename_trimsTheNameBeforeRenaming', async () => {
+    it('commitRename_forARowThatIsNotTheOneBeingEdited_doesNothing', async () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      const other: SolutionRow = makeRow({
+        key: '/Tests',
+        kind: 'folder',
+        label: 'Tests',
+        path: null,
+      });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('  Kernel  ');
-      await component.submitRename();
-
-      expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
-    });
-
-    it('submitRename_anEmptyName_doesNothingAndLeavesThePromptOpen', async () => {
-      solution.model.set(renameableModel());
-      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
-      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('   ');
-      await component.submitRename();
+      await commit(other, 'Kernel');
 
       expect(solution.renames).toEqual([]);
-      expect(component.renameTarget()).not.toBeNull();
+      expect(component.renameTarget()?.key).toBe('/Core');
     });
 
-    it('submitRename_aRefusedRename_reportsTheReason', async () => {
-      // A refusal is the main process's answer, not something the dialog can pre-empt: it closes and
-      // says why, rather than holding the user over a box that does not name the objection.
+    it('commitRename_aNameWithASlash_isRefusedBeforeTheWrite', async () => {
+      // A slash would nest the folder under a new one rather than rename it.
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      await commit(row, 'Core/Kernel');
+
+      expect(solution.renames).toEqual([]);
+      expect(notifications.notified).toEqual([
+        {
+          severity: 'error',
+          title: 'Could not rename folder',
+          detail: 'A folder name cannot contain a slash.',
+        },
+      ]);
+    });
+
+    it('commitRename_aRefusedRename_reportsTheReason', async () => {
+      // A refusal is the main process's answer, not something the field can pre-empt: the edit ends
+      // and says why, rather than holding the user over a box that does not name the objection.
       solution.model.set(renameableModel());
       solution.renameResult = { success: false, error: "A folder named 'Tests' is already here." };
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('Tests');
-      await component.submitRename();
+      await commit(row, 'Tests');
 
       expect(notifications.notified).toEqual([
         {
@@ -465,7 +510,7 @@ describe('SolutionPanel', () => {
       expect(component.renameTarget()).toBeNull();
     });
 
-    it('cancelRename_closesThePromptWithoutRenaming', () => {
+    it('cancelRename_endsTheEditWithoutRenaming', () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
@@ -776,13 +821,29 @@ describe('SolutionPanel', () => {
       expect(commands.every((item: MenuItem): boolean => item.checked === undefined)).toBe(true);
     });
 
-    it('statusFor_whenGitStatusHidden_reportsNoBadge', () => {
+    it('rows_colourAChangedPath_inItsSourceControlTone', () => {
+      // #860: colour, not a letter — a modified file reads in the warning tone.
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockReturnValue('modified');
+      solution.model.set(model);
+      solution.rows.set([makeRow({ kind: 'file', path: '/root/A/g.cs' })]);
+      solution.showsGitStatus.set(true);
+      fixture.detectChanges();
+
+      const row: Element | null = (fixture.nativeElement as HTMLElement).querySelector('.tree-row');
+      expect(row?.classList.contains('tree-row--tone-warning')).toBe(true);
+      expect(row?.getAttribute('title')).toBe('Modified');
+    });
+
+    it('rows_whenGitStatusHidden_areNotColoured', () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockReturnValue('modified');
       solution.model.set(model);
       solution.rows.set([makeRow({ kind: 'file', path: '/root/A/g.cs' })]);
       solution.showsGitStatus.set(false);
       fixture.detectChanges();
 
-      expect((fixture.nativeElement as HTMLElement).querySelector('.tree-status')).toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[class*="tree-row--tone-"]'),
+      ).toBeNull();
     });
   });
 

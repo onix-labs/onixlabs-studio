@@ -81,7 +81,7 @@
   align-items: center;
   gap: 0.35rem;
   min-inline-size: 0;
-  // Low band (0–33%): plenty of headroom, shown in the success colour. Warn/high override below.
+  // Low band (0–49%): plenty of headroom, shown in the success colour. Warn/high override below.
   color: var(--success-color);
 }
 
@@ -437,13 +437,11 @@
   gap: 0.2rem;
 }
 
-// Groups the markdown-composer trigger with the send/stop control so they sit together at the footer's
-// trailing edge, leaving the reference controls on the left.
+// The markdown-composer trigger and the send/stop control, a button row at the footer's trailing edge
+// that leaves the reference controls on the left. It keeps its natural width rather than shrinking
+// when the footer is tight.
 .agent__composer-actions {
-  display: flex;
   flex: 0 0 auto;
-  align-items: center;
-  gap: 0.4rem;
 }
 
 // The markdown composer modal: a heading over the editor frame and a trailing action row. It fills
@@ -491,17 +489,6 @@
   // The compact presentation (collapsed wrapper padding, tight page gutter, dark-mode inset fill) is
   // the editor's own `inset` variant, keyed in the global `_milkdown.scss` off the variant class the
   // editor puts on itself — this frame styles nothing inside the editor.
-}
-
-// Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
-// a shrink-to-fit grid all take the width of the widest.
-.agent__md-actions {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 0.5rem;
-  inline-size: fit-content;
-  margin-inline-start: auto;
 }
 
 // Every rounded composer surface follows the app's corner shape.

@@ -102,22 +102,25 @@ export class Plugins {
    * code is good, and that residual risk is the user's to accept — from whichever surface they
    * happen to be on. Declining (or dismissing the window) installs nothing.
    * @param id The plugin identifier.
-   * @returns Returns a promise that resolves once the install has finished, or immediately when the
-   * plugin is unknown or the terms were not accepted.
+   * @returns Returns what happened: installed, declined (the terms were not accepted), or failed
+   * (the plugin is unknown, or the install went wrong — {@link error} says why).
    */
-  public async installWithConsent(id: string): Promise<void> {
+  public async installWithConsent(id: string): Promise<'installed' | 'declined' | 'failed'> {
     const plugin: PluginSummary | undefined = this.known().find(
       (candidate: PluginSummary): boolean => candidate.id === id,
     );
     if (plugin === undefined) {
       this.log.warn('Plugins', `Cannot ask consent for unknown plugin '${id}'`);
-      return;
+      return 'failed';
     }
     if (!(await this.consent.request(plugin))) {
       this.log.info('Plugins', `Install of '${id}' declined`);
-      return;
+      return 'declined';
     }
     await this.install(id);
+    // The install clears the last error as it starts and records one if it fails, so what is here now
+    // belongs to this install.
+    return this.lastError() === null ? 'installed' : 'failed';
   }
 
   /**

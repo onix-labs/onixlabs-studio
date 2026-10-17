@@ -16,7 +16,9 @@ import {
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AGENT_RUN_OWNER } from '@shared/angular/services/agent/agent-run-owner';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
   AgentHostRegistrar,
@@ -32,12 +34,14 @@ import { ProjectModel } from '@shared/api/project-system';
 import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
 import type { FileWriteResult } from '@shared/api/file-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
@@ -76,8 +80,10 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   collectPanelIds,
+  findNode,
   findStackOfPanel,
   firstStackOfRole,
+  rightHandToolStack,
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -90,6 +96,7 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
@@ -112,10 +119,11 @@ import {
   WellDocument,
   WellSourceControl,
   WellTerminal,
+  WorkspaceWellHandlers,
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
-import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
@@ -126,6 +134,9 @@ import {
   SourceControlCommands,
 } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
+import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
+import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -176,7 +187,6 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   files: ['solution', 'agent'],
   solution: ['files', 'agent'],
   search: ['files', 'agent'],
-  worktrees: ['files', 'solution'],
   branches: ['files', 'solution'],
   agent: ['commit', 'files'],
   commit: ['agent', 'files'],
@@ -197,7 +207,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
  */
 @Component({
   selector: 'app-directory-view',
-  imports: [DockContainer],
+  imports: [DockContainer, WorktreeDialogs],
   templateUrl: './directory-view.html',
   styleUrl: './directory-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -222,6 +232,10 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     FileOpener,
     WorkspaceGit,
     Repository,
+    // The Repository panel's worktrees, per view beside its Repository: "the current worktree" is
+    // the checkout this view shows, which a container keeps one view alive for each of.
+    WorktreeRepository,
+    { provide: REPOSITORY_WORKTREES, useExisting: WorktreeRepository },
     // The forge's view of this tab's repository (pull requests, issues, CI runs). Per view, beside
     // Repository: a dock panel is destroyed when another tool in its stack activates, so state owned
     // by the panel would be re-fetched on every tool switch against a rate-limited API.
@@ -234,6 +248,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     IssueStore,
     IssueOpener,
     IssueAgent,
+    IssueActions,
     DockTabContext,
     DockState,
     DockGeometry,
@@ -307,6 +322,15 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'workspace' },
     {
+      // Every run of this view's agent is owned by the view's scope — the key its well is published
+      // under — so the agent's tools act on THIS workspace, whichever tab the user is looking at.
+      provide: AGENT_RUN_OWNER,
+      useFactory: (): (() => string) => {
+        const context: DockTabContext = inject(DockTabContext);
+        return (): string => context.tabId();
+      },
+    },
+    {
       // Scope agent conversations docked in this IDE to the open workspace root (or the global bucket
       // when the tab has no folder open yet). Resolved lazily so it tracks the workspace loading.
       provide: AGENT_CONVERSATION_CONTEXT,
@@ -363,11 +387,17 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Gets the host's promote action, or null when promotion is unavailable (the view is already a
-   * checkout inside a container, or the tab is not hosted).
+   * checkout inside a container, or the tab is not hosted). It is handed the id of the agent
+   * conversation open here, so the view the host rebuilds around the first worktree can take it over.
    */
-  public readonly promoteHandler: InputSignal<(() => void) | null> = input<(() => void) | null>(
-    null,
-  );
+  public readonly promoteHandler: InputSignal<((conversationId: string | null) => void) | null> =
+    input<((conversationId: string | null) => void) | null>(null);
+
+  /**
+   * Gets the id of an agent conversation this view takes over when it opens — the one a repository
+   * was converted to worktrees in the middle of — or null for none.
+   */
+  public readonly adoptConversation: InputSignal<string | null> = input<string | null>(null);
 
   /**
    * Emits this view's workspace root whenever it changes, so the host can re-resolve what the tab
@@ -386,10 +416,20 @@ export class DirectoryView implements OnInit, OnDestroy {
   });
 
   /**
-   * Holds the tab-level worktree session (host-provided): container state for the Worktrees panel,
-   * the active-checkout selection, and host root-ownership claims.
+   * Holds the tab-level worktree session (host-provided): container state, the active-checkout
+   * selection, and host root-ownership claims.
    */
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
+
+  /**
+   * Holds this view's worktrees as the Repository panel reads them.
+   */
+  private readonly worktreeRepository: WorktreeRepository = inject(WorktreeRepository);
+
+  /**
+   * Holds the notifications a refused promotion is reported through.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the structured logger.
@@ -397,8 +437,7 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds this view's live agent, whose running state a checkout sub-view publishes to the
-   * Worktrees panel's activity glyphs.
+   * Holds this view's live agent, which a workspace opened with an agent brief starts.
    */
   private readonly agent: Agent = inject(Agent);
 
@@ -419,7 +458,9 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
-    surface: 'editor',
+    // The same surface the docked agent panel runs on (#713): a turn sent from Mission Control's tile
+    // drives this same agent, and must be offered this workspace's tools rather than an editor's.
+    surface: 'workspace',
     // Mission Control shows the open folder's branch beside this column's title. Read through a
     // closure because this tab's git state is constructed after this field initializer runs.
     branch: (): string | null => this.workspaceGit.branch(),
@@ -446,6 +487,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the global registry that hands off the initial folder for this tab.
    */
   private readonly workspaces: Workspaces = inject(Workspaces);
+
+  /**
+   * Holds this view's agent conversation, which a new project's agent start opens fresh.
+   */
+  private readonly agentConversation: AgentConversation = inject(AgentConversation);
 
   /**
    * Holds the global active-workspace seam this tab publishes its open folder to, so the status
@@ -617,6 +663,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly repository: Repository = inject(Repository);
 
   /**
+   * Holds the trust question every repository is asked before version control first runs in it.
+   */
+  private readonly repositoryTrust: RepositoryTrust = inject(RepositoryTrust);
+
+  /**
    * Holds this tab's scoped diff store, swept of diffs whose dock panels have been closed.
    */
   private readonly diffs: Diffs = inject(Diffs);
@@ -628,7 +679,7 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Holds the root source-control command seam this tab registers its handler with while active, so
-   * the directory ribbon's Source Control group reaches this workspace.
+   * the directory ribbon's Version Control group reaches this workspace.
    */
   private readonly workspaceSourceControl: WorkspaceSourceControlCommands = inject(
     WorkspaceSourceControlCommands,
@@ -680,10 +731,15 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
 
   /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
    * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
-   * Worktrees a container, Logs something that has actually logged, and the source-control trio a
-   * repository. A panel absent from this map has nothing to depend on and is always available.
+   * Logs something that has actually logged, and the source-control trio a repository. A panel
+   * absent from this map has nothing to depend on and is always available.
    *
    * This drives two things at once: which panels the View → Panels menu offers, and which the dock
    * renders. Both mean the same thing — the panel has nothing to show — so both read it from here.
@@ -691,18 +747,20 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly panelAvailability: Signal<Readonly<Record<string, boolean>>> = computed(
     (): Readonly<Record<string, boolean>> => {
       const repository: boolean = this.workspaceGit.isRepository();
+      // A repository no installed plugin can read still gets its Repository and Commit panels: they
+      // are where its empty state says what is missing and offers the plugin (#818).
+      const needsPlugin: boolean = this.versionControlPrompt.needed() !== null;
       return {
         solution: this.solutionModel.model() !== null,
         packages: this.packageModel.model() !== null,
         debug: this.debugSession.state() !== 'idle',
-        worktrees: this.worktreeSession.isContainer(),
         // The demoted Logs panel is reachable exactly when it has content, as it always was — the
         // difference is that it is now passed over rather than cut out of the layout, so a layout
         // that names it still names it once something logs.
         output: this.outputService.channels().length > 0,
-        branches: repository,
+        branches: repository || needsPlugin,
         history: repository,
-        commit: repository,
+        commit: repository || needsPlugin,
       };
     },
   );
@@ -905,11 +963,68 @@ export class DirectoryView implements OnInit, OnDestroy {
    * {@link Documents} instance's well to the directory ribbon's Save and Save All.
    */
   private readonly documentHandler: WorkspaceDocumentCommandHandler = {
-    canSave: computed((): boolean => this.documents.activeDocumentId() !== null),
-    hasUnsavedChanges: computed((): boolean => this.documents.dirtyCount() > 0),
-    save: (): void => void this.documents.saveActive(),
-    saveAll: (): void => void this.documents.saveAll(),
+    canSave: computed((): boolean => {
+      const panel: DockPanel | undefined = this.activeSelfSavingPanel();
+      return panel === undefined
+        ? this.documents.activeDocumentId() !== null
+        : panel.dirty?.() === true;
+    }),
+    hasUnsavedChanges: computed(
+      (): boolean =>
+        this.documents.dirtyCount() > 0 ||
+        this.selfSavingPanels().some((panel: DockPanel): boolean => panel.dirty?.() === true),
+    ),
+    save: (): void => void this.saveActive(),
+    saveAll: (): void => void this.saveAll(),
   };
+
+  /**
+   * Gets the panels showing in this tab — docked, floated or popped out — that save their own
+   * document rather than through this view's text {@link Documents} (an image in the well). A closed
+   * panel stays registered, so presence is what keeps a discarded image from reading as unsaved.
+   */
+  private readonly selfSavingPanels: Signal<readonly DockPanel[]> = computed(
+    (): readonly DockPanel[] => {
+      const present: ReadonlySet<string> = new Set<string>([
+        ...collectPanelIds(this.dockState.layout()),
+        ...this.dockFloating.floats().map((float: FloatWindow): string => float.panelId),
+      ]);
+      return this.registry
+        .list()
+        .filter(
+          (panel: DockPanel): boolean =>
+            panel.save !== undefined &&
+            (present.has(panel.id) || this.popoutPanels.isPopped(panel.id)),
+        );
+    },
+  );
+
+  /**
+   * Gets the self-saving panel Save acts on, or undefined when Save should fall to the active text
+   * document. A focused document well decides it by its active panel. With focus elsewhere (a tool
+   * panel), the active text document keeps precedence, as it always has; only when there is none does
+   * Save fall to the first well's active panel.
+   */
+  private readonly activeSelfSavingPanel: Signal<DockPanel | undefined> = computed(
+    (): DockPanel | undefined => {
+      const layout: DockNode = this.dockState.layout();
+      const focusedId: string | null = this.dockFocus.focusedStackId();
+      const focused: DockNode | null = focusedId === null ? null : findNode(layout, focusedId);
+      let well: StackNode | null;
+      if (focused?.kind === 'stack' && focused.role === 'document') {
+        well = focused;
+      } else if (this.documents.activeDocumentId() === null) {
+        well = firstStackOfRole(layout, 'document');
+      } else {
+        return undefined;
+      }
+      const panel: DockPanel | undefined =
+        well?.active === null || well?.active === undefined
+          ? undefined
+          : this.registry.get(well.active);
+      return panel?.save === undefined ? undefined : panel;
+    },
+  );
 
   /**
    * Holds the source-control command handler this tab registers while active, exposing the workspace's
@@ -930,7 +1045,7 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Holds this workspace's repository command handler — the repo-global remainder behind the
-   * ribbon's Source Control group. Branch, stash-entry, and per-change actions are not here: the
+   * ribbon's Version Control group. Branch, stash-entry, and per-change actions are not here: the
    * Repository and Commit panels own those and reach this view's {@link Repository} directly.
    */
   private readonly repositoryCommandHandler: SourceControlCommandHandler = {
@@ -938,9 +1053,47 @@ export class DirectoryView implements OnInit, OnDestroy {
     stash: (): void => void this.repository.stash(),
     // Promotion is the host's structural act (the tab is rebuilt as a container around this view),
     // so the view only relays it; a checkout's sub-view gets no handler and cannot promote.
-    canPromoteToWorktree: computed((): boolean => this.promoteHandler() !== null),
-    promoteToWorktree: (): void => this.promoteHandler()?.(),
+    // Offered only when the serving plugin can make parallel checkouts (#818): a worktree container is
+    // nothing but several of them.
+    canPromoteToWorktree: computed(
+      (): boolean =>
+        this.promoteHandler() !== null && this.repository.supports('parallelCheckouts'),
+    ),
+    // Promotion moves every file in the folder. An agent at work in it would be writing to paths that
+    // are about to move, so promotion waits for it to finish.
+    promoteBlocker: computed((): string | null =>
+      this.agent.isRunning()
+        ? 'The agent is working in this folder — wait or stop it first.'
+        : null,
+    ),
+    promoteToWorktree: (): void => void this.promote(),
   };
+
+  /**
+   * Promotes this view's repository to worktrees, carrying the agent conversation across: it is saved
+   * now and handed to the host, whose new view for the first worktree takes it over. Re-checks the
+   * agent at the last moment, since a run can start between the confirmation and the click.
+   * @returns Returns a promise that resolves once the promotion has been handed to the host.
+   */
+  private async promote(): Promise<void> {
+    const handler: ((conversationId: string | null) => void) | null = this.promoteHandler();
+    const blocker: string | null = this.repositoryCommandHandler.promoteBlocker();
+    if (handler === null) {
+      return;
+    }
+    if (blocker !== null) {
+      this.log.warn('workspace', 'Promotion refused', blocker);
+      this.notifications.notify({
+        severity: 'warning',
+        title: 'Could not convert to worktrees',
+        detail: blocker,
+      });
+      return;
+    }
+    const conversationId: string | null = await this.agentConversation.flush();
+    this.log.info('workspace', 'Promoting to worktrees', conversationId ?? '(no conversation)');
+    handler(conversationId);
+  }
 
   /**
    * Resolves the worktree container's display name (its directory basename), or null when this view
@@ -1216,9 +1369,11 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
       this.lastRevealedPath = path;
       untracked((): void => {
-        void this.workspace.revealPath(path);
-        // The Solution Explorer follows only while asked to: reading around a solution with a
-        // generated file open otherwise drags the selection back on every tab change.
+        // Each explorer follows only while asked to: reading around a tree with a generated file
+        // open otherwise drags the selection back on every tab change.
+        if (this.workspace.followsActiveDocument()) {
+          void this.workspace.revealPath(path);
+        }
         if (this.solutionModel.followsActiveDocument()) {
           this.solutionModel.revealPath(path);
         }
@@ -1231,7 +1386,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (this.isActive()) {
         this.keybindings.register(this.viewScope(), [
           { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
-          { id: 'workspace.saveAll', command: (): void => void this.documents.saveAll() },
+          { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceDocuments.register(this.documentHandler);
@@ -1250,36 +1405,60 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.forgeRepository.setActive(this.isActive());
     });
 
-    // Keep the Worktrees panel present while this view belongs to a container: every preset apply
-    // rebuilds the layout from the preset's definition, so the container's defining panel is
-    // re-added (and shown) whenever it is missing.
-    effect((): void => {
-      if (!this.worktreeSession.isContainer()) {
-        return;
-      }
-      const layout: DockNode = this.dockState.layout();
-      if (collectPanelIds(layout).includes('worktrees')) {
-        return;
-      }
-      const anchor: StackNode | null =
-        findStackOfPanel(layout, 'files') ?? firstStackOfRole(layout, 'tool');
-      if (anchor !== null) {
-        untracked((): void => this.dockState.tabInto(anchor.id, 'worktrees'));
-      }
+    // The Repository panel reads its worktrees through this view: which checkout it is, and whether
+    // its flat repository can become worktrees (the ribbon's Promote, through the same handler).
+    this.worktreeRepository.bind({
+      checkoutId: this.checkoutId,
+      canConvert: this.repositoryCommandHandler.canPromoteToWorktree,
+      convertBlocker: this.repositoryCommandHandler.promoteBlocker,
+      convert: (): void => this.repositoryCommandHandler.promoteToWorktree(),
     });
   }
 
   /**
-   * Reveals the Search panel in this tab's dock, tabbing it beside the File Explorer (falling back to
-   * the agent's group) when it is not already in the layout, then activating and focusing it.
+   * Saves the active well document, whatever kind it is: a self-saving panel (an image) through its
+   * own save, otherwise the active text document.
+   * @returns Returns true when the document was saved.
+   */
+  private saveActive(): Promise<boolean> {
+    const panel: DockPanel | undefined = this.activeSelfSavingPanel();
+    return panel?.save === undefined ? this.documents.saveActive() : panel.save();
+  }
+
+  /**
+   * Saves every unsaved document in this tab: the text documents, then each self-saving panel with
+   * unsaved changes (an edited image). Sequenced, as the text saves are, because either kind can open
+   * a save dialog — an untitled file, or an image whose format cannot be written back.
+   * @returns Returns true when everything was saved (false when any save failed or was cancelled).
+   */
+  private async saveAll(): Promise<boolean> {
+    let saved: boolean = await this.documents.saveAll();
+    const dirty: readonly DockPanel[] = untracked((): readonly DockPanel[] =>
+      this.selfSavingPanels().filter((panel: DockPanel): boolean => panel.dirty?.() === true),
+    );
+    for (const panel of dirty) {
+      if (panel.save !== undefined && !(await panel.save())) {
+        saved = false;
+      }
+    }
+    return saved;
+  }
+
+  /**
+   * Reveals the Find & Replace panel in this tab's dock — tabbing it into the right-hand group, or
+   * docking a new one on the right when the layout has none — then activating and focusing it.
    */
   private revealSearch(): void {
+    // Opened on the right, beside the Agent, rather than over the explorers on the left: you search
+    // while looking at the tree, not instead of it. A layout with no right-hand group (Agentic
+    // Engineering, whose Agent is in the centre) gets one, docked to the right edge. A panel the layout
+    // already holds stays wherever it was put.
     if (!collectPanelIds(this.dockState.layout()).includes('search')) {
-      const anchor: StackNode | null =
-        findStackOfPanel(this.dockState.layout(), 'files') ??
-        findStackOfPanel(this.dockState.layout(), 'agent');
-      if (anchor !== null) {
-        this.dockState.tabInto(anchor.id, 'search');
+      const right: StackNode | null = rightHandToolStack(this.dockState.layout());
+      if (right !== null) {
+        this.dockState.tabInto(right.id, 'search');
+      } else {
+        this.dockState.dockEdge('search', 'right');
       }
     }
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'search');
@@ -1394,28 +1573,8 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @returns Returns null when the diff was opened, or the reason it could not be.
    */
   private openDiffForAgent(path: string): Promise<string | null> {
-    if (!this.repository.isBound()) {
-      return Promise.resolve(
-        'This workspace is not a git repository, so there is no diff to show.',
-      );
-    }
-    const root: string = this.repository.info()?.root ?? '';
-    const relative: string = path.startsWith(root)
-      ? path.slice(root.length).replace(/^[\\/]+/, '')
-      : path;
-    const normalised: string = relative.replace(/\\/g, '/');
-    const change: GitFileChange | undefined = [
-      ...this.repository.unstaged(),
-      ...this.repository.staged(),
-      ...this.repository.conflicted(),
-    ].find((candidate: GitFileChange): boolean => candidate.path === normalised);
-    if (change === undefined) {
-      return Promise.resolve(
-        `"${normalised}" has no changes against HEAD, so there is no diff to show.`,
-      );
-    }
-    this.diffOpener.open(change);
-    return Promise.resolve(null);
+    // The same lookup the explorers' Show Diff uses, so an agent and a person get the same answer.
+    return this.diffOpener.openPath(path);
   }
 
   /**
@@ -1619,6 +1778,32 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Holds what this view publishes about its well (see {@link ngOnInit}). One object for the view's
+   * lifetime, so teardown can clear exactly what this view published and nothing a successor did.
+   */
+  private readonly wellHandlers: WorkspaceWellHandlers = {
+    rootPath: (): string | null => this.workspace.root()?.path ?? null,
+    activeDocumentId: (): string | null => this.documents.activeDocumentId(),
+    open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
+    documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
+    sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
+    openTerminal: (): WellTerminal => this.openTerminalForAgent(),
+    terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
+    createFile: (path: string, content: string | null): Promise<string | null> =>
+      this.createFileForAgent(path, content),
+    createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
+    rename: (
+      path: string,
+      name: string,
+    ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
+      this.renameForAgent(path, name),
+    delete: (path: string): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
+      this.deleteForAgent(path),
+    reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
+  };
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1628,47 +1813,49 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.documents.setOwningTab(this.tabId());
     // Publish this workspace's document well, so something outside the tab's injector — the agent's
     // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
-    // published closure is the only way to reach it from the root.
-    this.activeWorkspace.setWell(this.tabId(), {
-      open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
-      openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
-      documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
-      sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
-      openTerminal: (): WellTerminal => this.openTerminalForAgent(),
-      terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
-      createFile: (path: string, content: string | null): Promise<string | null> =>
-        this.createFileForAgent(path, content),
-      createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
-      rename: (
-        path: string,
-        name: string,
-      ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
-        this.renameForAgent(path, name),
-      delete: (
-        path: string,
-      ): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
-        this.deleteForAgent(path),
-      reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
-    });
+    // published closure is the only way to reach it from the root. Keyed by the VIEW scope: a
+    // worktree container's sub-views share a tab, and each must keep its own well — its agent runs
+    // with this scope as its owner and must reach this well, not a sibling checkout's.
+    this.activeWorkspace.setWell(this.viewScope(), this.tabId(), this.wellHandlers);
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
     // dispatch and other per-view registries, which must not collide across a container's sub-views.
     this.dockTabContext.setTabId(this.viewScope());
-    // A checkout sub-view publishes its agent's running state to the Worktrees panel, so the
-    // panel's activity glyph mirrors the SAME live agent Mission Control does.
-    const checkout: string | null = this.checkoutId();
-    if (checkout !== null) {
-      this.destroyRef.onDestroy(
-        this.worktreeSession.registerAgentActivity(checkout, this.agent.isRunning),
-      );
-    }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {
       this.log.info('workspace', 'Workspace folder opened', initial.path);
       this.workspace.openListing(initial);
     }
+    // The conversation of a repository converted to worktrees carries on here, in the first
+    // worktree's view. Taken over only once the folder is open: adopting saves it under this view's
+    // root, which is how it moves into this worktree's history.
+    const adopted: string | null = this.adoptConversation();
+    if (adopted !== null) {
+      void this.agentConversation.adopt(adopted);
+    }
+    const start: WorkspaceAgentStart | undefined = this.workspaces.takeAgentStart(this.tabId());
+    if (start !== undefined) {
+      this.startAgent(start);
+    }
+  }
+
+  /**
+   * Opens this workspace's agent on a new project (#806): a fresh conversation carrying the project's
+   * brief, sending the user's first message at once — as this workspace, the way its agent panel and
+   * Mission Control's tile send — with the agent panel brought forward.
+   * @param start How the agent starts.
+   */
+  private startAgent(start: WorkspaceAgentStart): void {
+    this.log.info('workspace', 'Starting the agent on a new project');
+    this.agentConversation.newChat();
+    this.agent.setBrief(start.brief);
+    for (const reference of start.context ?? []) {
+      this.agent.attachContext(reference);
+    }
+    void this.agent.sendWhenReady(start.prompt, this.tabId(), 'workspace', start.images ?? []);
+    this.dockReveal.reveal('agent');
   }
 
   /**
@@ -1689,8 +1876,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // whole tab closing should drop the entry.
     if (this.checkoutId() === null) {
       this.activeWorkspace.clearRoot(this.tabId());
-      this.activeWorkspace.clearWell(this.tabId());
     }
+    // The well is keyed by this view's own scope, so every view clears its own — identity-checked,
+    // so a successor that already republished under the same scope keeps its well.
+    this.activeWorkspace.clearWell(this.viewScope(), this.wellHandlers);
     this.workspaceGit.dispose();
     if (this.repository.isBound()) {
       void this.repository.close();
@@ -1787,7 +1976,6 @@ export class DirectoryView implements OnInit, OnDestroy {
         icon: Icon.LIST_ALL,
         role: 'tool',
         component: CommitDetail,
-        ownsToolStrip: true,
       });
       this.commitRegistered = true;
     }
@@ -1838,6 +2026,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     const info: RepositoryInfo | null = await (this.sourceControlApi?.resolveRepository(path) ??
       Promise.resolve(null));
     if (info === null) {
+      return false;
+    }
+    // A repository the user has not trusted is not acted on: the main process would refuse anyway,
+    // and the explorer's own binding has already shown why.
+    if (!(await this.repositoryTrust.ensureTrusted(info))) {
+      void this.sourceControlApi?.closeRepository(info.root);
       return false;
     }
     // A concurrent action may have bound it while resolving; balance this resolve's extra hold.

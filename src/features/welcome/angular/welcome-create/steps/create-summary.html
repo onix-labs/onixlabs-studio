@@ -1,0 +1,14 @@
+<div class="step">
+  <p class="step__hint">
+    @if (draft.toWorkspace()) {
+      Studio makes the project at {{ draft.target() ?? 'the place chosen' }}, opens it as a
+      workspace, and sends this to its agent.
+    } @else {
+      This goes to an agent in its own tab. Once you have a plan, you choose where the project goes.
+    }
+    @if (draft.documents().length > 0) {
+      The supporting documents go with it.
+    }
+  </p>
+  <pre class="step__message" aria-label="The first message">{{ draft.message() }}</pre>
+</div>

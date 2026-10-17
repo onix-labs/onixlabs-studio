@@ -32,6 +32,17 @@ interface StudioFixtures {
 }
 
 /**
+ * Writes files into a test profile before the application launches.
+ */
+export interface UserDataSeed {
+  /**
+   * Writes the files.
+   * @param userDataDir The isolated userData directory.
+   */
+  write(userDataDir: string): void;
+}
+
+/**
  * Provides the per-suite options tests can set through `test.use(...)`.
  */
 interface StudioOptions {
@@ -78,6 +89,15 @@ interface StudioOptions {
    * wizard over and over while testing nothing else any better.
    */
   readonly runSetupWizard: boolean;
+
+  /**
+   * Writes whatever else a suite needs into the isolated userData directory before launch — an install
+   * record and the payload it points at, for instance — or undefined for nothing. A function rather
+   * than another flag, because what an install looks like on disk is the suite's subject, not the
+   * fixture's. Wrapped in an object because Playwright reads a bare function passed to `test.use` as a fixture
+   * of its own rather than as a value.
+   */
+  readonly seedUserData: UserDataSeed | undefined;
 }
 
 /**
@@ -95,6 +115,7 @@ export const test: TestType<
   sideloadEngine: [undefined, { option: true }],
   sideloadAdapter: [undefined, { option: true }],
   runSetupWizard: [false, { option: true }],
+  seedUserData: [undefined, { option: true }],
   app: async (
     {
       trustedPaths,
@@ -102,12 +123,14 @@ export const test: TestType<
       sideloadEngine,
       sideloadAdapter,
       runSetupWizard,
+      seedUserData,
     }: {
       trustedPaths: readonly string[] | undefined;
       sideloadPlugins: readonly string[] | undefined;
       sideloadEngine: string | undefined;
       sideloadAdapter: string | undefined;
       runSetupWizard: boolean;
+      seedUserData: UserDataSeed | undefined;
     },
     use: (app: ElectronApplication) => Promise<void>,
   ): Promise<void> => {
@@ -124,6 +147,7 @@ export const test: TestType<
     if (sideloadAdapter !== undefined) {
       seedAdapterPlugin(userDataDir, sideloadAdapter);
     }
+    seedUserData?.write(userDataDir);
     const app: ElectronApplication = await electron.launch({
       args: [
         '.',

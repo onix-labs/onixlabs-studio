@@ -35,6 +35,64 @@ export enum ContainerChannel {
   Remove = 'container:remove',
 
   /**
+   * Reads a container's most recent log lines by id and how many (invoke), answered with
+   * `ContainerLogs` (#973). Logs come through the engine's own plugin, not a terminal.
+   */
+  Logs = 'container:logs',
+
+  /**
+   * Samples the resource use of running containers by id (invoke), answered with `ContainerStats[]`
+   * (#974).
+   */
+  Stats = 'container:stats',
+
+  /**
+   * Lists the volumes (invoke), answered with `VolumeSummary[]` (#974).
+   */
+  ListVolumes = 'container:list-volumes',
+
+  /**
+   * Removes a volume by name (invoke); resolves true on success (#974).
+   */
+  RemoveVolume = 'container:remove-volume',
+
+  /**
+   * Pauses a container by id (invoke); resolves true on success (#974).
+   */
+  Pause = 'container:pause',
+
+  /**
+   * Resumes a paused container by id (invoke); resolves true on success (#974).
+   */
+  Unpause = 'container:unpause',
+
+  /**
+   * Restarts a container by id (invoke); resolves true on success (#974).
+   */
+  Restart = 'container:restart',
+
+  /**
+   * Removes an image by id and whether to force it (invoke); resolves true on success (#974).
+   */
+  RemoveImage = 'container:remove-image',
+
+  /**
+   * Downloads an image by reference (invoke), answered once it has finished with
+   * `{ ok, error? }`; its progress arrives on {@link PullProgress} meanwhile (#974).
+   */
+  PullImage = 'container:pull-image',
+
+  /**
+   * Pushes how far an image download has got to the renderer (main→renderer, #974).
+   */
+  PullProgress = 'container:pull-progress',
+
+  /**
+   * Creates a container from an image and starts it (invoke), answered with `{ id?, error? }` (#974).
+   */
+  Run = 'container:run',
+
+  /**
    * Reports whether the container engine is reachable, and its version when it is (invoke).
    */
   Status = 'container:status',

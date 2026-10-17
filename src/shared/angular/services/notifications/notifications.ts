@@ -1,5 +1,15 @@
-import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  inject,
+  Service,
+  Signal,
+  signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { DesktopNotifications } from './desktop-notifications';
 
 /**
  * The maximum number of toasts held at once. An arrival beyond the cap evicts the oldest transient
@@ -85,6 +95,19 @@ export interface NotificationRequest {
    * Gets where the notification surfaces, or undefined for the default (toast and history both).
    */
   readonly route?: NotificationRoute;
+
+  /**
+   * Gets whether the notification also goes to the operating system's notification centre while
+   * Studio is in the background (#927): finished or failed work the user may be waiting on, rather
+   * than every passing message. Errors always do; undefined means no for everything else.
+   */
+  readonly desktop?: boolean;
+
+  /**
+   * Brings what the notification is about into view, run when its desktop notification is clicked —
+   * the tab whose agent finished, say. Undefined when bringing Studio forward is enough.
+   */
+  readonly reveal?: () => void;
 }
 
 /**
@@ -149,6 +172,21 @@ export class Notifications {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings, read for what still pops up while muted.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the bridge to the operating system's notification centre.
+   */
+  private readonly desktop: DesktopNotifications = inject(DesktopNotifications);
+
+  /**
+   * Holds whether notifications are muted. Session-only by design: Studio starts unmuted every launch.
+   */
+  private readonly mutedSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the identifier the next notification is assigned.
    */
   private nextId: number = 1;
@@ -186,6 +224,12 @@ export class Notifications {
   public readonly history: Signal<readonly Notification[]> = this.historySignal.asReadonly();
 
   /**
+   * Gets whether notifications are muted: while they are, a notification goes to the tray without
+   * popping up, unless it is an error and the "When muted" setting lets errors through.
+   */
+  public readonly muted: Signal<boolean> = this.mutedSignal.asReadonly();
+
+  /**
    * Gets the number of notifications raised since the centre was last opened.
    */
   public readonly unseenCount: Signal<number> = computed(
@@ -213,10 +257,17 @@ export class Notifications {
       sticky: request.sticky ?? request.severity === 'error',
       timestamp: Date.now(),
     };
-    if (route !== 'history-only') {
+    if (route !== 'history-only' && !this.silenced(notification.severity)) {
       this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
         this.insert(current, notification),
       );
+    }
+    // Muted means quiet everywhere: what would not pop up in Studio does not pop up on the desktop.
+    if (
+      (request.desktop === true || notification.severity === 'error') &&
+      !this.silenced(notification.severity)
+    ) {
+      this.desktop.show(notification.title, notification.detail, request.reveal);
     }
     if (route !== 'toast-only') {
       this.historySignal.update((current: readonly Notification[]): readonly Notification[] =>
@@ -228,6 +279,38 @@ export class Notifications {
       `Raised ${notification.severity} notification: ${notification.title}`,
       route,
     );
+  }
+
+  /**
+   * Mutes or unmutes notifications for the rest of the session. Muting also withdraws the toasts
+   * showing that would not have popped up while muted; their tray entries stay.
+   * @param muted Whether to mute.
+   */
+  public setMuted(muted: boolean): void {
+    this.mutedSignal.set(muted);
+    this.log.info('Notifications', muted ? 'Notifications muted' : 'Notifications unmuted');
+    if (muted) {
+      this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
+        current.filter((toast: Notification): boolean => !this.silenced(toast.severity)),
+      );
+    }
+  }
+
+  /**
+   * Gets whether a notification of a severity is kept from popping up: only while muted, and then
+   * everything except errors when the "When muted" setting lets errors through.
+   * @param severity The notification's severity.
+   * @returns Returns true when it should go to the tray only.
+   */
+  private silenced(severity: NotificationSeverity): boolean {
+    // Untracked: notifications are raised from inside effects, which must not come to depend on the
+    // mute state through the call.
+    return untracked((): boolean => {
+      if (!this.mutedSignal()) {
+        return false;
+      }
+      return !(severity === 'error' && this.settings.get('notifications.whenMuted') === 'errors');
+    });
   }
 
   /**

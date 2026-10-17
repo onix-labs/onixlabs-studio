@@ -7,6 +7,7 @@ import { emojiPlugin } from './emoji-plugin';
 import { footnotePlugin } from './footnote-plugin';
 import { githubAlertPlugin } from './github-alert-plugin';
 import { htmlImagePlugin } from './html-image-plugin';
+import { imageTitlePlugin } from './image-title-plugin';
 import { fileToDataUrl } from './media-source';
 import { mermaidPlugin } from './mermaid-plugin';
 import { createMonacoCodeBlockPlugin, MonacoCodeBlockDeps } from './monaco-code-block-plugin';
@@ -90,6 +91,7 @@ export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
   );
   crepe.editor.use(subscriptSuperscriptPlugin);
   crepe.editor.use(htmlImagePlugin);
+  crepe.editor.use(imageTitlePlugin);
   crepe.editor.use(collapsePlugin);
   crepe.editor.use(githubAlertPlugin);
   crepe.editor.use(colorPreviewPlugin);

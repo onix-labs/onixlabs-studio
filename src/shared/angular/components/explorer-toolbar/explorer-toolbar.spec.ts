@@ -67,4 +67,14 @@ describe('ExplorerToolbar', () => {
 
     expect(collapsed).toBe(1);
   });
+
+  it('moreActions_isShownOnlyWhenThePanelHasCommands (#882)', () => {
+    // No inert "No actions yet" menu: a panel without commands shows no menu button at all.
+    fixture.detectChanges();
+    expect(host.querySelector('[aria-label="More Actions"]')).toBeNull();
+
+    fixture.componentRef.setInput('moreItems', [{ id: 'new', label: 'New File' }]);
+    fixture.detectChanges();
+    expect(host.querySelector('[aria-label="More Actions"]')).not.toBeNull();
+  });
 });

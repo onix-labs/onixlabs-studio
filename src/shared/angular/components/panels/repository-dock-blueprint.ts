@@ -44,7 +44,6 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.SOURCE_CONTROL,
       role: 'tool',
       component: SourceControlSidebar,
-      ownsToolStrip: true,
     },
     {
       id: 'history',
@@ -59,7 +58,6 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.LIST_ALL,
       role: 'tool',
       component: CommitDetail,
-      ownsToolStrip: true,
     },
     {
       id: 'agent',
@@ -67,7 +65,6 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.AGENT,
       role: 'tool',
       component: AgentPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'terminal',
@@ -75,7 +72,6 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
-      ownsToolStrip: true,
     },
   ],
 };

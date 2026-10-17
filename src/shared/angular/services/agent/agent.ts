@@ -8,9 +8,12 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AgentControls, AgentPhase, agentControls, agentPhase } from './agent-controls';
+import type { ProposedDiff } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
+import { ProposedChanges } from './proposed-changes';
 import type {
   AgentContextRef,
   AgentMode,
+  AiConnection,
   AgentSurface,
   AiEditDecision,
   AiEffort,
@@ -18,8 +21,10 @@ import type {
   AiSlashCommand,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiModelInfo,
   AiPermissionRemember,
+  AiProposedChange,
   AiProviderId,
   AiProviderInfo,
   AiRemoteControlMode,
@@ -28,6 +33,7 @@ import type {
   AiTaskStartedEvent,
   AiTaskUpdatedEvent,
 } from '@shared/api/ai-types';
+import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Log } from '@shared/angular/services/log/log';
@@ -37,16 +43,15 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
-import {
-  PromptProfiles,
-  ResolvedPrompts,
-} from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { AGENT_RUN_OWNER } from './agent-run-owner';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
+import { startingModel } from '@shared/angular/services/agent-engine/engine-options';
 
 /**
  * How long, in milliseconds, streamed text deltas are buffered before they are folded into the
@@ -102,8 +107,14 @@ export type AgentItemKind =
   | 'permission'
   | 'input-request'
   | 'edit-decision'
+  | 'workspace-proposal'
   | 'error'
   | 'notice';
+
+/**
+ * Identifies where a workspace proposal stands (#876): waiting for the user, made, or put aside.
+ */
+export type AgentProposalState = 'pending' | 'created' | 'dismissed';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -302,6 +313,12 @@ export interface AgentItem {
   readonly permissionRemember?: AiPermissionRemember;
 
   /**
+   * Gets the change a permission to edit or write a file would make, worked out when the request
+   * arrived (#891), or undefined for a permission that changes no file.
+   */
+  readonly permissionDiff?: ProposedDiff;
+
+  /**
    * Gets the id used to answer an input request (an agent question).
    */
   readonly inputId?: string;
@@ -317,9 +334,39 @@ export interface AgentItem {
   readonly inputChoices?: readonly AiInputChoice[];
 
   /**
+   * Gets how many of the suggested answers the user may pick, or undefined for one.
+   */
+  readonly inputSelection?: AiInputSelection;
+
+  /**
    * Gets the input request's state.
    */
   readonly inputState?: AgentInputState;
+
+  /**
+   * Gets the name the agent suggests for the project's folder (workspace proposals only, #876).
+   */
+  readonly proposalName?: string;
+
+  /**
+   * Gets what the project is, in a line or two (workspace proposals only, when the agent said).
+   */
+  readonly proposalSummary?: string;
+
+  /**
+   * Gets the handoff the workspace's agent starts from, as Markdown (workspace proposals only).
+   */
+  readonly proposalHandoff?: string;
+
+  /**
+   * Gets where the proposal stands (workspace proposals only).
+   */
+  readonly proposalState?: AgentProposalState;
+
+  /**
+   * Gets where the project was made (created workspace proposals only).
+   */
+  readonly proposalPath?: string;
 
   /**
    * Gets the answer the user gave (answered input requests only).
@@ -529,6 +576,13 @@ export class Agent {
   );
 
   /**
+   * Gets the name of the connection this conversation's runs go through, or null before providers load.
+   */
+  public readonly providerLabel: Signal<string | null> = computed(
+    (): string | null => this.providerInfo()?.label ?? null,
+  );
+
+  /**
    * Gets the models offered by this conversation's effective provider, in display order.
    */
   public readonly models: Signal<readonly AiModelInfo[]> = computed(
@@ -551,7 +605,7 @@ export class Agent {
     if (this.providerOverride() === null) {
       return this.engine.model();
     }
-    return this.providerInfo()?.defaultModelId ?? '';
+    return startingModel(this.providerInfo());
   });
 
   /**
@@ -600,6 +654,14 @@ export class Agent {
   );
 
   /**
+   * Holds the host's run-owner resolver, when the host provides one (see {@link AGENT_RUN_OWNER}); it
+   * overrides whatever owner a caller passes, so every way into this agent names the same owner.
+   */
+  private readonly runOwnerResolver: (() => string) | null = inject(AGENT_RUN_OWNER, {
+    optional: true,
+  });
+
+  /**
    * Holds the settings service, the source of the run's permission posture and token cap.
    */
   private readonly settings: Settings = inject(Settings);
@@ -642,6 +704,11 @@ export class Agent {
    * Holds the structured logger.
    */
   private readonly logger: Log = inject(Log);
+
+  /**
+   * Holds the service that works out what a proposed file change would do (#891).
+   */
+  private readonly proposedChanges: ProposedChanges = inject(ProposedChanges);
 
   /**
    * Holds the transcript-performance probe (GitHub #408 instrumentation), notified each time the stream
@@ -836,11 +903,29 @@ export class Agent {
   private pendingContextSeed: string | null = null;
 
   /**
+   * Holds the conversation's brief: standing instructions Studio gives every turn of this conversation
+   * alone, on top of the user's prompt profiles — what a new project is, and the starter skill it began
+   * from (#806). Null for an ordinary conversation; a new chat or a restored one drops it.
+   */
+  private briefText: string | null = null;
+
+  /**
    * Holds the tokens the conversation currently occupies in the context window: the latest turn's
    * input (the whole re-sent conversation) plus its output. Zero for a fresh conversation and after a
    * compaction, refilling on the next turn.
    */
   private readonly contextTokensState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the context window each model actually ran with, by model id, as the provider reported it
+   * with a turn's usage. A fact about the model rather than the conversation, so it survives clearing
+   * and restoring; and it outranks the model list's figure, which many providers do not state at all
+   * (Opus 5.5 is listed as plain `opus`, with nothing to say it has a 1M window). It is never written
+   * back to the model list: that shows only what a provider states up front.
+   */
+  private readonly reportedWindowsState: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
 
   /**
    * Accumulates the conversation's cost in US dollars across its turns, when the provider reports it
@@ -991,17 +1076,37 @@ export class Agent {
 
   /**
    * Gets the selected model's context window in tokens (the readout's denominator), or zero when it is
-   * unknown. Sourced from this conversation's own effective model.
+   * unknown. Sourced from this conversation's own effective model: the window it last reported running
+   * with, else the figure its provider states in the model list. Unknown shows the token count alone,
+   * with no percentage, rather than a percentage of a guess.
    */
   public readonly contextWindow: Signal<number> = computed((): number => {
     const id: string = this.model();
-    return this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ?? 0;
+    return (
+      this.reportedWindowsState().get(id) ??
+      this.models().find((model: AiModelInfo): boolean => model.id === id)?.contextWindow ??
+      0
+    );
   });
 
   /**
    * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.
    */
   public readonly costUsd: Signal<number> = this.costUsdState.asReadonly();
+
+  /**
+   * Gets whether this conversation's connection is billed by the token — an API key — so its cost is
+   * money spent. A subscription login is a flat fee: a provider may still report what a turn would have
+   * cost at API prices (Claude does), but nothing is charged for it, so a surface showing spend reads
+   * this before {@link costUsd} (#882).
+   */
+  public readonly billedPerToken: Signal<boolean> = computed(
+    (): boolean =>
+      this.settings
+        .aiConnections()
+        .find((connection: AiConnection): boolean => connection.id === this.provider())?.auth ===
+      API_KEY_AUTH,
+  );
 
   /**
    * Gets a value indicating whether the agent is waiting on the user: a permission decision or an
@@ -1111,6 +1216,25 @@ export class Agent {
     }
     this.push({ kind: 'user', text: trimmed, ...(images.length === 0 ? {} : { images }) });
     this.startRun(trimmed, owningTabId, surface, images);
+  }
+
+  /**
+   * Sends a user message once the providers have loaded — for a message sent the moment a conversation
+   * opens, before anything could have loaded them (#806). Otherwise the same as {@link send}.
+   * @param text The user's message.
+   * @param owningTabId The owning tab (as for {@link send}).
+   * @param surface The run surface (as for {@link send}).
+   * @param images The images attached to the message.
+   * @returns Resolves once the message has been sent.
+   */
+  public async sendWhenReady(
+    text: string,
+    owningTabId?: string,
+    surface?: AgentSurface,
+    images: readonly AiImageRef[] = [],
+  ): Promise<void> {
+    await this.engine.whenLoaded;
+    this.send(text, owningTabId, surface, images);
   }
 
   /**
@@ -1313,24 +1437,23 @@ export class Agent {
       seed === null
         ? prompt
         : `Summary of the conversation so far, for context:\n\n${seed}\n\n---\n\n${prompt}`;
-    // The user's standing layers (#300): resolved here, where the surface and the owning document's
-    // language are both known, and threaded through the run as two strings so core applies them in
-    // one place for every harness.
+    // The user's standing instructions (#300): resolved here, where the surface and the owning
+    // document's language are both known, and threaded through the run as one string so core applies
+    // it in one place for every harness.
     const language: string | undefined = this.languageSource?.();
-    const standing: ResolvedPrompts = this.promptProfiles.resolve(
-      surface ?? 'editor',
-      language ?? null,
-    );
+    const standing: string = this.promptProfiles.resolve(surface ?? 'editor', language ?? null);
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
       ...(language === undefined ? {} : { language }),
-      systemPromptExtra: standing.system,
-      userPromptExtra: standing.user,
+      systemPromptExtra: [standing, this.briefText ?? '']
+        .filter((layer: string): boolean => layer.trim().length > 0)
+        .join('\n\n'),
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),
       toolPolicies: this.settings.aiToolPolicies(),
+      blockHostCommandLine: this.settings.aiBlockHostCommandLine(),
       allowedWritePaths: this.settings.aiAllowedWritePaths(),
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
       allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
@@ -1343,7 +1466,7 @@ export class Agent {
       },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
-      owningTabId,
+      owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
@@ -1592,6 +1715,7 @@ export class Agent {
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.briefText = null;
     this.resetAgentSession();
     this.discardStream();
     this.log.set([]);
@@ -1602,6 +1726,16 @@ export class Agent {
     this.contextTokensState.set(0);
     this.costUsdState.set(0);
     this.queueState.set([]);
+  }
+
+  /**
+   * Gives this conversation a brief: standing instructions sent with every turn, alongside the user's
+   * prompt profiles, until a new chat or a restored conversation replaces it.
+   * @param text The brief, or null for none.
+   */
+  public setBrief(text: string | null): void {
+    this.briefText = text === null || text.trim().length === 0 ? null : text;
+    this.logger.info('Agent', this.briefText === null ? 'Brief cleared' : 'Brief set');
   }
 
   /**
@@ -1620,6 +1754,7 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.briefText = null;
     this.resetAgentSession();
     this.activeRequestId = null;
     this.busy.set(false);
@@ -1662,6 +1797,23 @@ export class Agent {
         };
       }),
     );
+  }
+
+  /**
+   * Records where a workspace proposal ended up (#876): made, at its path, or put aside.
+   * @param item The proposal.
+   * @param state Where it stands now.
+   * @param path Where the project was made, when it was.
+   */
+  public settleProposal(item: AgentItem, state: 'created' | 'dismissed', path?: string): void {
+    if (item.kind !== 'workspace-proposal' || item.proposalState !== 'pending') {
+      return;
+    }
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      proposalState: state,
+      ...(path === undefined ? {} : { proposalPath: path }),
+    }));
   }
 
   /**
@@ -1902,6 +2054,19 @@ export class Agent {
           permissionState: 'pending',
           permissionHasWorkspace: event.hasWorkspace,
         });
+        if (event.change !== undefined) {
+          this.attachProposedDiff(event.permissionId, event.change);
+        }
+        break;
+      case 'workspace-proposal':
+        this.push({
+          kind: 'workspace-proposal',
+          text: '',
+          proposalName: event.name,
+          ...(event.summary === undefined ? {} : { proposalSummary: event.summary }),
+          proposalHandoff: event.handoff,
+          proposalState: 'pending',
+        });
         break;
       case 'input-request':
         this.push({
@@ -1910,6 +2075,7 @@ export class Agent {
           inputId: event.inputId,
           inputQuestion: event.question,
           inputChoices: event.choices,
+          ...(event.selection === undefined ? {} : { inputSelection: event.selection }),
           inputState: 'pending',
         });
         break;
@@ -1944,6 +2110,7 @@ export class Agent {
         // size rather than adding to a running total. Cost, in contrast, accumulates. Compaction-run
         // usage never reaches here (handled and returned above), so the meter is not spiked by it.
         this.contextTokensState.set(event.inputTokens + event.outputTokens);
+        this.noteReportedWindow(event.contextWindow);
         const cost: number | null = event.costUsd;
         if (cost !== null) {
           this.costUsdState.update((total: number): number => total + cost);
@@ -1957,6 +2124,21 @@ export class Agent {
       default:
         break;
     }
+  }
+
+  /**
+   * Records the context window the current model reported running with, when it reported one.
+   * @param window The reported window in tokens, or undefined.
+   */
+  private noteReportedWindow(window: number | undefined): void {
+    const id: string = this.model();
+    if (window === undefined || window <= 0 || this.reportedWindowsState().get(id) === window) {
+      return;
+    }
+    this.reportedWindowsState.update(
+      (windows: ReadonlyMap<string, number>): ReadonlyMap<string, number> =>
+        new Map<string, number>(windows).set(id, window),
+    );
   }
 
   /**
@@ -2130,6 +2312,9 @@ export class Agent {
       actions,
       key: `agent:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
+      // Seen on the desktop while the user is elsewhere, watching or not (#927).
+      desktop: true,
+      ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
 
@@ -2185,6 +2370,9 @@ export class Agent {
       actions,
       key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
+      // Seen on the desktop while the user is elsewhere, watching or not (#927).
+      desktop: true,
+      ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
 
@@ -2719,6 +2907,34 @@ export class Agent {
           : item,
       ),
     );
+  }
+
+  /**
+   * Works out the change a permission prompt proposes and puts it on the prompt (#891), once the file
+   * has been read. Worked out now rather than when the card draws, so a conversation reopened later
+   * shows what was asked, not a diff against whatever the file has since become.
+   * @param permissionId The prompt's permission id.
+   * @param change The change it proposes.
+   */
+  private attachProposedDiff(permissionId: string, change: AiProposedChange): void {
+    void this.proposedChanges.diffOf(change).then((diff: ProposedDiff): void => {
+      this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+        items.map((item: AgentItem): AgentItem =>
+          item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
+        ),
+      );
+    });
+  }
+
+  /**
+   * Adds a notice to the transcript: Studio speaking about its own machinery, never the agent. A host
+   * uses it for what the user should know about the conversation itself — that a tool view's agent
+   * sends what it reads to the provider, for instance (#966).
+   * @param text The notice's headline.
+   * @param detail The longer explanation, if any.
+   */
+  public note(text: string, detail?: string): void {
+    this.push({ kind: 'notice', text, ...(detail === undefined ? {} : { detail }), sealed: true });
   }
 
   /**

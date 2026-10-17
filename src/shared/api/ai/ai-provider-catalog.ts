@@ -178,7 +178,7 @@ export function modelsForKind(
         continue;
       }
       seen.add(model.id);
-      models.push({ id: model.id, label: model.label, contextWindow: model.contextWindow });
+      models.push({ id: model.id, label: model.label });
     }
   }
   return models;

@@ -42,6 +42,7 @@ const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
   code: 'Code Files',
   markdown: 'Markdown Files',
   binary: 'Binary Files',
+  image: 'Images',
   'api-explorer': 'API Explorers',
   terminal: 'Terminals',
   agent: 'Agents',

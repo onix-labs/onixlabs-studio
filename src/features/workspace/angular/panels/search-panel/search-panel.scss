@@ -1,0 +1,179 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.search-panel__strip {
+  flex: 0 0 auto;
+}
+
+// A toggle is the shared tool-strip button at the CONTROL height, as the Terminal's tabs are, rather than
+// the button's own 1.5rem — so this strip's controls stand as tall as the Solution Explorer's and the
+// Terminal's, whose buttons are control atoms.
+.search-panel__toggle {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  block-size: var(--control-height);
+  white-space: nowrap;
+}
+
+.search-panel__toggle app-icon {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+}
+
+// In a narrow panel the strip runs out of room before its buttons do: the labels give way, ending in
+// an ellipsis, rather than spilling out of their buttons over the next one. The icons stay whole.
+.search-panel__toggle span {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The chosen form, under the strip. It owns its text size, as the strips do: dense chrome whose
+// controls must not inherit the panel's body size.
+.search-panel__form {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.5rem;
+  border-block-end: 1px solid var(--dock-border-color);
+  font-size: 0.8rem;
+}
+
+// Layout only: how a field is drawn belongs to `app-text-field`.
+.search-panel__field {
+  min-inline-size: 0;
+}
+
+// The field spans the form: a text field sizes to its content unless its host is told otherwise.
+.search-panel__input {
+  display: block;
+  inline-size: 100%;
+}
+
+.search-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+
+.search-panel__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: default;
+}
+
+.search-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// The summary takes the room to the left, so the buttons sit at the end.
+.search-panel__summary {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+}
+
+// The results: the shared tree fills what the form leaves, and scrolls itself. Its text is the
+// explorers' — the dock's tab foreground, which an unchanged file in the File and Solution Explorers is
+// drawn in — so a file reads the same in the results as it does in the tree beside it, in either theme.
+.search-panel__results {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+}
+
+// A match row's line number, in the column a file row's icon takes.
+.search-panel__match-line {
+  flex: 0 0 auto;
+  min-inline-size: 1.5rem;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  text-align: end;
+}
+
+// The line, as code, laid out so the MATCH is what stays in view. A row is one line, and as plain text
+// the ellipsis fell wherever the line ran out — often on the very word searched for. As a row of three,
+// the match never shrinks: the text after it gives way first, then the text before it, each with its
+// own ellipsis.
+.search-panel__match-preview {
+  display: flex;
+  align-items: center;
+  font-family: var(--code-font-family, monospace);
+  font-size: 0.85rem;
+}
+
+.search-panel__match-before,
+.search-panel__match-after {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.search-panel__match-before {
+  flex: 0 1 auto;
+}
+
+// Far readier to give way than the lead-in, so the text after a match goes first.
+.search-panel__match-after {
+  flex: 0 100 auto;
+}
+
+.search-panel__match-text,
+.search-panel__match-removed,
+.search-panel__match-added {
+  flex: 0 0 auto;
+  white-space: pre;
+}
+
+// The matched text, set off as a chip: a little room either side, the app's corner rules, and a border
+// in the accent over its tint. The replace preview's two halves take the same shape in their own tones.
+@mixin match-chip {
+  padding: 0 0.25rem;
+  border: 0.0625rem solid;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.search-panel__match-text {
+  @include match-chip;
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 40%, transparent);
+}
+
+// The replace form's preview: what goes, struck through, and what comes, beside it.
+.search-panel__match-removed {
+  @include match-chip;
+  border-color: var(--danger-color);
+  background: color-mix(in srgb, var(--danger-color) 25%, transparent);
+  text-decoration: line-through;
+}
+
+.search-panel__match-added {
+  @include match-chip;
+  border-color: var(--success-color);
+  background: color-mix(in srgb, var(--success-color) 25%, transparent);
+  text-decoration: none;
+}
+
+.search-panel__overflow {
+  flex: 0 0 auto;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}

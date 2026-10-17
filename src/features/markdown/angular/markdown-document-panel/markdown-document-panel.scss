@@ -12,9 +12,7 @@
   min-height: 0;
 }
 
-.document-panel__toolstrip {
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-}
+// No line beneath the strip (#882): no workspace panel's tool strip has one.
 
 .document-panel__editor {
   flex: 1 1 auto;

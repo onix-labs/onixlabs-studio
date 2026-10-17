@@ -46,6 +46,11 @@ export enum WorktreeChannel {
   RemoveCheckout = 'worktree:remove-checkout',
 
   /**
+   * Renames a registered checkout: sets its display alias (invoke).
+   */
+  RenameCheckout = 'worktree:rename-checkout',
+
+  /**
    * Registers a container's checkout directory as an open workspace root, so the per-checkout view
    * can use the root-confined surfaces (studio persistence, git, watchers) exactly like an
    * ordinarily-opened workspace (invoke).
@@ -54,7 +59,7 @@ export enum WorktreeChannel {
 
   /**
    * Reads every registered checkout's lightweight status — branch, changed-entry count, and
-   * ahead/behind — for the Worktrees panel (invoke).
+   * ahead/behind, and its local branches — for the Repository panel's worktrees (invoke).
    */
   Status = 'worktree:status',
 
@@ -63,6 +68,18 @@ export enum WorktreeChannel {
    * checkout, for the New Worktree branch picker (invoke).
    */
   Branches = 'worktree:branches',
+
+  /**
+   * Deletes a local branch in one registered checkout, which need not be the one the view is on: each
+   * checkout is a clone of its own (invoke).
+   */
+  DeleteBranch = 'worktree:delete-branch',
+
+  /**
+   * Creates a local branch in one registered checkout, which need not be the one the view is on
+   * (invoke).
+   */
+  CreateBranch = 'worktree:create-branch',
 }
 
 /**
@@ -114,6 +131,47 @@ export interface WorktreeClient {
    * @returns Returns a null value on success, or the failure reason.
    */
   removeCheckout(root: string, id: string): Promise<WorktreeOutcome<null>>;
+
+  /**
+   * Renames a registered checkout: sets its display alias.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The checkout id to rename.
+   * @param alias The new alias.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  renameCheckout(root: string, id: string, alias: string): Promise<WorktreeOutcome<null>>;
+
+  /**
+   * Deletes a local branch in a registered checkout. A branch the checkout has checked out is
+   * refused, and an unforced delete of a branch with unmerged commits fails coded
+   * `branch-not-merged`.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The checkout id.
+   * @param name The branch to delete.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  deleteBranch(
+    root: string,
+    id: string,
+    name: string,
+    force: boolean,
+  ): Promise<WorktreeOutcome<null>>;
+
+  /**
+   * Creates a local branch in a registered checkout, at that checkout's head.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The checkout id.
+   * @param name The branch to create.
+   * @param checkout Whether to check it out in that checkout.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  createBranch(
+    root: string,
+    id: string,
+    name: string,
+    checkout: boolean,
+  ): Promise<WorktreeOutcome<null>>;
 
   /**
    * Registers a checkout's directory as an open workspace root, returning its absolute path.

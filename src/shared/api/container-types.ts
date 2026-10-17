@@ -36,6 +36,170 @@ export interface ContainerSummary {
    * The human-readable status line (for example `Up 3 minutes`).
    */
   readonly status: string;
+
+  /**
+   * The ports the container publishes, or undefined from a plugin that does not report them (#974).
+   */
+  readonly ports?: readonly ContainerPort[];
+
+  /**
+   * When the container was created, in seconds since the epoch, or undefined when not reported.
+   */
+  readonly created?: number;
+
+  /**
+   * The names of the volumes the container mounts, or undefined when not reported.
+   */
+  readonly volumes?: readonly string[];
+}
+
+/**
+ * One port a container exposes, and where on the host it is published (#974).
+ */
+export interface ContainerPort {
+  /**
+   * The port inside the container.
+   */
+  readonly privatePort: number;
+
+  /**
+   * The port on the host it is published on, or undefined when it is exposed but not published.
+   */
+  readonly publicPort?: number;
+
+  /**
+   * The protocol: `tcp`, `udp` or `sctp`.
+   */
+  readonly protocol: string;
+
+  /**
+   * The host address it is bound to, or undefined for every address.
+   */
+  readonly ip?: string;
+}
+
+/**
+ * A running container's resource use, as sampled once (#974).
+ */
+export interface ContainerStats {
+  /**
+   * The container id.
+   */
+  readonly id: string;
+
+  /**
+   * The share of the host's CPU the container used, as a percentage of one core times the cores.
+   */
+  readonly cpuPercent: number;
+
+  /**
+   * The memory the container uses, in bytes.
+   */
+  readonly memoryBytes: number;
+
+  /**
+   * The most memory the container may use, in bytes.
+   */
+  readonly memoryLimitBytes: number;
+}
+
+/**
+ * A volume the engine holds (#974).
+ */
+export interface VolumeSummary {
+  /**
+   * The volume's name.
+   */
+  readonly name: string;
+
+  /**
+   * The driver that stores it.
+   */
+  readonly driver: string;
+
+  /**
+   * When it was created, as an ISO-8601 string, or empty when not reported.
+   */
+  readonly createdAt: string;
+
+  /**
+   * Whether the engine made it for a container that did not name one.
+   */
+  readonly anonymous: boolean;
+}
+
+/**
+ * What to run a new container with (#974).
+ */
+export interface RunContainerRequest {
+  /**
+   * The image to run, by reference (`postgres:16`).
+   */
+  readonly image: string;
+
+  /**
+   * The container's name, or undefined to let the engine choose one.
+   */
+  readonly name?: string;
+
+  /**
+   * The ports to publish.
+   */
+  readonly ports?: readonly {
+    readonly host: number;
+    readonly container: number;
+    readonly protocol?: 'tcp' | 'udp';
+  }[];
+
+  /**
+   * The environment variables to set.
+   */
+  readonly env?: Readonly<Record<string, string>>;
+
+  /**
+   * The volumes or host folders to mount: a source (a volume name or an absolute host path) at a
+   * target path inside the container.
+   */
+  readonly volumes?: readonly {
+    readonly source: string;
+    readonly target: string;
+    readonly readOnly?: boolean;
+  }[];
+}
+
+/**
+ * How far an image download has got (#974).
+ */
+export interface ImagePullProgress {
+  /**
+   * The image being pulled.
+   */
+  readonly reference: string;
+
+  /**
+   * What the engine says it is doing.
+   */
+  readonly status: string;
+
+  /**
+   * The bytes downloaded so far across the image's layers, when known.
+   */
+  readonly current?: number;
+
+  /**
+   * The bytes to download across the layers seen so far, when known.
+   */
+  readonly total?: number;
+
+  /**
+   * Whether the pull has finished, successfully or not.
+   */
+  readonly done: boolean;
+
+  /**
+   * Why it failed, when it did.
+   */
+  readonly error?: string;
 }
 
 /**
@@ -128,10 +292,11 @@ export interface ContainerEngineInfo {
   readonly inEffect: boolean;
 
   /**
-   * Gets the command-line tool that drives this engine, used for the operations that are a terminal
-   * session rather than an API call — following logs, opening a shell in a container.
+   * Gets the engine's command-line tool on this machine, by absolute path, for the operations that are
+   * a terminal session — a shell in a container — or null when it is not installed, in which case
+   * those operations are not offered (#973).
    */
-  readonly cli: string;
+  readonly cli: string | null;
 
   /**
    * Gets the command the user runs to start the engine themselves on this platform, or null when there

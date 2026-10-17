@@ -227,12 +227,18 @@ export class NodeProjectSystem implements ProjectSystem {
       path.join(root, MANIFEST),
     );
     const main: string = typeof manifest?.['main'] === 'string' ? manifest['main'] : DEFAULT_ENTRY;
-    const program: string = path.resolve(
-      root,
-      configuration.program !== undefined && configuration.program.length > 0
-        ? configuration.program
-        : main,
-    );
+    // A configuration says how it RUNS — `node --inspect=9229 src/main.ts` — so its program may be the
+    // runtime rather than the script (#882). Read it that way: the script is the first argument that
+    // is not a flag, the flags before it go to the runtime, and the debugger's own inspector replaces
+    // any the configuration asked for.
+    const command: NodeCommand = splitNodeCommand(configuration.program, configuration.args ?? []);
+    if (command.runtime !== undefined && command.script === undefined) {
+      return {
+        target: null,
+        error: `"${configuration.name}" runs ${command.runtime} without naming a script to debug.`,
+      };
+    }
+    const program: string = path.resolve(root, command.script ?? main);
     // Confine the launch to the open workspace: the program originates from renderer-supplied
     // configuration, so a hostile one must not point the debugger outside the root.
     if (program !== root && !program.startsWith(path.resolve(root) + path.sep)) {
@@ -247,6 +253,15 @@ export class NodeProjectSystem implements ProjectSystem {
       target: {
         program,
         cwd: configuration.cwd !== undefined ? path.resolve(root, configuration.cwd) : root,
+        ...(command.runtime === undefined
+          ? {}
+          : {
+              args: command.scriptArgs,
+              launchExtras: {
+                runtimeExecutable: command.runtime,
+                runtimeArgs: command.runtimeArgs,
+              },
+            }),
       },
       error: null,
     };
@@ -413,4 +428,102 @@ export class NodeProjectSystem implements ProjectSystem {
     }
     return projects;
   }
+}
+
+/**
+ * A Node command line read for debugging: the runtime, when the configuration names one, and the script
+ * it runs, with the arguments split between them.
+ */
+export interface NodeCommand {
+  /**
+   * Gets the runtime the configuration runs (for example `node`), or undefined when its program is
+   * the script itself.
+   */
+  readonly runtime?: string;
+
+  /**
+   * Gets the flags for the runtime, without any inspector flag — the debugger attaches its own.
+   */
+  readonly runtimeArgs: readonly string[];
+
+  /**
+   * Gets the script to debug, relative to the root, or undefined when the configuration names none.
+   */
+  readonly script?: string;
+
+  /**
+   * Gets the arguments for the script.
+   */
+  readonly scriptArgs: readonly string[];
+}
+
+/**
+ * The runtimes a configuration's program may name rather than naming its script.
+ */
+const NODE_RUNTIMES: ReadonlySet<string> = new Set<string>(['node', 'nodejs']);
+
+/**
+ * The runtime flags that take their value as the next argument, so the value is not mistaken for the
+ * script.
+ */
+const FLAGS_WITH_A_VALUE: ReadonlySet<string> = new Set<string>([
+  '-r',
+  '--require',
+  '--import',
+  '--loader',
+  '--experimental-loader',
+  '--env-file',
+  '-C',
+  '--conditions',
+]);
+
+/**
+ * Matches an inspector flag, which a debug launch must not pass on: the debugger runs its own
+ * inspector, and a second one on a fixed port would at best be ignored and at worst refuse to bind.
+ */
+const INSPECTOR_FLAG: RegExp = /^--inspect(-brk|-wait|-port)?(=.*)?$/;
+
+/**
+ * Reads a run configuration's program and arguments as a Node command line, for debugging it (#882).
+ * A program that names a runtime — `node` — is the runtime, and the script is found among its
+ * arguments; any other program is the script.
+ * @param program The configuration's program, or undefined for none.
+ * @param args The configuration's arguments.
+ * @returns Returns the command, split.
+ */
+export function splitNodeCommand(
+  program: string | undefined,
+  args: readonly string[],
+): NodeCommand {
+  if (program === undefined || program.length === 0) {
+    return { runtimeArgs: [], scriptArgs: [...args] };
+  }
+  // Either separator: a configuration written on Windows names `C:\nodejs\node.exe`.
+  const name: string = (program.split(/[\\/]/).pop() ?? program)
+    .toLowerCase()
+    .replace(/\.exe$/, '');
+  if (!NODE_RUNTIMES.has(name)) {
+    return { runtimeArgs: [], script: program, scriptArgs: [...args] };
+  }
+  const runtimeArgs: string[] = [];
+  for (let index: number = 0; index < args.length; index++) {
+    const arg: string = args[index];
+    if (!arg.startsWith('-')) {
+      return {
+        runtime: program,
+        runtimeArgs,
+        script: arg,
+        scriptArgs: args.slice(index + 1),
+      };
+    }
+    if (FLAGS_WITH_A_VALUE.has(arg) && index + 1 < args.length) {
+      runtimeArgs.push(arg, args[index + 1]);
+      index++;
+      continue;
+    }
+    if (!INSPECTOR_FLAG.test(arg)) {
+      runtimeArgs.push(arg);
+    }
+  }
+  return { runtime: program, runtimeArgs, scriptArgs: [] };
 }

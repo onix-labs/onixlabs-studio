@@ -1,0 +1,966 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  OnInit,
+  output,
+  OutputEmitterRef,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
+import type { CloneLayout, CloneOutcome } from '@shared/api/clone-channels';
+import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
+import type {
+  HostedAccount as ProtocolAccount,
+  HostedRepository as ProtocolRepository,
+} from '@shared/api/hosting-protocol';
+import { installedContributions } from '@shared/api/plugin-channels';
+import { Clone } from '@shared/angular/services/clone/clone';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Forge } from '@shared/angular/services/forge/forge';
+import { Log } from '@shared/angular/services/log/log';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { TabType } from '@shared/angular/services/tabs/tab';
+import { Icon } from '@shared/angular/icons/icon';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Chip } from '@shared/angular/components/chip/chip';
+import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
+
+export type { CloneLayout } from '@shared/api/clone-channels';
+
+/**
+ * A collapsible section of the sidebar.
+ */
+export type SourceSection = 'clone' | 'accounts';
+
+/**
+ * An account the user acts as on a code host — themselves or an organisation — listed through the
+ * hosting plugin that serves the host.
+ */
+export interface HostedAccount {
+  /**
+   * Gets the account's id, unique across hosts: `host/login`.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the host's name as its plugin calls it, e.g. "GitHub".
+   */
+  readonly host: string;
+
+  /**
+   * Gets the account's user or organisation name.
+   */
+  readonly login: string;
+
+  /**
+   * Gets whether it is the user themselves or an organisation they belong to.
+   */
+  readonly kind: 'user' | 'organization';
+}
+
+/**
+ * A repository an account can reach.
+ *
+ * The optional fields are the ones a hosting plugin may not supply: a browse view or a detail that
+ * reads one only appears once some repository carries it, so nothing claims a fact Studio was never
+ * told.
+ */
+export interface HostedRepository {
+  /**
+   * Gets the repository's id, unique across hosts: `host/owner/name`.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the account it was listed through.
+   */
+  readonly accountId: string;
+
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets its owner and name, e.g. "matthew/onixlabs-aero".
+   */
+  readonly fullName: string;
+
+  /**
+   * Gets its description, or empty.
+   */
+  readonly description: string;
+
+  /**
+   * Gets when it was last updated (epoch ms).
+   */
+  readonly updatedAt: number;
+
+  /**
+   * Gets a value indicating whether it is private.
+   */
+  readonly private: boolean;
+
+  /**
+   * Gets the URL it clones from.
+   */
+  readonly cloneUrl: string;
+
+  /**
+   * Gets the URL of its page in a browser, or empty when the host gave none.
+   */
+  readonly webUrl: string;
+
+  /**
+   * Gets its default branch, when the host says.
+   */
+  readonly defaultBranch?: string;
+
+  /**
+   * Gets its main language, when the host says.
+   */
+  readonly language?: string | null;
+
+  /**
+   * Gets its star count, when the host says.
+   */
+  readonly stars?: number;
+
+  /**
+   * Gets whether it is a fork, when the host says.
+   */
+  readonly fork?: boolean;
+
+  /**
+   * Gets whether it is archived, when the host says.
+   */
+  readonly archived?: boolean;
+
+  /**
+   * Gets whether the user starred it, when the host says.
+   */
+  readonly starred?: boolean;
+
+  /**
+   * Gets its fork count, when the host says.
+   */
+  readonly forks?: number;
+
+  /**
+   * Gets its open issue count, when the host says.
+   */
+  readonly openIssues?: number;
+
+  /**
+   * Gets its topics, when the host says.
+   */
+  readonly topics?: readonly string[];
+
+  /**
+   * Gets its licence's short name, or null for none, when the host says.
+   */
+  readonly license?: string | null;
+
+  /**
+   * Gets its homepage, or null for none, when the host says.
+   */
+  readonly homepage?: string | null;
+
+  /**
+   * Gets when it was last pushed to (epoch ms), or null for never, when the host says.
+   */
+  readonly pushedAt?: number | null;
+}
+
+/**
+ * A host a hosting plugin serves that is not signed in, so its accounts cannot be listed yet.
+ */
+interface SignedOutHost {
+  /**
+   * Gets the host, e.g. "github.com".
+   */
+  readonly host: string;
+
+  /**
+   * Gets the plugin's name for it, e.g. "GitHub".
+   */
+  readonly provider: string;
+}
+
+/**
+ * A view of the repository browser.
+ */
+type BrowseView = 'all' | 'starred' | 'recent' | 'private' | 'forks' | 'archived';
+
+/**
+ * Describes a browse view in the repository filter.
+ */
+interface BrowseEntry {
+  /**
+   * Gets the view.
+   */
+  readonly view: BrowseView;
+
+  /**
+   * Gets its label.
+   */
+  readonly label: string;
+}
+
+/**
+ * How recently a repository must have been updated to count as recent.
+ */
+const RECENT_MS: number = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Accepts the shapes a clone URL takes: https, ssh (`git@host:owner/repo`) and `ssh://`.
+ */
+const CLONE_URL: RegExp = /^(https?:\/\/\S+\/\S+|ssh:\/\/\S+|[\w.-]+@[\w.-]+:\S+)$/;
+
+/**
+ * The folder names a clone may create: one plain name.
+ */
+const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
+
+/**
+ * The welcome screen's Version Control section: "I want to find or bring existing code into Studio"
+ * (#805). Clone a repository by its URL or from the list — choosing first whether it lands as a flat
+ * working copy or as a worktree container — or browse the repositories of every account the installed
+ * hosting plugins are signed in to.
+ *
+ * Core is UI only: the repositories come from the hosting plugins, the clone is made by the
+ * version-control plugin, and where it goes is a folder the user chose in the main process's own
+ * dialog. With neither kind of plugin installed, each part says what to install.
+ */
+@Component({
+  selector: 'app-welcome-source-control',
+  imports: [ProgressBar, Chip, AppIcon, Button, Dropdown],
+  templateUrl: './welcome-source-control.html',
+  styleUrl: './welcome-source-control.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class WelcomeSourceControl implements OnInit {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Emits the kind of tab an action asks for; the welcome screen opens it and steps aside.
+   */
+  public readonly openTab: OutputEmitterRef<TabType> = output<TabType>();
+
+  /**
+   * Emits when a clone was opened, so the welcome screen steps aside.
+   */
+  public readonly opened: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the forge client, through which the hosting plugins are asked.
+   */
+  private readonly forge: Forge = inject(Forge);
+
+  /**
+   * Holds the clone client.
+   */
+  private readonly cloner: Clone = inject(Clone);
+
+  /**
+   * Holds the file opener, which opens the clone as a workspace and records it as recent.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the plugin client, read for which kinds of plugin are installed.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds the shell client, which opens a repository's page in the browser.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Gets every browse view, in order. The ones whose data no repository carries are not offered.
+   */
+  private readonly allViews: readonly BrowseEntry[] = [
+    { view: 'all', label: 'All Repositories' },
+    { view: 'starred', label: 'Starred' },
+    { view: 'recent', label: 'Recent' },
+    { view: 'private', label: 'Private' },
+    { view: 'forks', label: 'Forks' },
+    { view: 'archived', label: 'Archived' },
+  ];
+
+  /**
+   * Gets whether a version-control plugin, which makes the clone, is installed.
+   */
+  protected readonly canClone: Signal<boolean> = computed(
+    (): boolean => installedContributions(this.plugins.plugins(), 'version-control').length > 0,
+  );
+
+  /**
+   * Gets whether a hosting plugin, which lists repositories, is installed.
+   */
+  protected readonly canBrowse: Signal<boolean> = computed(
+    (): boolean => installedContributions(this.plugins.plugins(), 'hosting').length > 0,
+  );
+
+  /**
+   * Holds the accounts the signed-in hosts list.
+   */
+  protected readonly accounts: WritableSignal<readonly HostedAccount[]> = signal<
+    readonly HostedAccount[]
+  >([]);
+
+  /**
+   * Holds the hosts that are served but not signed in.
+   */
+  protected readonly signedOut: WritableSignal<readonly SignedOutHost[]> = signal<
+    readonly SignedOutHost[]
+  >([]);
+
+  /**
+   * Holds the repositories the accounts can reach.
+   */
+  protected readonly repositories: WritableSignal<readonly HostedRepository[]> = signal<
+    readonly HostedRepository[]
+  >([]);
+
+  /**
+   * Holds the repositories the user starred that are not among their own, collaborator or
+   * organisation repositories: other people's projects, offered in the Starred view only, so they do
+   * not crowd the user's own list.
+   */
+  protected readonly starredElsewhere: WritableSignal<readonly HostedRepository[]> = signal<
+    readonly HostedRepository[]
+  >([]);
+
+  /**
+   * Holds which sidebar section is open, or null when all are collapsed. At most one is open, as in the
+   * original welcome screen's Get Started and Tools; Clone, the first, starts open.
+   */
+  protected readonly openSection: WritableSignal<SourceSection | null> =
+    signal<SourceSection | null>('clone');
+
+  /**
+   * Holds whether the accounts and repositories are being read.
+   */
+  protected readonly loading: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds why the last read failed for some account, or null.
+   */
+  protected readonly loadError: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the URL typed into the clone field.
+   */
+  protected readonly cloneUrl: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds how the repository will be laid out once cloned, or null until the user picks. Studio has
+   * no default of its own: the layout is the user's choice, made before cloning, so the field starts
+   * on "Clone As…" and Clone waits for an answer.
+   */
+  protected readonly layout: WritableSignal<CloneLayout | null> = signal<CloneLayout | null>(null);
+
+  /**
+   * Gets the layout choices.
+   */
+  protected readonly layoutOptions: readonly DropdownOption[] = [
+    { value: 'flat', label: 'Flat Repository' },
+    { value: 'worktree', label: 'Worktree Repository' },
+  ];
+
+  /**
+   * Holds whether a clone is running.
+   */
+  protected readonly cloning: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds why the last clone failed, or null.
+   */
+  protected readonly cloneError: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the browse view.
+   */
+  protected readonly view: WritableSignal<BrowseView> = signal<BrowseView>('all');
+
+  /**
+   * Holds the account the list is narrowed to — its id — or null for every account. Set by picking an
+   * account in Connected Accounts; it narrows whichever view the filter dropdown shows.
+   */
+  protected readonly accountFilter: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the repository search.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the repository shown in the detail panel, or null for none.
+   */
+  protected readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets a value indicating whether the clone field holds something that looks like a clone URL.
+   */
+  protected readonly urlValid: Signal<boolean> = computed((): boolean =>
+    CLONE_URL.test(this.cloneUrl().trim()),
+  );
+
+  /**
+   * Gets the folder name the clone will be given: the URL's last part.
+   */
+  protected readonly targetName: Signal<string> = computed((): string =>
+    nameFromUrl(this.cloneUrl()),
+  );
+
+  /**
+   * Gets whether the details' Clone can run: a version-control plugin, a layout, and no clone running.
+   * The repository brings its own URL.
+   */
+  protected readonly detailCloneReady: Signal<boolean> = computed(
+    (): boolean => this.canClone() && this.layout() !== null && !this.cloning(),
+  );
+
+  /**
+   * Gets whether everything a clone of the field's URL needs is in place.
+   */
+  protected readonly cloneReady: Signal<boolean> = computed(
+    (): boolean =>
+      this.canClone() &&
+      this.layout() !== null &&
+      this.urlValid() &&
+      FOLDER_NAME.test(this.targetName()) &&
+      !this.cloning(),
+  );
+
+  /**
+   * Gets the browse views the repositories' data supports: a view that reads a fact no repository
+   * carries is not offered, rather than shown empty.
+   */
+  protected readonly browse: Signal<readonly BrowseEntry[]> = computed(
+    (): readonly BrowseEntry[] => {
+      const repositories: readonly HostedRepository[] = this.repositories();
+      const carried: (field: 'starred' | 'fork' | 'archived') => boolean = (
+        field: 'starred' | 'fork' | 'archived',
+      ): boolean =>
+        repositories.some((repository: HostedRepository): boolean => field in repository);
+      return this.allViews.filter((entry: BrowseEntry): boolean => {
+        switch (entry.view) {
+          case 'starred':
+            return carried('starred') || this.starredElsewhere().length > 0;
+          case 'forks':
+            return carried('fork');
+          case 'archived':
+            return carried('archived');
+          default:
+            return true;
+        }
+      });
+    },
+  );
+
+  /**
+   * Gets the repository filter's choices: the browse views the data supports, each with how many
+   * repositories it holds in the account picked, if any.
+   */
+  protected readonly filterOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.browse().map((entry: BrowseEntry): DropdownOption => ({
+        value: entry.view,
+        label: `${entry.label} (${this.countIn(entry.view)})`,
+      })),
+  );
+
+  /**
+   * Gets the repositories in the current view, account and search, most recently updated first.
+   */
+  protected readonly visible: Signal<readonly HostedRepository[]> = computed(
+    (): readonly HostedRepository[] => {
+      const needle: string = this.query().trim().toLowerCase();
+      return this.inViewList(this.view())
+        .filter(
+          (repository: HostedRepository): boolean =>
+            needle.length === 0 ||
+            repository.fullName.toLowerCase().includes(needle) ||
+            repository.description.toLowerCase().includes(needle),
+        )
+        .sort((a: HostedRepository, b: HostedRepository): number => b.updatedAt - a.updatedAt);
+    },
+  );
+
+  /**
+   * Gets the repository shown in the detail panel, or null.
+   */
+  protected readonly selected: Signal<HostedRepository | null> = computed(
+    (): HostedRepository | null =>
+      [...this.repositories(), ...this.starredElsewhere()].find(
+        (repository: HostedRepository): boolean => repository.id === this.selectedId(),
+      ) ?? null,
+  );
+
+  /**
+   * Reads the repositories when the section is first built.
+   */
+  public ngOnInit(): void {
+    void this.refresh();
+  }
+
+  /**
+   * Reads the accounts every signed-in host lists, and each account's repositories. A host that is not
+   * signed in is listed apart, with a way to sign in; one account failing does not hide the rest.
+   * @returns Resolves once everything has been read.
+   */
+  public async refresh(): Promise<void> {
+    if (!this.forge.isAvailable) {
+      return;
+    }
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      const hosts: readonly ForgeHostAccount[] = await this.forge.hosts();
+      const accounts: HostedAccount[] = [];
+      const repositories: HostedRepository[] = [];
+      const errors: string[] = [];
+      this.signedOut.set(
+        hosts
+          .filter((entry: ForgeHostAccount): boolean => !entry.status.authenticated)
+          .map((entry: ForgeHostAccount): SignedOutHost => ({
+            host: entry.host,
+            provider: entry.provider,
+          })),
+      );
+      const starred: HostedRepository[] = [];
+      for (const entry of hosts.filter((h: ForgeHostAccount): boolean => h.status.authenticated)) {
+        const listed: ForgeResult<readonly ProtocolAccount[]> = await this.forge.accounts(
+          entry.host,
+        );
+        if (!listed.ok) {
+          errors.push(`${entry.provider}: ${listed.error}`);
+          continue;
+        }
+        // Starred repositories are filed under the user's own account on the host, so the host filter
+        // finds them; a host whose plugin cannot list them simply has none.
+        const user: ProtocolAccount | undefined =
+          listed.value.find((account: ProtocolAccount): boolean => account.kind === 'user') ??
+          listed.value[0];
+        if (user !== undefined) {
+          const stars: ForgeResult<readonly ProtocolRepository[]> =
+            await this.forge.starredRepositories(entry.host);
+          if (stars.ok) {
+            starred.push(
+              ...stars.value.map((repository: ProtocolRepository): HostedRepository =>
+                toView(repository, `${entry.host}/${user.login}`),
+              ),
+            );
+          }
+        }
+        for (const account of listed.value) {
+          const view: HostedAccount = {
+            id: `${entry.host}/${account.login}`,
+            host: entry.provider,
+            login: account.login,
+            kind: account.kind,
+          };
+          accounts.push(view);
+          const repos: ForgeResult<readonly ProtocolRepository[]> = await this.forge.repositories(
+            entry.host,
+            account.login,
+          );
+          if (!repos.ok) {
+            errors.push(`${account.login}: ${repos.error}`);
+            continue;
+          }
+          for (const repository of repos.value) {
+            repositories.push(toView(repository, view.id));
+          }
+        }
+      }
+      this.accounts.set(accounts);
+      // An account picked as the filter that is no longer listed (signed out, left) would leave the
+      // list empty with no way to tell why: widen it again.
+      const picked: string | null = this.accountFilter();
+      if (
+        picked !== null &&
+        !accounts.some((account: HostedAccount): boolean => account.id === picked)
+      ) {
+        this.accountFilter.set(null);
+      }
+      const own: readonly HostedRepository[] = dedupe(repositories);
+      const ids: ReadonlySet<string> = new Set<string>(
+        own.map((repository: HostedRepository): string => repository.id),
+      );
+      this.repositories.set(own);
+      this.starredElsewhere.set(
+        dedupe(starred).filter((repository: HostedRepository): boolean => !ids.has(repository.id)),
+      );
+      this.loadError.set(errors.length === 0 ? null : errors.join(' · '));
+      this.log.info(
+        'welcome',
+        `Listed ${repositories.length} repositories across ${accounts.length} accounts`,
+      );
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  /**
+   * Applies the repository filter's choice of browse view.
+   * @param value The picked value.
+   */
+  protected setFilter(value: string): void {
+    const view: BrowseView | undefined = this.allViews.find(
+      (entry: BrowseEntry): boolean => entry.view === value,
+    )?.view;
+    if (view !== undefined) {
+      this.view.set(view);
+    }
+  }
+
+  /**
+   * Narrows the list to an account's repositories, or widens it again when that account is the one
+   * already picked.
+   * @param id The account's id.
+   */
+  protected toggleAccount(id: string): void {
+    this.accountFilter.update((current: string | null): string | null =>
+      current === id ? null : id,
+    );
+  }
+
+  /**
+   * Describes what All Accounts covers, e.g. "3 accounts".
+   * @returns Returns the description.
+   */
+  protected accountCount(): string {
+    const count: number = this.accounts().length;
+    return `${count} ${count === 1 ? 'account' : 'accounts'}`;
+  }
+
+  /**
+   * Describes an account under its name: its host, and whether it is the user or an organisation.
+   * @param account The account.
+   * @returns Returns the description, e.g. "GitHub · Organisation".
+   */
+  protected accountKind(account: HostedAccount): string {
+    return `${account.host} · ${account.kind === 'user' ? 'You' : 'Organisation'}`;
+  }
+
+  /**
+   * Counts the repositories in a browse view.
+   * @param view The view.
+   * @returns Returns the count.
+   */
+  protected countIn(view: BrowseView): number {
+    return this.inViewList(view).length;
+  }
+
+  /**
+   * Updates the clone URL from the input event.
+   * @param event The input event carrying the current value.
+   */
+  protected onUrlInput(event: Event): void {
+    this.cloneUrl.set((event.target as HTMLInputElement).value);
+    this.cloneError.set(null);
+  }
+
+  /**
+   * Shows a repository's details, or closes them when it is the one already shown.
+   * @param id The repository's id.
+   */
+  protected toggleSelected(id: string): void {
+    this.selectedId.update((current: string | null): string | null => (current === id ? null : id));
+  }
+
+  /**
+   * Opens a sidebar section, collapsing the others; clicking the open section collapses it.
+   * @param section The section whose header was clicked.
+   */
+  protected toggleSection(section: SourceSection): void {
+    this.openSection.update((open: SourceSection | null): SourceSection | null =>
+      open === section ? null : section,
+    );
+  }
+
+  /**
+   * Records the layout picked.
+   * @param value The picked value.
+   */
+  protected setLayout(value: string): void {
+    this.layout.set(value === 'worktree' || value === 'flat' ? value : null);
+  }
+
+  /**
+   * Updates the repository search from the input event.
+   * @param event The input event carrying the current value.
+   */
+  protected onSearchInput(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * Asks the user where clones go, in the main process's own folder dialog.
+   * @returns Resolves with the chosen folder, or null when the dialog was cancelled.
+   */
+  protected async chooseParent(): Promise<string | null> {
+    return this.cloner.pickParent();
+  }
+
+  /**
+   * Asks where the clone goes — the folder dialog opens on the folder used last — then clones the URL
+   * in the field into it, opens the result and steps aside. Cancelling the dialog clones nothing.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  protected async clone(): Promise<void> {
+    if (this.cloneReady()) {
+      await this.cloneInto(this.cloneUrl().trim());
+    }
+  }
+
+  /**
+   * Clones the repository shown in the details, the same way as the URL in the field: in the layout
+   * chosen, into a folder asked for now, opening the result.
+   * @param repository The repository.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  protected async cloneRepository(repository: HostedRepository): Promise<void> {
+    if (this.detailCloneReady()) {
+      await this.cloneInto(repository.cloneUrl);
+    }
+  }
+
+  /**
+   * Asks where the clone goes, clones a URL into it in the chosen layout, opens the result and steps
+   * aside. Cancelling the dialog clones nothing.
+   * @param url The URL to clone.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  private async cloneInto(url: string): Promise<void> {
+    const layout: CloneLayout | null = this.layout();
+    if (layout === null || (await this.chooseParent()) === null) {
+      return;
+    }
+    this.cloning.set(true);
+    this.cloneError.set(null);
+    try {
+      const outcome: CloneOutcome = await this.cloner.clone({
+        url,
+        name: nameFromUrl(url),
+        layout,
+      });
+      if (!outcome.ok) {
+        this.cloneError.set(outcome.error);
+        return;
+      }
+      if (await this.fileOpener.reopenDirectory(outcome.path)) {
+        this.opened.emit();
+      } else {
+        this.cloneError.set(`Cloned into ${outcome.path}, but it could not be opened.`);
+      }
+    } finally {
+      this.cloning.set(false);
+    }
+  }
+
+  /**
+   * Opens a repository's page, or its homepage, in the browser.
+   * @param url The URL.
+   */
+  protected openInBrowser(url: string): void {
+    void this.shell.openExternal(url);
+  }
+
+  /**
+   * Names where a repository's page opens: its host's name ("Open on GitHub"), or the browser when the
+   * account it came through is not known.
+   * @param repository The repository.
+   * @returns Returns the button's label.
+   */
+  protected openLabel(repository: HostedRepository): string {
+    const host: string | undefined = this.accounts().find(
+      (account: HostedAccount): boolean => account.id === repository.accountId,
+    )?.host;
+    return host === undefined ? 'Open in Browser' : `Open on ${host}`;
+  }
+
+  /**
+   * Opens the Plugin Manager, where version-control and hosting plugins are installed.
+   */
+  protected openPlugins(): void {
+    this.openTab.emit('plugin-manager');
+  }
+
+  /**
+   * Opens Settings, where a host is signed in to.
+   */
+  protected openSettings(): void {
+    this.openTab.emit('settings');
+  }
+
+  /**
+   * Formats how long ago a repository was updated.
+   * @param at The epoch-millisecond timestamp.
+   * @returns Returns a short relative label.
+   */
+  protected updated(at: number): string {
+    return `Updated ${this.ago(at)}`;
+  }
+
+  /**
+   * Formats how long ago something happened.
+   * @param at The epoch-millisecond timestamp.
+   * @returns Returns a short relative label, e.g. "today" or "3d ago".
+   */
+  protected ago(at: number): string {
+    const days: number = Math.floor(Math.max(0, Date.now() - at) / (24 * 60 * 60 * 1000));
+    if (days === 0) {
+      return 'today';
+    }
+    if (days === 1) {
+      return 'yesterday';
+    }
+    if (days < 7) {
+      return `${days}d ago`;
+    }
+    if (days < 30) {
+      return `${Math.floor(days / 7)}w ago`;
+    }
+    if (days < 365) {
+      return `${Math.floor(days / 30)}mo ago`;
+    }
+    return `${Math.floor(days / 365)}y ago`;
+  }
+
+  /**
+   * Gets the repositories a browse view lists: the user's own that match it — only the picked
+   * account's, when one is picked — and, for Starred across every account, the other people's
+   * projects they starred as well.
+   * @param view The view.
+   * @returns Returns them, unsorted.
+   */
+  private inViewList(view: BrowseView): readonly HostedRepository[] {
+    const account: string | null = this.accountFilter();
+    const own: readonly HostedRepository[] = this.repositories().filter(
+      (repository: HostedRepository): boolean =>
+        (account === null || repository.accountId === account) &&
+        this.matchesView(repository, view),
+    );
+    // Other people's projects the user starred belong to none of their accounts, so picking one leaves
+    // them out.
+    return view === 'starred' && account === null ? [...own, ...this.starredElsewhere()] : own;
+  }
+
+  /**
+   * Determines whether a repository belongs in a browse view.
+   * @param repository The repository.
+   * @param view The view.
+   * @returns Returns true when it does.
+   */
+  private matchesView(repository: HostedRepository, view: BrowseView): boolean {
+    switch (view) {
+      case 'all':
+        return true;
+      case 'starred':
+        return repository.starred === true;
+      case 'recent':
+        return Date.now() - repository.updatedAt < RECENT_MS;
+      case 'private':
+        return repository.private;
+      case 'forks':
+        return repository.fork === true;
+      case 'archived':
+        return repository.archived === true;
+    }
+  }
+}
+
+/**
+ * Takes the folder name a clone URL suggests: its last path segment, without `.git`.
+ * @param url The URL.
+ * @returns Returns the name, or empty.
+ */
+export function nameFromUrl(url: string): string {
+  const last: string =
+    url
+      .trim()
+      .replace(/[/\\]+$/, '')
+      .split(/[/:]/)
+      .pop() ?? '';
+  return last.replace(/\.git$/i, '');
+}
+
+/**
+ * Turns a repository as the hosting protocol describes it into the browser's view of it, carrying the
+ * optional facts only when the plugin supplied them.
+ * @param repository The protocol's repository.
+ * @param accountId The account it was listed through.
+ * @returns Returns the view.
+ */
+function toView(repository: ProtocolRepository, accountId: string): HostedRepository {
+  const extra: Record<string, unknown> = repository as unknown as Record<string, unknown>;
+  const optional: Partial<HostedRepository> = {};
+  for (const key of [
+    'language',
+    'stars',
+    'fork',
+    'archived',
+    'starred',
+    'forks',
+    'openIssues',
+    'topics',
+    'license',
+    'homepage',
+  ] as const) {
+    if (extra[key] !== undefined) {
+      (optional as Record<string, unknown>)[key] = extra[key];
+    }
+  }
+  const updated: number = Date.parse(repository.updatedAt);
+  const pushed: string | null | undefined = repository.pushedAt;
+  const pushedAt: number = pushed === undefined || pushed === null ? NaN : Date.parse(pushed);
+  return {
+    id: `${repository.ref.host}/${repository.ref.owner}/${repository.ref.name}`,
+    accountId,
+    name: repository.ref.name,
+    fullName: `${repository.ref.owner}/${repository.ref.name}`,
+    description: repository.description ?? '',
+    updatedAt: Number.isFinite(updated) ? updated : 0,
+    private: repository.private,
+    cloneUrl: repository.cloneUrl,
+    webUrl: repository.webUrl,
+    ...(repository.defaultBranch === null ? {} : { defaultBranch: repository.defaultBranch }),
+    ...optional,
+    ...(pushed === undefined ? {} : { pushedAt: Number.isFinite(pushedAt) ? pushedAt : null }),
+  };
+}
+
+/**
+ * Keeps one entry per repository: an organisation's repository can also be listed through the user.
+ * @param repositories The repositories, in listing order.
+ * @returns Returns them, first listing kept.
+ */
+function dedupe(repositories: readonly HostedRepository[]): readonly HostedRepository[] {
+  const seen: Set<string> = new Set<string>();
+  return repositories.filter((repository: HostedRepository): boolean => {
+    if (seen.has(repository.id)) {
+      return false;
+    }
+    seen.add(repository.id);
+    return true;
+  });
+}

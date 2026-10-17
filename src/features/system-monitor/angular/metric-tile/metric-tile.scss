@@ -11,7 +11,8 @@
   padding: 0.6rem 0.75rem 0.5rem;
   border: 1px solid var(--dock-border-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier, 1));
-  background-color: var(--panel-surface-color);
+  // A shade darker than the panel, so each tile reads as a well the graph sits in.
+  background-color: color-mix(in srgb, var(--panel-surface-color), black 6%);
 }
 
 .metric-tile__head {
@@ -22,10 +23,13 @@
   gap: 0.5rem;
 }
 
+// The label wears the section-label style the side panel's own title does, so the tiles read as
+// sections of it.
 .metric-tile__label {
-  font-size: 0.78rem;
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--form-muted-foreground-color);
 }
 
@@ -76,13 +80,14 @@
   color: var(--form-muted-foreground-color);
 }
 
-// The channels fill the remaining tile height; several channels share it evenly.
+// The channels fill the remaining tile height; several channels share it evenly. Neither shrinks
+// below its caption and a legible graph, so a short tile reports the space it needs to whatever
+// stacks it, rather than letting one channel's caption ride over the graph above it.
 .metric-tile__channels {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   gap: 0.3rem;
-  min-block-size: 0;
   margin-block-start: 0.4rem;
 }
 
@@ -90,7 +95,6 @@
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
-  min-block-size: 0;
 }
 
 // A captioned channel (Network/Disk) labels its own graph on one compact row.
@@ -101,6 +105,15 @@
 
 // The graph takes the remaining channel height; a floor keeps it legible in a short channel.
 .metric-tile__graph {
+  position: relative;
   flex: 1 1 auto;
   min-block-size: 1.6rem;
+  overflow: hidden;
+}
+
+// The graph fills its well without lending the well its own size: an SVG reports a natural height,
+// and counted as content it would hold every tile taller than the space they are sharing.
+.metric-tile__graph > app-sparkline {
+  position: absolute;
+  inset: 0;
 }

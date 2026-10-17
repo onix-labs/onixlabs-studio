@@ -1,10 +1,18 @@
 import { inject, Service } from '@angular/core';
-import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '@shared/api/ai-types';
+import {
+  type AiBridgeScope,
+  READ_TERMINAL_OUTPUT,
+  WRITE_TERMINAL_INPUT,
+} from '@shared/api/ai-types';
 import { TerminalReplay } from '@shared/api/terminal-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
+import {
+  ActiveWorkspace,
+  WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
 
 /**
  * Holds the maximum number of output lines a read returns, so a long-running session does not flood
@@ -30,6 +38,13 @@ const CONTROL_SEQUENCE_PATTERN: RegExp = new RegExp(
 const SETTLE_DELAY_MS: number = 400;
 
 /**
+ * What the model is told when it names a terminal it may not drive.
+ */
+const OUTSIDE_WORKSPACE: string =
+  'That terminal belongs to another workspace, so you cannot read or type into it. Use a terminal ' +
+  'from list_terminals, or open one with open_terminal.';
+
+/**
  * The result of the read-terminal-output capability.
  */
 interface ReadResult {
@@ -42,6 +57,11 @@ interface ReadResult {
    * Gets the recent terminal output (empty when none was available).
    */
   readonly text: string;
+
+  /**
+   * Gets why the terminal was refused, when it belongs to another workspace.
+   */
+  readonly error?: string;
 }
 
 /**
@@ -57,6 +77,11 @@ interface WriteResult {
    * Gets the terminal output after the input settled, when sent.
    */
   readonly output?: string;
+
+  /**
+   * Gets why the terminal was refused, when it belongs to another workspace.
+   */
+  readonly error?: string;
 }
 
 /**
@@ -83,6 +108,11 @@ export class AgentTerminalCapabilities {
   private readonly bridge: TerminalBridge = inject(TerminalBridge);
 
   /**
+   * Holds the seam that says which workspace a terminal belongs to, and which workspace a run does.
+   */
+  private readonly workspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
    * Holds the structured logger for terminal agent-capability actions.
    */
   private readonly log: Log = inject(Log);
@@ -93,11 +123,13 @@ export class AgentTerminalCapabilities {
    */
   public constructor() {
     this.log.debug('terminal.agents', 'Registering terminal agent capabilities');
-    this.runtime.registerCapability(READ_TERMINAL_OUTPUT, (input: unknown): Promise<ReadResult> =>
-      this.readOutput(input),
+    this.runtime.registerCapability(
+      READ_TERMINAL_OUTPUT,
+      (input: unknown, scope: AiBridgeScope): Promise<ReadResult> => this.readOutput(input, scope),
     );
-    this.runtime.registerCapability(WRITE_TERMINAL_INPUT, (input: unknown): Promise<WriteResult> =>
-      this.writeInput(input),
+    this.runtime.registerCapability(
+      WRITE_TERMINAL_INPUT,
+      (input: unknown, scope: AiBridgeScope): Promise<WriteResult> => this.writeInput(input, scope),
     );
   }
 
@@ -105,11 +137,15 @@ export class AgentTerminalCapabilities {
    * Reads the recent output of the terminal identified by the run's owning `tabId`, capped to the most
    * recent lines.
    * @param input The capability input, carrying the owning `tabId`.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ReadResult}.
    */
-  private async readOutput(input: unknown): Promise<ReadResult> {
+  private async readOutput(input: unknown, scope: AiBridgeScope): Promise<ReadResult> {
     const tabId: string | null = this.extractString(input, 'tabId');
     this.log.trace('terminal.agents', 'Agent reading terminal output', tabId ?? '(none)');
+    if (tabId !== null && !this.mayDrive(tabId, scope)) {
+      return { available: false, text: '', error: OUTSIDE_WORKSPACE };
+    }
     const text: string | null = tabId === null ? null : await this.readSessionText(tabId);
     if (text === null) {
       this.log.debug('terminal.agents', 'Agent read: no terminal available', tabId ?? '(none)');
@@ -145,9 +181,10 @@ export class AgentTerminalCapabilities {
    * output once it has settled so the model sees the result in one call.
    * @param input The capability input, carrying the owning `tabId`, the `text`, and an optional
    * `submit` flag (defaults to true; false sends raw input without a carriage return).
+   * @param scope The run the request comes from.
    * @returns Returns the {@link WriteResult}.
    */
-  private async writeInput(input: unknown): Promise<WriteResult> {
+  private async writeInput(input: unknown, scope: AiBridgeScope): Promise<WriteResult> {
     const tabId: string | null = this.extractString(input, 'tabId');
     const text: string | null = this.extractString(input, 'text');
     const submit: boolean = !(input !== null && typeof input === 'object'
@@ -156,6 +193,9 @@ export class AgentTerminalCapabilities {
     if (tabId === null || text === null) {
       this.log.warn('terminal.agents', 'Agent write rejected: missing tabId or text');
       return { ok: false };
+    }
+    if (!this.mayDrive(tabId, scope)) {
+      return { ok: false, error: OUTSIDE_WORKSPACE };
     }
     this.log.info('terminal.agents', 'Agent writing terminal input', { tabId, submit });
     const sent: boolean = await this.bridge.write(tabId, submit ? `${text}\r` : text);
@@ -166,6 +206,37 @@ export class AgentTerminalCapabilities {
     await this.delay(SETTLE_DELAY_MS);
     const output: string | null = await this.readSessionText(tabId);
     return { ok: true, output: output === null ? '' : this.cap(output) };
+  }
+
+  /**
+   * Decides whether a run may read or type into a terminal. The terminal id is the model's to choose
+   * on the workspace surface, so it is checked against the run's trusted scope:
+   *
+   * - the run's own terminal (the terminal surface's owner) — always;
+   * - a terminal in some workspace's dock — only when that workspace is the run's own;
+   * - a terminal in no workspace (a top-level tab) — only to a run that is not docked in a workspace.
+   *
+   * ⛔ The middle rule is the isolation boundary: without it an agent in one workspace could read, and
+   * type into, the terminals of another.
+   * @param terminalId The terminal's id.
+   * @param scope The run's bridge scope.
+   * @returns Returns true when the run may drive the terminal.
+   */
+  private mayDrive(terminalId: string, scope: AiBridgeScope): boolean {
+    if (terminalId === scope.owningTabId) {
+      return true;
+    }
+    const runWell: WorkspaceWell | null = this.workspace.wellForRun(scope, false);
+    const owner: WorkspaceWell | null = this.workspace.wellOwningTerminal(terminalId);
+    const allowed: boolean =
+      owner === null ? scope.surface !== 'workspace' : runWell?.scope === owner.scope;
+    if (!allowed) {
+      this.log.warn('terminal.agents', 'Agent refused a terminal outside its workspace', {
+        terminalId,
+        owner: scope.owningTabId,
+      });
+    }
+    return allowed;
   }
 
   /**

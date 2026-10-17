@@ -1,15 +1,20 @@
-<!-- One row, shared by both rendering modes so their markup can never diverge. -->
+<!-- One row, shared by both rendering modes so their markup can never diverge. A row being named is
+     inert to the keys and clicks that would activate it: its field stops them before they get here. -->
 <ng-template #rowTemplate let-row>
   <div
     class="tree-row"
     role="treeitem"
     tabindex="0"
     [attr.data-tree-id]="row.id"
-    [class.active]="selectedId() !== null && row.id === selectedId()"
+    [class.active]="selection().has(row.id)"
     [class.tree-row--disabled]="row.disabled === true"
+    [class]="row.tone !== undefined ? 'tree-row--tone-' + row.tone : ''"
+    [class.tree-row--strong]="row.strong === true"
+    [attr.title]="row.hint ?? null"
+    [attr.aria-description]="row.hint ?? null"
     [style.padding-left.px]="indentFor(row.depth)"
     [attr.aria-expanded]="row.expandable ? row.expanded : null"
-    [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
+    [attr.aria-selected]="selection().size > 0 ? selection().has(row.id) : null"
     [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
     [appMenuSubject]="row"
     [cdkContextMenuDisabled]="!rowHasMenu(row)"
@@ -26,10 +31,28 @@
     } @else {
       <span class="tree-spacer"></span>
     }
+    <!-- The content template is told when its row is being named, so it can drop the label and the
+         decorations the field takes the place of; its leading icon stays, so the row keeps its shape. -->
+    @let editing = isEditing(row);
     <ng-container
       [ngTemplateOutlet]="content() ?? null"
-      [ngTemplateOutletContext]="{ $implicit: row }"
+      [ngTemplateOutletContext]="{ $implicit: row, editing }"
     />
+    <!-- Keyed on the edit session, so every edit gets a field of its own. The virtual scroller keeps
+         the views of removed rows and hands them to the next rows it inserts; without the key, a
+         placeholder opened after another was cancelled would inherit the finished field — one that
+         has already reported its edit and never takes focus again. -->
+    @if (editing) {
+      @for (session of [editSession()]; track session) {
+        <app-row-edit-field
+          [initial]="editValue()"
+          [selection]="editSelection()"
+          [(value)]="editDraft"
+          (commit)="onEditCommit(row, $event)"
+          (abandon)="editCancel.emit(row)"
+        />
+      }
+    }
   </div>
 </ng-template>
 
@@ -37,6 +60,7 @@
   <cdk-virtual-scroll-viewport
     class="tree-list tree-list--virtual"
     role="tree"
+    [attr.aria-multiselectable]="selectedIds().length > 0 ? true : null"
     [itemSize]="itemSize"
   >
     <ng-container *cdkVirtualFor="let row of rows(); trackBy: trackRow">
@@ -47,7 +71,11 @@
     </ng-container>
   </cdk-virtual-scroll-viewport>
 } @else {
-  <div class="tree-list" role="tree">
+  <div
+    class="tree-list"
+    role="tree"
+    [attr.aria-multiselectable]="selectedIds().length > 0 ? true : null"
+  >
     @for (row of rows(); track row.id) {
       <ng-container
         [ngTemplateOutlet]="rowTemplate"

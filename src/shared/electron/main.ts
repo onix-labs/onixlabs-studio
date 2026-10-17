@@ -13,6 +13,7 @@ import {
   WebContents,
   WindowOpenHandlerResponse,
 } from 'electron';
+import { pluginNodeRuntime } from './plugin-node-runtime';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -20,6 +21,7 @@ import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
+import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
 import { SkillHandlers } from './ai/skills/skill-handlers';
@@ -54,7 +56,15 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
-import { consoleLevelToSeverity } from '@shared/api/log-channels';
+import {
+  consoleLevelToSeverity,
+  LOG_LEVEL_ENVIRONMENT_VARIABLE,
+  LOG_LEVEL_SETTINGS,
+  LogChannel,
+  LogLevelSetting,
+  resolveLogFloor,
+  Severity,
+} from '@shared/api/log-channels';
 import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
@@ -78,19 +88,38 @@ import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
 import { SetupChannel } from '@shared/api/setup-channels';
 import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
-import {
-  readGitIdentity,
-  runSetupProbes,
-  writeGitIdentity,
-} from '@shared/electron/setup/setup-probes';
+import { runSetupProbes } from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
-import { GitManager } from '@shared/electron/git-manager';
+import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
+import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
+import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
+import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
+import type { VersionControlExecutableChoice } from '@shared/api/version-control-protocol';
+import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
+import {
+  contributedHosting,
+  contributedVersionControl,
+} from '@shared/electron/contributions/plugins/contributed';
+import {
+  PluginInstallChange,
+  pluginInstallEvents,
+} from '@shared/electron/contributions/plugins/plugin-install-events';
+import { HostingHost } from '@shared/electron/hosting/hosting-host';
+import { HostingAgentAccess } from '@shared/electron/hosting/hosting-agent-access';
+import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
+import { HostingManager } from '@shared/electron/hosting/hosting-manager';
+import { HostingCredentialStore } from '@shared/electron/hosting/hosting-credential-store';
+import { createHostingCredentialStore } from '@shared/electron/hosting/hosting-credentials';
+import type { NodeRuntimeSpec } from '@shared/electron/contributions/plugins/plugin-loader';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
 import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
+import { CloneManager } from '@shared/electron/clone/clone-manager';
+import { NewProjectManager } from '@shared/electron/new-project/new-project-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
+import { RepositoryTrust } from './repository-trust';
 import { WindowManager } from '@shared/electron/window-manager';
 import { WorkspaceContext } from './workspace-context';
 import { WorkspaceManager } from './workspace-manager';
@@ -100,6 +129,10 @@ import { WorkspaceManager } from './workspace-manager';
 const userDataOverride: string | undefined = process.env['STUDIO_USER_DATA_DIR'];
 if (userDataOverride !== undefined) {
   app.setPath('userData', userDataOverride);
+} else if (process.env['ELECTRON_START_URL'] !== undefined) {
+  // A development build keeps a profile of its own, so an installed Studio holding the shared one's
+  // storage lock cannot make it forget everything it saves (see development-user-data.ts).
+  app.setPath('userData', useDevelopmentUserData(app.getPath('userData')).directory);
 }
 
 /**
@@ -293,6 +326,15 @@ class Program {
     path.join(app.getPath('userData'), 'trusted-paths.json'),
   );
 
+  /**
+   * Holds which repositories the user trusts enough for version control to run in them. Distinct from
+   * {@link trustedPaths}, which records folders the user chose in a dialog: choosing to open a folder
+   * is not the same as trusting what is in it.
+   */
+  private readonly repositoryTrust: RepositoryTrust = new RepositoryTrust(
+    path.join(app.getPath('userData'), 'repository-trust.json'),
+  );
+
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
@@ -311,13 +353,6 @@ class Program {
   private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
-   * Runs git safely on behalf of the renderer's source-control surfaces.
-   */
-  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null =>
-    this.windows.main(),
-  );
-
-  /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
   private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null =>
@@ -330,6 +365,9 @@ class Program {
    */
   private readonly directoryWatcher: DirectoryWatcher = new DirectoryWatcher(
     (): BrowserWindow | null => this.windows.main(),
+    // Read lazily, per event: the host is declared after this field, and the policies follow whatever
+    // version-control plugins are installed.
+    (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
   );
 
   /**
@@ -341,11 +379,90 @@ class Program {
   );
 
   /**
-   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
+   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
+   * Hosts the version-control plugins (#815–#817): picks the one serving each repository, confines
+   * every request to an open repository or workspace, and refuses what a plugin does not support.
+   * Core runs no version-control tool of its own — Git is a plugin.
+   */
+  private readonly versionControlHost: VersionControlHost = new VersionControlHost({
+    descriptors: () => contributedVersionControl(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+    executableFor: (pluginId: string): VersionControlExecutableChoice | null =>
+      this.versionControlSettings.executableFor(pluginId),
+  });
+
+  /**
+   * Holds which tool each version-control plugin runs, as chosen in Settings.
+   */
+  private readonly versionControlSettings: VersionControlSettings = new VersionControlSettings(
+    path.join(app.getPath('userData'), 'version-control.json'),
+  );
+
+  /**
+   * Serves the renderer's source-control surfaces over the version-control host.
+   */
+  private readonly versionControlManager: VersionControlManager = new VersionControlManager(
+    this.versionControlHost,
+    this.versionControlSettings,
+    this.repositoryTrust,
+  );
+
+  /**
+   * Holds the token Studio keeps for each code host, encrypted at rest — the login a hosting plugin is
+   * handed when the user chooses Studio's rather than the host's CLI.
+   */
+  private readonly hostingCredentials: HostingCredentialStore = createHostingCredentialStore();
+
+  /**
+   * Holds how each hosting plugin signs in to each of its hosts, as chosen in Settings.
+   */
+  private readonly hostingSettings: HostingSettings = new HostingSettings(
+    path.join(app.getPath('userData'), 'hosting.json'),
+  );
+
+  /**
+   * Hosts the code-hosting plugins (#819, #820): picks the one serving each repository's host, hands it
+   * a credential only for a host it declares, and refuses what it or the repository does not allow.
+   * Core talks to no host of its own — GitHub is a plugin.
+   */
+  private readonly hostingHost: HostingHost = new HostingHost({
+    descriptors: () => contributedHosting(versionControlNodeRuntime),
+    authFor: (pluginId: string) => this.hostingSettings.authFor(pluginId),
+    credential: (host: string): Promise<string | null> =>
+      Promise.resolve(this.hostingCredentials.token(host)),
+  });
+
+  /**
+   * Serves the renderer's forge surfaces over the hosting host.
+   */
+  private readonly hostingManager: HostingManager = new HostingManager(
+    this.hostingHost,
+    this.hostingCredentials,
+    this.hostingSettings,
+  );
+
+  /**
+   * Answers the setup wizard's version-control questions through the installed plugin.
+   */
+  private readonly versionControlSetup: VersionControlSetup = new VersionControlSetup(
+    this.versionControlHost,
+  );
+
+  /**
+   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming. Declared after
+   * {@link workspaceContext}, which it confines every run's root to, and after the hosting and
+   * version-control hosts, through which a run reaches the plugin serving its repository (#852).
    */
   private readonly aiManager: AiManager = new AiManager(
     (): BrowserWindow | null => this.windows.main(),
     this.skillLibrary,
+    this.workspaceContext,
+    new HostingAgentAccess(this.hostingHost, this.versionControlHost),
   );
 
   /**
@@ -372,11 +489,6 @@ class Program {
   private readonly printManager: PrintManager = new PrintManager();
 
   /**
-   * Tracks the open workspace root and confines filesystem operations to it.
-   */
-  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
-
-  /**
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
    * {@link workspaceContext} tracks.
    */
@@ -398,6 +510,30 @@ class Program {
   private readonly worktreeManager: WorktreeManager = new WorktreeManager(
     this.workspaceContext,
     this.trustedPaths,
+    this.versionControlHost,
+  );
+
+  /**
+   * Clones repositories into a folder the user chose in this process's own dialog (#805), trusting the
+   * result so it opens like any folder they opened themselves.
+   */
+  private readonly cloneManager: CloneManager = new CloneManager(
+    path.join(app.getPath('userData'), 'clone.json'),
+    (): BrowserWindow | null => this.windows.main(),
+    this.versionControlHost,
+    this.trustedPaths,
+  );
+
+  /**
+   * Creates new projects from the welcome screen (#806), where clones go: an empty folder, or a clone
+   * of a repository the code host makes first.
+   */
+  private readonly newProjectManager: NewProjectManager = new NewProjectManager(
+    this.cloneManager,
+    this.hostingManager,
+    this.versionControlHost,
+    this.trustedPaths,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -553,6 +689,16 @@ class Program {
     // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
+    // The log floor is applied as early as the preferences can be read: everything logged from here
+    // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
+    // records that are nineteen in twenty of what would otherwise be written.
+    const logFloor: Severity = resolveLogFloor(
+      process.env[LOG_LEVEL_ENVIRONMENT_VARIABLE],
+      startupPreferences.logLevel,
+      app.isPackaged,
+    );
+    this.logger.setFloor(logFloor);
+    this.logger.info('startup', `Log level: ${logFloor}`);
     // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
     // a relaunch, which is the right way round — a first launch should not start degraded.
     const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
@@ -574,9 +720,9 @@ class Program {
     // of silently quitting on the lock.
     // Whether this instance is the sole owner of its userData directory. It gates the journal reap
     // below: a second instance sharing this userData must not reap the running instance's live
-    // children (its language servers, terminals, and Claude Code agent). The commonest way two
-    // instances share a userData is a development build launched from an installed Studio while
-    // developing Studio itself — the installed instance holds the lock, so the dev instance sees it.
+    // children (its language servers, terminals, and Claude Code agent). A development build keeps
+    // a profile of its own, so this is two development builds running at once, or two pointed at the
+    // same STUDIO_USER_DATA_DIR.
     let soleInstance: boolean = true;
     if (Program.START_URL === undefined) {
       if (!app.requestSingleInstanceLock()) {
@@ -680,29 +826,36 @@ class Program {
 
   /**
    * Registers the IPC handlers for renderer-initiated window control requests. Each handler
-   * resolves the window from the request sender so it always acts on the requesting window.
+   * resolves the window from the request sender so it always acts on the requesting window — or, for
+   * the window controls, on the child window the request names (see `WindowManager.targetWindow`).
    */
   private registerIpcHandlers(): void {
-    ipcMain.on(WindowChannel.Minimize, (event: IpcMainEvent): void => {
-      BrowserWindow.fromWebContents(event.sender)?.minimize();
+    ipcMain.on(WindowChannel.Close, (event: IpcMainEvent, name: unknown): void => {
+      this.windows.targetWindow(event.sender, name)?.close();
     });
 
-    ipcMain.on(WindowChannel.ToggleMaximize, (event: IpcMainEvent): void => {
-      const targetWindow: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
-      if (targetWindow === null) {
+    ipcMain.on(WindowChannel.Minimize, (event: IpcMainEvent, name: unknown): void => {
+      this.windows.targetWindow(event.sender, name)?.minimize();
+    });
+
+    ipcMain.on(WindowChannel.ToggleMaximize, (event: IpcMainEvent, name: unknown): void => {
+      const target: BrowserWindow | null = this.windows.targetWindow(event.sender, name);
+      if (target === null) {
         return;
       }
 
-      if (targetWindow.isMaximized()) {
-        targetWindow.unmaximize();
+      if (target.isMaximized()) {
+        target.unmaximize();
       } else {
-        targetWindow.maximize();
+        target.maximize();
       }
     });
 
-    ipcMain.on(WindowChannel.Close, (event: IpcMainEvent): void => {
-      BrowserWindow.fromWebContents(event.sender)?.close();
-    });
+    ipcMain.handle(
+      WindowChannel.IsMaximized,
+      (event: IpcMainInvokeEvent, name: unknown): boolean =>
+        this.windows.targetWindow(event.sender, name)?.isMaximized() ?? false,
+    );
 
     ipcMain.on(WindowChannel.Show, (event: IpcMainEvent): void => {
       this.windows.claimMainPresence();
@@ -725,6 +878,19 @@ class Program {
       BrowserWindow.fromWebContents(event.sender)?.setMovable(movable);
     });
 
+    ipcMain.on(
+      WindowChannel.SetCaptionSymbolColor,
+      (_event: IpcMainEvent, color: unknown): void => {
+        // A plain hex colour only: it goes straight to the native overlay, which has no use for the
+        // rest of CSS and no way to report a value it could not parse.
+        if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) {
+          return;
+        }
+
+        this.windows.setOverlaySymbolColor(color);
+      },
+    );
+
     ipcMain.on(AppChannel.ConfirmClose, (_event: IpcMainEvent, proceed: unknown): void => {
       this.resolveClose(proceed === true);
     });
@@ -735,6 +901,8 @@ class Program {
         gpuRendering: this.gpuRendering,
         graphicsAcceleration: this.graphicsAcceleration,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
+        // The renderer filters before it forwards, so it needs the floor before its first log.
+        logFloor: this.logger.severityFloor,
         homeDir: os.homedir(),
         // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
         // wizard decides whether to run before the first paint, which is too early for the bridge.
@@ -754,12 +922,15 @@ class Program {
     // argument; `process.env` is the user's login-shell environment by this point, because
     // hydrateLoginShellEnvironment applied it at startup — which is the whole point of the step, since
     // the PATH Studio was launched with is not the one the user sees.
-    ipcMain.handle(SetupChannel.Probe, (): Promise<readonly SetupProbeResult[]> => {
-      return runSetupProbes(process.env);
-    });
+    // Git's two rows come from the installed version-control plugin, which core asks rather than
+    // running git itself (#817).
+    ipcMain.handle(SetupChannel.Probe, async (): Promise<readonly SetupProbeResult[]> => [
+      ...(await runSetupProbes(process.env)),
+      ...(await this.versionControlSetup.probe()),
+    ]);
 
     ipcMain.handle(SetupChannel.GetGitIdentity, (): Promise<GitIdentity | null> => {
-      return readGitIdentity(process.env);
+      return this.versionControlSetup.getIdentity();
     });
 
     ipcMain.handle(
@@ -773,7 +944,7 @@ class Program {
         if (typeof name !== 'string' || typeof email !== 'string') {
           return Promise.resolve(null);
         }
-        return writeGitIdentity({ name: name.trim(), email: email.trim() }, process.env);
+        return this.versionControlSetup.setIdentity({ name: name.trim(), email: email.trim() });
       },
     );
 
@@ -788,6 +959,29 @@ class Program {
         // its rendering policy. Left at the startup value it would come back at the old level.
         this.graphicsAcceleration = level;
         StartupPreferencesStore.write({ graphicsAcceleration: level });
+      },
+    );
+
+    ipcMain.handle(
+      LogChannel.SetLevel,
+      (_event: IpcMainInvokeEvent, setting: unknown): Severity => {
+        if (!LOG_LEVEL_SETTINGS.includes(setting as LogLevelSetting)) {
+          return this.logger.severityFloor;
+        }
+        const level: LogLevelSetting = setting as LogLevelSetting;
+        if (StartupPreferencesStore.read().logLevel !== level) {
+          StartupPreferencesStore.write({ logLevel: level });
+        }
+        const floor: Severity = resolveLogFloor(
+          process.env[LOG_LEVEL_ENVIRONMENT_VARIABLE],
+          level,
+          app.isPackaged,
+        );
+        if (floor !== this.logger.severityFloor) {
+          this.logger.setFloor(floor);
+          this.logger.info('logging', `Log level: ${floor}`);
+        }
+        return floor;
       },
     );
 
@@ -831,11 +1025,14 @@ class Program {
     this.fileManager.register();
     this.menuManager.register();
     this.codeRunner.register();
-    this.gitManager.register();
+    this.versionControlManager.register();
+    this.hostingManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
     this.worktreeManager.register();
+    this.cloneManager.register();
+    this.newProjectManager.register();
     this.decoderHost.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();
@@ -849,9 +1046,43 @@ class Program {
     this.debugManager.register();
     this.debugLaunchResolver.register();
 
+    // Before the contributions activate, because the Plugin Manager is one of them: from its first
+    // install on, a plugin updated or removed must not leave its old process serving (#881).
+    pluginInstallEvents().on((change: PluginInstallChange): void =>
+      this.stopReplacedPlugins(change),
+    );
+
     // Activate the main-process contributions after the hard-wired managers above, alongside (not in
     // place of) them. A failing contribution is isolated by the registry and never aborts startup.
     void this.contributions.activateAll();
+  }
+
+  /**
+   * Stops what an install or removal left running, in whichever host runs it (#881). The next request
+   * starts whatever is installed now, or is refused because nothing is; an agent's live session ends
+   * once it is idle, and resumes on the next turn.
+   * @param change What was installed or removed.
+   */
+  private stopReplacedPlugins(change: PluginInstallChange): void {
+    const seen: Set<string> = new Set<string>();
+    for (const contribution of change.contributions) {
+      const key: string = `${contribution.slot}\u0000${contribution.id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      if (contribution.slot === 'hosting') {
+        this.hostingHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'version-control') {
+        this.versionControlHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'agent-harness') {
+        this.aiManager.retireHarnessSessions(contribution.id);
+      }
+    }
+    this.logger.info(
+      'app',
+      `${change.pluginId} ${change.kind}; stopped what it left running (${[...seen].length} contribution(s))`,
+    );
   }
 
   /**
@@ -897,9 +1128,9 @@ class Program {
       'did-create-window',
       (window: BrowserWindow, details: Electron.DidCreateWindowDetails): void => {
         if (details.url === MODAL_WINDOW_URL) {
-          this.windows.adoptModalWindow(window);
+          this.windows.adoptModalWindow(window, details.frameName);
         } else {
-          this.windows.adoptAuxiliaryWindow(window);
+          this.windows.adoptAuxiliaryWindow(window, details.frameName);
         }
       },
     );
@@ -1166,6 +1397,8 @@ class Program {
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
     this.decoderHost.dispose();
+    this.versionControlManager.dispose();
+    this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();
@@ -1215,6 +1448,10 @@ class Program {
     }
     this.confirming = true;
     const proceed: boolean = await this.requestRendererClose();
+    if (proceed) {
+      // The renderer has saved its conversations; make sure they reach the disk before it goes.
+      await this.agentConversationStore.flush();
+    }
     this.confirming = false;
     if (proceed) {
       this.quitConfirmed = true;
@@ -1277,12 +1514,24 @@ class Program {
     // profile, so exports such as `GITHUB_TOKEN` and an enriched `PATH` would be missing from the
     // agent's Bash and the terminal. Hydrate `process.env` before any manager reads it (the managers
     // resolve their env lazily at spawn time, and this runs ahead of every field initializer).
-    hydrateLoginShellEnvironment();
+    // Remembered between launches, so a cold start does not wait on the shell's profile (audit P2).
+    hydrateLoginShellEnvironment(path.join(app.getPath('userData'), 'shell-environment.json'));
     // After the shell's PATH is in place, since that is usually the only one Python is on. Not
     // awaited: nothing at start-up needs the answer, and a debug session is minutes away.
     void hydratePythonRuntime();
     new Program();
   }
+}
+
+/**
+ * Builds how to run a version-control plugin's JavaScript entry point: through the Electron binary in
+ * Node mode, as decoders and harnesses are, so a plugin shipped as a bundle needs no Node on the
+ * machine.
+ * @param entryPoint The entry point to run.
+ * @returns Returns the command, arguments and environment.
+ */
+function versionControlNodeRuntime(entryPoint: string): NodeRuntimeSpec {
+  return pluginNodeRuntime(entryPoint);
 }
 
 Program.run();

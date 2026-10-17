@@ -19,11 +19,15 @@
   flex: 1;
   flex-direction: column;
   // No inter-row gap: timeline rows must sit flush so their connector rail draws as one continuous
-  // line. Off-rail rows (the user's messages, permission prompts) space themselves with margins.
+  // line. The one off-rail row, the user's own message, spaces itself with margins.
   gap: 0;
   min-block-size: 0;
   padding: 1.5rem;
   overflow: auto;
+  // The widest any agent entry is drawn — a reply, a thought, a tool chip, a prompt card. Each entry
+  // fits its own content below it. Inherited by the prompt cards (see agent-card.scss), which are
+  // their own components.
+  --agent-entry-max-size: 48rem;
   // Browser scroll anchoring stays ON. It is the one thing that holds the reader's place while a row
   // above the viewport settles from its `content-visibility` estimate to its real height — which is
   // constant while scrolling back through a transcript, since every row not yet rendered in this
@@ -56,14 +60,11 @@
 // revisit — a too-small estimate is what makes a scrollbar shift as real heights replace guesses.
 //
 // Applied to the direct children of the scroller, which is one element per transcript row: the rail
-// rows and the off-rail ones (messages, prompts, errors). Safe against the connector rail, because
-// each row draws its own segments within its own bounds — nothing spans rows for the containment that
-// `content-visibility` implies to break.
+// rows (the prompt and error cards among them) and the user's own messages. Safe against the
+// connector rail, because each row draws its own segments within its own bounds — nothing spans rows
+// for the containment that `content-visibility` implies to break.
 .agent__messages > .agent__row,
-.agent__messages > .agent__message,
-.agent__messages > .agent__ask,
-.agent__messages > .agent__error,
-.agent__messages > .agent__permission {
+.agent__messages > .agent__message {
   content-visibility: auto;
   contain-intrinsic-size: auto 5rem;
   // ⚠️ Load-bearing. These rows are items of a column flexbox, and a flex item defaults to
@@ -231,20 +232,25 @@
 // left rail: a node column (the icon) and a content column. A vertical connector line runs behind the
 // nodes so consecutive rows read as one timeline; the node's opaque background masks the line where it
 // crosses each icon, leaving visible segments between them. Rows sit flush (the container has no gap)
-// so the segments join; each row's own trailing space is padding the connector spans.
+// so the segments join; the space between entries is each row's trailing padding, which the lower
+// segment reaches through (see `.agent__node`).
 $agent-node-size: 1.75rem;
+$agent-row-spacing: 0.85rem;
 
 .agent__row {
   display: grid;
   grid-template-columns: $agent-node-size 1fr;
   gap: 0.75rem;
-  padding-block-end: 0.85rem;
+  // Node column included, so a rail entry's trailing edge lines up with a prompt card's.
+  max-inline-size: var(--agent-entry-max-size);
+  padding-block-end: $agent-row-spacing;
+}
 
-  // The working indicator is a single status line: centre it against its spinner node rather than
-  // top-aligning it like the multi-line bubbles and actions.
-  &--working {
-    align-items: center;
-  }
+// The working indicator is a single status line: centre it against its spinner node rather than
+// top-aligning it like the multi-line bubbles and actions. ⚠️ The content only — centring the row's
+// items would stop the node column stretching, and its connector would fall short like the rest did.
+.agent__row--working .agent__row-content {
+  align-self: center;
 }
 
 // The node column stretches to the row's full height (grid default) so the connector segments can be
@@ -257,8 +263,12 @@ $agent-node-size: 1.75rem;
 
   // Connector segments: the upper half joins to the node above, the lower half to the node below.
   // Each is shown only when the row declares that link, so the rail starts and ends cleanly.
-  .agent__row--up &::before,
-  .agent__row--down &::after {
+  //
+  // ⚠️ `>`: the node is the row's own child. A descendant selector also matched every node nested in
+  // a sub-agent's container whenever the sub-agent's row linked on, so the nested rail's last node
+  // drew a line down out of the container to nothing.
+  .agent__row--up > &::before,
+  .agent__row--down > &::after {
     content: '';
     position: absolute;
     inline-size: 0.0625rem;
@@ -267,14 +277,17 @@ $agent-node-size: 1.75rem;
     transform: translateX(-50%);
   }
 
-  .agent__row--up &::before {
+  .agent__row--up > &::before {
     inset-block-start: 0;
     block-size: calc($agent-node-size / 2);
   }
 
-  .agent__row--down &::after {
+  // ⚠️ Down through the row's trailing padding, to the next row's top where its icon sits. The node
+  // column stretches to the row's content box, which stops short of the padding: ending at 0 left a
+  // gap the height of the spacing between every pair of icons.
+  .agent__row--down > &::after {
     inset-block-start: calc($agent-node-size / 2);
-    inset-block-end: 0;
+    inset-block-end: -$agent-row-spacing;
   }
 }
 
@@ -292,10 +305,18 @@ $agent-node-size: 1.75rem;
   &--error {
     color: var(--warning-color);
   }
+
+  // A failed run, red like its card's outline and title; a tool that errored (above) is a warning,
+  // since the run carried on past it.
+  &--failed {
+    color: var(--danger-color);
+  }
 }
 
-// The content column. Children align to the leading edge and shrink to their content so a bubble or
-// action chip never stretches the full width.
+// The content column. Each entry fits its own content, up to the transcript's entry width: a one-line
+// reply or a "Reading a file" chip stays as short as what it says. A collapsible entry fits its widest
+// part, so closed it is just its header, and open it grows to whatever it revealed — a tool's detail,
+// a sub-agent's steps — with the header ruled across that width.
 .agent__row-content {
   display: flex;
   flex-direction: column;
@@ -303,19 +324,33 @@ $agent-node-size: 1.75rem;
   gap: 0.4rem;
   min-inline-size: 0;
 
-  .agent__bubble {
-    max-inline-size: 44rem;
+  // Never wider than the column, so long content wraps inside the entry rather than overflowing it.
+  > * {
+    max-inline-size: 100%;
+  }
+
+  // ⚠️ The prompt cards keep the full entry width. They lay their own controls out by their own
+  // width (`container-type: inline-size`), and an element measured that way has no content width to
+  // fit: shrunk to fit, a permission card collapsed to a sliver and its command wrapped one letter
+  // per line.
+  > app-agent-permission-card,
+  > app-agent-question-card,
+  > app-agent-edit-decision-card,
+  > app-agent-error-card {
+    align-self: stretch;
   }
 }
 
-// A tool call: a collapsible summary that reads as a plain-language action, expanding to reveal the
-// underlying technical detail (the command, pattern, or MCP tool that ran).
+// A collapsible entry — a tool call, a sub-agent, a notice — is one container: the summary is its
+// header, and what it reveals opens INSIDE the same surface rather than spilling onto the transcript
+// beneath it. Closed, it is the chip it always was.
 .agent__action {
-  max-inline-size: 44rem;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
 }
 
 .agent__action-summary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.4rem;
   // At least as tall as the node icon it sits beside, so a collapsed action lines up with its glyph.
@@ -324,8 +359,12 @@ $agent-node-size: 1.75rem;
   padding: 0.35rem 0.6rem;
   font-size: 0.85rem;
   color: var(--body-foreground-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
   cursor: default;
+
+  // Open, the header is ruled off from the content it revealed.
+  .agent__action[open] > & {
+    border-block-end: 0.0625rem solid var(--agent-view-border-color);
+  }
   // Hide the native disclosure triangle in favour of the caret icon.
   list-style: none;
 
@@ -339,6 +378,8 @@ $agent-node-size: 1.75rem;
 }
 
 .agent__action-caret {
+  // At the header's trailing edge: right after the title when closed, at the far edge when open.
+  margin-inline-start: auto;
   font-size: 0.75rem;
   opacity: 0.6;
   transition: transform 150ms ease-in-out;
@@ -353,15 +394,21 @@ $agent-node-size: 1.75rem;
 }
 
 // The revealed technical detail: the tool identifier over its one-line input summary, in mono so a
-// command or path reads as code.
+// command or path reads as code. Padded in from the container's edges on every side.
 .agent__action-detail {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  margin-block-start: 0.4rem;
-  padding-inline-start: 0.6rem;
+  padding: 0.6rem;
   font-family: var(--font-mono);
   font-size: 0.78rem;
+}
+
+// A notice's sentence, padded inside its container like a tool's detail.
+.agent__notice-body {
+  margin: 0;
+  padding: 0.6rem;
+  font-size: 0.85rem;
 }
 
 .agent__action-tech {
@@ -396,7 +443,6 @@ $agent-node-size: 1.75rem;
 }
 
 .agent__thinking-body {
-  max-inline-size: 44rem;
   font-size: 0.85rem;
   color: var(--form-muted-foreground-color);
 }
@@ -448,166 +494,30 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// The permission, question, and error cards share one off-rail card shell; a card awaiting the user
-// is outlined in the accent colour, a failed run in the warning colour.
-.agent__permission,
-.agent__ask,
-.agent__error {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  max-inline-size: 48rem;
-  margin-block-end: 0.85rem;
-  padding: 0.8rem 1rem;
-}
-
-// Shared chrome, grouped to keep the compiled style lean: the raised surfaces share one background,
-// and the outlined surfaces share one border. The accent overrides below must stay after the border
-// group so they win at equal specificity.
+// Shared chrome, grouped to keep the compiled style lean: the raised surfaces share one background.
+// The prompt and error cards draw their own (see the agent-cards components).
 .agent__avatar,
 .agent__bubble,
-.agent__node-icon,
-.agent__action-summary,
-.agent__permission,
-.agent__ask,
-.agent__error {
+.agent__node-icon {
   background: var(--agent-view-surface-color);
 }
 
-.agent__permission,
-.agent__ask,
-.agent__error {
-  border: 0.0625rem solid var(--agent-view-border-color);
+// A sub-agent lane rides the action container's chrome but reads as its own actor: the whole
+// container outlined in the accent, leading edge heavier, a robot glyph on the header (bold title ·
+// live status · muted meta, dot-separated), and the sub-agent's own activity inside it.
+//
+// ⚠️ A real border, not inset shadows: a child paints over its parent's inset shadow, so the header's
+// rule ran across the outline at both ends. Inside a border it stops at the outline's inner edge.
+.agent__lane {
+  border: 0.0625rem solid var(--accent-color);
+  border-inline-start-width: 0.1875rem;
 }
 
-.agent__permission,
-.agent__ask--pending {
-  border-color: var(--accent-color);
-}
-
-.agent__error {
-  border-color: var(--warning-color);
-}
-
-// A failed run's card: the cause line beside its warning glyph, the provider readout under it, and
-// the diagnostics disclosure.
-.agent__error-text {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-  margin: 0;
-}
-
-.agent__error-icon {
-  color: var(--warning-color);
-}
-
-.agent__error-provider {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--form-muted-foreground-color);
-}
-
-.agent__error-details[open] .agent__action-caret {
-  transform: rotate(180deg);
-}
-
-.agent__error-diagnostics {
-  margin-block-start: 0.4rem;
-}
-
-.agent__permission-text {
-  margin: 0;
-}
-
-.agent__permission-detail {
-  display: block;
-  margin-block-start: 0.4rem;
-  font-size: 0.85rem;
-  word-break: break-word;
-  opacity: 0.7;
-}
-
-.agent__permission-actions,
-.agent__ask-actions {
-  display: flex;
-  flex: none;
-  gap: 0.5rem;
-}
-
-.agent__permission-state,
-.agent__ask-state,
-.agent__ask-hint {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.agent__ask-question {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-// The suggested answers as a radio list: each row pairs the radio dial atom with a bold label and a
-// muted colon-separated description ("orders-db: the store the order service already uses").
-.agent__ask-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.agent__ask-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-}
-
-.agent__ask-option-dial {
-  flex: none;
-  margin-block-start: 0.05rem;
-}
-
-.agent__ask-option-text {
-  min-inline-size: 0;
-  font-size: 0.9rem;
-  word-break: break-word;
-}
-
-.agent__ask-option-label {
-  font-weight: 600;
-}
-
-.agent__ask-option-desc {
-  color: var(--form-muted-foreground-color);
-
-  &::before {
-    content: ': ';
-  }
-}
-
-.agent__ask-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.agent__ask-answer {
-  font-size: 0.9rem;
-  word-break: break-word;
-
-  &::before {
-    content: '→ ';
-    color: var(--accent-color);
-  }
-}
-
-// A sub-agent lane rides the action-chip chrome but reads as its own actor: an accent edge and
-// robot glyph on the summary (bold title · live status · muted meta, dot-separated), and the
-// expanded body indented behind a sub-rail line, in prose type rather than the tool chips' mono.
 .agent__lane-summary {
   gap: 0.45rem;
-  border-inline-start: 0.125rem solid var(--accent-color);
+  // The border's top and bottom come off the header, so a closed lane is still exactly the node
+  // icon's height, like every other chip.
+  min-block-size: calc($agent-node-size - 0.125rem);
 
   .agent__action-label {
     font-weight: 600;
@@ -642,17 +552,19 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// The expanded lane body: the sub-agent's own activity, inset behind an accent sub-rail line that
-// ties it back to the sub-agent's header. The mono of ordinary tool details is reset so the nested
-// rail carries the parent transcript's own type; the tech line keeps its own mono.
+// The expanded lane body: the sub-agent's own activity, inside the lane's container. The mono of
+// ordinary tool details is reset so the nested rail carries the parent transcript's own type; the
+// tech line keeps its own mono.
+//
+// 🔑 The nested entries are drawn a shade off the container (`--agent-view-nested-surface-color`):
+// they use the same surface token as the top level, so without the override every nested chip,
+// bubble and node would vanish into the container they sit in.
 .agent__lane-body {
+  --agent-view-surface-color: var(--agent-view-nested-surface-color);
+
   gap: 0.45rem;
-  margin-block-start: 0.5rem;
-  margin-inline-start: 0.6rem;
-  padding-inline-start: 0.85rem;
   font-family: inherit;
   font-size: 0.85rem;
-  border-inline-start: 0.125rem solid color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
 
 // The nested sub-agent rail: the sub-agent's own timeline, rendered through the same row markup as
@@ -687,24 +599,42 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// A user message's attached images, shown as bounded previews above its bubble.
+// A user message's attached images, shown as bounded previews below its bubble.
 .agent__bubble-images {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   justify-content: flex-end;
+  // Under the message they came with, as far from it as one transcript row is from the next (the
+  // rows' 0.85rem trailing space), less the 0.15rem the message body already puts between them.
+  margin-block-start: 0.7rem;
 }
 
 .agent__bubble-image {
   max-block-size: 10rem;
   max-inline-size: 100%;
-  border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  // A double ring: the inner one in the surface's own tone (dark on dark, light on light) separates
+  // the picture from the accent outer ring, which marks it as the user's own, as their bubble is.
+  // ⚠️ Both are drawn inside the image's own box — the border is the outer ring, the padding showing
+  // the background is the inner one. An outline would sit outside it, and a transcript row clips its
+  // paint to its box (`content-visibility`), which cut the outline off where the image meets the
+  // row's top edge.
+  box-sizing: border-box;
+  padding: 0.0625rem;
+  background: var(--agent-image-inner-border-color);
+  border: 0.0625rem solid var(--accent-color);
+  // The prompt cards' corners (see agent-card.scss): an attachment sits among them in the transcript.
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }
 
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation
 // attribute, so style them through ::ng-deep.
 :host ::ng-deep .agent__markdown {
+  // A run with no break in it — a path, a URL, a long identifier in inline code — wraps rather than
+  // bleeding out of the bubble. Only as a last resort: text still wraps between words where it can,
+  // and a code block keeps its own lines and scrolls.
+  overflow-wrap: anywhere;
+
   p {
     margin: 0 0 0.6rem;
   }
@@ -759,18 +689,12 @@ $agent-node-size: 1.75rem;
 .agent__avatar,
 .agent__bubble,
 .agent__node-icon,
-.agent__action-summary,
+.agent__action,
 .agent__action-cmd,
-.agent__permission,
-.agent__ask,
-.agent__error,
 .agent__bubble-image {
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-.agent__avatar,
-.agent__permission,
-.agent__ask,
-.agent__error {
+.agent__avatar {
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }

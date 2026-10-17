@@ -9,11 +9,9 @@ import {
   Type,
 } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { Icon } from '@shared/angular/icons/icon';
-import { Layouts } from '@shared/angular/services/layouts/layouts';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { Tab, TAB_TYPE_METADATA, TabTypeMetadata } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ViewInjectors } from '@shared/angular/services/view-injectors/view-injectors';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
@@ -29,8 +27,9 @@ import { StatusStripSegments } from '../status-strip-segments/status-strip-segme
  * component (from its {@link FeatureRegistry} descriptor) through that view's own injector, so the
  * component reads the view's per-tab services directly. Exactly one is mounted at a time and it is
  * destroyed on tab switch, so a view's status cannot linger over another view — the strip always
- * shows the current view, with nothing to clear and no owner keys to collide. A feature that
- * registers no status component falls back to the tab's title.
+ * shows the current view, with nothing to clear and no owner keys to collide. The region always opens
+ * by naming what kind of tab is active — "Workspace", "Code Editor" (#882) — and a feature that
+ * registers no status component shows only that. Every segment is a readout: nothing here is pressed.
  *
  * The **ambient region** shows app-wide state that outlives any one tab — the {@link StatusBar}
  * registry's segments, the language servers running for the active workspace, and the notification
@@ -73,26 +72,6 @@ export class StatusStripContainer {
   private readonly viewInjectors: ViewInjectors = inject(ViewInjectors);
 
   /**
-   * Holds the layout store, so the strip can name the layout the active workspace is showing.
-   */
-  private readonly layouts: Layouts = inject(Layouts);
-
-  /**
-   * Gets the segment naming the layout the active workspace is showing, or null when the active tab
-   * is not a workspace. The ribbon's View button reads "Default" whatever the default is called,
-   * because a layout name has no length limit and a ribbon face has no room; this is where the name
-   * it is actually showing is said. Purely a readout — there is nothing to press.
-   */
-  protected readonly layoutSegment: Signal<StatusSegment | null> = computed(
-    (): StatusSegment | null => {
-      const name: string | null = this.layouts.activeName();
-      return name === null
-        ? null
-        : { id: 'layout', text: name, icon: Icon.LAYOUT_PRESET, title: `Layout: ${name}` };
-    },
-  );
-
-  /**
    * Gets the active feature's status component, or undefined when the feature contributes none.
    */
   protected readonly viewStatus: Signal<Type<unknown> | undefined> = computed(
@@ -108,17 +87,23 @@ export class StatusStripContainer {
   );
 
   /**
-   * Gets the fallback leading segments, naming the active tab (or a ready indicator) for a feature
-   * that contributes no status component of its own.
+   * Gets the segment naming what kind of tab is active — the same words and icon for every tab of a
+   * type, whatever each is titled — or a ready indicator while no tab is open.
    */
-  protected readonly fallback: Signal<readonly StatusSegment[]> = computed(
-    (): readonly StatusSegment[] => {
-      const activeTab: Tab | undefined = this.tabsService.activeTab();
-      return activeTab === undefined
-        ? [{ id: 'ready', text: 'Ready' }]
-        : [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon }];
-    },
-  );
+  protected readonly kindSegment: Signal<StatusSegment> = computed((): StatusSegment => {
+    const activeTab: Tab | undefined = this.tabsService.activeTab();
+    if (activeTab === undefined) {
+      return { id: 'ready', text: 'Ready' };
+    }
+    const metadata: TabTypeMetadata = TAB_TYPE_METADATA[activeTab.type];
+    return { id: 'tab-kind', text: metadata.kind, icon: metadata.icon };
+  });
+
+  /**
+   * Gets the segments a feature with no status component of its own contributes: none. The strip's
+   * kind segment already says what the tab is, and repeating its title would say nothing more.
+   */
+  protected readonly fallback: readonly StatusSegment[] = [];
 
   /**
    * Gets the ambient segments, shown at the end of the strip whichever tab is active.

@@ -1,0 +1,28 @@
+// Laid out like the Containers tab's empty state, so the two "install a plugin to see this" states
+// read the same.
+.version-control-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.version-control-missing__icon {
+  font-size: 2.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.version-control-missing__text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.version-control-missing__hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}

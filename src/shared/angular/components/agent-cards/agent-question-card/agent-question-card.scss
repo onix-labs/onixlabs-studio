@@ -1,0 +1,46 @@
+:host {
+  display: block;
+  // The actions lay themselves out by the card's own width (see the permission card).
+  container-type: inline-size;
+}
+
+.agent__ask-question {
+  margin: 0;
+  font-weight: 600;
+  color: var(--agent-card-title-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// Narrow — a docked Agent panel: the buttons share the full width equally. The button row keeps to
+// the card's trailing edge at its own width everywhere else, as Allow and Deny do; here it gives that
+// up to span the card, which no input can say because only the card's width decides it.
+@container (inline-size <= 22.5rem) {
+  .agent__ask-actions {
+    inline-size: auto;
+    margin-inline-start: 0;
+    align-self: stretch;
+  }
+}
+
+.agent__ask-state,
+.agent__ask-hint {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.agent__ask-answer {
+  font-size: 0.9rem;
+  word-break: break-word;
+
+  &::before {
+    content: '→ ';
+    color: var(--accent-color);
+  }
+}
+
+// The free-form question's placeholder Answer: it holds its column so Skip sizes and sits as it does
+// beside a visible Answer, but is not seen, focused or announced.
+.agent__ask-placeholder {
+  visibility: hidden;
+}

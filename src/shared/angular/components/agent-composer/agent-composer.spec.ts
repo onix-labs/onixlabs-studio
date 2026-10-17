@@ -26,6 +26,7 @@ import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine'
 import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
 import { Search } from '@shared/angular/services/search/search';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { FakeIntersectionObserver } from '@shared/angular/testing/fake-intersection-observer';
 import { AgentComposer } from './agent-composer';
 
 /**
@@ -120,6 +121,7 @@ describe('AgentComposer', () => {
       contextTokens,
       contextWindow,
       costUsd: signal<number>(0),
+      billedPerToken: signal<boolean>(true),
       pendingContextTokens,
       contextPaths,
       send: (
@@ -481,26 +483,26 @@ describe('AgentComposer', () => {
     expect(context().classList.contains('agent__context--high')).toBe(true);
   });
 
-  it('contextMeter_colourBands_switchAtTheThirdsBoundaries', () => {
+  it('contextMeter_colourBands_switchAtHalfAndThreeQuarters', () => {
     contextWindow.set(100);
     const context: () => HTMLElement = (): HTMLElement =>
       (fixture.nativeElement as HTMLElement).querySelector('.agent__context')!;
 
-    contextTokens.set(33); // still success at 33%.
+    contextTokens.set(49); // still success at 49%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(false);
     expect(context().classList.contains('agent__context--high')).toBe(false);
 
-    contextTokens.set(34); // crosses into warning at 34%.
+    contextTokens.set(50); // crosses into warning at 50%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(true);
 
-    contextTokens.set(66); // still warning at 66%.
+    contextTokens.set(74); // still warning at 74%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(true);
     expect(context().classList.contains('agent__context--high')).toBe(false);
 
-    contextTokens.set(67); // crosses into error at 67%.
+    contextTokens.set(75); // crosses into error at 75%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--high')).toBe(true);
   });
@@ -782,6 +784,32 @@ describe('AgentComposer', () => {
       expect(host.querySelector('.agent__elapsed')).toBeNull();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('elapsed_watchesTheFormNotTheBoxlessHost_soTheClockShowsOnScreen', () => {
+    const observers: FakeIntersectionObserver = FakeIntersectionObserver.install();
+    vi.useFakeTimers();
+    try {
+      const watched: ComponentFixture<AgentComposer> = TestBed.createComponent(AgentComposer);
+      watched.componentRef.setInput('tabId', undefined);
+      watched.componentRef.setInput('surface', 'editor');
+      watched.detectChanges();
+      const host: HTMLElement = watched.nativeElement as HTMLElement;
+      const form: HTMLElement = host.querySelector<HTMLElement>('.agent__composer')!;
+
+      // The host is display: contents and has no box, so it would never intersect.
+      expect(observers.observed()).toEqual([form]);
+
+      observers.report(form, true);
+      running.set(true);
+      watched.detectChanges();
+      vi.advanceTimersByTime(2000);
+      watched.detectChanges();
+      expect(host.querySelector('.agent__elapsed')?.textContent?.trim()).toBe('0:02');
+    } finally {
+      vi.useRealTimers();
+      observers.uninstall();
     }
   });
 

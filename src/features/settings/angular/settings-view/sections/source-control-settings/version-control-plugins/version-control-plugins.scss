@@ -1,0 +1,11 @@
+// A plugin's program choice and its Save on one row, like the GitHub token row below it.
+.version-control-plugins__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// A path field wide enough to show a typical absolute path.
+.version-control-plugins__path {
+  min-inline-size: 16rem;
+}

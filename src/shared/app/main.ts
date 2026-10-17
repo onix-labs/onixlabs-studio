@@ -5,6 +5,8 @@ import {
   renderGraphicsAcceleration,
   startupGraphicsAcceleration,
 } from '@shared/angular/services/display/display-policy';
+import { trackDevicePixel } from '@shared/angular/services/display/device-pixel';
+import { openDesignCanvas } from './canvas/canvas-entry';
 import { config } from './config';
 import { warmIconFonts } from './icon-fonts';
 import { Root } from './root/root';
@@ -40,17 +42,39 @@ if (shouldReduceEffects()) {
   root.setAttribute('data-reduced-gpu', 'true');
 }
 
+// Each platform dresses the window differently (see `WindowManager.chrome`): macOS insets its traffic
+// lights over the leading end of the top strip, Windows draws its caption buttons over the trailing
+// end, and Linux keeps the native title bar. The strips that share that space style themselves by
+// `:root[data-platform]`, so it is stamped before the first paint.
+document.documentElement.setAttribute('data-platform', window.host?.platform ?? 'browser');
+
+// The tab feet are drawn in whole device pixels (`--hairline`), which only script can measure.
+trackDevicePixel(window);
+
 // Started before bootstrap so the six icon weights download alongside it, rather than being fetched
 // the first time a glyph is painted — which is when the first tab opens. See `icon-fonts.ts`.
 warmIconFonts();
 
-bootstrapApplication(Root, config).catch((error: unknown): void => {
-  // The forwarder may not have installed if bootstrap failed this early, so send the record straight
-  // over the bridge as well as to the console (for DevTools).
-  window.bridge?.send(LogChannel.Append, {
-    severity: 'error',
-    source: 'bootstrap',
-    message: `Application failed to bootstrap: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+/**
+ * Starts Studio.
+ */
+function bootstrapStudio(): void {
+  bootstrapApplication(Root, config).catch((error: unknown): void => {
+    // The forwarder may not have installed if bootstrap failed this early, so send the record straight
+    // over the bridge as well as to the console (for DevTools).
+    window.bridge?.send(LogChannel.Append, {
+      severity: 'error',
+      source: 'bootstrap',
+      message: `Application failed to bootstrap: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    });
+    console.error(error);
   });
-  console.error(error);
+}
+
+// The conversation canvas (#855) takes the page instead when it is loaded with `?canvas`, in development
+// builds only; a production build never starts it.
+void openDesignCanvas().then((opened: boolean): void => {
+  if (!opened) {
+    bootstrapStudio();
+  }
 });

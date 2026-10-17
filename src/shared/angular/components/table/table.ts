@@ -72,6 +72,11 @@ export interface TableColumn {
 export type TableSortDirection = 'asc' | 'desc';
 
 /**
+ * How tall a table's data rows are.
+ */
+export type TableRowSize = 'compact' | 'comfortable';
+
+/**
  * A sort selection: the column being sorted and its direction.
  */
 export interface TableSort {
@@ -181,6 +186,18 @@ export class Table {
   public readonly collapsible: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets how tall the data rows are: `compact` for dense lists such as a log, `comfortable` for a
+   * manager tool's list, whose rows carry chips, buttons or a second line. Defaults to compact.
+   */
+  public readonly rowSize: InputSignal<TableRowSize> = input<TableRowSize>('compact');
+
+  /**
+   * Gets whether alternate data rows are shaded, so a wide row can be followed across. The pattern
+   * restarts under each group header, so every group starts on the same shade. Defaults to false.
+   */
+  public readonly striped: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets the ids of the currently-selected rows, highlighted in the table. Selection is driven by the
    * consumer (typically from {@link rowClick}); defaults to none. Purely visual — the table does not
    * manage the set.
@@ -241,6 +258,31 @@ export class Table {
         }
       }
       return visible;
+    },
+  );
+
+  /**
+   * Gets the ids of the data rows shaded as the alternate stripe: every second row of each group, as it
+   * is rendered (a collapsed group's rows are not counted).
+   */
+  protected readonly alternateIds: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> => {
+      const alternate: Set<string> = new Set<string>();
+      if (!this.striped()) {
+        return alternate;
+      }
+      let index: number = 0;
+      for (const row of this.visibleRows()) {
+        if (row.group === true) {
+          index = 0;
+          continue;
+        }
+        if (index % 2 === 1) {
+          alternate.add(row.id);
+        }
+        index += 1;
+      }
+      return alternate;
     },
   );
 

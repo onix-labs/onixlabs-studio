@@ -161,6 +161,13 @@ describe('Button', () => {
     expect(host.classList.contains('button--small')).toBe(true);
   });
 
+  it('size_whenLarge_marksTheHost_soTheStylesheetGivesItRoom', () => {
+    render({ label: 'Next', size: 'large' });
+
+    expect(host.classList.contains('button--large')).toBe(true);
+    expect(host.classList.contains('button--small')).toBe(false);
+  });
+
   it('tone_whenUnstated_isAccent_soAnOrdinaryButtonCarriesNoToneClass', () => {
     render({ label: 'Save' });
 

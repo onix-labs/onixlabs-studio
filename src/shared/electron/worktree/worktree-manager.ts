@@ -9,6 +9,7 @@ import {
 import { WorktreeChannel } from '@shared/api/worktree-channels';
 import { logger } from '../logger';
 import { TrustedPaths } from '../trusted-paths';
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
 
@@ -28,10 +29,18 @@ export class WorktreeManager {
    * Initializes a new instance of the {@link WorktreeManager} class.
    * @param workspace The shared workspace context, used to confine every operation to open roots.
    * @param trusted The trusted-paths store, used to gate kind resolution for not-yet-open folders.
+   * @param versionControl The version-control host repository questions go through.
    */
-  public constructor(workspace: WorkspaceContext, trusted: TrustedPaths) {
-    this.operations = new WorktreeOperations(workspace, trusted, (target: string): Promise<void> =>
-      shell.trashItem(target),
+  public constructor(
+    workspace: WorkspaceContext,
+    trusted: TrustedPaths,
+    versionControl: VersionControlHost,
+  ) {
+    this.operations = new WorktreeOperations(
+      workspace,
+      trusted,
+      (target: string): Promise<void> => shell.trashItem(target),
+      versionControl,
     );
   }
 
@@ -88,6 +97,21 @@ export class WorktreeManager {
       },
     );
     ipcMain.handle(
+      WorktreeChannel.RenameCheckout,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        alias: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Rename checkout ${String(id)} in ${String(root)}`);
+        return this.logged(
+          `Rename checkout ${String(id)}`,
+          this.operations.renameCheckout(root, id, alias),
+        );
+      },
+    );
+    ipcMain.handle(
       WorktreeChannel.OpenCheckout,
       (
         _event: IpcMainInvokeEvent,
@@ -106,6 +130,38 @@ export class WorktreeManager {
       ): Promise<readonly WorktreeCheckoutStatus[] | null> => {
         logger.trace('WorktreeManager', `Status for ${String(root)}`);
         return this.operations.status(root);
+      },
+    );
+    ipcMain.handle(
+      WorktreeChannel.DeleteBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        name: unknown,
+        force: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Delete branch ${String(name)} in ${String(id)}`);
+        return this.logged(
+          `Delete branch ${String(name)} in checkout ${String(id)}`,
+          this.operations.deleteBranch(root, id, name, force),
+        );
+      },
+    );
+    ipcMain.handle(
+      WorktreeChannel.CreateBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+        name: unknown,
+        checkout: unknown,
+      ): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Create branch ${String(name)} in ${String(id)}`);
+        return this.logged(
+          `Create branch ${String(name)} in checkout ${String(id)}`,
+          this.operations.createBranch(root, id, name, checkout),
+        );
       },
     );
     ipcMain.handle(

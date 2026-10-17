@@ -33,7 +33,9 @@ export class TerminalStatusStrip {
   protected readonly leading: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
       const context: TerminalContext | null = this.status.context();
-      return context?.address == null ? [] : [{ id: 'terminal-address', text: context.address }];
+      return context?.address == null
+        ? []
+        : [{ id: 'terminal-address', text: context.address, shrink: 'start' }];
     },
   );
 

@@ -59,13 +59,23 @@ export enum AgentConversationChannel {
  * set is open-ended by design so new specialized agents can be added without fragmenting history.
  */
 export type AgentConversationAgentType =
-  'agent' | 'code' | 'workspace' | 'terminal' | 'review' | 'search';
+  | 'agent'
+  | 'code'
+  | 'workspace'
+  | 'terminal'
+  | 'review'
+  | 'search'
+  | 'monitor'
+  | 'models'
+  | 'plugins'
+  | 'containers';
 
 /**
  * Identifies the kind of context a conversation is associated with. `global` is the standalone "new
- * agent" bucket, which is not tied to a workspace, repository, or file.
+ * agent" bucket, which is not tied to a workspace, repository, or file. `tool` is a tool view's own
+ * agent (#964), keyed by the view's agent surface.
  */
-export type ConversationContextKind = 'global' | 'workspace' | 'repository' | 'file';
+export type ConversationContextKind = 'global' | 'workspace' | 'repository' | 'file' | 'tool';
 
 /**
  * Describes the context a conversation belongs to: a kind plus the stable key that identifies the

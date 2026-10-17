@@ -17,7 +17,7 @@
   flex: none;
   margin: 0;
   padding: 0.6rem 0.85rem;
-  color: var(--text-muted-color);
+  color: var(--form-muted-foreground-color);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -26,7 +26,7 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  color: var(--status-warning-color, var(--text-color));
+  color: var(--status-warning-color, var(--body-foreground-color));
 }
 
 .generated__modes {
@@ -35,7 +35,7 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0.5rem 0.6rem;
-  border-block-end: 1px solid var(--form-border-color);
+  border-block-end: 1px solid var(--form-control-border-color);
 }
 
 .generated__spacer {

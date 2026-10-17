@@ -143,6 +143,70 @@
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
 }
 
+// Every row wraps its item so a trailing action can sit beside it. Without one the item simply fills
+// the row and keeps its own hover surface.
+.app-menu-panel__row {
+  display: flex;
+  align-items: center;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: var(--hover-transition);
+
+  > .app-menu-panel__item {
+    flex: 1;
+    min-inline-size: 0;
+  }
+}
+
+// A row with an action carries the hover surface itself, so hovering anywhere on it — the action
+// included — highlights the whole row rather than the item alone.
+.app-menu-panel__row--with-action {
+  padding-inline-end: 0.25rem;
+
+  &:hover,
+  &:has(:focus-visible) {
+    background: var(--menu-item-background-color--hover);
+  }
+
+  > .app-menu-panel__item {
+    &:hover,
+    &:focus-visible {
+      background: transparent;
+    }
+  }
+}
+
+// The trailing action: hidden until its row is hovered or focused, so a list of rows does not read as
+// a column of buttons.
+.app-menu-panel__item-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  font: inherit;
+  font-size: 1rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  opacity: 0;
+  transition: var(--hover-transition);
+
+  .app-menu-panel__row:hover &,
+  .app-menu-panel__row:has(:focus-visible) & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--title-strip-tab-close-button-background-color--hover);
+    color: var(--title-strip-tab-close-button-foreground-color--hover);
+  }
+}
+
 .app-menu-panel__item {
   display: flex;
   align-items: center;
@@ -169,7 +233,7 @@
     outline: none;
   }
 
-  // A disabled row (e.g. an empty menu's "No actions yet" placeholder): muted and inert.
+  // A disabled row: muted and inert.
   &.cdk-menu-item-disabled {
     color: var(--form-muted-foreground-color);
     cursor: default;
@@ -435,10 +499,12 @@
 .notifications-menu__panel {
   display: flex;
   flex-direction: column;
-  inline-size: 20rem;
-  max-block-size: 24rem;
+  gap: 0.5rem;
+  // Wide enough for the notification card at the size the stack draws it.
+  inline-size: calc(22.5rem + 1rem);
+  max-block-size: 32rem;
   overflow-y: auto;
-  padding: 0.25rem;
+  padding: 0.5rem;
   // Lift the upward-opening flyout to sit just above the status strip, and pull it out toward the
   // strip's right edge (a negative inline-end margin shifts it right, past the button's right edge).
   margin-block-end: 0.9375rem;
@@ -457,6 +523,12 @@
   justify-content: space-between;
 }
 
+.notifications-menu__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .notifications-menu__heading {
   margin: 0;
   padding: 0.3rem 0.6rem;
@@ -466,6 +538,7 @@
   letter-spacing: 0.05em;
   color: var(--settings-muted-foreground-color);
 }
+
 .notifications-menu__empty {
   margin: 0;
   padding: 0.75rem 0.6rem;
@@ -473,67 +546,12 @@
   color: var(--settings-muted-foreground-color);
 }
 
-.notifications-menu__item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.85rem;
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.notifications-menu__item-icon {
-  i {
-    font-size: 1.1rem;
-  }
-}
-
-.notifications-menu__item--info .notifications-menu__item-icon {
-  color: var(--info-color);
-}
-
-.notifications-menu__item--success .notifications-menu__item-icon {
-  color: var(--success-color);
-}
-
-.notifications-menu__item--warning .notifications-menu__item-icon {
-  color: var(--warning-color);
-}
-
-.notifications-menu__item--error .notifications-menu__item-icon {
-  color: var(--error-color);
-}
-
-.notifications-menu__item-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-inline-size: 0;
-}
-
-.notifications-menu__item-title {
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-// Detail can carry multi-line tool output (a git error); clamp it so one verbose failure does not
-// swallow the flyout — the sticky toast remains the place to read the full text.
-.notifications-menu__item-detail {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
-  font-size: 0.75rem;
-  color: var(--settings-muted-foreground-color);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.notifications-menu__item-time {
-  font-size: 0.7rem;
-  color: var(--settings-muted-foreground-color);
+// Each entry is the stack's own card, filling the flyout's width; it keeps its own shadow-free edge
+// here, since the flyout already floats.
+.notifications-menu__card {
+  flex: none;
+  inline-size: 100%;
+  box-shadow: none;
 }
 
 // --- The agent composer's keyboard-shortcut drop-up (see agent-composer-shortcuts). Rendered through

@@ -1,3 +1,4 @@
+import { AiConnection, AiProposedChange } from '@shared/api/ai-types';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
@@ -19,6 +20,11 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Agent, AgentItem, STREAM_FLUSH_MS } from './agent';
+import { ProposedChanges } from './proposed-changes';
+import {
+  ProposedDiff,
+  proposedDiff,
+} from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
 
 /**
  * The providers the stub runtime reports.
@@ -57,7 +63,6 @@ describe('Agent', () => {
     remoteControl: AiRemoteControlMode | undefined;
     language: string | undefined;
     systemPromptExtra: string | undefined;
-    userPromptExtra: string | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -158,7 +163,6 @@ describe('Agent', () => {
           remoteControl: options.remoteControl,
           language: options.language,
           systemPromptExtra: options.systemPromptExtra,
-          userPromptExtra: options.userPromptExtra,
         });
         return 'run-1';
       },
@@ -183,7 +187,17 @@ describe('Agent', () => {
       },
     };
     TestBed.configureTestingModule({
-      providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
+      providers: [
+        Agent,
+        { provide: AiRuntime, useValue: runtimeStub },
+        {
+          provide: ProposedChanges,
+          useValue: {
+            diffOf: (change: AiProposedChange): Promise<ProposedDiff> =>
+              Promise.resolve(proposedDiff(change.path, 'a\n', 'b\n')),
+          },
+        },
+      ],
     });
     // ⚠️ Nothing is seeded any more (#653), so a fresh profile has no active connection until the
     // engine's async provider load picks one. These tests run synchronously against a stubbed
@@ -198,15 +212,15 @@ describe('Agent', () => {
     expect(runCalls[0].agentSessionId).toBeTruthy();
   });
 
-  it('send_carriesTheBoundLanguageAndTheStandingPromptsThatMatchIt', () => {
-    // #300. The layers are resolved here — the renderer owns the profiles and the host knows the
-    // owning document's language — and travel as two strings the transcript never shows.
+  it('send_carriesTheBoundLanguageAndTheStandingInstructionsThatMatchIt', () => {
+    // #300. The instructions are resolved here — the renderer owns the profiles and the host knows the
+    // owning document's language — and travel as a string the transcript never shows. The message
+    // itself goes as typed (#948 dropped the layer that was added beneath it).
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     const profile: PromptProfile = profiles.create('C#');
     profiles.update(profile.id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      system: 'Explicit types.',
-      user: 'British English.',
+      instructions: 'Explicit types.',
     });
     agent.bindLanguage((): string => 'csharp');
 
@@ -214,23 +228,58 @@ describe('Agent', () => {
 
     expect(runCalls[0].language).toBe('csharp');
     expect(runCalls[0].systemPromptExtra).toBe('### C#\nExplicit types.');
-    expect(runCalls[0].userPromptExtra).toBe('### C#\nBritish English.');
     expect(runCalls[0].prompt).toBe('hello');
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
   });
 
+  it('sendWhenReady_waitsForTheProvidersToLoad_thenSends', async () => {
+    // #806. A message sent as a conversation opens can beat the first provider load; sent then, main
+    // knows no runnable provider and refuses it.
+    const engine: AgentEngine = TestBed.inject(AgentEngine);
+    let release: () => void = (): void => undefined;
+    Object.defineProperty(engine, 'whenLoaded', {
+      value: new Promise<void>((resolve: () => void): void => {
+        release = resolve;
+      }),
+    });
+
+    const sent: Promise<void> = agent.sendWhenReady('hello', 'tab-1', 'project');
+    await Promise.resolve();
+    expect(runCalls).toEqual([]);
+
+    release();
+    await sent;
+
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0].prompt).toBe('hello');
+  });
+
+  it('send_carriesTheConversationsBrief_afterTheStandingPrompts_untilANewChat', () => {
+    // #806. A new project's conversation is briefed on the project and its starter skill.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
+    agent.setBrief('A new project.');
+
+    agent.send('hello');
+    expect(runCalls[0].systemPromptExtra).toBe('### Everywhere\nBe brief.\n\nA new project.');
+
+    agent.clear();
+    agent.send('again');
+    expect(runCalls[1].systemPromptExtra).toBe('### Everywhere\nBe brief.');
+  });
+
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
-    profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });
+    profiles.update(profiles.create('Everywhere').id, { instructions: 'Be brief.' });
     profiles.update(profiles.create('C#').id, {
       scope: { surfaces: [], languages: ['csharp'] },
-      user: 'Explicit types.',
+      instructions: 'Explicit types.',
     });
 
     agent.send('hello');
 
     expect(runCalls[0].language).toBeUndefined();
-    expect(runCalls[0].userPromptExtra).toBe('### Everywhere\nBe brief.');
+    expect(runCalls[0].systemPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
   it('commandsEvent_forThisConversation_populatesTheDiscoveredCommands', () => {
@@ -1226,6 +1275,55 @@ describe('Agent', () => {
     expect(lastItem()?.permissionHasWorkspace).toBe(true);
   });
 
+  it('permission_withAProposedChange_putsItsDiffOnThePrompt', async () => {
+    // #891: worked out when the request arrives, so the card shows what was asked.
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Edit',
+      detail: '/ws/a.ts',
+      hasWorkspace: true,
+      change: { path: '/ws/a.ts', edits: [{ oldText: 'a', newText: 'b' }] },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(lastItem()?.permissionDiff?.path).toBe('/ws/a.ts');
+    expect(lastItem()?.permissionDiff?.additions).toBe(1);
+  });
+
+  it('workspaceProposal_putsACardInTheConversation_whichSettlesOnce', () => {
+    // #876: the agent tab's agent offers a workspace; the user acts on the card when they choose.
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'workspace-proposal',
+      proposalId: 'w1',
+      name: 'todo-app',
+      summary: 'A list that remembers.',
+      handoff: '# Plan',
+    });
+
+    const item: AgentItem | undefined = lastItem();
+    expect(item).toMatchObject({
+      kind: 'workspace-proposal',
+      proposalName: 'todo-app',
+      proposalSummary: 'A list that remembers.',
+      proposalHandoff: '# Plan',
+      proposalState: 'pending',
+    });
+
+    agent.settleProposal(item!, 'created', '/Users/me/todo-app');
+    agent.settleProposal(lastItem()!, 'dismissed');
+
+    expect(lastItem()).toMatchObject({
+      proposalState: 'created',
+      proposalPath: '/Users/me/todo-app',
+    });
+  });
+
   it('permission_whenGrantedWithARememberScope_forwardsAndRecordsIt', () => {
     agent.send('hi');
     fireEvent({
@@ -1580,6 +1678,40 @@ describe('Agent', () => {
       costUsd: 0.05,
     });
     expect(agent.contextTokens()).toBe(12_500);
+  });
+
+  it('contextWindow_whenATurnReportsOne_outranksTheListedWindow_forThatModelOnly', async () => {
+    await TestBed.inject(AgentEngine).loadProviders();
+    expect(agent.contextWindow()).toBe(1_000_000);
+    agent.send('hi');
+
+    // A sub-agent's window is its own and never becomes the conversation's.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      parentToolId: 'task-1',
+      inputTokens: 100,
+      outputTokens: 10,
+      costUsd: null,
+      contextWindow: 200_000,
+    });
+    expect(agent.contextWindow()).toBe(1_000_000);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: 12_000,
+      outputTokens: 500,
+      costUsd: null,
+      contextWindow: 400_000,
+    });
+    expect(agent.contextWindow()).toBe(400_000);
+
+    // Another model falls back to its listed window, and the reported one returns with its model.
+    agent.setModel('claude-sonnet-4-6');
+    expect(agent.contextWindow()).toBe(1_000_000);
+    agent.setModel('claude-opus-4-8');
+    expect(agent.contextWindow()).toBe(400_000);
   });
 
   it('editDecision_whenRaisedThenApplied_repliesAndSettlesTheItem', () => {
@@ -2095,6 +2227,18 @@ describe('Agent', () => {
 
     expect(lastItem()?.kind).toBe('user');
     expect(lastItem()?.id).toBe('item-5');
+  });
+
+  it('billedPerToken_onlyForAnApiKeyConnection (#882)', () => {
+    // A subscription is a flat fee, so a cost its provider reports is not money spent.
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('ai.connections', [
+      { id: 'claude', auth: 'local-login' } as unknown as AiConnection,
+    ]);
+    expect(agent.billedPerToken()).toBe(false);
+
+    settings.set('ai.connections', [{ id: 'claude', auth: 'api-key' } as unknown as AiConnection]);
+    expect(agent.billedPerToken()).toBe(true);
   });
 
   it('usage_whenReported_setsContextTokensToInputPlusOutputAndAccumulatesCost', () => {

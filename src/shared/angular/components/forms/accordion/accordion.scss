@@ -9,37 +9,102 @@
   overflow: hidden;
 }
 
-.accordion__header {
+// The bar carries the header's surface, so the toggle and any actions beside it read as one header.
+.accordion__bar {
   display: flex;
   align-items: center;
+  background: var(--accordion-header-background-color);
+  transition: background-color 150ms ease-in-out;
+
+  &:hover {
+    background: var(--accordion-header-background-color--hover);
+  }
+}
+
+.accordion__header {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 0.5rem;
-  inline-size: 100%;
-  padding: 0.5rem 0.7rem;
+  min-inline-size: 0;
+  padding: 0.75rem 0.5rem 0.75rem 0.75rem;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 500;
   text-align: start;
   color: inherit;
-  background: var(--form-control-background-color);
+  background: none;
   border: none;
   cursor: default;
-  transition: background-color 150ms ease-in-out;
-
-  &:hover {
-    background: var(--form-control-background-color--hover);
-  }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
   }
+}
 
-  .ti {
-    font-size: 1rem;
-    color: var(--form-muted-foreground-color);
+.accordion__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding-inline-end: 0.5rem;
+
+  // An accordion without actions keeps its header exactly as it was.
+  &:empty {
+    display: none;
   }
 }
 
+// Leading icon and trailing caret bracket the heading, which takes the remaining width and truncates
+// rather than wrapping so the caret stays flush with the right edge.
+.accordion__icon,
+.accordion__caret {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.accordion__caret {
+  margin-inline-end: 0.75rem;
+}
+
+.accordion__heading {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .accordion__body {
-  padding: 0.4rem 0.7rem 0.7rem;
+  padding: 0.4rem 0.75rem 0.75rem;
+}
+
+// A filling accordion takes the height its parent gives it: the box, then the body, are flex columns
+// that pass it down, so content which scrolls on its own (a table) can be bounded and keep its header
+// in view. The body is flush, since that content draws its own edges.
+:host(.accordion--fill) {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+
+  .accordion {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+  }
+
+  .accordion__bar {
+    flex: none;
+  }
+
+  .accordion__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    padding: 0;
+  }
 }

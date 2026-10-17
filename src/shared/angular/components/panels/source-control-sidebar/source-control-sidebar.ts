@@ -11,6 +11,12 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import type { HostingCapability } from '@shared/api/hosting-protocol';
+import { VersionControlCapability } from '@shared/api/version-control-protocol';
+import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { RepositoryRestricted } from '../repository-restricted/repository-restricted';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
@@ -40,12 +46,13 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
-import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
@@ -55,12 +62,38 @@ import { MutationResult } from '@shared/angular/services/source-control/source-c
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Log } from '@shared/angular/services/log/log';
+import { Chip } from '@shared/angular/components/chip/chip';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
+import {
+  REPOSITORY_WORKTREES,
+  RepositoryWorktree,
+  RepositoryWorktrees,
+  WorktreeBranchDeletion,
+} from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
+import type { WorktreeBranch } from '@shared/api/worktree';
 
 /**
  * Identifies the outcome of a pull request's checks, as the status badge shows it. Re-exported from
  * the forge model so the panel and the provider cannot drift apart.
  */
 export type CheckStatus = ForgeCheckStatus;
+
+/**
+ * Describes a branch being deleted: one of this repository's, or, with its worktree, another
+ * worktree's (#939).
+ */
+interface BranchDeletion {
+  /**
+   * Gets the branch's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the worktree the branch lives in, when it is not this repository's.
+   */
+  readonly worktree?: RepositoryWorktree;
+}
 
 /**
  * Describes a row of the repository tree. The same flat shape covers every kind of row (section header,
@@ -75,6 +108,8 @@ interface RepoNode {
   readonly kind:
     | 'section'
     | 'branch'
+    | 'worktree'
+    | 'worktree-branch'
     | 'remote'
     | 'remote-branch'
     | 'tag'
@@ -108,6 +143,24 @@ interface RepoNode {
    * Gets the branch, for a local-branch row (drives the ahead/behind deltas and checkout action).
    */
   readonly branch?: GitBranch;
+
+  /**
+   * Gets the worktree, for a worktree row and for the branch rows of a worktree other than the
+   * current one (drives switching, revealing and removal).
+   */
+  readonly worktree?: RepositoryWorktree;
+
+  /**
+   * Gets the branch, for a branch row of a worktree other than the current one. The current
+   * worktree's branches are ordinary {@link branch} rows, with every branch action behind them.
+   */
+  readonly worktreeBranch?: WorktreeBranch;
+
+  /**
+   * Gets the changed-entry count to show on a branch row of another worktree: set only on the branch
+   * that worktree has checked out, where its uncommitted changes sit.
+   */
+  readonly changes?: number;
 
   /**
    * Gets the stash, for a stash row (drives the apply, pop, and drop actions).
@@ -352,9 +405,19 @@ const ACTION_STASH: string = 'repo.stash';
 const ACTION_FETCH: string = 'repo.fetch';
 
 /**
- * Identifies the Refresh command on the tool strip's more-actions menu.
+ * The capability each optional command needs, by action-id prefix (#818). A command not listed needs
+ * nothing a version-control system might lack. Prefixes, because some actions carry a remote after
+ * their id (`repo.pushAllTags:origin`).
  */
-const ACTION_REFRESH: string = 'repo.refresh';
+const ACTION_CAPABILITY: readonly (readonly [string, VersionControlCapability])[] = [
+  [ACTION_NEW_TAG, 'tags'],
+  [ACTION_PUSH_ALL_TAGS, 'tags'],
+  [ACTION_ADD_REMOTE, 'remotes'],
+  [ACTION_FETCH, 'remotes'],
+  [ACTION_STASH, 'stash'],
+  [ACTION_REBASE_ONTO_BRANCH, 'rebase'],
+  [ACTION_MERGE_BRANCH, 'merge'],
+];
 
 /**
  * Identifies the Open in Agent command on an issue's context menu.
@@ -377,6 +440,51 @@ const ACTION_RERUN: string = 'run.rerun';
 const ACTION_CANCEL_RUN: string = 'run.cancel';
 
 /**
+ * Identifies the Switch to Worktree command on a worktree's context menu.
+ */
+const ACTION_SWITCH_WORKTREE: string = 'worktree.switch';
+
+/**
+ * Identifies the Delete command on another worktree's branch (#939).
+ */
+const ACTION_DELETE_WORKTREE_BRANCH: string = 'worktree.deleteBranch';
+
+/**
+ * Identifies the Refresh command on a forge-backed section's context menu (#939).
+ */
+const ACTION_REFRESH_SECTION: string = 'section.refresh';
+
+/**
+ * Identifies the Rename command on a worktree's context menu.
+ */
+const ACTION_RENAME_WORKTREE: string = 'worktree.rename';
+
+/**
+ * Identifies the Open in File System command on a worktree's context menu.
+ */
+const ACTION_REVEAL_WORKTREE: string = 'worktree.reveal';
+
+/**
+ * Identifies the Copy Path command on a worktree's context menu.
+ */
+const ACTION_COPY_WORKTREE_PATH: string = 'worktree.copyPath';
+
+/**
+ * Identifies the Remove Worktree command on a worktree's context menu.
+ */
+const ACTION_REMOVE_WORKTREE: string = 'worktree.remove';
+
+/**
+ * Identifies the New Worktree command on the tool strip's more-actions menu.
+ */
+const ACTION_NEW_WORKTREE: string = 'repo.newWorktree';
+
+/**
+ * Identifies the Convert to Worktrees command on the tool strip's more-actions menu.
+ */
+const ACTION_CONVERT_TO_WORKTREES: string = 'repo.convertToWorktrees';
+
+/**
  * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
  * `unauthorized` always carry one, so only the two quiet states need an entry here.
  */
@@ -385,7 +493,7 @@ const PENDING_MESSAGES: Readonly<Record<string, string>> = {
   loading: 'Loading…',
   'no-forge': 'This repository has no remote on a supported forge',
   error: 'Could not read from the forge',
-  unauthorized: 'Not signed in — add a token in Settings → Source Control',
+  unauthorized: 'Not signed in — add a token in Settings → Version Control',
 };
 
 /**
@@ -412,6 +520,17 @@ interface SectionDef {
    * @returns Returns the child rows.
    */
   readonly children: () => readonly TreeRow[];
+
+  /**
+   * Gets the capability the section needs, or undefined when every version-control system has it.
+   */
+  readonly capability?: VersionControlCapability;
+
+  /**
+   * Gets the hosting capability the section needs, for a section a hosting plugin fills. Such a
+   * section is shown only when a plugin serves the repository's host and the repository allows it.
+   */
+  readonly hostingCapability?: HostingCapability;
 }
 
 /**
@@ -434,15 +553,19 @@ interface SectionDef {
   imports: [
     TextField,
     Button,
+    ButtonRow,
     Dropdown,
     AppIcon,
     Checkbox,
     Modal,
     ModalContent,
     ExplorerToolbar,
-    PulseDot,
     TreeView,
     IssueAgentConfirm,
+    VersionControlMissing,
+    RepositoryRestricted,
+    Chip,
+    PanelStatus,
   ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
@@ -469,6 +592,33 @@ export class SourceControlSidebar implements OnDestroy {
    * Holds the repository model the rail renders.
    */
   protected readonly repository: Repository = inject(Repository);
+
+  /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Gets whether the folder is a repository no installed plugin can read, so the rail shows only its
+   * empty state.
+   */
+  protected readonly needsPlugin: Signal<boolean> = computed(
+    (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
+
+  /**
+   * Holds the workspace's version-control binding, which knows whether the folder is a repository the
+   * user has not trusted; null outside a workspace tab.
+   */
+  private readonly workspaceGit: WorkspaceGit | null = inject(WorkspaceGit, { optional: true });
+
+  /**
+   * Gets whether the folder is a repository the user has not trusted, so the rail shows only the
+   * restricted state.
+   */
+  protected readonly restricted: Signal<boolean> = computed(
+    (): boolean => this.workspaceGit?.isRestricted() === true && !this.repository.isBound(),
+  );
 
   /**
    * Holds the structured logger.
@@ -503,6 +653,43 @@ export class SourceControlSidebar implements OnDestroy {
   private readonly issueOpener: IssueOpener = inject(IssueOpener);
 
   /**
+   * Holds the view's worktrees, or null where the view provides none (so it reads as flat).
+   */
+  private readonly worktreeSource: RepositoryWorktrees | null = inject(REPOSITORY_WORKTREES, {
+    optional: true,
+  });
+
+  /**
+   * Gets the repository's worktrees, or null for a flat repository. In a flat repository Local is a
+   * list of branches; with worktrees it is the worktrees, each over its own branches.
+   */
+  protected readonly worktrees: Signal<readonly RepositoryWorktree[] | null> = computed(
+    (): readonly RepositoryWorktree[] | null => this.worktreeSource?.worktrees() ?? null,
+  );
+
+  /**
+   * Holds the worktree being renamed in place, or null while none is.
+   */
+  protected readonly renaming: WritableSignal<RepositoryWorktree | null> =
+    signal<RepositoryWorktree | null>(null);
+
+  /**
+   * Gets the row id of the worktree being renamed, which the tree opens its name field on.
+   */
+  protected readonly renamingRowId: Signal<string | null> = computed((): string | null => {
+    const worktree: RepositoryWorktree | null = this.renaming();
+    return worktree === null ? null : `worktree:${worktree.id}`;
+  });
+
+  /**
+   * Holds the ids of the worktrees the user has expanded. Every worktree starts collapsed, naming its
+   * checked-out branch beside it, so the worktrees read as a list of what is in work.
+   */
+  private readonly expandedWorktrees: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
    * are collapsed until the user opens them.
    */
@@ -515,17 +702,48 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private readonly sections: readonly SectionDef[] = [
     { key: 'local', label: 'Local', icon: Icon.SOURCE_CONTROL, children: () => this.localRows() },
-    { key: 'remote', label: 'Remote', icon: Icon.CLOUD, children: () => this.remoteRows() },
-    { key: 'tags', label: 'Tags', icon: Icon.TAG, children: () => this.tagRows() },
-    { key: 'stashes', label: 'Stashes', icon: Icon.STASH, children: () => this.stashRows() },
+    {
+      key: 'remote',
+      label: 'Remote',
+      icon: Icon.CLOUD,
+      children: () => this.remoteRows(),
+      capability: 'remotes',
+    },
+    {
+      key: 'tags',
+      label: 'Tags',
+      icon: Icon.TAG,
+      children: () => this.tagRows(),
+      capability: 'tags',
+    },
+    {
+      key: 'stashes',
+      label: 'Stashes',
+      icon: Icon.STASH,
+      children: () => this.stashRows(),
+      capability: 'stash',
+    },
     {
       key: 'pullRequests',
       label: 'Pull Requests',
       icon: Icon.GIT_PULL_REQUEST,
       children: () => this.pullRequestRows(),
+      hostingCapability: 'pullRequests',
     },
-    { key: 'issues', label: 'Issues', icon: Icon.INFO, children: () => this.issueRows() },
-    { key: 'actions', label: 'Actions', icon: Icon.PLAY, children: () => this.actionRows() },
+    {
+      key: 'issues',
+      label: 'Issues',
+      icon: Icon.INFO,
+      children: () => this.issueRows(),
+      hostingCapability: 'issues',
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      icon: Icon.PLAY,
+      children: () => this.actionRows(),
+      hostingCapability: 'ciRuns',
+    },
   ];
 
   /**
@@ -546,6 +764,17 @@ export class SourceControlSidebar implements OnDestroy {
     const filtering: boolean = needle.length > 0;
     const out: TreeRow[] = [];
     for (const section of this.sections) {
+      // A section the serving plugin cannot fill is not shown at all (#818).
+      if (section.capability !== undefined && !this.repository.supports(section.capability)) {
+        continue;
+      }
+      // Likewise a section no hosting plugin can fill: absent, rather than a row saying it is (#820).
+      if (
+        section.hostingCapability !== undefined &&
+        !(this.forge.hasForge() && this.forge.supports(section.hostingCapability))
+      ) {
+        continue;
+      }
       const open: boolean = filtering || expanded.has(section.key);
       const children: readonly TreeRow[] = open ? section.children() : [];
       const matched: readonly TreeRow[] = filtering
@@ -616,7 +845,20 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private matches(row: TreeRow, needle: string): boolean {
     const node: RepoNode = this.nodeOf(row);
-    return node.kind !== 'empty' && node.label.toLowerCase().includes(needle);
+    if (node.kind === 'empty') {
+      return false;
+    }
+    // A worktree stays while any branch beneath it matches, so a match is never shown without the
+    // worktree it belongs to.
+    if (node.kind === 'worktree' && node.worktree !== undefined) {
+      const names: readonly string[] = node.worktree.current
+        ? this.repository.branches().map((branch: GitBranch): string => branch.name)
+        : node.worktree.branches.map((branch: WorktreeBranch): string => branch.name);
+      return [node.label, ...names].some((name: string): boolean =>
+        name.toLowerCase().includes(needle),
+      );
+    }
+    return node.label.toLowerCase().includes(needle);
   }
 
   /**
@@ -632,50 +874,184 @@ export class SourceControlSidebar implements OnDestroy {
    * repository rather than on a row. Anything acting on a row the user can see lives on that row's
    * context menu instead, which is the rule the panel already followed with its buttons.
    */
-  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
-    {
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+    this.grouped('repo', [
+      [this.addRemoteItem()],
+      [...this.worktreeMoreItems(), this.newBranchItem(), this.newTagItem()],
+      [this.stashItem()],
+      // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
+      // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
+      [this.fetchItem('Fetch'), ...this.pushAllTagsItems()],
+    ]),
+  );
+
+  /**
+   * Builds a menu from groups of items, in the one order the panel's menus share (#939): what adds
+   * (a remote), then what makes new (a worktree, branch or tag), then the stash, then what talks to a
+   * remote. Each group keeps only what the plugin supports, and a separator falls only between two
+   * groups that are left.
+   * @param prefix A prefix for the separators' identifiers.
+   * @param groups The groups, in order.
+   * @returns Returns the items.
+   */
+  private grouped(prefix: string, groups: readonly (readonly MenuItem[])[]): readonly MenuItem[] {
+    const kept: readonly (readonly MenuItem[])[] = groups
+      .map((group: readonly MenuItem[]): readonly MenuItem[] => this.offeredOnly(group))
+      .filter((group: readonly MenuItem[]): boolean => group.length > 0);
+    return kept.flatMap((group: readonly MenuItem[], index: number): readonly MenuItem[] =>
+      index === 0
+        ? group
+        : [{ separator: true, id: `${prefix}.sep.${index}`, label: '' }, ...group],
+    );
+  }
+
+  /**
+   * Builds the New Branch command, shared by the more menu and Local's own menu.
+   * @returns Returns the item.
+   */
+  private newBranchItem(): MenuItem {
+    return {
       id: ACTION_NEW_BRANCH,
       label: 'New Branch…',
       icon: Icon.PLUS,
       disabled: !this.repository.isBound(),
-    },
-    {
+    };
+  }
+
+  /**
+   * Builds the New Tag command, shared by the more menu and Tags' own menu.
+   * @returns Returns the item.
+   */
+  private newTagItem(): MenuItem {
+    return {
       id: ACTION_NEW_TAG,
       label: 'New Tag…',
       icon: Icon.TAG,
       disabled: !this.repository.isBound(),
-    },
-    {
+    };
+  }
+
+  /**
+   * Builds the Add Remote command, shared by the more menu and Remote's own menu.
+   * @returns Returns the item.
+   */
+  private addRemoteItem(): MenuItem {
+    return {
       id: ACTION_ADD_REMOTE,
       label: 'Add Remote…',
       icon: Icon.CLOUD,
       disabled: !this.repository.isBound(),
-    },
-    {
+    };
+  }
+
+  /**
+   * Builds the Stash Changes command, shared by the more menu and Stashes' own menu.
+   * @returns Returns the item.
+   */
+  private stashItem(): MenuItem {
+    return {
       id: ACTION_STASH,
       label: 'Stash Changes',
       icon: Icon.STASH,
       disabled: this.repository.changeCount() === 0,
-    },
-    { separator: true, id: 'repo.sep', label: '' },
-    {
+    };
+  }
+
+  /**
+   * Builds the Fetch command, which fetches every remote.
+   * @param label What the menu calls it: Fetch on the strip, Fetch All beside the remotes.
+   * @returns Returns the item.
+   */
+  private fetchItem(label: string): MenuItem {
+    return {
       id: ACTION_FETCH,
-      label: 'Fetch',
-      icon: Icon.CLOUD,
+      label,
+      icon: Icon.CLOUD_DOWN,
       disabled: !this.repository.isBound(),
-    },
-    // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
-    // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
-    ...(this.repository.tags().length === 0
+    };
+  }
+
+  /**
+   * Builds Push All Tags, or nothing when there is no tag to push.
+   * @returns Returns the items.
+   */
+  private pushAllTagsItems(): readonly MenuItem[] {
+    return this.repository.tags().length === 0
       ? []
-      : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
-    {
-      id: ACTION_REFRESH,
-      label: 'Refresh',
-      icon: Icon.REFRESH,
-      disabled: !this.repository.isBound(),
-    },
-  ]);
+      : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')];
+  }
+
+  /**
+   * Builds a section header's menu (#939): the commands that make something in that section, so the
+   * user finds them where they are looking rather than only on the strip's more menu. Each is the
+   * strip's own command, gated the same way.
+   * @param key The section's key.
+   * @returns Returns the items, or none for a section with nothing to offer.
+   */
+  private sectionItems(key: string): readonly MenuItem[] {
+    switch (key) {
+      case 'local':
+        // Local holds the worktrees when there are any, so it makes a worktree; a branch is made in a
+        // worktree, from that worktree's own menu. A flat repository's Local is only branches.
+        return this.worktrees() === null
+          ? this.grouped('local', [[this.newBranchItem()]])
+          : this.grouped('local', [
+              [
+                {
+                  id: ACTION_NEW_WORKTREE,
+                  label: 'New Worktree…',
+                  icon: Icon.WORKTREE,
+                  disabled: this.worktreeSource?.busy() ?? false,
+                },
+              ],
+            ]);
+      case 'remote':
+        return this.grouped('remote', [[this.addRemoteItem()], [this.fetchItem('Fetch All')]]);
+      case 'tags':
+        return this.grouped('tags', [[this.newTagItem()], this.pushAllTagsItems()]);
+      case 'stashes':
+        return this.grouped('stashes', [[this.stashItem()]]);
+      case 'pullRequests':
+      case 'issues':
+      case 'actions':
+        return [{ id: ACTION_REFRESH_SECTION, label: 'Refresh', icon: Icon.REFRESH }];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Builds the more-actions menu's worktree command: a new worktree beside the others, or — for a
+   * flat repository that can have them — converting it to worktrees. Nothing when it can be neither.
+   * @returns Returns the menu items.
+   */
+  private worktreeMoreItems(): readonly MenuItem[] {
+    if (this.worktrees() !== null) {
+      return [
+        {
+          id: ACTION_NEW_WORKTREE,
+          label: 'New Worktree…',
+          icon: Icon.WORKTREE,
+          disabled: this.worktreeSource?.busy() ?? false,
+        },
+      ];
+    }
+    if (!(this.worktreeSource?.canConvert() ?? false)) {
+      return [];
+    }
+    // Shown but disabled while the agent works in the folder, with the reason beside it: the command
+    // exists and will be back, which a missing item would not say.
+    const blocked: boolean = (this.worktreeSource?.convertBlocker() ?? null) !== null;
+    return [
+      {
+        id: ACTION_CONVERT_TO_WORKTREES,
+        label: 'Convert to Worktrees…',
+        icon: Icon.WORKTREE,
+        disabled: blocked,
+        ...(blocked ? { status: 'agent is working' } : {}),
+      },
+    ];
+  }
 
   /**
    * Runs a command chosen from the tool strip's more-actions menu.
@@ -687,6 +1063,12 @@ export class SourceControlSidebar implements OnDestroy {
       return;
     }
     switch (id) {
+      case ACTION_NEW_WORKTREE:
+        this.worktreeSource?.requestAdd();
+        break;
+      case ACTION_CONVERT_TO_WORKTREES:
+        this.worktreeSource?.requestConvert();
+        break;
       case ACTION_NEW_BRANCH:
         this.openBranchDialog();
         break;
@@ -701,9 +1083,6 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_FETCH:
         this.fetch();
-        break;
-      case ACTION_REFRESH:
-        this.refresh();
         break;
       default:
         break;
@@ -746,6 +1125,7 @@ export class SourceControlSidebar implements OnDestroy {
   protected refresh(): void {
     this.log.info('SourceControlSidebar', 'Refreshing repository');
     void this.repository.refresh();
+    this.worktreeSource?.refresh();
     // Refresh what the panel is actually showing, which includes any forge section the user has
     // open — but only those: a collapsed section has nothing on screen to bring up to date, and the
     // forge is rate-limited.
@@ -777,6 +1157,29 @@ export class SourceControlSidebar implements OnDestroy {
   });
 
   /**
+   * Gets the ids of the other rows drawn as checked out: in a worktree container, every other
+   * worktree's checked-out branch. The point of worktrees is several branches in work at once, so
+   * every one of them is highlighted, as the current branch always was.
+   */
+  protected readonly selectedIds: Signal<readonly string[]> = computed((): readonly string[] =>
+    (this.worktrees() ?? [])
+      .filter(
+        (worktree: RepositoryWorktree): boolean => !worktree.current && worktree.branch !== null,
+      )
+      .map((worktree: RepositoryWorktree): string =>
+        this.worktreeBranchId(worktree.id, worktree.branch ?? ''),
+      ),
+  );
+
+  /**
+   * Gets the status strip's chip: whether the repository is a single checkout or a set of worktrees.
+   */
+  protected readonly layoutChip: Signal<string> = computed((): string => {
+    const worktrees: readonly RepositoryWorktree[] | null = this.worktrees();
+    return worktrees === null ? 'Single checkout' : `Worktrees · ${worktrees.length}`;
+  });
+
+  /**
    * Unwraps a tree row's repository-node payload.
    * @param row The tree row.
    * @returns Returns the repository node.
@@ -795,6 +1198,13 @@ export class SourceControlSidebar implements OnDestroy {
       case 'section':
         if (node.sectionKey !== undefined) {
           this.toggleSection(node.sectionKey);
+        }
+        break;
+      // A worktree opens and closes like a section; switching to it is a double click or its menu,
+      // since a single click that also moved the whole view would make looking inside one a jump.
+      case 'worktree':
+        if (node.worktree !== undefined) {
+          this.toggleWorktree(node.worktree.id);
         }
         break;
       // A remote-tracking branch navigates like any other ref now that it knows its tip; it was only
@@ -823,7 +1233,54 @@ export class SourceControlSidebar implements OnDestroy {
     const node: RepoNode = this.nodeOf(row);
     if (node.issue !== undefined) {
       this.issueOpener.open(node.issue);
+      return;
     }
+    // Another worktree, or one of its branches: go and work in it.
+    if (node.worktree !== undefined && !node.worktree.current) {
+      this.switchToWorktree(node.worktree);
+    }
+  }
+
+  /**
+   * Opens or closes a worktree's branches.
+   * @param id The worktree's checkout id.
+   */
+  private toggleWorktree(id: string): void {
+    const next: Set<string> = new Set<string>(this.expandedWorktrees());
+    if (!next.delete(id)) {
+      next.add(id);
+    }
+    this.expandedWorktrees.set(next);
+  }
+
+  /**
+   * Renames the worktree whose name field was committed. The tree commits only a trimmed name that
+   * is not empty and differs from the one it started with.
+   * @param edit The committed edit.
+   */
+  protected onRenameCommit(edit: TreeEdit): void {
+    const worktree: RepositoryWorktree | null = this.renaming();
+    this.renaming.set(null);
+    if (worktree !== null) {
+      this.log.info('SourceControlSidebar', 'Renaming worktree', worktree.label, edit.value);
+      this.worktreeSource?.rename(worktree.id, edit.value);
+    }
+  }
+
+  /**
+   * Closes the name field without renaming.
+   */
+  protected onRenameCancel(): void {
+    this.renaming.set(null);
+  }
+
+  /**
+   * Scopes the view to a worktree.
+   * @param worktree The worktree.
+   */
+  private switchToWorktree(worktree: RepositoryWorktree): void {
+    this.log.info('SourceControlSidebar', 'Switching to worktree', worktree.label);
+    this.worktreeSource?.activate(worktree.id);
   }
 
   /**
@@ -841,9 +1298,9 @@ export class SourceControlSidebar implements OnDestroy {
         return Icon.ERROR_FILL;
       case 'cancelled':
         // Not a failure to act on, so it is muted rather than red — the run simply stopped.
-        return Icon.CLOSE;
+        return Icon.STATUS_STOPPED;
       default:
-        // `running` and `queued` never reach here: the template draws a pulsing dot for both, since
+        // `running` and `queued` never reach here: the template draws a pulsing circle for both, since
         // a queued run is work the user is waiting on just as much as one in progress.
         return Icon.PLAY;
     }
@@ -991,10 +1448,20 @@ export class SourceControlSidebar implements OnDestroy {
     if (name.length === 0) {
       return null;
     }
-    return this.repository.branches().some((branch: GitBranch): boolean => branch.name === name)
-      ? 'A branch with this name already exists.'
-      : null;
+    const target: RepositoryWorktree | null = this.branchTarget();
+    const taken: readonly string[] =
+      target === null || target.current
+        ? this.repository.branches().map((branch: GitBranch): string => branch.name)
+        : target.branches.map((branch: WorktreeBranch): string => branch.name);
+    return taken.includes(name) ? 'A branch with this name already exists.' : null;
   });
+
+  /**
+   * Holds the worktree the new branch is made in, or null for this repository (#939). Each worktree
+   * is a clone of its own, so a branch made from a worktree's menu is made in that one.
+   */
+  protected readonly branchTarget: WritableSignal<RepositoryWorktree | null> =
+    signal<RepositoryWorktree | null>(null);
 
   /**
    * Gets a value indicating whether the new-branch dialog can be submitted.
@@ -1005,8 +1472,10 @@ export class SourceControlSidebar implements OnDestroy {
 
   /**
    * Opens the new-branch dialog.
+   * @param target The worktree to make the branch in, or null for this repository.
    */
-  protected openBranchDialog(): void {
+  protected openBranchDialog(target: RepositoryWorktree | null = null): void {
+    this.branchTarget.set(target);
     this.branchName.set('');
     this.branchCheckout.set(true);
     this.branchDialogOpen.set(true);
@@ -1026,6 +1495,11 @@ export class SourceControlSidebar implements OnDestroy {
       `Creating branch '${name}'`,
       `checkout=${this.branchCheckout()}`,
     );
+    const target: RepositoryWorktree | null = this.branchTarget();
+    if (target !== null && !target.current) {
+      void this.worktreeSource?.createBranch(target.id, name, this.branchCheckout());
+      return;
+    }
     void this.repository.createBranch(name, this.branchCheckout());
   }
 
@@ -1064,16 +1538,28 @@ export class SourceControlSidebar implements OnDestroy {
   /**
    * Holds the branch awaiting delete confirmation, or null when none is.
    */
-  protected readonly pendingDeleteBranch: WritableSignal<GitBranch | null> =
-    signal<GitBranch | null>(null);
+  protected readonly pendingDeleteBranch: WritableSignal<BranchDeletion | null> =
+    signal<BranchDeletion | null>(null);
 
   /**
    * Holds the branch whose delete git refused for holding unmerged commits, or null when none has
    * been. Distinct from {@link pendingDeleteBranch} because it is a different question: the first
    * asks whether to delete, this one asks whether to lose work.
    */
-  protected readonly pendingForceDeleteBranch: WritableSignal<GitBranch | null> =
-    signal<GitBranch | null>(null);
+  protected readonly pendingForceDeleteBranch: WritableSignal<BranchDeletion | null> =
+    signal<BranchDeletion | null>(null);
+
+  /**
+   * Says where a branch being deleted lives, for the delete questions: this repository, or another
+   * worktree, named.
+   * @param deletion The branch being deleted.
+   * @returns Returns the phrase.
+   */
+  protected deletionPlace(deletion: BranchDeletion | null): string {
+    return deletion?.worktree === undefined
+      ? 'this repository'
+      : `the “${deletion.worktree.label}” worktree`;
+  }
 
   /**
    * Confirms the delete, attempting it without force first.
@@ -1083,16 +1569,36 @@ export class SourceControlSidebar implements OnDestroy {
    * other failure is left to the panel's error surface.
    */
   protected async confirmDeleteBranch(): Promise<void> {
-    const branch: GitBranch | null = this.pendingDeleteBranch();
+    const branch: BranchDeletion | null = this.pendingDeleteBranch();
     this.pendingDeleteBranch.set(null);
     if (branch === null) {
       return;
     }
     this.log.info('SourceControlSidebar', `Deleting branch '${branch.name}'`);
-    const result: MutationResult = await this.repository.deleteBranch(branch.name);
-    if (!result.success && result.code === BRANCH_NOT_MERGED) {
+    if (await this.deleteBranch(branch, false)) {
       this.pendingForceDeleteBranch.set(branch);
     }
+  }
+
+  /**
+   * Deletes a branch where it lives: through this repository, or, for another worktree's, through
+   * that worktree (#939).
+   * @param branch The branch being deleted.
+   * @param force Whether to delete it even with unmerged commits.
+   * @returns Returns true when git refused for unmerged commits, which is a question rather than a
+   * failure.
+   */
+  private async deleteBranch(branch: BranchDeletion, force: boolean): Promise<boolean> {
+    if (branch.worktree !== undefined) {
+      const outcome: WorktreeBranchDeletion | undefined = await this.worktreeSource?.deleteBranch(
+        branch.worktree.id,
+        branch.name,
+        force,
+      );
+      return outcome === 'not-merged';
+    }
+    const result: MutationResult = await this.repository.deleteBranch(branch.name, force);
+    return !result.success && result.code === BRANCH_NOT_MERGED;
   }
 
   /**
@@ -1106,11 +1612,11 @@ export class SourceControlSidebar implements OnDestroy {
    * Confirms the forced delete, losing the branch's unmerged commits.
    */
   protected confirmForceDeleteBranch(): void {
-    const branch: GitBranch | null = this.pendingForceDeleteBranch();
+    const branch: BranchDeletion | null = this.pendingForceDeleteBranch();
     this.pendingForceDeleteBranch.set(null);
     if (branch !== null) {
       this.log.warn('SourceControlSidebar', `Force-deleting branch '${branch.name}'`);
-      void this.repository.deleteBranch(branch.name, true);
+      void this.deleteBranch(branch, true);
     }
   }
 
@@ -1642,18 +2148,20 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
-   * Loads a forge-backed section's data, if it is one and it has nothing yet. Sections backed by git
-   * are already loaded with the repository and need nothing here.
+   * Loads a forge-backed section's data, if it is one and it has nothing yet, or always when forced
+   * (its menu's Refresh). Sections backed by git are already loaded with the repository and need
+   * nothing here.
    * @param key The section key being expanded.
+   * @param force Whether to read it even when it has data already.
    */
-  private loadSection(key: string): void {
-    if (key === 'pullRequests' && this.forge.pullRequests().state !== 'ready') {
+  private loadSection(key: string, force: boolean = false): void {
+    if (key === 'pullRequests' && (force || this.forge.pullRequests().state !== 'ready')) {
       void this.forge.loadPullRequests();
     }
-    if (key === 'issues' && this.forge.issues().state !== 'ready') {
+    if (key === 'issues' && (force || this.forge.issues().state !== 'ready')) {
       void this.forge.loadIssues();
     }
-    if (key === 'actions' && this.forge.workflowRuns().state !== 'ready') {
+    if (key === 'actions' && (force || this.forge.workflowRuns().state !== 'ready')) {
       void this.forge.loadWorkflowRuns();
     }
   }
@@ -1663,13 +2171,25 @@ export class SourceControlSidebar implements OnDestroy {
    * @returns Returns the rows.
    */
   private localRows(): readonly TreeRow[] {
+    const worktrees: readonly RepositoryWorktree[] | null = this.worktrees();
+    return worktrees === null ? this.branchRows(1) : this.worktreeRows(worktrees);
+  }
+
+  /**
+   * Builds the current checkout's branch rows: the whole of Local in a flat repository, and the
+   * branches beneath the current worktree in a worktree container. Either way they are this view's
+   * own branches, with every branch action behind them.
+   * @param depth The rows' depth in the tree.
+   * @returns Returns the rows.
+   */
+  private branchRows(depth: number): readonly TreeRow[] {
     const branches: readonly GitBranch[] = this.repository.branches();
     if (branches.length === 0) {
-      return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches')];
+      return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches', depth)];
     }
     return branches.map((branch: GitBranch): TreeRow => ({
       id: `branch:${branch.name}`,
-      depth: 1,
+      depth,
       expandable: false,
       expanded: false,
       data: {
@@ -1680,6 +2200,80 @@ export class SourceControlSidebar implements OnDestroy {
         commit: branch.tip,
       },
     }));
+  }
+
+  /**
+   * Builds Local for a worktree container: each worktree, and beneath it its own local branches with
+   * its checked-out branch among them. Several branches are worked on at once, so each worktree's
+   * checked-out branch is highlighted, not only the current one's (see {@link selectedIds}).
+   *
+   * The current worktree's branches are this view's live ones. Another worktree's are read from its
+   * status: it is a clone of its own, so it has branches this view's repository does not.
+   * @param worktrees The worktrees, in registration order.
+   * @returns Returns the rows.
+   */
+  private worktreeRows(worktrees: readonly RepositoryWorktree[]): readonly TreeRow[] {
+    const expanded: ReadonlySet<string> = this.expandedWorktrees();
+    const out: TreeRow[] = [];
+    for (const worktree of worktrees) {
+      const open: boolean = expanded.has(worktree.id);
+      out.push({
+        id: `worktree:${worktree.id}`,
+        depth: 1,
+        expandable: true,
+        expanded: open,
+        data: {
+          kind: 'worktree',
+          icon: Icon.WORKTREE,
+          label: worktree.label,
+          worktree,
+        },
+      });
+      if (!open) {
+        continue;
+      }
+      out.push(...(worktree.current ? this.branchRows(2) : this.otherWorktreeBranchRows(worktree)));
+    }
+    return out;
+  }
+
+  /**
+   * Builds the branch rows beneath a worktree other than the current one.
+   * @param worktree The worktree.
+   * @returns Returns the rows.
+   */
+  private otherWorktreeBranchRows(worktree: RepositoryWorktree): readonly TreeRow[] {
+    if (worktree.branches.length === 0) {
+      return [
+        this.emptyRow(`worktree:${worktree.id}`, Icon.SOURCE_CONTROL, 'No local branches', 2),
+      ];
+    }
+    return worktree.branches.map((branch: WorktreeBranch): TreeRow => ({
+      id: this.worktreeBranchId(worktree.id, branch.name),
+      depth: 2,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'worktree-branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: branch.name,
+        worktree,
+        worktreeBranch: branch,
+        ...(branch.name === worktree.branch && worktree.changes !== null
+          ? { changes: worktree.changes }
+          : {}),
+      },
+    }));
+  }
+
+  /**
+   * Builds the row id of a branch beneath a worktree other than the current one.
+   * @param worktreeId The worktree's checkout id.
+   * @param branch The branch name.
+   * @returns Returns the row id.
+   */
+  private worktreeBranchId(worktreeId: string, branch: string): string {
+    return `worktree:${worktreeId}:branch:${branch}`;
   }
 
   /**
@@ -1853,6 +2447,32 @@ export class SourceControlSidebar implements OnDestroy {
     if (branch.current || current === undefined) {
       return [];
     }
+    return this.offeredOnly(this.allIntegrationItems(branch, current));
+  }
+
+  /**
+   * Keeps the menu items whose command the serving plugin supports (#818): a tag command to a plugin
+   * with tags, a stash to one with stashes. Items needing nothing in particular are always kept.
+   * @param items The items.
+   * @returns Returns the items the plugin can carry out.
+   */
+  private offeredOnly(items: readonly MenuItem[]): readonly MenuItem[] {
+    return items.filter((item: MenuItem): boolean => {
+      const needed: VersionControlCapability | undefined = ACTION_CAPABILITY.find(
+        ([prefix]: readonly [string, VersionControlCapability]): boolean =>
+          item.id.startsWith(prefix),
+      )?.[1];
+      return needed === undefined || this.repository.supports(needed);
+    });
+  }
+
+  /**
+   * Builds a branch's merge and rebase commands, before they are filtered by what the plugin supports.
+   * @param branch The branch the row carries.
+   * @param current The checked-out branch.
+   * @returns Returns the menu items.
+   */
+  private allIntegrationItems(branch: GitBranch, current: GitBranch): readonly MenuItem[] {
     const reason: string | undefined = this.repository.operationInFlight()
       ? REASON_IN_PROGRESS
       : this.repository.changeCount() > 0
@@ -2051,6 +2671,33 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.branch !== undefined) {
       return this.branchItems(node.branch);
     }
+    if (node.kind === 'section' && node.sectionKey !== undefined) {
+      return this.sectionItems(node.sectionKey);
+    }
+    if (node.kind === 'worktree' && node.worktree !== undefined) {
+      return this.worktreeItems(node.worktree);
+    }
+    // Another worktree's branch is mostly acted on from inside that worktree, but it can be deleted
+    // from here (#939): each worktree is a clone of its own, so the delete runs in that one. The
+    // branch it has checked out cannot go, as git would refuse, and the menu says why.
+    if (
+      node.kind === 'worktree-branch' &&
+      node.worktree !== undefined &&
+      node.worktreeBranch !== undefined
+    ) {
+      const checkedOut: boolean = node.worktreeBranch.name === node.worktree.branch;
+      return [
+        { id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE },
+        { separator: true, id: 'worktree-branch.sep', label: '' },
+        {
+          id: ACTION_DELETE_WORKTREE_BRANCH,
+          label: 'Delete…',
+          icon: Icon.TRASH,
+          disabled: checkedOut,
+          ...(checkedOut ? { status: 'checked out there' } : {}),
+        },
+      ];
+    }
     if (node.stash !== undefined) {
       // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
       // buttons' tooltips used to say; the muted trailing note carries it into the menu.
@@ -2074,7 +2721,7 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.remote !== undefined) {
       const url: string = node.remote.url;
       return [
-        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD },
+        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD_DOWN },
         {
           id: ACTION_PRUNE_REMOTE,
           label: 'Prune',
@@ -2113,29 +2760,100 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.pullRequest !== undefined) {
       return [
         { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.TRAY_UP },
-        { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+        { id: ACTION_OPEN_PULL_REQUEST, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL },
       ];
     }
     if (node.issue !== undefined) {
       return [
         { id: ACTION_ISSUE_IN_AGENT, label: 'Open in Agent', icon: Icon.AGENT },
-        { id: ACTION_OPEN_ISSUE, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+        { id: ACTION_OPEN_ISSUE, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL },
       ];
     }
     if (node.run !== undefined) {
       const items: MenuItem[] = [];
       // Cancel applies only to a run still going, re-run only to one that has stopped. Offering the
       // inapplicable one would be offering a command the forge would simply refuse.
+      // Each is also offered only where the repository allows it — a user without push access cannot.
       if (node.run.status === 'queued' || node.run.status === 'running') {
-        items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
-      } else {
+        if (this.forge.supports('ciCancel')) {
+          items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
+        }
+      } else if (this.forge.supports('ciRerun')) {
         items.push({ id: ACTION_RERUN, label: 'Re-run', icon: Icon.REFRESH });
       }
-      items.push({ id: ACTION_OPEN_RUN, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL });
+      items.push({ id: ACTION_OPEN_RUN, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL });
       return items;
     }
     return [];
   };
+
+  /**
+   * Builds a worktree row's menu: switching to it (from another), finding it on disk, and removing it.
+   *
+   * Removal is omitted rather than disabled on the last worktree and while one is being created or
+   * removed: the first is a rule about the container, the second momentary, and a greyed item would
+   * only invite the user to keep trying.
+   * @param worktree The worktree.
+   * @returns Returns the menu items.
+   */
+  private worktreeItems(worktree: RepositoryWorktree): readonly MenuItem[] {
+    const items: MenuItem[] = [];
+    if (!worktree.current) {
+      items.push(
+        { id: ACTION_SWITCH_WORKTREE, label: 'Switch to Worktree', icon: Icon.WORKTREE },
+        { separator: true, id: 'worktree.sep.switch', label: '' },
+      );
+    }
+    items.push(
+      // A branch is made in a worktree, since each is a clone of its own (#939).
+      { ...this.newBranchItem(), disabled: false },
+      { separator: true, id: 'worktree.sep.branch', label: '' },
+      { id: ACTION_RENAME_WORKTREE, label: 'Rename…', icon: Icon.PENCIL },
+      { separator: true, id: 'worktree.sep.rename', label: '' },
+      { id: ACTION_REVEAL_WORKTREE, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
+      { id: ACTION_COPY_WORKTREE_PATH, label: 'Copy Path', icon: Icon.COPY },
+    );
+    const removable: boolean =
+      (this.worktrees()?.length ?? 0) > 1 && !(this.worktreeSource?.busy() ?? false);
+    if (removable) {
+      items.push(
+        { separator: true, id: 'worktree.sep.remove', label: '' },
+        { id: ACTION_REMOVE_WORKTREE, label: 'Remove Worktree…', icon: Icon.TRASH, tone: 'danger' },
+      );
+    }
+    return items;
+  }
+
+  /**
+   * Runs a worktree command from a worktree row, or from a branch row of another worktree.
+   * @param itemId The chosen item's identifier.
+   * @param worktree The worktree the row belongs to.
+   * @returns Returns true when the command was a worktree command.
+   */
+  private onWorktreeAction(itemId: string, worktree: RepositoryWorktree): boolean {
+    switch (itemId) {
+      case ACTION_NEW_BRANCH:
+        this.openBranchDialog(worktree);
+        return true;
+      case ACTION_SWITCH_WORKTREE:
+        this.switchToWorktree(worktree);
+        return true;
+      case ACTION_RENAME_WORKTREE:
+        this.renaming.set(worktree);
+        return true;
+      case ACTION_REVEAL_WORKTREE:
+        void this.shell.revealPath(worktree.path);
+        return true;
+      case ACTION_COPY_WORKTREE_PATH:
+        void navigator.clipboard.writeText(worktree.path).catch((): void => undefined);
+        return true;
+      case ACTION_REMOVE_WORKTREE:
+        this.worktreeSource?.requestRemove(worktree.id);
+        return true;
+      default:
+        return false;
+    }
+  }
 
   /**
    * Runs a context-menu command against the row it was chosen on.
@@ -2143,6 +2861,30 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected onContextAction(choice: TreeMenuSelection): void {
     const node: RepoNode = this.nodeOf(choice.row);
+    if (choice.itemId === ACTION_NEW_WORKTREE) {
+      this.worktreeSource?.requestAdd();
+      return;
+    }
+    // A section's commands are the strip's own, bar Refresh, which re-reads that one section.
+    if (node.kind === 'section' && node.sectionKey !== undefined) {
+      if (choice.itemId === ACTION_REFRESH_SECTION) {
+        this.loadSection(node.sectionKey, true);
+      } else {
+        this.onMoreAction(choice.itemId);
+      }
+      return;
+    }
+    if (
+      choice.itemId === ACTION_DELETE_WORKTREE_BRANCH &&
+      node.worktree !== undefined &&
+      node.worktreeBranch !== undefined
+    ) {
+      this.pendingDeleteBranch.set({ name: node.worktreeBranch.name, worktree: node.worktree });
+      return;
+    }
+    if (node.worktree !== undefined && this.onWorktreeAction(choice.itemId, node.worktree)) {
+      return;
+    }
     // Push carries its remote in the identifier, so it is matched by prefix before the exact-match
     // switch below — a `case` cannot express "this command, whichever remote it named".
     if (node.tag !== undefined && choice.itemId.startsWith(ACTION_PUSH_TAG)) {
@@ -2405,11 +3147,21 @@ export class SourceControlSidebar implements OnDestroy {
         kind: 'action',
         icon: Icon.PLAY,
         // The branch is what tells two runs of the same workflow apart, which is the common case.
-        label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
+        label:
+          run.branch !== null && run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
         run,
         status: run.status,
       },
     }));
+  }
+
+  /**
+   * Names where an item opens in the browser: the provider serving the repository, such as GitHub.
+   * @returns Returns the menu label.
+   */
+  private openOnLabel(): string {
+    const provider: string | undefined = this.forge.repositoryRef()?.provider;
+    return provider === undefined ? 'Open in Browser' : `Open on ${provider}`;
   }
 
   /**
@@ -2480,12 +3232,13 @@ export class SourceControlSidebar implements OnDestroy {
    * @param key The section key, for a stable id.
    * @param icon The icon to show.
    * @param label The placeholder text.
+   * @param depth The row's depth: a section's child by default, deeper beneath a worktree.
    * @returns Returns the row.
    */
-  private emptyRow(key: string, icon: Icon, label: string): TreeRow {
+  private emptyRow(key: string, icon: Icon, label: string, depth: number = 1): TreeRow {
     return {
       id: `empty:${key}`,
-      depth: 1,
+      depth,
       expandable: false,
       expanded: false,
       data: { kind: 'empty', icon, label, muted: true },

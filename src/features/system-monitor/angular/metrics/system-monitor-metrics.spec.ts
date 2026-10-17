@@ -6,6 +6,7 @@ import { SystemMonitorMetrics } from './system-monitor-metrics';
 
 describe('SystemMonitorMetrics', () => {
   let sent: string[];
+  let payloads: unknown[][];
   let subscribed: { channel: string; listener: (...args: unknown[]) => void } | null;
 
   /**
@@ -14,10 +15,12 @@ describe('SystemMonitorMetrics', () => {
    */
   function setup(): SystemMonitorMetrics {
     sent = [];
+    payloads = [];
     subscribed = null;
     const bridge: Pick<Bridge, 'send' | 'on'> = {
-      send: (channel: string): void => {
+      send: (channel: string, ...args: unknown[]): void => {
         sent.push(channel);
+        payloads.push(args);
       },
       on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
         subscribed = { channel, listener };
@@ -42,6 +45,12 @@ describe('SystemMonitorMetrics', () => {
   it('stop_sendsTheStopChannel', () => {
     setup().stop();
     expect(sent).toEqual([SystemMonitorChannel.Stop]);
+  });
+
+  it('setRate_sendsTheRateChannelWithTheInterval', () => {
+    setup().setRate(4000);
+    expect(sent).toEqual([SystemMonitorChannel.Rate]);
+    expect(payloads).toEqual([[{ intervalMs: 4000 }]]);
   });
 
   it('onSample_subscribesToTheSampleChannelAndUnwrapsThePayload', () => {

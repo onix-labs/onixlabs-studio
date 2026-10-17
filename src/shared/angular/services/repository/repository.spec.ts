@@ -2,11 +2,17 @@ import { TestBed } from '@angular/core/testing';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
-import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
-import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
+import {
+  GitMergeMode,
+  GitOperationState,
+  RepositoryCapabilities,
+} from '@shared/api/source-control-channels';
+import { SourceControl } from '../source-control/source-control';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
@@ -49,13 +55,18 @@ class FakeProvider implements SourceControlProvider {
    */
   public operation: GitOperationState = { kind: null };
 
+  /**
+   * Holds the staged changes reported by {@link getStatus}.
+   */
+  public staged: readonly GitFileChange[] = [workingFile('staged.ts')];
+
   public getStatus(): Promise<ParsedStatus> {
     return Promise.resolve({
       branch: 'main',
       upstream: 'origin/main',
       ahead: 1,
       behind: 0,
-      staged: [workingFile('staged.ts')],
+      staged: [...this.staged],
       unstaged: [workingFile('unstaged.ts')],
       conflicted: [...this.conflicted],
     });
@@ -403,7 +414,7 @@ describe('Repository', () => {
     });
     repository = TestBed.inject(Repository);
     notifications = TestBed.inject(Notifications);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
   });
 
@@ -669,6 +680,38 @@ describe('Repository', () => {
       'commit:feat: selected files',
     ]);
     expect(repository.commitMessage()).toBe('');
+  });
+
+  it('commitFiles_whenAFileWasRenamed_stagesItsOldPathToo', async () => {
+    // #825: the panel lists a rename under its new path, but the commit resets the index first, so
+    // staging that path alone committed the file under both names and left the deletion behind.
+    provider.staged = [
+      { ...workingFile('b.ts'), status: 'renamed', previousPath: 'a.ts' },
+      workingFile('c.ts'),
+    ];
+    await repository.refresh();
+    repository.setCommitMessage('refactor: rename a to b');
+    provider.calls.length = 0;
+
+    const result: MutationResult = await repository.commitFiles(['b.ts', 'c.ts']);
+
+    expect(result.success).toBe(true);
+    expect(provider.calls.slice(0, 3)).toEqual([
+      'unstage:',
+      'stage:b.ts,a.ts,c.ts',
+      'commit:refactor: rename a to b',
+    ]);
+  });
+
+  it('commitAndPushFiles_whenAFileWasRenamed_stagesItsOldPathToo', async () => {
+    provider.staged = [{ ...workingFile('b.ts'), status: 'renamed', previousPath: 'a.ts' }];
+    await repository.refresh();
+    repository.setCommitMessage('refactor: rename a to b');
+    provider.calls.length = 0;
+
+    await repository.commitAndPushFiles(['b.ts']);
+
+    expect(provider.calls).toContain('stage:b.ts,a.ts');
   });
 
   it('commitFiles_withNoFiles_failsWithoutTouchingTheProvider', async () => {
@@ -1232,7 +1275,7 @@ describe('Repository visibility gating', () => {
       ],
     });
     const repository: Repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
     const readsAfterBind: number = commitReads;
 
@@ -1250,5 +1293,205 @@ describe('Repository visibility gating', () => {
       setTimeout(resolve, 600);
     });
     expect(commitReads).toBe(readsAfterBind + 1);
+  });
+});
+
+describe('Repository capabilities', () => {
+  it('supports_isTrueWhileUnknown_thenFollowsWhatThePluginConfirmed', async () => {
+    let answer: (value: RepositoryCapabilities | null) => void = (): void => undefined;
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new FakeProvider(root) },
+        },
+        {
+          provide: SourceControl,
+          useValue: {
+            client: {
+              describe: (): Promise<RepositoryCapabilities | null> =>
+                new Promise<RepositoryCapabilities | null>(
+                  (resolve: (value: RepositoryCapabilities | null) => void): void => {
+                    answer = resolve;
+                  },
+                ),
+            },
+          },
+        },
+      ],
+    });
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+
+    // Not yet known: nothing is hidden for a plugin that is merely slow to answer.
+    expect(repository.supports('stash')).toBe(true);
+
+    answer({ pluginId: 'onixlabs.git', displayName: 'Git', capabilities: ['tags', 'remotes'] });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(repository.supports('tags')).toBe(true);
+    expect(repository.supports('stash')).toBe(false);
+  });
+});
+
+describe('Repository history (#882)', () => {
+  /**
+   * The history's requests, and how many commits the repository has to give.
+   */
+  let reads: { limit: number; all: boolean }[];
+  let total: number;
+
+  /**
+   * A provider holding a long linear history, recording what each read asks for.
+   */
+  class HistoryProvider extends FakeProvider {
+    public override getCommits(limit: number = 500, all: boolean = false): Promise<GitCommit[]> {
+      reads.push({ limit, all });
+      const count: number = Math.min(limit, total);
+      return Promise.resolve(
+        Array.from({ length: count }, (_: unknown, index: number): GitCommit => {
+          const commit: GitCommit = makeCommit(
+            `c${index}`,
+            index + 1 < total ? [`c${index + 1}`] : [],
+          );
+          return index === 0 ? { ...commit, refs: [{ name: 'HEAD', kind: 'head' }] } : commit;
+        }),
+      );
+    }
+  }
+
+  /**
+   * Binds a repository whose plugin confirmed the given capabilities, and waits for its first read.
+   * @param capabilities The capabilities.
+   * @returns Returns the repository.
+   */
+  async function bound(capabilities: readonly string[]): Promise<Repository> {
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new HistoryProvider(root) },
+        },
+        {
+          provide: SourceControl,
+          useValue: {
+            client: {
+              describe: (): Promise<RepositoryCapabilities | null> =>
+                Promise.resolve({
+                  pluginId: 'onixlabs.git',
+                  displayName: 'Git',
+                  capabilities,
+                } as RepositoryCapabilities),
+            },
+          },
+        },
+      ],
+    });
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+    await repository.refresh();
+    return repository;
+  }
+
+  beforeEach(() => {
+    reads = [];
+    total = 1200;
+    localStorage.removeItem('repository.historyScope');
+  });
+
+  it('readsOnePage_andSaysThereMayBeMore_whenItStoppedAtTheLimit', async () => {
+    const repository: Repository = await bound([]);
+
+    expect(reads.at(-1)).toEqual({ limit: 500, all: false });
+    expect(repository.commits().length).toBe(500);
+    expect(repository.hasMoreHistory()).toBe(true);
+  });
+
+  it('loadMore_readsAnotherPage_untilTheHistoryRunsOut', async () => {
+    const repository: Repository = await bound([]);
+
+    await repository.loadMoreHistory();
+    expect(reads.at(-1)?.limit).toBe(1000);
+    expect(repository.commits().length).toBe(1000);
+
+    await repository.loadMoreHistory();
+    expect(repository.commits().length).toBe(1200);
+    expect(repository.hasMoreHistory()).toBe(false);
+  });
+
+  it('allBranches_isReadWhenThePluginCanReadThem_andIsRemembered', async () => {
+    const repository: Repository = await bound(['allBranchHistory']);
+
+    repository.setHistoryScope('all');
+    await Promise.resolve();
+
+    expect(reads.at(-1)).toEqual({ limit: 500, all: true });
+    expect(localStorage.getItem('repository.historyScope')).toBe('all');
+  });
+
+  it('allBranches_isNotAskedOfAPluginThatCannotReadThem', async () => {
+    const repository: Repository = await bound([]);
+
+    repository.setHistoryScope('all');
+    await Promise.resolve();
+
+    expect(reads.at(-1)).toEqual({ limit: 500, all: false });
+  });
+
+  it('aNewScope_startsFromTheFirstPageAgain', async () => {
+    const repository: Repository = await bound(['allBranchHistory']);
+    await repository.loadMoreHistory();
+
+    repository.setHistoryScope('all');
+    await Promise.resolve();
+
+    expect(reads.at(-1)?.limit).toBe(500);
+  });
+
+  it('headCommit_isTheCommitHeadPointsAt', async () => {
+    const repository: Repository = await bound([]);
+
+    expect(repository.headCommit()).toBe('c0');
+  });
+});
+
+describe('Repository graph colours (#882)', () => {
+  it('aBranchLine_takesItsBranchsColour_andAMergeLine_theMergedBranchs', async () => {
+    // m merges b into a; b branched from base. Both lines between the lanes run down b's lane.
+    class ForkProvider extends FakeProvider {
+      public override getCommits(): Promise<GitCommit[]> {
+        return Promise.resolve([
+          makeCommit('m', ['a', 'b']),
+          makeCommit('b', ['base']),
+          makeCommit('a', ['base']),
+          makeCommit('base', []),
+        ]);
+      }
+    }
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new ForkProvider(root) },
+        },
+      ],
+    });
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+    await repository.refresh();
+    const node: (id: string) => GraphNode = (id: string): GraphNode =>
+      repository.graph().find((candidate: GraphNode): boolean => candidate.id === id)!;
+
+    const branchLine: GraphNode['edges'][number] = node('b').edges[0];
+    const mergeLine: GraphNode['edges'][number] = node('m').edges[1];
+
+    expect(node('b').color).not.toBe(node('base').color);
+    expect(branchLine).toMatchObject({ merge: false, color: node('b').color });
+    expect(mergeLine).toMatchObject({ merge: true, color: node('b').color });
+    expect(node('m').edges[0]).toMatchObject({ merge: false, color: node('m').color });
   });
 });

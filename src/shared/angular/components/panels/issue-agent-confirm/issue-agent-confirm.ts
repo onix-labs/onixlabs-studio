@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
@@ -13,7 +14,7 @@ import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
  */
 @Component({
   selector: 'app-issue-agent-confirm',
-  imports: [Button, Modal, ModalContent],
+  imports: [Button, ButtonRow, Modal, ModalContent],
   templateUrl: './issue-agent-confirm.html',
   styleUrl: './issue-agent-confirm.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

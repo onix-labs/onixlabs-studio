@@ -1,82 +1,157 @@
-<app-explorer-toolbar
-  [query]="filter()"
-  searchPlaceholder="Search repository"
-  [moreItems]="moreItems()"
-  (queryChange)="onFilterValue($event)"
-  (expandAll)="expandAll()"
-  (collapseAll)="collapseAll()"
-  (moreSelected)="onMoreAction($event)"
-/>
-
-<app-tree-view
-  [rows]="rows()"
-  [selectedId]="selectedId()"
-  [contextMenuFor]="contextMenuFor"
-  (rowClick)="onRowClick($event)"
-  (rowDoubleClick)="onRowDoubleClick($event)"
-  (contextMenuSelect)="onContextAction($event)"
->
-  <ng-template let-row>
-    @let node = nodeOf(row);
-    <app-icon
-      class="tree-icon"
-      [class.tree-icon--folder]="node.kind === 'section'"
-      [icon]="node.icon"
+<!-- A repository no installed plugin can read shows only what is missing and the way to get it: the
+     branch tree would be empty sections with nothing to say (#818). -->
+<app-version-control-missing />
+<!-- A repository the user has not trusted shows only that, and the way to trust it: nothing is read
+     from it until they do. -->
+<app-repository-restricted />
+@if (!needsPlugin() && !restricted()) {
+  <app-explorer-toolbar
+    [query]="filter()"
+    searchPlaceholder="Search repository"
+    [moreItems]="moreItems()"
+    (queryChange)="onFilterValue($event)"
+    (expandAll)="expandAll()"
+    (collapseAll)="collapseAll()"
+    (moreSelected)="onMoreAction($event)"
+  >
+    <app-button
+      variant="none"
+      [icon]="Icon.REFRESH"
+      ariaLabel="Refresh"
+      tooltip="Refresh"
+      [disabled]="!repository.isBound()"
+      (click)="refresh()"
     />
-    <span class="tree-name" [class.bold]="node.kind === 'section'" [class.rail__muted]="node.muted">
-      {{ node.label }}
+  </app-explorer-toolbar>
+
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="selectedId()"
+    [selectedIds]="selectedIds()"
+    [contextMenuFor]="contextMenuFor"
+    (rowClick)="onRowClick($event)"
+    (rowDoubleClick)="onRowDoubleClick($event)"
+    (contextMenuSelect)="onContextAction($event)"
+    [editingId]="renamingRowId()"
+    [editValue]="renaming()?.label ?? ''"
+    (editCommit)="onRenameCommit($event)"
+    (editCancel)="onRenameCancel()"
+  >
+    <!-- While a worktree is being renamed, the tree's field takes the place of its name and glyphs;
+         the icon stays, so the row keeps its shape. -->
+    <ng-template let-row let-editing="editing">
+      @let node = nodeOf(row);
+      <app-icon
+        class="tree-icon"
+        [class.tree-icon--folder]="node.kind === 'section'"
+        [icon]="node.icon"
+      />
+      <!-- Nothing in the tree is bold: a section reads as a heading by its folder icon and its place
+           at the top level, as an explorer's folders do. -->
+      @if (!editing) {
+        <span class="tree-name" [class.rail__muted]="node.muted">
+          {{ node.label }}
+          <!-- Collapsed, a worktree names the branch it has checked out, beside its own name;
+               expanded, that branch is the highlighted row beneath it, so saying it twice would be
+               noise. -->
+          @if (node.kind === 'worktree' && !row.expanded && node.worktree?.branch) {
+            <span class="rail__worktree-branch">({{ node.worktree?.branch }})</span>
+          }
+        </span>
+      }
+
+      @if (node.note; as note) {
+        <!-- Why what is beneath this heading is not current. Muted and beside the label rather than a
+             row of its own, so stale data stays readable instead of being pushed down by an apology. -->
+        <span class="rail__note">{{ note }}</span>
+      }
+
+      @if (node.branch; as branch) {
+        <!-- Written, then sent, then received — the same order the workspace strip reads in, so a count
+             means the same thing wherever it is met. -->
+        @if (branch.current) {
+          <!-- Uncommitted changes belong to the branch they sit on, so only the checked-out row carries
+               them. Still a button: it is the way to the Commit panel from here. -->
+          <button
+            type="button"
+            class="tree-row-action rail__delta rail__changes"
+            [class.rail__changes--active]="workingSelected()"
+            [attr.aria-pressed]="workingSelected()"
+            [title]="repository.changeCount() + ' uncommitted change(s)'"
+            aria-label="Show uncommitted changes"
+            (click)="selectWorking(); $event.stopPropagation()"
+          >
+            <app-icon [icon]="Icon.GIT_COMMIT" />{{ repository.changeCount() }}
+          </button>
+        }
+        <!-- Every branch shows all three, so the rows line up and a glance down the list compares like
+             with like. A branch that tracks nothing reads zero and zero — true, in that it has sent and
+             received nothing — and says why on hover, which is where the distinction belongs rather
+             than in a gap where two numbers should be. -->
+        <span class="rail__delta" [title]="pushTitle(branch)">
+          <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
+        </span>
+        <span class="rail__delta" [title]="pullTitle(branch)">
+          <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
+        </span>
+      }
+
+      @if (node.kind === 'worktree' && !editing && node.worktree; as worktree) {
+        <!-- The view shows one worktree at a time: an open eye on that one, a closed eye on the rest. -->
+        <app-icon
+          class="rail__worktree-visibility"
+          [class.rail__worktree-visibility--shown]="worktree.current"
+          [icon]="worktree.current ? Icon.WORKTREE_SHOWN : Icon.WORKTREE_HIDDEN"
+          [title]="worktree.current ? 'Shown in this view' : 'Not shown — double-click to switch'"
+        />
+        @if (worktree.duplicateBranch) {
+          <app-icon
+            class="rail__worktree-warning"
+            [icon]="Icon.WARNING"
+            title="Another worktree has this branch checked out"
+          />
+        }
+      }
+
+      @if (node.worktreeBranch; as branch) {
+        <!-- Another worktree's branch reads like one of this worktree's: the same counts in the same
+             order. Its uncommitted changes are only a count here — the way to them is that worktree. -->
+        @if (node.changes !== undefined) {
+          <span class="rail__delta" [title]="node.changes + ' uncommitted change(s)'">
+            <app-icon [icon]="Icon.GIT_COMMIT" />{{ node.changes }}
+          </span>
+        }
+        <span class="rail__delta" title="Commits to push">
+          <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
+        </span>
+        <span class="rail__delta" title="Commits to pull">
+          <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
+        </span>
+      }
+
+      @if (node.status; as status) {
+        @if (status === 'running' || status === 'queued') {
+          <!-- Checks in flight get a pulsing circle rather than a spinner glyph nothing rotates. Warning
+               rather than accent: it sits between the green and red outcomes as the third state of one
+               badge, so it belongs to the same semantic scale rather than to the theme's accent. An
+               icon like the settled badges, so every state is the same circle at the same size. -->
+          <app-icon class="rail__status rail__status--running" [icon]="Icon.STATUS_RUNNING" />
+        } @else {
+          <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+        }
+      }
+    </ng-template>
+  </app-tree-view>
+
+  <!-- Whether this is one checkout or a set of worktrees: status, so a chip, read-only. -->
+  <app-panel-status>
+    <span class="panel-status__item">
+      <app-chip [tone]="worktrees() === null ? 'neutral' : 'accent'" [icon]="Icon.WORKTREE">
+        {{ layoutChip() }}
+      </app-chip>
     </span>
-
-    @if (node.note; as note) {
-      <!-- Why what is beneath this heading is not current. Muted and beside the label rather than a
-           row of its own, so stale data stays readable instead of being pushed down by an apology. -->
-      <span class="rail__note">{{ note }}</span>
-    }
-
-    @if (node.branch; as branch) {
-      <!-- Written, then sent, then received — the same order the workspace strip reads in, so a count
-           means the same thing wherever it is met. -->
-      @if (branch.current) {
-        <!-- Uncommitted changes belong to the branch they sit on, so only the checked-out row carries
-             them. Still a button: it is the way to the Commit panel from here. -->
-        <button
-          type="button"
-          class="tree-row-action rail__delta rail__changes"
-          [class.rail__changes--active]="workingSelected()"
-          [attr.aria-pressed]="workingSelected()"
-          [title]="repository.changeCount() + ' uncommitted change(s)'"
-          aria-label="Show uncommitted changes"
-          (click)="selectWorking(); $event.stopPropagation()"
-        >
-          <app-icon [icon]="Icon.GIT_COMMIT" />{{ repository.changeCount() }}
-        </button>
-      }
-      <!-- Every branch shows all three, so the rows line up and a glance down the list compares like
-           with like. A branch that tracks nothing reads zero and zero — true, in that it has sent and
-           received nothing — and says why on hover, which is where the distinction belongs rather
-           than in a gap where two numbers should be. -->
-      <span class="rail__delta" [title]="pushTitle(branch)">
-        <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
-      </span>
-      <span class="rail__delta" [title]="pullTitle(branch)">
-        <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
-      </span>
-    }
-
-    @if (node.status; as status) {
-      @if (status === 'running' || status === 'queued') {
-        <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
-             rather than accent: it sits between the green and red outcomes as the third state of one
-             badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
-             to the circle the filled badges draw at the 1rem `.rail__status` sets, so the three
-             states occupy the same optical space rather than the dot reading as a lesser thing. -->
-        <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.8" />
-      } @else {
-        <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
-      }
-    }
-  </ng-template>
-</app-tree-view>
+  </app-panel-status>
+}
 
 <!-- Creates a branch at the current head. Checking out afterwards is the default, since creating a
      branch is nearly always the first step of working on it. -->
@@ -88,6 +163,10 @@
 >
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">New branch</h2>
+    <!-- Made from a worktree's menu, the branch is made in that worktree: each is a clone of its own. -->
+    @if (branchTarget(); as target) {
+      <p class="rail__dialog-message">In the “{{ target.label }}” worktree.</p>
+    }
     <app-text-field
       class="rail__dialog-input"
       placeholder="Branch name"
@@ -107,15 +186,15 @@
       <app-checkbox [(checked)]="branchCheckout" />
       <span>Check out after creating</span>
     </label>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelBranch()" />
+    <app-button-row>
       <app-button
         variant="solid"
         label="Create"
         [disabled]="!canCreateBranch()"
         (click)="confirmBranch()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelBranch()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -139,7 +218,7 @@
     @if (renameNameError(); as error) {
       <p class="rail__dialog-error" role="alert">{{ error }}</p>
     }
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Rename"
@@ -147,7 +226,7 @@
         (click)="confirmRenameBranch()"
       />
       <app-button label="Cancel" (click)="cancelRenameBranch()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -177,7 +256,7 @@
         (valueChange)="onUpstreamChoice($event)"
       />
     }
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Set"
@@ -185,7 +264,7 @@
         (click)="confirmUpstream()"
       />
       <app-button label="Cancel" (click)="cancelUpstream()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -209,10 +288,10 @@
         push, and anyone else working on it will have to recover their own copy.
       }
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Rebase" (click)="confirmRebase()" />
       <app-button label="Cancel" (click)="cancelRebase()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -227,13 +306,13 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Delete this branch?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingDeleteBranch()?.name }}” is deleted from this repository. A copy already pushed to
-      a remote stays there.
+      “{{ pendingDeleteBranch()?.name }}” is deleted from
+      {{ deletionPlace(pendingDeleteBranch()) }}. A copy already pushed to a remote stays there.
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteBranch()" />
       <app-button label="Cancel" (click)="cancelDeleteBranch()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -248,13 +327,14 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Delete it anyway?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch you
-      are on, or into anything it tracks. Deleting it now loses them, and nothing brings them back.
+      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch
+      checked out in {{ deletionPlace(pendingForceDeleteBranch()) }}, or into anything it tracks.
+      Deleting it now loses them, and nothing brings them back.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+    <app-button-row>
       <app-button variant="solid" label="Keep it" (click)="cancelForceDeleteBranch()" />
-    </div>
+      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -287,7 +367,7 @@
       (enter)="confirmRemote()"
       (escape)="cancelRemote()"
     />
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button
         variant="solid"
         label="Add"
@@ -295,7 +375,7 @@
         (click)="confirmRemote()"
       />
       <app-button label="Cancel" (click)="cancelRemote()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -313,10 +393,10 @@
       “{{ pendingRemoveRemote()?.name }}” and its remote-tracking branches are removed from this
       repository. Nothing on the remote itself is touched.
     </p>
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Remove" (click)="confirmRemoveRemote()" />
       <app-button label="Cancel" (click)="cancelRemoveRemote()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -349,15 +429,15 @@
       (enter)="confirmTag()"
       (escape)="cancelTag()"
     />
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelTag()" />
+    <app-button-row>
       <app-button
         variant="solid"
         label="Create"
         [disabled]="!canCreateTag()"
         (click)="confirmTag()"
       />
-    </div>
+      <app-button label="Cancel" (click)="cancelTag()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -383,7 +463,7 @@
     }
     <!-- The local delete stays the solid one: it is the answer that is nearly always meant, and the
          far more destructive of the two should not be the one wearing the emphasis. -->
-    <div class="rail__dialog-actions">
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
       @if (deleteTagRemote(); as remote) {
         <app-button
@@ -393,7 +473,7 @@
         />
       }
       <app-button label="Cancel" (click)="cancelDeleteTag()" />
-    </div>
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -409,10 +489,10 @@
     <p class="rail__dialog-message">
       “{{ pendingDrop()?.message }}” is deleted without being restored. This cannot be undone.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelDropStash()" />
+    <app-button-row>
       <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelDropStash()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -429,10 +509,10 @@
       “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
       rather than replacing the old one.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Cancel" (click)="cancelRerun()" />
+    <app-button-row>
       <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
-    </div>
+      <app-button label="Cancel" (click)="cancelRerun()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -449,10 +529,10 @@
       “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
       finished is abandoned.
     </p>
-    <div class="rail__dialog-actions">
-      <app-button label="Keep running" (click)="dismissCancelRun()" />
+    <app-button-row>
       <app-button variant="solid" label="Cancel run" (click)="confirmCancelRun()" />
-    </div>
+      <app-button label="Keep running" (click)="dismissCancelRun()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 

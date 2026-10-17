@@ -1,17 +1,31 @@
-import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  Signal,
+  signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
+import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
 import {
+  ForgeCloseReason,
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
+  ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
+import type { HostingCapability } from '@shared/api/hosting-protocol';
 
 /**
  * The remote names preferred when a repository has several, in order. A fork typically has both, and
@@ -53,6 +67,11 @@ export interface ForgeSection<T> {
    */
   readonly message: string | null;
 }
+
+/**
+ * The close reasons every host records, offered until a repository says what else it allows.
+ */
+const BASIC_CLOSE_REASONS: readonly ForgeCloseReason[] = ['completed', 'notPlanned'];
 
 /**
  * The empty section, before anything has been asked for.
@@ -101,6 +120,39 @@ export class ForgeRepository {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the plugin client, watched for hosting plugins arriving or leaving.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds what the detected repository allows, or null until it is known.
+   */
+  private readonly capabilitiesSignal: WritableSignal<ReadonlySet<HostingCapability> | null> =
+    signal<ReadonlySet<HostingCapability> | null>(null);
+
+  /**
+   * Holds the reasons the detected repository's issues may be closed for.
+   */
+  private readonly closeReasonsSignal: WritableSignal<readonly ForgeCloseReason[]> =
+    signal<readonly ForgeCloseReason[]>(BASIC_CLOSE_REASONS);
+
+  /**
+   * Gets the reasons the detected repository's issues may be closed for. Until that is known, the two
+   * every host records; `duplicate` only once the repository's plugin is known to support it.
+   */
+  public readonly closeReasons: Signal<readonly ForgeCloseReason[]> =
+    this.closeReasonsSignal.asReadonly();
+
+  /**
+   * Gets the installed hosting plugins' ids, joined — what changes when one is installed or removed.
+   */
+  private readonly installedHosting: Signal<string> = computed((): string =>
+    installedContributions(this.plugins.plugins(), 'hosting')
+      .map((contribution: PluginContribution): string => contribution.id)
+      .join('\u0000'),
+  );
 
   /**
    * Reads the current time, for describing how long a rate limit has left. Overridable in tests.
@@ -165,6 +217,34 @@ export class ForgeRepository {
   public readonly isAvailable: boolean = this.forge.isAvailable;
 
   /**
+   * Initializes the service, detecting the forge whenever the repository's remotes change or a hosting
+   * plugin is installed or removed — so the forge sections appear as soon as a plugin can serve them,
+   * and disappear with it, rather than waiting to be opened to find out.
+   */
+  public constructor() {
+    effect((): void => {
+      this.repository.remotes();
+      this.installedHosting();
+      untracked((): void => {
+        if (this.repository.isBound()) {
+          void this.detect();
+        }
+      });
+    });
+  }
+
+  /**
+   * Determines whether the detected repository allows something. True while it is not yet known, so a
+   * control does not flicker away and back while the answer is fetched.
+   * @param capability The capability.
+   * @returns Returns true when it is allowed or not yet known.
+   */
+  public supports(capability: HostingCapability): boolean {
+    const known: ReadonlySet<HostingCapability> | null = this.capabilitiesSignal();
+    return known === null || known.has(capability);
+  }
+
+  /**
    * Resolves which repository this workspace's remotes name on a forge, remembering it for the
    * listing calls. Safe to call repeatedly; the answer only changes when the remotes do.
    * @returns Returns the detected repository, or null when the remotes name none.
@@ -182,16 +262,34 @@ export class ForgeRepository {
       if (reference !== null) {
         this.log.debug(
           'forge',
-          `Remote '${remote.name}' is ${reference.owner}/${reference.name} on ${reference.kind}`,
+          `Remote '${remote.name}' is ${reference.owner}/${reference.name} on ${reference.provider}`,
         );
         this.detected.set(reference);
         this.detectedRemote.set(remote.name);
+        void this.loadCapabilities(reference);
         return reference;
       }
     }
     this.detected.set(null);
     this.detectedRemote.set(null);
+    this.capabilitiesSignal.set(null);
+    this.closeReasonsSignal.set(BASIC_CLOSE_REASONS);
     return null;
+  }
+
+  /**
+   * Reads what a detected repository allows, unless another detection has superseded it meanwhile.
+   * @param reference The repository.
+   * @returns Returns a promise that settles once it has been read.
+   */
+  private async loadCapabilities(reference: ForgeRepositoryRef): Promise<void> {
+    const described: ForgeRepositoryCapabilities | null = await this.forge.describe(reference);
+    if (this.detected() === reference) {
+      this.capabilitiesSignal.set(
+        described === null ? null : new Set<HostingCapability>(described.capabilities),
+      );
+      this.closeReasonsSignal.set(described?.closeReasons ?? BASIC_CLOSE_REASONS);
+    }
   }
 
   /**
@@ -227,6 +325,65 @@ export class ForgeRepository {
    * @returns Returns the comments, or the reason they could not be read.
    */
   public issueComments(issueNumber: number): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
+    return this.onDetected((reference: ForgeRepositoryRef) =>
+      this.forge.issueComments(reference, issueNumber),
+    );
+  }
+
+  /**
+   * Closes or reopens an issue, then re-reads the issue list, so the Issues section stops (or starts)
+   * showing it.
+   * @param issueNumber The issue.
+   * @param state The state to put it in.
+   * @param reason Why it is being closed; ignored when reopening.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
+   * @returns Returns the issue as it now stands, or the reason it could not be changed.
+   */
+  public async setIssueState(
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: ForgeCloseReason,
+    duplicateOf?: number,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    const result: ForgeResult<ForgeIssue> = await this.onDetected((reference: ForgeRepositoryRef) =>
+      this.forge.setIssueState(reference, issueNumber, state, reason, duplicateOf),
+    );
+    if (result.ok) {
+      await this.loadIssues();
+    } else {
+      this.log.error('forge', `Could not set issue #${issueNumber} ${state}`, result.error);
+    }
+    return result;
+  }
+
+  /**
+   * Comments on an issue.
+   * @param issueNumber The issue.
+   * @param body The comment, as Markdown.
+   * @returns Returns the posted comment, or the reason it could not be posted.
+   */
+  public async commentOnIssue(
+    issueNumber: number,
+    body: string,
+  ): Promise<ForgeResult<ForgeIssueComment>> {
+    const result: ForgeResult<ForgeIssueComment> = await this.onDetected(
+      (reference: ForgeRepositoryRef) => this.forge.commentOnIssue(reference, issueNumber, body),
+    );
+    if (!result.ok) {
+      this.log.error('forge', `Could not comment on issue #${issueNumber}`, result.error);
+    }
+    return result;
+  }
+
+  /**
+   * Runs a request against the detected repository, answering a failure when there is none rather
+   * than detecting on demand: anything with an issue in front of it has detected one already.
+   * @param act The request.
+   * @returns Returns its result, or why there is nothing to ask.
+   */
+  private onDetected<T>(
+    act: (reference: ForgeRepositoryRef) => Promise<ForgeResult<T>>,
+  ): Promise<ForgeResult<T>> {
     const reference: ForgeRepositoryRef | null = this.detected();
     if (reference === null) {
       return Promise.resolve({
@@ -235,7 +392,7 @@ export class ForgeRepository {
         unauthorized: false,
       });
     }
-    return this.forge.issueComments(reference, issueNumber);
+    return act(reference);
   }
 
   /**
@@ -300,7 +457,7 @@ export class ForgeRepository {
     const local: string =
       pullRequest.headRef.length > 0 ? pullRequest.headRef : `pr-${pullRequest.number}`;
     this.log.info('forge', `Checking out pull request #${pullRequest.number} as '${local}'`);
-    return this.repository.checkoutRef(remote, pullRequest.headRefspec, local);
+    return this.repository.checkoutRef(remote, pullRequest.fetchRef, local);
   }
 
   /**
@@ -456,6 +613,8 @@ export class ForgeRepository {
   public reset(): void {
     this.detected.set(null);
     this.detectedRemote.set(null);
+    this.capabilitiesSignal.set(null);
+    this.closeReasonsSignal.set(BASIC_CLOSE_REASONS);
     this.pullRequestSection.set(IDLE);
     this.issueSection.set(IDLE);
     this.runSection.set(IDLE);

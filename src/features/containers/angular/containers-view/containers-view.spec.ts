@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
+import { FileChannel } from '@shared/api/file-channels';
 import {
   ContainerEngineInfo,
   ContainerStatus,
   ContainerSummary,
+  ImageSummary,
 } from '@shared/api/container-types';
 import { PluginSummary } from '@shared/api/plugin-channels';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
@@ -76,6 +80,8 @@ describe('ContainersView', () => {
   let calls: RecordedCall[];
   let offers: number;
   let installs: number;
+  let onScreen: WritableSignal<boolean>;
+  let pushes: Map<string, (...args: unknown[]) => void>;
 
   /**
    * Installs a recording stub bridge answering status/list channels with fixed replies.
@@ -83,8 +89,20 @@ describe('ContainersView', () => {
    * @param engine The engine in effect, defaulting to Docker; null reports no engines at all, which is
    * what the renderer sees before the main process answers.
    */
+  /**
+   * Holds the containers and images the stub engine lists.
+   */
+  let listed: readonly ContainerSummary[] = [CONTAINER];
+
+  /**
+   * Holds what the user answers when asked to confirm a removal.
+   */
+  let confirms: boolean = true;
+  let imaged: readonly ImageSummary[] = [];
+
   function stubBridge(status: ContainerStatus, engine: ContainerEngineInfo | null = DOCKER): void {
     calls = [];
+    confirms = true;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
@@ -95,16 +113,31 @@ describe('ContainersView', () => {
           return Promise.resolve(status as T);
         }
         if ((channel as ContainerChannel) === ContainerChannel.ListContainers) {
-          return Promise.resolve([CONTAINER] as T);
+          return Promise.resolve(listed as T);
         }
         if ((channel as ContainerChannel) === ContainerChannel.ListImages) {
+          return Promise.resolve(imaged as T);
+        }
+        if (
+          (channel as ContainerChannel) === ContainerChannel.ListVolumes ||
+          (channel as ContainerChannel) === ContainerChannel.Stats
+        ) {
           return Promise.resolve([] as T);
         }
-        return Promise.resolve(true as T);
+        if ((channel as FileChannel) === FileChannel.ConfirmDestructive) {
+          return Promise.resolve(confirms as T);
+        }
+        // The engine's actions succeed; anything else — the docked agent's providers and
+        // conversations (#969) — has nothing to say.
+        return Promise.resolve((channel.startsWith('container:') ? true : undefined) as T);
       },
       send: (): void => undefined,
-      on: (): (() => void) => (): void => undefined,
+      on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
+        pushes.set(channel, listener);
+        return (): void => undefined;
+      },
     };
+    pushes = new Map<string, (...args: unknown[]) => void>();
     (window as unknown as { bridge: Bridge }).bridge = bridge;
   }
 
@@ -116,10 +149,12 @@ describe('ContainersView', () => {
   function stubPrompt(candidates: readonly PluginSummary[] = []): void {
     offers = 0;
     installs = 0;
+    onScreen = signal<boolean>(true);
     // Reset first, so a test that wants candidates can re-stub over the default one every test gets.
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
+        { provide: DocumentVisibility, useValue: { visible: onScreen } },
         {
           provide: ContainerEnginePrompt,
           useValue: {
@@ -171,7 +206,9 @@ describe('ContainersView', () => {
     stubBridge({ available: false });
     const fixture: ComponentFixture<ContainersView> = await createView();
     const actions: readonly string[] = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.containers__empty-actions button'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.containers__empty app-button-row button',
+      ),
     ).map((button: Element): string => button.textContent?.trim() ?? '');
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain("Docker isn't running");
@@ -193,7 +230,9 @@ describe('ContainersView', () => {
     const fixture: ComponentFixture<ContainersView> = await createView();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     const actions: string = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.containers__empty-actions button'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        '.containers__empty app-button-row button',
+      ),
     )
       .map((button: Element): string => button.textContent?.trim() ?? '')
       .join(' ');
@@ -264,6 +303,35 @@ describe('ContainersView', () => {
     expect(offers).toBe(0);
   });
 
+  it('whenTheWindowLeavesTheScreen_statsAndEventReloadsPause_andReturningCatchesUpOnce', async () => {
+    // Audit P4: the tab stays active behind another app or on another desktop; its feeds should not.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const count: (channel: ContainerChannel) => number = (channel: ContainerChannel): number =>
+      calls.filter((call: RecordedCall): boolean => (call.channel as ContainerChannel) === channel)
+        .length;
+    const stats: number = count(ContainerChannel.Stats);
+    const lists: number = count(ContainerChannel.ListContainers);
+    expect(stats).toBeGreaterThan(0);
+
+    onScreen.set(false);
+    fixture.detectChanges();
+    pushes.get(ContainerChannel.Events)?.({ type: 'start' });
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 400);
+    });
+    expect(count(ContainerChannel.Stats)).toBe(stats);
+    expect(count(ContainerChannel.ListContainers)).toBe(lists);
+
+    onScreen.set(true);
+    fixture.detectChanges();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+    expect(count(ContainerChannel.ListContainers)).toBe(lists + 1);
+    expect(count(ContainerChannel.Stats)).toBeGreaterThan(stats);
+  });
+
   it('listsContainersWhenTheDaemonIsUp', async () => {
     stubBridge({ available: true });
     const fixture: ComponentFixture<ContainersView> = await createView();
@@ -287,6 +355,69 @@ describe('ContainersView', () => {
           (call.channel as ContainerChannel) === ContainerChannel.Start,
       ),
     ).toBe(true);
+  });
+
+  it('remove_asksFirst_andRemovesNothingWhenTheUserSaysNo', async () => {
+    // #969: a removed container cannot be got back.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const view: { remove(id: string): Promise<void> } = fixture.componentInstance as unknown as {
+      remove(id: string): Promise<void>;
+    };
+    const removals: () => number = (): number =>
+      calls.filter(
+        (call: RecordedCall): boolean =>
+          (call.channel as ContainerChannel) === ContainerChannel.Remove,
+      ).length;
+
+    confirms = false;
+    await view.remove('abc123');
+    expect(
+      calls.some(
+        (call: RecordedCall): boolean =>
+          (call.channel as FileChannel) === FileChannel.ConfirmDestructive,
+      ),
+    ).toBe(true);
+    expect(removals()).toBe(0);
+
+    confirms = true;
+    await view.remove('abc123');
+    expect(removals()).toBe(1);
+  });
+
+  it('bulk_actsOnEveryTickedContainer_andTheRowMenuOffersPauseAndRestart', async () => {
+    // #974.
+    stubBridge({ available: true });
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const view: {
+      setChecked(id: string, on: boolean): void;
+      bulk(action: 'restart'): Promise<void>;
+      menuTarget: WritableSignal<ContainerSummary | null>;
+      rowMenuItems(): readonly MenuItem[];
+    } = fixture.componentInstance as unknown as {
+      setChecked(id: string, on: boolean): void;
+      bulk(action: 'restart'): Promise<void>;
+      menuTarget: WritableSignal<ContainerSummary | null>;
+      rowMenuItems(): readonly MenuItem[];
+    };
+
+    view.setChecked('abc123', true);
+    view.setChecked('other', true);
+    await view.bulk('restart');
+
+    expect(
+      calls
+        .filter(
+          (call: RecordedCall): boolean =>
+            (call.channel as ContainerChannel) === ContainerChannel.Restart,
+        )
+        .map((call: RecordedCall): unknown => call.args[0]),
+    ).toEqual(['abc123', 'other']);
+
+    view.menuTarget.set(CONTAINER);
+    expect(view.rowMenuItems().map((item: MenuItem): string => item.id)).toEqual(
+      expect.arrayContaining(['restart', 'pause']),
+    );
   });
 
   it('viewLogs_opensADockerLogsTerminalSession', async () => {
@@ -313,5 +444,161 @@ describe('ContainersView', () => {
 
     expect(terminals.sessions()).toHaveLength(1);
     expect(terminals.sessions()[0].name).toContain('shell');
+  });
+
+  describe('the side panel and table (#952)', () => {
+    const STOPPED: ContainerSummary = {
+      id: 'def456',
+      names: ['db'],
+      image: 'postgres:16',
+      state: 'exited',
+      status: 'Exited (0) 2 hours ago',
+    };
+    const NGINX: ImageSummary = { id: 'sha256:aaa', tags: ['nginx:latest'], size: 1024 };
+    const POSTGRES: ImageSummary = { id: 'sha256:bbb', tags: ['postgres:16'], size: 2048 };
+
+    beforeEach(() => {
+      listed = [CONTAINER, STOPPED];
+      imaged = [NGINX, POSTGRES];
+    });
+
+    afterEach(() => {
+      listed = [CONTAINER];
+      imaged = [];
+    });
+
+    /**
+     * Reads the side panel's entries.
+     * @param fixture The view.
+     * @returns Returns them as "Label count".
+     */
+    function kinds(fixture: ComponentFixture<ContainersView>): string[] {
+      return [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          '.category-list__item',
+        ),
+      ].map(
+        (entry: HTMLElement): string =>
+          `${entry.querySelector('.category-list__label')?.textContent?.trim()} ${entry
+            .querySelector('.category-list__count')
+            ?.textContent?.trim()}`,
+      );
+    }
+
+    /**
+     * Reads the shown table's first text column.
+     * @param fixture The view.
+     * @returns Returns the names (containers) or tags (images), in row order.
+     */
+    function names(fixture: ComponentFixture<ContainersView>): string[] {
+      return [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'tr.table-row .containers__name',
+        ),
+      ].map((cell: HTMLElement): string => cell.textContent?.trim() ?? '');
+    }
+
+    it('listsContainersAndImages_withCounts_andShowsOneTableAtATime', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(kinds(fixture)).toEqual(['Containers 2', 'Images 2', 'Volumes 0']);
+      expect(host.querySelectorAll('app-table')).toHaveLength(1);
+      expect(names(fixture)).toEqual(['web', 'db']);
+
+      host.querySelectorAll<HTMLButtonElement>('.category-list__item')[1].click();
+      fixture.detectChanges();
+
+      expect(host.querySelectorAll('app-table')).toHaveLength(1);
+      expect(names(fixture)).toEqual(['nginx:latest', 'postgres:16']);
+    });
+
+    it('onlyShowRunning_hidesStoppedContainers', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('.containers__running-only input')
+        ?.click();
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['web']);
+    });
+
+    it('search_narrowsByNameOrImage', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+        '.category-list__search input',
+      )!;
+
+      input.value = 'postgres';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['db']);
+    });
+
+    it('imageLink_showsThatImageSelectedInTheImagesList', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      host.querySelector<HTMLButtonElement>('.containers__image-link')?.click();
+      fixture.detectChanges();
+
+      expect(names(fixture)).toEqual(['nginx:latest', 'postgres:16']);
+      expect(
+        host.querySelector('tr.table-row--selected .containers__name')?.textContent?.trim(),
+      ).toBe('nginx:latest');
+    });
+
+    it('rowMenu_opensLogsForTheRowThatOpenedIt_andOffersAShellOnlyWhileItRuns', async () => {
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const view: {
+        menuTarget: WritableSignal<ContainerSummary | null>;
+        rowMenuItems(): readonly MenuItem[];
+        onRowMenu(id: string): void;
+      } = fixture.componentInstance as unknown as {
+        menuTarget: WritableSignal<ContainerSummary | null>;
+        rowMenuItems(): readonly MenuItem[];
+        onRowMenu(id: string): void;
+      };
+      const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
+
+      view.menuTarget.set(STOPPED);
+      expect(view.rowMenuItems().find((item: MenuItem) => item.id === 'shell')?.disabled).toBe(
+        true,
+      );
+      view.onRowMenu('logs');
+
+      expect(terminals.sessions()).toHaveLength(1);
+      expect(terminals.sessions()[0].name).toContain('db');
+    });
+
+    it('terminals_closingThePanelHidesIt_andTheNextSessionShowsItAgain', async () => {
+      // Driven through the view rather than the rendered panel: a rendered session mounts a real
+      // terminal, which needs browser APIs the test environment does not have.
+      stubBridge({ available: true });
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const view: {
+        terminalsHidden: WritableSignal<boolean>;
+        hideTerminals(): void;
+        viewLogs(container: ContainerSummary): void;
+      } = fixture.componentInstance as unknown as {
+        terminalsHidden: WritableSignal<boolean>;
+        hideTerminals(): void;
+        viewLogs(container: ContainerSummary): void;
+      };
+
+      view.viewLogs(CONTAINER);
+      view.hideTerminals();
+      expect(view.terminalsHidden()).toBe(true);
+
+      view.viewLogs(STOPPED);
+      expect(view.terminalsHidden()).toBe(false);
+    });
   });
 });

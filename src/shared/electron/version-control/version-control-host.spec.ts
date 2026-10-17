@@ -1,0 +1,567 @@
+import * as path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  VersionControlCapability,
+  VersionControlDescription,
+  VersionControlExecutableChoice,
+  VersionControlOp,
+  VersionControlResponse,
+} from '@shared/api/version-control-protocol';
+import { RepositoryTrustDecision } from '@shared/api/source-control-channels';
+import { WorkspaceContext } from '../workspace-context';
+import { VersionControlClient } from './version-control-client';
+import { VersionControlDescriptor } from './version-control-descriptor';
+import { RepositoryTrustSource, VersionControlHost } from './version-control-host';
+
+/**
+ * The open workspace root every test works inside.
+ */
+const ROOT: string = path.resolve('/studio-vcs-host/repo');
+
+/**
+ * A trust store that trusts everything — what most tests want, since trust is its own concern.
+ */
+const TRUSTING: RepositoryTrustSource = { decisionFor: (): RepositoryTrustDecision => 'trusted' };
+
+/**
+ * A repository outside every open workspace, opened the way a repository tab opens one.
+ */
+const ELSEWHERE: string = path.resolve('/elsewhere/project');
+
+/**
+ * Records what a fake client was asked.
+ */
+interface FakeClient {
+  readonly client: VersionControlClient;
+  readonly starts: (VersionControlExecutableChoice | null)[];
+  readonly requests: { op: VersionControlOp; root: string | undefined; params: unknown }[];
+  release: () => void;
+}
+
+/**
+ * Builds a fake client that confirms the given capabilities and answers every request with its
+ * operation's name. Requests are held until `release` when `hold` is set, to test sharing.
+ * @param confirmed The capabilities the handshake confirms.
+ * @param hold Whether to hold answers until released.
+ * @returns Returns the fake and its records.
+ */
+function fakeClient(
+  confirmed: readonly VersionControlCapability[],
+  hold: boolean = false,
+): FakeClient {
+  let running: boolean = false;
+  const waiting: (() => void)[] = [];
+  const record: FakeClient = {
+    starts: [],
+    requests: [],
+    release: (): void => {
+      for (const resolve of waiting.splice(0)) {
+        resolve();
+      }
+    },
+    client: {
+      get running(): boolean {
+        return running;
+      },
+      start: (
+        executable: VersionControlExecutableChoice | null,
+      ): Promise<VersionControlDescription> => {
+        record.starts.push(executable);
+        running = true;
+        return Promise.resolve({
+          protocol: '1.0',
+          capabilities: confirmed,
+          toolVersion: 'fake 1.0',
+        });
+      },
+      request: async (
+        op: VersionControlOp,
+        root: string | undefined,
+        params: unknown,
+      ): Promise<VersionControlResponse> => {
+        record.requests.push({ op, root, params });
+        if (op === 'resolveRoot') {
+          const asked: string = (params as { path: string }).path;
+          return {
+            id: 1,
+            ok: true,
+            result: { root: asked.startsWith(ELSEWHERE) ? ELSEWHERE : null } as never,
+          };
+        }
+        if (hold) {
+          await new Promise<void>((resolve: () => void): void => {
+            waiting.push(resolve);
+          });
+        }
+        return { id: 1, ok: true, result: { op } as never };
+      },
+      dispose: (): void => {
+        running = false;
+      },
+    } as unknown as VersionControlClient,
+  };
+  return record;
+}
+
+/**
+ * Builds a descriptor for a plugin claiming a marker.
+ * @param id The plugin id.
+ * @param marker The marker it claims.
+ * @param priority Its priority.
+ * @param capabilities The capabilities its manifest declares.
+ * @param available Whether it is installed.
+ * @returns Returns the descriptor.
+ */
+function plugin(
+  id: string,
+  marker: string,
+  priority: number = 100,
+  capabilities: readonly VersionControlCapability[] = ['stash', 'remotes'],
+  available: boolean = true,
+): VersionControlDescriptor {
+  return {
+    id,
+    displayName: id.toUpperCase(),
+    priority,
+    markers: [marker],
+    metadataDirectories: [marker],
+    metadataSignals: [],
+    capabilities,
+    executableModes: ['installed', 'custom'],
+    resolve: () =>
+      available
+        ? { available: true, spec: { command: id, args: [] } }
+        : { available: false, reason: `${id} is not installed — install it in Plugins.` },
+  };
+}
+
+/**
+ * Builds a host over descriptors, with the repository at {@link ROOT} holding the given entries.
+ * @param descriptors The contributed plugins.
+ * @param present The entry names present at the root.
+ * @param fake The client every plugin gets.
+ * @param trust The trust store, trusting everything unless told otherwise.
+ * @returns Returns the host.
+ */
+function host(
+  descriptors: readonly VersionControlDescriptor[],
+  present: readonly string[],
+  fake: FakeClient,
+  trust: RepositoryTrustSource = TRUSTING,
+): VersionControlHost {
+  const roots: WorkspaceContext = new WorkspaceContext();
+  roots.addRoot(ROOT);
+  return new VersionControlHost({
+    descriptors: () => descriptors,
+    roots,
+    trust,
+    executableFor: (id: string): VersionControlExecutableChoice | null =>
+      id === 'git' ? { mode: 'custom', path: '/opt/git' } : null,
+    exists: (target: string): boolean =>
+      present.some((name: string): boolean => target === path.join(ROOT, name)),
+    createClient: (): VersionControlClient => fake.client,
+  });
+}
+
+describe('VersionControlHost', () => {
+  it('pluginFor_picksTheHighestPriorityPluginWhoseMarkerIsPresent', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('svn', '.svn'), plugin('git', '.git', 50), plugin('git-pro', '.git', 200)],
+      ['.git'],
+      fakeClient([]),
+    );
+
+    expect(vcs.pluginFor(ROOT)?.id).toBe('git-pro');
+  });
+
+  it('pluginFor_whenNoMarkerIsPresent_isNull', () => {
+    expect(host([plugin('git', '.git')], [], fakeClient([])).pluginFor(ROOT)).toBeNull();
+  });
+
+  it('request_startsThePluginOnceWithTheUsersExecutableChoice', async () => {
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    await vcs.request(ROOT, 'status', {});
+    await vcs.request(ROOT, 'log', { limit: 10 });
+
+    expect(fake.starts).toEqual([{ mode: 'custom', path: '/opt/git' }]);
+    expect(fake.requests.map((request) => [request.op, request.root])).toEqual([
+      ['status', ROOT],
+      ['log', ROOT],
+    ]);
+  });
+
+  it('request_whenTheRootIsNotOpen_refusesWithoutStartingAnything', async () => {
+    const fake: FakeClient = fakeClient([]);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    const outside: VersionControlResponse<'status'> = await vcs.request(
+      path.resolve('/elsewhere'),
+      'status',
+      {},
+    );
+    const escaping: VersionControlResponse<'status'> = await vcs.request(
+      path.join(ROOT, '..', '..', 'etc'),
+      'status',
+      {},
+    );
+    const relative: VersionControlResponse<'status'> = await vcs.request('repo', 'status', {});
+
+    for (const response of [outside, escaping, relative]) {
+      expect(response).toMatchObject({ ok: false, code: 'refused' });
+    }
+    expect(fake.starts).toEqual([]);
+  });
+
+  it('request_untilTheRepositoryIsTrusted_refusesWithoutStartingThePlugin', async () => {
+    // A repository's own settings can name commands the tool runs on its first look, so nothing
+    // reaches the plugin until the user has said they trust it — and never, once they said they don't.
+    let decision: RepositoryTrustDecision = 'unknown';
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake, {
+      decisionFor: (): RepositoryTrustDecision => decision,
+    });
+
+    expect(await vcs.request(ROOT, 'status', {})).toMatchObject({ ok: false, code: 'untrusted' });
+    expect(await vcs.describe(ROOT)).toMatchObject({ ok: false });
+    decision = 'restricted';
+    expect(await vcs.request(ROOT, 'status', {})).toMatchObject({ ok: false, code: 'untrusted' });
+    expect(fake.starts).toEqual([]);
+
+    decision = 'trusted';
+    expect((await vcs.request(ROOT, 'status', {})).ok).toBe(true);
+    expect(await vcs.describe(ROOT)).toMatchObject({ ok: true });
+  });
+
+  it('requestGlobal_whenACloneTargetsARestrictedContainer_isRefused_butResolvingARootIsNot', async () => {
+    const fake: FakeClient = fakeClient(['clone']);
+    const vcs: VersionControlHost = host([plugin('git', '.git', 100, ['clone'])], [], fake, {
+      decisionFor: (): RepositoryTrustDecision => 'restricted',
+    });
+
+    expect(
+      await vcs.requestGlobal('git', 'clone', {
+        url: 'https://example.com/repo.git',
+        directory: path.join(ROOT, 'feature'),
+      }),
+    ).toMatchObject({ ok: false, code: 'untrusted' });
+    expect(await vcs.requestGlobal('git', 'resolveRoot', { path: ROOT })).toMatchObject({
+      ok: true,
+    });
+    expect(fake.requests.map((request) => request.op)).toEqual(['resolveRoot']);
+  });
+
+  it('isOpen_namesOnlyTheRootsThatAreOpenRightNow', () => {
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fakeClient([]));
+    const fakeElsewhere: VersionControlHost = host([], [], fakeClient([]));
+
+    expect(vcs.isOpen(ROOT)).toBe(false);
+    expect(fakeElsewhere.isOpen(ELSEWHERE)).toBe(false);
+    expect(vcs.isOpen(undefined)).toBe(false);
+  });
+
+  it('request_whenTheCapabilityIsDeclaredButNotConfirmed_isUnsupported', async () => {
+    // The manifest declares stash and remotes; the running plugin confirms only stash.
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    const push: VersionControlResponse<'push'> = await vcs.request(ROOT, 'push', { target: null });
+    const stash: VersionControlResponse<'stash'> = await vcs.request(ROOT, 'stash', {});
+
+    expect(push).toMatchObject({ ok: false, code: 'unsupported' });
+    expect(stash.ok).toBe(true);
+    expect(fake.requests.map((request) => request.op)).toEqual(['stash']);
+  });
+
+  it('request_whenConfirmedButNotDeclared_isUnsupported', async () => {
+    const fake: FakeClient = fakeClient(['stash', 'tags']);
+    const vcs: VersionControlHost = host([plugin('git', '.git', 100, ['stash'])], ['.git'], fake);
+
+    expect(await vcs.request(ROOT, 'createTag', { name: 'v1', commit: 'abc' })).toMatchObject({
+      ok: false,
+      code: 'unsupported',
+    });
+  });
+
+  it('request_sharesIdenticalConcurrentReadsButNotWrites', async () => {
+    const fake: FakeClient = fakeClient(['stash'], true);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    const reads: Promise<VersionControlResponse<'status'>>[] = [
+      vcs.request(ROOT, 'status', {}),
+      vcs.request(ROOT, 'status', {}),
+    ];
+    const writes: Promise<VersionControlResponse<'stash'>>[] = [
+      vcs.request(ROOT, 'stash', {}),
+      vcs.request(ROOT, 'stash', {}),
+    ];
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+    fake.release();
+    await Promise.all([...reads, ...writes]);
+
+    expect(fake.requests.map((request) => request.op)).toEqual(['status', 'stash', 'stash']);
+  });
+
+  it('request_whenThePluginIsNotInstalled_returnsTheInstallReason', async () => {
+    const vcs: VersionControlHost = host(
+      [plugin('git', '.git', 100, [], false)],
+      ['.git'],
+      fakeClient([]),
+    );
+
+    expect(await vcs.request(ROOT, 'status', {})).toMatchObject({
+      ok: false,
+      error: 'git is not installed — install it in Plugins.',
+    });
+  });
+
+  it('request_afterThePluginWasRemoved_stopsItsProcess_andRefuses', async () => {
+    // #881: alive is not installed. The process outlived its files and answered anyway.
+    let installed: boolean = true;
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host(
+      [
+        {
+          ...plugin('git', '.git'),
+          resolve: () =>
+            installed
+              ? { available: true, spec: { command: 'git', args: [] } }
+              : { available: false, reason: 'git is not installed — install it in Plugins.' },
+        },
+      ],
+      ['.git'],
+      fake,
+    );
+    await vcs.request(ROOT, 'status', {});
+    installed = false;
+
+    const after: VersionControlResponse<'status'> = await vcs.request(ROOT, 'status', {});
+
+    expect(after).toMatchObject({
+      ok: false,
+      error: 'git is not installed — install it in Plugins.',
+    });
+    expect(fake.client.running).toBe(false);
+    expect(fake.requests.map((request) => request.op)).toEqual(['status']);
+  });
+
+  it('restartPlugin_whileItStarts_startsItAfresh_ratherThanKeepingTheStaleStart', async () => {
+    // An update lands while the old version is still starting: what that start produces is stale.
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    const pending: Promise<VersionControlResponse<'status'>> = vcs.request(ROOT, 'status', {});
+    vcs.restartPlugin('git');
+    const response: VersionControlResponse<'status'> = await pending;
+
+    expect(response.ok).toBe(true);
+    expect(fake.starts).toHaveLength(2);
+    expect(fake.client.running).toBe(true);
+  });
+
+  it('request_refusesAGlobalOperation', async () => {
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fakeClient([]));
+
+    expect(await vcs.request(ROOT, 'getIdentity', {})).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+  });
+
+  it('requestGlobal_whenACloneTargetsAnOpenRoot_sendsItWithoutARoot', async () => {
+    const fake: FakeClient = fakeClient(['clone']);
+    const vcs: VersionControlHost = host([plugin('git', '.git', 100, ['clone'])], [], fake);
+
+    const response: VersionControlResponse<'clone'> = await vcs.requestGlobal('git', 'clone', {
+      url: 'https://example.com/repo.git',
+      directory: path.join(ROOT, 'feature'),
+    });
+
+    expect(response.ok).toBe(true);
+    expect(fake.requests).toEqual([
+      {
+        op: 'clone',
+        root: undefined,
+        params: { url: 'https://example.com/repo.git', directory: path.join(ROOT, 'feature') },
+      },
+    ]);
+  });
+
+  it('requestGlobal_whenACloneTargetsOutsideTheOpenRoots_isRefused', async () => {
+    const fake: FakeClient = fakeClient(['clone']);
+    const vcs: VersionControlHost = host([plugin('git', '.git', 100, ['clone'])], [], fake);
+
+    expect(
+      await vcs.requestGlobal('git', 'clone', {
+        url: 'https://example.com/repo.git',
+        directory: path.resolve('/tmp/anywhere'),
+      }),
+    ).toMatchObject({ ok: false, code: 'refused' });
+    expect(fake.requests).toEqual([]);
+  });
+
+  it('requestGlobal_refusesInitializeAndRepositoryOperations', async () => {
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fakeClient([]));
+
+    expect(
+      await vcs.requestGlobal('git', 'initialize', { protocol: '1.0', executable: null }),
+    ).toMatchObject({ ok: false, code: 'refused' });
+    expect(await vcs.requestGlobal('git', 'status', {})).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+  });
+
+  it('describe_reportsTheConfirmedCapabilities', async () => {
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fakeClient(['stash']));
+
+    expect(await vcs.describe(ROOT)).toMatchObject({
+      ok: true,
+      pluginId: 'git',
+      capabilities: ['stash'],
+      description: { toolVersion: 'fake 1.0' },
+    });
+  });
+
+  it('metadataDirectories_isTheDistinctUnionAcrossPlugins', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('git', '.git'), plugin('git-pro', '.git'), plugin('hg', '.hg')],
+      [],
+      fakeClient([]),
+    );
+
+    expect(vcs.metadataDirectories()).toEqual(['.git', '.hg']);
+  });
+
+  describe('opened repositories', () => {
+    /**
+     * Builds a host whose only repository is {@link ELSEWHERE}, outside every open workspace.
+     * @param fake The client the plugin gets.
+     * @returns Returns the host.
+     */
+    function elsewhere(fake: FakeClient): VersionControlHost {
+      return new VersionControlHost({
+        descriptors: () => [plugin('git', '.git')],
+        roots: new WorkspaceContext(),
+        trust: TRUSTING,
+        executableFor: (): null => null,
+        exists: (target: string): boolean => target === path.join(ELSEWHERE, '.git'),
+        createClient: (): VersionControlClient => fake.client,
+      });
+    }
+
+    it('openRepository_findsTheMarkerAboveTheFolder_andAsksThePluginForTheRoot', async () => {
+      const fake: FakeClient = fakeClient([]);
+      const vcs: VersionControlHost = elsewhere(fake);
+
+      expect(await vcs.openRepository(path.join(ELSEWHERE, 'src', 'app'))).toEqual({
+        root: ELSEWHERE,
+        name: 'project',
+        pluginId: 'git',
+      });
+      expect(fake.requests[0]).toEqual({
+        op: 'resolveRoot',
+        root: undefined,
+        params: { path: path.join(ELSEWHERE, 'src', 'app') },
+      });
+    });
+
+    it('openRepository_whenNoRepositoryContainsTheFolder_isNull', async () => {
+      const vcs: VersionControlHost = elsewhere(fakeClient([]));
+
+      expect(await vcs.openRepository(path.resolve('/nowhere/at/all'))).toBeNull();
+      expect(await vcs.openRepository('relative/path')).toBeNull();
+    });
+
+    it('request_isAllowedInAnOpenedRepository_untilItsLastSurfaceClosesIt', async () => {
+      const vcs: VersionControlHost = elsewhere(fakeClient([]));
+      expect(await vcs.request(ELSEWHERE, 'status', {})).toMatchObject({ code: 'refused' });
+      expect(vcs.isOpen(ELSEWHERE)).toBe(false);
+
+      await vcs.openRepository(ELSEWHERE);
+      await vcs.openRepository(ELSEWHERE);
+      expect(vcs.isOpen(ELSEWHERE)).toBe(true);
+      expect((await vcs.request(ELSEWHERE, 'status', {})).ok).toBe(true);
+
+      vcs.closeRepository(ELSEWHERE);
+      expect((await vcs.request(ELSEWHERE, 'status', {})).ok).toBe(true);
+
+      vcs.closeRepository(ELSEWHERE);
+      expect(vcs.isOpen(ELSEWHERE)).toBe(false);
+      expect(await vcs.request(ELSEWHERE, 'status', {})).toMatchObject({ code: 'refused' });
+    });
+  });
+
+  it('start_usesAnInProcessEndpointWhenTheResolutionProvidesOne', async () => {
+    const fake: FakeClient = fakeClient([]);
+    const inProcess: VersionControlDescriptor = {
+      ...plugin('core.git', '.git'),
+      resolve: () => ({ available: true, create: () => fake.client }),
+    };
+    const roots: WorkspaceContext = new WorkspaceContext();
+    roots.addRoot(ROOT);
+    const vcs: VersionControlHost = new VersionControlHost({
+      descriptors: () => [inProcess],
+      roots,
+      trust: TRUSTING,
+      executableFor: (): null => null,
+      exists: (): boolean => true,
+      createClient: (): never => {
+        throw new Error('an in-process endpoint must not spawn a process');
+      },
+    });
+
+    expect((await vcs.request(ROOT, 'status', {})).ok).toBe(true);
+    expect(fake.requests.map((request) => request.op)).toEqual(['status']);
+  });
+
+  it('preferredPlugin_isTheHighestPriority', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('low', '.git', 1), plugin('high', '.hg', 9)],
+      [],
+      fakeClient([]),
+    );
+
+    expect(vcs.preferredPlugin()?.id).toBe('high');
+    expect(host([], [], fakeClient([])).preferredPlugin()).toBeNull();
+  });
+
+  it('metadataPolicies_mergeSignalsPerDirectory_andAnUnsignalledPluginForwardsEverything', () => {
+    const git: VersionControlDescriptor = {
+      ...plugin('git', '.git'),
+      metadataSignals: ['HEAD', 'refs/**'],
+    };
+    const gitExtra: VersionControlDescriptor = {
+      ...plugin('git-extra', '.git'),
+      metadataSignals: ['index'],
+    };
+    const svn: VersionControlDescriptor = plugin('svn', '.svn');
+
+    expect(host([git, gitExtra, svn], [], fakeClient([])).metadataPolicies()).toEqual(
+      new Map<string, readonly string[]>([
+        ['.git', ['HEAD', 'refs/**', 'index']],
+        ['.svn', []],
+      ]),
+    );
+    expect(
+      host([git, plugin('raw', '.git')], [], fakeClient([]))
+        .metadataPolicies()
+        .get('.git'),
+    ).toEqual([]);
+  });
+
+  it('detect_findsTheRepositoryAPluginWouldServe_evenUninstalled_andOnlyInsideAnOpenWorkspace', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('git', '.git', 100, [], false)],
+      ['.git'],
+      fakeClient([]),
+    );
+
+    expect(vcs.detect(path.join(ROOT, 'src', 'app'))?.id).toBe('git');
+    expect(vcs.detect(path.resolve('/elsewhere'))).toBeNull();
+    expect(vcs.detect('relative')).toBeNull();
+  });
+});

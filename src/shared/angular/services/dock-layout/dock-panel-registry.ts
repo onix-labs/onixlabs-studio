@@ -7,7 +7,7 @@ import { DockPanel } from './dock-panel';
  * The parts of a registered panel that can change after registration: what its tab shows. A well
  * document's file can be renamed while it is open, and its tab must follow the file.
  */
-export type DockPanelPatch = Partial<Pick<DockPanel, 'title' | 'icon' | 'ownsToolStrip'>>;
+export type DockPanelPatch = Partial<Pick<DockPanel, 'title' | 'icon'>>;
 
 /**
  * Maps panel identifiers to the dockable panels they render, so stacks in the layout tree (which

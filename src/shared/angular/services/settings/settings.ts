@@ -28,12 +28,10 @@ import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { restoreOverrides } from './settings-migration';
 import {
-  addProfile,
-  AddProfileResult,
-  removeProfile,
+  clearLanguageOverride,
   resolveForLanguage,
-  updateProfileIn,
-} from './settings-profiles';
+  setLanguageOverride,
+} from './settings-language-overrides';
 
 /**
  * Identifies the highlight style applied to the current line in the text editor.
@@ -86,7 +84,25 @@ export type PrintMargin = 'narrow' | 'regular' | 'wide';
 /**
  * Identifies how the ribbon's controls are aligned within the ribbon strip.
  */
-export type RibbonAlignment = 'left' | 'center' | 'right';
+export type RibbonAlignment = 'left' | 'center';
+
+/**
+ * Identifies how notifications stack in the bottom-right corner: in a column growing up the screen,
+ * or receding behind the newest, which alone stays in front.
+ */
+export type NotificationStacking = 'upwards' | 'backwards';
+
+/**
+ * Identifies which notifications are drawn in their severity's colour: all of them, or only the
+ * newest, the rest in the app's greys.
+ */
+export type NotificationColour = 'all' | 'newest';
+
+/**
+ * Identifies what still pops up while notifications are muted: nothing, or errors only. Muted
+ * notifications are still recorded in the tray.
+ */
+export type MutedNotifications = 'nothing' | 'errors';
 
 /**
  * Identifies how much of the application menu the title strip carries: not at all (`hidden`), as a
@@ -206,48 +222,30 @@ export interface TextEditorSettings {
 }
 
 /**
- * Defines a partial set of text editor settings, used for per-language profile overrides.
+ * Defines a partial set of text editor settings, used for per-language overrides.
  */
 export type PartialTextEditorSettings = Partial<TextEditorSettings>;
 
 /**
- * Defines a language-specific editor profile whose settings override the global defaults.
+ * Maps a Monaco language identifier to the text editor settings overridden for that language. A
+ * language absent from the map, or a field absent from its entry, falls back to the global setting.
+ * Each language's overrides are edited on its own page under Text Editor › Language Providers.
  */
-export interface EditorProfile {
-  /**
-   * Gets the unique identifier of the profile.
-   */
-  readonly id: string;
-
-  /**
-   * Gets the display name of the profile.
-   */
-  readonly name: string;
-
-  /**
-   * Gets the Monaco language identifiers this profile applies to.
-   */
-  readonly languages: readonly string[];
-
-  /**
-   * Gets the settings overrides applied by this profile.
-   */
-  readonly settings: PartialTextEditorSettings;
-}
+export type LanguageOverrides = Readonly<Record<string, PartialTextEditorSettings>>;
 
 /**
- * Defines the text editor settings together with their language-specific profiles.
+ * Defines the text editor settings together with their per-language overrides.
  */
-export interface TextEditorSettingsWithProfiles {
+export interface TextEditorSettingsWithOverrides {
   /**
    * Gets the global default text editor settings.
    */
   readonly global: TextEditorSettings;
 
   /**
-   * Gets the user-created editor profiles.
+   * Gets the per-language overrides.
    */
-  readonly profiles: readonly EditorProfile[];
+  readonly languageOverrides: LanguageOverrides;
 }
 
 /**
@@ -402,9 +400,9 @@ export interface AppSettings {
   readonly appearance: AppearanceSettings;
 
   /**
-   * Gets the text editor settings with profiles.
+   * Gets the text editor settings with their per-language overrides.
    */
-  readonly textEditor: TextEditorSettingsWithProfiles;
+  readonly textEditor: TextEditorSettingsWithOverrides;
 
   /**
    * Gets the markdown editor settings.
@@ -544,12 +542,12 @@ export class Settings {
   public readonly undoStackSize: Signal<number> = this.value('application.undoStackSize');
 
   /**
-   * Gets the text editor settings with profiles.
+   * Gets the text editor settings with their per-language overrides.
    */
-  public readonly textEditor: Signal<TextEditorSettingsWithProfiles> = computed(
-    (): TextEditorSettingsWithProfiles => ({
+  public readonly textEditor: Signal<TextEditorSettingsWithOverrides> = computed(
+    (): TextEditorSettingsWithOverrides => ({
       global: this.globalTextEditor(),
-      profiles: this.profiles(),
+      languageOverrides: this.languageOverrides(),
     }),
   );
 
@@ -584,9 +582,11 @@ export class Settings {
   );
 
   /**
-   * Gets the editor profiles.
+   * Gets the per-language text editor overrides.
    */
-  public readonly profiles: Signal<readonly EditorProfile[]> = this.value('textEditor.profiles');
+  public readonly languageOverrides: Signal<LanguageOverrides> = this.value(
+    'textEditor.languageOverrides',
+  );
 
   /**
    * Gets the markdown editor settings.
@@ -689,6 +689,12 @@ export class Settings {
     this.value('ai.toolPolicies');
 
   /**
+   * Gets whether agents are kept off the code host's own command-line tool while a hosting plugin
+   * serves the repository (#853).
+   */
+  public readonly aiBlockHostCommandLine: Signal<boolean> = this.value('ai.blockHostCommandLine');
+
+  /**
    * Gets the extra directories the agent may write to beyond the workspace root (absolute paths).
    */
   public readonly aiAllowedWritePaths: Signal<readonly string[]> =
@@ -752,6 +758,14 @@ export class Settings {
    */
   public readonly missionControlTileScrollMode: Signal<TileScrollMode> = this.value(
     'missionControl.tileScrollMode',
+  );
+
+  /**
+   * Gets how often the System Monitor samples the machine while showing, in milliseconds, or 0 when
+   * the user paused it.
+   */
+  public readonly systemMonitorRefreshRate: Signal<number> = this.value(
+    'systemMonitor.refreshRate',
   );
 
   /**
@@ -895,55 +909,44 @@ export class Settings {
   }
 
   /**
-   * Creates a new editor profile.
-   * @param name The profile name.
-   * @param languages The Monaco language identifiers the profile applies to.
-   * @param settings The settings overrides applied by the profile.
-   * @returns Returns the created profile.
+   * Overrides one text editor setting for a language.
+   * @param language The Monaco language identifier.
+   * @param field The text editor settings field.
+   * @param value The overriding value.
    */
-  public createProfile(
-    name: string,
-    languages: readonly string[],
-    settings: PartialTextEditorSettings = {},
-  ): EditorProfile {
-    const result: AddProfileResult = addProfile(
-      this.read('textEditor.profiles'),
-      name,
-      languages,
-      settings,
+  public setLanguageOverride<K extends keyof TextEditorSettings>(
+    language: string,
+    field: K,
+    value: TextEditorSettings[K],
+  ): void {
+    this.set(
+      'textEditor.languageOverrides',
+      setLanguageOverride(this.read('textEditor.languageOverrides'), language, field, value),
     );
-    this.set('textEditor.profiles', result.next);
-    this.log.info('Settings', `Created editor profile '${name}'`, result.profile.id, languages);
-    return result.profile;
+    this.log.info('Settings', `Overrode editor setting for language`, language, field, value);
   }
 
   /**
-   * Updates an existing editor profile.
-   * @param id The identifier of the profile to update.
-   * @param updates The updates to apply to the profile.
+   * Clears one overridden text editor setting for a language, returning it to the global value.
+   * @param language The Monaco language identifier.
+   * @param field The text editor settings field.
    */
-  public updateProfile(id: string, updates: Partial<Omit<EditorProfile, 'id'>>): void {
-    this.set('textEditor.profiles', updateProfileIn(this.read('textEditor.profiles'), id, updates));
-    this.log.info('Settings', `Updated editor profile`, id);
+  public clearLanguageOverride(language: string, field: keyof TextEditorSettings): void {
+    this.set(
+      'textEditor.languageOverrides',
+      clearLanguageOverride(this.read('textEditor.languageOverrides'), language, field),
+    );
+    this.log.info('Settings', `Cleared editor setting override for language`, language, field);
   }
 
   /**
-   * Deletes an editor profile.
-   * @param id The identifier of the profile to delete.
-   */
-  public deleteProfile(id: string): void {
-    this.set('textEditor.profiles', removeProfile(this.read('textEditor.profiles'), id));
-    this.log.info('Settings', `Deleted editor profile`, id);
-  }
-
-  /**
-   * Resolves the effective text editor settings for a language, merging the first matching profile's
-   * overrides over the global settings.
+   * Resolves the effective text editor settings for a language: the global settings with that
+   * language's overrides laid over them.
    * @param language The Monaco language identifier.
    * @returns Returns the resolved settings for the language.
    */
   public resolveSettingsForLanguage(language: string): TextEditorSettings {
-    return resolveForLanguage(this.globalTextEditor(), this.profiles(), language);
+    return resolveForLanguage(this.globalTextEditor(), this.languageOverrides(), language);
   }
 
   /**

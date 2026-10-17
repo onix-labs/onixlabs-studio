@@ -1,6 +1,6 @@
 import { promises as fs, Dirent } from 'node:fs';
 import { basename, join, relative, resolve, sep } from 'node:path';
-import { scopeMatches, type AgentSurface } from '@shared/api/ai-types';
+import { skillScopeMatches, type AgentSurface } from '@shared/api/ai-types';
 import {
   SKILL_FILE,
   SKILL_NAME_PATTERN,
@@ -115,6 +115,7 @@ export class SkillLibrary implements SkillOfferer {
       name,
       description: parsed.description,
       scope: parsed.scope,
+      technologies: parsed.technologies,
       enabled: parsed.enabled,
       body: parsed.body,
       directory,
@@ -165,6 +166,7 @@ export class SkillLibrary implements SkillOfferer {
           name,
           description,
           scope: draft.scope,
+          technologies: draft.technologies,
           enabled: draft.enabled,
           body: draft.body,
           foreignLines,
@@ -244,7 +246,9 @@ export class SkillLibrary implements SkillOfferer {
     return skills
       .filter(
         (skill: Skill): boolean =>
-          skill.enabled && skill.problem === null && scopeMatches(skill.scope, surface, language),
+          skill.enabled &&
+          skill.problem === null &&
+          skillScopeMatches(skill.scope, surface, language),
       )
       .map((skill: Skill): OfferedSkill => ({
         name: skill.name,

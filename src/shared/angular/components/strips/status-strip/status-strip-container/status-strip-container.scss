@@ -7,6 +7,9 @@
     padding-inline: 1rem;
     color: var(--status-strip-foreground-color);
     background-color: var(--status-strip-background-color);
+    // One line at any width (#882): what does not fit gives way inside its group, never by wrapping.
+    white-space: nowrap;
+    overflow: hidden;
   }
 }
 
@@ -23,6 +26,8 @@
 // pushed to the end whether or not the active view fills the bar.
 .status-strip__ambient {
   display: flex;
+  // Always shown in full: the notification bell and the language-server menu are controls.
+  flex: 0 0 auto;
   align-items: center;
   gap: 1rem;
 }

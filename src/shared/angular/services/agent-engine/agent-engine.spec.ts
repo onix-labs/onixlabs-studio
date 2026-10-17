@@ -36,6 +36,40 @@ describe('AgentEngine', () => {
     engine = TestBed.inject(AgentEngine);
   });
 
+  it('whenLoaded_waitsForTheFirstLoad', async () => {
+    let settled: boolean = false;
+    void engine.whenLoaded.then((): void => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await engine.loadProviders();
+    await Promise.resolve();
+
+    expect(settled).toBe(true);
+  });
+
+  it('whenLoaded_resolves_evenWhenTheLoadFails', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: AiRuntime,
+          useValue: {
+            listProviders: (): Promise<readonly AiProviderInfo[]> =>
+              Promise.reject(new Error('main is not there')),
+          },
+        },
+      ],
+    });
+    const failing: AgentEngine = TestBed.inject(AgentEngine);
+
+    await expect(failing.loadProviders()).rejects.toThrow('main is not there');
+
+    await expect(failing.whenLoaded).resolves.toBeUndefined();
+  });
+
   it('model_whenProvidersLoaded_defaultsToTheProviderDefault', async () => {
     await engine.loadProviders();
 

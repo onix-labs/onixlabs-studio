@@ -126,6 +126,12 @@ export class Dropdown {
   public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the prompt the face shows while no option is selected — "Clone As…" — or undefined for
+   * none. It is never in the list: the prompt asks for a choice, it is not one.
+   */
+  public readonly placeholder: InputSignal<string | undefined> = input<string>();
+
+  /**
    * Emits the newly picked value when the selection changes.
    */
   public readonly valueChange: OutputEmitterRef<string> = output<string>();
@@ -141,10 +147,22 @@ export class Dropdown {
    * rather than mirrored by the browser, so the face stays a single ellipsized line.
    */
   protected readonly selectedLabel: Signal<string> = computed((): string => {
+    // A value no option holds shows the placeholder, when there is one.
     const value: string = this.value();
     return (
-      this.options().find((option: DropdownOption): boolean => option.value === value)?.label ?? ''
+      this.options().find((option: DropdownOption): boolean => option.value === value)?.label ??
+      this.placeholder() ??
+      ''
     );
+  });
+
+  /**
+   * Gets whether the value is one of the options, so the placeholder's hidden option stands in only
+   * while it is not.
+   */
+  protected readonly isChosen: Signal<boolean> = computed((): boolean => {
+    const value: string = this.value();
+    return this.options().some((option: DropdownOption): boolean => option.value === value);
   });
 
   /**

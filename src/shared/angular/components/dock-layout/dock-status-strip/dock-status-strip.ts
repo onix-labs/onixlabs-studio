@@ -2,8 +2,15 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+
+/**
+ * The Error List's panel identifier, which pressing the error and warning counts opens.
+ */
+const ERROR_LIST_PANEL_ID: string = 'errors';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import {
   DocumentStatus,
@@ -21,7 +28,7 @@ import {
  */
 @Component({
   selector: 'app-dock-status-strip',
-  imports: [AppIcon, CdkMenuTrigger, Menu],
+  imports: [AppIcon, CdkMenuTrigger, Chip, Menu],
   templateUrl: './dock-status-strip.html',
   styleUrl: './dock-status-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -63,15 +70,25 @@ export class DockStatusStrip {
   protected readonly warnings: Signal<number> = this.diagnostics.warningCount;
 
   /**
-   * Gets whether the active document is a comparison, which is what a published change count means.
-   *
-   * A comparison drops the diagnostics segment. Those counts are the workspace's, identical on every
-   * tab, and say nothing about the two versions being read — beside a file being edited they are
-   * worth the room, beside a diff they are just the thing that is always there.
+   * Gets whether the active document shows the error and warning counts: source code, which a
+   * language server checks. Those counts are the workspace's, identical on every tab, so beside a
+   * picture, a prose file or a comparison they are just the thing that is always there (#882).
    */
-  protected readonly isComparison: Signal<boolean> = computed(
-    (): boolean => this.status()?.changes !== undefined,
+  protected readonly showsDiagnostics: Signal<boolean> = computed(
+    (): boolean => this.status()?.diagnostics === true,
   );
+
+  /**
+   * Holds the dock's reveal, which brings the Error List forward, or null outside a workspace dock.
+   */
+  private readonly dockReveal: DockReveal | null = inject(DockReveal, { optional: true });
+
+  /**
+   * Opens the Error List, the list the counts are counting.
+   */
+  protected openErrorList(): void {
+    this.dockReveal?.reveal(ERROR_LIST_PANEL_ID);
+  }
 
   /**
    * Gets the current editor zoom level, as a percentage.

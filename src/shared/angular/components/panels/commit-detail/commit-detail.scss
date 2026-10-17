@@ -158,11 +158,6 @@
   text-transform: uppercase;
   color: var(--form-muted-foreground-color);
 }
-.detail__composer-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
 // Layout only: how the field is DRAWN belongs to the atom, which is asked for its seamless variant
 // in the template rather than having this chrome unpicked from out here.
 .detail__message {
@@ -334,10 +329,4 @@
   margin: 0;
   color: var(--form-muted-foreground-color);
   overflow-wrap: anywhere;
-}
-
-.detail__operation-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
 }

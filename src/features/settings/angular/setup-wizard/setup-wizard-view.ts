@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { SetupStepAiProvider } from './setup-step-ai-provider';
 import { SetupStepCatalogue } from './setup-step-catalogue';
-import { SetupStepEnvironment } from './setup-step-environment';
+import { SetupStepSummary } from './setup-step-summary';
 import { SetupStepLanguage } from './setup-step-language';
 import { SetupStepSettings } from './setup-step-settings';
-import { SetupStepSourceControl } from './setup-step-source-control';
+import { SetupStepCommitIdentity } from './setup-step-commit-identity';
 import { SetupStepTerminal } from './setup-step-terminal';
 import { SetupStepWhatsNew } from './setup-step-whats-new';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -39,16 +40,17 @@ import {
     Modal,
     ModalContent,
     Button,
+    ButtonRow,
     AppIcon,
     TreeView,
     SetupStepSettings,
     SetupStepTerminal,
     SetupStepWhatsNew,
-    SetupStepEnvironment,
+    SetupStepSummary,
     SetupStepCatalogue,
     SetupStepLanguage,
     SetupStepAiProvider,
-    SetupStepSourceControl,
+    SetupStepCommitIdentity,
   ],
   templateUrl: './setup-wizard-view.html',
   styleUrl: './setup-wizard-view.scss',

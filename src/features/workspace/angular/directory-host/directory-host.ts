@@ -70,7 +70,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds this tab's worktree session, provided here so the sub-views and the Worktrees panel
+   * Holds this tab's worktree session, provided here so the sub-views and the Repository panel's worktrees
    * share it.
    */
   protected readonly session: WorktreeSession = inject(WorktreeSession);
@@ -143,10 +143,22 @@ export class DirectoryHost implements OnInit, OnDestroy {
   private readonly loading: Set<string> = new Set<string>();
 
   /**
-   * Holds the stable promote action handed to the single view (and through it to the ribbon).
+   * Holds the agent conversation a promotion carries across, with the worktree whose view takes it
+   * over — the one the repository became — or null when there is none.
    */
-  protected readonly promoteAction: () => void = (): void => {
-    void this.promote();
+  protected readonly carried: WritableSignal<{
+    readonly checkoutId: string;
+    readonly conversationId: string;
+  } | null> = signal<{ readonly checkoutId: string; readonly conversationId: string } | null>(null);
+
+  /**
+   * Holds the stable promote action handed to the single view (and through it to the ribbon). The
+   * view hands it the id of its open agent conversation, which carries on in the first worktree.
+   */
+  protected readonly promoteAction: (conversationId: string | null) => void = (
+    conversationId: string | null,
+  ): void => {
+    void this.promote(conversationId);
   };
 
   /**
@@ -309,10 +321,12 @@ export class DirectoryHost implements OnInit, OnDestroy {
   /**
    * Promotes the single view's repository, in place, into a worktree container, then rebuilds the
    * tab around the container: the single view (whose documents point at now-moved paths) is torn
-   * down, and the old working copy carries on as the first checkout.
+   * down, and the old working copy carries on as the first checkout — and so does its agent
+   * conversation, which that checkout's new view takes over.
+   * @param conversationId The single view's open agent conversation, or null for none.
    * @returns Returns a promise that resolves once the promotion settles.
    */
-  private async promote(): Promise<void> {
+  private async promote(conversationId: string | null): Promise<void> {
     const root: string | null = this.singleRoot;
     if (root === null || this.phase() !== 'single' || this.worktrees.client === undefined) {
       return;
@@ -323,6 +337,10 @@ export class DirectoryHost implements OnInit, OnDestroy {
       return;
     }
     this.session.claimRoot(root);
+    const first: string | undefined = outcome.value.checkouts[0]?.id;
+    if (conversationId !== null && first !== undefined) {
+      this.carried.set({ checkoutId: first, conversationId });
+    }
     this.session.initialize(root, outcome.value);
     this.phase.set('container');
     this.singleListing.set(null);

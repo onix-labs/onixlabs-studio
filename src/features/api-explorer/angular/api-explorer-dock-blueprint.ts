@@ -49,7 +49,6 @@ export const API_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.API_EXPLORER,
       role: 'tool',
       component: ApiExplorerPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'history',
@@ -57,7 +56,6 @@ export const API_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.API_HISTORY,
       role: 'tool',
       component: ApiHistoryPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'environment',
@@ -65,7 +63,6 @@ export const API_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.API_ENVIRONMENT,
       role: 'tool',
       component: ApiEnvironmentPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'agent',
@@ -73,7 +70,6 @@ export const API_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.AGENT,
       role: 'tool',
       component: ApiAgentPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'terminal',
@@ -81,7 +77,6 @@ export const API_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
-      ownsToolStrip: true,
     },
   ],
 };

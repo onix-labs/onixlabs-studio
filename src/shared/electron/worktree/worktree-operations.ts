@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { STUDIO_DIR } from '@shared/api/studio';
@@ -9,8 +8,10 @@ import {
   mintCheckoutId,
   parseWorktreeConfig,
   removeCheckoutEntry,
+  renameCheckoutEntry,
   serializeWorktreeConfig,
   WorkspaceKind,
+  WorktreeBranch,
   WorktreeCheckout,
   WorktreeCheckoutInfo,
   WorktreeCheckoutStatus,
@@ -21,57 +22,17 @@ import {
   worktreeOk,
   WorktreeOutcome,
 } from '@shared/api/worktree';
+import {
+  VcsBranch,
+  VcsRefs,
+  VcsRemote,
+  VcsStatus,
+  VersionControlResponse,
+} from '@shared/api/version-control-protocol';
 import { TrustedPaths } from '../trusted-paths';
+import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
-
-/**
- * Holds the maximum time, in milliseconds, a local git invocation (branch/origin reads, checkout)
- * may run before being killed.
- */
-const WORKTREE_GIT_TIMEOUT_MS: number = 20000;
-
-/**
- * Holds the maximum time, in milliseconds, a clone may run. A checkout is a full clone that may
- * contact a remote, so it is given a far longer budget than the local-operation default.
- */
-const WORKTREE_CLONE_TIMEOUT_MS: number = 600000;
-
-/**
- * Holds the maximum size, in bytes, of a git invocation's captured output.
- */
-const WORKTREE_GIT_MAX_BUFFER: number = 16 * 1024 * 1024;
-
-/**
- * Holds the environment overlay applied to git invocations so they never block on an interactive
- * prompt — with no usable credentials a clone fails fast (and we surface its stderr) rather than
- * hanging until the timeout. Credentials still come from the user's configured git credential helper
- * and ssh-agent; this only disables interactive fallback.
- */
-const WORKTREE_GIT_ENV: NodeJS.ProcessEnv = {
-  GIT_TERMINAL_PROMPT: '0',
-  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
-};
-
-/**
- * The result of a git invocation: its trimmed stdout on success, or the most useful error text git
- * produced on failure.
- */
-interface GitResult {
-  /**
-   * Gets whether the invocation succeeded.
-   */
-  readonly success: boolean;
-
-  /**
-   * Gets the trimmed standard output, when the invocation succeeded.
-   */
-  readonly stdout?: string;
-
-  /**
-   * Gets the failure text, when the invocation failed.
-   */
-  readonly error?: string;
-}
 
 /**
  * Validates a value passed to git as an operand (a branch name, a clone source) so the renderer
@@ -84,10 +45,28 @@ function isSafeOperand(value: unknown): value is string {
 }
 
 /**
+ * Reads the branch out of a remote branch's name, `<remote>/<branch>`. The branch may itself contain
+ * slashes, so only the first segment is the remote's.
+ * @param remoteBranch The remote branch's name.
+ * @returns Returns the branch, or an empty string when the name has no remote segment.
+ */
+function remoteBranchName(remoteBranch: string): string {
+  const separator: number = remoteBranch.indexOf('/');
+  return separator === -1 ? '' : remoteBranch.slice(separator + 1);
+}
+
+/**
+ * The longest name a worktree may be given — a label in a tree row, not a document.
+ */
+const MAX_ALIAS_LENGTH: number = 100;
+
+/**
  * Implements the worktree-container disk operations: resolving what a directory is, describing a
  * container's live checkout state, promoting a repository workspace in place, and adding/removing
- * checkouts as independent full clones. Deliberately free of Electron imports so the mechanics are
- * unit-testable; the {@link import('./worktree-manager').WorktreeManager} wraps this behind IPC and
+ * checkouts as independent full clones. Every version-control question — cloning, a checkout's branch
+ * and status, the repository's branches — goes through the {@link VersionControlHost}, so whichever
+ * plugin serves the repository answers (#816). Deliberately free of Electron imports so the mechanics
+ * are unit-testable; the {@link import('./worktree-manager').WorktreeManager} wraps this behind IPC and
  * supplies the OS-trash function.
  *
  * Confinement treats the renderer as hostile, mirroring the workspace surfaces: kind resolution is
@@ -113,24 +92,32 @@ export class WorktreeOperations {
   private readonly trash: (target: string) => Promise<void>;
 
   /**
+   * Holds the version-control host every repository question goes through.
+   */
+  private readonly versionControl: VersionControlHost;
+
+  /**
    * Initializes a new instance of the {@link WorktreeOperations} class.
    * @param workspace The shared workspace context, used to confine every operation to open roots.
    * @param trusted The trusted-paths store, used to gate kind resolution.
    * @param trash The function that sends a directory to the OS trash.
+   * @param versionControl The version-control host repository questions go through.
    */
   public constructor(
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
     trash: (target: string) => Promise<void>,
+    versionControl: VersionControlHost,
   ) {
     this.workspace = workspace;
     this.trusted = trusted;
     this.trash = trash;
+    this.versionControl = versionControl;
   }
 
   /**
    * Resolves what a directory is: a worktree container (its `.studio/worktree.json` exists), a
-   * workspace (a `.git` is present), or a plain folder. Container wins over repository so a
+   * workspace (a repository an installed version-control plugin recognises), or a plain folder. Container wins over repository so a
    * container is never mistaken for the repository its checkouts clone.
    * @param target The candidate directory path, honoured only when trusted or within an open root.
    * @returns Returns the kind, or null when the path is denied or not a directory.
@@ -149,7 +136,7 @@ export class WorktreeOperations {
     if (await this.exists(path.join(root, STUDIO_DIR, WORKTREE_CONFIG_FILE))) {
       return 'worktree';
     }
-    if (await this.exists(path.join(root, '.git'))) {
+    if (this.versionControl.pluginFor(root) !== null) {
       return 'workspace';
     }
     return 'folder';
@@ -194,8 +181,8 @@ export class WorktreeOperations {
     if (await this.exists(path.join(resolved, STUDIO_DIR, WORKTREE_CONFIG_FILE))) {
       return worktreeError('The workspace is already a worktree container.');
     }
-    if (!(await this.exists(path.join(resolved, '.git')))) {
-      return worktreeError('The workspace is not a git repository.');
+    if (this.versionControl.pluginFor(resolved) === null) {
+      return worktreeError('The workspace is not a repository an installed plugin recognises.');
     }
 
     const id: string = mintCheckoutId();
@@ -220,8 +207,12 @@ export class WorktreeOperations {
     }
 
     const origin: string | null = await this.readOrigin(target);
+    const alias: string | undefined = await this.defaultAlias(target, []);
     try {
-      await this.writeConfig(resolved, defaultWorktreeConfig(origin, [{ id }]));
+      await this.writeConfig(
+        resolved,
+        defaultWorktreeConfig(origin, [{ id, ...(alias === undefined ? {} : { alias }) }]),
+      );
     } catch (error) {
       await this.rollbackPromotion(resolved, target, moved);
       return worktreeError(
@@ -281,36 +272,93 @@ export class WorktreeOperations {
       }
     }
 
-    const id: string = mintCheckoutId();
-    const clone: GitResult = await this.git(
-      resolved,
-      ['clone', '--', source, id],
-      WORKTREE_CLONE_TIMEOUT_MS,
-    );
-    if (!clone.success) {
-      return worktreeError(`The checkout could not be cloned: ${clone.error ?? 'unknown error'}`);
+    // The plugin serving an existing sibling clones the new one; with none left, the preferred
+    // installed plugin does.
+    const sibling: string | null = await this.firstExistingCheckout(resolved, config);
+    const plugin: VersionControlDescriptor | null =
+      (sibling === null ? null : this.versionControl.pluginFor(sibling)) ??
+      this.versionControl.preferredPlugin();
+    if (plugin === null) {
+      return worktreeError('No installed version-control plugin can make the checkout.');
     }
+    const id: string = mintCheckoutId();
     const directory: string = path.join(resolved, id);
-    if (branch !== undefined) {
-      const switched: GitResult = await this.git(directory, ['checkout', branch]);
-      if (!switched.success) {
-        const created: GitResult = await this.git(directory, ['checkout', '-b', branch]);
-        if (!created.success) {
-          return worktreeError(
-            `The branch could not be checked out: ${created.error ?? 'unknown error'}`,
-          );
-        }
+    // A branch only another worktree has (made there, never pushed) is fetched from that worktree
+    // into the new clone, which still clones from — and keeps as its origin — the usual source.
+    const holder: string | null =
+      branch === undefined ? null : await this.worktreeHoldingOnly(resolved, config, branch);
+    const cloned: VersionControlResponse<'clone'> = await this.versionControl.requestGlobal(
+      plugin.id,
+      'clone',
+      {
+        url: source,
+        directory,
+        ...(branch === undefined || holder !== null ? {} : { branch, createBranch: true }),
+      },
+    );
+    if (!cloned.ok) {
+      return worktreeError(`The checkout could not be made: ${cloned.error}`);
+    }
+    if (branch !== undefined && holder !== null) {
+      const fetched: string | null = await this.takeBranchFrom(directory, holder, branch);
+      if (fetched !== null) {
+        await this.trash(directory).catch((): void => undefined);
+        return worktreeError(`The branch "${branch}" could not be fetched: ${fetched}`);
       }
     }
 
+    // Unnamed, it takes the branch it starts on, as a name of its own: a label that followed the
+    // branch would rename the worktree whenever a different branch was checked out in it.
+    const name: string | undefined =
+      alias ??
+      (await this.defaultAlias(
+        path.join(resolved, id),
+        (await this.status(resolved)) ?? [],
+        config.checkouts,
+      ));
     try {
-      await this.writeConfig(resolved, addCheckoutEntry(config, { id, alias }));
+      await this.writeConfig(resolved, addCheckoutEntry(config, { id, alias: name }));
     } catch (error) {
       return worktreeError(
         `The container configuration could not be written: ${this.message(error)}`,
       );
     }
-    return worktreeOk(await this.describeCheckout(resolved, { id, alias }));
+    return worktreeOk(await this.describeCheckout(resolved, { id, alias: name }));
+  }
+
+  /**
+   * Names a new worktree after the branch it starts on, numbered when another worktree already goes
+   * by that name ("main 2"). A worktree already registered goes by its alias, or — registered before
+   * worktrees were named — by its branch, which is what its label shows.
+   * @param directory The new worktree's directory.
+   * @param statuses The registered worktrees' statuses, for the branches of the unnamed ones.
+   * @param checkouts The registered worktrees.
+   * @returns Returns the name, or undefined when the branch cannot be read (the label then follows
+   * the branch, as an unnamed worktree's always has).
+   */
+  private async defaultAlias(
+    directory: string,
+    statuses: readonly WorktreeCheckoutStatus[],
+    checkouts: readonly WorktreeCheckout[] = [],
+  ): Promise<string | undefined> {
+    const branch: string | null | undefined = (await this.readVcsStatus(directory))?.branch;
+    if (branch === null || branch === undefined || branch.length === 0) {
+      return undefined;
+    }
+    const taken: ReadonlySet<string> = new Set<string>(
+      checkouts.flatMap((checkout: WorktreeCheckout): string[] => {
+        const name: string | null | undefined =
+          checkout.alias ??
+          statuses.find((status: WorktreeCheckoutStatus): boolean => status.id === checkout.id)
+            ?.branch;
+        return name === null || name === undefined ? [] : [name];
+      }),
+    );
+    let name: string = branch;
+    for (let suffix: number = 2; taken.has(name); suffix++) {
+      name = `${branch} ${suffix}`;
+    }
+    return name;
   }
 
   /**
@@ -347,7 +395,7 @@ export class WorktreeOperations {
 
   /**
    * Reads every registered checkout's lightweight status — branch, changed working-tree entries,
-   * and ahead/behind relative to its upstream — for the Worktrees panel. A checkout whose state
+   * and ahead/behind relative to its upstream, and its local branches — for the Repository panel's worktrees. A checkout whose state
    * cannot be read reports null fields rather than failing the whole read.
    * @param root The container root, which must be an open workspace root.
    * @returns Returns the statuses in registration order, or null when the root is not open or not
@@ -386,36 +434,113 @@ export class WorktreeOperations {
     if (config === null) {
       return null;
     }
-    const source: string | null = await this.firstExistingCheckout(resolved, config);
-    if (source === null) {
-      return null;
-    }
-    // Full refnames, not short ones: a LOCAL branch may itself contain slashes (feature/x), so only
-    // the refs/heads/ vs refs/remotes/<remote>/ prefix can classify a name reliably.
-    const result: GitResult = await this.git(source, [
-      'for-each-ref',
-      '--format=%(refname)',
-      'refs/heads',
-      'refs/remotes',
-    ]);
-    if (!result.success) {
-      return null;
-    }
+    // Every worktree is a clone of its own, so a branch made in one is unknown to the others until it
+    // is pushed: the picker offers the branches of all of them, not only the first's.
     const names: Set<string> = new Set<string>();
-    for (const line of (result.stdout ?? '').split('\n')) {
-      const ref: string = line.trim();
-      if (ref.startsWith('refs/heads/')) {
-        names.add(ref.slice('refs/heads/'.length));
-      } else if (ref.startsWith('refs/remotes/')) {
-        const remote: string = ref.slice('refs/remotes/'.length);
-        const separator: number = remote.indexOf('/');
-        const name: string = separator === -1 ? '' : remote.slice(separator + 1);
-        if (name.length > 0 && name !== 'HEAD') {
-          names.add(name);
+    let read: boolean = false;
+    for (const checkout of config.checkouts) {
+      const directory: string = path.join(resolved, checkout.id);
+      const refs: VcsRefs | null = (await this.isDirectory(directory))
+        ? await this.readRefs(directory)
+        : null;
+      if (refs === null) {
+        continue;
+      }
+      read = true;
+      for (const branch of refs.branches) {
+        names.add(branch.name);
+      }
+      for (const remote of refs.remotes) {
+        for (const branch of remote.branches) {
+          const name: string = remoteBranchName(branch.name);
+          if (name.length > 0 && name !== 'HEAD') {
+            names.add(name);
+          }
         }
       }
     }
-    return [...names].sort((a: string, b: string): number => a.localeCompare(b));
+    return read ? [...names].sort((a: string, b: string): number => a.localeCompare(b)) : null;
+  }
+
+  /**
+   * Brings a branch another worktree holds into a fresh clone and checks it out: fetched straight
+   * from that worktree's directory (a path is a remote to git), so no remote is left behind.
+   * @param directory The fresh clone.
+   * @param holder The worktree holding the branch.
+   * @param branch The branch.
+   * @returns Returns null on success, or the failure reason.
+   */
+  private async takeBranchFrom(
+    directory: string,
+    holder: string,
+    branch: string,
+  ): Promise<string | null> {
+    const fetched: VersionControlResponse<'fetchRef'> = await this.versionControl.request(
+      directory,
+      'fetchRef',
+      { remote: holder, sourceRef: `refs/heads/${branch}`, localBranch: branch },
+    );
+    if (!fetched.ok) {
+      return fetched.error;
+    }
+    const checkedOut: VersionControlResponse<'checkout'> = await this.versionControl.request(
+      directory,
+      'checkout',
+      { branch },
+    );
+    return checkedOut.ok ? null : checkedOut.error;
+  }
+
+  /**
+   * Finds the worktree a branch must be fetched from because the clone source cannot supply it: a
+   * branch made in one worktree and never pushed exists in that clone alone. Cloned from the origin,
+   * asking for it by name would create a new branch of that name — not that one.
+   * @param root The resolved container root.
+   * @param config The container configuration.
+   * @param branch The branch the new worktree is to have.
+   * @returns Returns the directory of a worktree holding the branch locally, or null when the clone
+   * source has it (or nothing does, and it is new).
+   */
+  private async worktreeHoldingOnly(
+    root: string,
+    config: WorktreeConfig,
+    branch: string,
+  ): Promise<string | null> {
+    let holder: string | null = null;
+    let first: boolean = true;
+    for (const checkout of config.checkouts) {
+      const directory: string = path.join(root, checkout.id);
+      const refs: VcsRefs | null = (await this.isDirectory(directory))
+        ? await this.readRefs(directory)
+        : null;
+      if (refs === null) {
+        continue;
+      }
+      const local: boolean = refs.branches.some(
+        (candidate: { readonly name: string }): boolean => candidate.name === branch,
+      );
+      // The source supplies it when it is on the origin (a remote branch of the remote that IS the
+      // container's origin), or — a container with no origin is cloned from its first worktree —
+      // when it is one of that worktree's local branches, which are all a clone of it carries.
+      const onOrigin: boolean =
+        config.origin !== null &&
+        refs.remotes.some(
+          (remote: VcsRemote): boolean =>
+            remote.url === config.origin &&
+            remote.branches.some(
+              (remoteBranch: { readonly name: string }): boolean =>
+                remoteBranchName(remoteBranch.name) === branch,
+            ),
+        );
+      if (onOrigin || (config.origin === null && first && local)) {
+        return null;
+      }
+      if (local && holder === null) {
+        holder = directory;
+      }
+      first = false;
+    }
+    return holder;
   }
 
   /**
@@ -427,33 +552,38 @@ export class WorktreeOperations {
   private async readStatus(root: string, id: string): Promise<WorktreeCheckoutStatus> {
     const directory: string = path.join(root, id);
     if (!(await this.isDirectory(directory))) {
-      return { id, branch: null, changes: null, ahead: null, behind: null };
+      return { id, branch: null, changes: null, ahead: null, behind: null, branches: [] };
     }
-    const branch: string | null = await this.readBranch(directory);
-    const porcelain: GitResult = await this.git(directory, ['status', '--porcelain']);
-    const changes: number | null = porcelain.success
-      ? (porcelain.stdout ?? '').split('\n').filter((line: string): boolean => line.length > 0)
-          .length
-      : null;
-    // `--left-right --count upstream...HEAD` prints "<behind>\t<ahead>": the left column counts
-    // commits only in the upstream, the right column commits only in HEAD. No upstream fails the
-    // command, which reads as "no counts" rather than zero.
-    const counts: GitResult = await this.git(directory, [
-      'rev-list',
-      '--left-right',
-      '--count',
-      '@{upstream}...HEAD',
-    ]);
-    let ahead: number | null = null;
-    let behind: number | null = null;
-    if (counts.success) {
-      const parts: readonly string[] = (counts.stdout ?? '').split(/\s+/);
-      const left: number = Number.parseInt(parts[0] ?? '', 10);
-      const right: number = Number.parseInt(parts[1] ?? '', 10);
-      behind = Number.isNaN(left) ? null : left;
-      ahead = Number.isNaN(right) ? null : right;
+    const status: VcsStatus | null = await this.readVcsStatus(directory);
+    if (status === null) {
+      return { id, branch: null, changes: null, ahead: null, behind: null, branches: [] };
     }
-    return { id, branch, changes, ahead, behind };
+    const refs: VcsRefs | null = await this.readRefs(directory);
+    const branches: readonly WorktreeBranch[] = (refs?.branches ?? []).map(
+      (branch: VcsBranch): WorktreeBranch => ({
+        name: branch.name,
+        ahead: branch.ahead,
+        behind: branch.behind,
+        ...(branch.upstream === undefined ? {} : { upstream: branch.upstream }),
+      }),
+    );
+    // A path staged and changed again appears in both lists, and counts once — as one line of
+    // `git status --porcelain` did.
+    const changed: Set<string> = new Set<string>(
+      [...status.staged, ...status.unstaged, ...status.conflicted].map(
+        (change: { readonly path: string }): string => change.path,
+      ),
+    );
+    // No upstream reads as "no counts" rather than zero.
+    const tracked: boolean = status.upstream !== null;
+    return {
+      id,
+      branch: status.branch ?? 'HEAD',
+      changes: changed.size,
+      ahead: tracked ? status.ahead : null,
+      behind: tracked ? status.behind : null,
+      branches,
+    };
   }
 
   /**
@@ -491,6 +621,141 @@ export class WorktreeOperations {
     }
     try {
       await this.writeConfig(resolved, removeCheckoutEntry(config, id));
+    } catch (error) {
+      return worktreeError(
+        `The container configuration could not be written: ${this.message(error)}`,
+      );
+    }
+    return worktreeOk(null);
+  }
+
+  /**
+   * Creates a local branch in one registered checkout, through the version-control host in that
+   * checkout's own directory: each checkout is a clone of its own, so the view's repository cannot
+   * make a branch in another.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param name The candidate branch name, never trusted.
+   * @param checkout Whether to check the branch out in that checkout; anything but true is false.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async createBranch(
+    root: unknown,
+    id: unknown,
+    name: unknown,
+    checkout: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    const directory: WorktreeOutcome<string> = await this.checkoutDirectory(root, id);
+    if (!directory.ok) {
+      return directory;
+    }
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return worktreeError('No branch was named.');
+    }
+    const response: VersionControlResponse<'createBranch'> = await this.versionControl.request(
+      directory.value,
+      'createBranch',
+      { name: name.trim(), checkout: checkout === true },
+    );
+    return response.ok ? worktreeOk(null) : worktreeError(response.error, response.code);
+  }
+
+  /**
+   * Deletes a local branch in one registered checkout, through the version-control host in that
+   * checkout's own directory: each checkout is a clone of its own, so the view's repository cannot
+   * reach another's branches. The branch the checkout has checked out is refused, as git would.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param name The candidate branch name, never trusted.
+   * @param force Whether to delete it even with unmerged commits; anything but true is false.
+   * @returns Returns a null value on success, or the failure reason, coded `branch-not-merged` when an
+   * unforced delete was refused for unmerged commits.
+   */
+  public async deleteBranch(
+    root: unknown,
+    id: unknown,
+    name: unknown,
+    force: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    const directory: WorktreeOutcome<string> = await this.checkoutDirectory(root, id);
+    if (!directory.ok) {
+      return directory;
+    }
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return worktreeError('No branch was named.');
+    }
+    const status: VcsStatus | null = await this.readVcsStatus(directory.value);
+    if (status === null) {
+      return worktreeError('The checkout could not be read.');
+    }
+    if (status.branch === name) {
+      return worktreeError(`"${name}" is checked out in that worktree.`);
+    }
+    const response: VersionControlResponse<'deleteBranch'> = await this.versionControl.request(
+      directory.value,
+      'deleteBranch',
+      { name, force: force === true },
+    );
+    return response.ok ? worktreeOk(null) : worktreeError(response.error, response.code);
+  }
+
+  /**
+   * Resolves a registered checkout's directory in an open container, refusing anything else.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @returns Returns the checkout's directory, or why there is none.
+   */
+  private async checkoutDirectory(root: unknown, id: unknown): Promise<WorktreeOutcome<string>> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return worktreeError('The workspace is not open.');
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return worktreeError('The workspace is not a worktree container.');
+    }
+    if (
+      !isSafeCheckoutId(id) ||
+      !config.checkouts.some((entry: WorktreeCheckout): boolean => entry.id === id)
+    ) {
+      return worktreeError('The checkout is not registered in this container.');
+    }
+    return worktreeOk(path.join(resolved, id));
+  }
+
+  /**
+   * Renames a registered checkout: sets its display alias. The alias is the checkout's name in the
+   * UI only — its directory, a GUID, never changes.
+   * @param root The container root, which must be an open workspace root.
+   * @param id The candidate checkout id, never trusted.
+   * @param alias The candidate alias, never trusted: trimmed, and refused when empty or too long.
+   * @returns Returns a null value on success, or the failure reason.
+   */
+  public async renameCheckout(
+    root: unknown,
+    id: unknown,
+    alias: unknown,
+  ): Promise<WorktreeOutcome<null>> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      return worktreeError('The workspace is not open.');
+    }
+    const resolved: string = path.resolve(root);
+    const config: WorktreeConfig | null = await this.readConfig(resolved);
+    if (config === null) {
+      return worktreeError('The workspace is not a worktree container.');
+    }
+    if (
+      !isSafeCheckoutId(id) ||
+      !config.checkouts.some((entry: WorktreeCheckout): boolean => entry.id === id)
+    ) {
+      return worktreeError('The checkout is not registered in this container.');
+    }
+    const name: string = typeof alias === 'string' ? alias.trim() : '';
+    if (name.length === 0 || name.length > MAX_ALIAS_LENGTH) {
+      return worktreeError(`A worktree's name must be 1 to ${MAX_ALIAS_LENGTH} characters.`);
+    }
+    try {
+      await this.writeConfig(resolved, renameCheckoutEntry(config, id, name));
     } catch (error) {
       return worktreeError(
         `The container configuration could not be written: ${this.message(error)}`,
@@ -606,8 +871,10 @@ export class WorktreeOperations {
    * @returns Returns the origin URL, or null.
    */
   private async readOrigin(directory: string): Promise<string | null> {
-    const result: GitResult = await this.git(directory, ['remote', 'get-url', 'origin']);
-    const origin: string = result.success ? (result.stdout ?? '') : '';
+    const origin: string =
+      (await this.readRefs(directory))?.remotes.find(
+        (remote: { readonly name: string }): boolean => remote.name === 'origin',
+      )?.url ?? '';
     return origin.length > 0 ? origin : null;
   }
 
@@ -617,44 +884,36 @@ export class WorktreeOperations {
    * @returns Returns the branch name (or `HEAD` when detached), or null.
    */
   private async readBranch(directory: string): Promise<string | null> {
-    const result: GitResult = await this.git(directory, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const branch: string = result.success ? (result.stdout ?? '') : '';
-    return branch.length > 0 ? branch : null;
+    const status: VcsStatus | null = await this.readVcsStatus(directory);
+    return status === null ? null : (status.branch ?? 'HEAD');
   }
 
   /**
-   * Invokes git with array arguments (never a shell) in a working directory, non-interactively.
-   * @param cwd The working directory to run in.
-   * @param args The git argument vector.
-   * @param timeoutMs The maximum run time, defaulting to the local-operation budget.
-   * @returns Returns the result.
+   * Reads a repository's working-tree status through the version-control host.
+   * @param directory The repository directory, within an open root.
+   * @returns Returns the status, or null when it cannot be read.
    */
-  private git(
-    cwd: string,
-    args: readonly string[],
-    timeoutMs: number = WORKTREE_GIT_TIMEOUT_MS,
-  ): Promise<GitResult> {
-    return new Promise<GitResult>((resolve: (value: GitResult) => void): void => {
-      execFile(
-        'git',
-        [...args],
-        {
-          cwd,
-          timeout: timeoutMs,
-          maxBuffer: WORKTREE_GIT_MAX_BUFFER,
-          windowsHide: true,
-          env: { ...process.env, ...WORKTREE_GIT_ENV, GIT_OPTIONAL_LOCKS: '0' },
-        },
-        (error: Error | null, stdout: string, stderr: string): void => {
-          if (error !== null) {
-            const detail: string = stderr.trim();
-            resolve({ success: false, error: detail.length > 0 ? detail : error.message });
-            return;
-          }
-          resolve({ success: true, stdout: stdout.trim() });
-        },
-      );
-    });
+  private async readVcsStatus(directory: string): Promise<VcsStatus | null> {
+    const response: VersionControlResponse<'status'> = await this.versionControl.request(
+      directory,
+      'status',
+      {},
+    );
+    return response.ok ? response.result : null;
+  }
+
+  /**
+   * Reads a repository's refs through the version-control host.
+   * @param directory The repository directory, within an open root.
+   * @returns Returns the refs, or null when they cannot be read.
+   */
+  private async readRefs(directory: string): Promise<VcsRefs | null> {
+    const response: VersionControlResponse<'refs'> = await this.versionControl.request(
+      directory,
+      'refs',
+      {},
+    );
+    return response.ok ? response.result : null;
   }
 
   /**

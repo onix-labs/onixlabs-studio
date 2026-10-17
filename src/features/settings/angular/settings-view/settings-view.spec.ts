@@ -1,7 +1,11 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ProviderPage } from '@shared/api/ai-types';
+import type { LspServerSummary } from '@shared/api/lsp-channels';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 import { Theme } from '@shared/angular/services/theme/theme';
 import { SettingsView } from './settings-view';
@@ -52,6 +56,67 @@ describe('SettingsView', () => {
     );
     expect(page).not.toBeNull();
     expect(page?.textContent).toContain('Echoes prompts back.');
+  });
+
+  it('render_theAiLibraryEntries_linkToTheAiManagerSectionThatHoldsThem', async () => {
+    // #948. Prompt profiles and skills moved to the AI Manager; Settings keeps an entry for each
+    // that says where they went and opens it there.
+    (component as unknown as { section: WritableSignal<string> }).section.set('ai-skills');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const page: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'app-ai-manager-link',
+    );
+    expect(page?.textContent).toContain('managed in the AI Manager');
+    page?.querySelector<HTMLButtonElement>('button')?.click();
+
+    expect(TestBed.inject(AiManagerNavigation).section()).toBe('skills');
+    expect(TestBed.inject(Tabs).activeTab()?.type).toBe('model-manager');
+  });
+
+  it('render_whenServersAreInstalled_nestsALanguageProvidersBranchUnderTextEditor', async () => {
+    // A leaf per language an installed server serves, under Text Editor — the same install-driven
+    // rule as AI › Providers. Each leaf shows both the server rows and the editor overrides.
+    // Drive the service's own catalogue signal rather than stubbing installedLanguages(): the tree is
+    // a computed over that signal, and a stubbed method would leave it cached on the empty list.
+    const lsp: LspSettings = TestBed.inject(LspSettings);
+    (lsp as unknown as { registered: WritableSignal<readonly LspServerSummary[]> }).registered.set([
+      { id: 'clangd', displayName: 'clangd', priority: 100, languages: ['cpp', 'c'] },
+      { id: 'rust', displayName: 'rust-analyzer', priority: 100, languages: ['rust'] },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const rows: () => string[] = (): string[] =>
+      Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('[role="treeitem"]')).map(
+        (row: Element): string => row.textContent?.trim() ?? '',
+      );
+
+    expect(rows()).not.toContain('Language Providers');
+    (component as unknown as { toggleNode: (id: string) => void }).toggleNode('text-editor');
+    fixture.detectChanges();
+    expect(rows()).toContain('Language Providers');
+
+    (component as unknown as { toggleNode: (id: string) => void }).toggleNode('language-providers');
+    fixture.detectChanges();
+    expect(rows()).toEqual(expect.arrayContaining(['C', 'C++', 'Rust']));
+
+    (component as unknown as { onRowClick: (row: unknown) => void }).onRowClick({
+      id: 'language-providers-cpp',
+      data: { sectionId: 'language-providers', language: 'cpp', expandable: false },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('app-language-server-settings')).not.toBeNull();
+    expect(element.querySelector('app-language-editor-overrides')?.textContent).toContain(
+      'C++ files',
+    );
+    expect(
+      element.querySelector('.settings__section-title')?.textContent?.replace(/\s+/g, ' '),
+    ).toContain('Text Editor');
   });
 
   /**

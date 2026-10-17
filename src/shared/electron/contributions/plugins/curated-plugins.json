@@ -1,5 +1,5 @@
 {
-  "revision": 20,
+  "revision": 47,
   "plugins": [
     {
       "id": "pyright",
@@ -386,7 +386,7 @@
           {
             "id": "vscode-css-language-server",
             "displayName": "CSS Language Server",
-            "languages": ["css", "scss"],
+            "languages": ["css", "scss", "less"],
             "priority": 100,
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {
@@ -469,7 +469,7 @@
       "description": "C and C++ language support, from the LLVM project.",
       "version": "22.1.6",
       "apiVersion": "1.1.0",
-      "detail": "A large download \u2014 it carries the Clang toolchain headers.",
+      "detail": "A large download — it carries the Clang toolchain headers.",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -520,7 +520,7 @@
       "description": "Debug .NET projects.",
       "version": "3.2.0-1092",
       "apiVersion": "1.0.0",
-      "detail": "Samsung\u2019s MIT-licensed .NET debugger. Microsoft\u2019s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
+      "detail": "Samsung’s MIT-licensed .NET debugger. Microsoft’s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -938,48 +938,14 @@
       "id": "docker-engine",
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
-      "detail": "Installs only the `docker` command-line client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself.",
-      "version": "29.8.0",
-      "apiVersion": "1.6.0",
+      "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
+      "version": "30.2.0",
+      "apiVersion": "1.19.0",
       "provision": {
-        "kind": "archive",
-        "downloads": {
-          "darwin-arm64": {
-            "url": "https://download.docker.com/mac/static/stable/aarch64/docker-29.8.0.tgz",
-            "sha256": "3f37afe51f8f53f224192099a76a454a62eb6100d426738da17fdf8472cf4b5f",
-            "archive": "tar.gz",
-            "executablePath": "docker/docker",
-            "members": ["docker/docker"]
-          },
-          "darwin-x64": {
-            "url": "https://download.docker.com/mac/static/stable/x86_64/docker-29.8.0.tgz",
-            "sha256": "aeb74337d43dc9f863d056760e156daa71f9462ffdc0f836a14f1528fa1f0f13",
-            "archive": "tar.gz",
-            "executablePath": "docker/docker",
-            "members": ["docker/docker"]
-          },
-          "linux-x64": {
-            "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-            "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
-            "archive": "tar.gz",
-            "executablePath": "docker/docker",
-            "members": ["docker/docker"]
-          },
-          "linux-arm64": {
-            "url": "https://download.docker.com/linux/static/stable/aarch64/docker-29.8.0.tgz",
-            "sha256": "1462a696be6029bd478d7d60d7f3c31cdd15affd1178a4a278aaf4a1d1b7f8b5",
-            "archive": "tar.gz",
-            "executablePath": "docker/docker",
-            "members": ["docker/docker"]
-          },
-          "win32-x64": {
-            "url": "https://download.docker.com/win/static/stable/x86_64/docker-29.8.0.zip",
-            "sha256": "bca70bfcddb4eed5bb8af5c15a1fb583b95edacf6096152e20a621ae68c871cb",
-            "archive": "zip",
-            "executablePath": "docker/docker.exe",
-            "members": ["docker/docker.exe"]
-          }
-        }
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
+        "sha256": "cbf1ee60b3a251d376f0fa62a90763d224dc503b9eeafed49bd9917442b372d7",
+        "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
         "containerEngines": [
@@ -999,7 +965,12 @@
             "startCommands": {
               "darwin": "open -a Docker",
               "linux": "sudo systemctl start docker"
-            }
+            },
+            "command": {
+              "kind": "node"
+            },
+            "cli": "docker",
+            "entryPoint": "node_modules/@onixlabs/docker-engine/main.js"
           }
         ]
       },
@@ -1009,41 +980,14 @@
       "id": "podman-engine",
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
-      "detail": "Installs only the `podman` remote client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself. No build is published for Intel Macs.",
-      "version": "6.1.1",
-      "apiVersion": "1.6.0",
+      "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
+      "version": "7.2.0",
+      "apiVersion": "1.19.0",
       "provision": {
-        "kind": "archive",
-        "downloads": {
-          "darwin-arm64": {
-            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-darwin_arm64.zip",
-            "sha256": "bb38e97f5168b563a70e121248634379c65c22f74414f53f0751b5caa485ec70",
-            "archive": "zip",
-            "executablePath": "podman-6.1.1/usr/bin/podman",
-            "members": ["podman-6.1.1/usr/bin/podman"]
-          },
-          "linux-x64": {
-            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_amd64.tar.gz",
-            "sha256": "31ff7c653fc19e652e648f45406c5b72925defdf8fc73af698ce2512e87ee502",
-            "archive": "tar.gz",
-            "executablePath": "bin/podman-remote-static-linux_amd64",
-            "members": ["bin/podman-remote-static-linux_amd64"]
-          },
-          "linux-arm64": {
-            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_arm64.tar.gz",
-            "sha256": "c2a697cba879b36333dc2d2543d3a1a0351e8b42b28b903d29aba6980a55237c",
-            "archive": "tar.gz",
-            "executablePath": "bin/podman-remote-static-linux_arm64",
-            "members": ["bin/podman-remote-static-linux_arm64"]
-          },
-          "win32-x64": {
-            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-windows_amd64.zip",
-            "sha256": "68766f21aebec379ec34cfee46d0550b025ec6d79c02fbdcb61a80bc7191ef01",
-            "archive": "zip",
-            "executablePath": "podman-6.1.1/usr/bin/podman.exe",
-            "members": ["podman-6.1.1/usr/bin/podman.exe"]
-          }
-        }
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
+        "sha256": "4d2ef48bd234e24f8def53b8604b149d0754fcc2aa69517805b0945838791b2c",
+        "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {
         "containerEngines": [
@@ -1067,23 +1011,117 @@
               "darwin": "podman machine start",
               "linux": "systemctl --user start podman.socket",
               "win32": "podman machine start"
-            }
+            },
+            "command": {
+              "kind": "node"
+            },
+            "cli": "podman",
+            "entryPoint": "node_modules/@onixlabs/podman-engine/main.js"
           }
         ]
       },
       "requires": []
     },
     {
+      "id": "onixlabs.git",
+      "name": "Git",
+      "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases and worktree checkouts.",
+      "version": "0.4.0",
+      "apiVersion": "1.14.0",
+      "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
+        "sha256": "e60de75a6508cea9093db12edf56780aafa7e5ca131a168a6b8aed1e8c3c93b7",
+        "executablePath": "node_modules/@onixlabs/git/main.js"
+      },
+      "contributes": {
+        "versionControl": [
+          {
+            "id": "onixlabs.git",
+            "displayName": "Git",
+            "priority": 100,
+            "markers": [".git"],
+            "metadataDirectories": [".git"],
+            "metadataSignals": ["HEAD", "*_HEAD", "index", "packed-refs", "refs/**"],
+            "capabilities": [
+              "stagingArea",
+              "stash",
+              "tags",
+              "remotes",
+              "merge",
+              "rebase",
+              "clone",
+              "init",
+              "parallelCheckouts",
+              "identity",
+              "allBranchHistory"
+            ],
+            "executableModes": ["installed", "custom"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/git/main.js"
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.github",
+      "name": "GitHub",
+      "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
+      "version": "0.5.0",
+      "apiVersion": "1.17.0",
+      "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
+        "sha256": "9018598a2b1b3024ce9da34ff2d7d554556041813c2d09b1504543166ae8faa1",
+        "executablePath": "node_modules/@onixlabs/github/main.js"
+      },
+      "contributes": {
+        "hosting": [
+          {
+            "id": "onixlabs.github",
+            "displayName": "GitHub",
+            "priority": 100,
+            "hosts": ["github.com", "www.github.com"],
+            "capabilities": [
+              "accounts",
+              "listRepositories",
+              "createRepository",
+              "pullRequests",
+              "createPullRequest",
+              "issues",
+              "createIssue",
+              "commentOnIssue",
+              "setIssueState",
+              "subIssues",
+              "ciRuns",
+              "ciRerun",
+              "ciCancel"
+            ],
+            "authModes": ["cli", "studio"],
+            "commandLineTools": ["gh"],
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/github/main.js"
+          }
+        ]
+      }
+    },
+    {
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.4.0",
+      "version": "0.14.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "e89b61724df7c63ad5e02d4c427984645daef14c173f3284f62a4b366b2af7fb",
+        "sha256": "269f111144b3e39ca26b54835d96cc9dfcc1412c129868d9767a6adfd56b3e80",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1121,18 +1159,15 @@
                 "models": [
                   {
                     "id": "claude-opus-4-8",
-                    "label": "Opus 4.8",
-                    "contextWindow": 1000000
+                    "label": "Opus 4.8"
                   },
                   {
                     "id": "claude-sonnet-4-6",
-                    "label": "Sonnet 4.6",
-                    "contextWindow": 1000000
+                    "label": "Sonnet 4.6"
                   },
                   {
                     "id": "claude-haiku-4-5",
-                    "label": "Haiku 4.5",
-                    "contextWindow": 200000
+                    "label": "Haiku 4.5"
                   }
                 ]
               }
@@ -1144,14 +1179,14 @@
     {
       "id": "onixlabs.codex-harness",
       "name": "Codex (out of process)",
-      "description": "Runs OpenAI Codex through its SDK in its own process, over Studio's agent protocol.",
-      "version": "0.2.0",
+      "description": "Runs OpenAI Codex as an app-server in its own process, over Studio's agent protocol.",
+      "version": "0.7.0",
       "apiVersion": "1.12.0",
-      "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript. Authenticates through your local Codex login, or through an API key configured against the connection.",
+      "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript, and asks you through Studio's permission card before a command runs or a file changes, under your posture and per-tool settings. Authenticates through your local Codex login, or through an API key configured against the connection.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-        "sha256": "af80902d56bfc78a834b51d88d1c1600c24ee7d4caec909f138e0b2f35262750",
+        "sha256": "8655d138258dac9fd8463e9e2f580ee78deebafda196931a3b372eaadf47dd75",
         "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
       },
       "contributes": {
@@ -1181,9 +1216,12 @@
                 ],
                 "models": [
                   {
-                    "id": "gpt-5.6-sol",
-                    "label": "GPT-5.6-Sol",
-                    "contextWindow": 1050000
+                    "id": "gpt-5.6-terra",
+                    "label": "GPT-5.6-Terra"
+                  },
+                  {
+                    "id": "gpt-5.6-luna",
+                    "label": "GPT-5.6-Luna"
                   }
                 ]
               }
@@ -1196,13 +1234,13 @@
       "id": "onixlabs.ai-sdk-harness",
       "name": "AI SDK (out of process)",
       "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "apiVersion": "1.12.0",
-      "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB \u2014 the SDK is pure JavaScript and ships inside the plugin.",
+      "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB — the SDK is pure JavaScript and ships inside the plugin.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-        "sha256": "604789a0c400faca42453de3268c168a086100b4e7eb96e93a4a8c0a43db9550",
+        "sha256": "366eab78e4d6b84645a9e00194637428b54398cc256a180f5db8cd90a157f1fe",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
       "contributes": {
@@ -1285,25 +1323,22 @@
                 "models": [
                   {
                     "id": "qwen3:8b",
-                    "label": "Qwen3 8B",
-                    "contextWindow": 40960
+                    "label": "Qwen3 8B"
                   },
                   {
                     "id": "qwen2.5-coder:14b",
-                    "label": "Qwen2.5 Coder 14B",
-                    "contextWindow": 32768
+                    "label": "Qwen2.5 Coder 14B"
                   },
                   {
                     "id": "qwen2.5-coder:7b",
-                    "label": "Qwen2.5 Coder 7B",
-                    "contextWindow": 32768
+                    "label": "Qwen2.5 Coder 7B"
                   }
                 ]
               },
               {
                 "kind": "openai-compatible",
                 "company": "Custom",
-                "description": "Run any OpenAI-compatible endpoint \u2014 a self-hosted gateway, or a provider not listed here.",
+                "description": "Run any OpenAI-compatible endpoint — a self-hosted gateway, or a provider not listed here.",
                 "authMethods": [
                   {
                     "auth": "api-key",

@@ -1,46 +1,25 @@
-<!-- polite: arrivals are announced without interrupting; errors additionally carry role="alert". -->
-<div class="toast-stack" aria-live="polite" aria-label="Notifications">
-  @for (toast of toasts(); track toast.id) {
-    <article
-      class="toast"
-      [class.toast--info]="toast.severity === 'info'"
-      [class.toast--success]="toast.severity === 'success'"
-      [class.toast--warning]="toast.severity === 'warning'"
-      [class.toast--error]="toast.severity === 'error'"
-      [attr.role]="toast.severity === 'error' ? 'alert' : 'status'"
-      (mouseenter)="pause(toast)"
-      (mouseleave)="resume(toast)"
-    >
-      <!-- Header: the severity icon, the title, and the close button on one line, vertically centred. -->
-      <div class="toast__header">
-        <app-icon class="toast__icon" [icon]="iconFor(toast.severity)" [size]="1.4" />
-        <p class="toast__title">{{ toast.title }}</p>
-        <app-button
-          class="toast__close"
-          variant="none"
-          size="small"
-          [tone]="toneFor(toast.severity)"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Dismiss: ' + toast.title"
-          (click)="onDismiss(toast)"
-        />
-      </div>
-      @if (toast.detail) {
-        <p class="toast__detail">{{ toast.detail }}</p>
-      }
-      @if (toast.actions.length > 0) {
-        <div class="toast__actions">
-          @for (action of toast.actions; track action.label) {
-            <app-button
-              variant="none"
-              size="small"
-              [tone]="toneFor(toast.severity)"
-              [label]="action.label"
-              (click)="onAction(toast, action)"
-            />
-          }
-        </div>
-      }
-    </article>
+<!-- polite: arrivals are announced without interrupting; errors additionally carry role="alert".
+     Upwards, every toast is a card in the column. Backwards, the front toast is the one in flow and
+     sizes the stack; those behind it are laid over its box, pushed back by depth, and inert, so only
+     the front toast can be read or pressed. -->
+<div
+  class="toast-stack"
+  [class.toast-stack--upwards]="stacking() === 'upwards'"
+  [class.toast-stack--backwards]="stacking() === 'backwards'"
+  aria-live="polite"
+  aria-label="Notifications"
+>
+  @for (item of stack(); track item.toast.id) {
+    <app-toast-card
+      class="toast-stack__card toast-stack__card--depth-{{ item.depth }}"
+      [notification]="item.toast"
+      [plain]="item.plain"
+      [inert]="item.depth > 0"
+      [attr.aria-hidden]="item.depth > 0 ? 'true' : null"
+      (mouseenter)="onEnter(item.toast)"
+      (mouseleave)="onLeave(item.toast)"
+      (closed)="dismiss(item.toast)"
+      (acted)="onAction(item.toast, $event)"
+    />
   }
 </div>

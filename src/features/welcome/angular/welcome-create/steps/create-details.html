@@ -1,0 +1,120 @@
+<div class="step step--scroll">
+  <label class="step__label" for="create-summary">Summary</label>
+  <div class="step__field step__field--area">
+    <textarea
+      id="create-summary"
+      rows="5"
+      placeholder="What it is, who it is for, and what it must do. Two or three short paragraphs is plenty."
+      [value]="draft.summary()"
+      (input)="onSummaryInput($event)"
+    ></textarea>
+  </div>
+
+  <div class="step__pair">
+    <div class="step__column">
+      <label class="step__label" for="create-name">Name</label>
+      <div class="step__field">
+        <input
+          id="create-name"
+          type="text"
+          placeholder="my-project"
+          spellcheck="false"
+          [value]="draft.name()"
+          (input)="onNameInput($event)"
+        />
+      </div>
+    </div>
+    <div class="step__column">
+      <span class="step__label">Location</span>
+      <div class="step__location">
+        <span class="step__path" [class.step__path--empty]="draft.location() === null">
+          {{ draft.location() ?? 'Not chosen' }}
+        </span>
+        <button type="button" class="step__secondary" (click)="draft.browse()">
+          <app-icon [icon]="Icon.WELCOME_PROJECT_BROWSE" />
+          <span>Browse…</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <span class="step__label">Repository</span>
+  <div class="step__choices">
+    <app-dropdown
+      class="step__choice"
+      ariaLabel="Repository"
+      placeholder="Repository…"
+      [options]="repositoryOptions()"
+      [value]="draft.repository() ?? ''"
+      [fullWidth]="true"
+      (valueChange)="setRepository($event)"
+    />
+    @if (draft.hosted()) {
+      <app-dropdown
+        class="step__choice"
+        ariaLabel="Account"
+        [placeholder]="draft.accounts().length === 0 ? 'No accounts signed in' : 'Account…'"
+        [options]="accountOptions()"
+        [value]="draft.account() ?? ''"
+        [fullWidth]="true"
+        [disabled]="draft.accounts().length === 0"
+        (valueChange)="setAccount($event)"
+      />
+    }
+    @if (draft.repository() !== null && draft.repository() !== 'none') {
+      <app-dropdown
+        class="step__choice"
+        ariaLabel="Repository layout"
+        placeholder="Layout…"
+        [options]="layoutOptions"
+        [value]="draft.layout() ?? ''"
+        [fullWidth]="true"
+        (valueChange)="setLayout($event)"
+      />
+    }
+  </div>
+
+  @if (draft.detailsProblem(); as problem) {
+    <p class="step__error" role="alert">{{ problem }}</p>
+  } @else {
+    <p class="step__hint">{{ destination() }}</p>
+  }
+
+  <div class="step__heading-row">
+    <span class="step__label">Supporting documents</span>
+    <button type="button" class="step__secondary" (click)="draft.addDocuments()">
+      <app-icon [icon]="Icon.WELCOME_DOCUMENT_ADD" />
+      <span>Add Documents…</span>
+    </button>
+  </div>
+  @if (draft.documents().length === 0) {
+    <p class="step__hint">
+      Specifications, notes, sketches or screenshots: text documents and images, attached to the
+      agent's first message.
+    </p>
+  } @else {
+    <ul class="step__documents" aria-label="Supporting documents">
+      @for (document of draft.documents(); track document.path) {
+        <li class="step__document">
+          <app-icon
+            [icon]="document.kind === 'image' ? Icon.WELCOME_DOCUMENT_IMAGE : Icon.WELCOME_DOCUMENT"
+          />
+          <span class="step__document-name" [title]="document.path">{{ document.name }}</span>
+          <button
+            type="button"
+            class="step__remove"
+            [attr.aria-label]="'Remove ' + document.name"
+            (click)="draft.removeDocument(document.path)"
+          >
+            <app-icon [icon]="Icon.CLOSE" />
+          </button>
+        </li>
+      }
+    </ul>
+  }
+  @for (skipped of draft.skippedDocuments(); track skipped.name) {
+    <p class="step__error" role="alert">
+      {{ skipped.name }} was not attached. {{ skipped.reason }}
+    </p>
+  }
+</div>

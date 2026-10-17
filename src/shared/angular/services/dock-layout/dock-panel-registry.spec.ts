@@ -21,7 +21,6 @@ const TEST_BLUEPRINT: DockBlueprint = {
       icon: Icon.FILE_EXPLORER,
       role: 'tool',
       component: DockPanelPlaceholder,
-      ownsToolStrip: true,
     },
     {
       id: 'output',
@@ -93,7 +92,6 @@ describe('DockPanelRegistry', () => {
     const panel: DockPanel | undefined = registry.get('files');
     expect(panel?.title).toBe('Explorer');
     expect(panel?.icon).toBe(Icon.FILE_EXPLORER);
-    expect(panel?.ownsToolStrip).toBe(true);
     expect(panel?.component).toBe(DockPanelPlaceholder);
   });
 

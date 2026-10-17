@@ -1,5 +1,5 @@
 import { inject, OnDestroy, Service } from '@angular/core';
-import { AUX_PANEL_URL } from '@shared/api/window-channels';
+import { AUX_PANEL_URL, childWindowName } from '@shared/api/window-channels';
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
@@ -13,6 +13,12 @@ export interface AuxiliaryWindow {
    * Gets the element hosted content renders into (below the title bar).
    */
   readonly contentHost: HTMLElement;
+
+  /**
+   * Gets the window's title bar, whose trailing end holds the window's controls where Studio draws
+   * them (Linux).
+   */
+  readonly titlebar: HTMLElement;
 
   /**
    * Determines whether a screen point lies within the window's frame, for hit-testing a drag
@@ -62,14 +68,24 @@ export interface AuxiliaryWindowPosition {
  * Holds the structural styles for the auxiliary window's own chrome (title bar + content column).
  * Everything else — colours, fonts, component styles — comes from the application stylesheets the
  * opener mirrors into the child, so the window tracks the app's theme tokens.
+ *
+ * The title bar leaves room for the platform's window controls: macOS insets its traffic lights over
+ * the leading end, Windows draws its caption buttons over the trailing end (the titlebar-area insets).
+ * On Linux Studio draws the controls itself, inside the bar's trailing end, so the bar is trimmed to
+ * hold them rather than padded around text alone.
  */
 const AUX_STYLES: string = `
   body { margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden;
          background: var(--root-content-background-color); }
   .aux-window__titlebar { display: flex; align-items: center; flex: none;
-    padding-block: 0.75rem; padding-inline: 5.5rem 0.75rem;
+    padding-block: 0.75rem;
+    padding-inline: 0.75rem
+      max(0.75rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
     background: var(--title-strip-background-color);
     -webkit-app-region: drag; user-select: none; }
+  :root[data-platform='darwin'] .aux-window__titlebar { padding-inline-start: 5.5rem; }
+  :root[data-platform='linux'] .aux-window__titlebar { padding-block: 0.375rem;
+    padding-inline-end: 0.375rem; }
   .aux-window__title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; font-size: 0.8rem; font-weight: 600;
     color: var(--title-strip-button-foreground-color--hover); }
@@ -113,7 +129,8 @@ export class AuxiliaryWindows implements OnDestroy {
     // The position rides the features string; the main process parses and clamps it against the
     // displays before it reaches the window constructor.
     const features: string = at === undefined ? '' : `left=${at.x},top=${at.y}`;
-    const child: Window | null = window.open(AUX_PANEL_URL, '_blank', features);
+    // Named, so the window's own controls can address it (see `Studio.closeWindow`).
+    const child: Window | null = window.open(AUX_PANEL_URL, childWindowName(), features);
     if (child === null) {
       this.log.warn('AuxiliaryWindows', `Failed to open auxiliary window '${title}'`);
       return null;
@@ -150,6 +167,7 @@ export class AuxiliaryWindows implements OnDestroy {
 
     return {
       contentHost,
+      titlebar,
       containsScreenPoint: (screenX: number, screenY: number): boolean =>
         !child.closed &&
         screenX >= child.screenX &&

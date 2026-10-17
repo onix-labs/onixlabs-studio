@@ -1,0 +1,22 @@
+// The AI Manager fills its tab with the sub-view shown; each sub-view lays out its own side panel.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.ai-manager {
+  block-size: 100%;
+}
+
+// The sub-view fills the main area, its own side panel and all.
+.ai-manager__section {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+
+  > * {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
+}

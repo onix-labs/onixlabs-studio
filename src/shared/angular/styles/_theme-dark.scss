@@ -2,7 +2,7 @@
   --body-background-color: var(--gray-900);
   --body-foreground-color: var(--gray-100);
 
-  // The reveal-on-interaction scrollbar thumb (see _base.scss): a translucent light pill on the dark
+  // The overlay scroll bar thumb (see _base.scss): a translucent light pill on the dark
   // surface, brighter while the pointer rests on the thumb itself.
   --scrollbar-thumb-color: rgba(255, 255, 255, 0.22);
   --scrollbar-thumb-hover-color: rgba(255, 255, 255, 0.4);
@@ -68,6 +68,11 @@
   --form-on-accent-color: var(--gray-100);
   --form-muted-foreground-color: var(--gray-550);
 
+  // Accordion header: rests a half-step lighter than the settings page, so the row reads as raised,
+  // and lifts to the tone a form control reaches on hover.
+  --accordion-header-background-color: var(--gray-750);
+  --accordion-header-background-color--hover: var(--form-control-background-color--hover);
+
   // Dropdown picker menu (rendered by the customizable-select popup). Hover reaches for the accent.
   --dropdown-menu-background-color: var(--gray-800);
   --dropdown-menu-foreground-color: var(--gray-100);
@@ -97,6 +102,15 @@
 
   --agent-view-surface-color: var(--gray-800);
   --agent-view-border-color: var(--gray-700);
+  // Entries nested inside a container (a sub-agent's own activity): a shade off the container they
+  // sit in, so a nested chip or reply does not vanish into it.
+  --agent-view-nested-surface-color: var(--gray-750);
+  // The inner ring of an attached image: the surface's own tone, inside its accent outer ring.
+  --agent-image-inner-border-color: var(--gray-950);
+  // Prompt card titles: the accent, a shade brighter (#856).
+  --agent-card-title-color: color-mix(in srgb, var(--accent-color), white 15%);
+  // A settled prompt card's outcome ("Allowed"): the accent, muted toward the card (#856).
+  --agent-card-state-color: color-mix(in srgb, var(--accent-color) 70%, transparent);
 
   // The shared surface for every docked panel's chrome. The panel-layout panel container paints this;
   // panel content draws over it transparent (inheriting it) or overrides with its own colour. Kept in

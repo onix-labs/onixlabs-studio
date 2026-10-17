@@ -18,6 +18,7 @@ import { PasswordField } from '@shared/angular/components/forms/password-field/p
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Icon } from '@shared/angular/icons/icon';
 import { SettingControl } from '../../../setting-control/setting-control';
 
@@ -47,7 +48,7 @@ export interface HarnessReading {
  */
 @Component({
   selector: 'app-ai-connection-editor',
-  imports: [Button, TextField, PasswordField, Radio, SettingRow, SettingControl],
+  imports: [Button, ButtonRow, TextField, PasswordField, Radio, SettingRow, SettingControl],
   templateUrl: './ai-connection-editor.html',
   styleUrls: ['./ai-connection-editor.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -341,7 +342,8 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Discovers the configuration's models from its endpoint, replacing its list with the result.
+   * Discovers the configuration's models from its provider and adds any that are new; nothing is
+   * removed (#866).
    * @returns Returns a promise that resolves once discovery completes.
    */
   protected async refresh(): Promise<void> {
@@ -398,13 +400,5 @@ export class AiConnectionEditor {
     }
     this.log.info('settings.ai', 'Default model set', this.connection().id, modelId);
     this.connections.setDefaultModel(this.connection(), modelId);
-  }
-
-  /**
-   * Removes the configuration.
-   */
-  protected removeConnection(): void {
-    this.log.info('settings.ai', 'Configuration removed', this.connection().id);
-    this.connections.remove(this.connection().id);
   }
 }

@@ -2,6 +2,8 @@ import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
+  ReplaceRequest,
+  ReplaceResponse,
   SearchChannel,
   SearchClient,
   SearchRequest,
@@ -57,5 +59,23 @@ export class Search implements SearchClient {
       return [];
     }
     return this.bridge.invoke<readonly string[]>(SearchChannel.ListFiles, root);
+  }
+
+  /**
+   * Replaces matches of a query in a workspace's files on disk.
+   * @param request The replace request.
+   * @returns Returns what was replaced, or nothing when the bridge is absent.
+   */
+  public async replace(request: ReplaceRequest): Promise<ReplaceResponse> {
+    if (this.bridge === undefined) {
+      return { replaced: 0, files: 0, failed: [] };
+    }
+    this.log.info(
+      'Search',
+      request.target === undefined
+        ? `Replacing '${request.query}' in ${request.files.length} file(s)`
+        : `Replacing one '${request.query}' in ${request.target.path}`,
+    );
+    return this.bridge.invoke<ReplaceResponse>(SearchChannel.Replace, request);
   }
 }

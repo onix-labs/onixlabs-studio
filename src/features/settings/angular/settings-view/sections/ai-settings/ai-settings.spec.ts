@@ -73,11 +73,11 @@ describe('AiSettingsSection', () => {
   }
 
   /**
-   * Gets the connection-list item elements.
+   * Gets the connection-list item elements (one accordion per configuration).
    * @returns Returns the item elements.
    */
   function items(): HTMLElement[] {
-    return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__item'));
+    return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__list app-accordion'));
   }
 
   /**
@@ -133,6 +133,24 @@ describe('AiSettingsSection', () => {
     expect(rowSelect('Permission posture')).toBeTruthy();
   });
 
+  it('blockHostCommandLine_isOffByDefault_andPersistsWhenSwitchedOn', () => {
+    // #853: the switch that keeps agents off the code host's CLI, on the Security page.
+    show('security');
+    const settings: Settings = TestBed.inject(Settings);
+    const row: Element | undefined = Array.from(host.querySelectorAll('app-setting-row')).find(
+      (element: Element): boolean =>
+        element.querySelector('.setting-row__label')?.textContent?.trim() ===
+        "Keep agents off the code host's command-line tool",
+    );
+    const toggle: HTMLInputElement | null | undefined = row?.querySelector('input');
+    expect(toggle).toBeTruthy();
+    expect(settings.aiBlockHostCommandLine()).toBe(false);
+
+    toggle?.click();
+
+    expect(settings.aiBlockHostCommandLine()).toBe(true);
+  });
+
   it('render_whenProviderView_rendersAnItemPerConfigurationOfThatCompany', () => {
     const connections: AiConnections = TestBed.inject(AiConnections);
     connections.add('anthropic');
@@ -175,13 +193,32 @@ describe('AiSettingsSection', () => {
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
   });
 
+  it('delete_fromTheConfigurationsHeader_removesIt_inTheDangerTone', () => {
+    TestBed.inject(AiConnections).add('anthropic');
+    show('provider', 'anthropic');
+
+    const remove: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      '.ai-connections__list app-accordion .accordion__actions button',
+    );
+    // On the header, beside the toggle, so a configuration can be deleted without opening it.
+    expect(remove?.textContent?.trim()).toBe('Delete');
+    expect(remove?.closest('app-button')?.classList.contains('button--tone-danger')).toBe(true);
+    expect(remove?.closest('app-button')?.classList.contains('button--solid')).toBe(true);
+
+    remove?.click();
+    fixture.detectChanges();
+
+    expect(items().length).toBe(0);
+  });
+
   it('toggle_whenClicked_expandsTheConfigurationEditor', () => {
     TestBed.inject(AiConnections).add('anthropic');
     show('provider', 'anthropic');
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 
-    const toggle: HTMLButtonElement | null =
-      host.querySelector<HTMLButtonElement>('.ai-connections__toggle');
+    const toggle: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      '.ai-connections__list app-accordion .accordion__header',
+    );
     toggle?.click();
     fixture.detectChanges();
 

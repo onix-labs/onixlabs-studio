@@ -21,8 +21,10 @@ import type {
   Options,
   PermissionResult,
   PostToolUseHookInput,
+  PreToolUseHookInput,
   SandboxSettings,
 } from '@anthropic-ai/claude-agent-sdk';
+import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
 import {
   absolutePathsOf,
   CONFINED_WRITE_TOOLS,
@@ -36,7 +38,7 @@ import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format'
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
 import { STUDIO_TOOL_PREFIX } from './tools';
-import type { Choice, TurnRequest } from './protocol';
+import type { Choice, ProposedChange, Selection, TurnRequest } from './protocol';
 
 /**
  * Built-in tools auto-allowed whenever the run has something to read: read-only project exploration.
@@ -80,6 +82,7 @@ interface QuestionOption {
 interface ParsedQuestion {
   readonly question: string;
   readonly options: readonly QuestionOption[];
+  readonly selection: Selection;
 }
 
 /**
@@ -101,12 +104,14 @@ export interface GateContext {
    * @param requestId The run the question belongs to.
    * @param name The display name of the action.
    * @param detail A one-line summary of what it will do.
+   * @param change The file change it would make, when it writes a file.
    * @returns Returns the decision, and a way to withdraw the question.
    */
   readonly askPermission: (
     requestId: string,
     name: string,
     detail: string,
+    change?: ProposedChange,
   ) => { readonly granted: Promise<boolean>; readonly withdraw: () => void };
 
   /**
@@ -114,12 +119,14 @@ export interface GateContext {
    * @param requestId The run the question belongs to.
    * @param question The question text.
    * @param choices The suggested answers.
+   * @param selection How many of the choices the user may pick.
    * @returns Returns the answer, and a way to withdraw the question.
    */
   readonly askInput: (
     requestId: string,
     question: string,
     choices: readonly Choice[],
+    selection: Selection,
   ) => { readonly answer: Promise<string | null>; readonly withdraw: () => void };
 
   /**
@@ -172,7 +179,13 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
         });
       }
     }
-    questions.push({ question, options });
+    // `multiSelect` marks an AND question; Studio draws it as checkboxes and answers with the picked
+    // labels joined by ", ", which is the form the tool itself answers a multi-select question in.
+    questions.push({
+      question,
+      options,
+      selection: record['multiSelect'] === true ? 'multiple' : 'single',
+    });
   }
   return questions;
 }
@@ -259,6 +272,7 @@ async function answerQuestions(
         turn.requestId,
         parsed.question,
         parsed.options,
+        parsed.selection,
       );
       // Registered so a peer answering mid-sequence takes this question off the user's screen
       // rather than leaving them part way through a set that no longer matters.
@@ -314,6 +328,67 @@ async function answerQuestions(
 }
 
 /**
+ * The largest change worth sending with a prompt. A write of a generated file runs to megabytes, and a
+ * prompt is not the place for it: past this the prompt shows the path alone, as it always did.
+ */
+const MAX_CHANGE_LENGTH: number = 512 * 1024;
+
+/**
+ * Reads the file change a tool would make from its input (#891), for Studio to show with the prompt:
+ * a write's whole content, or an edit's replacements. Any other tool, or input of an unexpected shape,
+ * proposes nothing.
+ * @param toolName The SDK tool name.
+ * @param input The tool's input.
+ * @returns Returns the change, or undefined for none.
+ */
+export function proposedChange(
+  toolName: string,
+  input: Record<string, unknown>,
+): ProposedChange | undefined {
+  const path: unknown = input['file_path'];
+  if (typeof path !== 'string' || path.length === 0) {
+    return undefined;
+  }
+  let change: ProposedChange | undefined;
+  if (toolName === 'Write' && typeof input['content'] === 'string') {
+    change = { path, content: input['content'] };
+  } else if (toolName === 'Edit') {
+    const edit: ProposedChange['edits'] = replacementsOf([input]);
+    change = edit === undefined ? undefined : { path, edits: edit };
+  } else if (toolName === 'MultiEdit' && Array.isArray(input['edits'])) {
+    const edits: ProposedChange['edits'] = replacementsOf(input['edits'] as readonly unknown[]);
+    change = edits === undefined ? undefined : { path, edits };
+  }
+  return change !== undefined && JSON.stringify(change).length <= MAX_CHANGE_LENGTH
+    ? change
+    : undefined;
+}
+
+/**
+ * Reads an edit tool's replacements, in its own field names.
+ * @param raw The edits as the tool received them.
+ * @returns Returns the replacements, or undefined when any is not one.
+ */
+function replacementsOf(raw: readonly unknown[]): ProposedChange['edits'] {
+  const edits: { oldText: string; newText: string; replaceAll?: boolean }[] = [];
+  for (const entry of raw) {
+    const fields: Record<string, unknown> =
+      typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};
+    const oldText: unknown = fields['old_string'];
+    const newText: unknown = fields['new_string'];
+    if (typeof oldText !== 'string' || typeof newText !== 'string') {
+      return undefined;
+    }
+    edits.push({
+      oldText,
+      newText,
+      ...(fields['replace_all'] === true ? { replaceAll: true } : {}),
+    });
+  }
+  return edits;
+}
+
+/**
  * Resolves a tool permission, racing Studio's prompt against the remote peer when a controllable
  * bridge is open.
  *
@@ -340,6 +415,7 @@ async function decidePermission(
     turn.requestId,
     displayName,
     detail,
+    proposedChange(toolName, input),
   );
   if (!bridge?.canPrompt) {
     return local.granted;
@@ -389,7 +465,7 @@ async function decidePermission(
  * @returns Returns the gate.
  */
 export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
-  const terminal: boolean = open.surface === 'terminal';
+  const confined: boolean = withholdsBuiltInTools(open);
   const readOnly: boolean = open.mode === 'chat';
   const hasWorkspace: boolean = open.workspaceRoot !== null;
   // The filesystem area a granted write may touch. The first root is the working directory, so a
@@ -409,10 +485,17 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
     if (toolName.startsWith(STUDIO_TOOL_PREFIX)) {
       return { behavior: 'allow', updatedInput: input };
     }
-    // A terminal-surface run is confined to its terminal: every built-in is denied, because the
-    // confinement is about what the agent may *act on* and a file system is not its terminal.
-    if (terminal) {
-      return { behavior: 'deny', message: 'This agent can only use the terminal.' };
+    // A terminal's or a tool view's run is confined to what it is docked to: every built-in is denied,
+    // because the confinement is about what the agent may *act on*, and a file system is neither. The
+    // built-ins are withheld from the model as well (see `buildOptions`); this is the backstop.
+    if (confined) {
+      return {
+        behavior: 'deny',
+        message:
+          open.surface === 'terminal'
+            ? 'This agent can only use the terminal.'
+            : 'This agent can only use the tools of the view it is docked to.',
+      };
     }
     if (readOnly) {
       return READ_ONLY_TOOLS.includes(toolName)
@@ -481,6 +564,16 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
 }
 
 /**
+ * Determines whether a turn's agent is kept off this harness's own tools (#965): a terminal's always,
+ * and any turn Studio asks it of (protocol 1.16.0) — a tool view's.
+ * @param open The turn the session opens with.
+ * @returns Returns true when only Studio's tools and the clarifying question are offered.
+ */
+export function withholdsBuiltInTools(open: TurnRequest): boolean {
+  return open.surface === 'terminal' || open.builtInTools === 'none';
+}
+
+/**
  * Builds the SDK options for a session.
  * @param gate What the permission gate can reach.
  * @param open The turn the session opens with, which fixes the structural options.
@@ -504,6 +597,10 @@ export function buildOptions(
   // the gate. 🔥 Necessary, not tidy: the Claude Code CLI auto-runs commands its own safety classifier
   // deems harmless — `echo` and the like — **without calling `canUseTool`**, so a gate-only deny would
   // leak them. The gate's deny below stays as a backstop for anything that does reach it.
+  // The commands the user keeps agents off (#853) are NOT added here as `Bash(gh:*)` rules: those are
+  // fixed when a session opens, so turning the setting off mid-conversation would leave them blocked.
+  // The PreToolUse hook below reads the live turn instead, and fires for every Bash call — including
+  // the ones the classifier auto-runs (verified in the app, 2026-10-06).
   const disallowedTools: readonly string[] = Object.entries(open.toolPolicies)
     .filter(([, value]: [string, string]): boolean => value === 'deny')
     .map(([tool]: [string, string]): string => tool);
@@ -524,12 +621,55 @@ export function buildOptions(
     ...(open.effort !== null && open.effort !== 'minimal'
       ? { effort: open.effort as Options['effort'] }
       : {}),
+    // 🔥 Claude Code's thinking display defaults to `omitted`: the model thinks, and the block arrives
+    // with its signature and NO text — so every "Thought process" row Studio rendered was empty (#711).
+    // `summarized` is the API's summary of the reasoning, not the full trace; there is no cost or
+    // privacy trade-off in it, which is why this is not a setting. `adaptive` is already the default
+    // where a model supports it, and the CLI accepts it for one that does not: probed 2026-09-16
+    // against Haiku 4.5 — the only listed model without `supportsAdaptiveThinking` — and the summary
+    // arrived, so it is not gated on the model.
+    thinking: { type: 'adaptive', display: 'summarized' },
     cwd: open.workspaceRoot ?? homedir(),
     ...(open.allowedWritePaths.length > 0
       ? { additionalDirectories: [...open.allowedWritePaths] }
       : {}),
     ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
+    // A confined agent is not shown the built-ins at all (#965), so it cannot reach for them and be
+    // refused: only the clarifying question stays. Studio's own tools arrive over MCP regardless.
+    ...(withholdsBuiltInTools(open) ? { tools: [ASK_USER_QUESTION_TOOL] } : {}),
     hooks: {
+      PreToolUse: [
+        {
+          hooks: [
+            (input): Promise<HookJSONOutput> => {
+              // 🔑 Read from the live turn, not the session's first: the setting can change between
+              // turns of a held-open session, and the Bash rules above are fixed when it opens.
+              const pre: PreToolUseHookInput = input as PreToolUseHookInput;
+              const command: unknown =
+                pre.tool_name === 'Bash' &&
+                typeof pre.tool_input === 'object' &&
+                pre.tool_input !== null
+                  ? (pre.tool_input as { command?: unknown }).command
+                  : undefined;
+              const blocked: string | null =
+                typeof command === 'string'
+                  ? findBlockedCommand(command, gate.getTurn().blockedCommands ?? [])
+                  : null;
+              if (blocked === null) {
+                return Promise.resolve({ continue: true });
+              }
+              note(`blocked ${blocked} in a Bash command`);
+              return Promise.resolve({
+                hookSpecificOutput: {
+                  hookEventName: 'PreToolUse',
+                  permissionDecision: 'deny',
+                  permissionDecisionReason: blockedCommandMessage(blocked),
+                },
+              });
+            },
+          ],
+        },
+      ],
       PostToolUse: [
         {
           hooks: [

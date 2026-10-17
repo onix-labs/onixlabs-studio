@@ -20,6 +20,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -89,7 +90,7 @@ const SEVERITY_OPTIONS: readonly SeverityOption[] = [
  */
 @Component({
   selector: 'app-problems-panel',
-  imports: [Button, AppIcon, Dropdown, PanelToolbar],
+  imports: [Chip, Button, AppIcon, Dropdown, PanelToolbar],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -7,20 +7,28 @@ import {
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
 import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
+import { ModelUpdates } from '@shared/angular/services/ai-connections/model-updates';
+import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
+import { LogLevelPreference } from '@shared/angular/services/log/log-level-preference';
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { featureContributions } from '@shared/app/feature-contributions';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import {
+  featureContributions,
+  registerFeatureContribution,
+} from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
+import { provideImageFeature } from '@features/image/angular/image.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
 import { provideMissionControlFeature } from '@features/mission-control/angular/mission-control.feature';
@@ -72,6 +80,16 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(AgentTabAttention);
     }),
+    // Instantiate the model-update check at start-up, so a provider's new models are offered once its
+    // plugin is known, and again after the plugin updates — whether or not settings is ever opened.
+    provideAppInitializer((): void => {
+      inject(ModelUpdates);
+    }),
+    // Instantiate the plugin-update check at start-up, so waiting updates are announced once the main
+    // window has the plugin list, whether or not the Plugin Manager is ever opened.
+    provideAppInitializer((): void => {
+      inject(PluginUpdates);
+    }),
     // Instantiate the core application menu at start-up, so the menu bar carries Studio's own commands
     // from the first paint rather than the platform's default roles. Features fold their own entries
     // into it as their tabs become active.
@@ -89,6 +107,9 @@ export const config: ApplicationConfig = {
     provideMarkdownFeature(),
     // Stand up the binary feature: register its hex-editor tab view + ribbon with the shell.
     provideBinaryFeature(),
+    // Stand up the image feature: register its viewer tab view + ribbon, and the image opener the
+    // file opener routes images through (as a tab, or into a workspace's document well).
+    provideImageFeature(),
     // Stand up the repository feature: register its source-control view + ribbon with the shell.
     // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.
     provideWorkspaceFeature(),
@@ -97,21 +118,27 @@ export const config: ApplicationConfig = {
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
     // The one-time renderer lazy-load driver (the analog of the main process's contribution registry):
-    // resolve every lazily-contributed feature and register its descriptor with the shell. A feature
+    // resolve every lazily-contributed feature and register its descriptor (and any keybinding
+    // catalogue entry it carries) with the shell. A feature
     // added this way touches no shell component — only its own slice and the featureContributions
     // manifest. Registration is fire-and-forget: the FeatureRegistry is signal-backed, so the shell
     // lights the feature up when its chunk resolves, even after first paint.
     provideAppInitializer((): void => {
       const registry: FeatureRegistry = inject(FeatureRegistry);
+      const keybindings: Keybindings = inject(Keybindings);
       for (const load of featureContributions) {
         void load().then((module: { descriptor: FeatureDescriptor }): void =>
-          registry.register(module.descriptor),
+          registerFeatureContribution(module.descriptor, registry, keybindings),
         );
       }
     }),
     // Contribute the text-document store to the unsaved-work seam the lifecycle walks at close
     // time; features with their own document models (binary) contribute themselves alongside.
     provideUnsavedWork(Documents),
+    // Apply the log level setting to the logging floor at start-up and whenever it changes.
+    provideAppInitializer((): void => {
+      inject(LogLevelPreference);
+    }),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {

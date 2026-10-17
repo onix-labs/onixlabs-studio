@@ -1,0 +1,12 @@
+// The controls sit inside a strip that moves the window; they opt out of that drag region so they
+// stay clickable, and never shrink, so they stay visible at any window width.
+:host {
+  flex: none;
+  -webkit-app-region: no-drag;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}

@@ -9,7 +9,7 @@ import {
   StoredWindowState,
   WindowRect,
 } from './window-state';
-import { MODAL_UNPARENTED_FEATURE } from '@shared/api/window-channels';
+import { CHILD_WINDOW_NAME_PATTERN, MODAL_UNPARENTED_FEATURE } from '@shared/api/window-channels';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
 import { logger } from './logger';
@@ -138,9 +138,26 @@ export class WindowManager {
   private static readonly MODAL_MIN_HEIGHT: number = 120;
 
   /**
+   * Holds the height (DIP) of the Windows caption-button overlay: the height of the main window's
+   * title strip, so the buttons fill it top to bottom as they would a native title bar.
+   */
+  private static readonly OVERLAY_HEIGHT: number = 40;
+
+  /**
+   * Holds the colour of the Windows caption-button glyphs, which follows the application's theme.
+   * Starts with the dark theme's, which is the default.
+   */
+  private overlaySymbolColor: string = '#adb5bd';
+
+  /**
    * Holds the registered windows.
    */
   private readonly registry: WindowRegistry<BrowserWindow> = new WindowRegistry<BrowserWindow>();
+
+  /**
+   * Holds the open pop-out and modal windows by the name each was opened with.
+   */
+  private readonly childWindows: Map<string, BrowserWindow> = new Map<string, BrowserWindow>();
 
   /**
    * Holds the application-supplied options.
@@ -313,8 +330,7 @@ export class WindowManager {
       minWidth: WindowManager.MIN_WIDTH,
       minHeight: WindowManager.MIN_HEIGHT,
       show: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
       webPreferences: {
         preload: this.options.preloadPath,
         contextIsolation: true,
@@ -432,8 +448,7 @@ export class WindowManager {
       ...(rect !== null ? { x: rect.x, y: rect.y } : {}),
       minWidth: WindowManager.POPOUT_MIN_WIDTH,
       minHeight: WindowManager.POPOUT_MIN_HEIGHT,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
     };
   }
 
@@ -443,10 +458,12 @@ export class WindowManager {
    * treat it like any other), and resets its zoom. The opener observes the window's closure itself
    * (it holds the DOM window), so no notification is sent.
    * @param window The created auxiliary window.
+   * @param name The name the window was opened with.
    */
-  public adoptAuxiliaryWindow(window: BrowserWindow): void {
+  public adoptAuxiliaryWindow(window: BrowserWindow, name: string): void {
     logger.trace('WindowManager.adoptAuxiliaryWindow', 'adopting auxiliary pop-out window');
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
+    this.recordChildName(window, name);
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.on('close', (): void => this.saveBounds('popout', window));
@@ -543,9 +560,104 @@ export class WindowManager {
       closable: parseFeatureFlag(features, 'closable', true),
       minimizable: false,
       fullscreenable: false,
-      titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 14, y: 14 },
+      ...this.chrome(),
     };
+  }
+
+  /**
+   * Builds the title-bar options every window shares, which differ by platform.
+   *
+   * - macOS hides the title bar and insets the traffic lights over the content, which leaves room for
+   *   them at the leading end of each window's strip.
+   * - Windows hides the title bar too, but keeps the system's own caption buttons, drawn over the
+   *   trailing end of the content (the window controls overlay). They behave as caption buttons do
+   *   everywhere else on Windows — snap layouts on the maximize button included. The overlay is
+   *   transparent, so each window's own strip shows through it whatever colour that strip is.
+   * - Linux drops the frame altogether, and the renderer draws the window's controls itself at the
+   *   trailing end of each window's strip (`app-window-controls`), acting on the window through
+   *   {@link targetWindow}.
+   * - Anywhere else keeps the native frame.
+   * @returns Returns the title-bar constructor options for the current platform.
+   */
+  private chrome(): Electron.BrowserWindowConstructorOptions {
+    switch (process.platform) {
+      case 'darwin':
+        return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 14 } };
+      case 'win32':
+        return { titleBarStyle: 'hidden', titleBarOverlay: this.overlay() };
+      case 'linux':
+        return { frame: false };
+      default:
+        return {};
+    }
+  }
+
+  /**
+   * Resolves the window a window-control request acts on: the named pop-out or modal window when the
+   * request names one, and otherwise the window that sent it. A child window's requests arrive from
+   * the window that opened it (it is a same-renderer child the opener scripts directly), so the name
+   * it was opened with is how it is told apart.
+   * @param sender The web contents the request came from.
+   * @param name The name of the child window meant, or undefined for the sender's own window.
+   * @returns Returns the window, or null when none matches or the sender is not one of ours.
+   */
+  public targetWindow(sender: WebContents, name: unknown): BrowserWindow | null {
+    const own: BrowserWindow | null = BrowserWindow.fromWebContents(sender);
+    if (name === undefined || name === null) {
+      return own;
+    }
+    // Only an application window may address another, and only by a well-formed child name.
+    if (own === null || typeof name !== 'string' || !CHILD_WINDOW_NAME_PATTERN.test(name)) {
+      return null;
+    }
+    const target: BrowserWindow | undefined = this.childWindows.get(name);
+    return target === undefined || target.isDestroyed() ? null : target;
+  }
+
+  /**
+   * Records a pop-out or modal window under the name it was opened with, for as long as it lives, so
+   * window-control requests can address it (see {@link targetWindow}).
+   * @param window The child window.
+   * @param name The name it was opened with; one that is not a child-window name is not recorded.
+   */
+  private recordChildName(window: BrowserWindow, name: string): void {
+    if (!CHILD_WINDOW_NAME_PATTERN.test(name)) {
+      return;
+    }
+    this.childWindows.set(name, window);
+    window.on('closed', (): void => {
+      this.childWindows.delete(name);
+    });
+  }
+
+  /**
+   * Builds the Windows caption-button overlay in the current theme's colours.
+   * @returns Returns the overlay options.
+   */
+  private overlay(): Electron.TitleBarOverlay {
+    return {
+      color: '#00000000',
+      symbolColor: this.overlaySymbolColor,
+      height: WindowManager.OVERLAY_HEIGHT,
+    };
+  }
+
+  /**
+   * Recolours the Windows caption buttons of every window, and of every window opened after, to suit
+   * the application's theme. Does nothing on other platforms, which draw no overlay.
+   * @param symbolColor The CSS colour of the button glyphs.
+   */
+  public setOverlaySymbolColor(symbolColor: string): void {
+    if (process.platform !== 'win32' || symbolColor === this.overlaySymbolColor) {
+      return;
+    }
+    logger.debug('WindowManager.setOverlaySymbolColor', `caption glyphs now ${symbolColor}`);
+    this.overlaySymbolColor = symbolColor;
+    for (const entry of this.registry.all()) {
+      if (!entry.window.isDestroyed()) {
+        entry.window.setTitleBarOverlay(this.overlay());
+      }
+    }
   }
 
   /**
@@ -571,12 +683,14 @@ export class WindowManager {
    * closes shows it again — which is exactly what the main window must not do while the welcome
    * screen stands in for it.
    * @param window The created modal window.
+   * @param name The name the window was opened with.
    */
-  public adoptModalWindow(window: BrowserWindow): void {
+  public adoptModalWindow(window: BrowserWindow, name: string): void {
     logger.trace('WindowManager.adoptModalWindow', 'adopting modal window');
     const parent: BrowserWindow | null = this.pendingModalParent;
     this.pendingModalParent = null;
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('modal', window);
+    this.recordChildName(window, name);
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.on('closed', (): void => {

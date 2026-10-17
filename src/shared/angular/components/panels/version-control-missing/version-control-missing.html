@@ -1,0 +1,19 @@
+@if (prompt.needed(); as needed) {
+  <div class="version-control-missing">
+    <app-icon class="version-control-missing__icon" [icon]="Icon.SOURCE_CONTROL" />
+    <p class="version-control-missing__text">
+      This folder is a {{ needed.displayName }} repository
+    </p>
+    <p class="version-control-missing__hint">
+      Studio reads version control through plugins. Install {{ needed.displayName }} to see its
+      changes, history and branches.
+    </p>
+    <app-button
+      variant="solid"
+      [icon]="Icon.DOWNLOAD"
+      [label]="'Install ' + needed.displayName"
+      [disabled]="busy()"
+      (click)="install()"
+    />
+  </div>
+}

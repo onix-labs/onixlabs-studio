@@ -16,25 +16,30 @@ import {
   ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
-import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
-import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  scmRowFields,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { OPEN_FOLDER_LABEL, REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
@@ -48,6 +53,16 @@ const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
+
+/**
+ * Identifies the context-menu command that adds an untracked path to version control (#860).
+ */
+const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
+
+/**
+ * Identifies the context-menu command that opens a modified file's diff.
+ */
+const ACTION_SHOW_DIFF: string = 'show-diff';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
@@ -120,7 +135,7 @@ interface PendingProjectAction {
     Modal,
     ModalContent,
     Button,
-    TextField,
+    ButtonRow,
   ],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
@@ -154,6 +169,11 @@ export class SolutionPanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
+   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   */
+  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+
+  /**
    * Holds the structured logger for solution explorer actions.
    */
   private readonly log: Log = inject(Log);
@@ -173,16 +193,11 @@ export class SolutionPanel {
   private readonly buildRunner: BuildRunner = inject(BuildRunner);
 
   /**
-   * Holds the solution-folder row whose rename prompt is open, or null when none is.
+   * Holds the solution-folder row being renamed in place, or null when none is.
    */
   public readonly renameTarget: WritableSignal<SolutionRow | null> = signal<SolutionRow | null>(
     null,
   );
-
-  /**
-   * Holds the name being typed into the rename prompt.
-   */
-  public readonly renameName: WritableSignal<string> = signal<string>('');
 
   /**
    * Holds the notification sink a refused rename is reported through.
@@ -225,7 +240,7 @@ export class SolutionPanel {
         },
       ],
     },
-    { id: ACTION_OPEN_ROOT, label: OPEN_FOLDER_LABEL, icon: Icon.DIRECTORY },
+    { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
   ]);
 
@@ -261,63 +276,88 @@ export class SolutionPanel {
       items.push(
         { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
-        { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+        { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       );
+      // A path is untracked or modified, never both, so at most one of these is offered — under one
+      // separator, pushed only when there is something for it to divide.
+      const vcs: MenuItem[] = [];
+      // Offered only on a path version control does not track yet: nothing is added unasked (#860).
+      if (this.git.canAddToVersionControl(path)) {
+        vcs.push({
+          id: ACTION_ADD_TO_VCS,
+          label: 'Add to Version Control',
+          icon: Icon.PLUS_CIRCLE,
+        });
+      }
+      if (row.kind === 'file' && this.git.canShowDiff(path)) {
+        vcs.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
+      }
+      if (vcs.length > 0) {
+        items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
+      }
     }
     return items;
   };
 
   /**
-   * Opens the rename prompt for a solution folder, starting from its current name so the common edit
+   * Turns a solution folder's row into a field seeded with its current name, so the common edit
    * (adjusting a word) does not begin with retyping the whole thing.
    * @param row The solution-folder row to rename.
    */
-  private openRenamePrompt(row: SolutionRow): void {
+  private beginRename(row: SolutionRow): void {
     this.log.info('workspace.solution', 'Rename solution folder', row.key);
-    this.renameName.set(row.label);
     this.renameTarget.set(row);
   }
 
   /**
-   * Closes the rename prompt without acting on it.
+   * Ends the rename without acting on it — abandoned, or committed with no new name to apply.
    */
   public cancelRename(): void {
     this.renameTarget.set(null);
   }
 
   /**
-   * Renames the solution folder the prompt is open on, then closes it.
+   * Renames the solution folder being edited to the name its row was given, then ends the edit.
    *
-   * The prompt closes whether or not the write took: a refusal is reported as a notification, and
-   * holding the dialog open over a name the main process has already rejected would leave the user
-   * retyping into a box that does not say which part it objected to.
+   * The row returns to showing the folder whether or not the write took: a refusal is reported as a
+   * notification, and holding the field open over a name the main process has already rejected would
+   * leave the user retyping into a box that does not say which part it objected to. A name with a path
+   * separator is refused here, before the write: a solution folder is one segment of a declared path,
+   * and a slash would silently nest it instead.
+   * @param commit The edited row and the trimmed name it was given.
    * @returns Returns a promise that resolves once the rename has been attempted.
    */
-  public async submitRename(): Promise<void> {
+  public async commitRename(commit: TreeEdit): Promise<void> {
     const row: SolutionRow | null = this.renameTarget();
-    const name: string = this.renameName().trim();
-    if (row === null || name.length === 0) {
+    if (commit.row.id !== row?.key) {
       return;
     }
     this.renameTarget.set(null);
-    const result: ProjectOperationResult = await this.solution.renameSolutionFolder(row, name);
+    if (/[/\\]/.test(commit.value)) {
+      this.reportRenameFailure('A folder name cannot contain a slash.');
+      return;
+    }
+    const result: ProjectOperationResult = await this.solution.renameSolutionFolder(
+      row,
+      commit.value,
+    );
     if (!result.success) {
-      this.log.warn('workspace.solution', 'Could not rename folder', result.error);
-      this.notifications.notify({
-        severity: 'error',
-        title: 'Could not rename folder',
-        detail: result.error,
-      });
+      this.reportRenameFailure(result.error);
     }
   }
 
   /**
-   * Gets a value indicating whether the rename prompt's name is submittable.
+   * Reports a rename that did not take, since the row it was typed into has already closed.
+   * @param detail Why it did not take, when that is known.
    */
-  protected readonly canSubmitRename: Signal<boolean> = computed((): boolean => {
-    const name: string = this.renameName().trim();
-    return name.length > 0 && !/[/\\]/.test(name);
-  });
+  private reportRenameFailure(detail: string | undefined): void {
+    this.log.warn('workspace.solution', 'Could not rename folder', detail);
+    this.notifications.notify({
+      severity: 'error',
+      title: 'Could not rename folder',
+      detail,
+    });
+  }
 
   /**
    * Builds the capability-action items for a project row: the verbs its project system declares,
@@ -391,11 +431,6 @@ export class SolutionPanel {
   }
 
   /**
-   * Maps a change status to its badge letter, exposed for the template.
-   */
-  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
-
-  /**
    * Gets the current solution model, or null when there is none (the empty state).
    */
   public readonly model: Signal<ProjectModel | null> = this.solution.model;
@@ -422,6 +457,11 @@ export class SolutionPanel {
       // Greyed out until what it stands for has arrived. Presentation only: an unready project is
       // still expandable, and expanding one is how its contents get requested ahead of the sweep.
       disabled: row.pending,
+      // How version control sees the path the row stands for, in colour (#860) — when the Solution
+      // Explorer shows source-control state at all, and for a row that maps to a path.
+      ...(row.path !== null && this.solution.showsGitStatus()
+        ? scmRowFields(this.git.stateFor(row.path))
+        : {}),
       data: row,
     })),
   );
@@ -457,19 +497,6 @@ export class SolutionPanel {
   protected collapseAll(): void {
     this.log.info('workspace.solution', 'Collapse all requested');
     this.solution.collapseAll();
-  }
-
-  /**
-   * Gets the git change status of a row that maps to a file, or null when it is unchanged, has no
-   * path (a logical folder), or the badges are switched off.
-   * @param path The row's path, or null.
-   * @returns Returns the change status, or null.
-   */
-  protected statusFor(path: string | null): GitChangeStatus | null {
-    if (path === null || !this.solution.showsGitStatus()) {
-      return null;
-    }
-    return this.git.statusFor(path);
   }
 
   /**
@@ -511,7 +538,7 @@ export class SolutionPanel {
       return;
     }
     if (selection.itemId === ACTION_RENAME_FOLDER) {
-      this.openRenamePrompt(row);
+      this.beginRename(row);
       return;
     }
     const path: string | null = this.pathFor(row);
@@ -534,6 +561,28 @@ export class SolutionPanel {
         return;
       case ACTION_REVEAL:
         void this.shell.revealPath(path);
+        return;
+      case ACTION_ADD_TO_VCS:
+        void this.git.addToVersionControl(path).then((result: MutationResult): void => {
+          if (!result.success) {
+            this.notifications.notify({
+              severity: 'error',
+              title: `Could not add “${row.label}” to version control`,
+              detail: result.error ?? 'Version control refused it.',
+            });
+          }
+        });
+        return;
+      case ACTION_SHOW_DIFF:
+        void this.diffOpener.openPath(path).then((refusal: string | null): void => {
+          if (refusal !== null) {
+            this.notifications.notify({
+              severity: 'warning',
+              title: `No diff for “${row.label}”`,
+              detail: refusal,
+            });
+          }
+        });
         return;
       default:
         return;
@@ -639,6 +688,13 @@ export class SolutionPanel {
       default:
         return this.fileIconFor(row.label);
     }
+  }
+
+  /**
+   * Clears the selection, after a click on the tree's empty space.
+   */
+  public clearSelection(): void {
+    this.solution.clearSelection();
   }
 
   /**

@@ -13,19 +13,23 @@
  * The protocol version this harness speaks. Studio refuses a harness whose major differs, or whose
  * minor is newer than the build's.
  */
-export const PROTOCOL_VERSION: string = '1.3.0';
+export const PROTOCOL_VERSION: string = '1.7.0';
 
 /**
  * What a harness declares it can do, once, at the handshake.
+ *
+ * `answers` lists the optional host messages this harness replies to; Studio sends nothing absent
+ * from it. It replaced the per-feature `steering` and `remoteControl` flags in 1.5.0.
  */
 export interface Capabilities {
   readonly protocolVersion: string;
   readonly sessionModel: 'live-harness' | 'stateless';
-  readonly steering: boolean;
+  readonly answers: readonly string[];
   readonly images: boolean;
   readonly efforts: readonly string[];
   readonly resumable: boolean;
-  readonly remoteControl: boolean;
+  /** Whether every reported model's context window is the provider's own figure (protocol 1.13.0). */
+  readonly guaranteedContextWindows?: boolean;
 }
 
 /**
@@ -41,6 +45,11 @@ export interface TurnRequest {
   readonly effort: string | null;
   readonly mode: 'chat' | 'agent';
   readonly surface: string;
+  /**
+   * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` asks for Studio's
+   * tools alone; Codex cannot drop its shell, so the turn runs read-only instead.
+   */
+  readonly builtInTools?: 'all' | 'none';
   readonly allowedWritePaths: readonly string[];
   readonly deniedWritePaths: readonly string[];
   readonly allowedNetworkLocations: readonly string[];
@@ -72,7 +81,8 @@ export type HostMessage =
   | { readonly type: 'turn.abort'; readonly requestId: string }
   | { readonly type: 'steer'; readonly requestId: string; readonly text: string }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: Answer }
-  | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' };
+  | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' }
+  | { readonly type: 'discover'; readonly discoveryId: string };
 
 /**
  * The answer to a blocking question.
@@ -85,7 +95,23 @@ export type Answer =
   | { readonly kind: 'input'; readonly answer: string | null }
   | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
   | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null }
-  | { readonly kind: 'credential'; readonly apiKey: string | null };
+  | { readonly kind: 'credential'; readonly apiKey: string | null }
+  | {
+      readonly kind: 'tools';
+      readonly tools: readonly StudioTool[];
+      readonly systemPrompt: string;
+    }
+  | { readonly kind: 'tool'; readonly result: string | null; readonly error: string | null };
+
+/**
+ * One of Studio's own tools, as it describes it (1.6.0): the input shape is JSON Schema, which is what
+ * MCP's `tools/list` carries, so it reaches Codex unconverted (#854).
+ */
+export interface StudioTool {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: unknown;
+}
 
 /**
  * A blocking question this harness asks Studio.
@@ -99,7 +125,9 @@ export type Request =
       readonly detail: string;
       readonly hasDiff: boolean;
     }
-  | { readonly kind: 'credential' };
+  | { readonly kind: 'credential' }
+  | { readonly kind: 'tools'; readonly omit?: readonly string[] }
+  | { readonly kind: 'tool'; readonly name: string; readonly input: unknown };
 
 /**
  * A message this harness sends Studio.
@@ -128,4 +156,23 @@ export type HarnessMessage =
       readonly requestId: string;
       readonly sessionId: string | null;
     }
-  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string };
+  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string }
+  | {
+      readonly type: 'models';
+      readonly discoveryId: string;
+      readonly models: readonly HarnessModel[];
+      readonly detail?: string;
+    };
+
+/**
+ * A model this harness reports the account can run.
+ */
+export interface HarnessModel {
+  readonly id: string;
+  readonly label?: string;
+
+  /**
+   * The model's context window in tokens, or undefined when the harness does not know.
+   */
+  readonly contextWindow?: number;
+}

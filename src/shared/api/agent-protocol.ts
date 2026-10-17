@@ -202,8 +202,40 @@ import { AiEvent } from './ai/ai-event-types';
  * harnesses disagreeing about a model is a smaller problem than core shipping a table it cannot keep
  * current. ⚠️ Optional, so every published harness is unaffected — an omitted window falls back to a
  * single neutral default that names no provider.
+ *
+ * `1.11.0` adds a turn's optional `blockedCommands` (#853): commands the agent may not run, which a
+ * harness enforces as its runtime allows. Optional, so every published harness is unaffected.
+ *
+ * `1.12.0` adds a `usage` event's optional `contextWindow`: the window the model actually ran with. A
+ * model's listed window is the harness's guess before any turn runs, and a guess can be wrong. The
+ * Claude CLI lists Opus 5.5 as plain `opus`, with nothing to say it runs with a 1M window, while each
+ * turn's result reports the real figure. Optional, so every published harness is unaffected.
+ *
+ * `1.13.0` makes a reported model's context window a **guarantee**, and adds the handshake's optional
+ * `guaranteedContextWindows` to say so. Until now a harness was free to guess — a family floor, a size
+ * read out of an id — and Studio showed the guess as fact: every Claude model read 200K in settings
+ * once the CLI stopped tagging its 1M models. A window is now honoured only from a harness that
+ * declares it reads the figure from the provider's own data; any other harness's windows are dropped,
+ * and the model shows none. Optional, so every published harness is unaffected but for that.
+ *
+ * `1.14.0` adds an `input` request's optional `selection`. Every question was drawn as a radio list, so
+ * a question whose answer is *several* of its choices — Claude's `multiSelect` — reached the user as an
+ * OR when it was an AND. `'multiple'` draws checkboxes and answers with the picked labels joined by
+ * ", ", the form Claude's own question tool answers in. Optional, so every published harness is
+ * unaffected: an omitted selection is one choice, as before.
+ *
+ * `1.15.0` adds a `permission` request's optional `change` (#891): the file a tool would write and what
+ * it would write — a write's whole content, or an edit's replacements — so the prompt can show the
+ * change before the user decides. Optional, so every published harness is unaffected: a request
+ * without one is shown as before, by its name and detail alone.
+ *
+ * `1.16.0` adds a turn's optional `builtInTools` (#965). `'none'` asks the harness to withhold its own
+ * tools — the file, shell and web tools a model's runtime brings — so the agent works through Studio's
+ * tools alone: a terminal's agent through its terminal, a tool view's agent through its view. Optional,
+ * so every published harness is unaffected; one written before it keeps its tools, which the
+ * permission prompt still stands in front of.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.10.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.16.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -285,6 +317,16 @@ export interface HarnessCapabilities {
    * `stateless` harness and ignored there.
    */
   readonly resumable: boolean;
+
+  /**
+   * Gets whether the context windows this harness reports with its models are the provider's own
+   * figures (protocol 1.13.0). Absent means they are not, and Studio drops them.
+   *
+   * ⛔ Declare it only when every window comes from data the provider publishes for that model — a
+   * catalogue entry, a runtime's loaded size. A figure inferred from an id or a family is a guess, and a
+   * guess shown as a model's capacity is the dishonesty this exists to stop.
+   */
+  readonly guaranteedContextWindows?: boolean;
 }
 
 /**
@@ -390,6 +432,22 @@ export interface TurnRequest {
    * and falls to {@link permissionPosture}.
    */
   readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+
+  /**
+   * Gets the commands the agent may not run, by command name (1.11.0, #853) — the code host's own CLI
+   * (`gh`) when the user keeps agents off it and a hosting plugin serves the repository, so the agent
+   * goes through the plugin's tools instead. A harness enforces it however its runtime allows: refusing
+   * a shell command that runs one of them, anywhere in the command line. Absent or empty means none.
+   * ⚠️ Optional, so a harness written before it simply does not enforce it — the setting says which do.
+   */
+  readonly blockedCommands?: readonly string[];
+
+  /**
+   * Gets whether the harness's own built-in tools are offered (1.16.0, #965). `'none'` withholds them
+   * all — a harness keeps only its clarifying question, if it has one, and works through Studio's tools.
+   * Absent means `'all'`. ⚠️ Optional, so a harness written before it keeps its tools.
+   */
+  readonly builtInTools?: 'all' | 'none';
 
   /**
    * Gets the images attached to the turn's input. Empty when there are none, and always empty for a
@@ -622,23 +680,56 @@ export interface HarnessModel {
   readonly label?: string;
 
   /**
-   * Gets the model's context window in tokens, or undefined when the harness does not know.
+   * Gets the model's context window in tokens, as the provider states it, or undefined when it does not.
    *
-   * ⚠️ Optional so that a harness published against an earlier protocol is unaffected: an omitted window
-   * falls back to core's single neutral default, which names no provider and no model.
+   * ⛔ Honoured only from a harness that declared `guaranteedContextWindows` (protocol 1.13.0). An
+   * omitted window is not filled in: Studio shows no window rather than a guessed one.
    */
   readonly contextWindow?: number;
+}
+
+/**
+ * Describes a change a tool proposes to a file (1.15.0): the whole new content of a write, or an
+ * edit's replacements in order. Studio reads the file as it is and shows the difference.
+ */
+export interface HarnessProposedChange {
+  /**
+   * Gets the file's absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the file's whole new content, for a write.
+   */
+  readonly content?: string;
+
+  /**
+   * Gets the replacements, in order, for an edit. An empty `oldText` sets the whole file.
+   */
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
 }
 
 /**
  * The body of a blocking request from a harness.
  */
 export type HarnessRequest =
-  | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
+  | {
+      readonly kind: 'permission';
+      readonly name: string;
+      readonly detail: string;
+      // The file change the tool would make (1.15.0), so the prompt can show it.
+      readonly change?: HarnessProposedChange;
+    }
   | {
       readonly kind: 'input';
       readonly question: string;
       readonly choices: readonly HarnessChoice[];
+      // How many choices the user may pick (1.14.0); one when omitted.
+      readonly selection?: 'single' | 'multiple';
     }
   | {
       readonly kind: 'edit-decision';

@@ -6,6 +6,7 @@ import type {
   ClaudeExecutableMode,
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
+import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
@@ -13,10 +14,13 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
-  EditorProfile,
   FileExplorerExpandAll,
   ImageAlignment,
   ImageSizing,
+  LanguageOverrides,
+  MutedNotifications,
+  NotificationColour,
+  NotificationStacking,
   MarginSize,
   PrintMargin,
   RibbonAlignment,
@@ -56,11 +60,16 @@ export interface SettingsValues {
   readonly 'application.menuMode': ApplicationMenuMode;
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
+  readonly 'application.logLevel': LogLevelSetting;
 
   readonly 'accessibility.showTooltips': boolean;
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
+  readonly 'notifications.desktop': boolean;
+  readonly 'notifications.stacking': NotificationStacking;
+  readonly 'notifications.colour': NotificationColour;
+  readonly 'notifications.whenMuted': MutedNotifications;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
 
@@ -79,7 +88,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
-  readonly 'textEditor.profiles': readonly EditorProfile[];
+  readonly 'textEditor.languageOverrides': LanguageOverrides;
 
   readonly 'markdownEditor.fontFamily': string;
   readonly 'markdownEditor.monospaceFontFamily': string;
@@ -96,11 +105,13 @@ export interface SettingsValues {
   readonly 'ai.connections': readonly AiConnection[];
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
+  readonly 'ai.connectionsFormat': number;
   readonly 'ai.autoScroll': boolean;
   readonly 'ai.reportBackgroundTasks': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
+  readonly 'ai.blockHostCommandLine': boolean;
   readonly 'ai.allowedWritePaths': readonly string[];
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.allowedNetworkLocations': readonly string[];
@@ -113,6 +124,8 @@ export interface SettingsValues {
   readonly 'ai.claudeExecutablePath': string;
 
   readonly 'missionControl.tileScrollMode': TileScrollMode;
+
+  readonly 'systemMonitor.refreshRate': number;
 }
 
 /**
@@ -188,7 +201,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           options: [
             { value: 'left', label: 'Left' },
             { value: 'center', label: 'Center' },
-            { value: 'right', label: 'Right' },
           ],
         },
         default: 'left',
@@ -308,6 +320,28 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'regular',
       },
+      {
+        key: 'application.logLevel',
+        title: 'Log level',
+        description:
+          'The least severe records Studio writes to its logs. Automatic keeps Info and above in ' +
+          'a release build and everything in a development build. Choose Trace or Debug while ' +
+          'investigating a problem, then set it back: those levels write many times more and ' +
+          'rotate the logs away sooner. The STUDIO_LOG_LEVEL environment variable overrides this ' +
+          'for a launch.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'auto', label: 'Automatic' },
+            { value: 'trace', label: 'Trace' },
+            { value: 'debug', label: 'Debug' },
+            { value: 'info', label: 'Info' },
+            { value: 'warning', label: 'Warning' },
+            { value: 'error', label: 'Error' },
+          ],
+        },
+        default: 'auto',
+      },
     ],
   },
   {
@@ -357,6 +391,61 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Answering stays in the conversation; the toast jumps to the asking tab.',
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'notifications.desktop',
+        title: 'System notifications',
+        description:
+          'While Studio is in the background, show errors, finished agents, runs and builds, and ' +
+          "agents waiting on you in the system's notification centre. Clicking one brings Studio " +
+          'back to what it is about.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'notifications.stacking',
+        title: 'Stacking',
+        description:
+          'How notifications stack: in a column growing up the screen, or receding behind the ' +
+          'newest, which alone can be read and pressed until it is dismissed.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'upwards', label: 'Upwards' },
+            { value: 'backwards', label: 'Backwards' },
+          ],
+        },
+        default: 'upwards',
+      },
+      {
+        key: 'notifications.colour',
+        title: 'Colour',
+        description:
+          "Which notifications show their severity's colour: all of them, or only the newest, with " +
+          'the rest in grey until they become the newest.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'all', label: 'All notifications' },
+            { value: 'newest', label: 'Newest only' },
+          ],
+        },
+        default: 'all',
+      },
+      {
+        key: 'notifications.whenMuted',
+        title: 'When muted',
+        description:
+          'What still appears while notifications are muted from the tray. Muted notifications are ' +
+          'still recorded in the tray.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'nothing', label: 'Show nothing' },
+            { value: 'errors', label: 'Show errors only' },
+          ],
+        },
+        default: 'nothing',
       },
     ],
   },
@@ -575,11 +664,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'textEditor.profiles',
-        title: 'Language profiles',
-        description: 'Per-language overrides of the global editor settings.',
-        control: { kind: 'custom', component: 'editor-profiles' },
-        default: [],
+        key: 'textEditor.languageOverrides',
+        title: 'Language overrides',
+        description:
+          'Per-language overrides of the global editor settings, edited on each language page under Language Providers.',
+        control: { kind: 'custom', component: 'language-editor-overrides' },
+        default: {},
       },
     ],
   },
@@ -744,6 +834,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: {},
       },
       {
+        key: 'ai.connectionsFormat',
+        title: 'Connections format',
+        description:
+          'The format the stored connections are in. Written by the settings migration, never by hand.',
+        control: { kind: 'custom', component: 'ai-connections' },
+        default: 1,
+      },
+      {
         key: 'ai.autoScroll',
         title: 'Auto-scroll transcripts',
         description:
@@ -799,6 +897,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'auto-allow it; Allow skips the prompt; Ask uses the posture above.',
         control: { kind: 'custom', component: 'ai-tool-policies' },
         default: {},
+      },
+      {
+        key: 'ai.blockHostCommandLine',
+        title: "Keep agents off the code host's command-line tool",
+        description:
+          "While a code-hosting plugin serves the repository, agents may not run that host's own " +
+          'command-line tool (gh for GitHub) and go through the plugin instead, which asks before it ' +
+          'changes anything. Enforced for Claude and for providers that run commands through ' +
+          "Studio's terminal; Codex is only told.",
+        control: { kind: 'toggle' },
+        default: false,
       },
       {
         key: 'ai.allowedWritePaths',
@@ -949,6 +1058,31 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'into-view',
+      },
+    ],
+  },
+  {
+    id: 'system-monitor',
+    label: 'System Monitor',
+    settings: [
+      {
+        key: 'systemMonitor.refreshRate',
+        title: 'Refresh rate',
+        description:
+          'How often the System Monitor reads the machine while it is showing. A faster rate shows ' +
+          'changes sooner and costs a little more to gather; Paused keeps the last readings on ' +
+          'screen and reads nothing.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '500', label: 'High (twice a second)' },
+            { value: '1000', label: 'Normal (every second)' },
+            { value: '4000', label: 'Low (every 4 seconds)' },
+            { value: '0', label: 'Paused' },
+          ],
+        },
+        default: 1000,
       },
     ],
   },

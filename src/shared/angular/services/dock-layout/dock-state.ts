@@ -189,16 +189,33 @@ export class DockState {
    * the panel open. Panels with no guard (tool windows) close immediately. This is the entry point the
    * chrome's close controls use; a plain move still calls {@link removeFromLayout} directly.
    * @param panelId The identifier of the panel to close.
-   * @returns Returns a promise that resolves once the close has been resolved either way.
+   * @returns Returns a promise that resolves to true once the panel is closed, or false when its guard
+   * cancelled the close.
    */
-  public async requestClose(panelId: string): Promise<void> {
+  public async requestClose(panelId: string): Promise<boolean> {
     const panel: DockPanel | undefined = this.panels.get(panelId);
     if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
       this.log.debug('DockState', `Close of panel '${panelId}' cancelled by guard`);
-      return;
+      return false;
     }
     this.log.info('DockState', `Closed panel '${panelId}'`);
     this.removeFromLayout(panelId);
+    return true;
+  }
+
+  /**
+   * Closes several panels in turn, each through {@link requestClose} so every document with unsaved
+   * changes gets its own save, discard, or cancel prompt. Cancelling a prompt stops the whole run:
+   * that panel and every panel after it stay open, and the ones already closed stay closed.
+   * @param panelIds The identifiers of the panels to close, in the order to close them.
+   * @returns Returns a promise that resolves once the run has finished or been cancelled.
+   */
+  public async requestCloseAll(panelIds: readonly string[]): Promise<void> {
+    for (const panelId of panelIds) {
+      if (!(await this.requestClose(panelId))) {
+        return;
+      }
+    }
   }
 
   /**

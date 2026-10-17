@@ -1,300 +1,182 @@
-// The forge capability's slice of the IPC contract: the shapes the renderer's Repository panel renders
-// and the main-process forge contribution produces. A "forge" is the hosting service a repository's
-// remote points at — GitHub today, with the seam admitting GitLab and self-hosted instances later.
+// The forge capability's slice of the IPC contract: the shapes the renderer's source-control panels
+// render. A "forge" is the hosting service a repository's remote points at — served by whichever hosting
+// plugin declares the host (#819, #820): GitHub today, GitLab and self-hosted instances later.
 //
-// Deliberately a normalised model rather than the provider's own JSON: the panel renders pull requests,
-// issues and workflow runs without knowing which forge they came from, and a second implementation
-// changes nothing downstream. No credential ever appears in these shapes — only whether one resolved,
-// and to whom.
+// The renderer's view of the hosting protocol. The item shapes are the protocol's own, so a plugin's
+// answer reaches a panel unchanged; what is the renderer's alone is the repository reference (which
+// names the plugin serving it, for display), the authentication summary the settings page draws, and
+// the result wrapper a panel reads. No credential ever appears in these shapes — only whether one
+// resolved, and to whom.
+
+import type {
+  HostedCloseReason,
+  HostedCheckStatus,
+  HostedCiRun,
+  HostedCiRunStatus,
+  HostedIdentity,
+  HostedIssue,
+  HostedIssueComment,
+  HostedPullRequest,
+  HostingAuthMode,
+  HostingCapability,
+} from './hosting-protocol';
 
 /**
- * Identifies a forge implementation.
- */
-export type ForgeKind = 'github';
-
-/**
- * Identifies a repository on a forge, as resolved from a git remote's URL.
+ * Names a repository on a forge, as the renderer holds it.
  */
 export interface ForgeRepositoryRef {
   /**
-   * Gets the forge the repository is hosted on.
+   * Gets the display name of the plugin serving the repository's host, such as `GitHub`.
    */
-  readonly kind: ForgeKind;
+  readonly provider: string;
 
   /**
-   * Gets the forge host (`github.com`), which a self-hosted instance would vary.
+   * Gets the host's name, lowercased, such as `github.com`.
    */
   readonly host: string;
 
   /**
-   * Gets the repository's owner (a user or organisation).
+   * Gets the owning account's name.
    */
   readonly owner: string;
 
   /**
-   * Gets the repository's name, without the `.git` suffix.
+   * Gets the repository's name.
    */
   readonly name: string;
 }
 
 /**
- * Describes the account a resolved credential authenticates as.
+ * Describes what a forge repository allows: the capabilities its plugin has, narrowed to those the
+ * repository itself allows. What the panels gate their sections and commands on.
  */
-export interface ForgeIdentity {
+export interface ForgeRepositoryCapabilities {
   /**
-   * Gets the account's login handle.
+   * Gets the display name of the plugin serving the repository.
    */
-  readonly login: string;
+  readonly provider: string;
 
   /**
-   * Gets the account's display name, or null when it has none set.
+   * Gets the capabilities on offer.
    */
-  readonly name: string | null;
+  readonly capabilities: readonly HostingCapability[];
+
+  /**
+   * Gets the reasons an issue may be closed for, empty when issues cannot be closed.
+   */
+  readonly closeReasons: readonly ForgeCloseReason[];
 }
 
 /**
- * Identifies where the credential in use came from. `none` means no credential resolved at all.
+ * Describes the account a credential authenticates as.
  */
-export type ForgeTokenSource = 'stored' | 'gh-cli' | 'none';
+export type ForgeIdentity = HostedIdentity;
 
 /**
- * Reports the forge authentication state, for the settings page and the panel's signed-out row. Carries
- * no token: only its provenance, whether it works, and who it belongs to.
+ * Reports how a hosting plugin is signed in to one host, for the settings page and the setup summary.
+ * Carries no token: only how the plugin signed in, whether it works, and who it belongs to.
  */
 export interface ForgeAuthStatus {
   /**
-   * Gets where the credential in use came from.
+   * Gets how the plugin signed in — its host's own CLI login, or the token Studio keeps — or null when
+   * it could not.
    */
-  readonly source: ForgeTokenSource;
+  readonly mode: HostingAuthMode | null;
 
   /**
-   * Gets a value indicating whether a credential resolved and the forge accepted it.
+   * Gets whether the host accepted the credential.
    */
   readonly authenticated: boolean;
 
   /**
-   * Gets a value indicating whether a token is stored on this machine, which is what the settings
-   * page's Clear action acts on. True even when the stored token turns out to be rejected.
+   * Gets whether Studio holds a token of its own for the host — what the settings page's Clear acts on,
+   * true even when the stored token is rejected or another credential is in use.
    */
   readonly hasStoredToken: boolean;
 
   /**
-   * Gets the account the credential authenticates as, or null when none did.
+   * Gets who the credential authenticates as, or null when it does not.
    */
   readonly identity: ForgeIdentity | null;
 
   /**
-   * Gets a human-readable explanation of the state, shown verbatim in the settings page. Says what to
-   * do about it when the state is unhappy, rather than only naming it.
+   * Gets what to tell the user.
    */
   readonly detail: string;
 }
 
 /**
- * Summarises the outcome of a pull request's checks, as the panel's status badge shows it.
+ * Describes one host an installed hosting plugin serves, and how it is signed in to it (#821): one
+ * row of Settings ▸ Version Control, and of the setup summary. Core names no host; these come from the
+ * plugins' manifests.
  */
-export type ForgeCheckStatus = 'running' | 'succeeded' | 'failed' | 'none';
-
-/**
- * Describes an open pull request.
- */
-export interface ForgePullRequest {
+export interface ForgeHostAccount {
   /**
-   * Gets the pull request number.
+   * Gets the plugin's id.
    */
-  readonly number: number;
+  readonly pluginId: string;
 
   /**
-   * Gets the pull request title.
+   * Gets the plugin's display name, such as `GitHub`.
    */
-  readonly title: string;
+  readonly provider: string;
 
   /**
-   * Gets the login of the account that opened it.
+   * Gets the host's name, lowercased, such as `github.com`.
    */
-  readonly author: string;
+  readonly host: string;
 
   /**
-   * Gets the web URL, for opening it in a browser.
+   * Gets the ways the plugin can sign in, as its manifest declares them.
    */
-  readonly url: string;
+  readonly authModes: readonly HostingAuthMode[];
 
   /**
-   * Gets a value indicating whether the pull request is a draft.
+   * Gets the way the user chose, or null when the plugin decides: its CLI's login when that is signed
+   * in, the token Studio keeps otherwise.
    */
-  readonly draft: boolean;
+  readonly authMode: HostingAuthMode | null;
 
   /**
-   * Gets the name of the branch the changes are on, which names the local branch a checkout creates.
+   * Gets how the plugin is signed in to the host now.
    */
-  readonly headRef: string;
-
-  /**
-   * Gets the ref on the repository's own remote that carries the pull request's head.
-   *
-   * This is what a checkout actually fetches, and it is the forge's convention rather than git's —
-   * GitHub publishes `refs/pull/N/head`. It matters because a pull request opened from a fork has its
-   * branch in the contributor's repository, not this one: there is no {@link headRef} here to check
-   * out, but the head is reachable through this ref either way.
-   */
-  readonly headRefspec: string;
-
-  /**
-   * Gets the rolled-up outcome of the pull request's checks.
-   */
-  readonly checks: ForgeCheckStatus;
+  readonly status: ForgeAuthStatus;
 }
 
 /**
- * Describes an open issue.
+ * Describes the combined state of a pull request's checks.
  */
-export interface ForgeIssue {
-  /**
-   * Gets the issue number.
-   */
-  readonly number: number;
-
-  /**
-   * Gets the issue title.
-   */
-  readonly title: string;
-
-  /**
-   * Gets the login of the account that opened it.
-   */
-  readonly author: string;
-
-  /**
-   * Gets the web URL, for opening it in a browser.
-   */
-  readonly url: string;
-
-  /**
-   * Gets the issue's label names.
-   */
-  readonly labels: readonly string[];
-
-  /**
-   * Gets the logins of the accounts the issue is assigned to.
-   */
-  readonly assignees: readonly string[];
-
-  /**
-   * Gets whether the issue is open or closed.
-   */
-  readonly state: 'open' | 'closed';
-
-  /**
-   * Gets the issue's body as the author wrote it — Markdown, unrendered.
-   *
-   * Carried on the list entry rather than fetched per issue, because GitHub's issues endpoint
-   * returns it already: asking again for what has been read and thrown away would spend a request to
-   * learn nothing.
-   */
-  readonly body: string;
-
-  /**
-   * Gets when the issue was opened, as an ISO 8601 timestamp.
-   */
-  readonly createdAt: string;
-
-  /**
-   * Gets when the issue was last touched, as an ISO 8601 timestamp.
-   */
-  readonly updatedAt: string;
-
-  /**
-   * Gets when the issue was closed, as an ISO 8601 timestamp, or undefined while it is open.
-   */
-  readonly closedAt?: string;
-
-  /**
-   * Gets how many comments the issue has, so a reader knows whether there is a conversation before
-   * the request to fetch one is made.
-   */
-  readonly commentCount: number;
-
-  /**
-   * Gets the title of the milestone the issue belongs to, or undefined when it belongs to none.
-   */
-  readonly milestone?: string;
-}
+export type ForgeCheckStatus = HostedCheckStatus;
 
 /**
- * Describes one comment on an issue.
+ * Describes a pull request.
  */
-export interface ForgeIssueComment {
-  /**
-   * Gets the comment's identifier, stable enough to track a rendered list by.
-   */
-  readonly id: number;
-
-  /**
-   * Gets the login of the account that wrote it.
-   */
-  readonly author: string;
-
-  /**
-   * Gets the comment's body as written — Markdown, unrendered.
-   */
-  readonly body: string;
-
-  /**
-   * Gets when the comment was posted, as an ISO 8601 timestamp.
-   */
-  readonly createdAt: string;
-
-  /**
-   * Gets the web URL of the comment, for opening it in a browser.
-   */
-  readonly url: string;
-}
+export type ForgePullRequest = HostedPullRequest;
 
 /**
- * Identifies where a CI run has got to. Deliberately distinct from {@link ForgeCheckStatus}: a run
- * queued but not started is a state a pull request's rolled-up checks do not have.
+ * Describes an issue.
  */
-export type ForgeRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ForgeIssue = HostedIssue;
 
 /**
- * Describes a CI/CD workflow run.
+ * Describes a comment on an issue.
  */
-export interface ForgeWorkflowRun {
-  /**
-   * Gets the run's forge-assigned identifier, which the re-run and cancel operations address it by.
-   */
-  readonly id: number;
+export type ForgeIssueComment = HostedIssueComment;
 
-  /**
-   * Gets the workflow's display name.
-   */
-  readonly name: string;
+/**
+ * Describes why an issue was closed: finished, or not going to be.
+ */
+export type ForgeCloseReason = HostedCloseReason;
 
-  /**
-   * Gets the run's status.
-   */
-  readonly status: ForgeRunStatus;
+/**
+ * Describes where a CI run is.
+ */
+export type ForgeRunStatus = HostedCiRunStatus;
 
-  /**
-   * Gets the web URL, for opening the run in a browser.
-   */
-  readonly url: string;
-
-  /**
-   * Gets the branch the run was triggered on.
-   */
-  readonly branch: string;
-
-  /**
-   * Gets the event that triggered the run (`push`, `pull_request`, …).
-   */
-  readonly event: string;
-
-  /**
-   * Gets when the run started, as an ISO-8601 timestamp.
-   */
-  readonly startedAt: string;
-}
+/**
+ * Describes a CI run.
+ */
+export type ForgeWorkflowRun = HostedCiRun;
 
 /**
  * Wraps a forge read so a failure is data rather than a thrown error crossing IPC. The panel needs to
@@ -332,8 +214,7 @@ export type ForgeResult<T> =
 
       /**
        * Gets when the forge will accept requests again, as epoch milliseconds, for a failure that is
-       * the rate limit rather than anything wrong. Present only then — its presence is what tells a
-       * caller to wait rather than to retry, and what lets the panel say how long for.
+       * the rate limit rather than anything wrong.
        */
       readonly retryAt?: number;
     };

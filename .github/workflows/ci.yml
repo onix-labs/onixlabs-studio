@@ -156,3 +156,17 @@ jobs:
           test -f "$UNPACKED/@anthropic-ai/claude-agent-sdk-linux-x64/claude" || { echo "claude executable missing"; exit 1; }
           test -d "$UNPACKED/@openai/codex-linux-x64/vendor" || { echo "codex vendor binaries missing"; exit 1; }
           echo "asar-unpack verified: node-pty (+.node), rg, claude, codex vendor all present"
+
+      # electron-builder copies every package in `dependencies` into the asar whatever `files` says, so
+      # a renderer library declared there ships a second, never-loaded copy beside the one Angular
+      # bundled — that is how the asar reached 508 MB (#661). Only what the main process loads at runtime
+      # belongs in `dependencies`; this ceiling (~90 MB measured, plus headroom) catches the next one.
+      - name: Verify the asar stays within its size ceiling
+        run: |
+          CEILING_MB=120
+          SIZE_MB=$(( $(stat -c %s release/linux-unpacked/resources/app.asar) / 1000000 ))
+          echo "app.asar is ${SIZE_MB} MB (ceiling ${CEILING_MB} MB)"
+          if [ "$SIZE_MB" -gt "$CEILING_MB" ]; then
+            echo "::error::app.asar is ${SIZE_MB} MB, over its ${CEILING_MB} MB ceiling. A package the main process never loads is probably in \`dependencies\` — renderer-only packages belong in \`devDependencies\`, since Angular bundles them (#661)."
+            exit 1
+          fi

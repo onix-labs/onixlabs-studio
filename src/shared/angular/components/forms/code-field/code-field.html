@@ -1,0 +1,13 @@
+<!-- The editor, framed as a form control. Sizing to content, the frame is drawn at the height the
+     content wants within the row bounds; filling, it takes the box the host lays out. Monaco lays
+     itself out to the frame either way, and scrolls within it once the content outgrows it. -->
+<div class="code-field__frame" [style.block-size.px]="frameHeight()">
+  <app-text-editor
+    [content]="value()"
+    [language]="language()"
+    [readOnly]="readOnly() || disabled()"
+    [options]="editorOptions"
+    (ready)="onReady()"
+    (contentChange)="onChange($event)"
+  />
+</div>

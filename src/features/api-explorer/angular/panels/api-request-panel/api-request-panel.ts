@@ -3,6 +3,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -11,11 +14,15 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { CodeField, CodeFieldMarker } from '@shared/angular/components/forms/code-field/code-field';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import {
   PropertyGrid,
@@ -23,6 +30,7 @@ import {
   PropertyGridRow,
 } from '@shared/angular/components/property-grid/property-grid';
 import { Icon } from '@shared/angular/icons/icon';
+import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import {
   ApiRequest,
@@ -37,6 +45,8 @@ import {
 } from '@shared/api/api-client-types';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
+import { diagnosticsForBody } from './api-body-diagnostics';
+import { languageForBodyKind, languageForContentType } from './api-body-language';
 
 /**
  * The editor sections of a request, in the order the tab strip offers them.
@@ -73,6 +83,26 @@ const BODY_KINDS: readonly { readonly id: HttpBodyKind; readonly label: string }
 ];
 
 /**
+ * The edges the response pane may sit on: beneath the request only.
+ */
+const RESPONSE_EDGES: readonly PanelEdge[] = ['bottom'];
+
+/**
+ * The share of the panel's height the response pane opens at.
+ */
+const RESPONSE_SHARE: number = 0.4;
+
+/**
+ * The least height, in pixels, the response pane can be dragged to.
+ */
+const RESPONSE_MIN_SIZE: number = 120;
+
+/**
+ * Counts the request panels created, so each registers its body diagnostics under its own provider.
+ */
+let panelSequence: number = 0;
+
+/**
  * One request open in the API well — the API Explorer's document. It is to this view what an open file
  * is to a workspace: the dock panel's id *is* the request's id, so the well tabs, splits, floats and
  * pops these out with no knowledge that they are HTTP calls.
@@ -82,15 +112,23 @@ const BODY_KINDS: readonly { readonly id: HttpBodyKind; readonly label: string }
  * unsaved URL because a tab was closed is the kind of papercut this view exists to avoid. Sending is
  * likewise routed through the workspace, so the History panel and the status strip see every send
  * without this panel telling them about it.
+ *
+ * The problems Monaco marks in the raw body — a JSON syntax error, an XML tag mismatch — are published
+ * to the view's diagnostics as this panel's own provider, so the well's status strip counts them the
+ * way it counts a file's. They are held while another section is showing, since the body is still
+ * wrong, and cleared when the body kind changes, since the old grammar no longer applies.
  */
 @Component({
   selector: 'app-api-request-panel',
   imports: [
     Button,
+    CodeField,
     DecimalPipe,
     Dropdown,
     AppIcon,
     NgTemplateOutlet,
+    Panel,
+    PanelLayout,
     PanelToolbar,
     PasswordField,
     PropertyGrid,
@@ -118,9 +156,55 @@ export class ApiRequestPanel {
   private readonly opener: ApiRequestOpener = inject(ApiRequestOpener);
 
   /**
+   * Holds the view's diagnostics, which the well's status strip counts.
+   */
+  private readonly diagnostics: Diagnostics = inject(Diagnostics);
+
+  /**
+   * Holds the panel's host element, measured for the response pane's default height.
+   */
+  private readonly elementRef: ElementRef<HTMLElement> =
+    inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
+   * Holds the panel's height in pixels as last observed, or null before it has one — while it is
+   * the inactive tab of its well, say — in which case the split is not laid out yet.
+   */
+  private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets the height the response pane opens at before the user has dragged the divider: a share of
+   * the panel rather than a fixed number of pixels, so a short well and a tall one both show a
+   * usable request half. Null until the panel has a height to share out.
+   */
+  protected readonly responseDefaultSize: Signal<number | null> = computed((): number | null => {
+    const height: number | null = this.hostHeight();
+    return height === null
+      ? null
+      : Math.max(RESPONSE_MIN_SIZE, Math.round(height * RESPONSE_SHARE));
+  });
+
+  /**
    * Holds the icon tokens used by the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the edges the response pane may be docked to.
+   */
+  protected readonly responseEdges: readonly PanelEdge[] = RESPONSE_EDGES;
+
+  /**
+   * Holds the problems last marked in the raw body editor.
+   */
+  private readonly bodyMarkers: WritableSignal<readonly CodeFieldMarker[]> = signal<
+    readonly CodeFieldMarker[]
+  >([]);
+
+  /**
+   * Holds the diagnostics service's listener for this panel's provider, or null once disconnected.
+   */
+  private publish: ((diagnostics: readonly Diagnostic[]) => void) | null = null;
 
   /**
    * Holds the sections offered by the tab strip.
@@ -201,6 +285,14 @@ export class ApiRequestPanel {
   });
 
   /**
+   * Gets whether the response pane is shown: once the request has been sent this session, or is in
+   * flight. Until then the request has the whole panel, and the pane opens with the first send.
+   */
+  protected readonly responseVisible: Signal<boolean> = computed(
+    (): boolean => this.sending() || this.outcome() !== null,
+  );
+
+  /**
    * Gets the latest response, or null when the request has not been sent or did not produce one.
    */
   protected readonly response: Signal<HttpResponse | null> = computed((): HttpResponse | null => {
@@ -223,6 +315,50 @@ export class ApiRequestPanel {
     const resolved: string = this.workspace.substitute(request.url);
     return resolved === request.url ? '' : resolved;
   });
+
+  /**
+   * Constructs the panel, registering its body diagnostics with the view and publishing them whenever
+   * the marked problems or the request's name change.
+   */
+  public constructor() {
+    panelSequence += 1;
+    const unregister: () => void = this.diagnostics.register({
+      id: `api-request-body-${panelSequence}`,
+      connect: (onChange: (diagnostics: readonly Diagnostic[]) => void): (() => void) => {
+        this.publish = onChange;
+        return (): void => {
+          this.publish = null;
+        };
+      },
+    });
+    effect((): void => {
+      const request: ApiRequest | undefined = this.request();
+      const markers: readonly CodeFieldMarker[] = this.bodyMarkers();
+      this.publish?.(request === undefined ? [] : diagnosticsForBody(request, markers));
+    });
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(unregister);
+
+    // Measure the panel for the response pane's default height. The split is laid out only once
+    // there is a height to share, so the default seeded into the remembered arrangement is a share
+    // of a real pane, not of nothing.
+    if (typeof ResizeObserver !== 'undefined') {
+      const host: HTMLElement = this.elementRef.nativeElement;
+      const observer: ResizeObserver = new ResizeObserver((): void => {
+        this.hostHeight.set(host.clientHeight > 0 ? host.clientHeight : null);
+      });
+      observer.observe(host);
+      destroyRef.onDestroy((): void => observer.disconnect());
+    }
+  }
+
+  /**
+   * Records the problems marked in the raw body editor.
+   * @param markers The problems.
+   */
+  protected onBodyMarkers(markers: readonly CodeFieldMarker[]): void {
+    this.bodyMarkers.set(markers);
+  }
 
   /**
    * Sends the request, or cancels it when it is already in flight.
@@ -327,7 +463,8 @@ export class ApiRequestPanel {
   }
 
   /**
-   * Changes the body kind, keeping whatever was typed under the previous kind.
+   * Changes the body kind, keeping whatever was typed under the previous kind. The problems marked
+   * under the previous kind's grammar are dropped; the editor re-marks the text under the new one.
    * @param kind The kind to switch to.
    */
   protected setBodyKind(kind: string): void {
@@ -336,6 +473,7 @@ export class ApiRequestPanel {
       return;
     }
     const body: HttpBody = { ...request.body, kind: kind as HttpBodyKind };
+    this.bodyMarkers.set([]);
     this.update({ body });
   }
 
@@ -397,6 +535,24 @@ export class ApiRequestPanel {
     } catch {
       return response.body;
     }
+  }
+
+  /**
+   * Resolves the language the request body is edited as, from the kind it is sent as.
+   * @param kind The body kind.
+   * @returns Returns the Monaco language identifier.
+   */
+  protected bodyLanguage(kind: HttpBodyKind): string {
+    return languageForBodyKind(kind);
+  }
+
+  /**
+   * Resolves the language the response body is shown as, from the content type the server declared.
+   * @param response The response.
+   * @returns Returns the Monaco language identifier.
+   */
+  protected responseLanguage(response: HttpResponse): string {
+    return languageForContentType(response.headers['content-type']);
   }
 
   /**

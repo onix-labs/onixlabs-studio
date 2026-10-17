@@ -2,6 +2,26 @@
   display: inline-flex;
 }
 
+// No stepper: the browser draws it inside the field, so it is hidden there rather than replaced.
+:host(.number-field--no-spinner) .number-field {
+  appearance: textfield;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}
+
+// Filling its container, as a dropdown with `fullWidth` does, so the two stack as one column.
+:host(.number-field--full) {
+  display: flex;
+
+  .number-field {
+    inline-size: 100%;
+  }
+}
+
 .number-field {
   inline-size: 5rem;
   // Height is stated from the shared control height, as in every other single-line control, so a row

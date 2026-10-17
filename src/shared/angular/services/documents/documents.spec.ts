@@ -387,10 +387,9 @@ describe('Documents', () => {
 
       expect(title()).toBe('entry.ts');
       expect(registry.get(id)?.icon).toBe(Icon.CODE);
-      expect(registry.get(id)?.ownsToolStrip).toBeUndefined();
     });
 
-    it('whenAWellDocumentCrossesTheMarkdownBoundary_swapsItsPanelIconAndToolStrip', () => {
+    it('whenAWellDocumentCrossesTheMarkdownBoundary_swapsItsPanelIcon', () => {
       const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
       const id: string = documents.createWellDocument(SAMPLE_FILE);
       registry.register({
@@ -405,7 +404,6 @@ describe('Documents', () => {
 
       expect(registry.get(id)?.title).toBe('notes.md');
       expect(registry.get(id)?.icon).toBe(Icon.MARKDOWN);
-      expect(registry.get(id)?.ownsToolStrip).toBe(true);
     });
   });
 });

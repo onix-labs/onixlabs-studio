@@ -1,0 +1,53 @@
+// One language's editor overrides: the second group on a Language Providers page, beneath the
+// server settings, headed the same way.
+:host {
+  display: block;
+  margin-block-start: 1.5rem;
+}
+
+.language-editor-overrides__header {
+  margin-block-end: 0.75rem;
+}
+
+.language-editor-overrides__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.language-editor-overrides__subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// The row's control cluster: the Override tick ahead of the setting's own control, which stays
+// visible but disabled until the override is on so the global value it would replace can be seen.
+// A grid with a fixed control column, rather than a flex row, so the ticks line up down the page
+// whatever the width of the control beside each — a toggle is a fraction of a dropdown's width, and
+// a flex row would let the tick drift with it.
+.override {
+  display: grid;
+  grid-template-columns: auto 10rem;
+  align-items: center;
+  column-gap: 1rem;
+}
+
+// The control keeps the page's right edge: a dropdown stretches to fill its column, a toggle sits at
+// the column's end, so the controls line up on the right as the ticks do on the left.
+.override > app-dropdown {
+  display: flex;
+}
+
+.override > app-toggle {
+  justify-self: end;
+}
+
+.override__check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  cursor: default;
+  user-select: none;
+}

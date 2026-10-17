@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
@@ -8,6 +8,8 @@ import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbo
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { ContainersCommands } from '../containers-commands/containers-commands';
+import { ContainersClient } from '../client/containers-client';
+import { ContainersAgentPanelState } from '../containers-agent/containers-agent-panel-state';
 
 /**
  * The contextual ribbon shown while a Containers tab is active. Its actions drive the active view's
@@ -33,6 +35,11 @@ export class ContainersRibbon {
   private readonly commands: ContainersCommands = inject(ContainersCommands);
 
   /**
+   * Holds the engine client, asked whether the engine's CLI is installed.
+   */
+  private readonly client: ContainersClient = inject(ContainersClient);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -46,6 +53,29 @@ export class ContainersRibbon {
    * Gets whether the selected container is running.
    */
   protected readonly selectionRunning: Signal<boolean> = this.commands.selectionRunning;
+
+  /**
+   * Gets whether the selected container is paused (#974).
+   */
+  protected readonly selectionPaused: Signal<boolean> = this.commands.selectionPaused;
+
+  /**
+   * Holds whether the docked agent is showing (#969).
+   */
+  private readonly agentPanel: ContainersAgentPanelState = inject(ContainersAgentPanelState);
+
+  /**
+   * Gets whether the docked agent is showing.
+   */
+  protected readonly agentShown: Signal<boolean> = this.agentPanel.visible;
+
+  /**
+   * Gets whether a shell can be offered at all: it needs the engine's own CLI on this machine, which
+   * Studio no longer downloads (#973).
+   */
+  protected readonly shellAvailable: Signal<boolean> = computed(
+    (): boolean => this.client.engineCli() !== null,
+  );
 
   /**
    * Contributes this tab's menu while the containers ribbon is mounted.
@@ -82,12 +112,16 @@ export class ContainersRibbon {
             enabled: this.hasSelection(),
             run: (): void => this.onLogs(),
           },
-          {
-            id: 'containers.shell',
-            label: 'Shell',
-            enabled: this.selectionRunning(),
-            run: (): void => this.onShell(),
-          },
+          ...(this.shellAvailable()
+            ? [
+                {
+                  id: 'containers.shell',
+                  label: 'Shell',
+                  enabled: this.selectionRunning(),
+                  run: (): void => this.onShell(),
+                },
+              ]
+            : []),
           MENU_SEPARATOR,
           {
             id: 'containers.refresh',
@@ -133,6 +167,22 @@ export class ContainersRibbon {
   }
 
   /**
+   * Restarts the selected container (#974).
+   */
+  protected onRestart(): void {
+    this.log.info('containers.ribbon', 'Restart clicked');
+    this.commands.restart();
+  }
+
+  /**
+   * Pauses or resumes the selected container (#974).
+   */
+  protected onTogglePause(): void {
+    this.log.info('containers.ribbon', 'Pause/resume clicked');
+    this.commands.togglePause();
+  }
+
+  /**
    * Opens a shell in the selected running container.
    */
   protected onShell(): void {
@@ -146,5 +196,12 @@ export class ContainersRibbon {
   protected onRefresh(): void {
     this.log.info('containers.ribbon', 'Refresh clicked');
     this.commands.refresh();
+  }
+
+  /**
+   * Shows or hides the docked agent.
+   */
+  protected onToggleAgent(): void {
+    this.agentPanel.toggle();
   }
 }

@@ -126,7 +126,7 @@ export function agentPromptFor(issue: ForgeIssue, repository: ForgeRepositoryRef
   const where: string = repository === null ? '' : ` in ${repository.owner}/${repository.name}`;
   const link: string = issue.url.length === 0 ? '' : `\n${issue.url}`;
   return (
-    `Read GitHub issue #${issue.number}${where} — "${issue.title}".${link}\n\n` +
+    `Read ${repository === null ? 'the' : repository.provider} issue #${issue.number}${where} — "${issue.title}".${link}\n\n` +
     'Summarise what it asks for, then tell me how you would approach it in this codebase. ' +
     "Don't make any changes yet."
   );

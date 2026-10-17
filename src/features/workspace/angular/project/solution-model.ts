@@ -389,6 +389,13 @@ export class SolutionModel {
   }
 
   /**
+   * Clears the selection, so no row is selected — what a click on the tree's empty space asks for.
+   */
+  public clearSelection(): void {
+    this.selectedKeySignal.set(null);
+  }
+
+  /**
    * Reveals a file in the tree: expands the chain of rows leading to it (the root, its solution
    * folders, its project, and its item folders) and selects its row. Used to keep the Solution
    * Explorer's selection following the active document. Does nothing when the file is not part of a

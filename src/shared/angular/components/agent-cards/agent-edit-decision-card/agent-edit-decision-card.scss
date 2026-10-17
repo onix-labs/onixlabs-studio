@@ -1,0 +1,40 @@
+:host {
+  display: block;
+}
+
+.agent__ask-question {
+  margin: 0;
+  font-weight: 600;
+  color: var(--agent-card-title-color);
+  // ⛔ No `pre-wrap` (unlike the question card's title, which is the agent's own text): this title is
+  // the template's, and pre-wrap kept the whitespace before "Apply" as a visible leading space.
+  word-break: break-word;
+
+  // One weight for the whole title: the name inside it is not heavier than the words around it.
+  strong {
+    font-weight: inherit;
+  }
+}
+
+.agent__permission-detail {
+  display: block;
+  // It sits inside the title's paragraph, but is not the title.
+  font-weight: 400;
+  // Muted by colour rather than opacity, which would fade the count chips inside it too.
+  color: var(--form-muted-foreground-color);
+  margin-block-start: 0.4rem;
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.agent__ask-state,
+.agent__ask-hint {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+// The summary's counts as chips: added in the success tone, removed in the danger tone, with figures
+// that line up.
+.agent__detail-count {
+  font-variant-numeric: tabular-nums;
+}

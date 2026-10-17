@@ -9,7 +9,8 @@
   block-size: 100%;
   min-block-size: 0;
   background: var(--dock-tab-background-color--active);
-  color: var(--body-foreground-color);
+  // The explorers' tree text colour, so a branch reads like an unmodified file does there.
+  color: var(--dock-tab-foreground-color);
   font-size: 0.8rem;
 }
 // The uncommitted-changes badge on the checked-out branch's row. Unlike the other row actions it is
@@ -69,6 +70,38 @@
   font-style: italic;
 }
 
+// A collapsed worktree's checked-out branch, after its name: muted, as the rest of the row's facts are.
+.rail__worktree-branch {
+  margin-inline-start: 0.2rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// A worktree row's glyphs: whether the view is showing it, and a warning when another worktree has
+// the same branch checked out.
+.rail__worktree-visibility,
+.rail__worktree-warning {
+  flex-shrink: 0;
+  margin-inline-start: 0.35rem;
+  font-size: 0.8rem;
+}
+
+// A worktree the view is not showing: a closed eye, muted and dimmed so it recedes beside the
+// accent eye of the one it is.
+.rail__worktree-visibility {
+  color: var(--form-muted-foreground-color);
+  opacity: 0.6;
+
+  // The worktree the view is showing: its open eye in the accent, at full strength.
+  &--shown {
+    color: var(--accent-color);
+    opacity: 1;
+  }
+}
+
+.rail__worktree-warning {
+  color: var(--warning-color);
+}
+
 // The rail's dialogs (new branch, drop stash), rendered in the app's default modal card; these
 // classes style only their content.
 .rail__dialog-title {
@@ -106,18 +139,6 @@
   cursor: default;
 }
 
-.rail__dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-
-  // A one-word answer gives a button almost nothing to be as wide as, so every answer is floored to
-  // a width that reads as a row of choices rather than a row of small labels. The inner control
-  // flexes to its host, so the floor belongs on the host.
-  app-button {
-    min-inline-size: 6rem;
-  }
-}
 // A pull-request or action status badge, pushed to the trailing edge of the row. Sized explicitly
 // rather than inheriting the rail's 0.8rem: this is the one thing on the row a user scans for, so it
 // matches the row's leading icon instead of shrinking to the text.
@@ -135,7 +156,29 @@
     color: var(--error-color);
   }
 
+  // Running or queued: the warning tone, fading in and out as the pulse dot did.
+  &--running {
+    color: var(--warning-color);
+    animation: rail-status-pulse 1.4s ease-in-out infinite;
+  }
+
+  // Stopped part-way: not a failure, so muted rather than red.
+  &--cancelled {
+    color: var(--form-muted-foreground-color);
+  }
+
   &--available {
     color: var(--form-muted-foreground-color);
+  }
+}
+
+@keyframes rail-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.1;
   }
 }

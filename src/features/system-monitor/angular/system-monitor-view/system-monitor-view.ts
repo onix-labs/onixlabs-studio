@@ -7,16 +7,27 @@ import {
   inject,
   input,
   InputSignal,
+  OnInit,
   Signal,
   signal,
   untracked,
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Log } from '@shared/angular/services/log/log';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
+import { Settings } from '@shared/angular/services/settings/settings';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
 import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
 import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
@@ -25,6 +36,16 @@ import {
   SystemMonitorCommandHandler,
   SystemMonitorCommands,
 } from '../system-monitor-commands/system-monitor-commands';
+import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
+import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { SystemMonitorAgentCapabilities } from '../system-monitor-agent/system-monitor-agent-capabilities';
+import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-agent-panel';
 
 /**
  * The severities shown by default: the notable ones. Trace and debug are fine-grained diagnostics,
@@ -44,6 +65,62 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
 ];
 
 /**
+ * What the System Monitor tab's status strip reports.
+ */
+export interface SystemMonitorSummary {
+  /**
+   * Gets the log session being read, in words.
+   */
+  readonly session: string;
+
+  /**
+   * Gets how many records the session holds.
+   */
+  readonly records: number;
+
+  /**
+   * Gets how many of them the severity and text filters show.
+   */
+  readonly shown: number;
+
+  /**
+   * Gets how many of the session's records are errors.
+   */
+  readonly errors: number;
+
+  /**
+   * Gets how many of the session's records are warnings.
+   */
+  readonly warnings: number;
+
+  /**
+   * Gets how many records are selected.
+   */
+  readonly selected: number;
+
+  /**
+   * Gets Studio's own CPU share, formatted, or null before it is read.
+   */
+  readonly appCpu: string | null;
+
+  /**
+   * Gets Studio's own memory, formatted, or null before it is read.
+   */
+  readonly appMemory: string | null;
+}
+
+/**
+ * The chip tone each severity is labelled in: trace quiet, then rising to danger for an error.
+ */
+const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
+  trace: 'neutral',
+  debug: 'info',
+  info: 'accent',
+  warning: 'warning',
+  error: 'danger',
+};
+
+/**
  * The System Monitor tab. This phase (epic #395 P2 / #397) is the per-session **log audit**: a live,
  * filterable table of every log record — main-process and every renderer window — for the selected app
  * session, sourced from the P1 logging service. The live session streams in over the record push; a
@@ -52,12 +129,37 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
  */
 @Component({
   selector: 'app-system-monitor-view',
-  imports: [Button, Dropdown, TextField, Table, TableRowDef, MetricTile],
+  imports: [
+    Chip,
+    Button,
+    ButtonRow,
+    Dropdown,
+    TextField,
+    Table,
+    TableRowDef,
+    MetricTile,
+    Panel,
+    PanelLayout,
+    SystemMonitorAgentPanel,
+  ],
+  // The agent and its conversation live on the VIEW, not the docked panel (#966): the panel mounts on
+  // first show and can be closed, and a run in flight must outlive both.
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'monitor' },
+    SystemMonitorAgentCapabilities,
+  ],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SystemMonitorView {
+export class SystemMonitorView implements OnInit {
+  /**
+   * Gets the edges the resources panel may sit on: only its own, since it is part of the view.
+   */
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+
   /**
    * Gets the severities in display order, exposed for the filter chips.
    */
@@ -87,6 +189,18 @@ export class SystemMonitorView {
    * Holds the metrics client the tiles sample through.
    */
   private readonly metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+
+  /**
+   * Holds how often the machine is sampled while the monitor shows, in milliseconds, or 0 when the
+   * user paused it (the Refresh rate setting).
+   */
+  private readonly refreshRate: Signal<number> = inject(Settings).systemMonitorRefreshRate;
+
+  /**
+   * Holds whether the window is on screen. A tab in front of a minimised or covered window is still
+   * "active"; nothing it shows can be seen, so its feeds pause (audit P4).
+   */
+  private readonly onScreen: Signal<boolean> = inject(DocumentVisibility).visible;
 
   /**
    * Holds the most recent metrics sample, or null before the first arrives.
@@ -406,6 +520,88 @@ export class SystemMonitorView {
   });
 
   /**
+   * Gets what the tab's status strip reports (#882): the log session being read, how many of its
+   * records the filters show, its errors and warnings (counted over the whole session, so a filter
+   * cannot hide that they exist), the selection, and Studio's own CPU and memory as the tiles read
+   * them. Read by the strip through the injector this view publishes.
+   */
+  public readonly summary: Signal<SystemMonitorSummary> = computed((): SystemMonitorSummary => {
+    const records: readonly LogRecord[] = this.records();
+    const viewed: LogSession | undefined = this.sessions().find(
+      (session: LogSession): boolean => session.id === this.selectedSessionValue(),
+    );
+    return {
+      session:
+        this.viewingLive() || viewed === undefined
+          ? 'Current session'
+          : this.formatDate(viewed.startedAt),
+      records: records.length,
+      shown: this.filtered().length,
+      errors: records.filter((record: LogRecord): boolean => record.severity === 'error').length,
+      warnings: records.filter((record: LogRecord): boolean => record.severity === 'warning')
+        .length,
+      selected: this.selectedCount(),
+      appCpu: this.cpuAppValue(),
+      appMemory: this.memoryAppValue(),
+    };
+  });
+
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts the tab's status
+   * (#882) inside it.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
+   * Registers the view's agent with Mission Control and the requests inbox for the tab's whole life,
+   * service-only — the docked panel mounts on first show (#966).
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'monitor',
+  });
+
+  /**
+   * Registers the capabilities the agent reads the logs through, for the view's life.
+   */
+  private readonly agentCapabilities: SystemMonitorAgentCapabilities = inject(
+    SystemMonitorAgentCapabilities,
+  );
+
+  /**
+   * Holds whether the agent panel has been shown, after which it stays mounted so a closed panel keeps
+   * its place and its conversation.
+   */
+  protected readonly agentMounted: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether the agent panel is showing.
+   */
+  protected readonly agentVisible: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Publishes this view's injector to the status strip and its agent to Mission Control, now that the
+   * tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+    this.agentHost.register(this.tabId());
+  }
+
+  /**
+   * Shows the agent panel, or hides it.
+   */
+  protected toggleAgent(): void {
+    const showing: boolean = !this.agentVisible();
+    if (showing) {
+      this.agentMounted.set(true);
+    }
+    this.agentVisible.set(showing);
+  }
+
+  /**
    * Gets the filtered records adapted to the table's row shape, oldest first.
    */
   protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
@@ -429,6 +625,8 @@ export class SystemMonitorView {
    */
   private readonly commandHandler: SystemMonitorCommandHandler = {
     hasRecords: this.hasRecords,
+    agentShown: this.agentVisible,
+    toggleAgent: (): void => this.toggleAgent(),
     refresh: (): void => this.refresh(),
     clearFilters: (): void => this.clearFilters(),
     copy: (): void => void this.copy(),
@@ -465,31 +663,62 @@ export class SystemMonitorView {
       this.accept(sample),
     );
 
+    // Whether this view has asked the backend to sample (one start per stop, whatever the rate does).
+    let sampling: boolean = false;
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribeSamples);
     destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
-    destroy.onDestroy((): void => this.metrics.stop());
+    destroy.onDestroy((): void => {
+      if (sampling) {
+        this.metrics.stop();
+      }
+    });
 
-    // Sampling, the live record stream and the ribbon handler follow the tab's visibility: nothing
-    // is sampled and no record push is processed while the monitor is hidden (the performance-audit
-    // posture). Reactivation reloads the viewed session first, catching up on whatever was recorded
-    // while the stream was down.
+    // The ribbon handler follows the tab: its actions belong to the tab in front, on screen or not.
     effect((): void => {
-      const active: boolean = this.isActive();
+      if (this.isActive()) {
+        this.commands.register(this.commandHandler);
+      } else {
+        this.commands.unregister(this.commandHandler);
+      }
+    });
+
+    // The live record stream follows what can be seen: no record push is processed while the monitor
+    // is hidden behind another tab or the window is off screen (the performance-audit posture).
+    // Reactivation reloads the viewed session first, catching up on whatever was recorded while the
+    // stream was down.
+    effect((): void => {
+      const showing: boolean = this.isActive() && this.onScreen();
       // The reactive dependency is the visibility alone: the catch-up reload reads the selected
-      // session synchronously, and tracking that here would re-run this effect (and double-start
-      // the ref-counted sampling) every time the viewed session changes.
+      // session synchronously, and tracking that here would re-run this effect every time the viewed
+      // session changes.
       untracked((): void => {
-        if (active) {
-          this.commands.register(this.commandHandler);
-          this.metrics.start();
+        if (showing) {
           this.subscribeToLiveRecords();
         } else {
-          this.commands.unregister(this.commandHandler);
-          this.metrics.stop();
           this.unsubscribeFromLiveRecords();
         }
+      });
+    });
+
+    // Sampling follows what can be seen and the user's refresh rate: nothing is sampled while the
+    // monitor is hidden, the window is off screen or the rate is paused, and a rate change re-times a
+    // running loop without restarting it (restarting would reset the CPU baseline and blank a tick).
+    // The backend's ref-count sees one start per stop, whatever the rate does in between.
+    effect((): void => {
+      const rate: number = this.refreshRate();
+      const wanted: boolean = this.isActive() && this.onScreen() && rate > 0;
+      untracked((): void => {
+        if (wanted) {
+          this.metrics.setRate(rate);
+        }
+        if (wanted && !sampling) {
+          this.metrics.start();
+        } else if (!wanted && sampling) {
+          this.metrics.stop();
+        }
+        sampling = wanted;
       });
     });
   }
@@ -710,6 +939,15 @@ export class SystemMonitorView {
    */
   protected severityLabel(severity: Severity): string {
     return severity.toUpperCase();
+  }
+
+  /**
+   * Gets the chip tone a severity is labelled in, rising with how severe it is.
+   * @param severity The severity.
+   * @returns Returns the tone.
+   */
+  protected severityTone(severity: Severity): ChipTone {
+    return SEVERITY_TONES[severity];
   }
 
   /**

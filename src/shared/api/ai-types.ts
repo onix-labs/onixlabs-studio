@@ -22,6 +22,7 @@ export {
   DELETE_BINARY_BYTES,
   WRITE_BINARY_ASSEMBLY,
   ASK_USER,
+  PROPOSE_WORKSPACE,
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
   COMMIT_EDIT_PREVIEW,
   CANCEL_EDIT_PREVIEW,
@@ -35,6 +36,9 @@ export {
   SET_API_VARIABLE,
   OPEN_DOCUMENT,
   SAVE_DOCUMENT,
+  READ_DOCUMENT,
+  EDIT_DOCUMENT,
+  REPLACE_DOCUMENT,
   OPEN_TERMINAL,
   OPEN_FILE,
   LIST_OPEN_DOCUMENTS,
@@ -49,6 +53,40 @@ export {
   AGENT_SURFACES,
   isAgentSurface,
   LOAD_SKILL,
+  LIST_LOG_SESSIONS,
+  QUERY_LOGS,
+  READ_SYSTEM_METRICS,
+  SET_LOG_LEVEL,
+  LIST_LOCAL_MODELS,
+  SEARCH_MODEL_CATALOG,
+  READ_MACHINE_FACTS,
+  DOWNLOAD_MODEL,
+  DELETE_MODEL,
+  LIST_PROMPT_PROFILES,
+  SAVE_PROMPT_PROFILE,
+  DELETE_PROMPT_PROFILE,
+  LIST_SKILLS,
+  READ_SKILL,
+  LIST_SKILL_TAGS,
+  SAVE_SKILL,
+  DELETE_SKILL,
+  LIST_PLUGINS,
+  READ_WORKSPACE_LANGUAGES,
+  INSTALL_PLUGIN,
+  UNINSTALL_PLUGIN,
+  LIST_CONTAINERS,
+  LIST_CONTAINER_IMAGES,
+  LIST_CONTAINER_VOLUMES,
+  READ_CONTAINER_LOGS,
+  CONTROL_CONTAINER,
+  REMOVE_CONTAINER,
+  PULL_IMAGE,
+  REMOVE_IMAGE,
+  REMOVE_VOLUME,
+  RUN_CONTAINER,
+  TOOL_VIEW_SURFACES,
+  isToolViewSurface,
+  withholdsBuiltInTools,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
 export {
@@ -57,6 +95,7 @@ export {
   normalizeLanguage,
   readPromptScope,
   scopeMatches,
+  skillScopeMatches,
   scopeSpecificity,
   sortByScope,
 } from './ai/ai-prompt-scope';
@@ -83,7 +122,12 @@ export {
   AI_REMOTE_CONTROL_POSTURES,
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
-export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export type {
+  AiProviderKind,
+  AiAuthKind,
+  AiConnection,
+  AiModelCheck,
+} from './ai/ai-connection-types';
 export { API_KEY_AUTH, NO_AUTH } from './ai/ai-connection-types';
 export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
 export {
@@ -118,7 +162,10 @@ export type {
   AiToolStartEvent,
   AiToolEndEvent,
   AiPermissionEvent,
+  AiProposedChange,
+  AiWorkspaceProposalEvent,
   AiInputChoice,
+  AiInputSelection,
   AiInputRequestEvent,
   AiEditDecisionEvent,
   AiStatusEvent,
@@ -131,8 +178,10 @@ export type {
   AiBackgroundTaskEvent,
   AiEvent,
 } from './ai/ai-event-types';
+export { UNSCOPED_BRIDGE_REQUEST } from './ai/ai-bridge-types';
 export type {
   AiBridgeRequest,
+  AiBridgeScope,
   AiBridgeReply,
   AiPermissionReply,
   AiPermissionRemember,

@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import {
   ForgeRepository,
   ForgeSection,
@@ -22,10 +23,11 @@ import { Icon } from '@shared/angular/icons/icon';
 import { TreeMenuSelection, TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-control/git-output';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
@@ -41,6 +43,12 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
+import {
+  REPOSITORY_WORKTREES,
+  RepositoryWorktree,
+  RepositoryWorktrees,
+  WorktreeBranchDeletion,
+} from '@shared/angular/services/repository-worktrees/repository-worktrees';
 
 import { browsableRemoteUrl, SourceControlSidebar } from './source-control-sidebar';
 
@@ -410,11 +418,30 @@ class FakeForgeRepository {
    */
   public readonly repositoryRef: Signal<ForgeRepositoryRef | null> =
     signal<ForgeRepositoryRef | null>({
-      kind: 'github',
+      provider: 'GitHub',
       host: 'github.com',
       owner: 'onix-labs',
       name: 'onixlabs-studio',
     });
+
+  /**
+   * Holds whether a hosting plugin serves the repository.
+   */
+  public readonly hasForge: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds what the repository allows, or null for everything.
+   */
+  public allowed: ReadonlySet<string> | null = null;
+
+  /**
+   * Determines whether the repository allows a capability.
+   * @param capability The capability.
+   * @returns Returns true when it is allowed.
+   */
+  public supports(capability: string): boolean {
+    return this.allowed === null || this.allowed.has(capability);
+  }
 
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
@@ -490,7 +517,7 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
     url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
     draft: false,
     headRef: 'feature/thing',
-    headRefspec: 'refs/pull/7/head',
+    fetchRef: 'refs/pull/7/head',
     checks: 'succeeded',
     ...overrides,
   };
@@ -524,7 +551,7 @@ function pullRequestRow(overrides: Partial<ForgePullRequest> = {}): TreeRow {
  */
 function workflowRun(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
   return {
-    id: 99,
+    id: '99',
     name: 'CI',
     status: 'succeeded',
     url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
@@ -607,6 +634,62 @@ class FakeConversation {
   }
 }
 
+/**
+ * Stands in for the workspace feature's worktrees, recording what the panel asks of it.
+ */
+class FakeWorktrees implements RepositoryWorktrees {
+  public readonly worktrees: WritableSignal<readonly RepositoryWorktree[] | null> = signal<
+    readonly RepositoryWorktree[] | null
+  >(null);
+
+  public readonly busy: WritableSignal<boolean> = signal<boolean>(false);
+
+  public readonly canConvert: WritableSignal<boolean> = signal<boolean>(false);
+
+  public readonly convertBlocker: WritableSignal<string | null> = signal<string | null>(null);
+
+  public readonly calls: string[] = [];
+
+  public activate(id: string): void {
+    this.calls.push(`activate:${id}`);
+  }
+
+  public requestAdd(): void {
+    this.calls.push('add');
+  }
+
+  public rename(id: string, name: string): void {
+    this.calls.push(`rename:${id}:${name}`);
+  }
+
+  public requestRemove(id: string): void {
+    this.calls.push(`remove:${id}`);
+  }
+
+  public requestConvert(): void {
+    this.calls.push('convert');
+  }
+
+  public refresh(): void {
+    this.calls.push('refresh');
+  }
+
+  /**
+   * Holds how a branch delete answers, so a refusal for unmerged commits can be staged.
+   */
+  public deletion: WorktreeBranchDeletion = 'deleted';
+
+  public deleteBranch(id: string, name: string, force: boolean): Promise<WorktreeBranchDeletion> {
+    this.calls.push(`deleteBranch:${id}:${name}:${force}`);
+    return Promise.resolve(this.deletion);
+  }
+
+  public createBranch(id: string, name: string, checkout: boolean): Promise<boolean> {
+    this.calls.push(`createBranch:${id}:${name}:${checkout}`);
+    return Promise.resolve(true);
+  }
+}
+
 describe('SourceControlSidebar', () => {
   let component: SourceControlSidebar;
   let fixture: ComponentFixture<SourceControlSidebar>;
@@ -618,6 +701,7 @@ describe('SourceControlSidebar', () => {
   let agent: FakeAgent;
   let conversation: FakeConversation;
   let revealed: string[];
+  let worktrees: FakeWorktrees;
 
   const panel: DockPanel = {
     id: 'repository',
@@ -634,10 +718,13 @@ describe('SourceControlSidebar', () => {
     agent = new FakeAgent();
     conversation = new FakeConversation();
     revealed = [];
+    worktrees = new FakeWorktrees();
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
+        // Flat unless a test gives it worktrees, so every other test sees the panel it always did.
+        { provide: REPOSITORY_WORKTREES, useValue: worktrees },
         // The real seam over the fakes below: what Open in Agent does is its behaviour now, and the
         // rail's job is only to ask it.
         IssueAgent,
@@ -675,7 +762,7 @@ describe('SourceControlSidebar', () => {
     }).compileComponents();
 
     repository = TestBed.inject(Repository);
-    repository.bind({ root: '/repo', name: 'repo' });
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
     await repository.refresh();
 
     fixture = TestBed.createComponent(SourceControlSidebar);
@@ -694,6 +781,59 @@ describe('SourceControlSidebar', () => {
     expect(text).toContain('Tags');
     expect(text).not.toContain('origin');
     expect(text).not.toContain('v1.0.0');
+  });
+
+  it('render_hidesTheSectionsAndCommandsThePluginDoesNotSupport', () => {
+    // A plugin without stashes or tags (#818): neither section is offered, nor are their commands.
+    vi.spyOn(repository, 'supports').mockImplementation(
+      (capability: string): boolean => capability !== 'stash' && capability !== 'tags',
+    );
+    // A fresh rail, so its computed rows read the spied answer rather than a cached one.
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+    const more: readonly string[] = (
+      gated.componentInstance as unknown as { moreItems(): readonly { label: string }[] }
+    )
+      .moreItems()
+      .map((item: { label: string }): string => item.label);
+
+    expect(text).toContain('Remote');
+    expect(text).not.toContain('Stashes');
+    expect(text).not.toContain('Tags');
+    expect(more).not.toContain('Stash Changes');
+    expect(more).not.toContain('New Tag…');
+  });
+
+  it('render_withNoHostingPluginServingTheRepository_leavesTheForgeSectionsOut', () => {
+    // #820: with GitHub uninstalled the sections are absent, not broken.
+    forge.hasForge.set(false);
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Remote');
+    expect(text).not.toContain('Pull Requests');
+    expect(text).not.toContain('Issues');
+    expect(text).not.toContain('Actions');
+  });
+
+  it('render_leavesOutWhatTheRepositoryDoesNotAllow', () => {
+    // #819's acceptance: Issues switched off on the repository hides Issues, though the plugin has it.
+    forge.allowed = new Set<string>(['pullRequests', 'ciRuns']);
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Pull Requests');
+    expect(text).toContain('Actions');
+    expect(text).not.toContain('Issues');
   });
 
   it('render_theCheckedOutBranchReadsChangesThenAheadThenBehind', () => {
@@ -2046,12 +2186,11 @@ describe('SourceControlSidebar', () => {
       expand();
 
       const host: HTMLElement = fixture.nativeElement as HTMLElement;
-      const dot: HTMLElement | null = host.querySelector('app-pulse-dot.rail__status');
-      expect(dot).not.toBeNull();
-      expect(dot?.classList.contains('pulse-dot--pulsing')).toBe(true);
-      expect(dot?.classList.contains('pulse-dot--warning')).toBe(true);
-      // No icon badge competes with it.
-      expect(host.querySelector('app-icon.rail__status')).toBeNull();
+      // The duotone circle, pulsing in the warning tone (`rail__status--running`), and only that.
+      const badges: NodeListOf<HTMLElement> = host.querySelectorAll('.rail__status');
+      expect(badges.length).toBe(1);
+      expect(badges[0].classList.contains('rail__status--running')).toBe(true);
+      expect(badges[0].innerHTML).toContain('ph-circle');
     });
 
     it('usesFilledBadgesForASettledOutcome', () => {
@@ -2114,7 +2253,16 @@ describe('SourceControlSidebar', () => {
       // no items, which only works if this returns none.
       const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
 
-      expect(internals.contextMenuFor(sectionRow('tags', 'Tags'))).toEqual([]);
+      // A section's header has its own menu now (#939); a placeholder row ("No tags") has nothing.
+      expect(
+        internals.contextMenuFor({
+          id: 'empty:tags',
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: { kind: 'empty', icon: Icon.TAG, label: 'No tags' },
+        }),
+      ).toEqual([]);
       expect(
         internals.contextMenuFor({
           id: 'branch:main',
@@ -2380,6 +2528,22 @@ describe('SourceControlSidebar', () => {
       ).toEqual(['Re-run', 'Open on GitHub']);
     });
 
+    it('aRunOffersNeitherCommand_toAUserTheRepositoryDoesNotAllow', () => {
+      // A user without push access can see runs but not re-run or cancel them.
+      forge.allowed = new Set<string>(['ciRuns']);
+
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'running' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'failed' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open on GitHub']);
+    });
+
     it('openingAnIssueOrRunReachesTheBrowser', () => {
       internals().onContextAction({ itemId: 'issue.open', row: issueRow() });
       internals().onContextAction({ itemId: 'run.open', row: runRow() });
@@ -2394,7 +2558,7 @@ describe('SourceControlSidebar', () => {
       // Re-running spends CI minutes and can redeploy; cancelling abandons work in flight.
       internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
 
-      expect(internals().pendingRerun()?.id).toBe(99);
+      expect(internals().pendingRerun()?.id).toBe('99');
       expect(forge.commands).toEqual([]);
 
       internals().confirmRerun();
@@ -2415,10 +2579,28 @@ describe('SourceControlSidebar', () => {
     it('cancelRun_isConfirmedToo', () => {
       internals().onContextAction({ itemId: 'run.cancel', row: runRow({ status: 'running' }) });
 
-      expect(internals().pendingCancel()?.id).toBe(99);
+      expect(internals().pendingCancel()?.id).toBe('99');
       internals().confirmCancelRun();
 
       expect(forge.commands).toEqual(['cancel:99']);
+    });
+
+    it('aStoppedRun_showsTheXCircle_mutedRatherThanRed', () => {
+      // Cancelled is neither an outcome to celebrate nor a failure to act on: the run simply stopped.
+      forge.runSection.set({
+        state: 'ready',
+        items: [workflowRun({ status: 'cancelled' })],
+        message: null,
+        stale: false,
+      });
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.rail__status--cancelled',
+      );
+      expect(badge?.innerHTML).toContain('ph-duotone ph-x-circle');
     });
 
     it('aQueuedRunPulses_becauseItIsWorkTheUserIsWaitingOn', () => {
@@ -2433,7 +2615,7 @@ describe('SourceControlSidebar', () => {
       fixture.detectChanges();
 
       expect(
-        (fixture.nativeElement as HTMLElement).querySelector('app-pulse-dot.rail__status'),
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__status--running'),
       ).not.toBeNull();
     });
   });
@@ -2558,14 +2740,29 @@ describe('SourceControlSidebar', () => {
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
       ).toEqual([
+        'Add Remote…',
         'New Branch…',
         'New Tag…',
-        'Add Remote…',
         'Stash Changes',
         'Fetch',
         'Push All Tags to origin',
-        'Refresh',
       ]);
+    });
+
+    it('refresh_isOnTheStripItself_notTheMenu', () => {
+      // Matthew, #882: the one repository command pressed often enough to earn a button.
+      const repository: Repository = TestBed.inject(Repository);
+      const refresh: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(repository, 'refresh')
+        .mockResolvedValue(undefined);
+      const button: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        'app-explorer-toolbar button[aria-label="Refresh"]',
+      );
+
+      button?.click();
+
+      expect(button).not.toBeNull();
+      expect(refresh).toHaveBeenCalled();
     });
 
     it('disablesStash_whenThereIsNothingToStash', () => {
@@ -2612,16 +2809,14 @@ describe('SourceControlSidebar', () => {
       expect(forge.loads).toBe(3);
     });
 
-    it('theSectionHeadingsReadLikeTheExplorersRootRows', () => {
-      // Bold body text, not the small uppercase treatment the rail used to give them.
-      const heading: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-        '.tree-name.bold',
-      );
+    it('theSectionHeadings_areNotBold_norTheOldSmallUppercaseTreatment', () => {
+      // Nothing in the repository tree is bold (Matthew, #882): headings read as the explorers'
+      // folders do, by their icon and their level.
+      const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
-      expect(heading).not.toBeNull();
-      expect(
-        (fixture.nativeElement as HTMLElement).querySelector('.rail__section-name'),
-      ).toBeNull();
+      expect(element.querySelector('.tree-name')).not.toBeNull();
+      expect(element.querySelector('.tree-name.bold')).toBeNull();
+      expect(element.querySelector('.rail__section-name')).toBeNull();
     });
   });
 
@@ -2755,6 +2950,421 @@ describe('SourceControlSidebar', () => {
       internals.collapseAll();
 
       expect(forge.watched.size).toBe(0);
+    });
+  });
+
+  describe('section menus (#939)', () => {
+    /**
+     * Reads a section header's menu, without its separators.
+     * @param key The section key.
+     * @returns Returns the item labels.
+     */
+    function sectionLabels(key: string): string[] {
+      return component
+        .contextMenuFor(sectionRow(key, key))
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label);
+    }
+
+    /**
+     * Chooses an item from a section header's menu.
+     * @param key The section key.
+     * @param itemId The item chosen.
+     */
+    function choose(key: string, itemId: string): void {
+      (component as unknown as { onContextAction(c: TreeMenuSelection): void }).onContextAction({
+        itemId,
+        row: sectionRow(key, key),
+      });
+    }
+
+    it('theMoreMenu_isGroupedInTheOrderEveryMenuShares', () => {
+      // Add, then new, then stash, then fetch; a separator only between groups that are there.
+      const items: readonly MenuItem[] = (
+        component as unknown as { moreItems(): readonly MenuItem[] }
+      ).moreItems();
+
+      expect(
+        items.map((item: MenuItem): string => (item.separator === true ? '|' : item.label)),
+      ).toEqual([
+        'Add Remote…',
+        '|',
+        'New Branch…',
+        'New Tag…',
+        '|',
+        'Stash Changes',
+        '|',
+        'Fetch',
+        'Push All Tags to origin',
+      ]);
+    });
+
+    it('fetch_isTheCloudWithTheArrowDown', () => {
+      // The cloud alone is a remote; fetching from one is the arrow coming down from it.
+      const fetch: MenuItem | undefined = component
+        .contextMenuFor(sectionRow('remote', 'Remote'))
+        .find((item: MenuItem): boolean => item.label === 'Fetch All');
+
+      expect(fetch?.icon).toBe(Icon.CLOUD_DOWN);
+    });
+
+    it('eachSection_offersWhatMakesSomethingInIt', () => {
+      expect(sectionLabels('local')).toEqual(['New Branch…']);
+      expect(sectionLabels('remote')).toEqual(['Add Remote…', 'Fetch All']);
+      expect(sectionLabels('tags')[0]).toBe('New Tag…');
+      expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
+      expect(sectionLabels('pullRequests')).toEqual(['Refresh']);
+      expect(sectionLabels('issues')).toEqual(['Refresh']);
+      expect(sectionLabels('actions')).toEqual(['Refresh']);
+    });
+
+    it('aSectionsCommand_isTheStripsOwn', () => {
+      choose('local', 'repo.newBranch');
+      choose('remote', 'repo.addRemote');
+
+      const internals: { branchDialogOpen(): boolean; remoteDialogOpen(): boolean } =
+        component as unknown as { branchDialogOpen(): boolean; remoteDialogOpen(): boolean };
+      expect(internals.branchDialogOpen()).toBe(true);
+      expect(internals.remoteDialogOpen()).toBe(true);
+    });
+
+    it('refresh_rereadsThatSection_evenWhenItHasDataAlready', () => {
+      const before: number = forge.loads;
+
+      choose('issues', 'section.refresh');
+
+      expect(forge.loads).toBe(before + 1);
+    });
+  });
+
+  describe('worktrees in Local', () => {
+    /**
+     * The current worktree (this view's repository: main and develop, on main) and another, a clone
+     * of its own, on feat/x.
+     */
+    const other: RepositoryWorktree = {
+      id: 'w2',
+      label: 'review',
+      path: '/container/w2',
+      branch: 'feat/x',
+      changes: 3,
+      branches: [
+        { name: 'feat/x', ahead: 2, behind: 0 },
+        { name: 'old', ahead: 0, behind: 0 },
+      ],
+      current: false,
+      duplicateBranch: false,
+    };
+    const current: RepositoryWorktree = {
+      ...other,
+      id: 'w1',
+      label: 'main',
+      path: '/container/w1',
+      branch: 'main',
+      changes: 2,
+      branches: [],
+      current: true,
+    };
+
+    function mount(): ComponentFixture<SourceControlSidebar> {
+      const mounted: ComponentFixture<SourceControlSidebar> =
+        TestBed.createComponent(SourceControlSidebar);
+      mounted.componentRef.setInput('panel', panel);
+      mounted.detectChanges();
+      return mounted;
+    }
+
+    function selectedRows(mounted: ComponentFixture<SourceControlSidebar>): readonly string[] {
+      return Array.from(
+        (mounted.nativeElement as HTMLElement).querySelectorAll('[aria-selected="true"]'),
+      ).map((row: Element): string => row.getAttribute('data-tree-id') ?? '');
+    }
+
+    function menuLabels(
+      mounted: ComponentFixture<SourceControlSidebar>,
+      id: string,
+    ): readonly string[] {
+      return mounted.componentInstance
+        .contextMenuFor(row(mounted, id))
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label);
+    }
+
+    function row(mounted: ComponentFixture<SourceControlSidebar>, id: string): TreeRow {
+      const found: TreeRow | undefined = (
+        mounted.componentInstance as unknown as { rows(): readonly TreeRow[] }
+      )
+        .rows()
+        .find((candidate: TreeRow): boolean => candidate.id === id);
+      if (found === undefined) {
+        throw new Error(`No row ${id}`);
+      }
+      return found;
+    }
+
+    it('flat_listsBranches_andSaysItIsASingleCheckout', () => {
+      worktrees.canConvert.set(true);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const text: string = (mounted.nativeElement as HTMLElement).textContent ?? '';
+      const more: readonly string[] = (
+        mounted.componentInstance as unknown as { moreItems(): readonly MenuItem[] }
+      )
+        .moreItems()
+        .map((item: MenuItem): string => item.label);
+
+      expect(text).toContain('Single checkout');
+      expect(
+        (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id^="worktree:"]'),
+      ).toBeNull();
+      expect(more).toContain('Convert to Worktrees…');
+      expect(more).not.toContain('New Worktree…');
+    });
+
+    it('flat_whileTheAgentWorks_offersConvertDisabled_withTheReason', () => {
+      // Converting moves every file in the folder: not while the agent is writing to it. Shown
+      // disabled rather than hidden, so it is plain the command is there and will be back.
+      worktrees.canConvert.set(true);
+      worktrees.convertBlocker.set('The agent is working in this folder.');
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const convert: MenuItem | undefined = (
+        mounted.componentInstance as unknown as { moreItems(): readonly MenuItem[] }
+      )
+        .moreItems()
+        .find((item: MenuItem): boolean => item.label === 'Convert to Worktrees…');
+
+      expect(convert?.disabled).toBe(true);
+      expect(convert?.status).toBe('agent is working');
+    });
+
+    it('worktrees_nestEachWorktreesOwnBranches_andHighlightEveryCheckedOutBranch', () => {
+      // Several branches are in work at once, so every worktree's checked-out branch is highlighted.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w1'));
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+      const ids: readonly string[] = Array.from(
+        (mounted.nativeElement as HTMLElement).querySelectorAll('[data-tree-id]'),
+      ).map((element: Element): string => element.getAttribute('data-tree-id') ?? '');
+
+      expect(ids.slice(1, 7)).toEqual([
+        'worktree:w1',
+        'branch:main',
+        'branch:develop',
+        'worktree:w2',
+        'worktree:w2:branch:feat/x',
+        'worktree:w2:branch:old',
+      ]);
+      expect(selectedRows(mounted)).toEqual(['branch:main', 'worktree:w2:branch:feat/x']);
+      expect((mounted.nativeElement as HTMLElement).textContent).toContain('Worktrees · 2');
+    });
+
+    it('aWorktree_startsCollapsedNamingItsBranch_andOpensOnClick', () => {
+      // Collapsed, the worktrees read as a list of what is in work: each names its checked-out
+      // branch. Expanded, that branch is the highlighted row beneath, so the name is not repeated.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const host: HTMLElement = mounted.nativeElement as HTMLElement;
+      const nameOf: (id: string) => string = (id: string): string =>
+        (host.querySelector(`[data-tree-id="${id}"] .tree-name`)?.textContent ?? '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      expect(host.querySelector('[data-tree-id="worktree:w2:branch:old"]')).toBeNull();
+      expect(nameOf('worktree:w1')).toBe('main (main)');
+      expect(nameOf('worktree:w2')).toBe('review (feat/x)');
+
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      expect(host.querySelector('[data-tree-id="worktree:w2:branch:old"]')).not.toBeNull();
+      expect(nameOf('worktree:w2')).toBe('review');
+    });
+
+    it('aWorktree_isSwitchedToOnDoubleClick', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+
+      mounted.componentInstance.onRowDoubleClick(row(mounted, 'worktree:w2'));
+      // The current worktree is where the view already is: nothing to switch to.
+      mounted.componentInstance.onRowDoubleClick(row(mounted, 'worktree:w1'));
+      expect(worktrees.calls).toEqual(['activate:w2']);
+    });
+
+    it('aWorktreesMenu_switchesFindsAndRemoves_butNeverRemovesTheLastOne', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      expect(menuLabels(mounted, 'worktree:w2')).toEqual([
+        'Switch to Worktree',
+        'New Branch…',
+        'Rename…',
+        'Open in File System',
+        'Copy Path',
+        'Remove Worktree…',
+      ]);
+      expect(menuLabels(mounted, 'worktree:w1')).toEqual([
+        'New Branch…',
+        'Rename…',
+        'Open in File System',
+        'Copy Path',
+        'Remove Worktree…',
+      ]);
+      expect(menuLabels(mounted, 'worktree:w2:branch:old')).toEqual([
+        'Switch to Worktree',
+        'Delete…',
+      ]);
+
+      (
+        mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
+      ).onContextAction({ itemId: 'worktree.remove', row: row(mounted, 'worktree:w2') });
+      expect(worktrees.calls).toEqual(['remove:w2']);
+
+      worktrees.worktrees.set([current]);
+      mounted.detectChanges();
+      expect(menuLabels(mounted, 'worktree:w1')).not.toContain('Remove Worktree…');
+    });
+
+    it('rename_opensTheNameFieldOnTheWorktree_andRenamesItOnCommit', () => {
+      // Renamed in place, as a file is in the explorers: its name becomes the field, starting from
+      // the name it goes by now.
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        onRenameCommit(edit: { row: TreeRow; value: string }): void;
+      } = mounted.componentInstance as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+        onRenameCommit(edit: { row: TreeRow; value: string }): void;
+      };
+
+      internals.onContextAction({ itemId: 'worktree.rename', row: row(mounted, 'worktree:w2') });
+      mounted.detectChanges();
+      const field: HTMLInputElement | null = (mounted.nativeElement as HTMLElement).querySelector(
+        '[data-tree-id="worktree:w2"] input',
+      );
+
+      expect(field?.value).toBe('review');
+
+      internals.onRenameCommit({ row: row(mounted, 'worktree:w2'), value: 'settings work' });
+      mounted.detectChanges();
+
+      expect(worktrees.calls).toEqual(['rename:w2:settings work']);
+      expect(
+        (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id="worktree:w2"] input'),
+      ).toBeNull();
+    });
+
+    it('local_offersANewWorktreeOnItsMenu_onlyWhenTheRepositoryHasWorktrees', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+
+      // A branch is made in a worktree, from its own menu: Local makes worktrees (#939).
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree…']);
+      (
+        mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
+      ).onContextAction({ itemId: 'repo.newWorktree', row: row(mounted, 'section:local') });
+      expect(worktrees.calls).toEqual(['add']);
+
+      // A flat repository's Local is only branches: a new branch is all it makes.
+      worktrees.worktrees.set(null);
+      mounted.detectChanges();
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Branch…']);
+    });
+
+    it('newBranch_onAnotherWorktree_isMadeInThatWorktree_checkedAgainstItsOwnBranches', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        branchTarget(): RepositoryWorktree | null;
+        branchName: WritableSignal<string>;
+        branchNameError(): string | null;
+        confirmBranch(): void;
+      } = mounted.componentInstance as unknown as typeof internals;
+
+      internals.onContextAction({ itemId: 'repo.newBranch', row: row(mounted, 'worktree:w2') });
+      expect(internals.branchTarget()?.id).toBe('w2');
+
+      // "old" is one of that worktree's branches, not this repository's.
+      internals.branchName.set('old');
+      expect(internals.branchNameError()).toBe('A branch with this name already exists.');
+
+      internals.branchName.set('fresh');
+      internals.confirmBranch();
+      expect(worktrees.calls).toEqual(['createBranch:w2:fresh:true']);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('createBranch'))).toBe(
+        false,
+      );
+    });
+
+    it('anotherWorktreesBranch_isDeletedInThatWorktree_askingAgainWhenItHoldsUnmergedWork', async () => {
+      // Each worktree is a clone of its own, so the delete goes to that one, not this repository.
+      worktrees.worktrees.set([current, other]);
+      worktrees.deletion = 'not-merged';
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        pendingDeleteBranch(): { name: string } | null;
+        pendingForceDeleteBranch(): { name: string } | null;
+        confirmDeleteBranch(): Promise<void>;
+        confirmForceDeleteBranch(): void;
+        deletionPlace(deletion: unknown): string;
+      } = mounted.componentInstance as unknown as typeof internals;
+
+      internals.onContextAction({
+        itemId: 'worktree.deleteBranch',
+        row: row(mounted, 'worktree:w2:branch:old'),
+      });
+      expect(internals.pendingDeleteBranch()?.name).toBe('old');
+      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toBe(
+        'the “review” worktree',
+      );
+
+      await internals.confirmDeleteBranch();
+      expect(internals.pendingForceDeleteBranch()?.name).toBe('old');
+
+      internals.confirmForceDeleteBranch();
+      expect(worktrees.calls).toEqual(['deleteBranch:w2:old:false', 'deleteBranch:w2:old:true']);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('deleteBranch'))).toBe(
+        false,
+      );
+    });
+
+    it('anotherWorktreesCheckedOutBranch_cannotBeDeleted_andTheMenuSaysWhy', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      mounted.componentInstance.onRowClick(row(mounted, 'worktree:w2'));
+      mounted.detectChanges();
+
+      const items: readonly MenuItem[] = mounted.componentInstance.contextMenuFor(
+        row(mounted, 'worktree:w2:branch:feat/x'),
+      );
+      const remove: MenuItem | undefined = items.find(
+        (item: MenuItem): boolean => item.label === 'Delete…',
+      );
+
+      expect(remove?.disabled).toBe(true);
+      expect(remove?.status).toBe('checked out there');
+    });
+
+    it('theMoreMenu_offersANewWorktree_andRefreshReadsTheWorktreesToo', () => {
+      worktrees.worktrees.set([current, other]);
+      const mounted: ComponentFixture<SourceControlSidebar> = mount();
+      const internals: { onMoreAction(id: string): void; refresh(): void } =
+        mounted.componentInstance as unknown as {
+          onMoreAction(id: string): void;
+          refresh(): void;
+        };
+
+      internals.onMoreAction('repo.newWorktree');
+      internals.refresh();
+
+      expect(worktrees.calls).toEqual(['add', 'refresh']);
     });
   });
 });

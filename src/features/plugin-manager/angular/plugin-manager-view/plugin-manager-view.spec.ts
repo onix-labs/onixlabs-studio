@@ -63,13 +63,15 @@ describe('PluginManagerView', () => {
       error: signal<string | null>(null).asReadonly(),
       // The real client's consent-gated install, reduced to its shape: ask the shared seam, and
       // install only on acceptance.
-      installWithConsent: async (id: string): Promise<void> => {
+      installWithConsent: async (id: string): Promise<'installed' | 'declined' | 'failed'> => {
         const plugin: PluginSummary | undefined = known().find(
           (candidate: PluginSummary): boolean => candidate.id === id,
         );
         if (plugin !== undefined && (await TestBed.inject(PluginConsent).request(plugin))) {
           stub.installed.push(id);
+          return 'installed';
         }
+        return 'declined';
       },
       uninstall: (id: string): Promise<void> => {
         stub.uninstalled.push(id);
@@ -184,19 +186,201 @@ describe('PluginManagerView', () => {
     // ⛔ One button per row, never a choice of two: Install, Update and Remove are mutually exclusive on
     // any given plugin, so a row offering more than one of them would be offering a contradiction.
     render([
-      summary({ id: 'a', state: 'available' }),
-      summary({ id: 'b', state: 'installed', installedVersion: '1.0.0', version: '1.0.0' }),
-      summary({ id: 'c', state: 'installed', installedVersion: '1.0.0', version: '2.0.0' }),
-      summary({ id: 'd', state: 'unavailable' }),
+      summary({ id: 'a', name: 'A', state: 'available' }),
+      summary({
+        id: 'b',
+        name: 'B',
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '1.0.0',
+      }),
+      summary({
+        id: 'c',
+        name: 'C',
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '2.0.0',
+      }),
+      summary({ id: 'd', name: 'D', state: 'unavailable' }),
     ]);
 
+    choose('Installed');
     expect(actionButtons()).toEqual([
-      { label: 'Install', disabled: false },
       { label: 'Remove', disabled: false },
       { label: 'Update', disabled: false },
+    ]);
+
+    choose('Available');
+    expect(actionButtons()).toEqual([
+      { label: 'Install', disabled: false },
       // Still offered, and still says what it would do — the state column beside it says why it cannot.
       { label: 'Install', disabled: true },
     ]);
+  });
+
+  /**
+   * Chooses a filter in the side panel by its label.
+   * @param label The filter's label.
+   */
+  function choose(label: string): void {
+    [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.category-list__item',
+      ),
+    ]
+      .find(
+        (entry: HTMLButtonElement): boolean =>
+          entry.querySelector('.category-list__label')?.textContent?.trim() === label,
+      )!
+      .click();
+    fixture.detectChanges();
+  }
+
+  /**
+   * Reads the side panel's filters: each label and count.
+   * @returns Returns them, in order, as "Label count".
+   */
+  function filters(): string[] {
+    return [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+        '.category-list__item',
+      ),
+    ].map(
+      (entry: HTMLElement): string =>
+        `${entry.querySelector('.category-list__label')?.textContent?.trim()} ${entry
+          .querySelector('.category-list__count')
+          ?.textContent?.trim()}`,
+    );
+  }
+
+  /**
+   * Reads the listed plugins' names, in row order.
+   * @returns Returns the names.
+   */
+  function names(): string[] {
+    return [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.plugin-row__name'),
+    ].map((name: HTMLElement): string => name.textContent?.trim() ?? '');
+  }
+
+  it('sidePanel_filtersByEveryPluginInstallStateOrCategory_intoOneStripedTable', () => {
+    // #950. One flat filter list beside one table: no accordions.
+    render([
+      summary({ id: 'a', name: 'Alpha', state: 'available' }),
+      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
+      // Mid-update: still installed, so it stays under Installed while the work runs.
+      summary({ id: 'c', name: 'Gamma', state: 'busy', installedVersion: '1.0.0' }),
+      summary({ id: 'd', name: 'Delta', state: 'unavailable' }),
+    ]);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const stripes: () => boolean[] = (): boolean[] =>
+      [...host.querySelectorAll<HTMLElement>('tr.table-row')].map((row: HTMLElement): boolean =>
+        row.classList.contains('table-row--alternate'),
+      );
+
+    expect(filters().slice(0, 3)).toEqual(['All Plugins 4', 'Installed 2', 'Available 2']);
+    expect(host.querySelector('app-accordion')).toBeNull();
+    expect(host.querySelectorAll('app-table')).toHaveLength(1);
+    expect(names()).toEqual(['Alpha', 'Beta', 'Delta', 'Gamma']);
+    expect(host.querySelector('.plugin-manager__title')?.textContent?.trim()).toBe('All Plugins');
+
+    choose('Installed');
+    expect(names()).toEqual(['Beta', 'Gamma']);
+    expect(stripes()).toEqual([false, true]);
+    expect(host.querySelector('.plugin-manager__title')?.textContent?.trim()).toBe(
+      'Installed Plugins',
+    );
+
+    choose('Available');
+    expect(names()).toEqual(['Alpha', 'Delta']);
+  });
+
+  it('sidePanel_searchesTheList', () => {
+    render([
+      summary({ id: 'a', name: 'Alpha', state: 'available' }),
+      summary({ id: 'b', name: 'Beta', state: 'available' }),
+    ]);
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
+      '.category-list__search input',
+    )!;
+
+    input.value = 'bet';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(names()).toEqual(['Beta']);
+  });
+
+  it('sortsByAColumn_whenItsHeaderIsClicked', () => {
+    render([
+      summary({ id: 'a', name: 'Alpha', state: 'available' }),
+      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
+    ]);
+    const header: (label: string) => HTMLButtonElement = (label: string): HTMLButtonElement =>
+      [
+        ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+          '.table-th__button',
+        ),
+      ].find((button: HTMLButtonElement): boolean => button.textContent?.trim() === label)!;
+
+    // Ascending, then descending: Studio's tables cycle a sortable header that way.
+    header('Plugin').click();
+    header('Plugin').click();
+    fixture.detectChanges();
+    expect(names()).toEqual(['Beta', 'Alpha']);
+
+    header('State').click();
+    fixture.detectChanges();
+    // Installed first.
+    expect(names()).toEqual(['Beta', 'Alpha']);
+  });
+
+  it('showsLanguagesVersionAndState_asChips', () => {
+    render([
+      summary({
+        id: 'ts',
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '2.0.0',
+        contributions: [
+          { slot: 'language-server', id: 'ts', languages: ['typescript', 'javascript'] },
+        ] as unknown as PluginSummary['contributions'],
+      }),
+    ]);
+    const row: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      'tr.table-row',
+    )!;
+    const chip: (selector: string) => string[] = (selector: string): string[] =>
+      [...row.querySelectorAll<HTMLElement>(selector)].map(
+        (element: HTMLElement): string =>
+          `${element.textContent?.replace(/\s+/g, ' ').trim()} ${
+            [...element.classList].find((name: string): boolean => name.startsWith('chip--')) ?? ''
+          }`,
+      );
+
+    expect(chip('.plugin-row__chips app-chip')).toEqual([
+      'TypeScript chip--neutral',
+      'JavaScript chip--neutral',
+    ]);
+    // A waiting update shows both versions, in the tone the state uses for it.
+    expect(chip('app-chip.plugin-row__version')).toEqual(['1.0.0 → 2.0.0 chip--info']);
+    expect(chip('app-chip.plugin-row__state')).toEqual(['Update available chip--info']);
+  });
+
+  it('aBusyPlugin_showsAProgressBarInPlaceOfItsButton', () => {
+    // The work has no known length, and a merely-disabled button reads as nothing happening. Only the
+    // busy row swaps; its neighbours keep their buttons.
+    render([
+      summary({ id: 'a', name: 'clangd', state: 'busy' }),
+      summary({ id: 'b', state: 'available' }),
+    ]);
+
+    const bars: NodeListOf<Element> = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.plugin-row__action app-progress-bar',
+    );
+    expect(bars).toHaveLength(1);
+    expect(bars[0].getAttribute('aria-label')).toBe('Working on clangd');
+    expect(actionButtons()).toEqual([{ label: 'Install', disabled: false }]);
   });
 
   it('anUpdateIsOfferedAsAnUpdateRatherThanAsARemoval', () => {

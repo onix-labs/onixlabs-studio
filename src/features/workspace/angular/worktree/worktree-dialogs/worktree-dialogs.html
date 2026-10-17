@@ -1,0 +1,99 @@
+<!-- Names the new worktree: a branch from the picker (branches other worktrees hold are excluded) or a
+     brand-new branch, plus an optional alias. -->
+<app-modal
+  [open]="worktrees.addOpen()"
+  [width]="26"
+  ariaLabel="New worktree"
+  (dismiss)="cancelAdd()"
+>
+  <ng-template appModalContent>
+    <h2 class="worktree-dialog__title">New worktree</h2>
+    <p class="worktree-dialog__message">
+      Clones the repository into a new worktree on the chosen branch. Branches already checked out
+      by another worktree are not offered.
+    </p>
+    <!-- The picker only when it offers a real choice. With every branch checked out somewhere, it
+         would hold "New branch…" alone — a choice of one — so the name field stands by itself. -->
+    @if (branchesLoaded() && hasFreeBranches()) {
+      <app-dropdown
+        class="worktree-dialog__dropdown"
+        [options]="branchOptions()"
+        [value]="branchPick()"
+        [fullWidth]="true"
+        ariaLabel="Branch"
+        (valueChange)="branchPick.set($event)"
+      />
+    } @else if (branchesLoaded()) {
+      <p class="worktree-dialog__note">
+        Every branch is checked out in a worktree — name a new one.
+      </p>
+    }
+    @if (branchPick() === NEW_BRANCH) {
+      <app-text-field
+        class="worktree-dialog__input"
+        placeholder="New branch name"
+        ariaLabel="New branch name"
+        [value]="addBranch()"
+        (valueChange)="addBranch.set($event)"
+        (enter)="confirmAdd()"
+        (escape)="cancelAdd()"
+      />
+    }
+    <app-text-field
+      class="worktree-dialog__input"
+      placeholder="Alias (optional)"
+      ariaLabel="Alias"
+      [value]="addAlias()"
+      (valueChange)="addAlias.set($event)"
+      (enter)="confirmAdd()"
+      (escape)="cancelAdd()"
+    />
+    <app-button-row>
+      <app-button variant="solid" label="Create" [disabled]="!canCreate()" (click)="confirmAdd()" />
+      <app-button label="Cancel" (click)="cancelAdd()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a worktree is removed: removal is always explicit, never silent. -->
+<app-modal
+  [open]="worktrees.removeTarget() !== null"
+  [width]="26"
+  ariaLabel="Remove worktree"
+  (dismiss)="cancelRemove()"
+>
+  <ng-template appModalContent>
+    <h2 class="worktree-dialog__title">Remove “{{ removeLabel() }}”?</h2>
+    <p class="worktree-dialog__message">
+      Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
+      remain on the remote.
+    </p>
+    <app-button-row>
+      <app-button variant="solid" label="Remove" (click)="confirmRemove()" />
+      <app-button label="Cancel" (click)="cancelRemove()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a flat repository becomes worktrees: it restructures the folder on disk, so it is
+     never run from a bare menu choice. -->
+<app-modal
+  [open]="worktrees.convertOpen()"
+  [width]="28"
+  ariaLabel="Convert to worktrees"
+  (dismiss)="cancelConvert()"
+>
+  <ng-template appModalContent>
+    <h2 class="worktree-dialog__title">Convert to worktrees?</h2>
+    <p class="worktree-dialog__message">
+      The folder becomes a worktree container: everything in it moves into a worktree directory, and
+      further worktrees of the same repository can then work in parallel — each on its own branch,
+      with its own terminals, agent, and debugger. The view reloads around the container; the path
+      you open stays the same, and the agent conversation carries on in the first worktree.
+    </p>
+    <app-button-row>
+      <app-button variant="solid" label="Convert" (click)="worktrees.convert()" />
+      <app-button label="Cancel" (click)="cancelConvert()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

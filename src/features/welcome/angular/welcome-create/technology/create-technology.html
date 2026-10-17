@@ -1,0 +1,88 @@
+<div class="tech">
+  <!-- How the catalogue is looked at: search, category, order, and only what is selected. -->
+  <div class="tech__toolbar">
+    <div class="tech__search">
+      <app-icon [icon]="Icon.SEARCH" />
+      <input
+        type="text"
+        placeholder="Search technologies…"
+        aria-label="Search technologies"
+        spellcheck="false"
+        [value]="query()"
+        (input)="onQueryInput($event)"
+        (keydown.escape)="query.set('')"
+      />
+    </div>
+    <app-dropdown
+      class="tech__choice"
+      ariaLabel="Category"
+      [options]="categoryOptions"
+      [value]="category()"
+      (valueChange)="category.set($event)"
+    />
+    <app-dropdown
+      class="tech__choice"
+      ariaLabel="Sort"
+      [options]="sortOptions"
+      [value]="sort()"
+      (valueChange)="setSort($event)"
+    />
+    <!-- The label wraps the checkbox's own native input, associating them at runtime; the lint rule
+         cannot see through the component boundary to verify this statically. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="tech__only">
+      <app-checkbox [checked]="selectedOnly()" (checkedChange)="selectedOnly.set($event)" />
+      <span>Selected only ({{ selectedCount() }})</span>
+    </label>
+  </div>
+
+  <div class="tech__catalogue">
+    @for (group of groups(); track group.label) {
+      <section class="tech__group">
+        @if (group.label; as label) {
+          <h3 class="tech__group-title">{{ label }}</h3>
+        }
+        <div class="tech__chips">
+          @for (technology of group.technologies; track technology.id) {
+            <button
+              type="button"
+              class="tech__chip"
+              [class.tech__chip--on]="selected().has(technology.id)"
+              [attr.aria-pressed]="selected().has(technology.id)"
+              [appTooltip]="technology.description"
+              (click)="toggled.emit(technology.id)"
+            >
+              <span>{{ technology.name }}</span>
+            </button>
+          }
+        </div>
+      </section>
+    } @empty {
+      <p class="tech__empty">Nothing matches. Add it below.</p>
+    }
+  </div>
+
+  <!-- Not listed: added by name under Other, and selected. -->
+  <div class="tech__add">
+    <span class="tech__search tech__add-field">
+      <app-icon [icon]="Icon.WELCOME_TECH_ADD" />
+      <input
+        type="text"
+        placeholder="Not listed? Add a technology…"
+        aria-label="Add a technology"
+        spellcheck="false"
+        [value]="addition()"
+        (input)="onAdditionInput($event)"
+        (keydown.enter)="add()"
+      />
+    </span>
+    <button
+      type="button"
+      class="tech__ask"
+      [disabled]="addition().trim().length === 0"
+      (click)="add()"
+    >
+      Add
+    </button>
+  </div>
+</div>

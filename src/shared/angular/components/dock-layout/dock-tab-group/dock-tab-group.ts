@@ -36,7 +36,6 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
-import { DockTool, DockToolStrip } from '../dock-tool-strip/dock-tool-strip';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
@@ -60,7 +59,6 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
   selector: 'app-dock-tab-group',
   imports: [
     DockPanelOutlet,
-    DockToolStrip,
     DockStatusStrip,
     CdkDropList,
     CdkDrag,
@@ -79,7 +77,6 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     '[class.dock-tab-group--empty]': 'isEmpty()',
     '[class.dock-tab-group--focused]': 'isFocused()',
     '[class.dock-tab-group--tabs-fill]': 'tabsFill()',
-    '[class.dock-tab-group--panel-strip]': 'panelOwnsToolStrip()',
     '(mousedown)': 'focusPanel()',
   },
 })
@@ -195,7 +192,7 @@ export class DockTabGroup {
   );
 
   /**
-   * Gets the panels held by the stack as document-picker menu items.
+   * Gets the panels held by the stack as document-picker menu items, each carrying a close action.
    */
   protected readonly documentItems: Signal<readonly MenuItem[]> = computed(
     (): readonly MenuItem[] =>
@@ -203,19 +200,9 @@ export class DockTabGroup {
         id: panel.id,
         label: panel.title,
         icon: panel.icon,
+        action: { icon: Icon.CLOSE, label: 'Close' },
       })),
   );
-
-  /**
-   * Gets the stubbed tools shown in a document well's tool strip, distinct from the default panel
-   * tools so the well reads as an editor surface.
-   */
-  protected readonly documentTools: readonly DockTool[] = [
-    { id: 'split', icon: Icon.LAYOUT_SPLIT, label: 'Split Editor' },
-    { id: 'find', icon: Icon.SEARCH, label: 'Find in File' },
-    { id: 'settings', icon: Icon.SETTINGS, iconRotation: 30, label: 'Editor Settings' },
-    { id: 'more', icon: Icon.GRID_DOTS, label: 'More Actions' },
-  ];
 
   /**
    * Gets a value indicating whether the stack is a document well.
@@ -229,15 +216,6 @@ export class DockTabGroup {
    * because none of the ones it holds can be shown here.
    */
   protected readonly isEmpty: Signal<boolean> = computed((): boolean => this.panels().length === 0);
-
-  /**
-   * Gets a value indicating whether the active panel renders its own tool strip, in which case the
-   * dock renders none. In a document well this also moves the top of the editor frame onto the body,
-   * which would otherwise be drawn by the strip the dock is no longer rendering.
-   */
-  protected readonly panelOwnsToolStrip: Signal<boolean> = computed(
-    (): boolean => this.activePanel()?.ownsToolStrip === true,
-  );
 
   /**
    * Gets a value indicating whether the active document can be dragged out of the well into a separate
@@ -459,6 +437,14 @@ export class DockTabGroup {
    */
   protected close(panelId: string): void {
     void this.dockState.requestClose(panelId);
+  }
+
+  /**
+   * Closes every document in the well, in tab order, prompting for each one with unsaved changes. A
+   * cancelled prompt stops the run and leaves the remaining documents open.
+   */
+  protected closeAll(): void {
+    void this.dockState.requestCloseAll(this.panels().map((panel: DockPanel): string => panel.id));
   }
 
   /**

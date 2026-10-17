@@ -21,12 +21,18 @@ import {
   GitChangeStatus,
   GitFileChange,
 } from '@shared/angular/services/repository/repository-data';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
+import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { RepositoryRestricted } from '../repository-restricted/repository-restricted';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -90,12 +96,51 @@ type WorkingRowData =
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [Textarea, Button, AppIcon, Checkbox, PanelToolbar, TreeView],
+  imports: [
+    Chip,
+    Textarea,
+    Button,
+    ButtonRow,
+    AppIcon,
+    Checkbox,
+    PanelToolbar,
+    TreeView,
+    VersionControlMissing,
+    RepositoryRestricted,
+  ],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommitDetail {
+  /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Gets whether the folder is a repository no installed plugin can read, so the panel shows only its
+   * empty state.
+   */
+  protected readonly needsPlugin: Signal<boolean> = computed(
+    (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
+
+  /**
+   * Holds the workspace's version-control binding, which knows whether the folder is a repository the
+   * user has not trusted; null outside a workspace tab.
+   */
+  private readonly workspaceGit: WorkspaceGit | null = inject(WorkspaceGit, { optional: true });
+
+  /**
+   * Gets whether the folder is a repository the user has not trusted, so the panel shows only the
+   * restricted state: a composer over a repository nothing is read from would offer a commit that
+   * cannot happen.
+   */
+  protected readonly restricted: Signal<boolean> = computed(
+    (): boolean => this.workspaceGit?.isRestricted() === true && !this.repository.isBound(),
+  );
+
   /**
    * Gets the dock panel descriptor this panel was projected for. Supplied by the dock outlet; the
    * pane reads its state from the shared {@link Repository} rather than the descriptor.

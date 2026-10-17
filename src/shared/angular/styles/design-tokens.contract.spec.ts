@@ -63,21 +63,15 @@ const EXTERNAL_TOKENS: readonly RegExp[] = [
 ];
 
 /**
- * ⛔ **These are bugs, not exemptions.** Every one is a real dropped declaration: an invisible border,
- * or text falling back to whatever it inherits. They are listed rather than fixed here because
- * choosing the replacement token changes how something looks, and a guardrail is the wrong change to
- * smuggle a visual decision through. Tracked in #665.
+ * ⛔ **An entry here is a bug, not an exemption.** It would be a real dropped declaration: an invisible
+ * border, or text falling back to whatever it inherits. The list held five such tokens when the guard
+ * was written — every one a near-miss of a real theme token — and #665 renamed them all.
  *
- * The guard's purpose is served either way: nothing *new* can join this list. Delete an entry as it is
- * fixed, and never add one — a new arrival is the bug this file exists to catch.
+ * Empty, and to stay that way: a new arrival is the bug this file exists to catch. The only reason to
+ * list one is that choosing its replacement is a visual decision that does not belong in the change
+ * that found it — and then only until the follow-up lands.
  */
-const KNOWN_MISSING: readonly string[] = [
-  '--body-border-color',
-  '--form-border-color',
-  '--gray-50',
-  '--text-color',
-  '--text-muted-color',
-];
+const KNOWN_MISSING: readonly string[] = [];
 
 /**
  * Theme tokens allowed to be defined without a consumer.

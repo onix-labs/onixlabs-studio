@@ -62,17 +62,19 @@
           placeholder="API key"
           (valueChange)="onApiKeyInput($event)"
         />
-        <app-button
-          variant="solid"
-          label="Save"
-          [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
-          (click)="saveKey()"
-        />
-        <app-button
-          label="Clear"
-          [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
-          (click)="clearKey()"
-        />
+        <app-button-row align="start">
+          <app-button
+            variant="solid"
+            label="Save"
+            [disabled]="!isAvailable || keyBusy() || apiKeyDraft().trim().length === 0"
+            (click)="saveKey()"
+          />
+          <app-button
+            label="Clear"
+            [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
+            (click)="clearKey()"
+          />
+        </app-button-row>
       </span>
     </app-setting-row>
   }
@@ -98,11 +100,11 @@
 
   <app-setting-row
     label="Models"
-    description="The models this configuration can run. Refresh re-discovers them from the provider, replacing the list."
+    description="The models this configuration can run. Discover asks the provider what it offers now and adds any new models, including ones you said Not now to. Nothing is removed: a model the provider no longer offers is marked, and you can remove it here."
   >
     <app-button
       [icon]="Icon.REFRESH"
-      [label]="discovering() ? 'Refreshing…' : 'Refresh'"
+      [label]="discovering() ? 'Discovering…' : 'Discover'"
       [disabled]="!isAvailable || discovering()"
       (click)="refresh()"
     />
@@ -125,8 +127,13 @@
           <span class="conn-editor__model-text">
             <span class="conn-editor__model-label">{{ model.label }}</span>
             <span class="conn-editor__model-id">{{ model.id }}</span>
+            @if (model.retired) {
+              <span class="conn-editor__model-retired">No longer offered</span>
+            }
           </span>
-          <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+          @if (model.contextWindow !== undefined) {
+            <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+          }
           <app-button
             variant="none"
             size="small"
@@ -158,8 +165,4 @@
       />
     </span>
   </app-setting-row>
-
-  <div class="conn-editor__footer">
-    <app-button [icon]="Icon.TRASH" label="Delete configuration" (click)="removeConnection()" />
-  </div>
 </div>

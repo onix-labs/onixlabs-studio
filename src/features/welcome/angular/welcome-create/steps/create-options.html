@@ -1,0 +1,15 @@
+<div class="step step--scroll">
+  <div class="step__options">
+    @for (entry of offered; track entry.option.id) {
+      <span class="step__label step__option-label">{{ entry.option.label }}</span>
+      <app-dropdown
+        class="step__choice"
+        [ariaLabel]="entry.option.label"
+        [options]="entry.choices"
+        [value]="draft.options().get(entry.option.id) ?? ''"
+        [fullWidth]="true"
+        (valueChange)="draft.setOption(entry.option.id, $event)"
+      />
+    }
+  </div>
+</div>

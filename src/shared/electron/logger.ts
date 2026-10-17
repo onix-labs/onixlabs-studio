@@ -10,7 +10,9 @@ import {
   LogQuery,
   LogRecord,
   LogSession,
+  meetsFloor,
   SEVERITIES,
+  Severity,
   StructuredLogInput,
 } from '@shared/api/log-channels';
 import { appendDetails } from '@shared/api/log-format';
@@ -44,6 +46,9 @@ const MAX_PENDING_LINES: number = 512;
  * {@link LogChannel.Subscribe} — a window with no log audit open pays nothing. An error record
  * flushes immediately: a failure's context must be durable before anything else goes wrong, so
  * crash-adjacent records are never sitting in a buffer.
+ *
+ * Records below the severity floor ({@link setFloor}) are dropped before anything is built: the level
+ * helpers test the floor before formatting their details, so a suppressed trace costs a comparison.
  *
  * Main-process code logs directly through {@link log} (or the {@link info}/{@link warn}/… helpers). The
  * renderer's console methods are intercepted by the ConsoleForwarder and arrive over
@@ -95,6 +100,39 @@ export class Logger {
    * never holds the process open.
    */
   private flushTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * Holds the minimum severity recorded. Starts at `trace` so nothing logged while the process is
+   * still starting is lost; the main process lowers it to the resolved floor as soon as the startup
+   * preferences are read.
+   */
+  private floor: Severity = 'trace';
+
+  /**
+   * Gets the minimum severity recorded.
+   * @returns Returns the severity floor.
+   */
+  public get severityFloor(): Severity {
+    return this.floor;
+  }
+
+  /**
+   * Sets the minimum severity recorded. Records below it are dropped before their message is built.
+   * @param floor The severity floor.
+   */
+  public setFloor(floor: Severity): void {
+    this.floor = floor;
+  }
+
+  /**
+   * Determines whether a severity is recorded at the current floor, so a caller can skip building an
+   * expensive diagnostic that would only be dropped.
+   * @param severity The severity to test.
+   * @returns Returns true when records of the severity are kept.
+   */
+  public enabled(severity: Severity): boolean {
+    return meetsFloor(severity, this.floor);
+  }
 
   /**
    * Wires the resolver used to label renderer records by their originating window.
@@ -176,6 +214,11 @@ export class Logger {
    * @param input The record's origin, severity, source, message and optional originating window.
    */
   public log(input: LogInput): void {
+    // The backstop for records that arrive already built — the renderer's, and the legacy console
+    // shape — so the floor holds for them too even when a sender did not filter.
+    if (!this.enabled(input.severity)) {
+      return;
+    }
     const record: LogRecord = this.store.add(input);
     // Each side effect is independently guarded: logging must never throw, even before the app is
     // ready (when `app.getPath`/`app.isPackaged` are unusable) or outside the Electron runtime.
@@ -263,6 +306,9 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public trace(source: string, message: string, ...details: unknown[]): void {
+    if (!this.enabled('trace')) {
+      return;
+    }
     this.log({
       origin: 'main',
       severity: 'trace',
@@ -278,6 +324,9 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public debug(source: string, message: string, ...details: unknown[]): void {
+    if (!this.enabled('debug')) {
+      return;
+    }
     this.log({
       origin: 'main',
       severity: 'debug',
@@ -293,6 +342,9 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public info(source: string, message: string, ...details: unknown[]): void {
+    if (!this.enabled('info')) {
+      return;
+    }
     this.log({
       origin: 'main',
       severity: 'info',
@@ -308,6 +360,9 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public warn(source: string, message: string, ...details: unknown[]): void {
+    if (!this.enabled('warning')) {
+      return;
+    }
     this.log({
       origin: 'main',
       severity: 'warning',

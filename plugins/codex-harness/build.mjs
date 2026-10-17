@@ -1,11 +1,10 @@
 // Builds the Codex agent harness into the layout its manifest names.
 //
-// The SDK is left EXTERNAL rather than bundled. It spawns the `codex` CLI, shipped as a per-platform
-// native binary that the SDK resolves relative to its own module path, so inlining the JavaScript would
-// produce a bundle that cannot find the program it exists to drive. The manifest therefore provisions
-// an npm dependency tree rather than a single archived file, which is the shape `provision.kind: 'npm'`
-// exists for — and the `os`/`cpu` filter in that tree is what fetches one platform's binary rather than
-// every platform's.
+// The harness drives the `codex` CLI, shipped by `@openai/codex` as a per-platform native binary that
+// the harness resolves relative to that package at run time, so the package has to be installed beside
+// the bundle rather than inlined into it. The manifest therefore provisions an npm dependency tree
+// rather than a single archived file, which is the shape `provision.kind: 'npm'` exists for — and the
+// `os`/`cpu` filter in that tree is what fetches one platform's binary rather than every platform's.
 //
 // That decides this file's output. A lockfile-provisioned tree may contain nothing but `node_modules/`
 // (`isConfined` in `lockfile-provision.ts` refuses any other destination), so the harness cannot be a
@@ -33,17 +32,15 @@ await build({
   // more here than it looks: the tarball's integrity is pinned in a lockfile, so a bundle that differs
   // by nothing but a comment is an install that fails verification on every user's machine.
   absWorkingDir: root,
-  // Node 22 is the floor, not a preference: the SDK is ESM-only ("type": "module", and its sole export
-  // condition is `sdk.mjs`), so a CommonJS bundle reaches it through `require(esm)`, which is unflagged
-  // from 22.12. Studio runs this under its own runtime — Electron 42's Node 24 — so the floor is met by
-  // the host rather than by whatever the user has installed.
+  // Studio runs this under its own runtime — Electron 42's Node 24. Nothing from `@openai/codex` is
+  // imported: the harness only resolves the package's location to find the binary, so there is nothing
+  // to leave external.
   target: 'node22',
   format: 'cjs',
   outfile: join(out, 'main.js'),
-  external: ['@openai/codex-sdk'],
 });
 
-// The package manifest ships inside the tarball: it is what names the SDK dependency that the lockfile
+// The package manifest ships inside the tarball: it is what names the CLI dependency that the lockfile
 // then resolves, and what puts `main.js` at the path the plugin manifest's entry point points to.
 cpSync(join(root, 'package.json'), join(out, 'package.json'));
 cpSync(join(root, 'plugin.json'), join(root, 'dist', 'plugin.json'));

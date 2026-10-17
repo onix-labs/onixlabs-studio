@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
 import type {
+  AiProposedChange,
   AgentContextRef,
   AgentMode,
   AgentSurface,
@@ -16,6 +17,7 @@ import type {
   AiThinkingEvent,
   AiImageRef,
   AiInputChoice,
+  AiInputSelection,
   AiRemoteControlMode,
   AiInputReply,
   AiModelInfo,
@@ -67,12 +69,16 @@ import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from 
 // re-implement the login modal would be a plugin duplicating Studio's chrome (#653).
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
+import type { HostingAgentAccess, RunHosting } from '../hosting/hosting-agent-access';
+import { bindAgentHosting } from './agent-hosting';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
+import { retirementFor, type Retirement } from './live-session-retirement';
+import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guard';
 import type { SkillOfferer } from './skills/skill-library';
 
 /**
@@ -204,6 +210,18 @@ interface LiveSessionEntry {
    * carries a run id like every other event.
    */
   lastRequestId: string;
+
+  /**
+   * How many turns are running in the session now — what decides whether it can be ended at once or
+   * must be left to finish (#881).
+   */
+  activeTurns: number;
+
+  /**
+   * Whether the session is to end as soon as its running turns settle, because the harness it runs on
+   * was updated or removed (#881).
+   */
+  retiring: boolean;
 }
 
 /**
@@ -293,6 +311,17 @@ export class AiManager {
   private readonly skills: SkillOfferer;
 
   /**
+   * Holds the agents' way to the installed hosting plugins (#852), or null where there is none (a
+   * test, or a build without hosting).
+   */
+  private readonly hosting: HostingAgentAccess | null;
+
+  /**
+   * Holds the open workspace roots, which a run's root must be or lie inside (#810).
+   */
+  private readonly openRoots: OpenRoots;
+
+  /**
    * Holds the in-app Claude login driver, which runs the CLI's own OAuth flow and streams its progress
    * to the renderer's "not signed in" modal.
    */
@@ -379,10 +408,19 @@ export class AiManager {
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    * @param skills The skill library runs draw their in-scope skills from.
+   * @param openRoots The open workspace roots, which a run's root must be or lie inside.
+   * @param hosting The agents' way to the installed hosting plugins, or null for none.
    */
-  public constructor(windowGetter: () => BrowserWindow | null, skills: SkillOfferer) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    skills: SkillOfferer,
+    openRoots: OpenRoots,
+    hosting: HostingAgentAccess | null = null,
+  ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
+    this.hosting = hosting;
+    this.openRoots = openRoots;
     this.bridge = new RendererBridge(windowGetter);
 
     // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
@@ -606,6 +644,40 @@ export class AiManager {
   }
 
   /**
+   * Ends the live sessions running on a harness that was updated or removed, so none goes on running
+   * the version that was replaced (#881).
+   *
+   * ⛔ Never in the middle of a turn. An idle session ends now; one with a turn running is marked, lets
+   * the turn finish, and ends as it settles. Either way the conversation is not lost: its next turn
+   * opens a fresh session, which resumes from the session id onto whatever is installed now — or is
+   * refused, in words, when the harness is gone.
+   * @param harnessId The harness that changed.
+   */
+  public retireHarnessSessions(harnessId: string): void {
+    const retirement: Retirement = retirementFor(this.liveSessions, this.connections, harnessId);
+    for (const key of retirement.endNow) {
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (entry !== undefined) {
+        logger.info(
+          'AiManager',
+          `Ending idle live session ${key}: its harness ${harnessId} changed`,
+        );
+        this.endSession(key, entry, 'retired');
+      }
+    }
+    for (const key of retirement.afterTurn) {
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (entry !== undefined) {
+        logger.info(
+          'AiManager',
+          `Live session ${key} will end when its turn finishes: its harness ${harnessId} changed`,
+        );
+        entry.retiring = true;
+      }
+    }
+  }
+
+  /**
    * Aborts every in-flight run (called on shutdown).
    */
   public disposeAll(): void {
@@ -813,6 +885,22 @@ export class AiManager {
       'AiManager.run',
       `Run request ${request.requestId} for provider ${request.providerId}`,
     );
+    // ⛔ The root becomes the agent's working directory, the root of its write confinement, and the
+    // scope stamped on every capability request — so an untrusted renderer must not get to name it.
+    const rootCheck: RunRootCheck = checkRunRoot(request.workspaceRoot, this.openRoots);
+    if (!rootCheck.ok) {
+      logger.warn(
+        'AiManager.run',
+        `Refused run ${request.requestId}: root ${request.workspaceRoot} is not an open workspace`,
+      );
+      this.emit({
+        requestId: request.requestId,
+        kind: 'status',
+        state: 'error',
+        detail: rootCheck.detail,
+      });
+      return;
+    }
     const provider: AgentProvider | undefined = this.providers.get(request.providerId);
     const connection: AiConnection | undefined = this.connections.get(request.providerId);
     if (provider === undefined || connection === undefined) {
@@ -895,7 +983,6 @@ export class AiManager {
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
     const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
-    const userPromptExtra: string = sanitizePromptExtra(request.userPromptExtra);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
     if (skills.length > 0) {
       logger.debug(
@@ -903,6 +990,15 @@ export class AiManager {
         `Run ${request.requestId}: ${skills.length} skill(s) in scope for ${surface}/${language ?? '-'}`,
       );
     }
+    // The hosted repository the run works in (#852), found from the workspace's remotes. A failure
+    // here costs the run its hosting tools, never the run.
+    const runHosting: RunHosting | null =
+      this.hosting === null
+        ? null
+        : await this.hosting.resolve(request.workspaceRoot ?? null).catch((error: unknown) => {
+            logger.warn('AiManager.run', "Could not find the run's hosted repository", error);
+            return null;
+          });
     logger.debug(
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
@@ -944,8 +1040,28 @@ export class AiManager {
       mode,
       language,
       systemPromptExtra,
-      userPromptExtra,
       skills,
+      blockedCommands:
+        request.blockHostCommandLine === true && runHosting !== null
+          ? runHosting.commandLineTools
+          : [],
+      hosting:
+        runHosting === null || this.hosting === null
+          ? null
+          : bindAgentHosting(this.hosting, runHosting, {
+              permissionPosture,
+              toolPolicies,
+              ask: (tool: string, summary: string): Promise<boolean> =>
+                this.requestPermission(
+                  request.requestId,
+                  controller.signal,
+                  request.workspaceRoot,
+                  tool,
+                  summary,
+                ),
+              audit: (tool: string, detail: string, source: AuditGrantSource): void =>
+                this.recordAudit(tool, detail, request.workspaceRoot, source),
+            }),
       contextPaths,
       images,
       resumeSessionId:
@@ -960,10 +1076,22 @@ export class AiManager {
       auth: this.authForConnection(connection.id),
       signal: controller.signal,
       bridge: {
+        // ⛔ The scope is stamped HERE, from the run's request, so every provider — the AI-SDK path and
+        // a harness plugin alike — reaches the renderer as the run it is. Tool input cannot override
+        // it; it is what keeps a workspace's agent inside its own workspace.
         request: (capability: string, input: unknown, timeoutMs?: number): Promise<unknown> =>
-          this.bridge.request(capability, input, timeoutMs),
+          this.bridge.request(capability, input, timeoutMs, {
+            owningTabId: request.owningTabId ?? null,
+            surface,
+            workspaceRoot: request.workspaceRoot ?? null,
+          }),
       },
-      requestPermission: (name: string, detail: string, cancel?: AbortSignal): Promise<boolean> =>
+      requestPermission: (
+        name: string,
+        detail: string,
+        cancel?: AbortSignal,
+        change?: AiProposedChange,
+      ): Promise<boolean> =>
         this.requestPermission(
           request.requestId,
           controller.signal,
@@ -971,6 +1099,7 @@ export class AiManager {
           name,
           detail,
           cancel,
+          change,
         ),
       recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
         this.recordAudit(name, detail, request.workspaceRoot, source),
@@ -978,8 +1107,16 @@ export class AiManager {
         question: string,
         choices: readonly AiInputChoice[],
         cancel?: AbortSignal,
+        selection?: AiInputSelection,
       ): Promise<string | null> =>
-        this.requestInput(request.requestId, controller.signal, question, choices, cancel),
+        this.requestInput(
+          request.requestId,
+          controller.signal,
+          question,
+          choices,
+          cancel,
+          selection,
+        ),
       requestEditDecision: (
         name: string,
         detail: string,
@@ -1088,6 +1225,8 @@ export class AiManager {
       reapTimer: null,
       lastActivity: Date.now(),
       lastRequestId: context.requestId,
+      activeTurns: 0,
+      retiring: false,
     };
     this.liveSessions.set(key, entry);
     // A session that ends on its own — harness crashed between turns, panic stop escalated — leaves
@@ -1120,9 +1259,21 @@ export class AiManager {
     this.clearReap(entry);
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
+    entry.activeTurns += 1;
     return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
-      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+      entry.activeTurns -= 1;
       const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      // Its harness was updated or removed during the turn: the turn was let finish, and now the
+      // session ends, so the next turn resumes on whatever is installed now (#881).
+      if (current === entry && entry.retiring && entry.activeTurns === 0) {
+        logger.info(
+          'AiManager',
+          `Ending live session ${key} now its turn is over: harness changed`,
+        );
+        this.endSession(key, entry, 'retired');
+        return;
+      }
+      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
       if (current !== undefined) {
         current.lastActivity = Date.now();
         this.armReap(key, current);
@@ -1586,6 +1737,8 @@ export class AiManager {
    * @param cancel An optional signal that dismisses this prompt and resolves false when aborted — raised
    *   when a remote peer answers the same permission first, so Studio's still-visible prompt is cleared
    *   via a `permission-dismissed` event (distinct from a run abort, which tears the whole run down).
+   * @param change The file change the action would make, carried to the prompt so it can be shown
+   *   (#891).
    * @returns Returns true when the user grants permission (or a remembered rule already does).
    */
   private requestPermission(
@@ -1595,6 +1748,7 @@ export class AiManager {
     name: string,
     detail: string,
     cancel?: AbortSignal,
+    change?: AiProposedChange,
   ): Promise<boolean> {
     if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -1641,6 +1795,7 @@ export class AiManager {
         name,
         detail,
         hasWorkspace: workspaceRoot !== null,
+        ...(change === undefined ? {} : { change }),
       });
     });
   }
@@ -1704,6 +1859,7 @@ export class AiManager {
    * @param cancel An optional signal that dismisses this question and resolves null when aborted —
    *   raised when a remote peer answers the same question first, so Studio's still-visible prompt is
    *   cleared via an `input-dismissed` event (distinct from a run abort, which tears the run down).
+   * @param selection How many of the choices the user may pick; one when omitted.
    * @returns Returns the user's answer, or null when they declined.
    */
   private requestInput(
@@ -1712,6 +1868,7 @@ export class AiManager {
     question: string,
     choices: readonly AiInputChoice[],
     cancel?: AbortSignal,
+    selection?: AiInputSelection,
   ): Promise<string | null> {
     const inputId: string = randomUUID();
     // The run is blocked on the user: its wall clock pauses until the question settles.
@@ -1746,7 +1903,14 @@ export class AiManager {
         );
       }
       signal.addEventListener('abort', (): void => settle(null), { once: true });
-      this.emit({ requestId, kind: 'input-request', inputId, question, choices });
+      this.emit({
+        requestId,
+        kind: 'input-request',
+        inputId,
+        question,
+        choices,
+        ...(selection === undefined ? {} : { selection }),
+      });
     });
   }
 

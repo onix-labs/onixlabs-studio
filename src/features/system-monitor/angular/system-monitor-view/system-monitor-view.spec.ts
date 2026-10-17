@@ -1,9 +1,11 @@
-import { Signal, WritableSignal } from '@angular/core';
+import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TableRow } from '@shared/angular/components/table/table';
+import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
 import { MetricsSample } from '@shared/api/system-monitor-channels';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
@@ -16,10 +18,15 @@ import { SystemMonitorView } from './system-monitor-view';
 class FakeMetrics {
   public started: number = 0;
   public stopped: number = 0;
+  public rates: number[] = [];
   public listener: ((sample: MetricsSample) => void) | null = null;
 
   public start(): void {
     this.started += 1;
+  }
+
+  public setRate(intervalMs: number): void {
+    this.rates.push(intervalMs);
   }
 
   public stop(): void {
@@ -81,6 +88,23 @@ class FakeLog {
   public queries: LogQuery[] = [];
   public listener: ((record: LogRecord) => void) | null = null;
 
+  // The view provides the agent and its conversation (#966), which log through this service too.
+  public debug(): void {
+    // Intentionally empty.
+  }
+  public info(): void {
+    // Intentionally empty.
+  }
+  public warn(): void {
+    // Intentionally empty.
+  }
+  public error(): void {
+    // Intentionally empty.
+  }
+  public enabled(): boolean {
+    return false;
+  }
+
   public query(query: LogQuery = {}): Promise<LogRecord[]> {
     this.queries.push(query);
     return Promise.resolve(this.records);
@@ -95,6 +119,13 @@ class FakeLog {
     return (): void => {
       this.listener = null;
     };
+  }
+
+  /**
+   * Drops a trace line: the view's status-strip registration logs one.
+   */
+  public trace(): void {
+    // Intentionally empty.
   }
 }
 
@@ -142,6 +173,7 @@ describe('SystemMonitorView', () => {
   let view: Testable;
   let fake: FakeLog;
   let metrics: FakeMetrics;
+  let onScreen: WritableSignal<boolean>;
 
   /**
    * Creates the view with the fake log and metrics and the given seeded records, and settles the
@@ -153,11 +185,13 @@ describe('SystemMonitorView', () => {
     fake = new FakeLog();
     fake.records = records;
     metrics = new FakeMetrics();
+    onScreen = signal<boolean>(true);
     await TestBed.configureTestingModule({
       imports: [SystemMonitorView],
       providers: [
         { provide: Log, useValue: fake },
         { provide: SystemMonitorMetrics, useValue: metrics },
+        { provide: DocumentVisibility, useValue: { visible: onScreen } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(SystemMonitorView);
@@ -169,6 +203,8 @@ describe('SystemMonitorView', () => {
   }
 
   afterEach(() => {
+    // The refresh-rate tests write a setting; settings persist in local storage across tests.
+    globalThis.localStorage?.clear();
     TestBed.resetTestingModule();
   });
 
@@ -176,6 +212,50 @@ describe('SystemMonitorView', () => {
     await create([record({ id: 1 }), record({ id: 2 })]);
     expect(view.records()).toHaveLength(2);
     expect(view.filtered()).toHaveLength(2);
+  });
+
+  it('layout_stacksTheGraphsInAFixedSidePanel_besideTheLogs', async () => {
+    // #951. The graphs are glanced at; the logs are worked in, so they fill the view.
+    await create([record({ id: 1 })]);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const panel: HTMLElement | null = host.querySelector('app-panel');
+
+    expect(panel?.getAttribute('data-edge')).toBe('left');
+    expect(panel?.querySelectorAll('app-metric-tile')).toHaveLength(5);
+    expect(host.querySelector('.system-monitor__main app-table')).not.toBeNull();
+    expect(panel?.querySelector('app-table')).toBeNull();
+  });
+
+  it('severity_isAChip_tonedByHowSevereItIs', async () => {
+    await create([
+      record({ id: 1, severity: 'trace' }),
+      record({ id: 2, severity: 'debug' }),
+      record({ id: 3, severity: 'info' }),
+      record({ id: 4, severity: 'warning' }),
+      record({ id: 5, severity: 'error' }),
+    ]);
+    // Trace and debug are hidden by default; show every severity so each chip renders.
+    for (const severity of ['trace', 'debug'] as const) {
+      if (!view.isEnabled(severity)) {
+        view.toggleSeverity(severity);
+      }
+    }
+    fixture.detectChanges();
+
+    const tones: Record<string, string> = {};
+    for (const chip of (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      'app-chip.system-monitor__badge',
+    )) {
+      tones[chip.textContent?.trim() ?? ''] =
+        [...chip.classList].find((name: string): boolean => name.startsWith('chip--')) ?? '';
+    }
+    expect(tones).toEqual({
+      TRACE: 'chip--neutral',
+      DEBUG: 'chip--info',
+      INFO: 'chip--accent',
+      WARNING: 'chip--warning',
+      ERROR: 'chip--danger',
+    });
   });
 
   it('toggleSeverity_hidesThatSeverity', async () => {
@@ -341,6 +421,51 @@ describe('SystemMonitorView', () => {
     fixture.componentRef.setInput('isActive', false);
     fixture.detectChanges();
     expect(metrics.stopped).toBeGreaterThan(startedWhileActive);
+  });
+
+  it('whenTheWindowLeavesTheScreen_samplingAndTheLiveStreamPause_andResumeWhenItReturns', async () => {
+    // Audit P4: the tab stays active behind another app or on another desktop; its feeds should not.
+    await create([record({ id: 1 })]);
+    expect(metrics.started).toBe(1);
+    expect(fake.listener).not.toBeNull();
+    const queries: number = fake.queries.length;
+
+    onScreen.set(false);
+    fixture.detectChanges();
+    expect(metrics.stopped).toBe(1);
+    expect(fake.listener).toBeNull();
+    expect(TestBed.inject(SystemMonitorCommands).hasRecords()).toBe(true);
+
+    onScreen.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(metrics.started).toBe(2);
+    expect(fake.listener).not.toBeNull();
+    expect(fake.queries.length).toBeGreaterThan(queries);
+  });
+
+  it('refreshRate_isSentBeforeSamplingStarts_andAChangeRetimesWithoutRestarting', async () => {
+    await create();
+    // Audit P3: the user's rate reaches the backend ahead of the first start, so the loop never runs
+    // at the wrong rate; changing it afterwards is one rate message, not a stop and a start.
+    expect(metrics.rates).toEqual([1000]);
+    expect(metrics.started).toBe(1);
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 500);
+    fixture.detectChanges();
+    expect(metrics.rates).toEqual([1000, 500]);
+    expect(metrics.started).toBe(1);
+    expect(metrics.stopped).toBe(0);
+  });
+
+  it('refreshRate_paused_stopsSampling_andResumesWhenARateIsChosenAgain', async () => {
+    await create();
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 0);
+    fixture.detectChanges();
+    expect(metrics.stopped).toBe(1);
+    TestBed.inject(Settings).set('systemMonitor.refreshRate', 4000);
+    fixture.detectChanges();
+    expect(metrics.started).toBe(2);
+    expect(metrics.rates.at(-1)).toBe(4000);
   });
 
   it('sample_updatesTheTileValuesAndHistories', async () => {

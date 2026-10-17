@@ -1,0 +1,207 @@
+<app-panel-layout class="library">
+  <!-- The sub-view's own side panel (#948, #949): the skills, searchable. It is part of the
+       sub-view, so it can be resized but not closed or moved. -->
+  <app-panel
+    panelId="ai-skills"
+    defaultEdge="left"
+    [allowedEdges]="sideEdges"
+    [movable]="false"
+    [defaultSize]="240"
+    [minSize]="240"
+    [maxSize]="480"
+  >
+    <app-category-list
+      title="Skills"
+      [searchable]="true"
+      searchPlaceholder="Search skills…"
+      [(query)]="query"
+      [items]="items()"
+      [selectedId]="selected()?.key ?? null"
+      (selectedIdChange)="select($event)"
+      (actionClick)="askDelete($event)"
+    />
+  </app-panel>
+
+  <div main class="library__main">
+    @if (notice(); as text) {
+      <p class="library__notice library__notice--top" role="status">{{ text }}</p>
+    }
+    @if (selected(); as row) {
+      <!-- The selected skill, edited at full width. It saves itself a moment after each edit, as a
+           profile does; a refused save keeps the draft and says why. -->
+      <div class="library__editor">
+        <header class="library__header">
+          <div class="library__heading-row">
+            <h2 class="library__title section-label">
+              {{ row.stored?.name ?? (row.draft.name || 'New skill') }}
+            </h2>
+            @if (row.stored) {
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.FOLDER_OPEN"
+                [label]="openInFileSystemLabel"
+                (click)="reveal(row)"
+              />
+            }
+          </div>
+          <p class="library__subtitle">
+            Instructions an agent loads when it decides a task needs them. Only the name and
+            description are always in front of it.
+          </p>
+        </header>
+
+        @if (isIncomplete(row)) {
+          <p class="library__notice" role="status">
+            Give the skill a name and a description to save it.
+          </p>
+        }
+
+        @if (row.stored?.problem; as problem) {
+          <p class="library__alert" role="alert">Not offered to agents: {{ problem }}</p>
+        }
+
+        <app-setting-row
+          label="Name"
+          description="Lower-case letters, digits and hyphens. It is the folder's name, and what the agent asks for."
+        >
+          <app-text-field
+            [value]="row.draft.name"
+            ariaLabel="Skill name"
+            placeholder="e.g. csharp-style"
+            (valueChange)="edit(row, { name: $event })"
+          />
+        </app-setting-row>
+
+        <app-prompt-scope-editor
+          [scope]="row.draft.scope"
+          [showLanguages]="false"
+          (scopeChange)="setScope(row, $event)"
+        />
+
+        <!-- Languages and technologies in one list (#962). A language narrows editor runs to it and
+             leaves the other surfaces alone; Create Something suggests the skill for a project using
+             any of them. -->
+        <app-setting-row
+          label="Languages & technologies"
+          description="In the editor, offered only for these languages. Create Something suggests it for projects using any of these. Leave empty for any."
+        >
+          <app-multi-select
+            class="library__tags"
+            [fullWidth]="true"
+            [searchable]="true"
+            searchPlaceholder="Search languages and technologies…"
+            [options]="tagOptions"
+            [value]="tagsOf(row)"
+            placeholder="Any"
+            ariaLabel="Languages and technologies"
+            (valueChange)="setTags(row, $event)"
+          />
+        </app-setting-row>
+
+        <app-setting-row
+          label="Enabled"
+          description="Switch off to keep the skill without offering it."
+        >
+          <app-toggle
+            [checked]="row.draft.enabled"
+            ariaLabel="Skill enabled"
+            (checkedChange)="edit(row, { enabled: $event })"
+          />
+        </app-setting-row>
+
+        <div class="library__body">
+          <span class="library__body-label">Description</span>
+          <span class="library__body-description">
+            One paragraph the agent always has in front of it, to decide whether this skill applies.
+            Say what kind of task it is for.
+          </span>
+          <app-markdown-field
+            [value]="row.draft.description"
+            [minRows]="3"
+            [expandable]="false"
+            ariaLabel="Skill description"
+            (valueChange)="edit(row, { description: $event })"
+          />
+        </div>
+
+        <div class="library__body library__body--grow">
+          <span class="library__body-label">Instructions</span>
+          <span class="library__body-description">
+            The Markdown the agent receives when it loads the skill. As long as it needs to be.
+          </span>
+          <app-markdown-field
+            [value]="row.draft.body"
+            [minRows]="8"
+            [fill]="true"
+            [expandable]="false"
+            ariaLabel="Skill instructions"
+            (valueChange)="edit(row, { body: $event })"
+          />
+        </div>
+
+        @if (row.stored && row.stored.files.length > 0) {
+          <div class="library__body">
+            <span class="library__body-label">Bundled files</span>
+            <span class="library__body-description">
+              Beside SKILL.md in the skill's folder; the agent is told they exist when it loads the
+              skill.
+            </span>
+            <ul class="library__files">
+              @for (file of row.stored.files; track file) {
+                <li>{{ file }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        @if (row.error; as error) {
+          <p class="library__error" role="alert">{{ error }}</p>
+        }
+      </div>
+    } @else {
+      <div class="library__empty">
+        <app-icon class="library__empty-icon" [icon]="Icon.AI_SKILLS" />
+        <p class="library__empty-text">
+          {{ rows().length === 0 ? 'No skills yet' : 'Select a skill, or create one' }}
+        </p>
+        <p class="library__empty-hint">
+          A skill is a set of instructions an agent loads when it decides a task needs them — a
+          house style, a commit-message convention, anything you find yourself pasting into
+          conversations. Each one is a folder holding a SKILL.md, which you can also edit on disk.
+        </p>
+        <app-button-row align="start">
+          <app-button variant="solid" [icon]="Icon.PLUS" label="New Skill" (click)="add()" />
+          <app-button [icon]="Icon.DOWNLOAD" label="Import…" (click)="import()" />
+        </app-button-row>
+      </div>
+    }
+  </div>
+</app-panel-layout>
+
+<!-- Asked before anything is removed. A stored skill's folder is deleted from disk outright, not moved
+     to the Trash, so the copy must not imply it can be recovered. -->
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  ariaLabel="Delete skill"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    @if (deleteTarget(); as target) {
+      <h2 class="library__dialog-title">Delete “{{ nameOf(target) }}”?</h2>
+      <p class="library__dialog-message">
+        @if (target.stored) {
+          Its folder, with SKILL.md and any files beside it, is deleted from disk, and agents are no
+          longer offered it. This can't be undone.
+        } @else {
+          It hasn't been saved, so nothing on disk changes.
+        }
+      </p>
+    }
+    <app-button-row>
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button label="Cancel" (click)="cancelDelete()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

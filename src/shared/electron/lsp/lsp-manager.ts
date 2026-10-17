@@ -784,6 +784,9 @@ export class LspManager {
         hover: { contentFormat: ['markdown', 'plaintext'] },
         definition: { linkSupport: false },
         references: {},
+        // Nested symbols, so a server answers with each type's members inside it rather than one flat
+        // list; the editor strip's Type and Member dropdowns read them (#882).
+        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
         // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
         // the standard one and feeds Monaco, colouring types, members, and parameters.
         semanticTokens: {

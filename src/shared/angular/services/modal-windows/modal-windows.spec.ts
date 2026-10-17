@@ -17,6 +17,12 @@ class FakeChildWindow {
   public innerHeight: number = 300;
   public outerWidth: number = 400;
   public outerHeight: number = 300;
+  public devicePixelRatio: number = 2;
+
+  public matchMedia(): MediaQueryList {
+    // The styling service watches the window's scale; this one never changes.
+    return { addEventListener: (): void => undefined } as unknown as MediaQueryList;
+  }
 
   public addEventListener(): void {
     // The service only listens for the window closing, which this fake drives directly.

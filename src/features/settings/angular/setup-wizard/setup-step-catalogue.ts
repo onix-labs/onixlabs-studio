@@ -6,12 +6,9 @@ import {
   input,
   InputSignal,
   Signal,
-  signal,
-  WritableSignal,
 } from '@angular/core';
 import type { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
-import { Button } from '@shared/angular/components/forms/button/button';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -38,57 +35,36 @@ function rank(plugin: PluginSummary): number {
  * which languages, which engine, which provider — and a plugin installed here may grow a step of its
  * own beneath this one, for what it brought that has something to decide.
  *
- * Installed plugins stay in the list rather than being summarised away beneath it. A filter that
- * hides half its subject is a filter that lies — a user searching for "rust" wants to know it is
- * already there just as much as they want to install it.
+ * Installed plugins stay in the list rather than being summarised away beneath it — a user looking
+ * for Rust wants to know it is already there just as much as they want to install it. There is no
+ * filter: the wizard is a pass through each category, not a search, and the Plugin Manager is where
+ * the catalogue is searched.
  *
- * Installing goes through the same consent the Plugin Manager asks for. A wizard is another entry
- * point to an install, never a shortcut past the question.
+ * Each row's action is the Plugin Manager's own — Install, Update, Remove, and a progress bar while it
+ * works — so a plugin reads and behaves the same in both. Installing goes through the same consent;
+ * a wizard is another entry point to an install, never a shortcut past the question. What is installed
+ * can be updated or removed here too, so a plugin tried during setup is not one the user must go
+ * elsewhere to take back out.
  */
 @Component({
   selector: 'app-setup-step-catalogue',
-  imports: [Button, TextField],
+  imports: [PluginAction],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-catalogue.scss',
   template: `
-    @if (inSlot().length > 6) {
-      <app-text-field
-        class="catalogue__filter"
-        kind="search"
-        placeholder="Filter by name or description"
-        ariaLabel="Filter plugins"
-        [(value)]="filter"
-      />
-    }
-
-    @if (matching().length === 0) {
-      <p class="catalogue__empty">
-        @if (filter().trim().length > 0) {
-          Nothing matches “{{ filter() }}”.
-        } @else {
-          No plugins are available for this on this machine.
-        }
-      </p>
+    @if (listed().length === 0) {
+      <p class="catalogue__empty">No plugins are available for this on this machine.</p>
     } @else {
       <ul class="catalogue__list">
-        @for (plugin of matching(); track plugin.id) {
+        @for (plugin of listed(); track plugin.id) {
           <li class="catalogue__item">
             <span class="catalogue__text">
               <span class="catalogue__name">{{ plugin.name }}</span>
               <span class="catalogue__detail">{{ plugin.description }}</span>
             </span>
-            @if (plugin.state === 'installed') {
-              <span class="catalogue__state">Installed</span>
-            } @else if (plugin.state === 'unavailable') {
-              <span class="catalogue__state">Not available here</span>
-            } @else {
-              <app-button
-                label="Install"
-                [disabled]="plugins.busy()"
-                [loading]="plugin.state === 'busy'"
-                (click)="install(plugin.id)"
-              />
-            }
+            <!-- The Plugin Manager's own action: Install, Update, Remove, and a progress bar while
+                 it works — so a plugin installed here can be updated or taken out again here. -->
+            <app-plugin-action class="catalogue__action" [plugin]="plugin" />
           </li>
         }
       </ul>
@@ -111,14 +87,10 @@ export class SetupStepCatalogue {
   protected readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Holds the text the list is filtered by.
+   * Gets the plugins to list: every one in the slot, whatever its state, with what is not installed
+   * first — the list exists to be acted on, so the actionable rows lead it.
    */
-  protected readonly filter: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Gets every plugin that contributes into the slot, whatever its state.
-   */
-  protected readonly inSlot: Signal<readonly PluginSummary[]> = computed(
+  protected readonly listed: Signal<readonly PluginSummary[]> = computed(
     (): readonly PluginSummary[] =>
       this.plugins
         .plugins()
@@ -126,32 +98,8 @@ export class SetupStepCatalogue {
           plugin.contributions.some(
             (contribution: PluginContribution): boolean => contribution.slot === this.slot(),
           ),
-        ),
-  );
-
-  /**
-   * Gets the plugins to list: those in the slot, matching the filter, with what is not installed
-   * first — the list exists to be acted on, so the actionable rows lead it.
-   */
-  protected readonly matching: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] => {
-      const needle: string = this.filter().trim().toLowerCase();
-      return this.inSlot()
-        .filter(
-          (plugin: PluginSummary): boolean =>
-            needle.length === 0 ||
-            plugin.name.toLowerCase().includes(needle) ||
-            plugin.description.toLowerCase().includes(needle),
         )
-        .toSorted((left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right));
-    },
+        // The filter's array is already a copy, so sorting it in place touches nothing shared.
+        .sort((left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right)),
   );
-
-  /**
-   * Installs a plugin, through the same terms the Plugin Manager asks for.
-   * @param id The plugin identifier.
-   */
-  protected install(id: string): void {
-    void this.plugins.installWithConsent(id);
-  }
 }

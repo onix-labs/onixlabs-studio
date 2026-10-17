@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Panel } from './panel';
@@ -12,7 +12,7 @@ import { PanelLayoutDrag } from './panel-layout-drag';
   template: `
     <app-panel-layout>
       <div main>MAIN</div>
-      <app-panel panelId="agent" defaultEdge="right">
+      <app-panel panelId="agent" defaultEdge="right" [movable]="movable()">
         <div class="header" appPanelDragHandle="Agent">
           <span class="title">Agent</span>
           <button type="button" class="close">×</button>
@@ -22,7 +22,9 @@ import { PanelLayoutDrag } from './panel-layout-drag';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-class PanelDragHandleHost {}
+class PanelDragHandleHost {
+  public readonly movable: WritableSignal<boolean> = signal<boolean>(true);
+}
 
 @Component({
   selector: 'app-panel-drag-handle-orphan',
@@ -88,6 +90,22 @@ describe('PanelDragHandle', () => {
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }));
 
     expect(drag.active()).toBe(false);
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('mousedown_onAPanelThatIsNotMovable_neverArmsADrag_andShowsNoGrabCursor', async () => {
+    // #949. A tool's sub-view side panel stays where it is declared.
+    const { fixture, drag } = await createHost();
+    fixture.componentInstance.movable.set(false);
+    await fixture.whenStable();
+    const header: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector('.header')!;
+
+    mouseDown(header);
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }));
+
+    expect(drag.active()).toBe(false);
+    expect(header.style.cursor).toBe('');
 
     document.dispatchEvent(new MouseEvent('mouseup'));
   });

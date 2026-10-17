@@ -7,7 +7,6 @@ import { SearchPanel } from '@features/workspace/angular/panels/search-panel/sea
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
 import { TreePanel } from '@features/workspace/angular/panels/tree-panel/tree-panel';
-import { WorktreesPanel } from '@features/workspace/angular/panels/worktrees-panel/worktrees-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout/dock-node';
@@ -54,7 +53,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.FILE_EXPLORER,
       role: 'tool',
       component: TreePanel,
-      ownsToolStrip: true,
     },
     {
       id: 'solution',
@@ -62,11 +60,11 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.SOLUTION_EXPLORER,
       role: 'tool',
       component: SolutionPanel,
-      ownsToolStrip: true,
     },
     {
+      // The id stays 'search', so a saved layout that names the panel still finds it.
       id: 'search',
-      title: 'Search',
+      title: 'Find & Replace',
       icon: Icon.SEARCH,
       role: 'tool',
       component: SearchPanel,
@@ -77,7 +75,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.AGENT,
       role: 'tool',
       component: AgentPanel,
-      ownsToolStrip: true,
     },
     {
       // The demoted Output panel: a background home for LSP-server and debug-session logs, out of the
@@ -88,9 +85,14 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.OUTPUT,
       role: 'tool',
       component: OutputPanel,
-      ownsToolStrip: true,
     },
-    { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
+    {
+      id: 'debug',
+      title: 'Debug',
+      icon: Icon.DEBUG,
+      role: 'tool',
+      component: DebugPanel,
+    },
     {
       // The Package Management panel: dependencies and their upgrade state. Catalogued for every
       // workspace tab but added to the layout only when the open root has a recognised package
@@ -101,16 +103,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PACKAGES,
       role: 'tool',
       component: PackagesPanel,
-      ownsToolStrip: true,
-    },
-    {
-      // The container overview and switcher. Catalogued for every workspace tab but added to the
-      // layout only while the tab hosts a worktree container (the directory view syncs it).
-      id: 'worktrees',
-      title: 'Worktrees',
-      icon: Icon.WORKTREE,
-      role: 'tool',
-      component: WorktreesPanel,
     },
     {
       id: 'errors',
@@ -118,7 +110,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PROBLEMS,
       role: 'tool',
       component: ProblemsPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'terminal',
@@ -126,7 +117,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
-      ownsToolStrip: true,
     },
   ],
 };

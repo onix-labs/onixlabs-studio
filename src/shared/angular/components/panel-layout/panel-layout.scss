@@ -96,6 +96,11 @@
   &--active:hover {
     background: var(--accent-surface-border-color);
   }
+
+  // A stack whose panels are not resizable (#949) offers no grip at all.
+  &--fixed {
+    display: none;
+  }
 }
 
 .panel-layout__edge[data-edge='left'] .panel-layout__grip,

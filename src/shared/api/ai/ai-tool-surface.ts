@@ -108,6 +108,13 @@ export const WRITE_BINARY_ASSEMBLY: string = 'write_binary_assembly';
 export const ASK_USER: string = 'ask_user';
 
 /**
+ * The in-app tool a standalone agent tab's agent offers the user a workspace with (#876), once the plan
+ * it made with them is settled: a card to name and place the project, and the handoff its workspace's
+ * agent starts from. Exposed on the project surface only — anywhere else the project already has one.
+ */
+export const PROPOSE_WORKSPACE: string = 'propose_workspace';
+
+/**
  * The in-app capability that stages an editor mutation as a pending preview instead of applying it:
  * the prospective change is computed, shown as a diff in the document well when the target has a
  * diff editor (code; markdown has none), and held until committed or cancelled. Not a model tool —
@@ -193,6 +200,24 @@ export const OPEN_DOCUMENT: string = 'open_document';
 export const SAVE_DOCUMENT: string = 'save_document';
 
 /**
+ * The in-app capability that reads the live text of a document opened by {@link OPEN_DOCUMENT},
+ * including any edits the user has made to it since.
+ */
+export const READ_DOCUMENT: string = 'read_document';
+
+/**
+ * The in-app capability that applies a string-anchored edit to a document opened by
+ * {@link OPEN_DOCUMENT}, so a revision lands in the tab the user is already reading rather than in a
+ * second one.
+ */
+export const EDIT_DOCUMENT: string = 'edit_document';
+
+/**
+ * The in-app capability that replaces the whole text of a document opened by {@link OPEN_DOCUMENT}.
+ */
+export const REPLACE_DOCUMENT: string = 'replace_document';
+
+/**
  * The in-app capability that opens a new terminal tab.
  */
 export const OPEN_TERMINAL: string = 'open_terminal';
@@ -271,6 +296,167 @@ export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
 export const LOAD_SKILL: string = 'load_skill';
 
 /**
+ * The System Monitor capability that lists the app's log sessions (#966): the current one and the
+ * earlier ones still on disk, so the agent can say which run it is reading.
+ */
+export const LIST_LOG_SESSIONS: string = 'list_log_sessions';
+
+/**
+ * The System Monitor capability that reads log records (#966), filtered by session, severity, text and
+ * time, newest first and bounded, so a long session cannot flood the context window.
+ */
+export const QUERY_LOGS: string = 'query_logs';
+
+/**
+ * The System Monitor capability that summarises the recent resource readings (#966) — CPU, memory, GPU,
+ * network and disk — over the window the view has sampled.
+ */
+export const READ_SYSTEM_METRICS: string = 'read_system_metrics';
+
+/**
+ * The System Monitor capability that changes how much the app logs (#966). Gated: it changes a setting
+ * that outlives the conversation.
+ */
+export const SET_LOG_LEVEL: string = 'set_log_level';
+
+/**
+ * The AI Manager capability that lists the local model runtime, its installed and running models and their disk use (#967).
+ */
+export const LIST_LOCAL_MODELS: string = 'list_local_models';
+
+/**
+ * The AI Manager capability that searches the model catalogue (#967).
+ */
+export const SEARCH_MODEL_CATALOG: string = 'search_model_catalog';
+
+/**
+ * The AI Manager capability that reports what the machine can run: its memory, processor and architecture (#967).
+ */
+export const READ_MACHINE_FACTS: string = 'read_machine_facts';
+
+/**
+ * The AI Manager capability that starts downloading a model. Gated: a model can run to gigabytes (#967).
+ */
+export const DOWNLOAD_MODEL: string = 'download_model';
+
+/**
+ * The AI Manager capability that deletes an installed model's weights. Gated (#967).
+ */
+export const DELETE_MODEL: string = 'delete_model';
+
+/**
+ * The AI Manager capability that lists the prompt profiles (#967).
+ */
+export const LIST_PROMPT_PROFILES: string = 'list_prompt_profiles';
+
+/**
+ * The AI Manager capability that creates or changes a prompt profile (#967). Gated: a profile is a
+ * standing instruction every later agent obeys.
+ */
+export const SAVE_PROMPT_PROFILE: string = 'save_prompt_profile';
+
+/**
+ * The AI Manager capability that deletes a prompt profile. Gated (#967).
+ */
+export const DELETE_PROMPT_PROFILE: string = 'delete_prompt_profile';
+
+/**
+ * The AI Manager capability that lists the skill library (#967).
+ */
+export const LIST_SKILLS: string = 'list_skills';
+
+/**
+ * The AI Manager capability that reads one skill's instructions (#967).
+ */
+export const READ_SKILL: string = 'read_skill';
+
+/**
+ * The AI Manager capability that lists what a skill may be scoped and tagged with: the surfaces, and the languages and technologies by category (#967).
+ */
+export const LIST_SKILL_TAGS: string = 'list_skill_tags';
+
+/**
+ * The AI Manager capability that creates or changes a skill (#967). Gated: a skill is an instruction
+ * a later agent loads on its own judgement.
+ */
+export const SAVE_SKILL: string = 'save_skill';
+
+/**
+ * The AI Manager capability that deletes a skill. Gated (#967).
+ */
+export const DELETE_SKILL: string = 'delete_skill';
+
+/**
+ * The Plugin Manager capability that lists the plugins: installed, available and waiting updates, with what each contributes (#968).
+ */
+export const LIST_PLUGINS: string = 'list_plugins';
+
+/**
+ * The Plugin Manager capability that reports the open workspaces' ecosystems and the languages they imply, to recommend plugins from (#968).
+ */
+export const READ_WORKSPACE_LANGUAGES: string = 'read_workspace_languages';
+
+/**
+ * The Plugin Manager capability that installs or updates a plugin through the consent window, which is its only gate (#968).
+ */
+export const INSTALL_PLUGIN: string = 'install_plugin';
+
+/**
+ * The Plugin Manager capability that uninstalls a plugin. Gated (#968).
+ */
+export const UNINSTALL_PLUGIN: string = 'uninstall_plugin';
+
+/**
+ * The Containers capability that lists the containers, with each one's state, ports, mounts and, while it runs, its CPU and memory (#969).
+ */
+export const LIST_CONTAINERS: string = 'list_containers';
+
+/**
+ * The Containers capability that lists the images on this machine (#969).
+ */
+export const LIST_CONTAINER_IMAGES: string = 'list_container_images';
+
+/**
+ * The Containers capability that lists the volumes, and which containers mount each (#969).
+ */
+export const LIST_CONTAINER_VOLUMES: string = 'list_container_volumes';
+
+/**
+ * The Containers capability that reads a container's most recent log lines, to explain why it stopped (#969).
+ */
+export const READ_CONTAINER_LOGS: string = 'read_container_logs';
+
+/**
+ * The Containers capability that starts, stops, restarts, pauses or resumes a container. Not gated: each is undone by another (#969).
+ */
+export const CONTROL_CONTAINER: string = 'control_container';
+
+/**
+ * The Containers capability that removes a container. Gated (#969).
+ */
+export const REMOVE_CONTAINER: string = 'remove_container';
+
+/**
+ * The Containers capability that downloads an image. Gated (#969).
+ */
+export const PULL_IMAGE: string = 'pull_image';
+
+/**
+ * The Containers capability that removes an image. Gated (#969).
+ */
+export const REMOVE_IMAGE: string = 'remove_image';
+
+/**
+ * The Containers capability that removes a volume and the data in it. Gated (#969).
+ */
+export const REMOVE_VOLUME: string = 'remove_volume';
+
+/**
+ * The Containers capability that runs a new container from an image, with its ports, environment and mounts. Gated (#969).
+ */
+export const RUN_CONTAINER: string = 'run_container';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -281,10 +467,20 @@ export type OpenDocumentFormat = 'markdown' | 'code';
  * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), a
  * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
  * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
- * owning document and works through the provider's built-in tools alone). It selects the tool set the
- * providers expose for the run.
+ * owning document and works through the provider's built-in tools alone), or one of the tool views
+ * (`monitor` — the System Monitor; `models` — the AI Manager; `plugins` — the Plugin Manager; `containers` — the Containers view, #964). It selects the tool set the providers expose for the run.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project';
+export type AgentSurface =
+  | 'editor'
+  | 'terminal'
+  | 'binary'
+  | 'api'
+  | 'workspace'
+  | 'project'
+  | 'monitor'
+  | 'models'
+  | 'plugins'
+  | 'containers';
 
 /**
  * Every surface, in the order they are presented to a user choosing among them. The one list the
@@ -298,7 +494,43 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'api',
   'workspace',
   'project',
+  'monitor',
+  'models',
+  'plugins',
+  'containers',
 ];
+
+/**
+ * The tool views' surfaces (#964). An agent docked in a tool view is kept to that view: it is offered
+ * its view's own tools, the clarifying question and the skills, and nothing else — no workbench, file,
+ * terminal, run-configuration or hosting tools — so it cannot drift into work the view is not for.
+ */
+export const TOOL_VIEW_SURFACES: readonly AgentSurface[] = [
+  'monitor',
+  'models',
+  'plugins',
+  'containers',
+];
+
+/**
+ * Determines whether a surface belongs to a tool view.
+ * @param surface The surface.
+ * @returns Returns true when it is one of {@link TOOL_VIEW_SURFACES}.
+ */
+export function isToolViewSurface(surface: AgentSurface): boolean {
+  return TOOL_VIEW_SURFACES.includes(surface);
+}
+
+/**
+ * Determines whether a surface's agent is denied the harness's own built-in tools — its file, shell and
+ * web tools — and so works through Studio's tools alone. A terminal agent acts on its terminal, and a
+ * tool view's agent on its view; neither has any business with the file system.
+ * @param surface The surface.
+ * @returns Returns true when the harness's built-in tools are withheld.
+ */
+export function withholdsBuiltInTools(surface: AgentSurface): boolean {
+  return surface === 'terminal' || isToolViewSurface(surface);
+}
 
 /**
  * Determines whether a value names a surface.

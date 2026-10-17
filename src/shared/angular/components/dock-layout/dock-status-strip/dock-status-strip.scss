@@ -1,14 +1,19 @@
 // Layout only; the surrounding dock tab group supplies the strip's background and frame borders so
 // it reads as part of the document well chrome.
 :host {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  min-block-size: 1.625rem;
-  padding-block: 0.125rem;
+  // One height everywhere (#882), not a minimum: a narrow well — the Agentic Engineering layout's —
+  // used to wrap the segments onto two lines and grow the strip to 35px. They stay on one line now,
+  // and what does not fit is cut off at the end rather than pushing the strip taller.
+  block-size: 1.625rem;
   padding-inline: 0.5rem;
+  overflow: hidden;
   font-size: 0.75rem;
+  white-space: nowrap;
   color: var(--dock-tab-foreground-color);
 }
 
@@ -16,16 +21,19 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  min-inline-size: 0;
 }
 
-// Held to the trailing edge whatever else is on the strip, rather than relying on being the second of
-// exactly two groups.
-.dock-status-strip__group--end {
+// The document's details sit at the trailing edge whatever else is on the strip (#882). They used to
+// get there by being the second of two groups, so a document without the error and warning counts —
+// a picture, a prose file — had them on the left while a code file had them on the right.
+.dock-status-strip__group--details {
   margin-inline-start: auto;
 }
 
 .dock-status-strip__segment {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.3rem;
   padding: 0.0625rem 0.375rem;
@@ -73,4 +81,9 @@
     color: inherit;
     background: transparent;
   }
+}
+
+// A document's status chip leads its details, a little apart from the segments after it.
+.dock-status-strip__chip {
+  margin-inline-end: 0.25rem;
 }

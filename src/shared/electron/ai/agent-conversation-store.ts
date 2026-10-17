@@ -1,5 +1,6 @@
 import { app, ipcMain, IpcMainInvokeEvent } from 'electron';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AgentConversationChannel,
@@ -32,8 +33,35 @@ const INDEX_FILE: string = 'index.json';
  * workspace, repository, file, or the global "new agent" bucket — and listing filters the index by
  * that context. Every read degrades gracefully (empty list / null) and every write is best-effort, so
  * a corrupt or unwritable store can never crash the app or the renderer.
+ *
+ * The index is read once and then held in memory, so listing never touches the disk. Writes are
+ * queued and made in the background, one at a time: a conversation saved again before its last copy
+ * reached the disk replaces that copy, so a streaming agent's saves cost one write rather than one
+ * each. Reads see what is queued. Call {@link flush} before quitting so the queue reaches the disk.
  */
 export class AgentConversationStore {
+  /**
+   * Holds the summary index once it has been read from disk, or null until it is first needed.
+   */
+  private index: readonly AgentConversationSummary[] | null = null;
+
+  /**
+   * Holds each conversation saved since its file was last written, newest copy only, by id.
+   */
+  private readonly unwritten: Map<string, StoredAgentConversation> = new Map<
+    string,
+    StoredAgentConversation
+  >();
+
+  /**
+   * Holds whether the in-memory index has changed since it was last written.
+   */
+  private indexUnwritten: boolean = false;
+
+  /**
+   * Holds the background write in progress, or null when the queue is empty.
+   */
+  private draining: Promise<void> | null = null;
   /**
    * Registers the conversation IPC handlers.
    */
@@ -67,8 +95,18 @@ export class AgentConversationStore {
     );
     ipcMain.handle(
       AgentConversationChannel.Delete,
-      (_event: IpcMainInvokeEvent, ids: unknown): void => this.delete(ids),
+      (_event: IpcMainInvokeEvent, ids: unknown): Promise<void> => this.delete(ids),
     );
+  }
+
+  /**
+   * Writes everything queued to disk.
+   * @returns Returns a promise that resolves once the queue is empty.
+   */
+  public async flush(): Promise<void> {
+    while (this.draining !== null) {
+      await this.draining;
+    }
   }
 
   /**
@@ -80,7 +118,7 @@ export class AgentConversationStore {
     if (typeof contextId !== 'string') {
       return [];
     }
-    return this.readIndex()
+    return this.summaries()
       .filter((summary: AgentConversationSummary): boolean => summary.contextId === contextId)
       .sort(
         (a: AgentConversationSummary, b: AgentConversationSummary): number =>
@@ -94,7 +132,7 @@ export class AgentConversationStore {
    * @returns Returns all summaries.
    */
   private listAll(): readonly AgentConversationSummary[] {
-    return this.readIndex()
+    return this.summaries()
       .slice()
       .sort(
         (a: AgentConversationSummary, b: AgentConversationSummary): number =>
@@ -112,6 +150,10 @@ export class AgentConversationStore {
     if (safeId === null) {
       return null;
     }
+    const queued: StoredAgentConversation | undefined = this.unwritten.get(safeId);
+    if (queued !== undefined) {
+      return queued;
+    }
     try {
       const file: string = join(this.dir(), `${safeId}.json`);
       if (!existsSync(file)) {
@@ -126,9 +168,10 @@ export class AgentConversationStore {
   }
 
   /**
-   * Persists a conversation (creating or replacing it) and updates the summary index.
+   * Stores a conversation (creating or replacing it) and updates the summary index. The file is
+   * written in the background.
    * @param value The conversation to store.
-   * @returns Returns the stored summary, or null when the input was malformed or the write failed.
+   * @returns Returns the stored summary, or null when the input was malformed.
    */
   private save(value: unknown): AgentConversationSummary | null {
     if (!this.isConversation(value)) {
@@ -138,23 +181,15 @@ export class AgentConversationStore {
     if (safeId === null) {
       return null;
     }
-    try {
-      mkdirSync(this.dir(), { recursive: true });
-      writeFileSync(join(this.dir(), `${safeId}.json`), JSON.stringify(value), {
-        encoding: 'utf8',
-        mode: 0o600,
-      });
-      const summary: AgentConversationSummary = this.summaryOf(value);
-      const others: readonly AgentConversationSummary[] = this.readIndex().filter(
+    const summary: AgentConversationSummary = this.summaryOf(value);
+    this.unwritten.set(safeId, value);
+    this.setIndex([
+      summary,
+      ...this.summaries().filter(
         (existing: AgentConversationSummary): boolean => existing.id !== value.id,
-      );
-      this.writeIndex([summary, ...others]);
-      logger.trace('AgentConversationStore.save', `Saved conversation ${safeId}`);
-      return summary;
-    } catch (error: unknown) {
-      logger.error('AgentConversationStore.save', `Failed to save conversation ${safeId}`, error);
-      return null;
-    }
+      ),
+    ]);
+    return summary;
   }
 
   /**
@@ -190,7 +225,7 @@ export class AgentConversationStore {
     if (typeof categoryId !== 'string' || categoryId.length === 0) {
       return;
     }
-    for (const summary of this.readIndex()) {
+    for (const summary of this.summaries()) {
       if (summary.categoryId === categoryId) {
         this.updateMeta({ id: summary.id, categoryId: null });
       }
@@ -221,10 +256,12 @@ export class AgentConversationStore {
   }
 
   /**
-   * Deletes conversations by id, removing their bodies and index entries.
+   * Deletes conversations by id, removing their bodies and index entries. The queue is written first,
+   * so a write still in progress cannot bring a deleted file back.
    * @param ids The ids to delete.
+   * @returns Returns a promise that resolves once the files are removed.
    */
-  private delete(ids: unknown): void {
+  private async delete(ids: unknown): Promise<void> {
     if (!Array.isArray(ids)) {
       return;
     }
@@ -235,6 +272,7 @@ export class AgentConversationStore {
       return;
     }
     logger.info('AgentConversationStore.delete', `Deleting ${safeIds.length} conversation(s)`);
+    await this.flush();
     const remove: Set<string> = new Set<string>(safeIds);
     for (const id of safeIds) {
       try {
@@ -243,11 +281,79 @@ export class AgentConversationStore {
         logger.warn('AgentConversationStore.delete', `Best-effort delete failed for ${id}`, error);
       }
     }
-    this.writeIndex(
-      this.readIndex().filter(
+    this.setIndex(
+      this.summaries().filter(
         (summary: AgentConversationSummary): boolean => !remove.has(summary.id),
       ),
     );
+  }
+
+  /**
+   * Gets the summary index, reading it from disk the first time it is needed.
+   * @returns Returns the stored summaries.
+   */
+  private summaries(): readonly AgentConversationSummary[] {
+    this.index ??= this.readIndex();
+    return this.index;
+  }
+
+  /**
+   * Replaces the in-memory index and queues it to be written.
+   * @param summaries The new index.
+   */
+  private setIndex(summaries: readonly AgentConversationSummary[]): void {
+    this.index = summaries;
+    this.indexUnwritten = true;
+    this.draining ??= this.drain();
+  }
+
+  /**
+   * Writes the queue to disk one file at a time, conversations first and then the index, until
+   * nothing is left. A conversation saved again while its file is being written stays queued, so its
+   * newest copy is written next.
+   * @returns Returns a promise that resolves once the queue is empty.
+   */
+  private async drain(): Promise<void> {
+    for (;;) {
+      const next: IteratorResult<[string, StoredAgentConversation]> = this.unwritten
+        .entries()
+        .next();
+      if (next.done !== true) {
+        const [id, value] = next.value;
+        await this.write(`${id}.json`, value, 'conversation');
+        if (this.unwritten.get(id) === value) {
+          this.unwritten.delete(id);
+        }
+        continue;
+      }
+      if (this.indexUnwritten) {
+        this.indexUnwritten = false;
+        await this.write(INDEX_FILE, this.summaries(), 'index');
+        continue;
+      }
+      this.draining = null;
+      return;
+    }
+  }
+
+  /**
+   * Writes one file under the store directory, through a temporary file renamed into place so a quit
+   * mid-write never leaves half a file. Best-effort: a failure is logged.
+   * @param name The file name.
+   * @param value The value to write as JSON.
+   * @param what What the file holds, for the log.
+   * @returns Returns a promise that resolves once the write has finished or failed.
+   */
+  private async write(name: string, value: unknown, what: string): Promise<void> {
+    const file: string = join(this.dir(), name);
+    try {
+      await mkdir(this.dir(), { recursive: true });
+      await writeFile(`${file}.tmp`, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+      await rename(`${file}.tmp`, file);
+      logger.trace('AgentConversationStore.write', `Wrote ${what} ${name}`);
+    } catch (error: unknown) {
+      logger.error('AgentConversationStore.write', `Failed to write ${what} ${name}`, error);
+    }
   }
 
   /**
@@ -265,26 +371,6 @@ export class AgentConversationStore {
     } catch (error: unknown) {
       logger.debug('AgentConversationStore.readIndex', 'No readable conversation index', error);
       return [];
-    }
-  }
-
-  /**
-   * Writes the summary index. Best-effort.
-   * @param summaries The summaries to persist.
-   */
-  private writeIndex(summaries: readonly AgentConversationSummary[]): void {
-    try {
-      mkdirSync(this.dir(), { recursive: true });
-      writeFileSync(join(this.dir(), INDEX_FILE), JSON.stringify(summaries), {
-        encoding: 'utf8',
-        mode: 0o600,
-      });
-    } catch (error: unknown) {
-      logger.error(
-        'AgentConversationStore.writeIndex',
-        'Failed to persist conversation index',
-        error,
-      );
     }
   }
 

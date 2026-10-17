@@ -141,7 +141,7 @@ describe('RecentItems', () => {
   it('restore_keepsEveryDeclaredKind', () => {
     // The validation set previously missed 'binary', silently dropping persisted binary recents on
     // every restart; every kind the type declares must round-trip through storage.
-    const kinds: readonly string[] = ['directory', 'markdown', 'code', 'binary'];
+    const kinds: readonly string[] = ['directory', 'markdown', 'code', 'binary', 'image', 'api'];
     localStorage.setItem(
       KEY,
       JSON.stringify(

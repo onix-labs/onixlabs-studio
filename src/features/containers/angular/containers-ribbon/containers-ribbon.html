@@ -15,6 +15,18 @@
       (action)="onStop()"
     />
     <app-ribbon-strip-button
+      [icon]="Icon.RESTART"
+      label="Restart"
+      [disabled]="!hasSelection()"
+      (action)="onRestart()"
+    />
+    <app-ribbon-strip-button
+      [icon]="selectionPaused() ? Icon.PLAY : Icon.PAUSE"
+      [label]="selectionPaused() ? 'Resume' : 'Pause'"
+      [disabled]="!hasSelection() || (!selectionRunning() && !selectionPaused())"
+      (action)="onTogglePause()"
+    />
+    <app-ribbon-strip-button
       [icon]="Icon.TRASH"
       label="Remove"
       tone="danger"
@@ -30,15 +42,27 @@
       [disabled]="!hasSelection()"
       (action)="onLogs()"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.TERMINAL"
-      label="Shell"
-      [disabled]="!hasSelection() || !selectionRunning()"
-      (action)="onShell()"
-    />
+    @if (shellAvailable()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.TERMINAL"
+        label="Shell"
+        [disabled]="!hasSelection() || !selectionRunning()"
+        (action)="onShell()"
+      />
+    }
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-button [icon]="Icon.REFRESH" label="Refresh" (action)="onRefresh()" />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Agent">
+    <app-ribbon-strip-button
+      [icon]="Icon.AGENT"
+      label="Agent"
+      [toggle]="true"
+      [pressed]="agentShown()"
+      (action)="onToggleAgent()"
+    />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

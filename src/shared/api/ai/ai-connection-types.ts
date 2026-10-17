@@ -116,4 +116,38 @@ export interface AiConnection {
    * Gets the identifier of the connection's default model (used when the user has not picked one).
    */
   readonly defaultModelId: string;
+
+  /**
+   * Gets the models the user answered "Not now" to (#866), so the same offer is not made again. The
+   * settings editor's Discover still offers them. Absent means none.
+   */
+  readonly dismissedModelIds?: readonly string[];
+
+  /**
+   * Gets when the connection's models were last checked in the background, and against which plugin
+   * version, so the check runs at most once a day — or again as soon as the plugin is updated.
+   * Absent means never.
+   */
+  readonly modelCheck?: AiModelCheck;
+}
+
+/**
+ * Records the last background check of a connection's models (#866).
+ */
+export interface AiModelCheck {
+  /**
+   * Gets when the check ran, in milliseconds since the epoch.
+   */
+  readonly at: number;
+
+  /**
+   * Gets the plugin that ran it, as `id@version`.
+   */
+  readonly plugin: string;
+
+  /**
+   * Gets whether the plugin's harness answered discovery. When it did, its answer is the only source
+   * of new models; when it did not, the plugin's manifest is.
+   */
+  readonly discovered: boolean;
 }

@@ -3,6 +3,7 @@
     class="document-panel__toolstrip"
     [editor]="pane()"
     [showOpenInTab]="hasFilePath()"
+    [filePath]="filePath()"
     (openInTab)="onOpenInTab()"
   />
   <div class="document-panel__editor">

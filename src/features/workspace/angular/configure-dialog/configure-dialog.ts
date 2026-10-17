@@ -22,6 +22,7 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { runConfigurationKindLabel } from './run-configuration-kinds';
@@ -90,6 +91,7 @@ const CONFIGURATION_PREFIX: string = 'config:';
   imports: [
     Textarea,
     Button,
+    ButtonRow,
     Modal,
     ModalContent,
     Dropdown,

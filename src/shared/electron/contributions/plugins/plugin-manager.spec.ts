@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { PluginActionResult, PluginSummary } from '@shared/api/plugin-channels';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { PluginActionResult, PluginContribution, PluginSummary } from '@shared/api/plugin-channels';
+import { VersionControlCapability } from '@shared/api/version-control-protocol';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { PluginInstallChange, PluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
 
@@ -107,6 +109,35 @@ describe('PluginManager', () => {
     expect((await only(manager)).state).toBe('installed');
   });
 
+  it('install_tellsListenersAsItStartsWhileThePluginReadsBusy_andAgainWhenItEnds', async () => {
+    // The busy state is only worth having if someone can see it: the listener fires with the plugin
+    // still marked busy at the start, and once more after it is cleared at the end.
+    let finish: (path: string) => void = (): void => undefined;
+    const descriptorWithSlowInstall: PluginDescriptor = {
+      ...descriptor('demo', (): boolean => false),
+      install: (): Promise<string | null> =>
+        new Promise<string | null>((resolve: (path: string) => void): void => {
+          finish = resolve;
+        }),
+    };
+    const manager: PluginManager = new PluginManager([descriptorWithSlowInstall], context, store);
+    const seen: Promise<PluginSummary['state']>[] = [];
+    manager.onChanged((): void => {
+      seen.push(
+        only(manager).then((summary: PluginSummary): PluginSummary['state'] => summary.state),
+      );
+    });
+
+    const installing: Promise<PluginActionResult> = manager.install('demo');
+    expect(seen).toHaveLength(1);
+    expect(await seen[0]).toBe('busy');
+
+    finish('/installed/demo');
+    await installing;
+    expect(seen).toHaveLength(2);
+    expect(await seen[1]).not.toBe('busy');
+  });
+
   it('uninstall_forgetsTheRecordAndReportsAvailable', async () => {
     let present: boolean = true;
     const manager: PluginManager = new PluginManager(
@@ -122,6 +153,32 @@ describe('PluginManager', () => {
     expect(result).toEqual({ success: true, state: 'available', error: null });
     expect(store.get('demo')).toBeNull();
     expect((await only(manager)).state).toBe('available');
+  });
+
+  it('uninstall_ofAPluginPlacedByHand_saysWhereItIs_andKeepsItsRecord', async () => {
+    const manager: PluginManager = new PluginManager(
+      [
+        {
+          ...descriptor('github', (): boolean => true),
+          name: 'GitHub',
+          uninstall: (): Promise<void> =>
+            Promise.reject(new HandPlacedPluginError('/data/plugins/onixlabs.github')),
+        },
+      ],
+      context,
+      store,
+    );
+    await manager.install('github');
+
+    const result: PluginActionResult = await manager.uninstall('github');
+
+    expect(result).toEqual({
+      success: false,
+      state: 'installed',
+      error:
+        'GitHub was added by hand, in /data/plugins/onixlabs.github. To remove it, delete that folder and restart Studio.',
+    });
+    expect(store.get('github')).not.toBeNull();
   });
 
   it('install_thatFails_reportsAFailureAndNotThePluginsOwnDescription', async () => {
@@ -149,6 +206,193 @@ describe('PluginManager', () => {
     expect(result.error).not.toBe(detail);
     expect(result.error).toContain('demo');
     expect(store.get('demo')).toBeNull();
+  });
+
+  describe('contributions (#878)', () => {
+    /**
+     * Builds a version-control plugin at a version, supporting what it is told.
+     * @param version The catalogue version.
+     * @param capabilities What the version supports.
+     * @returns Returns the descriptor, detected as installed.
+     */
+    function git(
+      version: string,
+      capabilities: readonly VersionControlCapability[],
+    ): PluginDescriptor {
+      return {
+        ...descriptor('git', (): boolean => true),
+        version,
+        contributions: [
+          { slot: 'version-control', id: 'git', displayName: 'Git', priority: 100, capabilities },
+        ],
+      };
+    }
+
+    /**
+     * Lists one plugin and returns what its summary says it contributes.
+     * @param manager The manager under test.
+     * @returns Returns the contributions.
+     */
+    async function contributed(manager: PluginManager): Promise<readonly PluginContribution[]> {
+      return (await only(manager)).contributions;
+    }
+
+    it('list_afterTheCatalogueMovesAhead_describesTheInstalledVersion', async () => {
+      // The bug: 0.3.0 in the index could `init`, 0.2.0 on disk could not, and the summary said it could.
+      await new PluginManager([git('0.2.0', ['clone'])], context, store).install('git');
+      const manager: PluginManager = new PluginManager(
+        [git('0.3.0', ['clone', 'init'])],
+        context,
+        store,
+      );
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.2.0', ['clone']).contributions);
+      expect(summary.contributionsUnconfirmed).toBeUndefined();
+      expect(summary.version).toBe('0.3.0');
+      expect(summary.installedVersion).toBe('0.2.0');
+    });
+
+    it('install_ofTheUpdate_replacesWhatTheSummaryDescribes', async () => {
+      await new PluginManager([git('0.2.0', ['clone'])], context, store).install('git');
+      const manager: PluginManager = new PluginManager(
+        [git('0.3.0', ['clone', 'init'])],
+        context,
+        store,
+      );
+
+      await manager.install('git');
+
+      expect(await contributed(manager)).toEqual(git('0.3.0', ['clone', 'init']).contributions);
+    });
+
+    it('list_ofAPluginThatIsNotInstalled_describesWhatAnInstallWouldBring', async () => {
+      const manager: PluginManager = new PluginManager(
+        [{ ...git('0.3.0', ['init']), detect: (): Promise<boolean> => Promise.resolve(false) }],
+        context,
+        store,
+      );
+
+      expect(await contributed(manager)).toEqual(git('0.3.0', ['init']).contributions);
+    });
+
+    it('list_recordFromBeforeSnapshots_atTheCatalogueVersion_isDescribedByTheCatalogue', async () => {
+      // Same version, same manifest: the catalogue is exactly what is installed, so it is confirmed.
+      store.add({ id: 'git', version: '0.3.0', installedPath: directory });
+      const manager: PluginManager = new PluginManager([git('0.3.0', ['init'])], context, store);
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.3.0', ['init']).contributions);
+      expect(summary.contributionsUnconfirmed).toBeUndefined();
+    });
+
+    it('list_recordFromBeforeSnapshots_atAnotherVersion_isMarkedUnconfirmed', async () => {
+      store.add({ id: 'git', version: '0.2.0', installedPath: directory });
+      const manager: PluginManager = new PluginManager([git('0.3.0', ['init'])], context, store);
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.3.0', ['init']).contributions);
+      expect(summary.contributionsUnconfirmed).toBe(true);
+    });
+  });
+
+  describe('announcing installs and removals (#881)', () => {
+    /**
+     * Builds a manager over one Git plugin that announces on a recorder.
+     * @param version The catalogue version.
+     * @param capabilities What the version supports.
+     * @returns Returns the manager and what it announced.
+     */
+    function announcing(
+      version: string,
+      capabilities: readonly VersionControlCapability[],
+    ): { manager: PluginManager; announced: PluginInstallChange[] } {
+      const announced: PluginInstallChange[] = [];
+      const events: PluginInstallEvents = new PluginInstallEvents();
+      events.on((change: PluginInstallChange): void => void announced.push(change));
+      const git: PluginDescriptor = {
+        ...descriptor('git', (): boolean => true),
+        version,
+        contributions: [
+          { slot: 'version-control', id: 'git', displayName: 'Git', priority: 100, capabilities },
+        ],
+      };
+      return { manager: new PluginManager([git], context, store, events), announced };
+    }
+
+    it('install_announcesWhatTheReplacedAndTheNewVersionContribute', async () => {
+      await announcing('0.2.0', ['clone']).manager.install('git');
+      const { manager, announced } = announcing('0.3.0', ['clone', 'init']);
+
+      await manager.install('git');
+
+      expect(announced).toEqual([
+        {
+          pluginId: 'git',
+          kind: 'installed',
+          contributions: [
+            {
+              slot: 'version-control',
+              id: 'git',
+              displayName: 'Git',
+              priority: 100,
+              capabilities: ['clone'],
+            },
+            {
+              slot: 'version-control',
+              id: 'git',
+              displayName: 'Git',
+              priority: 100,
+              capabilities: ['clone', 'init'],
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('uninstall_announcesTheRemoval_withWhatTheInstallContributed', async () => {
+      const { manager, announced } = announcing('0.3.0', ['init']);
+      await manager.install('git');
+      announced.length = 0;
+
+      await manager.uninstall('git');
+
+      expect(announced.map((change: PluginInstallChange): string => change.kind)).toEqual([
+        'removed',
+      ]);
+      expect(announced[0].contributions.map((c: PluginContribution): string => c.id)).toEqual([
+        'git',
+      ]);
+    });
+
+    it('anActionThatFails_announcesNothing', async () => {
+      // A failed install left the old version running, and a refused removal left the plugin in
+      // place: there is nothing for a host to stop in either case.
+      const announced: PluginInstallChange[] = [];
+      const events: PluginInstallEvents = new PluginInstallEvents();
+      events.on((change: PluginInstallChange): void => void announced.push(change));
+      const manager: PluginManager = new PluginManager(
+        [
+          {
+            ...descriptor('demo', (): boolean => true),
+            install: (): Promise<string | null> => Promise.resolve(null),
+            uninstall: (): Promise<void> =>
+              Promise.reject(new HandPlacedPluginError('/data/plugins/demo')),
+          },
+        ],
+        context,
+        store,
+        events,
+      );
+
+      await manager.install('demo');
+      await manager.uninstall('demo');
+
+      expect(announced).toEqual([]);
+    });
   });
 
   it('install_unknownPlugin_isRejected', async () => {

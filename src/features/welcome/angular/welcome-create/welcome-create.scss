@@ -1,0 +1,155 @@
+@use '../welcome' as *;
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// The step filling the left; the checklist down the right.
+.create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: 1.5rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.create__side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-block-size: 0;
+  padding-inline-start: 1.25rem;
+  border-inline-start: 0.0625rem solid var(--wl-border);
+}
+
+.create__heading {
+  @include section-title;
+
+  padding: 0.2rem 0.15rem;
+}
+
+.create__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// A step: its state's glyph and its name; the one shown held in the accent, as a picked row is.
+.create__step {
+  @include list-row;
+
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  inline-size: 100%;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: start;
+  color: var(--wl-muted);
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
+  }
+}
+
+.create__step--current {
+  @include list-row-active;
+}
+
+.create__step--done {
+  color: var(--wl-text);
+}
+
+.create__step-icon {
+  flex: none;
+  font-size: 1rem;
+}
+
+.create__lead {
+  margin: 0.5rem 0 0;
+  padding-inline: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--wl-faint);
+}
+
+.create__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// Styled as the checklist's own heading.
+.create__title {
+  @include section-title;
+
+  padding: 0.2rem 0.15rem;
+}
+
+.create__description {
+  @include lead-description;
+}
+
+.create__body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+// The way on, at the foot of the checklist: Back and Skip/Next side by side, half each, with what went
+// wrong above them.
+.create__nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-block-start: auto;
+}
+
+.create__destination {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--wl-faint);
+}
+
+.create__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--danger-color);
+}
+
+.create__secondary {
+  @include secondary-button;
+  @include control-metrics;
+
+  justify-content: center;
+}
+
+.create__primary {
+  @include primary-button;
+  @include control-metrics;
+}
+
+.create__spin {
+  animation: create-spin 1s linear infinite;
+}
+
+@keyframes create-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}

@@ -1,0 +1,50 @@
+<figure class="edit-diff" [attr.aria-label]="'Proposed change to ' + diff().path">
+  <figcaption class="edit-diff__head">
+    <span class="edit-diff__path"
+      ><bdi>{{ diff().path }}</bdi></span
+    >
+    @if (diff().newFile) {
+      <span class="edit-diff__note">new file</span>
+    }
+    <span class="edit-diff__counts">
+      <span class="edit-diff__added">+{{ diff().additions }}</span>
+      <span class="edit-diff__removed">−{{ diff().deletions }}</span>
+    </span>
+  </figcaption>
+
+  @if (diff().fragmentsOnly) {
+    <p class="edit-diff__note-line">
+      The file has changed since the agent read it, so only the text it would replace is shown.
+    </p>
+  }
+  <div class="edit-diff__body" [class.edit-diff__body--fragments]="diff().fragmentsOnly">
+    <!-- One column every line shares, as wide as the widest line or the scroll area, whichever is
+         wider: so a highlight runs the full width however far the change is scrolled. -->
+    <div class="edit-diff__lines">
+      @for (hunk of diff().hunks; track $index; let first = $first) {
+        @if (!first) {
+          <div class="edit-diff__gap" aria-hidden="true">
+            <span class="edit-diff__gutter">⋯</span>
+          </div>
+        }
+        @for (line of hunk.lines; track $index) {
+          <div class="edit-diff__line" [class]="'edit-diff__line--' + line.kind">
+            <span class="edit-diff__gutter">
+              <span class="edit-diff__number">{{ line.oldLine ?? '' }}</span>
+              <span class="edit-diff__number">{{ line.newLine ?? '' }}</span>
+              <span class="edit-diff__sign" aria-hidden="true">{{
+                line.kind === 'add' ? '+' : line.kind === 'remove' ? '−' : ' '
+              }}</span>
+            </span>
+            <span class="edit-diff__text">{{ line.text }}</span>
+          </div>
+        }
+      } @empty {
+        <p class="edit-diff__empty">No lines change.</p>
+      }
+    </div>
+    @if (diff().truncated) {
+      <p class="edit-diff__empty">The rest of the change is too long to show here.</p>
+    }
+  </div>
+</figure>

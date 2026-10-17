@@ -1,5 +1,9 @@
 import { inject, OnDestroy, Service } from '@angular/core';
-import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-channels';
+import {
+  childWindowName,
+  MODAL_UNPARENTED_FEATURE,
+  MODAL_WINDOW_URL,
+} from '@shared/api/window-channels';
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
 import { Log } from '@shared/angular/services/log/log';
@@ -158,8 +162,9 @@ export interface ModalWindow {
  * component styles — comes from the application stylesheets mirrored into the child, so a modal
  * tracks the app's theme tokens exactly as the window that raised it does.
  *
- * The drag strip is the band the platform's window controls sit in: it makes the window movable
- * (there is no title bar to grab) and its height is the inset the panel leaves for the controls.
+ * The drag strip is the band the window's controls sit in — the platform's own on macOS and Windows,
+ * Studio's on Linux (drawn by the modal's host): it makes the window movable (there is no title bar to
+ * grab) and its height is the inset the panel leaves for the controls.
  */
 const MODAL_STYLES: string = `
   html, body { block-size: 100%; }
@@ -229,9 +234,10 @@ export class ModalWindows implements OnDestroy {
    * platform refused) — the caller then falls back to presenting the modal in its own window.
    */
   public open(request: ModalWindowRequest, owner: Window): ModalWindow | null {
+    // Named, so the window's own controls can address it (see `Studio.closeWindow`).
     const child: Window | null = owner.open(
       MODAL_WINDOW_URL,
-      '_blank',
+      childWindowName(),
       this.features(request, owner),
     );
     if (child?.document == null) {
@@ -247,15 +253,16 @@ export class ModalWindows implements OnDestroy {
     // the styling service, which would wipe anything written there. A dragless window reserves no
     // inset, so the panel's `padding-block-start: max(panel-padding, drag-height)` falls back to the
     // plain panel padding and its content sits flush to the top.
+    const dragless: boolean = request.dragless === true;
     doc.body.style.setProperty(
       '--modal-window-drag-height',
-      request.dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
+      dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
     );
 
     // The drag strip is both the band that moves the frameless window and the inset its controls sit
     // in; a dragless window wants neither, so it is left out entirely rather than rendered at zero
     // height.
-    if (!request.dragless) {
+    if (!dragless) {
       const drag: HTMLElement = doc.createElement('div');
       drag.className = 'modal-window__drag';
       doc.body.appendChild(drag);

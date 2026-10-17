@@ -2,10 +2,30 @@
   display: flex;
   align-items: center;
   padding-block-start: 0.4rem;
-  padding-inline-start: 5.5rem;
+  padding-inline-start: 0.5rem;
+  // Windows draws its caption buttons over the strip's trailing end; this is the width they take.
+  // Without a controls overlay (macOS, Linux) the titlebar area spans the whole viewport, so it is 0.
+  padding-inline-end: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
   background: var(--title-strip-background-color);
-  border-block-end: 0.0625rem solid var(--title-strip-border-color);
+  border-block-end: var(--hairline) solid var(--title-strip-border-color);
   -webkit-app-region: drag;
+}
+
+// macOS insets its traffic lights over the strip's leading end, so the strip's content starts clear
+// of them.
+:host-context(:root[data-platform='darwin']) {
+  padding-inline-start: 5.5rem;
+}
+
+// Linux windows have no frame, so Studio draws the window controls itself at the strip's trailing
+// end. They carry the action buttons' nudge so the two rows of glyphs line up.
+:host-context(:root[data-platform='linux']) {
+  padding-inline-end: 0.5rem;
+}
+
+.title-strip-container__window-controls {
+  margin-inline-start: 0.5rem;
+  margin-block-end: 0.3rem;
 }
 
 // Locking pins the window: drop the drag region so the strip can no longer move the window. This

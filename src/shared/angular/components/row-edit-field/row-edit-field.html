@@ -1,0 +1,17 @@
+<!-- The keys and pointer events the row beneath answers stop here: it treats Enter and Space as
+     "activate" and a click as "select", none of which should happen to the entry being named while its
+     name is typed. Every other key still bubbles, so the application's own shortcuts keep working. -->
+<app-text-field
+  variant="inline"
+  [ariaLabel]="ariaLabel()"
+  [(value)]="value"
+  (enter)="onEnter()"
+  (escape)="onEscape()"
+  (blurred)="onBlur()"
+  (keydown.enter)="swallow($event)"
+  (keydown.space)="swallow($event)"
+  (keydown.escape)="swallow($event)"
+  (click)="swallow($event)"
+  (dblclick)="swallow($event)"
+  (contextmenu)="swallow($event)"
+/>

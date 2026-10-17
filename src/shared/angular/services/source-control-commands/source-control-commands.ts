@@ -2,7 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Defines the repository commands the directory ribbon's Source Control group can invoke on the
+ * Defines the repository commands the directory ribbon's Version Control group can invoke on the
  * active workspace.
  *
  * Deliberately small. Everything that acts on something the user can see and select — checking out a
@@ -29,7 +29,14 @@ export interface SourceControlCommandHandler {
   readonly canPromoteToWorktree: Signal<boolean>;
 
   /**
-   * Promotes the view's repository, in place, into a worktree container.
+   * Gets why promotion is not possible right now — say, while the view's agent is working in the
+   * folder promotion is about to move — or null when nothing stands in its way.
+   */
+  readonly promoteBlocker: Signal<string | null>;
+
+  /**
+   * Promotes the view's repository, in place, into a worktree container. Refused while
+   * {@link promoteBlocker} names a reason.
    */
   promoteToWorktree(): void;
 }
@@ -101,6 +108,13 @@ export class SourceControlCommands {
    */
   public readonly canPromoteToWorktree: Signal<boolean> = computed(
     (): boolean => this.handler()?.canPromoteToWorktree() ?? false,
+  );
+
+  /**
+   * Gets why the active view cannot promote right now, or null when nothing stands in its way.
+   */
+  public readonly promoteBlocker: Signal<string | null> = computed(
+    (): string | null => this.handler()?.promoteBlocker() ?? null,
   );
 
   /**

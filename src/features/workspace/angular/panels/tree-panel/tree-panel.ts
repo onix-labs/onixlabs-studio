@@ -9,34 +9,41 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import {
   Workspace,
   WorkspaceTreeNode,
   WorkspaceTreeRow,
 } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
-import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  scmRowFields,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
+import { fileIconFor } from '@shared/angular/icons/file-icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 
 /**
  * Identifies the row context-menu actions the panel offers.
@@ -51,18 +58,45 @@ const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
 
 /**
- * Which naming operation an open name prompt is collecting a name for.
+ * Identifies the context-menu command that adds an untracked path to version control (#860).
  */
-type NamePromptKind = 'new-file' | 'new-folder' | 'rename';
+const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
 
 /**
- * A naming operation awaiting the name the user is typing.
+ * Identifies the context-menu command that opens a modified file's diff.
  */
-interface NamePrompt {
+const ACTION_SHOW_DIFF: string = 'show-diff';
+
+/**
+ * Identifies the toolbar "…" menu's commands: the options submenu and its two switches, and the
+ * commands that act on the whole tree or its root.
+ */
+const ACTION_OPTIONS: string = 'options';
+const ACTION_FOLLOW: string = 'follow-active';
+const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_OPEN_ROOT: string = 'open-root';
+const ACTION_COPY_ROOT: string = 'copy-workspace-path';
+const ACTION_REFRESH: string = 'refresh';
+
+/**
+ * Identifies the placeholder row a create is named in. Never a path — a NUL cannot occur in one — so it
+ * cannot collide with an entry in the tree.
+ */
+const PLACEHOLDER_ID: string = '\u0000new-entry';
+
+/**
+ * Which naming operation a row is being edited for.
+ */
+export type NameEditKind = 'new-file' | 'new-folder' | 'rename';
+
+/**
+ * A naming operation in progress: a row of the tree being named in place.
+ */
+export interface NameEdit {
   /**
    * Gets which operation the name is for.
    */
-  readonly kind: NamePromptKind;
+  readonly kind: NameEditKind;
 
   /**
    * Gets the directory a create happens in, or the absolute path of the entry a rename renames.
@@ -70,9 +104,20 @@ interface NamePrompt {
   readonly target: string;
 
   /**
-   * Gets the prompt's heading.
+   * Gets the id of the row being edited: the entry's own row for a rename, the placeholder for a create.
    */
-  readonly title: string;
+  readonly rowId: string;
+
+  /**
+   * Gets the name the edit starts from: the entry's name for a rename, empty for a create.
+   */
+  readonly initial: string;
+
+  /**
+   * Gets what the field selects when it opens: a file's stem, or the whole of a folder's name (a dot
+   * in a folder's name does not start an extension).
+   */
+  readonly selection: RowEditSelection;
 }
 
 /**
@@ -84,19 +129,21 @@ interface NamePrompt {
  * Each row also carries the commands a file tree is expected to offer — opening, the two path copies,
  * revealing, and the three writes (new, rename, delete). The writes run through {@link Workspace},
  * which confines them to the workspace root in the main process; a delete goes to the operating
- * system's trash, and the confirmation says so.
+ * system's trash, and the confirmation says so. The three naming writes are typed into the tree itself:
+ * a rename turns the entry's row into a field, and a create opens a placeholder row, first among the
+ * target directory's children, that becomes the new entry once it is named.
  */
 @Component({
   selector: 'app-tree-panel',
   imports: [
     Button,
+    ButtonRow,
     AppIcon,
     TreeView,
     ExplorerToolbar,
     HighlightedText,
     Modal,
     ModalContent,
-    TextField,
   ],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
@@ -125,14 +172,14 @@ export class TreePanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
-   * Maps a change status to its badge letter, exposed for the template.
-   */
-  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
-
-  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   */
+  private readonly diffOpener: DiffOpener = inject(DiffOpener);
 
   /**
    * Holds the structured logger for workspace tree actions.
@@ -150,14 +197,9 @@ export class TreePanel {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
-   * Holds the open name prompt, or null when none is open.
+   * Holds the naming operation in progress, or null when no row is being named.
    */
-  public readonly prompt: WritableSignal<NamePrompt | null> = signal<NamePrompt | null>(null);
-
-  /**
-   * Holds the name being typed into the open prompt.
-   */
-  public readonly promptName: WritableSignal<string> = signal<string>('');
+  public readonly editing: WritableSignal<NameEdit | null> = signal<NameEdit | null>(null);
 
   /**
    * Holds the entry awaiting a delete confirmation, or null when none is pending.
@@ -166,30 +208,104 @@ export class TreePanel {
     signal<WorkspaceTreeNode | null>(null);
 
   /**
-   * Gets whether the open prompt has a name worth submitting. A name is trimmed before it is used, so
-   * whitespace alone is nothing; the main process still has the final say on what is a valid segment.
+   * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}, with a create's
+   * placeholder row spliced in while one is being named.
    */
-  protected readonly canSubmitPrompt: Signal<boolean> = computed(
-    (): boolean => this.promptName().trim().length > 0,
-  );
-
-  /**
-   * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}.
-   */
-  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const rows: TreeRow[] = this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
       id: row.node.path,
       depth: row.depth,
       expandable: row.node.type === 'directory',
       expanded: row.expanded,
+      // How version control sees the path, in colour (#860) — unless the colours are switched off.
+      ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
       data: row.node,
-    })),
-  );
+    }));
+    const edit: NameEdit | null = this.editing();
+    if (edit === null || edit.kind === 'rename') {
+      return rows;
+    }
+    return this.withPlaceholder(rows, edit);
+  });
 
   /**
    * Gets the active search query, bound to the toolbar's search box.
    */
   protected readonly query: Signal<string> = this.workspace.query;
+
+  /**
+   * Gets the toolbar's "…" menu: the commands that act on the tree as a whole, or on the workspace
+   * root, which has no row of its own to carry them.
+   */
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    {
+      id: ACTION_OPTIONS,
+      label: 'Options',
+      icon: Icon.OPTIONS,
+      children: [
+        {
+          id: ACTION_FOLLOW,
+          label: 'Follow Focused Document',
+          checked: this.workspace.followsActiveDocument(),
+        },
+        {
+          id: ACTION_GIT_STATUS,
+          label: 'Show Git Status',
+          checked: this.workspace.showsGitStatus(),
+        },
+      ],
+    },
+    { id: 'tree-more.sep-create', label: '', separator: true },
+    { id: ACTION_NEW_FILE, label: 'New File…', icon: Icon.FILE },
+    { id: ACTION_NEW_FOLDER, label: 'New Folder…', icon: Icon.DIRECTORY },
+    { id: 'tree-more.sep-root', label: '', separator: true },
+    { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
+    { id: ACTION_COPY_ROOT, label: 'Copy Workspace Path', icon: Icon.COPY },
+    { id: ACTION_REFRESH, label: 'Refresh', icon: Icon.REFRESH },
+  ]);
+
+  /**
+   * Runs a command chosen from the toolbar's "…" menu.
+   * @param itemId The chosen item.
+   */
+  protected onMoreAction(itemId: string): void {
+    const root: string | undefined = this.workspace.root()?.path;
+    switch (itemId) {
+      case ACTION_FOLLOW:
+        this.workspace.toggleFollowActiveDocument();
+        return;
+      case ACTION_GIT_STATUS:
+        this.workspace.toggleGitStatus();
+        return;
+      case ACTION_NEW_FILE:
+      case ACTION_NEW_FOLDER:
+        // The root has no row, so its creates are reached here; the tree opens the placeholder
+        // first among the root's own entries.
+        if (root !== undefined) {
+          void this.beginCreate(itemId === ACTION_NEW_FILE ? 'new-file' : 'new-folder', root);
+        }
+        return;
+      case ACTION_OPEN_ROOT:
+        // The folder's own contents, not the folder selected inside its parent — which for a root
+        // would show it sitting in whatever directory happens to contain it.
+        if (root !== undefined) {
+          void this.shell.openPath(root);
+        }
+        return;
+      case ACTION_COPY_ROOT:
+        if (root !== undefined) {
+          void navigator.clipboard.writeText(root).catch((): void => undefined);
+        }
+        return;
+      case ACTION_REFRESH:
+        this.log.info('workspace.tree', 'Refresh requested');
+        void this.workspace.refreshFromDisk();
+        void this.git.refresh();
+        return;
+      default:
+        return;
+    }
+  }
 
   /**
    * Unwraps a tree row's workspace node payload.
@@ -222,24 +338,6 @@ export class TreePanel {
   protected collapseAll(): void {
     this.log.info('workspace.tree', 'Collapse all requested');
     this.workspace.collapseAll();
-  }
-
-  /**
-   * Gets the git change status of a file row, or null when it is unchanged.
-   * @param path The node's absolute path.
-   * @returns Returns the change status, or null.
-   */
-  protected statusFor(path: string): GitChangeStatus | null {
-    return this.git.statusFor(path);
-  }
-
-  /**
-   * Gets a value indicating whether a directory row contains a change at any depth.
-   * @param path The node's absolute path.
-   * @returns Returns true when the directory has descendant changes.
-   */
-  protected folderChanged(path: string): boolean {
-    return this.git.hasChanges(path);
   }
 
   /**
@@ -289,13 +387,68 @@ export class TreePanel {
       { id: 'tree-menu.sep-paths', label: '', separator: true },
       { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
       { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
-      { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+      { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
+      ...this.versionControlItems(node),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
       { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
       { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
     );
     return items;
   };
+
+  /**
+   * Builds a row's version-control commands, under a separator, or nothing when none applies. A path
+   * is untracked or modified, never both, so at most one of the two is offered.
+   * @param node The row's node.
+   * @returns Returns the items.
+   */
+  private versionControlItems(node: WorkspaceTreeNode): readonly MenuItem[] {
+    const items: MenuItem[] = [];
+    // Offered only on a path version control does not track yet: nothing is added unasked (#860).
+    if (this.git.canAddToVersionControl(node.path)) {
+      items.push({
+        id: ACTION_ADD_TO_VCS,
+        label: 'Add to Version Control',
+        icon: Icon.PLUS_CIRCLE,
+      });
+    }
+    if (node.type === 'file' && this.git.canShowDiff(node.path)) {
+      items.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
+    }
+    return items.length === 0
+      ? []
+      : [{ id: 'tree-menu.sep-vcs', label: '', separator: true }, ...items];
+  }
+
+  /**
+   * Opens a modified file's diff, saying so when there is none to show.
+   * @param node The row's node.
+   */
+  private async showDiff(node: WorkspaceTreeNode): Promise<void> {
+    const refusal: string | null = await this.diffOpener.openPath(node.path);
+    if (refusal !== null) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `No diff for “${node.name}”`,
+        detail: refusal,
+      });
+    }
+  }
+
+  /**
+   * Adds a row's untracked path to version control, saying so when it cannot be added.
+   * @param node The row's node.
+   */
+  private async addToVersionControl(node: WorkspaceTreeNode): Promise<void> {
+    const result: MutationResult = await this.git.addToVersionControl(node.path);
+    if (!result.success) {
+      this.notifications.notify({
+        severity: 'error',
+        title: `Could not add “${node.name}” to version control`,
+        detail: result.error ?? 'Version control refused it.',
+      });
+    }
+  }
 
   /**
    * Runs the command chosen from a row's context menu.
@@ -309,10 +462,10 @@ export class TreePanel {
         void this.fileOpener.openPath(node.path);
         return;
       case ACTION_NEW_FILE:
-        this.openPrompt('new-file', this.directoryFor(node), 'New file');
+        void this.beginCreate('new-file', this.directoryFor(node));
         return;
       case ACTION_NEW_FOLDER:
-        this.openPrompt('new-folder', this.directoryFor(node), 'New folder');
+        void this.beginCreate('new-folder', this.directoryFor(node));
         return;
       case ACTION_COPY_PATH:
         void navigator.clipboard.writeText(node.path).catch((): void => undefined);
@@ -326,11 +479,22 @@ export class TreePanel {
         void this.shell.revealPath(node.path);
         return;
       case ACTION_RENAME:
-        this.openPrompt('rename', node.path, `Rename “${node.name}”`);
-        this.promptName.set(node.name);
+        this.editing.set({
+          kind: 'rename',
+          target: node.path,
+          rowId: node.path,
+          initial: node.name,
+          selection: node.type === 'file' ? 'stem' : 'all',
+        });
         return;
       case ACTION_DELETE:
         this.deleteTarget.set(node);
+        return;
+      case ACTION_ADD_TO_VCS:
+        void this.addToVersionControl(node);
+        return;
+      case ACTION_SHOW_DIFF:
+        void this.showDiff(node);
         return;
       default:
         return;
@@ -338,51 +502,108 @@ export class TreePanel {
   }
 
   /**
-   * Opens the name prompt for a naming operation, starting from an empty name.
-   * @param kind The operation the name is for.
-   * @param target The directory to create in, or the entry to rename.
-   * @param title The prompt's heading.
+   * Begins a create: opens the target directory when it is closed, so the new entry has somewhere to
+   * appear, then opens a placeholder row in it to be named.
+   * @param kind Whether a file or a folder is being created.
+   * @param directory The directory to create in.
+   * @returns Returns a promise that resolves once the placeholder is being edited.
    */
-  private openPrompt(kind: NamePromptKind, target: string, title: string): void {
-    this.promptName.set('');
-    this.prompt.set({ kind, target, title });
+  private async beginCreate(kind: 'new-file' | 'new-folder', directory: string): Promise<void> {
+    const row: WorkspaceTreeRow | undefined = this.workspace
+      .rows()
+      .find((candidate: WorkspaceTreeRow): boolean => candidate.node.path === directory);
+    if (row !== undefined && !row.expanded) {
+      await this.workspace.toggleDirectory(directory);
+    }
+    this.editing.set({
+      kind,
+      target: directory,
+      rowId: PLACEHOLDER_ID,
+      initial: '',
+      selection: 'all',
+    });
   }
 
   /**
-   * Closes the name prompt without acting on it.
+   * Splices a create's placeholder row into the tree: first among the target directory's children, or
+   * first in the tree when the target is the workspace root (which is not itself a row). First rather
+   * than in name order, because a row that re-sorted as its name was typed would move under the cursor.
+   * @param rows The tree's rows.
+   * @param edit The create in progress.
+   * @returns Returns the rows with the placeholder in place, or unchanged when the target directory
+   * is not among them.
    */
-  public cancelPrompt(): void {
-    this.prompt.set(null);
+  private withPlaceholder(rows: TreeRow[], edit: NameEdit): readonly TreeRow[] {
+    let index: number = 0;
+    let depth: number = 0;
+    if (edit.target !== this.workspace.root()?.path) {
+      const parent: number = rows.findIndex((row: TreeRow): boolean => row.id === edit.target);
+      if (parent < 0) {
+        return rows;
+      }
+      index = parent + 1;
+      depth = rows[parent].depth + 1;
+    }
+    const placeholder: WorkspaceTreeNode = {
+      name: '',
+      path: PLACEHOLDER_ID,
+      type: edit.kind === 'new-folder' ? 'directory' : 'file',
+      expanded: false,
+      loading: false,
+      children: null,
+    };
+    rows.splice(index, 0, {
+      id: PLACEHOLDER_ID,
+      depth,
+      expandable: false,
+      expanded: false,
+      data: placeholder,
+    });
+    return rows;
   }
 
   /**
-   * Runs the open name prompt's operation with the typed name, then closes it.
+   * Ends the naming operation without acting on it — the edit was abandoned, or committed with no new
+   * name to apply. A create's placeholder row goes with it.
+   */
+  public onEditCancel(): void {
+    this.editing.set(null);
+  }
+
+  /**
+   * Runs the naming operation with the name the row was given, then ends it.
    *
-   * The prompt closes whether or not the write succeeded: a failure is reported as a notification, and
-   * holding the dialog open over a name the main process has already rejected would leave the user
-   * retyping into a box with no indication of which part it objected to.
+   * The row returns to showing the entry whether or not the write succeeded: a failure is reported as a
+   * notification, and holding the field open over a name the main process has already rejected would
+   * leave the user retyping into a box with no indication of which part it objected to. A success
+   * selects the entry under its new name, since the one that was selected no longer exists.
+   * @param commit The edited row and the trimmed name it was given.
    * @returns Returns a promise that resolves once the operation has been attempted.
    */
-  public async submitPrompt(): Promise<void> {
-    const prompt: NamePrompt | null = this.prompt();
-    const name: string = this.promptName().trim();
-    if (prompt === null || name.length === 0) {
+  public async onEditCommit(commit: TreeEdit): Promise<void> {
+    const edit: NameEdit | null = this.editing();
+    if (commit.row.id !== edit?.rowId) {
       return;
     }
-    this.prompt.set(null);
+    this.editing.set(null);
+    const name: string = commit.value;
     const result: FileOperationResult =
-      prompt.kind === 'rename'
-        ? await this.workspace.rename(prompt.target, name)
-        : prompt.kind === 'new-folder'
-          ? await this.workspace.createFolder(prompt.target, name)
-          : await this.workspace.createFile(prompt.target, name);
+      edit.kind === 'rename'
+        ? await this.workspace.rename(edit.target, name)
+        : edit.kind === 'new-folder'
+          ? await this.workspace.createFolder(edit.target, name)
+          : await this.workspace.createFile(edit.target, name);
     if (!result.success) {
-      this.report(this.promptFailureTitle(prompt.kind), result.error);
+      this.report(this.editFailureTitle(edit.kind), result.error);
       return;
     }
+    if (result.path === undefined) {
+      return;
+    }
+    this.workspace.select(result.path);
     // A newly created file is what the user is about to type into, so open it; a new folder and a
     // rename have nothing to open.
-    if (prompt.kind === 'new-file' && result.path !== undefined) {
+    if (edit.kind === 'new-file') {
       void this.fileOpener.openPath(result.path);
     }
   }
@@ -392,7 +613,7 @@ export class TreePanel {
    * @param kind The operation that failed.
    * @returns Returns the notification title.
    */
-  private promptFailureTitle(kind: NamePromptKind): string {
+  private editFailureTitle(kind: NameEditKind): string {
     switch (kind) {
       case 'rename':
         return 'Could not rename';
@@ -448,7 +669,7 @@ export class TreePanel {
   }
 
   /**
-   * Reports a failed write as a notification, since the dialog it came from has already closed.
+   * Reports a failed write as a notification, since the row or dialog it came from has already closed.
    * @param title The notification's headline.
    * @param detail The failure's message, when the main process gave one.
    */
@@ -493,35 +714,6 @@ export class TreePanel {
     if (node.type === 'directory') {
       return node.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
     }
-    const extension: string = this.extensionOf(node.name);
-    switch (extension) {
-      case 'ts':
-        return Icon.FILE_TYPESCRIPT;
-      case 'js':
-      case 'mjs':
-      case 'cjs':
-        return Icon.FILE_JAVASCRIPT;
-      case 'json':
-        return Icon.FILE_JSON;
-      case 'md':
-        return Icon.FILE_MARKDOWN;
-      case 'scss':
-      case 'css':
-        return Icon.FILE_STYLESHEET;
-      case 'html':
-        return Icon.FILE_HTML;
-      default:
-        return node.name.startsWith('.') ? Icon.FILE_HIDDEN : Icon.FILE;
-    }
-  }
-
-  /**
-   * Extracts a file's lowercased extension, without the leading dot.
-   * @param name The file name.
-   * @returns Returns the extension, or an empty string when there is none.
-   */
-  private extensionOf(name: string): string {
-    const dot: number = name.lastIndexOf('.');
-    return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+    return fileIconFor(node.name);
   }
 }

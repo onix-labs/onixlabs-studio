@@ -10,6 +10,7 @@ import {
   OnInit,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -20,24 +21,11 @@ import {
   createAgentHostRegistrar,
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
-import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
+import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import {
-  createCodeBlockCommand,
-  turnIntoTextCommand,
-  wrapInBlockquoteCommand,
-  wrapInHeadingCommand,
-} from '@milkdown/preset-commonmark';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
-import { callCommand } from '@milkdown/utils';
-import {
-  wrapInCautionAlertCommand,
-  wrapInImportantAlertCommand,
-  wrapInNoteAlertCommand,
-  wrapInTipAlertCommand,
-  wrapInWarningAlertCommand,
-} from '@shared/angular/milkdown/github-alert-plugin';
+import { applyBlockType, blockTypeAt } from '@shared/angular/milkdown/markdown-block-type';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { MarkdownFindAdapter } from '@features/markdown/angular/find/markdown-find-adapter';
@@ -54,7 +42,7 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -68,46 +56,11 @@ import { MarkdownOutlinePanel } from './panels/markdown-outline-panel/markdown-o
 import { MarkdownReviewPanel } from './panels/markdown-review-panel/markdown-review-panel';
 import { MarkdownAgentPanel } from './panels/markdown-agent-panel/markdown-agent-panel';
 import { MarkdownReaderPanel } from './panels/markdown-reader-panel/markdown-reader-panel';
-import { MarkdownClipboard } from './markdown-clipboard';
+import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { ReadAlongHighlighter } from './read-along-highlighter';
 import { ReviewReveal } from './review-reveal';
 import { OutlineScrollSpy } from './outline-scroll-spy';
 import { buildMarkdownCommandHandler } from './build-command-handler';
-
-/**
- * Heading level for an H1 element.
- */
-const HEADING_LEVEL_1: number = 1;
-
-/**
- * Heading level for an H2 element.
- */
-const HEADING_LEVEL_2: number = 2;
-
-/**
- * Heading level for an H3 element.
- */
-const HEADING_LEVEL_3: number = 3;
-
-/**
- * Heading level for an H4 element.
- */
-const HEADING_LEVEL_4: number = 4;
-
-/**
- * Heading level for an H5 element.
- */
-const HEADING_LEVEL_5: number = 5;
-
-/**
- * Heading level for an H6 element.
- */
-const HEADING_LEVEL_6: number = 6;
-
-/**
- * Document root depth used as the lower bound when walking up the node tree from a selection.
- */
-const ROOT_DEPTH: number = 0;
 
 /**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
@@ -374,14 +327,17 @@ export class MarkdownView implements OnInit, OnDestroy {
       }
     });
 
-    // Keep this view's content current for its status strip, re-deriving the word count as the
-    // document is edited (the content signal is tracked here). Activation is not consulted: the strip
-    // mounts this view's status component only while the view is active, and destroys it on tab
-    // switch, so an inactive view's stats are never on screen to go stale.
+    // Keep this view's document current for its status strip, re-deriving the counts as the document
+    // is edited or saved under a new path (the content and path signals are tracked here). Activation
+    // is not consulted: the strip mounts this view's status component only while the view is active,
+    // and destroys it on tab switch, so an inactive view's stats are never on screen to go stale.
     effect((): void => {
       const id: string = this.tabId();
+      const document: CodeDocument | undefined = this.documents.get(id);
+      const content: string = document?.content() ?? '';
+      const path: string | null = document?.filePath() ?? null;
       if (this.paneReady()) {
-        this.markdownStatus.publish(this.documents.get(id)?.content() ?? '');
+        untracked((): void => this.publishStatus(path, content));
       } else {
         this.markdownStatus.clear();
       }
@@ -448,12 +404,39 @@ export class MarkdownView implements OnInit, OnDestroy {
    * @param selection The editor's current selection.
    */
   protected onSelectionChange(selection: Selection): void {
+    // The status strip's counts follow the selection ("12 of 340 words") and the edit it came from.
+    const document: CodeDocument | undefined = this.documents.get(this.tabId());
+    this.publishStatus(document?.filePath() ?? null, document?.content() ?? '', selection);
     if (!this.isActive()) {
       return;
     }
-    const blockType: MarkdownBlockType = this.resolveActiveBlockType(selection);
+    const blockType: MarkdownBlockType = blockTypeAt(selection);
     this.commands.setActiveBlockType(blockType);
     this.publishHistoryState();
+  }
+
+  /**
+   * Publishes the document to this view's status strip: its path, its text as the editor shows it —
+   * so the counts skip markdown syntax — and the selected text. Falls back to the markdown source
+   * before the editor has a document to read.
+   * @param path The document's path, or null while it is unsaved.
+   * @param content The document's markdown source.
+   * @param selection The editor's selection, when a selection change prompted this; otherwise read
+   * from the editor.
+   */
+  private publishStatus(path: string | null, content: string, selection?: Selection): void {
+    const current: Selection | undefined =
+      selection ?? this.pane()?.getEditorView()?.state.selection;
+    if (current === undefined) {
+      this.markdownStatus.publish({ path, text: content, selectedText: null });
+      return;
+    }
+    const doc: ProseMirrorNode = current.$from.doc;
+    this.markdownStatus.publish({
+      path,
+      text: doc.textBetween(0, doc.content.size, '\n', ' '),
+      selectedText: current.empty ? null : doc.textBetween(current.from, current.to, '\n', ' '),
+    });
   }
 
   /**
@@ -464,7 +447,13 @@ export class MarkdownView implements OnInit, OnDestroy {
       clipboard: this.clipboard,
       outline: this.outline,
       paneOf: (): MarkdownEditor | undefined => this.pane(),
-      setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
+      setBlockType: (blockType: MarkdownBlockType): void => {
+        const pane: MarkdownEditor | undefined = this.pane();
+        if (pane !== undefined) {
+          this.log.debug('markdown.view', 'Applying block type', { blockType });
+          applyBlockType(pane, blockType);
+        }
+      },
     });
 
     this.commands.register(this.tabId(), this.commandHandler);
@@ -493,62 +482,6 @@ export class MarkdownView implements OnInit, OnDestroy {
   }
 
   /**
-   * Applies a block type to the current block by dispatching the matching Crepe command.
-   * @param blockType The block type to apply.
-   */
-  private applyBlockType(blockType: MarkdownBlockType): void {
-    const pane: MarkdownEditor | undefined = this.pane();
-    if (pane === undefined) {
-      return;
-    }
-    this.log.debug('markdown.view', 'Applying block type', { blockType });
-    switch (blockType) {
-      case 'paragraph':
-        pane.run(callCommand(turnIntoTextCommand.key));
-        break;
-      case 'blockquote':
-        pane.run(callCommand(wrapInBlockquoteCommand.key));
-        break;
-      case 'code-block':
-        pane.run(callCommand(createCodeBlockCommand.key));
-        break;
-      case 'heading-1':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_1));
-        break;
-      case 'heading-2':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_2));
-        break;
-      case 'heading-3':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_3));
-        break;
-      case 'heading-4':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_4));
-        break;
-      case 'heading-5':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_5));
-        break;
-      case 'heading-6':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_6));
-        break;
-      case 'alert-note':
-        pane.run(callCommand(wrapInNoteAlertCommand.key));
-        break;
-      case 'alert-tip':
-        pane.run(callCommand(wrapInTipAlertCommand.key));
-        break;
-      case 'alert-important':
-        pane.run(callCommand(wrapInImportantAlertCommand.key));
-        break;
-      case 'alert-warning':
-        pane.run(callCommand(wrapInWarningAlertCommand.key));
-        break;
-      case 'alert-caution':
-        pane.run(callCommand(wrapInCautionAlertCommand.key));
-        break;
-    }
-  }
-
-  /**
    * Reads the current selection and publishes its block type to the command registry, so the ribbon
    * reflects the cursor even when no selection-change event has fired (for example on activation).
    */
@@ -557,7 +490,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     if (view === null || !this.isActive()) {
       return;
     }
-    const blockType: MarkdownBlockType = this.resolveActiveBlockType(view.state.selection);
+    const blockType: MarkdownBlockType = blockTypeAt(view.state.selection);
     this.zone.run((): void => {
       this.commands.setActiveBlockType(blockType);
     });
@@ -590,31 +523,5 @@ export class MarkdownView implements OnInit, OnDestroy {
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
     });
-  }
-
-  /**
-   * Determines the block type of the node containing a selection by walking up the document tree.
-   * @param selection The current editor selection.
-   * @returns Returns the block type at the selection.
-   */
-  private resolveActiveBlockType(selection: Selection): MarkdownBlockType {
-    const from: Selection['$from'] = selection.$from;
-    for (let depth: number = from.depth; depth >= ROOT_DEPTH; depth--) {
-      const node: ProseMirrorNode = from.node(depth);
-      const name: string = node.type.name;
-      if (name === 'heading') {
-        return `heading-${node.attrs['level'] as number}` as MarkdownBlockType;
-      }
-      if (name === 'code_block') {
-        return 'code-block';
-      }
-      if (name === 'blockquote') {
-        return 'blockquote';
-      }
-      if (name === 'alert_block') {
-        return `alert-${node.attrs['alertType'] as string}` as MarkdownBlockType;
-      }
-    }
-    return 'paragraph';
   }
 }

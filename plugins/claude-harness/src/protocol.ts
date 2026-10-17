@@ -78,6 +78,15 @@ export interface TurnRequest {
   readonly resumeSessionAt: string | null;
   readonly permissionPosture: 'prompt' | 'auto-edits' | 'auto-all';
   readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+  /**
+   * The commands the agent may not run (protocol 1.11.0, #853); absent from an older Studio.
+   */
+  readonly blockedCommands?: readonly string[];
+  /**
+   * Whether this harness's own tools are offered (protocol 1.16.0, #965). `'none'` keeps the model to
+   * Studio's tools and its clarifying question; absent from an older Studio, which means `'all'`.
+   */
+  readonly builtInTools?: 'all' | 'none';
   readonly images: readonly TurnImage[];
   readonly contextPaths: readonly ContextRef[];
   readonly remoteControl: 'off' | 'mirror' | 'control';
@@ -150,11 +159,44 @@ export interface Choice {
 }
 
 /**
+ * How many of an `input` request's choices the user may pick.
+ */
+export type Selection = 'single' | 'multiple';
+
+/**
+ * A change a tool would make to a file (Studio 1.15.0): a write's whole content, or an edit's
+ * replacements in order. Studio reads the file and shows the difference while the user decides.
+ */
+export interface ProposedChange {
+  readonly path: string;
+  readonly content?: string;
+  readonly edits?: readonly {
+    readonly oldText: string;
+    readonly newText: string;
+    readonly replaceAll?: boolean;
+  }[];
+}
+
+/**
  * A blocking question this harness asks Studio.
  */
 export type Request =
-  | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
-  | { readonly kind: 'input'; readonly question: string; readonly choices: readonly Choice[] }
+  | {
+      readonly kind: 'permission';
+      readonly name: string;
+      readonly detail: string;
+      // The file change the tool would make (Studio 1.15.0). Optional, so a build that predates it
+      // reads the request as before and ignores it.
+      readonly change?: ProposedChange;
+    }
+  | {
+      readonly kind: 'input';
+      readonly question: string;
+      readonly choices: readonly Choice[];
+      // How many choices the user may pick (Studio 1.14.0). Optional, so a build that predates it
+      // reads the question as one-of rather than refusing it.
+      readonly selection?: Selection;
+    }
   | {
       readonly kind: 'edit-decision';
       readonly name: string;

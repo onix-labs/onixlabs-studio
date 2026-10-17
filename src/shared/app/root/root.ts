@@ -9,7 +9,7 @@ import {
 import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
-import { ScrollReveal } from '@shared/angular/services/scroll-reveal/scroll-reveal';
+import { OverlayScrollbars } from '@shared/angular/services/overlay-scrollbars/overlay-scrollbars';
 import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
@@ -17,6 +17,7 @@ import { ContentHost } from '@shared/angular/components/content-host/content-hos
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
+import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
@@ -38,6 +39,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ContentHost,
     ModalBackdropView,
     PluginConsentHost,
+    RepositoryTrustHost,
     AboutHost,
     SetupWizardHost,
     WelcomeScreen,
@@ -77,10 +79,10 @@ export class Root {
   private readonly presence: ShellPresence = inject(ShellPresence);
 
   /**
-   * Holds the scrollbar reveal service, which flashes a container's custom scrollbar while it scrolls.
-   * Injected for its effect; the shell never calls it.
+   * Holds the overlay scroll bars, which float over every scroll area's content rather than taking a
+   * channel beside it. Injected for its effect; the shell never calls it.
    */
-  private readonly scrollReveal: ScrollReveal = inject(ScrollReveal);
+  private readonly scrollbars: OverlayScrollbars = inject(OverlayScrollbars);
 
   /**
    * Holds the workbench agent capabilities, which let an agent on any surface open and populate a new

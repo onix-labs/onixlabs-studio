@@ -107,10 +107,13 @@ export interface AiModelInfo {
   readonly label: string;
 
   /**
-   * Gets the model's context window in tokens, so the renderer can show how full the conversation's
-   * context is (the token readout's denominator).
+   * Gets the model's context window in tokens, as its provider states it, or undefined when the provider
+   * does not. Shown in settings, and the token readout's denominator before a turn reports one.
+   *
+   * ⛔ Never a guess or a default (protocol 1.13.0). Absent means unknown, and unknown is shown as
+   * nothing: a figure Studio made up would be read as the model's capacity.
    */
-  readonly contextWindow: number;
+  readonly contextWindow?: number;
 
   /**
    * Gets a value indicating whether the user pinned this model to the top of the picker. Absent means
@@ -123,6 +126,20 @@ export interface AiModelInfo {
    * offered for selection). Absent means visible.
    */
   readonly hidden?: boolean;
+
+  /**
+   * Gets a value indicating whether the provider no longer offers this model: discovery stopped
+   * listing it (#866). It stays in the list — removing it is the user's choice — but the picker
+   * disables it. Absent means offered.
+   */
+  readonly retired?: boolean;
+
+  /**
+   * Gets a value indicating whether the user added this model by hand. Such a model is never marked
+   * {@link retired}, because discovery not listing it is the reason it was added. Absent means it came
+   * from the plugin or from discovery.
+   */
+  readonly manual?: boolean;
 }
 
 /**

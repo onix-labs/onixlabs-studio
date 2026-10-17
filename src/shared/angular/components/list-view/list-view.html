@@ -18,22 +18,37 @@
       cdkDrag
       cdkDragLockAxis="y"
       cdkDragPreviewContainer="parent"
-      [cdkDragDisabled]="!reorderable()"
+      [cdkDragDisabled]="!reorderable() || isEditing(row)"
       (cdkDragStarted)="onDragStarted()"
       [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
       [appMenuSubject]="row"
       [cdkContextMenuDisabled]="!rowHasMenu(row)"
       [attr.data-list-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
+      [class.list-row--disabled]="row.disabled"
+      [class.list-row--divided]="row.dividerBefore"
+      [attr.aria-disabled]="row.disabled ? 'true' : null"
       [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
-      (click)="rowClick.emit(row)"
+      (click)="choose(row)"
       (keydown.enter)="activate($event, row)"
       (keydown.space)="activate($event, row)"
     >
+      <!-- A row being named keeps still (no drag from the field it is typed in) and tells its content
+           template, which drops what the field takes the place of. -->
+      @let editing = isEditing(row);
       <ng-container
         [ngTemplateOutlet]="content() ?? null"
-        [ngTemplateOutletContext]="{ $implicit: row }"
+        [ngTemplateOutletContext]="{ $implicit: row, editing }"
       />
+      @if (editing) {
+        <app-row-edit-field
+          [initial]="editValue()"
+          [selection]="editSelection()"
+          [(value)]="editDraft"
+          (commit)="onEditCommit(row, $event)"
+          (abandon)="editCancel.emit(row)"
+        />
+      }
       @if (reorderable()) {
         <span
           class="list-row__grip"

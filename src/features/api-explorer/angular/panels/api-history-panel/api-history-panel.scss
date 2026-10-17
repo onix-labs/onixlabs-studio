@@ -1,11 +1,16 @@
 // The send history: one row per send, newest first.
 
+// The strip stays put while the sends beneath it scroll.
 :host {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-  overflow-y: auto;
+}
+
+.history__filter {
+  flex: 0 1 16rem;
+  min-inline-size: 0;
 }
 
 .history__empty {
@@ -15,13 +20,10 @@
   color: var(--form-muted-foreground-color);
 }
 
-.history__actions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.35rem 0.5rem;
-}
-
 .history__list {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
   list-style: none;

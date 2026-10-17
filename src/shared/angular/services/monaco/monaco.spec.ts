@@ -107,6 +107,69 @@ describe('Monaco', () => {
   it('getThemeName_whenFilled_returnsFilledThemeForResolvedMode', () => {
     expect(monaco.getThemeName('filled')).toMatch(/^onix-(light|dark)-filled$/);
   });
+
+  describe('suppressBuiltInDiagnostics', () => {
+    /**
+     * Stand-in stylesheet language defaults.
+     */
+    interface StylesheetDefaults {
+      options: Record<string, unknown>;
+      setOptions: (options: Record<string, unknown>) => void;
+    }
+
+    /**
+     * Builds stand-in stylesheet defaults that record the options they are given.
+     * @returns Returns the defaults.
+     */
+    function stylesheetDefaults(): StylesheetDefaults {
+      const defaults: StylesheetDefaults = {
+        options: { validate: true, lint: { zeroUnits: 'warning' } },
+        setOptions: (options: Record<string, unknown>): void => {
+          defaults.options = options;
+        },
+      };
+      return defaults;
+    }
+
+    let css: Record<string, StylesheetDefaults>;
+    let loaded: Window['monaco'];
+
+    beforeEach(() => {
+      loaded = window.monaco;
+      css = {
+        cssDefaults: stylesheetDefaults(),
+        scssDefaults: stylesheetDefaults(),
+        lessDefaults: stylesheetDefaults(),
+      };
+      window.monaco = { languages: { css } } as unknown as Window['monaco'];
+    });
+
+    afterEach(() => {
+      window.monaco = loaded;
+    });
+
+    it('suppressBuiltInDiagnostics_whenAStylesheetLanguage_turnsOffOnlyItsValidation', () => {
+      monaco.suppressBuiltInDiagnostics('scss');
+
+      expect(css['scssDefaults'].options).toEqual({
+        validate: false,
+        lint: { zeroUnits: 'warning' },
+      });
+      expect(css['cssDefaults'].options['validate']).toBe(true);
+      expect(css['lessDefaults'].options['validate']).toBe(true);
+    });
+
+    it('suppressBuiltInDiagnostics_whenLess_turnsOffLessValidation', () => {
+      monaco.suppressBuiltInDiagnostics('less');
+
+      expect(css['lessDefaults'].options['validate']).toBe(false);
+    });
+
+    it('suppressBuiltInDiagnostics_whenNoBuiltInWorker_changesNothing', () => {
+      expect(() => monaco.suppressBuiltInDiagnostics('python')).not.toThrow();
+      expect(css['cssDefaults'].options['validate']).toBe(true);
+    });
+  });
 });
 
 describe('buildHeuristicSemanticTokens', () => {

@@ -62,8 +62,16 @@
     <p class="history__empty">No conversations yet.</p>
   }
 
-  <app-tree-view [rows]="rows()" [selectedId]="activeId()" (rowClick)="onRowClick($event)">
-    <ng-template let-row>
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="activeId()"
+    [editingId]="renameTarget()?.rowId ?? null"
+    [editValue]="renameTarget()?.summary?.title ?? ''"
+    (rowClick)="onRowClick($event)"
+    (editCommit)="onCommitRename($event)"
+    (editCancel)="onCancelRename()"
+  >
+    <ng-template let-row let-editing="editing">
       @let data = dataOf(row);
       @if (data.kind === 'node') {
         <span
@@ -81,8 +89,17 @@
             (click)="$event.stopPropagation()"
           />
           <span class="history__node-name">{{ data.node.name }}</span>
-          <span class="history__count">{{ data.node.items.length }}</span>
+          <app-chip class="history__count">{{ data.node.items.length }}</app-chip>
         </span>
+      } @else if (editing) {
+        <!-- A conversation being retitled keeps its checkbox; the tree's field takes the place of its
+             title, chips and actions until the edit ends. -->
+        <app-checkbox
+          class="history__check"
+          [checked]="isChecked(data.item.summary.id)"
+          (checkedChange)="onToggle(data.item.summary.id, $event)"
+          (click)="$event.stopPropagation()"
+        />
       } @else {
         <span
           class="history__leaf"
@@ -104,9 +121,9 @@
               <span class="history__leaf-when">{{ formatWhen(data.item.summary.updatedAt) }}</span>
             </span>
             <span class="history__chips">
-              <span class="history__chip">{{ agentTypeLabels[data.item.agentType] }}</span>
+              <app-chip tone="accent">{{ agentTypeLabels[data.item.agentType] }}</app-chip>
               @if (data.item.summary.contextLabel; as label) {
-                <span class="history__chip history__chip--context">{{ label }}</span>
+                <app-chip [title]="label">{{ label }}</app-chip>
               }
             </span>
           </span>
@@ -115,7 +132,7 @@
             class="history__overflow tree-row-action"
             aria-label="Conversation actions"
             [appTooltip]="'Conversation actions'"
-            (click)="$event.stopPropagation(); onOpenMenu(data.item.summary)"
+            (click)="$event.stopPropagation(); onOpenMenu(data.item.summary, row.id)"
             [cdkMenuTriggerFor]="itemMenu"
           >
             <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
@@ -240,36 +257,6 @@
   </div>
 </ng-template>
 
-<!-- Rename conversation modal. -->
-<app-modal
-  [open]="renameTarget() !== null"
-  [dismissable]="true"
-  [width]="26"
-  ariaLabel="Rename conversation"
-  (dismiss)="onCancelRename()"
->
-  <ng-template appModalContent>
-    <h2 class="history__modal-title">Rename conversation</h2>
-    <app-text-field
-      class="history__modal-input"
-      placeholder="Conversation title"
-      ariaLabel="Conversation title"
-      [value]="renameValue()"
-      (valueChange)="renameValue.set($event)"
-      (enter)="onConfirmRename()"
-    />
-    <div class="history__modal-actions">
-      <app-button label="Cancel" (click)="onCancelRename()" />
-      <app-button
-        variant="solid"
-        label="Rename"
-        [disabled]="renameValue().trim().length === 0"
-        (click)="onConfirmRename()"
-      />
-    </div>
-  </ng-template>
-</app-modal>
-
 <!-- Category editor modal. -->
 <app-modal
   [open]="categoryEditor() !== null"
@@ -291,15 +278,15 @@
         (valueChange)="onCategoryNameValue($event)"
         (enter)="onSaveCategory()"
       />
-      <div class="history__modal-actions">
-        <app-button label="Cancel" (click)="onCancelCategory()" />
+      <app-button-row>
         <app-button
           variant="solid"
           label="Save"
           [disabled]="editor.name.trim().length === 0"
           (click)="onSaveCategory()"
         />
-      </div>
+        <app-button label="Cancel" (click)="onCancelCategory()" />
+      </app-button-row>
     }
   </ng-template>
 </app-modal>
@@ -337,10 +324,10 @@
         <p class="history__manage-empty">No categories yet.</p>
       }
     </div>
-    <div class="history__modal-actions">
-      <app-button label="New category" (click)="onNewCategory()" />
+    <app-button-row>
       <app-button variant="solid" label="Done" (click)="onCloseManage()" />
-    </div>
+      <app-button label="New category" (click)="onNewCategory()" />
+    </app-button-row>
   </ng-template>
 </app-modal>
 
@@ -358,9 +345,9 @@
       {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
       deleted. This cannot be undone.
     </p>
-    <div class="history__modal-actions">
-      <app-button label="Cancel" (click)="onCancelDelete()" />
+    <app-button-row>
       <app-button variant="solid" label="Delete" (click)="onConfirmDelete()" />
-    </div>
+      <app-button label="Cancel" (click)="onCancelDelete()" />
+    </app-button-row>
   </ng-template>
 </app-modal>

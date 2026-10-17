@@ -1,0 +1,94 @@
+<div class="create">
+  <!-- The step shown. -->
+  <section class="create__main" aria-labelledby="create-step-title">
+    <header class="create__header">
+      <h2 class="create__title" id="create-step-title">
+        {{ current().heading ?? current().title }}
+      </h2>
+      @if (current().description; as description) {
+        <p class="create__description">{{ description }}</p>
+      }
+    </header>
+
+    <div class="create__body">
+      @switch (draft.step()) {
+        @case ('start') {
+          <app-create-start />
+        }
+        @case ('details') {
+          <app-create-details />
+        }
+        @case ('technology') {
+          <app-create-technology
+            [technologies]="draft.catalogue()"
+            [selected]="draft.technologies()"
+            (toggled)="draft.toggleTechnology($event)"
+            (added)="draft.addTechnology($event)"
+          />
+        }
+        @case ('options') {
+          <app-create-options />
+        }
+        @case ('skills') {
+          <app-create-skills />
+        }
+        @case ('summary') {
+          <app-create-summary />
+        }
+      }
+    </div>
+  </section>
+
+  <!-- The checklist: every step, how it stands, and a way to jump to it — then the way on. -->
+  <nav class="create__side" aria-labelledby="create-steps-title">
+    <h2 class="create__heading" id="create-steps-title">New Project</h2>
+    <ol class="create__steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <button
+            type="button"
+            class="create__step"
+            [class.create__step--current]="stateOf(step.id) === 'current'"
+            [class.create__step--done]="stateOf(step.id) === 'done'"
+            [attr.aria-current]="stateOf(step.id) === 'current' ? 'step' : null"
+            (click)="draft.goTo(step.id)"
+          >
+            <app-icon class="create__step-icon" [icon]="iconOf(step.id)" />
+            <span>{{ step.title }}</span>
+          </button>
+        </li>
+      }
+    </ol>
+    <p class="create__lead">
+      Every step is optional. Fill in what you know; the agent asks about the rest.
+    </p>
+    <div class="create__nav">
+      @if (draft.error(); as message) {
+        <p class="create__error" role="alert">{{ message }}</p>
+      } @else if (destination(); as line) {
+        <p class="create__destination">{{ line }}</p>
+      }
+      <button
+        type="button"
+        class="create__secondary"
+        [disabled]="first() || draft.sending()"
+        (click)="draft.move(-1)"
+      >
+        Back
+      </button>
+      <button
+        type="button"
+        class="create__primary"
+        [disabled]="draft.sending()"
+        (click)="primary()"
+      >
+        @if (draft.sending()) {
+          <app-icon class="create__spin" [icon]="Icon.SPINNER" />
+          <span>Creating…</span>
+        } @else {
+          <span>{{ primaryLabel() }}</span>
+        }
+      </button>
+    </div>
+  </nav>
+</div>

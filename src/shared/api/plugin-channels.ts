@@ -1,6 +1,7 @@
 import { FormatSlotEntry } from './format-slot';
 import { LanguageSlotEntry } from './language-slot';
 import { SlotEntry } from './slot';
+import type { VersionControlCapability } from './version-control-protocol';
 
 // Shared plugin contract used between the Electron main process and the renderer. Keep this module
 // platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
@@ -46,7 +47,13 @@ export enum PluginChannel {
  * own surface, not something a plugin may invent.
  */
 export type PluginSlot =
-  'language-server' | 'debug-adapter' | 'decoder' | 'container-engine' | 'agent-harness';
+  | 'language-server'
+  | 'debug-adapter'
+  | 'decoder'
+  | 'container-engine'
+  | 'version-control'
+  | 'hosting'
+  | 'agent-harness';
 
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
@@ -57,6 +64,8 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'debug-adapter',
   'decoder',
   'container-engine',
+  'version-control',
+  'hosting',
   'agent-harness',
 ];
 
@@ -75,6 +84,8 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'debug-adapter': 'Debug Adapters',
   decoder: 'Decoders',
   'container-engine': 'Container Engines',
+  'version-control': 'Version Control',
+  hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
 };
 
@@ -123,7 +134,7 @@ export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine' | 'agent-harness';
+  readonly slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -134,6 +145,13 @@ export interface UnkeyedPluginContribution extends SlotEntry {
    * which is the failure a second channel would eventually produce (#653).
    */
   readonly providers?: readonly ContributedAiProvider[];
+
+  /**
+   * Gets what a version-control system says it supports, or undefined for any other slot. Carried for
+   * the same reason as {@link providers}: the setup wizard grows a step for a system's committer
+   * identity only when the system has one to set.
+   */
+  readonly capabilities?: readonly VersionControlCapability[];
 }
 
 /**
@@ -213,11 +231,6 @@ export interface ContributedAiModel {
    * Gets the display name.
    */
   readonly label: string;
-
-  /**
-   * Gets the context window in tokens.
-   */
-  readonly contextWindow: number;
 }
 
 /**
@@ -294,9 +307,18 @@ export interface PluginSummary {
   readonly state: PluginState;
 
   /**
-   * Gets the implementations this plugin contributes.
+   * Gets the implementations this plugin contributes: what the installed version contributes when it
+   * is installed, and what an install would bring when it is not (#878).
    */
   readonly contributions: readonly PluginContribution[];
+
+  /**
+   * Gets whether {@link contributions} may not describe the installed version: true only for a plugin
+   * installed before Studio recorded what an install contributes, whose catalogue entry has since moved
+   * to a different version. A surface gating on a capability asks the running plugin instead, where it
+   * can; absent means the contributions are the installed version's own.
+   */
+  readonly contributionsUnconfirmed?: true;
 
   /**
    * Gets the pinned version Studio installs.
@@ -364,7 +386,7 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine' | 'agent-harness',
+  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

@@ -700,6 +700,207 @@ describe('parsePluginManifest', () => {
     });
   });
 
+  describe('version-control contributions', () => {
+    /**
+     * Builds a well-formed version-control contribution, modelled on the Git plugin (#817), which
+     * tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function versionControl(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'git',
+        displayName: 'Git',
+        markers: ['.git'],
+        metadataDirectories: ['.git'],
+        capabilities: ['stagingArea', 'stash', 'remotes', 'parallelCheckouts'],
+        executableModes: ['installed', 'bundled', 'custom'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a version-control system contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { versionControl: [versionControl()] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.versionControl?.[0]).toMatchObject({
+        id: 'git',
+        priority: 100,
+        markers: ['.git'],
+        capabilities: ['stagingArea', 'stash', 'remotes', 'parallelCheckouts'],
+        executableModes: ['installed', 'bundled', 'custom'],
+      });
+    });
+
+    it('defaults the optional lists to empty', () => {
+      const entry: Record<string, unknown> = versionControl();
+      delete entry['metadataDirectories'];
+      delete entry['capabilities'];
+      delete entry['executableModes'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { versionControl: [entry] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.versionControl?.[0]).toMatchObject({
+        metadataDirectories: [],
+        capabilities: [],
+        executableModes: [],
+      });
+    });
+
+    it('refuses a contribution with no markers, since it could never claim a folder', () => {
+      for (const markers of [undefined, []]) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { versionControl: [versionControl({ markers })] } }),
+        );
+        expect(paths(result)).toContain('contributes.versionControl[0].markers');
+      }
+    });
+
+    it('refuses a marker or metadata directory that is not a single entry name', () => {
+      for (const name of ['../escape', 'a/b', '..', '.', 'a\\b']) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({
+            contributes: {
+              versionControl: [versionControl({ markers: [name], metadataDirectories: [name] })],
+            },
+          }),
+        );
+        expect(paths(result)).toEqual(
+          expect.arrayContaining([
+            'contributes.versionControl[0].markers',
+            'contributes.versionControl[0].metadataDirectories',
+          ]),
+        );
+      }
+    });
+
+    it('refuses an unknown capability rather than one that would never be offered', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            versionControl: [versionControl({ capabilities: ['stash', 'teleport'] })],
+          },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.versionControl[0].capabilities');
+    });
+
+    it('refuses an unknown executable mode', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: { versionControl: [versionControl({ executableModes: ['downloaded'] })] },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.versionControl[0].executableModes');
+    });
+  });
+
+  describe('hosting contributions', () => {
+    /**
+     * Builds a well-formed hosting contribution, modelled on the GitHub plugin to come (#820), which
+     * tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function hosting(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'github',
+        displayName: 'GitHub',
+        hosts: ['github.com', 'ghe.example.com:8443'],
+        capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel', 'agentTools'],
+        authModes: ['cli', 'studio'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a code host contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [hosting()] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0]).toMatchObject({
+        id: 'github',
+        priority: 100,
+        hosts: ['github.com', 'ghe.example.com:8443'],
+        capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel', 'agentTools'],
+        authModes: ['cli', 'studio'],
+      });
+    });
+
+    it('defaults the optional lists to empty', () => {
+      const entry: Record<string, unknown> = hosting();
+      delete entry['capabilities'];
+      delete entry['authModes'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [entry] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0]).toMatchObject({
+        capabilities: [],
+        authModes: [],
+        commandLineTools: [],
+      });
+    });
+
+    it('reads the hosts command-line tools as bare command names (#853)', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [hosting({ commandLineTools: ['gh', 'glab'] })] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0].commandLineTools).toEqual(['gh', 'glab']);
+    });
+
+    it('refuses a command-line tool given as a path, a fragment or not a string', () => {
+      // Studio matches these against the commands an agent runs: a path would never match, and a
+      // fragment with spaces or shell characters would match too much.
+      for (const tool of ['/usr/bin/gh', 'gh issue', 'gh;rm', '', 7]) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ commandLineTools: [tool] })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].commandLineTools');
+      }
+    });
+
+    it('refuses a contribution serving no host, since it could never claim a repository', () => {
+      for (const hosts of [undefined, []]) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ hosts })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].hosts');
+      }
+    });
+
+    it('refuses a host that is not a lowercase host name', () => {
+      // Remotes are matched lowercased, so `GitHub.com` would silently never match.
+      for (const host of ['GitHub.com', 'https://github.com', 'github.com/org', '', 'a b']) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ hosts: [host] })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].hosts');
+      }
+    });
+
+    it('refuses an unknown capability or sign-in mode', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            hosting: [hosting({ capabilities: ['issues', 'teleport'], authModes: ['oauth'] })],
+          },
+        }),
+      );
+      expect(paths(result)).toEqual(
+        expect.arrayContaining([
+          'contributes.hosting[0].capabilities',
+          'contributes.hosting[0].authModes',
+        ]),
+      );
+    });
+  });
+
   describe('describes the real catalogue', () => {
     // The format is only worth having if it can describe plugins that actually exist. These are the
     // live recipes Studio installs from, not fixtures written to pass: the two whose descriptors still

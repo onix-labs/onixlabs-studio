@@ -21,10 +21,12 @@ import {
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
@@ -40,6 +42,7 @@ import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout'
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { ApiFiles, OpenApiDocument } from '@shared/angular/services/api-files/api-files';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -81,7 +84,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
  */
 @Component({
   selector: 'app-api-explorer-view',
-  imports: [DockContainer, Modal, ModalContent, Button, TextField],
+  imports: [DockContainer, Modal, ModalContent, Button, ButtonRow, TextField],
   templateUrl: './api-explorer-view.html',
   styleUrl: './api-explorer-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -91,6 +94,9 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     ApiWorkspace,
     ApiPrompts,
     ApiRequestOpener,
+    // The diagnostics the well's status strip counts: this tab's own, so a request body's JSON or XML
+    // problems are counted here and nowhere else, as a workspace tab's are.
+    Diagnostics,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
     ApiAgentCapabilities,
     // The dock framework, instantiated per dock-hosting view.
@@ -204,7 +210,7 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    * Gets the variable syntax shown in the new-environment dialog, written out rather than
    * interpolated so the braces survive the template.
    */
-  protected readonly variableSyntax: string = '{{base_url}}';
+  protected readonly variableSyntax: string = '{{name}}';
 
   /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
@@ -251,6 +257,11 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   private readonly unsavedWork: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
 
   /**
+   * Holds the keyboard accelerator router this tab registers its save chords with while active.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -275,6 +286,22 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
         }
         this.tabs.setDirty(tabId, dirty);
       });
+    });
+
+    // Register the save accelerators while active, so Cmd/Ctrl+S saves this document exactly as the
+    // ribbon's Save does. Bound only while active, so background tabs do not intercept the chord.
+    effect((): void => {
+      const tabId: string = this.tabId();
+      if (this.isActive()) {
+        untracked((): void =>
+          this.keybindings.register(tabId, [
+            { id: 'api.save', command: (): void => this.saveDocument() },
+            { id: 'api.saveAs', command: (): void => this.saveDocumentAs() },
+          ]),
+        );
+      } else {
+        untracked((): void => this.keybindings.deactivate(tabId));
+      }
     });
   }
 
@@ -310,11 +337,12 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
-   * Releases the ribbon's command registration and the unsaved-work source, so the ribbon and the
-   * close flows of a closed tab drive nothing.
+   * Releases the ribbon's command registration, the save accelerators and the unsaved-work source, so
+   * the ribbon, the keyboard and the close flows of a closed tab drive nothing.
    */
   public ngOnDestroy(): void {
     this.commands.clear(this);
+    this.keybindings.forget(this.tabId());
     this.releaseUnsavedWork?.();
   }
 

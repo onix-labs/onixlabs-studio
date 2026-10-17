@@ -1,0 +1,11 @@
+// The editor contributes rows to whichever list it sits in; its own host must not become a stray
+// flex child between them.
+:host {
+  display: contents;
+}
+
+// The pickers take the width their host page sets for its controls, so they line up with the fields
+// beside them; on a page that sets none they keep their own.
+.prompt-scope-editor__control {
+  inline-size: var(--library-control-width, auto);
+}

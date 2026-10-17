@@ -19,6 +19,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -109,6 +110,7 @@ const EXPLORE_COLUMNS: readonly TableColumn[] = [
 @Component({
   selector: 'app-packages-panel',
   imports: [
+    Chip,
     Button,
     AppIcon,
     Dropdown,

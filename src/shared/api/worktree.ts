@@ -106,7 +106,7 @@ export interface WorktreeCheckoutInfo {
 }
 
 /**
- * A container described with its live checkout states — the model behind the Worktrees panel.
+ * A container described with its live checkout states — the model behind the Repository panel's worktrees.
  */
 export interface WorktreeDescriptor {
   /**
@@ -126,10 +126,37 @@ export interface WorktreeDescriptor {
 }
 
 /**
- * A checkout's lightweight repository status, as shown in the Worktrees panel: how many working-tree
- * entries are changed and how far the branch is ahead of / behind its upstream. Null fields mean the
- * value could not be read (the directory is missing, the clone is damaged, or — for ahead/behind —
- * the branch has no upstream).
+ * One local branch of a checkout, as the Repository panel lists it under that checkout: its name and
+ * how far it is ahead of / behind its upstream (zero and zero for a branch that tracks nothing, as the
+ * panel shows any branch).
+ */
+export interface WorktreeBranch {
+  /**
+   * Gets the branch name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets how many commits the branch is ahead of its upstream.
+   */
+  readonly ahead: number;
+
+  /**
+   * Gets how many commits the branch is behind its upstream.
+   */
+  readonly behind: number;
+
+  /**
+   * Gets the branch's upstream, or undefined when it tracks nothing.
+   */
+  readonly upstream?: string;
+}
+
+/**
+ * A checkout's lightweight repository status, as shown in the Repository panel's Local section: how
+ * many working-tree entries are changed, how far the branch is ahead of / behind its upstream, and the
+ * checkout's own local branches. Null fields mean the value could not be read (the directory is
+ * missing, the clone is damaged, or — for ahead/behind — the branch has no upstream).
  */
 export interface WorktreeCheckoutStatus {
   /**
@@ -156,6 +183,12 @@ export interface WorktreeCheckoutStatus {
    * Gets how many commits the branch is behind its upstream, or null when it has none.
    */
   readonly behind: number | null;
+
+  /**
+   * Gets the checkout's local branches, or empty when they cannot be read. Each checkout is a full
+   * clone, so each has a set of its own.
+   */
+  readonly branches: readonly WorktreeBranch[];
 }
 
 /**
@@ -181,7 +214,17 @@ export interface WorktreeAddOptions {
  * source), so they travel as data rather than exceptions.
  */
 export type WorktreeOutcome<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly error: string;
+
+      /**
+       * Gets a machine-readable reason, where a caller acts on it: `branch-not-merged` when an
+       * unforced branch delete was refused for commits that exist nowhere else.
+       */
+      readonly code?: string;
+    };
 
 /**
  * Builds a successful outcome.
@@ -195,10 +238,11 @@ export function worktreeOk<T>(value: T): WorktreeOutcome<T> {
 /**
  * Builds a failed outcome.
  * @param error The human-readable reason.
+ * @param code The machine-readable reason, where a caller acts on it.
  * @returns Returns the outcome.
  */
-export function worktreeError<T>(error: string): WorktreeOutcome<T> {
-  return { ok: false, error };
+export function worktreeError<T>(error: string, code?: string): WorktreeOutcome<T> {
+  return code === undefined ? { ok: false, error } : { ok: false, error, code };
 }
 
 /**
@@ -323,6 +367,27 @@ export function addCheckoutEntry(
     (existing: WorktreeCheckout): boolean => existing.id !== checkout.id,
   );
   return { ...config, checkouts: [...others, checkout] };
+}
+
+/**
+ * Renames a checkout: sets its display alias. Renaming an unknown id returns the configuration
+ * unchanged.
+ * @param config The container configuration.
+ * @param id The checkout id to rename.
+ * @param alias The new alias.
+ * @returns Returns the updated configuration.
+ */
+export function renameCheckoutEntry(
+  config: WorktreeConfig,
+  id: string,
+  alias: string,
+): WorktreeConfig {
+  return {
+    ...config,
+    checkouts: config.checkouts.map((existing: WorktreeCheckout): WorktreeCheckout =>
+      existing.id === id ? { ...existing, alias } : existing,
+    ),
+  };
 }
 
 /**

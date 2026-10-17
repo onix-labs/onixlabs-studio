@@ -1,0 +1,112 @@
+<app-panel-layout class="library">
+  <!-- The sub-view's own side panel (#948, #949): the profiles, searchable. It is part of the
+       sub-view, so it can be resized but not closed or moved. -->
+  <app-panel
+    panelId="ai-prompt-profiles"
+    defaultEdge="left"
+    [allowedEdges]="sideEdges"
+    [movable]="false"
+    [defaultSize]="240"
+    [minSize]="240"
+    [maxSize]="480"
+  >
+    <app-category-list
+      title="Prompt Profiles"
+      [searchable]="true"
+      searchPlaceholder="Search profiles…"
+      [(query)]="query"
+      [items]="items()"
+      [selectedId]="selected()?.id ?? null"
+      (selectedIdChange)="select($event)"
+      (actionClick)="askDelete($event)"
+    />
+  </app-panel>
+
+  <div main class="library__main">
+    @if (selected(); as profile) {
+      <!-- The selected profile, edited at full width: its instructions are paragraphs. Changes are
+           written as they are made. -->
+      <div class="library__editor">
+        <header class="library__header">
+          <h2 class="library__title section-label">{{ profile.name }}</h2>
+          <p class="library__subtitle">
+            Standing instructions the agent follows throughout every conversation this profile
+            applies to.
+          </p>
+        </header>
+
+        <app-setting-row label="Name" description="Heads this profile's part of the instructions.">
+          <app-text-field
+            [value]="profile.name"
+            ariaLabel="Profile name"
+            (valueChange)="rename(profile.id, $event)"
+          />
+        </app-setting-row>
+
+        <app-prompt-scope-editor
+          [scope]="profile.scope"
+          (scopeChange)="setScope(profile.id, $event)"
+        />
+
+        <app-setting-row
+          label="Enabled"
+          description="Switch off to keep the profile without using it."
+        >
+          <app-toggle
+            [checked]="profile.enabled"
+            ariaLabel="Profile enabled"
+            (checkedChange)="setEnabled(profile.id, $event)"
+          />
+        </app-setting-row>
+
+        <div class="library__body library__body--grow">
+          <span class="library__body-label">Instructions</span>
+          <span class="library__body-description">
+            Added to the agent's instructions. Changes apply when a conversation's session next
+            starts.
+          </span>
+          <app-markdown-field
+            [value]="profile.instructions"
+            [minRows]="8"
+            [fill]="true"
+            [expandable]="false"
+            ariaLabel="Instructions"
+            (valueChange)="setInstructions(profile.id, $event)"
+          />
+        </div>
+      </div>
+    } @else {
+      <div class="library__empty">
+        <app-icon class="library__empty-icon" [icon]="Icon.AI_PROFILES" />
+        <p class="library__empty-text">
+          {{ count() === 0 ? 'No prompt profiles yet' : 'Select a profile, or create one' }}
+        </p>
+        <p class="library__empty-hint">
+          A prompt profile is standing instructions — a coding style, a house tone, a rule for a
+          language — that the agent follows throughout every conversation it applies to.
+        </p>
+        <app-button variant="solid" [icon]="Icon.PLUS" label="New Profile" (click)="add()" />
+      </div>
+    }
+  </div>
+</app-panel-layout>
+
+<!-- Asked before anything is removed. A profile lives in Studio's settings rather than in a file, so
+     there is no Trash to recover it from. -->
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  ariaLabel="Delete prompt profile"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="library__dialog-title">Delete “{{ deleteTarget()?.name }}”?</h2>
+    <p class="library__dialog-message">
+      The agent is no longer given its instructions. This can't be undone.
+    </p>
+    <app-button-row>
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button label="Cancel" (click)="cancelDelete()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

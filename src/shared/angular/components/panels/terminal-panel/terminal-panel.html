@@ -63,12 +63,13 @@
         </div>
       }
     </div>
+    <!-- The path leads and the shell trails, as they do on a terminal tab's status strip. -->
     <app-panel-status>
-      <span class="panel-status__item">
+      <span class="panel-status__item">{{ root }}</span>
+      <span class="panel-status__item panel-status__item--push">
         <app-icon [icon]="Icon.TERMINAL" />
         {{ shellName(activeSession()?.shell) }}
       </span>
-      <span class="panel-status__item panel-status__item--push">{{ root }}</span>
     </app-panel-status>
   </div>
 } @else {

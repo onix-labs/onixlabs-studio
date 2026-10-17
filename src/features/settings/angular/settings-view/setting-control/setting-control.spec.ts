@@ -61,7 +61,7 @@ describe('SettingControl', () => {
   });
 
   it('render_whenCustomControl_rendersNoGenericControl', async () => {
-    const element: HTMLElement = await render('textEditor.profiles');
+    const element: HTMLElement = await render('textEditor.languageOverrides');
     expect(
       element.querySelector('app-toggle, app-dropdown, app-number-field, app-text-field'),
     ).toBeNull();

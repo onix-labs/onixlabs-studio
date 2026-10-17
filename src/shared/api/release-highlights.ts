@@ -93,7 +93,7 @@ export const RELEASE_HIGHLIGHTS: readonly ReleaseHighlights[] = [
       {
         title: 'A workspace agent that can act like the Explorer',
         detail:
-          'The agent docked in a workspace can open files and diffs, read source control, drive ' +
+          'The agent docked in a workspace can open files and diffs, read version control, drive ' +
           'the terminal panel, and create, rename or delete entries in the tree. Standing prompt ' +
           'profiles and a skill library scope instructions by surface and language.',
       },
@@ -110,6 +110,47 @@ export const RELEASE_HIGHLIGHTS: readonly ReleaseHighlights[] = [
           'A formatting toolstrip, open-in-tab, selectable dividers, stable GitHub alerts and ' +
           'sub/superscript, and mermaid 12 with its new layout engine. Previous messages recall on ' +
           'Alt+Up/Down (Option on macOS), giving Shift+Up/Down back to selecting text.',
+      },
+    ],
+  },
+  {
+    version: '2026.1.0-beta.6',
+    headlines: [
+      {
+        title: 'Studio asks before it trusts a repository',
+        detail:
+          'Opening a folder that holds a repository — a clone included — now asks whether you trust ' +
+          'it before version control runs there, since a repository’s own configuration can run ' +
+          'commands. "Don’t trust" is the default; the folder still opens with version control ' +
+          'switched off, and you can trust it later from the Repository panel.',
+      },
+      {
+        title: 'Agents ask more, and show what they are asking about',
+        detail:
+          'Codex now asks through the same permission card Claude does. A card names the command, ' +
+          'file, image or mount it is about; a container mount is confined like a file write; and ' +
+          'an agent asks before it writes a prompt profile or a skill.',
+      },
+      {
+        title: 'An AI Manager, and an agent in every tool view',
+        detail:
+          'Local models, prompt profiles and skills live in one AI Manager. The Containers, System ' +
+          'Monitor and other tool views each carry an agent of their own, with only that view’s ' +
+          'tools; container engines run as plugin processes like everything else.',
+      },
+      {
+        title: 'Notifications reach the system',
+        detail:
+          'While Studio is in the background, errors, finished agents and runs, and agents waiting ' +
+          'on you appear in the system’s notification centre; clicking one brings Studio back to ' +
+          'what it is about. Settings › Notifications turns it off.',
+      },
+      {
+        title: 'A faster cold start and a quieter background',
+        detail:
+          'Studio remembers your login shell’s environment between launches instead of starting ' +
+          'the shell every time; the System Monitor samples at a refresh rate you choose; and live ' +
+          'feeds pause while the window is minimised or off screen.',
       },
     ],
   },

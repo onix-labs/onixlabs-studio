@@ -1,29 +1,55 @@
-// The System Monitor view fills its tab. This phase is the log audit: a filter toolbar over a
-// scrolling, column-aligned table. The metric tiles land above the audit in a later phase.
+// The System Monitor view fills its tab (#951): the resource graphs stacked in a side panel, and beside
+// them the log audit — a filter toolbar over a scrolling, column-aligned table — filling the rest.
 :host {
   display: block;
   block-size: 100%;
 }
 
 .system-monitor {
+  block-size: 100%;
+}
+
+// The side panel: a small title over the graphs, one per row, scrolling once the panel is too short to
+// hold them all.
+.system-monitor__resources {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
+  overflow: auto;
+  padding: 0.5rem 0.75rem 0.75rem;
 }
 
-// The metric tiles: a responsive row that wraps, each tile a fixed-height card. Network/Disk/GPU
-// tiles join this same grid in P4.
-.system-monitor__tiles {
-  display: grid;
+.system-monitor__resources-title {
   flex: none;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  // A fixed row height gives every tile real vertical space for its sparkline(s) to fill; without it
-  // the grid sizes rows to content and the flex-fill graphs collapse to their floor. Tall enough for a
-  // two-graph Network/Disk tile (a captioned graph each).
-  grid-auto-rows: 7.5rem;
+  margin: 0 0 0.5rem;
+  padding-inline: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+// The metric tiles, stacked, sharing the panel's height equally. A tile shrinks no further than its
+// own content (its readings and a legible graph), and the list no further than its tiles, so a panel
+// too short for all five scrolls rather than squashing them.
+.system-monitor__tiles {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   gap: 0.75rem;
-  padding: 0.85rem 1rem;
+
+  > app-metric-tile {
+    flex: 1 1 0;
+  }
+}
+
+.system-monitor__main {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
 }
 
 .system-monitor__audit {
@@ -74,38 +100,21 @@
   color: var(--accent-color);
 }
 
+// Copy and Clear sit in the toolbar's flow right after the indicator, so the row holds its place there
+// rather than pushing to the trailing edge, and it never gives up width to the flexing search field.
+.system-monitor__selection-actions {
+  flex: none;
+}
+
 // The audit table (the shared app-table) fills the remaining height and scrolls its own body.
 .system-monitor__table {
   flex: 1 1 auto;
   min-block-size: 0;
 }
 
-// The severity badge: a small, colour-coded pill.
+// The severity, as a chip toned by how severe it is (see `severityTone`).
 .system-monitor__badge {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.68rem;
-  font-weight: 600;
   letter-spacing: 0.03em;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier, 1));
-  color: #fff;
-  background-color: var(--form-muted-foreground-color);
-
-  &--trace {
-    background-color: color-mix(in srgb, var(--form-muted-foreground-color) 70%, transparent);
-  }
-  &--debug {
-    background-color: var(--info-color, #4a90d9);
-  }
-  &--info {
-    background-color: var(--accent-color);
-  }
-  &--warning {
-    background-color: var(--warning-color, #d99e2b);
-  }
-  &--error {
-    background-color: var(--danger-color, #e5484d);
-  }
 }
 
 .system-monitor__where {

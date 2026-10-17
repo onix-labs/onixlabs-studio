@@ -74,6 +74,12 @@ export class Icon {
   public static readonly CLOSE: Icon = new Icon('ph ph-x');
 
   /**
+   * Gets the bold close icon, used on the document well's close-all button beside its grip and
+   * document-list caret.
+   */
+  public static readonly CLOSE_BOLD: Icon = new Icon('ph-bold ph-x');
+
+  /**
    * Gets the expand icon shown on a modal's expand-to-fill control. Same weight as {@link CLOSE}.
    */
   public static readonly ARROWS_OUT: Icon = new Icon('ph ph-arrows-out-simple');
@@ -100,22 +106,27 @@ export class Icon {
    */
   public static readonly LOCK_OPEN: Icon = new Icon('ph-bold ph-lock-simple-open');
 
-  // --- Title strip: window controls ---
+  // --- Window controls (drawn by Studio on Linux) ---
 
   /**
-   * Gets the window-minimize icon.
+   * Gets the minimize-window icon.
    */
-  public static readonly WINDOW_MINIMIZE: Icon = new Icon('ph ph-minus');
+  public static readonly WINDOW_MINIMIZE: Icon = new Icon('ph-bold ph-minus');
 
   /**
-   * Gets the window-maximize icon.
+   * Gets the maximize-window icon, shown while the window is not maximized.
    */
-  public static readonly WINDOW_MAXIMIZE: Icon = new Icon('ph ph-square');
+  public static readonly WINDOW_MAXIMIZE: Icon = new Icon('ph-bold ph-square');
 
   /**
-   * Gets the window-close icon.
+   * Gets the restore-window icon, shown in place of maximize while the window is maximized.
    */
-  public static readonly WINDOW_CLOSE: Icon = new Icon('ph ph-x');
+  public static readonly WINDOW_RESTORE: Icon = new Icon('ph-bold ph-copy-simple');
+
+  /**
+   * Gets the close-window icon.
+   */
+  public static readonly WINDOW_CLOSE: Icon = new Icon('ph-bold ph-x');
 
   // --- Content types (tabs, welcome, document wells) ---
 
@@ -145,6 +156,11 @@ export class Icon {
   public static readonly BINARY: Icon = new Icon('ph-duotone ph-binary');
 
   /**
+   * Gets the image content icon, shown on image tabs, image well documents and the welcome filter.
+   */
+  public static readonly IMAGE_FILE: Icon = new Icon('ph-duotone ph-image');
+
+  /**
    * Gets the terminal content icon.
    */
   public static readonly TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');
@@ -155,14 +171,34 @@ export class Icon {
   public static readonly CONTAINERS: Icon = new Icon('ph-duotone ph-shipping-container');
 
   /**
+   * Gets the icon for container images, in the Containers view's side panel.
+   */
+  public static readonly CONTAINER_IMAGES: Icon = new Icon('ph-duotone ph-stack');
+
+  /**
+   * The container engine's volumes (#974).
+   */
+  public static readonly CONTAINER_VOLUMES: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
    * Gets the System Monitor content icon.
    */
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
   /**
-   * Gets the AI Model Manager content icon.
+   * Gets the AI Manager content icon, which also stands for its Local Models sub-view.
    */
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the AI Manager's Prompt Profiles sub-view icon.
+   */
+  public static readonly AI_PROFILES: Icon = new Icon('ph-duotone ph-chat-text');
+
+  /**
+   * Gets the AI Manager's Skills sub-view icon.
+   */
+  public static readonly AI_SKILLS: Icon = new Icon('ph-duotone ph-sparkle');
 
   /**
    * Gets the Plugins content icon, which also stands for every category at once.
@@ -228,6 +264,11 @@ export class Icon {
   public static readonly BELL: Icon = new Icon('ph-duotone ph-bell-ringing');
 
   /**
+   * The bell shown on the notification tray's trigger while notifications are muted.
+   */
+  public static readonly BELL_SLASH: Icon = new Icon('ph-duotone ph-bell-slash');
+
+  /**
    * Gets the thin agent (brain) glyph shown large in the agent panel's empty state.
    */
   public static readonly AGENT_EMPTY: Icon = new Icon('ph-thin ph-brain');
@@ -266,6 +307,31 @@ export class Icon {
    * Gets the glyph on a timeline node for a tool that writes or edits a file or document.
    */
   public static readonly TOOL_WRITE: Icon = new Icon('ph ph-pencil-simple');
+
+  /**
+   * Gets the glyph on a timeline node for a permission prompt (the agent asking to run something).
+   */
+  public static readonly PROMPT_PERMISSION: Icon = new Icon('ph ph-shield');
+
+  /**
+   * Gets the glyph on a timeline node for a question the agent asks the user.
+   */
+  public static readonly PROMPT_QUESTION: Icon = new Icon('ph ph-question');
+
+  /**
+   * Gets the glyph on a timeline node for an edit decision (a staged edit awaiting apply or reject).
+   */
+  public static readonly PROMPT_EDIT: Icon = new Icon('ph ph-git-diff');
+
+  /**
+   * Gets the glyph on a timeline node for a workspace an agent tab offers to make (#876).
+   */
+  public static readonly WORKSPACE_PROPOSAL: Icon = new Icon('ph ph-folder-simple-plus');
+
+  /**
+   * Gets the glyph on a timeline node for a failed run.
+   */
+  public static readonly PROMPT_ERROR: Icon = new Icon('ph ph-x-circle');
 
   // --- Ribbon: file commands ---
 
@@ -360,6 +426,11 @@ export class Icon {
    * Gets the find/search icon.
    */
   public static readonly SEARCH: Icon = new Icon('ph-duotone ph-magnifying-glass');
+
+  /**
+   * Gets the replace icon: two opposing arrows, one text swapped for another.
+   */
+  public static readonly REPLACE: Icon = new Icon('ph-duotone ph-swap');
 
   // --- Ribbon: run, format and session ---
 
@@ -507,9 +578,24 @@ export class Icon {
   public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
 
   /**
+   * Gets the close-issue icon, on the issue document's strip while the issue is open.
+   */
+  public static readonly ISSUE_CLOSE: Icon = new Icon('ph-duotone ph-check-circle');
+
+  /**
+   * Gets the reopen-issue icon, on the issue document's strip while the issue is closed.
+   */
+  public static readonly ISSUE_REOPEN: Icon = new Icon('ph-duotone ph-arrow-counter-clockwise');
+
+  /**
    * Gets the bold open-external glyph used by the markdown tool strip's open-in-tab button.
    */
   public static readonly OPEN_EXTERNAL_BOLD: Icon = new Icon('ph-bold ph-arrow-square-out');
+
+  /**
+   * Gets the open-editor glyph on the agent composer's button that opens the Markdown Prompt Editor.
+   */
+  public static readonly COMPOSER_OPEN_EDITOR: Icon = new Icon('ph-duotone ph-arrow-square-out');
 
   /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
@@ -634,6 +720,36 @@ export class Icon {
   public static readonly GIT_COMMIT: Icon = new Icon('ph-duotone ph-git-commit');
 
   /**
+   * Gets the filter (funnel) icon on the History strip's Filter toggle.
+   */
+  public static readonly FILTER: Icon = new Icon('ph-duotone ph-funnel');
+
+  /**
+   * Gets the all-branches (fork) icon on the History strip's All Branches toggle.
+   */
+  public static readonly ALL_BRANCHES: Icon = new Icon('ph-duotone ph-git-fork');
+
+  /**
+   * Gets the go-to-HEAD (crosshair) icon on the History strip.
+   */
+  public static readonly GO_TO_HEAD: Icon = new Icon('ph-duotone ph-crosshair');
+
+  /**
+   * Gets the go-to-symbol icon on a code file's strip menu.
+   */
+  public static readonly GO_TO_SYMBOL: Icon = new Icon('ph-duotone ph-crosshair-simple');
+
+  /**
+   * Gets the go-to-line icon on a code file's strip menu.
+   */
+  public static readonly GO_TO_LINE: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the open-file icon on a diff's strip, which opens the compared file to edit.
+   */
+  public static readonly OPEN_FILE: Icon = new Icon('ph-duotone ph-file-text');
+
+  /**
    * Gets the source-control (git-branch) icon shown on the source-control tab.
    */
   public static readonly SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');
@@ -664,15 +780,36 @@ export class Icon {
   public static readonly STASH: Icon = new Icon('ph-duotone ph-archive');
 
   /**
-   * Gets the worktree icon shown on the Worktrees panel, the ribbon's Promote action, and the
+   * Gets the worktree icon shown on the Repository panel's worktrees, the ribbon's Promote action, and the
    * status strip's active-checkout indicator.
    */
   public static readonly WORKTREE: Icon = new Icon('ph-duotone ph-tree-structure');
 
   /**
+   * Gets the glyph on the worktree the view is showing, in the Repository panel.
+   */
+  public static readonly WORKTREE_SHOWN: Icon = new Icon('ph-duotone ph-eye');
+
+  /**
+   * Gets the glyph on a worktree the view is not showing, in the Repository panel.
+   */
+  public static readonly WORKTREE_HIDDEN: Icon = new Icon('ph-duotone ph-eye-slash');
+
+  /**
    * Gets the remote (cloud) icon shown on the source-control remotes section.
    */
   public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');
+
+  /**
+   * Gets the code-hosting icon (GitHub, GitLab — where a repository is hosted), for the Plugin Manager's
+   * Hosting category.
+   */
+  public static readonly HOSTING: Icon = new Icon('ph-duotone ph-cloud');
+
+  /**
+   * Gets the code-hosting icon at the light weight, for a plugin row in the Hosting category.
+   */
+  public static readonly HOSTING_LIGHT: Icon = new Icon('ph-light ph-cloud');
 
   /**
    * Gets the lines-added icon, for a tally of what a change adds.
@@ -733,7 +870,7 @@ export class Icon {
   /**
    * Gets the branch (bold git-branch) icon shown on the workspace status bar's branch segment.
    */
-  public static readonly BRANCH: Icon = new Icon('ph-bold ph-git-branch');
+  public static readonly BRANCH: Icon = new Icon('ph-duotone ph-git-branch');
 
   /**
    * Gets the workspace-folder icon shown on the workspace status bar's name segment.
@@ -981,6 +1118,16 @@ export class Icon {
   public static readonly ERROR_FILL: Icon = new Icon('ph-fill ph-x-circle');
 
   /**
+   * Gets the in-progress status icon: a plain circle, pulsing, for a run or checks still going.
+   */
+  public static readonly STATUS_RUNNING: Icon = new Icon('ph-duotone ph-circle');
+
+  /**
+   * Gets the stopped status icon, for a run that was cancelled rather than finished.
+   */
+  public static readonly STATUS_STOPPED: Icon = new Icon('ph-duotone ph-x-circle');
+
+  /**
    * Gets the warning-severity icon.
    */
   public static readonly WARNING: Icon = new Icon('ph ph-warning');
@@ -1140,6 +1287,17 @@ export class Icon {
   public static readonly KEYBOARD: Icon = new Icon('ph ph-keyboard');
 
   /**
+   * Gets the icon heading each prompt profile in the Prompt Profiles list (regular weight matches
+   * the accordion caret).
+   */
+  public static readonly PROMPT_PROFILE: Icon = new Icon('ph ph-chat-text');
+
+  /**
+   * Gets the icon heading each skill in the Skills list (regular weight matches the accordion caret).
+   */
+  public static readonly SKILL: Icon = new Icon('ph ph-sparkle');
+
+  /**
    * Gets the light-theme icon.
    */
   public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');
@@ -1167,9 +1325,9 @@ export class Icon {
   public static readonly RECENT_EMPTY: Icon = new Icon('ph-thin ph-clock-counter-clockwise');
 
   /**
-   * Gets the light-weight directory icon shown on the welcome screen.
+   * Gets the duotone directory icon shown on the welcome screen.
    */
-  public static readonly WELCOME_DIRECTORY: Icon = new Icon('ph-light ph-folder-simple');
+  public static readonly WELCOME_DIRECTORY: Icon = new Icon('ph-duotone ph-folder-simple');
 
   /**
    * Gets the light-weight source-control icon shown on the welcome screen.
@@ -1177,49 +1335,44 @@ export class Icon {
   public static readonly WELCOME_SOURCE_CONTROL: Icon = new Icon('ph-light ph-git-branch');
 
   /**
-   * Gets the light-weight project (cube) icon shown on the welcome screen.
+   * Gets the duotone code icon shown on the welcome screen.
    */
-  public static readonly WELCOME_PROJECT: Icon = new Icon('ph-light ph-cube');
+  public static readonly WELCOME_CODE: Icon = new Icon('ph-duotone ph-brackets-curly');
 
   /**
-   * Gets the light-weight code icon shown on the welcome screen.
+   * Gets the duotone markdown icon shown on the welcome screen.
    */
-  public static readonly WELCOME_CODE: Icon = new Icon('ph-light ph-brackets-curly');
+  public static readonly WELCOME_MARKDOWN: Icon = new Icon('ph-duotone ph-markdown-logo');
 
   /**
-   * Gets the light-weight markdown icon shown on the welcome screen.
+   * Gets the duotone terminal icon shown on the welcome screen.
    */
-  public static readonly WELCOME_MARKDOWN: Icon = new Icon('ph-light ph-markdown-logo');
+  public static readonly WELCOME_TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');
 
   /**
-   * Gets the light-weight terminal icon shown on the welcome screen.
+   * Gets the duotone Containers icon shown on the welcome screen.
    */
-  public static readonly WELCOME_TERMINAL: Icon = new Icon('ph-light ph-terminal-window');
+  public static readonly WELCOME_CONTAINERS: Icon = new Icon('ph-duotone ph-shipping-container');
 
   /**
-   * Gets the light-weight Containers icon shown on the welcome screen.
+   * Gets the duotone agent icon shown on the welcome screen.
    */
-  public static readonly WELCOME_CONTAINERS: Icon = new Icon('ph-light ph-shipping-container');
+  public static readonly WELCOME_AGENT: Icon = new Icon('ph-duotone ph-brain');
 
   /**
-   * Gets the light-weight agent icon shown on the welcome screen.
+   * Gets the duotone AI Manager icon shown on the welcome screen.
    */
-  public static readonly WELCOME_AGENT: Icon = new Icon('ph-light ph-brain');
+  public static readonly WELCOME_AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
   /**
-   * Gets the light-weight AI Model Manager icon shown on the welcome screen.
+   * Gets the duotone API Explorer icon shown on the welcome screen.
    */
-  public static readonly WELCOME_AI_MODELS: Icon = new Icon('ph-light ph-cpu');
+  public static readonly WELCOME_API_EXPLORER: Icon = new Icon('ph-duotone ph-plugs-connected');
 
   /**
-   * Gets the light-weight API Explorer icon shown on the welcome screen.
+   * Gets the duotone Database Explorer icon shown on the welcome screen.
    */
-  public static readonly WELCOME_API_EXPLORER: Icon = new Icon('ph-light ph-plugs-connected');
-
-  /**
-   * Gets the light-weight Database Explorer icon shown on the welcome screen.
-   */
-  public static readonly WELCOME_DATABASE: Icon = new Icon('ph-light ph-database');
+  public static readonly WELCOME_DATABASE: Icon = new Icon('ph-duotone ph-database');
 
   // --- API Explorer ---
 
@@ -1249,14 +1402,14 @@ export class Icon {
   public static readonly API_HISTORY: Icon = new Icon('ph-duotone ph-clock-counter-clockwise');
 
   /**
-   * Gets the light-weight Orchestration icon shown on the welcome screen.
+   * Gets the duotone Orchestration icon shown on the welcome screen.
    */
-  public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-light ph-computer-tower');
+  public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-duotone ph-computer-tower');
 
   /**
-   * Gets the light-weight System Monitor icon shown on the welcome screen.
+   * Gets the duotone System Monitor icon shown on the welcome screen.
    */
-  public static readonly WELCOME_SYSTEM_MONITOR: Icon = new Icon('ph-light ph-gauge');
+  public static readonly WELCOME_SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
   /**
    * Gets the light-weight Plugin Manager icon shown on the welcome screen.
@@ -1267,6 +1420,411 @@ export class Icon {
    * Gets the light-weight Settings icon shown on the welcome screen.
    */
   public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
+
+  /**
+   * Gets the duotone settings icon of the welcome screen's Tools card. The light {@link WELCOME_SETTINGS}
+   * stays on the buttons that share it.
+   */
+  public static readonly WELCOME_TOOL_SETTINGS: Icon = new Icon('ph-duotone ph-gear-six');
+
+  /**
+   * Gets the duotone plugins icon of the welcome screen's Tools card. The light {@link WELCOME_PLUGINS}
+   * stays where it is shared beyond the welcome screen.
+   */
+  public static readonly WELCOME_TOOL_PLUGINS: Icon = new Icon('ph-duotone ph-puzzle-piece');
+
+  // --- Welcome screen: tabs, Create Something, Version Control ---
+  //
+  // The welcome screen draws its glyphs at the light weight, so a rail of steps or a list of
+  // repositories reads as one set. These are the ones its sections need beyond the actions
+  // above.
+
+  // The section tabs, the Get Started actions and the Tools cards are drawn in duotone: they are what
+  // the screen offers, and the two-tone weight lets them stand out from the light glyphs of the lists
+  // and controls around them.
+
+  /**
+   * Gets the duotone icon of the welcome screen's Get Started tab.
+   */
+  public static readonly WELCOME_TAB_GET_STARTED: Icon = new Icon('ph-duotone ph-house');
+
+  /**
+   * Gets the duotone icon of the welcome screen's Create Something tab.
+   */
+  public static readonly WELCOME_TAB_CREATE: Icon = new Icon('ph-duotone ph-cube');
+
+  /**
+   * Gets the duotone icon of the welcome screen's Version Control tab.
+   */
+  public static readonly WELCOME_TAB_SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');
+
+  /**
+   * Gets the duotone icon of the welcome screen's Tools tab.
+   */
+  public static readonly WELCOME_TAB_TOOLS: Icon = new Icon('ph-duotone ph-wrench');
+
+  /**
+   * Gets the light-weight chevron trailing each welcome action and card.
+   */
+  public static readonly WELCOME_CHEVRON: Icon = new Icon('ph-light ph-caret-right');
+
+  /**
+   * Gets the light-weight link glyph leading the clone-by-URL field.
+   */
+  public static readonly WELCOME_LINK: Icon = new Icon('ph-light ph-link');
+
+  /**
+   * Gets the bold download glyph on the Clone Repository buttons.
+   */
+  public static readonly WELCOME_CLONE: Icon = new Icon('ph-bold ph-download-simple');
+
+  /**
+   * Gets the bold glyph on a repository's Open on GitHub (or other host) button.
+   */
+  public static readonly WELCOME_OPEN_EXTERNAL: Icon = new Icon('ph-bold ph-arrow-square-out');
+
+  /**
+   * Gets the light-weight glyph beside a repository's homepage link.
+   */
+  public static readonly WELCOME_HOMEPAGE: Icon = new Icon('ph-light ph-globe-simple');
+
+  /**
+   * Gets the light-weight icon of a public repository.
+   */
+  public static readonly WELCOME_REPOSITORY: Icon = new Icon('ph-light ph-book-open');
+
+  /**
+   * Gets the light-weight icon of a private repository.
+   */
+  public static readonly WELCOME_REPOSITORY_PRIVATE: Icon = new Icon('ph-light ph-lock-simple');
+
+  /**
+   * Gets the regular-weight outline star on a recent item that is not starred.
+   */
+  public static readonly WELCOME_STAR: Icon = new Icon('ph ph-star');
+
+  /**
+   * Gets the filled star on a starred recent item.
+   */
+  public static readonly WELCOME_STAR_FILLED: Icon = new Icon('ph-fill ph-star');
+
+  /**
+   * Gets the light-weight refresh glyph of the repository browser.
+   */
+  public static readonly WELCOME_REFRESH: Icon = new Icon('ph-light ph-arrows-clockwise');
+
+  /**
+   * Gets the thin glyph shown large in the repository browser's empty state.
+   */
+  public static readonly WELCOME_REPOSITORIES_EMPTY: Icon = new Icon('ph-thin ph-git-branch');
+
+  /**
+   * Gets the light-weight folder on Create Something's Browse button, which picks where a project goes.
+   */
+  public static readonly WELCOME_PROJECT_BROWSE: Icon = new Icon('ph-light ph-folder-simple');
+
+  /**
+   * Gets the light-weight desktop icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_DESKTOP: Icon = new Icon('ph-light ph-desktop');
+
+  /**
+   * Gets the light-weight globe icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_GLOBE: Icon = new Icon('ph-light ph-globe');
+
+  /**
+   * Gets the light-weight device mobile icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_DEVICE_MOBILE: Icon = new Icon(
+    'ph-light ph-device-mobile',
+  );
+
+  /**
+   * Gets the light-weight storefront icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_STOREFRONT: Icon = new Icon('ph-light ph-storefront');
+
+  /**
+   * Gets the light-weight app window icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_APP_WINDOW: Icon = new Icon('ph-light ph-app-window');
+
+  /**
+   * Gets the light-weight file html icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FILE_HTML: Icon = new Icon('ph-light ph-file-html');
+
+  /**
+   * Gets the light-weight terminal window icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_TERMINAL_WINDOW: Icon = new Icon(
+    'ph-light ph-terminal-window',
+  );
+
+  /**
+   * Gets the light-weight terminal icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_TERMINAL: Icon = new Icon('ph-light ph-terminal');
+
+  /**
+   * Gets the light-weight cloud icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CLOUD: Icon = new Icon('ph-light ph-cloud');
+
+  /**
+   * Gets the light-weight graph icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_GRAPH: Icon = new Icon('ph-light ph-graph');
+
+  /**
+   * Gets the light-weight share network icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SHARE_NETWORK: Icon = new Icon(
+    'ph-light ph-share-network',
+  );
+
+  /**
+   * Gets the light-weight lightning icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_LIGHTNING: Icon = new Icon('ph-light ph-lightning');
+
+  /**
+   * Gets the light-weight broadcast icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BROADCAST: Icon = new Icon('ph-light ph-broadcast');
+
+  /**
+   * Gets the light-weight stack icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_STACK: Icon = new Icon('ph-light ph-stack');
+
+  /**
+   * Gets the light-weight robot icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_ROBOT: Icon = new Icon('ph-light ph-robot');
+
+  /**
+   * Gets the light-weight users three icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_USERS_THREE: Icon = new Icon('ph-light ph-users-three');
+
+  /**
+   * Gets the light-weight plugs connected icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PLUGS_CONNECTED: Icon = new Icon(
+    'ph-light ph-plugs-connected',
+  );
+
+  /**
+   * Gets the light-weight chats circle icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHATS_CIRCLE: Icon = new Icon('ph-light ph-chats-circle');
+
+  /**
+   * Gets the light-weight brain icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BRAIN: Icon = new Icon('ph-light ph-brain');
+
+  /**
+   * Gets the light-weight eye icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_EYE: Icon = new Icon('ph-light ph-eye');
+
+  /**
+   * Gets the light-weight microphone icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_MICROPHONE: Icon = new Icon('ph-light ph-microphone');
+
+  /**
+   * Gets the light-weight chart scatter icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHART_SCATTER: Icon = new Icon(
+    'ph-light ph-chart-scatter',
+  );
+
+  /**
+   * Gets the light-weight flow arrow icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FLOW_ARROW: Icon = new Icon('ph-light ph-flow-arrow');
+
+  /**
+   * Gets the light-weight chart bar icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHART_BAR: Icon = new Icon('ph-light ph-chart-bar');
+
+  /**
+   * Gets the light-weight database icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_DATABASE: Icon = new Icon('ph-light ph-database');
+
+  /**
+   * Gets the light-weight magnifying glass icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_MAGNIFYING_GLASS: Icon = new Icon(
+    'ph-light ph-magnifying-glass',
+  );
+
+  /**
+   * Gets the light-weight cube icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE: Icon = new Icon('ph-light ph-cube');
+
+  /**
+   * Gets the light-weight shipping container icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SHIPPING_CONTAINER: Icon = new Icon(
+    'ph-light ph-shipping-container',
+  );
+
+  /**
+   * Gets the light-weight infinity icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_INFINITY: Icon = new Icon('ph-light ph-infinity');
+
+  /**
+   * Gets the light-weight puzzle piece icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PUZZLE_PIECE: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light-weight code icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CODE: Icon = new Icon('ph-light ph-code');
+
+  /**
+   * Gets the light-weight browser icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BROWSER: Icon = new Icon('ph-light ph-browser');
+
+  /**
+   * Gets the light-weight chat circle dots icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHAT_CIRCLE_DOTS: Icon = new Icon(
+    'ph-light ph-chat-circle-dots',
+  );
+
+  /**
+   * Gets the light-weight repeat icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_REPEAT: Icon = new Icon('ph-light ph-repeat');
+
+  /**
+   * Gets the light-weight file doc icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FILE_DOC: Icon = new Icon('ph-light ph-file-doc');
+
+  /**
+   * Gets the light-weight package icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PACKAGE: Icon = new Icon('ph-light ph-package');
+
+  /**
+   * Gets the light-weight toolbox icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_TOOLBOX: Icon = new Icon('ph-light ph-toolbox');
+
+  /**
+   * Gets the light-weight brackets angle icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BRACKETS_ANGLE: Icon = new Icon(
+    'ph-light ph-brackets-angle',
+  );
+
+  /**
+   * Gets the light-weight wrench icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_WRENCH: Icon = new Icon('ph-light ph-wrench');
+
+  /**
+   * Gets the light-weight game controller icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_GAME_CONTROLLER: Icon = new Icon(
+    'ph-light ph-game-controller',
+  );
+
+  /**
+   * Gets the light-weight sword icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SWORD: Icon = new Icon('ph-light ph-sword');
+
+  /**
+   * Gets the light-weight cube focus icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE_FOCUS: Icon = new Icon('ph-light ph-cube-focus');
+
+  /**
+   * Gets the light-weight cpu icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CPU: Icon = new Icon('ph-light ph-cpu');
+
+  /**
+   * Gets the light-weight circuitry icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CIRCUITRY: Icon = new Icon('ph-light ph-circuitry');
+
+  /**
+   * Gets the light-weight house line icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_HOUSE_LINE: Icon = new Icon('ph-light ph-house-line');
+
+  /**
+   * Gets the light-weight cube transparent icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE_TRANSPARENT: Icon = new Icon(
+    'ph-light ph-cube-transparent',
+  );
+
+  /**
+   * Gets the light-weight flask icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FLASK: Icon = new Icon('ph-light ph-flask');
+
+  /**
+   * Gets the light-weight sparkle of a skill in the New Project wizard's Skills step: Studio's skill
+   * glyph.
+   */
+  public static readonly WELCOME_SKILL: Icon = new Icon('ph-light ph-sparkle');
+
+  /**
+   * Gets the icon of the New Project wizard's Import Skill button.
+   */
+  public static readonly WELCOME_SKILL_IMPORT: Icon = new Icon('ph-light ph-download-simple');
+
+  /**
+   * Gets the icon of a New Project wizard step not yet visited.
+   */
+  public static readonly WELCOME_STEP_TODO: Icon = new Icon('ph-light ph-circle');
+
+  /**
+   * Gets the icon of a New Project wizard step the user filled in.
+   */
+  public static readonly WELCOME_STEP_DONE: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the icon of a New Project wizard step the user passed without filling in.
+   */
+  public static readonly WELCOME_STEP_SKIPPED: Icon = new Icon('ph-light ph-minus-circle');
+
+  /**
+   * Gets the plus on the Technology step's field for adding one that is not listed.
+   */
+  public static readonly WELCOME_TECH_ADD: Icon = new Icon('ph-light ph-plus');
+
+  /**
+   * Gets the icon of a supporting document attached to a new project.
+   */
+  public static readonly WELCOME_DOCUMENT: Icon = new Icon('ph-light ph-file-text');
+
+  /**
+   * Gets the icon of an image attached to a new project.
+   */
+  public static readonly WELCOME_DOCUMENT_IMAGE: Icon = new Icon('ph-light ph-image');
+
+  /**
+   * Gets the icon of the New Project wizard's Add Documents button.
+   */
+  public static readonly WELCOME_DOCUMENT_ADD: Icon = new Icon('ph-light ph-paperclip');
 
   // --- Setup wizard ---
   //
@@ -1291,9 +1849,9 @@ export class Icon {
   public static readonly SETUP_APPEARANCE: Icon = new Icon('ph ph-monitor');
 
   /**
-   * Gets the icon of the setup wizard's environment step.
+   * Gets the icon of the setup wizard's summary step: the whole setup on one page.
    */
-  public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
+  public static readonly SETUP_SUMMARY: Icon = new Icon('ph ph-list-checks');
 
   // The five plugin steps, one per contribution slot. The same glyphs the Plugin Manager's
   // categories use, at the rail's weight, so a category installed from here is recognised there.
@@ -1334,12 +1892,17 @@ export class Icon {
   public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
 
   /**
-   * Gets the icon of the setup wizard's source control step.
+   * Gets the setup wizard's version-control plugin step: the tool that reads repositories (#818).
    */
-  public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
+  public static readonly SETUP_VERSION_CONTROL: Icon = new Icon('ph ph-git-fork');
 
   /**
-   * Gets the mark against something the setup wizard's environment step could not find.
+   * Gets the setup wizard's hosting plugin step: where repositories are hosted (#820).
+   */
+  public static readonly SETUP_HOSTING: Icon = new Icon('ph ph-git-pull-request');
+
+  /**
+   * Gets the mark against something the setup wizard's summary could not find.
    */
   public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');
 
@@ -1349,9 +1912,20 @@ export class Icon {
   public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
 
   /**
+   * Gets the mark against something the setup wizard's summary reports as simply not set — nothing
+   * installed in a category, no forge signed in to. Not a problem, so neither a cross nor a warning.
+   */
+  public static readonly SETUP_NOT_SET: Icon = new Icon('ph ph-minus-circle');
+
+  /**
+   * Gets the arrow leading the setup wizard's Back button, mirroring Next's.
+   */
+  public static readonly ARROW_LEFT: Icon = new Icon('ph-bold ph-arrow-left');
+
+  /**
    * Gets the arrow trailing the setup wizard's Next button.
    */
-  public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');
+  public static readonly ARROW_RIGHT: Icon = new Icon('ph-bold ph-arrow-right');
 
   // --- Status bar ---
 
@@ -1378,6 +1952,12 @@ export class Icon {
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
 
   /**
+   * Gets the delete icon in the duotone weight, for a filled destructive button — the tinted body
+   * keeps the bin legible against the button's own fill.
+   */
+  public static readonly TRASH_DUOTONE: Icon = new Icon('ph-duotone ph-trash');
+
+  /**
    * Gets the delete icon in its lidless form, for a destructive action stated as a button beside other
    * buttons, where the lidded bin's extra detail reads as noise at button size.
    */
@@ -1387,6 +1967,13 @@ export class Icon {
    * Gets the download icon, used for actions that fetch something over the network.
    */
   public static readonly DOWNLOAD: Icon = new Icon('ph ph-download-simple');
+
+  /**
+   * Gets the download icon in the duotone weight, for a filled button that installs or updates a
+   * plugin — the tinted tray keeps it legible against the button's own fill, as the duotone bin does
+   * for Remove beside it.
+   */
+  public static readonly DOWNLOAD_DUOTONE: Icon = new Icon('ph-duotone ph-download');
 
   /**
    * Gets the select-all (double check) icon.
@@ -1425,6 +2012,11 @@ export class Icon {
    * Gets the rightward caret used on collapsed nodes.
    */
   public static readonly CARET_RIGHT: Icon = new Icon('ph ph-caret-right');
+
+  /**
+   * Gets the bold rightward caret on the welcome screen's accordion headers.
+   */
+  public static readonly CARET_RIGHT_BOLD: Icon = new Icon('ph-bold ph-caret-right');
 
   /**
    * Gets the filled downward caret used on expanded tree nodes.
@@ -1482,6 +2074,85 @@ export class Icon {
    * horizontal counterpart is: the same glyph turned on its side must not read as a heavier one.
    */
   public static readonly DOTS_THREE_VERTICAL: Icon = new Icon('ph ph-dots-three-vertical');
+
+  // --- Image viewer ---
+
+  /**
+   * Gets the zoom-in icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_IN: Icon = new Icon('ph-duotone ph-magnifying-glass-plus');
+
+  /**
+   * Gets the zoom-out icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_OUT: Icon = new Icon('ph-duotone ph-magnifying-glass-minus');
+
+  /**
+   * Gets the fit-to-window icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_FIT: Icon = new Icon('ph-duotone ph-corners-in');
+
+  /**
+   * Gets the actual-size (1:1) icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_ACTUAL: Icon = new Icon('ph-duotone ph-number-square-one');
+
+  /**
+   * Gets the checkerboard icon shown on the image viewer's background choice for transparency.
+   */
+  public static readonly CHECKERBOARD: Icon = new Icon('ph-duotone ph-checkerboard');
+
+  /**
+   * Gets the light-background icon shown on the image viewer's background choice.
+   */
+  public static readonly BACKGROUND_LIGHT: Icon = new Icon('ph-duotone ph-sun');
+
+  /**
+   * Gets the dark-background icon shown on the image viewer's background choice.
+   */
+  public static readonly BACKGROUND_DARK: Icon = new Icon('ph-duotone ph-moon');
+
+  /**
+   * Gets the rotate-clockwise icon shown on the image viewer's Edit group.
+   */
+  public static readonly ROTATE_CLOCKWISE: Icon = new Icon('ph-duotone ph-arrow-clockwise');
+
+  /**
+   * Gets the rotate-counter-clockwise icon shown on the image viewer's Edit group.
+   */
+  public static readonly ROTATE_COUNTER_CLOCKWISE: Icon = new Icon(
+    'ph-duotone ph-arrow-counter-clockwise',
+  );
+
+  /**
+   * Gets the flip-horizontal icon shown on the image viewer's Edit group.
+   */
+  public static readonly FLIP_HORIZONTAL: Icon = new Icon('ph-duotone ph-flip-horizontal');
+
+  /**
+   * Gets the flip-vertical icon shown on the image viewer's Edit group.
+   */
+  public static readonly FLIP_VERTICAL: Icon = new Icon('ph-duotone ph-flip-vertical');
+
+  /**
+   * Gets the crop icon shown on the image viewer's Edit group.
+   */
+  public static readonly CROP: Icon = new Icon('ph-duotone ph-crop');
+
+  /**
+   * Gets the resize icon shown on the image viewer's Edit group.
+   */
+  public static readonly RESIZE: Icon = new Icon('ph-duotone ph-resize');
+
+  /**
+   * Gets the export icon shown on the image viewer's Export As action.
+   */
+  public static readonly EXPORT: Icon = new Icon('ph-duotone ph-export');
+
+  /**
+   * Gets the open-source icon shown on the image viewer's action that opens an SVG as text.
+   */
+  public static readonly OPEN_SOURCE: Icon = new Icon('ph-duotone ph-file-code');
 
   /**
    * Initialises a new instance of the {@link Icon} class.

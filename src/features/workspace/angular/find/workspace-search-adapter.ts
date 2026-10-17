@@ -7,7 +7,13 @@ import {
 import { Editors, EditorLocation } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
-import { SearchMatch, SearchResponse, SearchResultFile } from '@shared/api/search-channels';
+import {
+  ReplaceRequest,
+  ReplaceResponse,
+  SearchMatch,
+  SearchResponse,
+  SearchResultFile,
+} from '@shared/api/search-channels';
 
 /**
  * Debounce applied to the query before a search runs, so typing does not spawn a ripgrep process per
@@ -44,9 +50,11 @@ interface FlatMatch {
 /**
  * Drives workspace-wide find for the shared find panel. It runs a debounced search over the active
  * workspace root through the main-process search manager, presents the matches as a flat list labelled
- * by file, and opens a selected match by opening its file and revealing the matched line. It is
- * find-only — replace across files is a follow-up — so it reports {@link supportsReplace} false and the
- * panel hides the replace affordances.
+ * by file, and opens a selected match by opening its file and revealing the matched line.
+ *
+ * Replace (#882) writes the files on disk through the main process — one match ({@link replaceMatch})
+ * or every match in the listed files ({@link replaceFiles}) — and then searches again, so the list
+ * shows what is left. There is no undo: the files are changed on disk, as a save would change them.
  */
 export class WorkspaceSearchAdapter implements FindAdapter {
   /**
@@ -78,6 +86,12 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   private sequence: number = 0;
 
   /**
+   * Holds the query and root of the last search asked for, or null before any — what a replace
+   * replaces, and what it searches again afterwards.
+   */
+  private last: { readonly query: FindQuery; readonly root: string } | null = null;
+
+  /**
    * Gets the match list.
    */
   public readonly matches: Signal<readonly FindResultItem[]> = this.matchesState.asReadonly();
@@ -88,12 +102,12 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   public readonly activeIndex: Signal<number> = this.activeIndexState.asReadonly();
 
   /**
-   * Gets a value indicating that workspace search does not yet support replace.
+   * Gets a value indicating that workspace search supports replace.
    */
-  public readonly supportsReplace: boolean = false;
+  public readonly supportsReplace: boolean = true;
 
   /**
-   * Gets a value indicating that there is nothing to undo (find-only surface).
+   * Gets a value indicating that there is nothing to undo: a replace writes the files on disk.
    */
   public readonly canUndo: Signal<boolean> = signal<boolean>(false).asReadonly();
 
@@ -122,9 +136,11 @@ export class WorkspaceSearchAdapter implements FindAdapter {
     }
     const root: string | null = this.rootOf();
     if (query.text.length === 0 || root === null) {
+      this.last = null;
       this.reset();
       return;
     }
+    this.last = { query, root };
     const token: number = ++this.sequence;
     this.timer = setTimeout((): void => {
       void this.execute(query, root, token);
@@ -164,24 +180,90 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   }
 
   /**
-   * No-op: replacing a single match across the workspace is not yet supported.
+   * Replaces the active match.
+   * @param replacement The text to replace it with.
    */
-  public replace(): void {
-    // Intentionally empty; workspace replace is a follow-up. The panel hides the affordance.
+  public replace(replacement: string): void {
+    void this.replaceMatch(replacement);
   }
 
   /**
-   * No-op: replacing across the workspace is not yet supported.
+   * Replaces every match.
+   * @param replacement The text to replace each match with.
    */
-  public replaceAll(): void {
-    // Intentionally empty; workspace replace is a follow-up. The panel hides the affordance.
+  public replaceAll(replacement: string): void {
+    void this.replaceFiles(replacement, new Set<string>());
   }
 
   /**
-   * No-op: there is nothing to undo on a find-only surface.
+   * No-op: a replace writes the files on disk, so there is no in-panel history to undo.
    */
   public undo(): void {
-    // Intentionally empty; workspace replace (and so undo) is a follow-up.
+    // Intentionally empty; the files' own history (source control) is the undo.
+  }
+
+  /**
+   * Gets the absolute path of the active match's file, or null when no match is active.
+   * @returns Returns the path, or null.
+   */
+  public activePath(): string | null {
+    return this.flat[this.activeIndexState()]?.path ?? null;
+  }
+
+  /**
+   * Gets the absolute paths of the files with matches, in the order they were found.
+   * @returns Returns the paths.
+   */
+  public paths(): readonly string[] {
+    return [...new Set<string>(this.flat.map((entry: FlatMatch): string => entry.path))];
+  }
+
+  /**
+   * Replaces the active match in its file on disk, searches again, and selects the match that now
+   * takes its place in the list — so pressing Replace again moves on through the matches.
+   * @param replacement The text to replace the match with.
+   * @returns Returns what was replaced, or null when there was no active match to replace.
+   */
+  public async replaceMatch(replacement: string): Promise<ReplaceResponse | null> {
+    const index: number = this.activeIndexState();
+    const match: FlatMatch | undefined = this.flat[index];
+    if (match === undefined || this.last === null) {
+      return null;
+    }
+    const response: ReplaceResponse = await this.search.replace({
+      ...this.requestFor(this.last.query, this.last.root, replacement),
+      files: [],
+      target: { path: match.path, line: match.item.line, column: match.item.column },
+    });
+    await this.refresh();
+    if (this.flat.length > 0) {
+      this.select(Math.min(index, this.flat.length - 1));
+    }
+    return response;
+  }
+
+  /**
+   * Replaces every match in the files with matches, but for those skipped, then searches again.
+   * @param replacement The text to replace each match with.
+   * @param skip The absolute paths of files to leave alone.
+   * @returns Returns what was replaced, or null when there was nothing to replace.
+   */
+  public async replaceFiles(
+    replacement: string,
+    skip: ReadonlySet<string>,
+  ): Promise<ReplaceResponse | null> {
+    const files: readonly string[] = this.paths().filter(
+      (path: string): boolean => !skip.has(path),
+    );
+    if (files.length === 0 || this.last === null) {
+      return null;
+    }
+    const response: ReplaceResponse = await this.search.replace({
+      ...this.requestFor(this.last.query, this.last.root, replacement),
+      files,
+    });
+    await this.refresh();
+    return response;
   }
 
   /**
@@ -193,7 +275,43 @@ export class WorkspaceSearchAdapter implements FindAdapter {
       this.timer = null;
     }
     this.sequence += 1;
+    this.last = null;
     this.reset();
+  }
+
+  /**
+   * Searches again for the last query at once, cancelling any search still waiting to run.
+   */
+  private async refresh(): Promise<void> {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (this.last !== null) {
+      await this.execute(this.last.query, this.last.root, ++this.sequence);
+    }
+  }
+
+  /**
+   * Builds the part of a replace request the query decides.
+   * @param query The query.
+   * @param root The workspace root.
+   * @param replacement The replacement.
+   * @returns Returns the request's query fields.
+   */
+  private requestFor(
+    query: FindQuery,
+    root: string,
+    replacement: string,
+  ): Omit<ReplaceRequest, 'files' | 'target'> {
+    return {
+      query: query.text,
+      root,
+      caseSensitive: query.caseSensitive,
+      wholeWord: query.wholeWord,
+      regexp: query.regexp,
+      replacement,
+    };
   }
 
   /**

@@ -2,46 +2,38 @@ import { inject, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { ForgeChannel, ForgeClient } from '@shared/api/forge-channels';
+import { HostedAccount, HostedRepository, HostingAuthMode } from '@shared/api/hosting-protocol';
 import {
-  ForgeAuthStatus,
+  ForgeCloseReason,
+  ForgeHostAccount,
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
+  ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 
 /**
- * The status reported when the backend is not reachable at all — running as a plain web app, or under
- * tests. Distinct from "not signed in": there is nothing here to sign in to.
- */
-const UNAVAILABLE: ForgeAuthStatus = {
-  source: 'none',
-  authenticated: false,
-  hasStoredToken: false,
-  identity: null,
-  detail: 'Forge integration is unavailable outside the desktop application.',
-};
-
-/**
- * The result returned when the backend is not reachable, so callers get the same shape they would from
- * a genuine failure rather than needing an environment check of their own.
+ * The result returned when the backend is not reachable — running as a plain web app, or under tests —
+ * so callers get the same shape they would from a genuine failure rather than needing an environment
+ * check of their own.
  */
 const UNAVAILABLE_RESULT: ForgeResult<never> = {
   ok: false,
-  error: UNAVAILABLE.detail,
+  error: 'Forge integration is unavailable outside the desktop application.',
   unauthorized: false,
 };
 
 /**
- * The renderer client for the forge backend contribution (#432): a thin, typed wrapper over the generic
+ * The renderer client for the forge backend — the hosting plugins (#432, #820): a thin, typed wrapper over the generic
  * {@link Bridge} that names the {@link ForgeChannel} channels so no view touches `window.bridge`
  * directly.
  *
  * There is deliberately no way to read a token here. Storing and clearing one are requests the main
- * process acts on; what comes back is a {@link ForgeAuthStatus}, which says who the credential belongs
- * to and where it came from but never what it is.
+ * process acts on; what comes back is a {@link ForgeHostAccount}, which says who the credential belongs
+ * to and how the plugin signed in but never what the credential is.
  */
 @Service()
 export class Forge implements ForgeClient {
@@ -73,37 +65,78 @@ export class Forge implements ForgeClient {
   }
 
   /**
-   * Reads the current authentication status.
-   * @returns Returns the status.
+   * Says what a repository allows.
+   * @param repository The repository.
+   * @returns Returns the capabilities, or null when no installed plugin serves it.
    */
-  public authStatus(): Promise<ForgeAuthStatus> {
+  public describe(repository: ForgeRepositoryRef): Promise<ForgeRepositoryCapabilities | null> {
     return (
-      this.bridge?.invoke<ForgeAuthStatus>(ForgeChannel.AuthStatus) ?? Promise.resolve(UNAVAILABLE)
+      this.bridge?.invoke<ForgeRepositoryCapabilities | null>(ForgeChannel.Describe, repository) ??
+      Promise.resolve(null)
     );
   }
 
   /**
-   * Stores a personal access token.
+   * Lists every host the installed hosting plugins serve, with how each is signed in.
+   * @returns Returns the hosts, highest-priority plugin first; none outside the desktop application.
+   */
+  public hosts(): Promise<readonly ForgeHostAccount[]> {
+    return (
+      this.bridge?.invoke<readonly ForgeHostAccount[]>(ForgeChannel.Hosts) ?? Promise.resolve([])
+    );
+  }
+
+  /**
+   * Chooses how a plugin signs in to one of its hosts.
+   * @param pluginId The plugin.
+   * @param host The host.
+   * @param mode The way to sign in, or null to let the plugin decide.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
+   */
+  public setAuthMode(
+    pluginId: string,
+    host: string,
+    mode: HostingAuthMode | null,
+  ): Promise<ForgeHostAccount | null> {
+    this.log.info('forge', `Signing ${pluginId} in to ${host} with ${mode ?? 'its default'}`);
+    return (
+      this.bridge?.invoke<ForgeHostAccount | null>(
+        ForgeChannel.SetAuthMode,
+        pluginId,
+        host,
+        mode,
+      ) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Stores a personal access token for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
    * @param token The token to store; a blank token clears it instead.
-   * @returns Returns the resulting status.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
    */
-  public setToken(token: string): Promise<ForgeAuthStatus> {
+  public setToken(pluginId: string, host: string, token: string): Promise<ForgeHostAccount | null> {
     // Deliberately not logged, not even at trace: the argument is the secret.
-    this.log.info('forge', 'Storing a forge token');
+    this.log.info('forge', `Storing a token for ${host}`);
     return (
-      this.bridge?.invoke<ForgeAuthStatus>(ForgeChannel.SetToken, token) ??
-      Promise.resolve(UNAVAILABLE)
+      this.bridge?.invoke<ForgeHostAccount | null>(ForgeChannel.SetToken, pluginId, host, token) ??
+      Promise.resolve(null)
     );
   }
 
   /**
-   * Clears the stored token.
-   * @returns Returns the resulting status, which may still be authenticated when a CLI login remains.
+   * Clears the token stored for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
+   * @returns Returns the host's resulting account, which may still be signed in when the host's CLI
+   * login remains; or null when the plugin does not serve it.
    */
-  public clearToken(): Promise<ForgeAuthStatus> {
-    this.log.info('forge', 'Clearing the stored forge token');
+  public clearToken(pluginId: string, host: string): Promise<ForgeHostAccount | null> {
+    this.log.info('forge', `Clearing the token stored for ${host}`);
     return (
-      this.bridge?.invoke<ForgeAuthStatus>(ForgeChannel.ClearToken) ?? Promise.resolve(UNAVAILABLE)
+      this.bridge?.invoke<ForgeHostAccount | null>(ForgeChannel.ClearToken, pluginId, host) ??
+      Promise.resolve(null)
     );
   }
 
@@ -155,6 +188,58 @@ export class Forge implements ForgeClient {
   }
 
   /**
+   * Closes or reopens an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param state The state to put it in.
+   * @param reason Why it is being closed, where the host records one; ignored when reopening.
+   * @param duplicateOf The original issue's number, when closing as a duplicate.
+   * @returns Returns the issue as it now stands, or the reason it could not be changed.
+   */
+  public setIssueState(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    state: 'open' | 'closed',
+    reason?: ForgeCloseReason,
+    duplicateOf?: number,
+  ): Promise<ForgeResult<ForgeIssue>> {
+    this.log.info('forge', `Setting issue #${issueNumber} ${state}`, reason ?? '');
+    return (
+      this.bridge?.invoke<ForgeResult<ForgeIssue>>(
+        ForgeChannel.SetIssueState,
+        repository,
+        issueNumber,
+        state,
+        reason,
+        duplicateOf,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Comments on an issue.
+   * @param repository The repository the issue belongs to.
+   * @param issueNumber The issue.
+   * @param body The comment, as Markdown.
+   * @returns Returns the posted comment, or the reason it could not be posted.
+   */
+  public commentOnIssue(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+    body: string,
+  ): Promise<ForgeResult<ForgeIssueComment>> {
+    this.log.info('forge', `Commenting on issue #${issueNumber}`);
+    return (
+      this.bridge?.invoke<ForgeResult<ForgeIssueComment>>(
+        ForgeChannel.CommentOnIssue,
+        repository,
+        issueNumber,
+        body,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
    * Lists a repository's recent CI/CD workflow runs.
    * @param repository The repository to read.
    * @returns Returns the runs, or the reason they could not be read.
@@ -178,7 +263,7 @@ export class Forge implements ForgeClient {
    */
   public rerunWorkflowRun(
     repository: ForgeRepositoryRef,
-    runId: number,
+    runId: string,
   ): Promise<ForgeResult<void>> {
     this.log.info('forge', `Re-running workflow run ${runId}`);
     return (
@@ -195,12 +280,57 @@ export class Forge implements ForgeClient {
    */
   public cancelWorkflowRun(
     repository: ForgeRepositoryRef,
-    runId: number,
+    runId: string,
   ): Promise<ForgeResult<void>> {
     this.log.info('forge', `Cancelling workflow run ${runId}`);
     return (
       this.bridge?.invoke<ForgeResult<void>>(ForgeChannel.CancelWorkflowRun, repository, runId) ??
       Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and their organisations (#805).
+   * @param host The host.
+   * @returns Returns the accounts, or the reason they could not be read.
+   */
+  public accounts(host: string): Promise<ForgeResult<readonly HostedAccount[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedAccount[]>>(ForgeChannel.Accounts, host) ??
+      Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists an account's repositories on a host (#805).
+   * @param host The host.
+   * @param account The account's login.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  public repositories(
+    host: string,
+    account: string,
+  ): Promise<ForgeResult<readonly HostedRepository[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedRepository[]>>(
+        ForgeChannel.Repositories,
+        host,
+        account,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it (#805).
+   * @param host The host.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  public starredRepositories(host: string): Promise<ForgeResult<readonly HostedRepository[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedRepository[]>>(
+        ForgeChannel.StarredRepositories,
+        host,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 }

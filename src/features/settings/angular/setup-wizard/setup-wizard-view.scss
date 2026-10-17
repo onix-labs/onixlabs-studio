@@ -29,9 +29,10 @@
   background: var(--settings-background-color);
 }
 
-// The window is `hiddenInset`, so it has no title bar of its own and the platform draws its controls
-// over the leading end of this band. It is the wizard's only drag region, which is what makes the
-// window move from where every other window on the system does. Its height clears the controls.
+// The window has no title bar of its own, and its controls are drawn over this band: the leading end
+// on macOS, the trailing end on Windows and Linux. It is the wizard's only drag region, which is what
+// makes the window move from where every other window on the system does. Its height clears the
+// controls.
 .setup__titlebar {
   flex: none;
   block-size: 2.75rem;
@@ -183,8 +184,12 @@
 }
 
 .setup__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  // The pane is a column that grows its body, so the footer keeps its own height beneath it. Back
+  // stays before Next (or Finish): a wizard reads in the direction it moves.
   flex: none;
+}
+
+// Back's label, projected after its arrow, set as the button sets its own label.
+.setup__action-label {
+  line-height: 1;
 }

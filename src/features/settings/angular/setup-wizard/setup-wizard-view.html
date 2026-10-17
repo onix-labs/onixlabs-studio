@@ -25,8 +25,8 @@
 >
   <ng-template appModalContent>
     <section class="setup">
-      <!-- The title bar. It holds nothing — the platform's window controls are drawn over its leading
-           end — and exists so the window is moved from where every other window on the system is. -->
+      <!-- The title bar. It holds nothing — the window's controls are drawn over it — and exists so
+           the window is moved from where every other window on the system is. -->
       <div class="setup__titlebar"></div>
 
       <div class="setup__columns">
@@ -97,8 +97,8 @@
               @case ('terminal') {
                 <app-setup-step-terminal />
               }
-              @case ('environment') {
-                <app-setup-step-environment />
+              @case ('summary') {
+                <app-setup-step-summary />
               }
               @case ('catalogue') {
                 @if (step()?.slot; as slot) {
@@ -115,8 +115,10 @@
                   <app-setup-step-ai-provider [pageId]="pageId" />
                 }
               }
-              @case ('source-control') {
-                <app-setup-step-source-control />
+              @case ('commit-identity') {
+                @if (step(); as identityStep) {
+                  <app-setup-step-commit-identity [systemName]="identityStep.label" />
+                }
               }
               @default {
                 <!-- Every step kind has a case above, so reaching this means a kind was added
@@ -128,18 +130,26 @@
           </div>
 
           <footer class="setup__actions">
-            <app-button label="Back" [disabled]="!wizard.canGoBack()" (click)="wizard.back()" />
-            <!-- The arrow is projected rather than passed as the button's icon, which leads the
-                 label; an arrow that says "onwards" has to trail it. -->
-            <app-button
-              variant="solid"
-              [label]="wizard.isLastStep() ? 'Finish' : 'Next'"
-              (click)="wizard.next()"
-            >
-              @if (!wizard.isLastStep()) {
-                <app-icon [icon]="Icon.ARROW_RIGHT" [size]="0.85" />
-              }
-            </app-button>
+            <app-button-row>
+              <!-- Back mirrors Next: the same arrow at the same size, leading where Next's trails. Both
+                   are projected, so the two glyphs match; the label is projected too, after the arrow. -->
+              <app-button size="large" [disabled]="!wizard.canGoBack()" (click)="wizard.back()">
+                <app-icon [icon]="Icon.ARROW_LEFT" [size]="0.85" />
+                <span class="setup__action-label">Back</span>
+              </app-button>
+              <!-- The arrow is projected rather than passed as the button's icon, which leads the
+                   label; an arrow that says "onwards" has to trail it. -->
+              <app-button
+                variant="solid"
+                size="large"
+                [label]="wizard.isLastStep() ? 'Finish' : 'Next'"
+                (click)="wizard.next()"
+              >
+                @if (!wizard.isLastStep()) {
+                  <app-icon [icon]="Icon.ARROW_RIGHT" [size]="0.85" />
+                }
+              </app-button>
+            </app-button-row>
           </footer>
         </div>
       </div>

@@ -38,6 +38,11 @@ export class SystemMonitorRibbon {
   protected readonly hasRecords: Signal<boolean> = this.commands.hasRecords;
 
   /**
+   * Gets whether the active view's agent is showing.
+   */
+  protected readonly agentShown: Signal<boolean> = this.commands.agentShown;
+
+  /**
    * Contributes this tab's menu while the System Monitor ribbon is mounted.
    */
   private readonly menu: void = contributeFeatureMenu(
@@ -57,6 +62,13 @@ export class SystemMonitorRibbon {
             run: (): void => this.onRefresh(),
           },
           { id: 'monitor.clearFilters', label: 'Clear Filters', run: (): void => this.onClear() },
+          {
+            id: 'monitor.agent',
+            label: 'Agent',
+            kind: 'checkbox',
+            checked: this.agentShown(),
+            run: (): void => this.onToggleAgent(),
+          },
         ],
       },
     ],
@@ -81,5 +93,12 @@ export class SystemMonitorRibbon {
    */
   protected onCopy(): void {
     this.commands.copy();
+  }
+
+  /**
+   * Shows or hides the docked agent.
+   */
+  protected onToggleAgent(): void {
+    this.commands.toggleAgent();
   }
 }

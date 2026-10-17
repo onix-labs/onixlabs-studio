@@ -1,0 +1,55 @@
+:host {
+  display: block;
+}
+
+// The connection manager is laid out by hand rather than through app-setting-row, since it is a list
+// of expandable editors rather than a single control.
+.ai-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ai-connections__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ai-connections__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ai-connections__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.ai-connections__subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.ai-connections__add {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-connections__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.ai-connections__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}

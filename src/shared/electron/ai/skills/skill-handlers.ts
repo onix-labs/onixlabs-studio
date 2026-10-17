@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent, OpenDialogReturnValue, shell } from 'electron';
 import { readPromptScope } from '@shared/api/ai-types';
 import {
+  readSkillTechnologies,
   SkillChannel,
   SKILL_FILE,
   type Skill,
@@ -116,6 +117,7 @@ export class SkillHandlers {
         : {}),
       description: record['description'],
       scope: readPromptScope(record['scope']),
+      technologies: readSkillTechnologies(record['technologies']),
       enabled: record['enabled'] !== false,
       body: record['body'],
     };

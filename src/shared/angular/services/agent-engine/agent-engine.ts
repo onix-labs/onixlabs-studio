@@ -5,6 +5,7 @@ import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers'
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { startingModel } from './engine-options';
 
 /**
  * Owns the global engine selection shared by every agent conversation: the registered providers (built
@@ -54,6 +55,22 @@ export class AgentEngine {
   private readonly loaded: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the resolver of {@link whenLoaded}.
+   */
+  private resolveLoaded: () => void = (): void => undefined;
+
+  /**
+   * Resolves once the providers have been asked for at least once — answered or failed.
+   *
+   * ⚠️ Until then the main process knows only its seeded connections, none of which can run, so a turn
+   * sent sooner is refused as though no provider were installed. A person typing never gets there
+   * first; a message sent the moment a conversation opens does (#806).
+   */
+  public readonly whenLoaded: Promise<void> = new Promise<void>((resolve: () => void): void => {
+    this.resolveLoaded = resolve;
+  });
+
+  /**
    * Gets whether nothing can run a turn: the providers have loaded, and there are none.
    *
    * ⚠️ **Both halves are load-bearing.** An empty list means two different things a fraction of a
@@ -98,7 +115,7 @@ export class AgentEngine {
     if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
       return chosen;
     }
-    return this.providerInfo()?.defaultModelId ?? '';
+    return startingModel(this.providerInfo());
   });
 
   /**
@@ -122,7 +139,14 @@ export class AgentEngine {
   public async loadProviders(
     connections: readonly AiConnection[] = this.settings.aiConnections(),
   ): Promise<void> {
-    const raw: readonly AiProviderInfo[] = (await this.runtime.listProviders(connections)) ?? [];
+    let raw: readonly AiProviderInfo[];
+    try {
+      raw = (await this.runtime.listProviders(connections)) ?? [];
+    } finally {
+      // Answered or failed, the question has been asked: a send waiting on it goes ahead and, if
+      // nothing can run, says so rather than waiting forever.
+      this.resolveLoaded();
+    }
     // Present each provider as `Company (Display Name)` (for example "Anthropic (Claude)"), composed
     // from its connection's kind and label — the live-harness providers otherwise report a fixed label
     // of their own ("Claude (Agent SDK)", "OpenAI Codex").

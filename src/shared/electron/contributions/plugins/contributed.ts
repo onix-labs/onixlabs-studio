@@ -17,10 +17,14 @@ import {
   toLanguageServerDescriptors,
   resolveInstalledVersion,
   toPluginDescriptor,
+  toVersionControlDescriptors,
+  toHostingDescriptors,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import { VersionControlDescriptor } from '../../version-control/version-control-descriptor';
+import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 
 // Everything Studio did not compile in: the plugins dropped into the sideload directory and the plugins
 // the curated index offers. They arrive by different routes and are the same kind of thing once they
@@ -170,18 +174,63 @@ export function contributedDecoders(
 }
 
 /**
+ * Gets the version-control systems the contributed plugins provide, for the version-control host to
+ * start (#815). Every one is listed, installed or not; an uninstalled one resolves to unavailable.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedVersionControl(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly VersionControlDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly VersionControlDescriptor[] =>
+    toVersionControlDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the code hosts the contributed plugins provide, for the hosting host to start (#819). Every one is
+ * listed, installed or not; an uninstalled one resolves to unavailable.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedHosting(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly HostingDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly HostingDescriptor[] =>
+    toHostingDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
  * Gets the container engines the contributed plugins provide, for the engine catalogue to offer.
  *
  * Only engines whose payload is installed appear: an engine that is not installed is not something the
  * user can choose, and offering it would be offering a connection that cannot be made.
  * @returns Returns the descriptors.
  */
-export function contributedContainerEngines(): readonly ContainerEngineDescriptor[] {
+export function contributedContainerEngines(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly ContainerEngineDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
     toContainerEngineDescriptors(
       manifest,
       payloadProvisioner,
+      nodeRuntime,
       local.get(manifest.id),
       installedVersion,
     ),
