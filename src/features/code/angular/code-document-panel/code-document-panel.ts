@@ -40,6 +40,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
@@ -209,6 +210,14 @@ export class CodeDocumentPanel {
    * document's lifecycle in the well, so this is false: a destroy is a re-parent, not a close.
    */
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the switch to this file's diff, shown on the strip, or undefined where there is none (a file
+   * outside a workspace's well).
+   */
+  public readonly documentSwitch: InputSignal<DockPanelSwitch | undefined> = input<
+    DockPanelSwitch | undefined
+  >(undefined);
 
   /**
    * Gets the backing document, or undefined before it is registered.

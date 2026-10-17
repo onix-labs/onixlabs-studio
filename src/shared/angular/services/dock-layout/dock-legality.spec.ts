@@ -34,6 +34,18 @@ describe('dock-legality', () => {
       });
     });
 
+    it('guideLegality_whenAWholeDocumentWellOverTool_allowsSplitsButNotTabInto', () => {
+      // A well dragged by its tab rail lands as a well, so it may sit beside a tool — the agent —
+      // but its documents still cannot join a tool stack's tabs.
+      expect(guideLegality('document', 'tool', false, true)).toEqual({
+        center: false,
+        left: true,
+        right: true,
+        top: true,
+        bottom: true,
+      });
+    });
+
     it('guideLegality_whenToolOverDocument_allowsSplitsButNotTabInto', () => {
       expect(guideLegality('tool', 'document')).toEqual({
         center: false,

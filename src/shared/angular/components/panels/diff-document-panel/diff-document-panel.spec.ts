@@ -400,6 +400,24 @@ describe("DiffDocumentPanel — the change's commands (#882)", () => {
     expect(button('More Actions')).not.toBeNull();
   });
 
+  it('withASwitch_theFileButtonIsTheSwitch_andRunsIt', async () => {
+    // In a well, the button shows the file beside the diff or in its place, as the setting says.
+    const run: () => Promise<boolean> = vi.fn((): Promise<boolean> => Promise.resolve(false));
+    diffs.put('diff:src/main.ts', working(false));
+    fixture.componentRef.setInput('panel', {
+      ...makePanel('diff:src/main.ts'),
+      switch: signal({ label: 'Show File', icon: Icon.OPEN_FILE, unavailable: null, run }),
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(button('Open File')).toBeNull();
+    button('Show File')?.click();
+    await fixture.whenStable();
+
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it('stage_stagesTheChange_andTheDiffThenShowsItStaged', async () => {
     await show(working(false));
     expect(button('Discard Changes')?.disabled).toBe(false);

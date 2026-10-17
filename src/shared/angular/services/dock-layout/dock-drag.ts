@@ -600,6 +600,7 @@ export class DockDrag {
     const hovered: DockNode | null = findNode(this.dockState.layout(), hit.stackId);
     const targetEmpty: boolean =
       hovered !== null && isStackNode(hovered) && hovered.panels.length === 0;
+    const group: boolean = subject.kind === 'group';
     const resolution: DockResolution | null =
       resolveCompassTarget(
         x,
@@ -611,13 +612,14 @@ export class DockDrag {
         hit.rect,
         role,
         targetEmpty,
-      ) ?? resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, role, targetEmpty);
+        group,
+      ) ?? resolveGroupTarget(x, y, hit.stackId, hit.role, hit.rect, role, targetEmpty, group);
     this.currentTarget = resolution?.target ?? null;
     this.previewRect.set(resolution?.preview ?? null);
     this.compassState.set({
       x: centerX,
       y: centerY,
-      legality: guideLegality(role, hit.role, targetEmpty),
+      legality: guideLegality(role, hit.role, targetEmpty, group),
       hot: resolution !== null ? guideKeyOf(resolution.target) : null,
     });
   }

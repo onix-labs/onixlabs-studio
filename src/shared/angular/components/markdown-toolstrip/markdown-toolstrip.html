@@ -112,6 +112,20 @@
   <!-- The file's commands, behind the menu every document strip ends with (#882): Open in Tab first,
        for the full editor, then those the code strip offers too. -->
   <span class="markdown-toolstrip__spacer"></span>
+  <!-- The file's diff, beside it or in its place (the Workspaces setting decides). Greyed, with the
+       reason, while the file has no changes. -->
+  @if (documentSwitch(); as change) {
+    <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+    <app-button
+      variant="none"
+      [icon]="change.icon"
+      [ariaLabel]="change.label"
+      [tooltip]="change.unavailable ?? change.label"
+      [disabled]="change.unavailable !== null"
+      (click)="change.run()"
+    />
+    <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  }
   <app-button
     variant="none"
     [icon]="Icon.DOTS_THREE_BOLD"

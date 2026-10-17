@@ -46,9 +46,10 @@
   --border-radius-multiplier: 1;
   --concave-border-radius-multiplier: 1;
 
-  // One device pixel, as a CSS length: 1px at 100% and 200% display scale, 0.8px at 125%, 0.667px
-  // at 150%. `--device-pixel` is kept current by script (see `device-pixel.ts`); 1px stands in until
-  // it is.
+  // The line a 1px border actually draws, as a CSS length: the most whole device pixels that fit in
+  // 1px, never fewer than one. 1px at 100%, 0.8px at 125%, 0.667px at 150% (one device pixel each),
+  // 1px at 200% (two), 0.8px at 250% (two). `--device-pixel` (one device pixel) is kept current by
+  // script (see `device-pixel.ts`); 1px stands in until it is.
   //
   // 🔥 The active-tab feet are drawn from several boxes that must meet exactly: the tab's own side
   // border, each foot's curved border, and the rail the tab stands on. The browser draws a border at
@@ -56,8 +57,9 @@
   // boxes and masks at the exact fraction. At 100% and 200% the two agree; at any other scale they
   // drift apart by a fraction of a pixel, and every join steps or doubles. Every length in that
   // geometry — the seam borders, the overlaps, the offsets and the foot radii — is therefore a whole
-  // number of these, so nothing is left for the browser to round.
-  --hairline: var(--device-pixel, 1px);
+  // number of device pixels, so nothing is left for the browser to round — and the line keeps the
+  // weight of the 1px border it replaced (one device pixel would halve it on a 2x display).
+  --hairline: max(var(--device-pixel, 1px), round(down, 1px, var(--device-pixel, 1px)));
 
   --font-sans:
     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell,

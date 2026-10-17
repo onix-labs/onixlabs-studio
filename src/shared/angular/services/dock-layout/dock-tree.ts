@@ -792,6 +792,22 @@ export function splitStackBeside(
   if (sourceStackId === targetStackId) {
     return tree;
   }
+  const source: DockNode | null = findNode(tree, sourceStackId);
+  if (
+    source !== null &&
+    isStackNode(source) &&
+    source.role === 'document' &&
+    source.panels.length > 0
+  ) {
+    // A document well moves whole — the very node, centre anchor and all — rather than being lifted:
+    // the documents-home travels with it, so nothing is left behind to keep one, where a lift would
+    // keep the last well as an empty duplicate where it stood.
+    const without: DockNode | null = removeNode(tree, sourceStackId);
+    if (without === null || findNode(without, targetStackId) === null) {
+      return tree;
+    }
+    return insertNodeBeside(without, targetStackId, source, side);
+  }
   const lifted: LiftedStack | null = liftStack(tree, sourceStackId);
   if (lifted === null || findNode(lifted.tree, targetStackId) === null) {
     return tree;

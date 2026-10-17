@@ -110,9 +110,33 @@ describe('VersionControlProvider', () => {
 
     expect(status.branch).toBe('main');
     expect(status.staged[0].target).toEqual({ kind: 'working', staged: true });
-    expect(status.unstaged[0]).toMatchObject({ untracked: true, language: '', original: '' });
+    expect(status.unstaged[0]).toMatchObject({ untracked: true, original: '' });
     expect(status.unstaged[0].target).toEqual({ kind: 'working', staged: false });
     expect(status.conflicted[0].target).toEqual({ kind: 'working', staged: false });
+  });
+
+  it('getStatus_namesEachChangesLanguageFromItsFileName', async () => {
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({
+        status: {
+          branch: 'main',
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          staged: [{ path: 'src/app.ts', status: 'modified', additions: 0, deletions: 0 }],
+          unstaged: [{ path: 'docker/Dockerfile', status: 'modified', additions: 0, deletions: 0 }],
+          conflicted: [{ path: 'notes.unknown', status: 'conflicted', additions: 0, deletions: 0 }],
+        },
+      }),
+    );
+
+    const status: ParsedStatus = await provider.getStatus();
+
+    // A diff is highlighted in this language; empty would leave Monaco guessing, which is plaintext.
+    expect(status.staged[0].language).toBe('typescript');
+    expect(status.unstaged[0].language).toBe('dockerfile');
+    expect(status.conflicted[0].language).toBe('plaintext');
   });
 
   it('reads_whenTheyFail_areEmptyRatherThanErrors', async () => {

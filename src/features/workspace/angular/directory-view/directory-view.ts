@@ -40,6 +40,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { IssueActions } from '@shared/angular/services/issues/issue-actions';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
@@ -242,6 +243,8 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
+    DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
     // this tab's dock. Left to the root injector it would register its panel with, and tab it into,
     // a DockState no view renders — the tab opens somewhere nobody can see.

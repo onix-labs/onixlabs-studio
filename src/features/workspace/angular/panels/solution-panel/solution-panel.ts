@@ -20,6 +20,7 @@ import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import {
+  ExplorerScmState,
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -457,14 +458,32 @@ export class SolutionPanel {
       // Greyed out until what it stands for has arrived. Presentation only: an unready project is
       // still expandable, and expanding one is how its contents get requested ahead of the sweep.
       disabled: row.pending,
-      // How version control sees the path the row stands for, in colour (#860) — when the Solution
-      // Explorer shows source-control state at all, and for a row that maps to a path.
-      ...(row.path !== null && this.solution.showsGitStatus()
-        ? scmRowFields(this.git.stateFor(row.path))
-        : {}),
+      // How version control sees what the row stands for, in colour (#860) — when the Solution
+      // Explorer shows source-control state at all.
+      ...(this.solution.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
       data: row,
     })),
   );
+
+  /**
+   * Resolves how version control sees what a row stands for. A solution folder has no directory of
+   * its own, so it reads as `contains` — as a folder in the File Explorer does — when any project
+   * beneath it holds a change; every other row takes the first state among its paths, so a project's
+   * edited project file wins over the `contains` its directory would report.
+   * @param row The row to resolve.
+   * @returns Returns the state, or null when unchanged or standing for nothing on disk.
+   */
+  private scmStateFor(row: SolutionRow): ExplorerScmState | null {
+    const states: ExplorerScmState[] = row.scmPaths
+      .map((path: string): ExplorerScmState | null => this.git.stateFor(path))
+      .filter((state: ExplorerScmState | null): state is ExplorerScmState => state !== null);
+    if (row.kind === 'folder') {
+      return states.some((state: ExplorerScmState): boolean => state !== 'ignored')
+        ? 'contains'
+        : null;
+    }
+    return states[0] ?? null;
+  }
 
   /**
    * Unwraps a tree row's solution-row payload.
