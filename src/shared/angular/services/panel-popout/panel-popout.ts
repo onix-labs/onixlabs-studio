@@ -37,6 +37,7 @@ import {
 import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { WindowControls } from '@shared/angular/components/window-controls/window-controls';
 
 /**
  * The dock position a panel left in the MAIN window, so docking back restores it: the stack it was
@@ -272,6 +273,21 @@ export class PanelPopout implements OnDestroy {
       hostElement: window.contentHost.appendChild(document.createElement('div')),
     });
     this.applicationRef.attachView(host.hostView);
+
+    // The window's controls, at the title bar's trailing end (drawn on Linux only; the component
+    // renders nothing elsewhere). Created under the dock host's injector so they resolve the window's
+    // own document — which is how they know which window they act on — and its CDK layer, so their
+    // tooltips open in this window. They live exactly as long as the dock host.
+    const controls: ComponentRef<WindowControls> = createComponent(WindowControls, {
+      environmentInjector: this.environmentInjector,
+      elementInjector: host.injector,
+      hostElement: window.titlebar.appendChild(document.createElement('app-window-controls')),
+    });
+    this.applicationRef.attachView(controls.hostView);
+    host.onDestroy((): void => {
+      this.applicationRef.detachView(controls.hostView);
+      controls.destroy();
+    });
 
     const popout: PopoutWindow = {
       window,

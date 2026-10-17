@@ -25,6 +25,17 @@
   overflow: auto;
 }
 
+// The window controls Studio draws on Linux (elsewhere the component renders nothing) sit where
+// Windows draws its caption buttons: the window's top trailing corner, centred in the drag strip and
+// above it. A chromeless modal has no strip, and its content leaves that corner clear the way it
+// leaves the macOS traffic lights' corner clear.
+.modal-window-host__controls {
+  position: fixed;
+  inset-block-start: calc((2.75rem - var(--control-height)) / 2);
+  inset-inline-end: 0.5rem;
+  z-index: 11;
+}
+
 // A measured modal takes its natural height and the window shrinks to it; the wrapper must not
 // stretch, or every dialog would measure exactly the window it already has. It is the positioning
 // context for any decorative layer the content places behind itself.

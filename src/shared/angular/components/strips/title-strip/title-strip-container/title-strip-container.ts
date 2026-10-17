@@ -14,15 +14,16 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TitleStripButtonList } from '../title-strip-button-list/title-strip-button-list';
 import { TitleStripTabList } from '../title-strip-tab-list/title-strip-tab-list';
+import { WindowControls } from '@shared/angular/components/window-controls/window-controls';
 
 /**
- * Represents the title strip, hosting the window lock, the action buttons, and the tab list. The
- * window controls are the platform's own: inset over the strip's leading end on macOS, drawn over its
- * trailing end on Windows, and in the native title bar above it on Linux.
+ * Represents the title strip, hosting the window lock, the action buttons, the tab list, and — on
+ * Linux — the window controls. Elsewhere the controls are the platform's own: inset over the strip's
+ * leading end on macOS, drawn over its trailing end on Windows.
  */
 @Component({
   selector: 'app-title-strip-container',
-  imports: [TitleStripButtonList, TitleStripTabList, AppIcon],
+  imports: [TitleStripButtonList, TitleStripTabList, AppIcon, WindowControls],
   templateUrl: './title-strip-container.html',
   styleUrl: './title-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

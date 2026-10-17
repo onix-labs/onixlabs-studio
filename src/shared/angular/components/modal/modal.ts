@@ -318,7 +318,15 @@ export class Modal implements OnDestroy {
         providers: [
           {
             provide: MODAL_WINDOW_CONFIG,
-            useValue: { document: window.document, content, fill: this.expandable() },
+            useValue: {
+              document: window.document,
+              content,
+              fill: this.expandable(),
+              // The same rules the main process builds the window with (`modalWindowOptions`).
+              maximizable:
+                this.expandable() && this.bound(this.maxWidth(), this.maxHeight()) === null,
+              closable: this.closable() ?? this.dismissable(),
+            },
           },
         ],
         parent: this.injector,

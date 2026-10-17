@@ -1,0 +1,32 @@
+@if (visible) {
+  <div class="window-controls">
+    @if (minimizable()) {
+      <app-button
+        variant="none"
+        [icon]="Icon.WINDOW_MINIMIZE"
+        ariaLabel="Minimize"
+        tooltip="Minimize"
+        (click)="minimize()"
+      />
+    }
+    @if (maximizable()) {
+      <app-button
+        variant="none"
+        [icon]="maximized() ? Icon.WINDOW_RESTORE : Icon.WINDOW_MAXIMIZE"
+        [ariaLabel]="maximized() ? 'Restore' : 'Maximize'"
+        [tooltip]="maximized() ? 'Restore' : 'Maximize'"
+        (click)="toggleMaximize()"
+      />
+    }
+    @if (closable()) {
+      <app-button
+        variant="none"
+        tone="danger"
+        [icon]="Icon.WINDOW_CLOSE"
+        ariaLabel="Close"
+        tooltip="Close"
+        (click)="close()"
+      />
+    }
+  </div>
+}

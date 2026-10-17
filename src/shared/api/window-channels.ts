@@ -2,12 +2,35 @@
  * Names the window IPC channels: the window operations the shell drives itself, which act on the
  * requesting window. The shared window client and the main-process handlers name their channels
  * from here, over the generic {@link import('./bridge').Bridge} transport.
+ *
+ * The window-control channels (close, minimize, maximize) take an optional window name as their one
+ * argument. A pop-out or modal window is a same-renderer child the opener scripts directly, so its
+ * requests arrive from the opener; the name — the one it was opened with, see
+ * {@link CHILD_WINDOW_NAME_PATTERN} — says which window is meant. Without one, the requesting window
+ * is.
  */
 export enum WindowChannel {
   /**
-   * Closes the requesting window (renderer→main, send).
+   * Closes the requesting window, or the named child window (renderer→main, send).
    */
   Close = 'window:close',
+
+  /**
+   * Minimizes the requesting window, or the named child window (renderer→main, send).
+   */
+  Minimize = 'window:minimize',
+
+  /**
+   * Toggles the requesting window, or the named child window, between its maximized and restored
+   * states (renderer→main, send).
+   */
+  ToggleMaximize = 'window:toggle-maximize',
+
+  /**
+   * Reports whether the requesting window, or the named child window, is maximized
+   * (renderer→main, invoke; resolves a boolean).
+   */
+  IsMaximized = 'window:is-maximized',
 
   /**
    * Sets whether the requesting window may be moved by dragging its draggable regions
@@ -59,3 +82,19 @@ export const MODAL_WINDOW_URL: string = 'about:blank#studio-modal';
  * hidden parent would not be displayed at all on macOS.
  */
 export const MODAL_UNPARENTED_FEATURE: string = 'studio-unparented';
+
+/**
+ * Matches the name a pop-out or modal window is opened with: `studio-window-` and a UUID. The name is
+ * the window's handle across the process boundary — the main process records each child under it
+ * when the window is created, and the window-control channels name their target with it.
+ */
+export const CHILD_WINDOW_NAME_PATTERN: RegExp = /^studio-window-[0-9a-f-]{36}$/;
+
+/**
+ * Creates a fresh name for a pop-out or modal window to be opened with (see
+ * {@link CHILD_WINDOW_NAME_PATTERN}).
+ * @returns Returns the window name.
+ */
+export function childWindowName(): string {
+  return `studio-window-${crypto.randomUUID()}`;
+}
