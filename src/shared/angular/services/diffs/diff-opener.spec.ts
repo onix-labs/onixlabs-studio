@@ -9,6 +9,7 @@ import {
   DockNode,
   mkSplit,
   mkStack,
+  SplitNode,
   StackNode,
 } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
@@ -194,8 +195,8 @@ describe('DiffOpener', () => {
      * centre slot with a tool panel in it and nothing else.
      * @returns Returns the centre stack's id.
      */
-    function withoutAWell(): string {
-      const centre: StackNode = mkStack('tool', ['history'], true);
+    function withoutAWell(centrePanel: string = 'history'): string {
+      const centre: StackNode = mkStack('tool', [centrePanel], true);
       dockState.reset();
       const layout: DockNode = mkSplit('row', [mkStack('tool', ['branches']), centre], [1, 3]);
       (dockState as unknown as { commit(next: DockNode): void }).commit(layout);
@@ -233,6 +234,57 @@ describe('DiffOpener', () => {
       opener.open(change('src/app.ts'));
 
       expect(dockFocus.focusedStackId()).toBe(firstStackOfRole(dockState.layout(), 'document')?.id);
+    });
+
+    /**
+     * Finds the split directly holding a node.
+     * @param node The subtree to search.
+     * @param childId The identifier of the node whose parent is wanted.
+     * @returns Returns the parent split, or null when the node is the root or absent.
+     */
+    function parentOf(node: DockNode, childId: string): SplitNode | null {
+      if (node.kind !== 'split') {
+        return null;
+      }
+      if (node.children.some((child: DockNode): boolean => child.id === childId)) {
+        return node;
+      }
+      for (const child of node.children) {
+        const found: SplitNode | null = parentOf(child, childId);
+        if (found !== null) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    it('open_withHistoryInTheCentre_stacksTheWellAboveIt', () => {
+      const centreId: string = withoutAWell('history');
+
+      opener.open(change('src/app.ts'));
+
+      const made: StackNode = well();
+      const parent: SplitNode | null = parentOf(dockState.layout(), made.id);
+      expect(parent?.dir).toBe('col');
+      expect(parent?.children.map((child: DockNode): string => child.id)).toEqual([
+        made.id,
+        centreId,
+      ]);
+    });
+
+    it('open_withTheAgentInTheCentre_opensTheWellBesideIt', () => {
+      const centreId: string = withoutAWell('agent');
+
+      opener.open(change('src/app.ts'));
+
+      // As a file opened there would: side by side with the agent, not stacked above it.
+      const made: StackNode = well();
+      const parent: SplitNode | null = parentOf(dockState.layout(), made.id);
+      expect(parent?.dir).toBe('row');
+      expect(parent?.children.map((child: DockNode): string => child.id)).toEqual([
+        made.id,
+        centreId,
+      ]);
     });
   });
 });

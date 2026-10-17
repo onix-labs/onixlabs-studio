@@ -17,7 +17,10 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
-import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  ExplorerScmState,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -153,6 +156,7 @@ function makeRow(overrides: Partial<SolutionRow>): SolutionRow {
     loading: false,
     pending: false,
     path: null,
+    scmPaths: overrides.path !== undefined && overrides.path !== null ? [overrides.path] : [],
     ...overrides,
   };
 }
@@ -844,6 +848,81 @@ describe('SolutionPanel', () => {
       expect(
         (fixture.nativeElement as HTMLElement).querySelector('[class*="tree-row--tone-"]'),
       ).toBeNull();
+    });
+
+    /**
+     * Renders a single row with version control reporting the given states by path.
+     * @param row The row to render.
+     * @param states The state of each changed path; any other path is unchanged.
+     * @returns Returns the rendered row element.
+     */
+    function renderWithStates(
+      row: SolutionRow,
+      states: Readonly<Record<string, ExplorerScmState>>,
+    ): Element | null {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockImplementation(
+        (path: string): ExplorerScmState | null => states[path] ?? null,
+      );
+      solution.model.set(model);
+      solution.rows.set([row]);
+      solution.showsGitStatus.set(true);
+      fixture.detectChanges();
+      return (fixture.nativeElement as HTMLElement).querySelector('.tree-row');
+    }
+
+    it('rows_aProjectWithChangesInItsDirectory_readsAsContainingChanges', () => {
+      // The project row opens its project file but stands for the whole project.
+      const row: Element | null = renderWithStates(
+        makeRow({
+          kind: 'project',
+          path: '/root/A/A.csproj',
+          scmPaths: ['/root/A/A.csproj', '/root/A'],
+        }),
+        { '/root/A': 'contains' },
+      );
+
+      expect(row?.classList.contains('tree-row--tone-info')).toBe(true);
+    });
+
+    it('rows_aProjectWhoseProjectFileChanged_readsAsModified', () => {
+      const row: Element | null = renderWithStates(
+        makeRow({
+          kind: 'project',
+          path: '/root/A/A.csproj',
+          scmPaths: ['/root/A/A.csproj', '/root/A'],
+        }),
+        { '/root/A/A.csproj': 'modified', '/root/A': 'contains' },
+      );
+
+      expect(row?.classList.contains('tree-row--tone-warning')).toBe(true);
+    });
+
+    it('rows_theSolutionRoot_readsTheWorkspaceRoot', () => {
+      const row: Element | null = renderWithStates(
+        makeRow({ kind: 'solution', path: null, scmPaths: ['/root'] }),
+        { '/root': 'contains' },
+      );
+
+      expect(row?.classList.contains('tree-row--tone-info')).toBe(true);
+    });
+
+    it('rows_aSolutionFolder_containsChangesWhenAProjectBeneathItHasAny', () => {
+      const row: Element | null = renderWithStates(
+        makeRow({ kind: 'folder', path: null, scmPaths: ['/root/A', '/root/B'] }),
+        { '/root/B': 'untracked' },
+      );
+
+      // A summary, as a folder in the File Explorer is — not the project's own state.
+      expect(row?.classList.contains('tree-row--tone-info')).toBe(true);
+    });
+
+    it('rows_aSolutionFolder_withOnlyIgnoredProjects_isNotColoured', () => {
+      const row: Element | null = renderWithStates(
+        makeRow({ kind: 'folder', path: null, scmPaths: ['/root/A'] }),
+        { '/root/A': 'ignored' },
+      );
+
+      expect(row?.className).not.toContain('tree-row--tone-');
     });
   });
 

@@ -798,6 +798,28 @@ describe('dock-tree', () => {
       }
     });
 
+    it('splitStackBeside_whenADocumentWellDocksBesideATool_movesTheWellWhole', () => {
+      const agent: StackNode = mkStack('tool', ['agent'], true);
+      const well: StackNode = { ...mkStack('document', ['a.ts', 'b.ts']), active: 'b.ts' };
+      const tree: DockNode = mkSplit('row', [well, agent]);
+
+      const result: DockNode = splitStackBeside(tree, well.id, agent.id, 'right');
+
+      // The same node, now on the agent's right — nothing left behind where it stood.
+      expect(isSplitNode(result) && result.children).toEqual([agent, well]);
+    });
+
+    it('splitStackBeside_whenTheLastDocumentWellMoves_keepsItsAnchorAndLeavesNoEmptyWell', () => {
+      const tool: StackNode = mkStack('tool', ['explorer']);
+      const well: StackNode = mkStack('document', ['a.ts'], true);
+      const tree: DockNode = mkSplit('row', [tool, well]);
+
+      const result: DockNode = splitStackBeside(tree, well.id, tool.id, 'left');
+
+      expect(isSplitNode(result) && result.children).toEqual([well, tool]);
+      expect(asStack(findNode(result, well.id)).primary).toBe(true);
+    });
+
     it('splitStackBeside_whenTheSourceStackIsGone_reusesItsIdentity', () => {
       const source: StackNode = mkStack('tool', ['a', 'b']);
       const target: StackNode = mkStack('document', ['doc']);

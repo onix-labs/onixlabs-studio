@@ -155,20 +155,27 @@ export function nearestEdge(rect: Rect, workspace: Rect): DockSide {
  * a tool cannot join a documents-only tab strip. The four splits are legal over a well either way —
  * docking a tool group along the edge of a blank centre is how a layout is arranged before any
  * document is open, and the well survives the split as the documents-home.
+ *
+ * A whole document well, dragged by its tab rail, is the exception to "documents only split wells":
+ * it splits beside any stack, because it lands as a well — the documents stay in one. It still tabs
+ * only into another well, since a tool stack cannot hold documents.
  * @param panelRole The role of the panel being dragged.
  * @param targetRole The role of the stack being hovered.
  * @param targetEmpty Whether the hovered stack currently holds no panels; only consulted for a tool
  * over a document well.
+ * @param group Whether a whole group is being dragged rather than a single panel.
  * @returns Returns the legality of each guide.
  */
 export function guideLegality(
   panelRole: StackRole,
   targetRole: StackRole,
   targetEmpty: boolean = false,
+  group: boolean = false,
 ): GuideLegality {
   if (panelRole === 'document') {
     const ok: boolean = targetRole === 'document';
-    return { center: ok, left: ok, right: ok, top: ok, bottom: ok };
+    const split: boolean = ok || group;
+    return { center: ok, left: split, right: split, top: split, bottom: split };
   }
   if (targetRole === 'document') {
     return { center: targetEmpty, left: true, right: true, top: true, bottom: true };
@@ -358,6 +365,7 @@ function splitPreview(side: DockSide, rect: Rect): Rect {
  * @param rect The hovered group's rectangle.
  * @param panelRole The role of the panel being dragged.
  * @param targetEmpty Whether the hovered stack currently holds no panels.
+ * @param group Whether a whole group is being dragged rather than a single panel.
  * @returns Returns the group resolution, or null when the cursor is outside the group or the zone
  * is illegal.
  */
@@ -369,13 +377,14 @@ export function resolveGroupTarget(
   rect: Rect,
   panelRole: StackRole,
   targetEmpty: boolean = false,
+  group: boolean = false,
 ): DockResolution | null {
   const fx: number = (x - rect.left) / rect.width;
   const fy: number = (y - rect.top) / rect.height;
   if (fx < 0 || fx > 1 || fy < 0 || fy > 1) {
     return null;
   }
-  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty);
+  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty, group);
   const inCenter: boolean =
     fx >= CENTER_ZONE_FRACTION &&
     fx <= 1 - CENTER_ZONE_FRACTION &&
@@ -412,6 +421,7 @@ export function resolveGroupTarget(
  * @param rect The hovered group's rectangle.
  * @param panelRole The role of the panel being dragged.
  * @param targetEmpty Whether the hovered stack currently holds no panels.
+ * @param group Whether a whole group is being dragged rather than a single panel.
  * @returns Returns the guide resolution, or null when the cursor is over no guide (so callers fall
  * back to the position-based zones) or over an illegal guide.
  */
@@ -425,6 +435,7 @@ export function resolveCompassTarget(
   rect: Rect,
   panelRole: StackRole,
   targetEmpty: boolean = false,
+  group: boolean = false,
 ): DockResolution | null {
   const guides: readonly {
     readonly key: 'center' | DockSide;
@@ -438,7 +449,7 @@ export function resolveCompassTarget(
     { key: 'bottom', dx: 0, dy: COMPASS_GUIDE_OFFSET },
   ];
   const half: number = COMPASS_GUIDE_SIZE / 2;
-  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty);
+  const legal: GuideLegality = guideLegality(panelRole, targetRole, targetEmpty, group);
   for (const guide of guides) {
     if (Math.abs(x - (centerX + guide.dx)) > half || Math.abs(y - (centerY + guide.dy)) > half) {
       continue;

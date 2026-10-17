@@ -13,7 +13,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockPanel, DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
@@ -172,6 +172,14 @@ export class DiffDocumentPanel {
   );
 
   /**
+   * Gets the switch to the compared file, or undefined where the panel offers none — then the strip's
+   * button opens the file the plain way, beside the diff.
+   */
+  protected readonly fileSwitch: Signal<DockPanelSwitch | undefined> = computed(
+    (): DockPanelSwitch | undefined => this.panel().switch?.(),
+  );
+
+  /**
    * Gets the strip menu's items: the file's own commands.
    */
   protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
@@ -287,7 +295,11 @@ export class DiffDocumentPanel {
     }
     const position: { readonly line: number; readonly column: number } | null =
       this.view()?.modifiedPosition() ?? null;
-    if (!(await this.fileOpener.openPath(path)) || position === null) {
+    // The switch shows the file beside the diff or in its place, as the Workspaces setting says.
+    const change: DockPanelSwitch | undefined = this.fileSwitch();
+    const opened: boolean =
+      change !== undefined ? await change.run() : await this.fileOpener.openPath(path);
+    if (!opened || position === null) {
       return;
     }
     for (let attempt: number = 0; attempt < REVEAL_POLL_ATTEMPTS; attempt++) {

@@ -1,4 +1,5 @@
-import { effect, inject, Service } from '@angular/core';
+import { effect, inject, Injector, Service } from '@angular/core';
+import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import {
   BINARY_FILE_OPENER,
   BinaryFileOpener,
@@ -92,6 +93,11 @@ export class FileOpener {
    * or moved stays in the layout, and keeps its document.
    */
   private readonly imagePanels: Set<string> = new Set<string>();
+
+  /**
+   * Holds the injector the file-to-diff switch is resolved from as a file panel is registered.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Holds the top-level tab registry.
@@ -425,6 +431,9 @@ export class FileOpener {
       // so an edited-but-unsaved file prompts to save before the tab is removed.
       ...(document === undefined ? {} : { dirty: document.dirty }),
       confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
+      // The well's switch to the file's diff. Resolved here rather than injected: the switch reaches
+      // back to this opener.
+      switch: this.injector.get(DocumentDiffSwitch).forFile(id),
     });
   }
 

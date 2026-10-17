@@ -1,16 +1,22 @@
-import { inject, Service } from '@angular/core';
+import { inject, Injector, Service } from '@angular/core';
 import { DiffDocumentPanel } from '@shared/angular/components/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { findPrimaryStack, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { DockNode, isStackNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  findNode,
+  findPrimaryStack,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { FileDiff } from '@shared/angular/services/source-control/source-control-provider';
 import { Diffs } from './diffs';
+import { DocumentDiffSwitch } from './document-diff-switch';
 
 /**
  * Opens a changed file's diff into the source-control document well, reusing the tab when the file's
@@ -52,11 +58,19 @@ export class DiffOpener {
   private readonly log: Log = inject(Log);
 
   /**
-   * Opens (or re-activates) the diff for a changed file in the document well, loading its before/after
-   * contents lazily through the repository's provider.
-   * @param file The file to compare.
+   * Holds the injector the diff-to-file switch is resolved from as a panel is registered.
    */
-  public open(file: GitFileChange): void {
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Opens (or re-activates) the diff for a changed file in the document well, loading its before/after
+   * contents lazily through the repository's provider. A diff already open in another well is gone
+   * to there.
+   * @param file The file to compare.
+   * @param wellId The document well to open it in — the one a switch from the file's tab came from —
+   * or omitted for the layout's first.
+   */
+  public open(file: GitFileChange, wellId?: string): void {
     const id: string = this.diffs.idForPath(file.path);
     // The content is stored and the panel registered before the layout is touched, because a well
     // that has to be made is made holding this panel — by then it must resolve to something.
@@ -68,11 +82,19 @@ export class DiffOpener {
         icon: Icon.GIT_DIFF,
         role: 'document',
         component: DiffDocumentPanel,
+        // Resolved here rather than injected: the switch reaches back to this opener.
+        switch: this.injector.get(DocumentDiffSwitch).forDiff(id),
       });
     }
 
+    const layout: DockNode = this.dockState.layout();
+    const asked: DockNode | null = wellId === undefined ? null : findNode(layout, wellId);
+    const open: StackNode | null = findStackOfPanel(layout, id);
     const well: StackNode | null =
-      firstStackOfRole(this.dockState.layout(), 'document') ?? this.makeWell(id);
+      (open?.role === 'document' ? open : null) ??
+      (asked !== null && isStackNode(asked) && asked.role === 'document' ? asked : null) ??
+      firstStackOfRole(layout, 'document') ??
+      this.makeWell(id);
     if (well === null) {
       this.log.warn('DiffOpener', `Nowhere to open the diff for '${file.path}'`);
       return;
@@ -98,9 +120,10 @@ export class DiffOpener {
    * status read, which can land a moment before this repository's, so a file just edited can be
    * offered a diff the lists here do not hold yet.
    * @param path The absolute path of the file.
+   * @param wellId The document well to open it in, or omitted for the layout's first.
    * @returns Returns null when the diff was opened, or the reason it could not be.
    */
-  public async openPath(path: string): Promise<string | null> {
+  public async openPath(path: string, wellId?: string): Promise<string | null> {
     if (!this.repository.isBound()) {
       return 'This workspace is not a git repository, so there is no diff to show.';
     }
@@ -113,8 +136,18 @@ export class DiffOpener {
     if (change === undefined) {
       return `"${relative}" has no changes against HEAD, so there is no diff to show.`;
     }
-    this.open(change);
+    this.open(change, wellId);
     return null;
+  }
+
+  /**
+   * Gets the working-tree change of a file named by its absolute path, from the repository's change
+   * lists as they stand — read inside a reactive context, it follows them.
+   * @param path The absolute path of the file.
+   * @returns Returns the change, or undefined when the file has none.
+   */
+  public changeForPath(path: string): GitFileChange | undefined {
+    return this.changeAt(this.relativeToRoot(path));
   }
 
   /**
@@ -145,14 +178,15 @@ export class DiffOpener {
   }
 
   /**
-   * Makes a document well above the layout's centre slot, holding the given panel.
+   * Makes a document well beside the layout's centre slot, holding the given panel.
    *
    * A surface may reasonably have no well at all — the Git layout has none, since History is what it
    * is for and an empty well above it would be a permanent gap kept for a diff that may never be
    * asked for. The well is made the first time one is, so the space is spent only once it is earned.
    *
-   * Above the centre rather than beside it: a diff is read against the history that produced it, and
-   * a column keeps both full width.
+   * Above the centre when the centre is History: a diff is read against the history that produced it,
+   * and a column keeps both full width. Anything else in the centre — the agent, in the agentic
+   * layout — gets the well beside it, as a file opened there would, so the two read side by side.
    *
    * @param panelId The panel the new well opens holding.
    * @returns Returns the new well, or null when there is no centre slot to split.
@@ -163,7 +197,11 @@ export class DiffOpener {
       return null;
     }
     this.log.info('DiffOpener', 'No document well in this layout; making one');
-    this.dockState.splitStack(centre.id, panelId, 'top', 'document');
+    if (centre.panels.includes('history')) {
+      this.dockState.splitStack(centre.id, panelId, 'top', 'document');
+    } else {
+      this.dockState.openWellBeside(centre.id, panelId);
+    }
     return firstStackOfRole(this.dockState.layout(), 'document');
   }
 

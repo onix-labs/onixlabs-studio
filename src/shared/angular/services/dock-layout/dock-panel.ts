@@ -56,4 +56,39 @@ export interface DockPanel {
    * or was cancelled.
    */
   save?(): Promise<boolean>;
+
+  /**
+   * Gets the switch to another view of the same thing — a file's diff, or a diff's file — which the
+   * panel offers as a button on its own tool strip. Absent for a panel with no other view (a document
+   * outside a workspace's well).
+   */
+  readonly switch?: Signal<DockPanelSwitch>;
+}
+
+/**
+ * A document's switch to another view of the same thing, offered as a button on its tool strip.
+ */
+export interface DockPanelSwitch {
+  /**
+   * Gets what the button does, used as its label and tooltip.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the button's icon.
+   */
+  readonly icon: Icon;
+
+  /**
+   * Gets why the switch cannot be made now, shown as the disabled button's tooltip, or null when it
+   * can.
+   */
+  readonly unavailable: string | null;
+
+  /**
+   * Makes the switch.
+   * @returns Returns a promise resolving true once the other view is showing, or false when the
+   * switch was refused or cancelled.
+   */
+  run(): Promise<boolean>;
 }

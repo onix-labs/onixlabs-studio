@@ -10,7 +10,7 @@ import {
   Type,
 } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockPanel, DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { Documents } from '@shared/angular/services/documents/documents';
@@ -87,6 +87,14 @@ export class DocumentPanel {
    */
   protected readonly documentPanel: Signal<Type<unknown> | undefined> = computed(
     (): Type<unknown> | undefined => this.registry.documentPanelFor(this.documentType()),
+  );
+
+  /**
+   * Gets the document's switch to its diff, for the editor's tool strip, or undefined when the panel
+   * offers none.
+   */
+  public readonly documentSwitch: Signal<DockPanelSwitch | undefined> = computed(
+    (): DockPanelSwitch | undefined => this.panel().switch?.(),
   );
 
   /**

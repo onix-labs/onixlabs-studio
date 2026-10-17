@@ -89,6 +89,20 @@
       tooltip="Find"
       (click)="find()"
     />
+    <!-- The file's diff, beside it or in its place (the Workspaces setting decides). Greyed, with the
+         reason, while the file has no changes. -->
+    @if (documentSwitch(); as change) {
+      <span class="document-panel__divider" aria-hidden="true"></span>
+      <app-button
+        variant="none"
+        [icon]="change.icon"
+        [ariaLabel]="change.label"
+        [tooltip]="change.unavailable ?? change.label"
+        [disabled]="change.unavailable !== null"
+        (click)="change.run()"
+      />
+      <span class="document-panel__divider" aria-hidden="true"></span>
+    }
     <app-button
       variant="none"
       [icon]="Icon.DOTS_THREE_BOLD"
