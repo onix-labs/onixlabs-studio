@@ -200,10 +200,27 @@ describe('AgentPermissionCard', () => {
       (render(AgentPermissionCard, item).nativeElement as HTMLElement).querySelector('app-dropdown')
         ?.textContent ?? '';
 
-    expect(options(permission)).toContain('For this workspace');
+    expect(options(permission)).toContain('Allow Bash in this workspace');
     expect(options({ ...permission, permissionHasWorkspace: false })).not.toContain(
-      'For this workspace',
+      'in this workspace',
     );
+  });
+
+  it('remembersACommandToolsExactCommand_neverTheTool', () => {
+    // #979: "Always" on one harmless command must not allow every later command.
+    const options: (item: AgentItem) => string = (item: AgentItem): string =>
+      (render(AgentPermissionCard, item).nativeElement as HTMLElement).querySelector('app-dropdown')
+        ?.textContent ?? '';
+
+    const command: string = options({ ...permission, permissionRemembers: 'command' });
+    expect(command).toContain('Allow this command in this workspace');
+    expect(command).toContain('Always allow this command');
+    expect(command).not.toContain('Always allow Bash');
+
+    const session: string = options({ ...permission, permissionRemembers: 'session' });
+    expect(session).toContain('Allow every Bash command for this session');
+    expect(session).not.toContain('workspace');
+    expect(session).not.toContain('Always');
   });
 
   it('saysHowItWasSettled', () => {
@@ -213,6 +230,13 @@ describe('AgentPermissionCard', () => {
     expect(settled({ permissionState: 'allowed', permissionRemember: 'workspace' })).toBe(
       'Allowed for this workspace',
     );
+    expect(
+      settled({
+        permissionState: 'allowed',
+        permissionRemember: 'always',
+        permissionRemembers: 'command',
+      }),
+    ).toBe('This command always allowed');
     expect(settled({ permissionState: 'denied' })).toBe('Denied');
     expect(settled({ permissionState: 'dismissed' })).toBe('Answered on another device');
   });

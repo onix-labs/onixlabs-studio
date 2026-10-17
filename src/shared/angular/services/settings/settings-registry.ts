@@ -1103,6 +1103,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    id: 'plugins',
+    label: 'Plugin Manager',
+    settings: [
+      {
+        key: 'plugins.loadSideloaded',
+        // Owned by the main process, which reads it at launch before any plugin is resolved (#979), so
+        // it is never in the renderer's settings store. Always on, and locked, in the development app.
+        owner: 'plugins',
+        title: 'Load sideloaded plugins',
+        description:
+          "Load plugins placed in the plugins folder by hand. These skip Studio's integrity check " +
+          'and can replace a plugin from the catalogue, so leave this off unless you put one there ' +
+          'yourself. Takes effect after a restart.',
+        control: { kind: 'toggle' },
+        requiresRestart: true,
+      },
+    ],
+  },
+  {
     id: 'security',
     label: 'Security',
     settings: [
@@ -1137,7 +1156,7 @@ export const SETTINGS_BY_KEY: ReadonlyMap<string, SettingDef> = new Map(
 
 /**
  * Holds the default value for every Settings-owned setting key. Foreign-owned settings (Theme,
- * Display, LSP, Security) are excluded — their values live in their own services.
+ * Display, LSP, Security, Plugins) are excluded — their values live in their own services.
  */
 export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
   [...SETTINGS_BY_KEY.values()]

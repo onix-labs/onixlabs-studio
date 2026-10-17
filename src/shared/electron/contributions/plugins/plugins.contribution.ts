@@ -1,10 +1,16 @@
-import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  PluginActionResult,
+  PluginChannel,
+  PluginSummary,
+  SideloadingState,
+} from '@shared/api/plugin-channels';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { pluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { contributedPlugins, pluginIndex, pluginStore } from './contributed';
+import { setSideloading, sideloadingState } from './sideloaded';
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -69,6 +75,16 @@ export class PluginsContribution implements MainContribution {
     // start, so this is what the running build's catalogue actually is — which is what a bug report needs.
     context.handle(PluginChannel.CatalogueRevision, (): Promise<number> =>
       Promise.resolve(pluginIndex().revision()),
+    );
+    // The sideloading switch (#979). Read at launch, before any plugin resolved, so a change is only
+    // persisted here and applies from the next launch; the state reports both so Settings can say so.
+    context.handle(PluginChannel.GetSideloading, (): Promise<SideloadingState> =>
+      Promise.resolve(sideloadingState()),
+    );
+    context.handle(
+      PluginChannel.SetSideloading,
+      (_event: unknown, value: unknown): Promise<SideloadingState> =>
+        Promise.resolve(setSideloading(value)),
     );
     context.log.info(
       `Plugin catalogue ready (${pluginCatalogue().length} first-party, ` +

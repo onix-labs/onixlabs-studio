@@ -48,4 +48,13 @@ describe('SettingBindings', () => {
     expect(binding.disabled?.()).toBe(true);
     expect(binding.value()).toBe('local');
   });
+
+  it('resolve_whenSideloadingSwitch_bindsToTheMainOwnedChoice_offAndLockedWithoutABridge', () => {
+    const binding: SettingBinding = bindings.resolve('plugins.loadSideloaded', 'plugins');
+
+    // No Electron bridge is present under test, so nothing reports the choice and nothing can set it.
+    expect(binding.value()).toBe(false);
+    expect(binding.disabled?.()).toBe(true);
+    expect(binding.restartPending?.()).toBe(false);
+  });
 });

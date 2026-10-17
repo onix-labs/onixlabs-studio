@@ -307,6 +307,12 @@ export interface AgentItem {
   readonly permissionHasWorkspace?: boolean;
 
   /**
+   * Gets how a grant can be remembered (#979): for any use of the tool, for the exact command shown,
+   * or for the session only. Undefined means any use of the tool.
+   */
+  readonly permissionRemembers?: 'tool' | 'command' | 'session';
+
+  /**
    * Gets how long the broker remembers the grant (granted permission items only; undefined for a
    * one-off grant).
    */
@@ -2053,6 +2059,7 @@ export class Agent {
           permissionDetail: event.detail,
           permissionState: 'pending',
           permissionHasWorkspace: event.hasWorkspace,
+          ...(event.remembers === undefined ? {} : { permissionRemembers: event.remembers }),
         });
         if (event.change !== undefined) {
           this.attachProposedDiff(event.permissionId, event.change);
