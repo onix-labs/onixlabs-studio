@@ -156,6 +156,14 @@ export interface SearchRequest {
    * Gets a value indicating whether {@link query} is a regular-expression pattern.
    */
   readonly regexp: boolean;
+
+  /**
+   * Gets the absolute paths of the files or folders to search, or undefined to search the whole root
+   * (#1007: a project's folder for the Search panel's Current Project scope). Each must lie inside
+   * {@link root}, as named and as resolved through any link; a request naming one that does not is
+   * refused whole.
+   */
+  readonly paths?: readonly string[];
 }
 
 /**

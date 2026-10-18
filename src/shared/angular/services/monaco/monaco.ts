@@ -7,6 +7,7 @@ import {
 } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
+import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 import {
   extensionForLanguage,
   LanguageInfo,
@@ -23,6 +24,9 @@ import { defineThemes } from './monaco-themes';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerBraceFolding } from './monaco-folding';
+import { installFindCommands } from './monaco-find-commands';
+import { Studio } from '@shared/angular/services/studio/studio';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -162,6 +166,16 @@ export class Monaco {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the host-platform accessor, which decides the find-and-replace chord.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the find router Studio's ⌘F / ⌘⌥F commands hand the focused editor to (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
 
   /**
    * Holds a value indicating whether Monaco has finished loading.
@@ -443,9 +457,30 @@ export class Monaco {
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerBraceFolding(window.monaco);
+    this.installFindCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
+  }
+
+  /**
+   * Removes Monaco's find-widget chords from an instance and binds Studio's find commands in their
+   * place, so ⌘F / ⌘⌥F (Ctrl+F / Ctrl+H) in any of its editors reach the {@link FindRouter} and
+   * Monaco's own find widget can never open (#1007).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installFindCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installFindCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: FindMode): void => {
+        this.log.info('Monaco', 'Studio find command', mode);
+        this.findRouter.openFromEditor(editor, mode);
+      },
+    );
   }
 
   /**
@@ -499,6 +534,7 @@ export class Monaco {
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerBraceFolding(monaco);
+      this.installFindCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

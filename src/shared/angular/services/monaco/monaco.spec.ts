@@ -1,6 +1,15 @@
 import { TestBed } from '@angular/core/testing';
+import type * as MonacoApi from 'monaco-editor';
+import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 
 import { buildHeuristicSemanticTokens, MonarchToken, Monaco } from './monaco';
+import {
+  FIND_PASSTHROUGH_CONTEXT_KEY,
+  installFindCommands,
+  MONACO_FIND_COMMANDS,
+  STUDIO_FIND_COMMAND,
+  STUDIO_FIND_REPLACE_COMMAND,
+} from './monaco-find-commands';
 
 /**
  * A decoded semantic token, for readable assertions.
@@ -216,5 +225,127 @@ describe('buildHeuristicSemanticTokens', () => {
       { deltaLine: 0, deltaChar: 0, length: 5, type: TYPE },
       { deltaLine: 1, deltaChar: 0, length: 4, type: TYPE },
     ]);
+  });
+});
+
+describe('installFindCommands', () => {
+  /**
+   * What a fake Monaco instance was asked to do.
+   */
+  interface Installed {
+    readonly rules: MonacoApi.editor.IKeybindingRule[];
+    readonly commands: Map<string, () => void>;
+    readonly found: { editor: MonacoApi.editor.ICodeEditor; mode: FindMode }[];
+  }
+
+  /**
+   * Installs the find commands into a fake Monaco instance holding the given editors.
+   * @param isMac Whether to install as macOS.
+   * @param editors The editors the instance holds.
+   * @returns Returns what the instance was asked to do.
+   */
+  function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
+    const installed: Installed = { rules: [], commands: new Map(), found: [] };
+    const fake: typeof MonacoApi = {
+      KeyMod: { CtrlCmd: 2048, Alt: 512 },
+      KeyCode: { KeyF: 36, KeyH: 38 },
+      editor: {
+        getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
+        registerCommand: (id: string, handler: () => void): void =>
+          void installed.commands.set(id, handler),
+        addKeybindingRules: (rules: MonacoApi.editor.IKeybindingRule[]): void =>
+          void installed.rules.push(...rules),
+      },
+    } as unknown as typeof MonacoApi;
+    installFindCommands(fake, isMac, (editor: MonacoApi.editor.ICodeEditor, mode: FindMode) =>
+      installed.found.push({ editor, mode }),
+    );
+    return installed;
+  }
+
+  /**
+   * Builds a fake editor with the given focus.
+   * @param textFocus Whether its text holds the keyboard.
+   * @returns Returns the editor.
+   */
+  function editorWith(textFocus: boolean): MonacoApi.editor.ICodeEditor {
+    return {
+      hasTextFocus: (): boolean => textFocus,
+      hasWidgetFocus: (): boolean => textFocus,
+    } as unknown as MonacoApi.editor.ICodeEditor;
+  }
+
+  it('removesEveryChordOfEveryFindWidgetCommand_onEveryPlatform', () => {
+    // #1007: a removal with no chord drops all of a command's chords, so F3, ⌘G, ⌘E, ⌘H and the
+    // rest go together with ⌘F and ⌘⌥F, whichever platform Monaco is running on.
+    const installed: Installed = install(true, []);
+
+    const removals: MonacoApi.editor.IKeybindingRule[] = installed.rules.filter(
+      (rule: MonacoApi.editor.IKeybindingRule): boolean => rule.command?.startsWith('-') === true,
+    );
+    expect(removals.map((rule: MonacoApi.editor.IKeybindingRule) => rule.command)).toEqual(
+      MONACO_FIND_COMMANDS.map((command: string): string => `-${command}`),
+    );
+    expect(removals.every((rule: MonacoApi.editor.IKeybindingRule) => rule.keybinding === 0)).toBe(
+      true,
+    );
+    for (const opener of [
+      'actions.find',
+      'actions.findWithSelection',
+      'editor.action.startFindReplaceAction',
+      'editor.action.nextMatchFindAction',
+      'editor.action.previousMatchFindAction',
+      'editor.action.nextSelectionMatchFindAction',
+      'editor.action.previousSelectionMatchFindAction',
+    ]) {
+      expect(MONACO_FIND_COMMANDS).toContain(opener);
+    }
+  });
+
+  it('bindsStudioFindToModF_andReplaceToModAltF_onMac', () => {
+    const installed: Installed = install(true, []);
+
+    expect(installed.rules).toContainEqual({
+      keybinding: 2048 | 36,
+      command: STUDIO_FIND_COMMAND,
+      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    });
+    expect(installed.rules).toContainEqual({
+      keybinding: 2048 | 512 | 36,
+      command: STUDIO_FIND_REPLACE_COMMAND,
+      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    });
+  });
+
+  it('bindsStudioReplaceToCtrlH_onWindowsAndLinux', () => {
+    const installed: Installed = install(false, []);
+
+    expect(installed.rules).toContainEqual({
+      keybinding: 2048 | 38,
+      command: STUDIO_FIND_REPLACE_COMMAND,
+      when: `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`,
+    });
+  });
+
+  it('theCommands_handTheFocusedEditorOn_withTheirMode', () => {
+    const idle: MonacoApi.editor.ICodeEditor = editorWith(false);
+    const focused: MonacoApi.editor.ICodeEditor = editorWith(true);
+    const installed: Installed = install(true, [idle, focused]);
+
+    installed.commands.get(STUDIO_FIND_COMMAND)?.();
+    installed.commands.get(STUDIO_FIND_REPLACE_COMMAND)?.();
+
+    expect(installed.found).toEqual([
+      { editor: focused, mode: 'find' },
+      { editor: focused, mode: 'replace' },
+    ]);
+  });
+
+  it('theCommands_doNothing_whenNoEditorHasFocus', () => {
+    const installed: Installed = install(true, [editorWith(false)]);
+
+    installed.commands.get(STUDIO_FIND_COMMAND)?.();
+
+    expect(installed.found).toEqual([]);
   });
 });

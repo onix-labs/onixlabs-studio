@@ -9,6 +9,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DiffEditor, DiffSummary } from '@shared/angular/components/diff-editor/diff-editor';
+import type * as MonacoApi from 'monaco-editor';
 
 /**
  * Hosts the source-control diff surface: the shared {@link DiffEditor} pane comparing a file's
@@ -37,6 +38,12 @@ export class DiffView {
    * selected. Not drawn — the tab already carries the name.
    */
   public readonly fileName: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets the compared file's absolute path, which a find in the diff searches (#1007), or null when
+   * it is unknown.
+   */
+  public readonly filePath: InputSignal<string | null> = input<string | null>(null);
 
   /**
    * Gets the file's content before the change (the diff's original side).
@@ -84,6 +91,14 @@ export class DiffView {
     const position: { lineNumber: number; column: number } | null =
       this.pane()?.getDiffEditor()?.getModifiedEditor().getPosition() ?? null;
     return position === null ? null : { line: position.lineNumber, column: position.column };
+  }
+
+  /**
+   * Gets the editor showing the changed side, which the Search panel searches read-only (#1007).
+   * @returns Returns the editor, or null before it exists.
+   */
+  public modifiedEditor(): MonacoApi.editor.ICodeEditor | null {
+    return this.pane()?.getDiffEditor()?.getModifiedEditor() ?? null;
   }
 
   /**

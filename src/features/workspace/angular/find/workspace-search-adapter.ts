@@ -48,6 +48,26 @@ interface FlatMatch {
 }
 
 /**
+ * Names what one search looked for and where: what a replace replaces, and what it searches again.
+ */
+interface SearchScope {
+  /**
+   * Gets the query.
+   */
+  readonly query: FindQuery;
+
+  /**
+   * Gets the workspace root searched.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the paths under the root the search was confined to, or undefined for the whole root.
+   */
+  readonly paths: readonly string[] | undefined;
+}
+
+/**
  * Drives workspace-wide find for the shared find panel. It runs a debounced search over the active
  * workspace root through the main-process search manager, presents the matches as a flat list labelled
  * by file, and opens a selected match by opening its file and revealing the matched line.
@@ -86,10 +106,10 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   private sequence: number = 0;
 
   /**
-   * Holds the query and root of the last search asked for, or null before any — what a replace
+   * Holds the query, root and paths of the last search asked for, or null before any — what a replace
    * replaces, and what it searches again afterwards.
    */
-  private last: { readonly query: FindQuery; readonly root: string } | null = null;
+  private last: SearchScope | null = null;
 
   /**
    * Gets the match list.
@@ -117,12 +137,15 @@ export class WorkspaceSearchAdapter implements FindAdapter {
    * @param fileOpener The file opener used to open a match's file.
    * @param editors The editor registry used to resolve an opened file's document for reveal.
    * @param rootOf Resolves the active workspace root, or null when no folder is open.
+   * @param pathsOf Resolves the folders or files under the root to confine the search to, or undefined
+   * to search the whole root (#1007: a project's folder for the Current Project scope).
    */
   public constructor(
     private readonly search: Search,
     private readonly fileOpener: FileOpener,
     private readonly editors: Editors,
     private readonly rootOf: () => string | null,
+    private readonly pathsOf: () => readonly string[] | undefined = (): undefined => undefined,
   ) {}
 
   /**
@@ -140,10 +163,11 @@ export class WorkspaceSearchAdapter implements FindAdapter {
       this.reset();
       return;
     }
-    this.last = { query, root };
+    const scope: SearchScope = { query, root, paths: this.pathsOf() };
+    this.last = scope;
     const token: number = ++this.sequence;
     this.timer = setTimeout((): void => {
-      void this.execute(query, root, token);
+      void this.execute(scope, token);
     }, SEARCH_DEBOUNCE_MS);
   }
 
@@ -288,7 +312,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
       this.timer = null;
     }
     if (this.last !== null) {
-      await this.execute(this.last.query, this.last.root, ++this.sequence);
+      await this.execute(this.last, ++this.sequence);
     }
   }
 
@@ -316,11 +340,11 @@ export class WorkspaceSearchAdapter implements FindAdapter {
 
   /**
    * Runs the search and, when it is still the latest, publishes its results.
-   * @param query The query to search for.
-   * @param root The workspace root to search.
+   * @param scope The query, root and paths to search.
    * @param token The query token identifying this search.
    */
-  private async execute(query: FindQuery, root: string, token: number): Promise<void> {
+  private async execute(scope: SearchScope, token: number): Promise<void> {
+    const { query, root, paths } = scope;
     let response: SearchResponse;
     try {
       response = await this.search.run({
@@ -329,6 +353,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
         caseSensitive: query.caseSensitive,
         wholeWord: query.wholeWord,
         regexp: query.regexp,
+        ...(paths === undefined ? {} : { paths }),
       });
     } catch {
       response = { files: [], total: 0, capped: false };
@@ -355,7 +380,8 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   }
 
   /**
-   * Opens a match's file and reveals its line once the editor has registered.
+   * Opens a match's file and, once its editor has registered, has it select the match, centred and
+   * focused.
    * @param match The match to open.
    */
   private async openAndReveal(match: FlatMatch): Promise<void> {
@@ -365,7 +391,13 @@ export class WorkspaceSearchAdapter implements FindAdapter {
       if (modelUri !== undefined) {
         const location: EditorLocation | undefined = this.editors.locate(modelUri);
         if (location !== undefined) {
-          this.editors.requestReveal(location.documentId, match.item.line, match.item.column);
+          // The match is selected, not just the caret placed at it, as an in-editor result is.
+          this.editors.requestReveal(
+            location.documentId,
+            match.item.line,
+            match.item.column,
+            match.item.column + match.item.text.length,
+          );
           return;
         }
       }

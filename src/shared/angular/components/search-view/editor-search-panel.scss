@@ -1,0 +1,6 @@
+// Fills the panel it is docked in, so the results take the height the form leaves.
+:host {
+  display: block;
+  block-size: 100%;
+  color: var(--body-foreground-color);
+}

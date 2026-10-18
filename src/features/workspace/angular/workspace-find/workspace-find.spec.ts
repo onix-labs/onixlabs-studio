@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { WorkspaceFind } from './workspace-find';
 
 describe('WorkspaceFind', () => {
@@ -65,5 +66,16 @@ describe('WorkspaceFind', () => {
     find.reveal();
 
     expect(revealed).toBe(1);
+  });
+
+  it('reveal_withARequest_handsItToTheCallback', () => {
+    const received: (FindRequest | undefined)[] = [];
+    find.register((request?: FindRequest): void => void received.push(request));
+    const request: FindRequest = { mode: 'replace', scope: 'file', seed: 'todo' };
+
+    find.reveal(request);
+    find.reveal();
+
+    expect(received).toEqual([request, undefined]);
   });
 });

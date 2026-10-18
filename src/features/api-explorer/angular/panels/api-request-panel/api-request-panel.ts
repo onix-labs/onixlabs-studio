@@ -6,6 +6,7 @@ import {
   DestroyRef,
   effect,
   ElementRef,
+  forwardRef,
   inject,
   input,
   InputSignal,
@@ -13,7 +14,13 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
+import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
+import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
+import { Log } from '@shared/angular/services/log/log';
 import { CodeField, CodeFieldMarker } from '@shared/angular/components/forms/code-field/code-field';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
@@ -126,6 +133,7 @@ let panelSequence: number = 0;
     DecimalPipe,
     Dropdown,
     AppIcon,
+    EditorSearchPanel,
     NgTemplateOutlet,
     Panel,
     PanelLayout,
@@ -135,11 +143,13 @@ let panelSequence: number = 0;
     Textarea,
     TextField,
   ],
+  // The request answers ⌘F in its bodies with its own Find panel (#1007).
+  providers: [{ provide: FIND_HOST, useExisting: forwardRef((): unknown => ApiRequestPanel) }],
   templateUrl: './api-request-panel.html',
   styleUrl: './api-request-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ApiRequestPanel {
+export class ApiRequestPanel implements FindHost {
   /**
    * Gets the dock panel this component is projected into; its id is the request's id.
    */
@@ -188,6 +198,21 @@ export class ApiRequestPanel {
    * Holds the icon tokens used by the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
+   * Holds this request's Find & Replace, over the body ⌘F was pressed in: the request body, or the
+   * response body (read-only, so without replace). It has no main editor to search.
+   */
+  protected readonly editorSearch: EditorSearch = new EditorSearch({
+    mainEditor: (): MonacoApi.editor.ICodeEditor | null => null,
+    labelOf: (editor: MonacoApi.editor.ICodeEditor): string =>
+      editor.getRawOptions().readOnly === true ? 'Response Body' : 'Request Body',
+  });
 
   /**
    * Holds the edges the response pane may be docked to.
@@ -358,6 +383,23 @@ export class ApiRequestPanel {
    */
   protected onBodyMarkers(markers: readonly CodeFieldMarker[]): void {
     this.bodyMarkers.set(markers);
+  }
+
+  /**
+   * Opens this request's Find panel as a request asks, over the body it came from (#1007).
+   * @param request The find to open.
+   * @param editor The body editor ⌘F was pressed in, or null when the request names none.
+   */
+  public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
+    this.log.debug('api-explorer.request', 'Open find panel', this.panel().id, request.mode);
+    this.editorSearch.open(request, editor);
+  }
+
+  /**
+   * Hides the Find panel when it asks to close.
+   */
+  protected onFindClosed(): void {
+    this.editorSearch.close();
   }
 
   /**

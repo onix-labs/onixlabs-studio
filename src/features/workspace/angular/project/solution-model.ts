@@ -116,6 +116,26 @@ export interface SolutionRow {
 }
 
 /**
+ * The project a file belongs to, as {@link SolutionModel.owningProject} finds it.
+ */
+export interface OwningProject {
+  /**
+   * Gets the project's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the absolute path of the project file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the absolute path of the directory the project file sits in, which holds its files.
+   */
+  readonly directory: string;
+}
+
+/**
  * Holds and drives this tab's Solution Explorer. When a .NET workspace opens, it fetches the logical
  * project model for the root and shows the full structure — solution folders and projects — straight
  * away, while a low-priority background sweep evaluates project contents one at a time (so search and
@@ -424,7 +444,7 @@ export class SolutionModel {
     if (chain === null) {
       // The file may belong to a project whose contents have not arrived yet: request them ahead of
       // the background sweep so a later reveal (the next activation, the next document switch) lands.
-      this.warmOwningProject(model, path);
+      this.warmOwningProject(path);
       return false;
     }
     this.expandedKeys.update((current: ReadonlySet<string>): ReadonlySet<string> => {
@@ -508,24 +528,44 @@ export class SolutionModel {
   }
 
   /**
-   * Requests the contents of the project a file lies within (by deepest directory prefix) when they
-   * are not loaded yet, so features that need the file's tree position can find it shortly.
-   * @param model The model to search.
+   * Finds the project a file lies within: the one whose directory is the file's deepest prefix, so a
+   * project nested inside another's directory owns its own files (#1007, the Search panel's Current
+   * Project scope).
    * @param path The absolute file path.
+   * @returns Returns the owning project, or null when there is no model or no project holds the file.
    */
-  private warmOwningProject(model: ProjectModel, path: string): void {
+  public owningProject(path: string): OwningProject | null {
+    const model: ProjectModel | null = this.current();
+    if (model === null) {
+      return null;
+    }
     const normalized: string = path.replaceAll('\\', '/');
-    let owner: string | null = null;
+    let owner: OwningProject | null = null;
     let ownerDirectory: string = '';
     for (const project of model.projects) {
       const directory: string = project.path.replaceAll('\\', '/').replace(/\/[^/]*$/, '');
       if (normalized.startsWith(`${directory}/`) && directory.length > ownerDirectory.length) {
-        owner = project.path;
+        // Keep the project's own separators for the directory: it is handed back to the platform.
+        owner = {
+          name: project.name,
+          path: project.path,
+          directory: project.path.replace(/[\\/][^\\/]*$/, ''),
+        };
         ownerDirectory = directory;
       }
     }
+    return owner;
+  }
+
+  /**
+   * Requests the contents of the project a file lies within (by deepest directory prefix) when they
+   * are not loaded yet, so features that need the file's tree position can find it shortly.
+   * @param path The absolute file path.
+   */
+  private warmOwningProject(path: string): void {
+    const owner: OwningProject | null = this.owningProject(path);
     if (owner !== null) {
-      this.requestItems(owner);
+      this.requestItems(owner.path);
     }
   }
 

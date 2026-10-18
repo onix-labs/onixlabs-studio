@@ -13,11 +13,12 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
 import { DockPanel, DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
-import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { Diffs, OpenDiffEditor } from '@shared/angular/services/diffs/diffs';
 import {
   GitChangeStatus,
   GitFileChange,
@@ -258,8 +259,30 @@ export class DiffDocumentPanel {
       });
     });
 
+    // Offer the changed side to the Search panel's in-memory scopes (#1007), read-only.
+    let searchable: OpenDiffEditor | null = null;
+    effect((): void => {
+      const id: string = this.panel().id;
+      if (searchable?.id === id) {
+        return;
+      }
+      if (searchable !== null) {
+        this.diffs.unregisterEditor(searchable);
+      }
+      searchable = {
+        id,
+        path: (): string | null => this.absolutePath(),
+        modifiedEditor: (): MonacoApi.editor.ICodeEditor | null =>
+          this.view()?.modifiedEditor() ?? null,
+      };
+      this.diffs.registerEditor(searchable);
+    });
+
     destroyRef.onDestroy((): void => {
       this.documentStatus.clear(this.panel().id);
+      if (searchable !== null) {
+        this.diffs.unregisterEditor(searchable);
+      }
     });
   }
 

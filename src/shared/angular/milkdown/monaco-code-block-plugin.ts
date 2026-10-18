@@ -36,6 +36,7 @@ import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/kit/pr
 import type * as MonacoApi from 'monaco-editor';
 import type { Monaco } from '@shared/angular/services/monaco/monaco';
 import type { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
+import { FIND_PASSTHROUGH_CONTEXT_KEY } from '@shared/angular/services/monaco/monaco-find-commands';
 
 /**
  * The services a {@link MonacoCodeBlockView} needs: the Monaco loader/theme service and the shared
@@ -443,6 +444,10 @@ class MonacoCodeBlockView implements NodeView {
       return;
     }
     this.editor = editor;
+    // ⌘F / ⌘⌥F inside a fence must not run Studio's editor find (which would search the fence alone);
+    // passed through, the chord reaches the markdown document and does what it does in the prose
+    // around the fence: the document's own Find panel (#1007).
+    editor.createContextKey<boolean>(FIND_PASSTHROUGH_CONTEXT_KEY, true);
 
     this.editorDisposers = [
       model,

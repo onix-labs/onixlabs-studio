@@ -16,6 +16,7 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -82,6 +83,18 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the find router both sides are attached to, so ⌘F in either reaches the workspace's Search
+   * panel for the compared file (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Gets the absolute path of the compared file, which a find from either side searches — the
+   * modified side being the file as it stands — or null when it is unknown.
+   */
+  public readonly filePath: InputSignal<string | null> = input<string | null>(null);
+
+  /**
    * Gets the content of the diff's original (before) side.
    */
   public readonly original: InputSignal<string> = input<string>('');
@@ -138,6 +151,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly subscriptions: MonacoApi.IDisposable[] = [];
 
   /**
+   * Holds the functions that detach both sides from the find router, called with the editor's disposal.
+   */
+  private readonly findDetachers: (() => void)[] = [];
+
+  /**
    * Wires effects that rebuild the model pair when the compared content changes, flip the layout when
    * the inline toggle changes, and re-apply the theme when the mode or settings change.
    */
@@ -185,6 +203,10 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('DiffEditor', 'Destroying diff pane');
+    for (const detach of this.findDetachers) {
+      detach();
+    }
+    this.findDetachers.length = 0;
     for (const subscription of this.subscriptions) {
       subscription.dispose();
     }
@@ -301,10 +323,25 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       this.editor.onDidUpdateDiff((): void => this.notifySummary()),
       this.editor.getModifiedEditor().onDidChangeCursorPosition((): void => this.notifySummary()),
     );
+    this.attachFind(this.editor);
 
     this.ready = true;
     this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
     this.setModels(this.original(), this.modified(), this.language());
+  }
+
+  /**
+   * Attaches both sides to the find router. A diff only exists inside a workspace, so no tab Find
+   * panel answers; the router sends ⌘F to the Search panel with the compared file, which its anonymous
+   * models cannot name.
+   * @param editor The diff editor.
+   */
+  private attachFind(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    const filePath: () => string | null = (): string | null => this.filePath();
+    this.findDetachers.push(
+      this.findRouter.attach(editor.getOriginalEditor(), { filePath }),
+      this.findRouter.attach(editor.getModifiedEditor(), { filePath }),
+    );
   }
 
   /**

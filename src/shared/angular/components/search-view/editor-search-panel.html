@@ -1,0 +1,15 @@
+<app-tool-panel
+  [title]="title()"
+  [icon]="Icon.SEARCH"
+  closeLabel="Close find"
+  [flush]="true"
+  (closed)="closed.emit()"
+>
+  <app-search-view
+    [adapter]="search().adapter"
+    [scopes]="search().scopes"
+    [disabledScopes]="search().disabledScopes()"
+    [request]="search().request()"
+    [replaceable]="search().replaceable()"
+  />
+</app-tool-panel>
