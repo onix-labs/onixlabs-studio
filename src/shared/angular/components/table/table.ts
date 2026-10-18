@@ -1,10 +1,13 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   contentChild,
   Directive,
+  effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -13,11 +16,62 @@ import {
   signal,
   Signal,
   TemplateRef,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+
+/**
+ * The row height a {@link Table.virtual} table assumes before it has measured a rendered row, in
+ * pixels: a compact row's height at the default root font size.
+ */
+const ESTIMATED_ROW_PX: number = 24;
+
+/**
+ * How many rows a {@link Table.virtual} table renders when its scroll area has not been measured yet
+ * (in tests, or before the first layout): enough to fill a tall window.
+ */
+const UNMEASURED_VIEWPORT_ROWS: number = 60;
+
+/**
+ * How many rows a {@link Table.virtual} table renders beyond each edge of what can be seen, so a
+ * fast scroll never shows a blank band before the next window renders.
+ */
+const OVERSCAN_ROWS: number = 20;
+
+/**
+ * The row count a {@link Table.virtual} table's rendered window moves in, so scrolling re-renders once
+ * per this many rows rather than on every row boundary.
+ */
+const WINDOW_STEP_ROWS: number = 10;
+
+/**
+ * The slice of a {@link Table.virtual} table's rows that is rendered, and the space standing in for
+ * the rows either side of it.
+ */
+interface RowWindow {
+  /**
+   * Gets the index of the first rendered row.
+   */
+  readonly start: number;
+
+  /**
+   * Gets the index after the last rendered row.
+   */
+  readonly end: number;
+
+  /**
+   * Gets the height standing in for the rows above the window, in pixels.
+   */
+  readonly before: number;
+
+  /**
+   * Gets the height standing in for the rows below the window, in pixels.
+   */
+  readonly after: number;
+}
 
 /**
  * How a column's header and cells are horizontally aligned.
@@ -207,6 +261,14 @@ export class Table {
   );
 
   /**
+   * Gets whether only the rows near what can be seen are rendered, the rest stood in for by space
+   * above and below, so a table of thousands of rows (a log) costs a screenful of rows to render and
+   * check. For tables whose rows are all one height — the height is measured from a rendered row —
+   * and never collapsed. Off by default: the table renders every row.
+   */
+  public readonly virtual: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TableRow> = output<TableRow>();
@@ -287,6 +349,74 @@ export class Table {
   );
 
   /**
+   * Holds the scroll container, which a {@link virtual} table watches to know which rows can be seen.
+   */
+  private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('scroller');
+
+  /**
+   * Holds how far the scroll container is scrolled down, in pixels (read by a {@link virtual} table).
+   */
+  private readonly scrollTop: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the scroll container's visible height, in pixels, or 0 before it has been measured.
+   */
+  private readonly viewportHeight: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the height of one data row, in pixels: estimated until a rendered row is measured.
+   */
+  private readonly rowHeight: WritableSignal<number> = signal<number>(ESTIMATED_ROW_PX);
+
+  /**
+   * Gets the slice of the rows that is rendered: every row unless {@link virtual}, otherwise the rows
+   * that can be seen plus an overscan either side, moved in steps so a scroll re-renders rarely. Equal
+   * windows compare equal, so a scroll within a step changes nothing downstream.
+   */
+  protected readonly rowWindow: Signal<RowWindow> = computed(
+    (): RowWindow => {
+      const count: number = this.visibleRows().length;
+      if (!this.virtual()) {
+        return { start: 0, end: count, before: 0, after: 0 };
+      }
+      const height: number = this.rowHeight();
+      const viewport: number = this.viewportHeight();
+      const shown: number = viewport > 0 ? Math.ceil(viewport / height) : UNMEASURED_VIEWPORT_ROWS;
+      const first: number = Math.floor(this.scrollTop() / height);
+      const stepped: number = Math.floor(first / WINDOW_STEP_ROWS) * WINDOW_STEP_ROWS;
+      const end: number = Math.min(count, stepped + WINDOW_STEP_ROWS + shown + OVERSCAN_ROWS);
+      // Clamped against the end, so a scroll position left over from a longer list still renders the
+      // list's last rows rather than nothing.
+      const start: number = Math.max(
+        0,
+        Math.min(stepped - OVERSCAN_ROWS, end - shown - OVERSCAN_ROWS),
+      );
+      return { start, end, before: start * height, after: (count - end) * height };
+    },
+    {
+      equal: (a: RowWindow, b: RowWindow): boolean =>
+        a.start === b.start && a.end === b.end && a.before === b.before && a.after === b.after,
+    },
+  );
+
+  /**
+   * Gets the rows actually rendered: the {@link visibleRows} within the {@link rowWindow}.
+   */
+  protected readonly renderedRows: Signal<readonly TableRow[]> = computed(
+    (): readonly TableRow[] => {
+      const rows: readonly TableRow[] = this.visibleRows();
+      const { start, end }: RowWindow = this.rowWindow();
+      return start === 0 && end === rows.length ? rows : rows.slice(start, end);
+    },
+  );
+
+  /**
+   * Holds the host element, whose rendered rows a {@link virtual} table measures.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /**
    * Holds the projected data-row cell template, rendered for each data row with the row as its implicit
    * context.
    */
@@ -312,6 +442,50 @@ export class Table {
       return styles;
     },
   );
+
+  /**
+   * Wires a {@link virtual} table to its scroll container: follows the scroll position and visible
+   * height, and measures a rendered row's height after each render.
+   */
+  public constructor() {
+    // The scroll position and size feed the window. Listened to outside the template so a scroll
+    // within a window step costs a signal write and nothing more.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const element: HTMLElement | undefined = this.scroller()?.nativeElement;
+      if (!this.virtual() || element === undefined) {
+        return;
+      }
+      const read: () => void = (): void => {
+        this.scrollTop.set(element.scrollTop);
+        this.viewportHeight.set(element.clientHeight);
+      };
+      read();
+      element.addEventListener('scroll', read, { passive: true });
+      const Observer: typeof ResizeObserver | undefined =
+        element.ownerDocument.defaultView?.ResizeObserver;
+      const resize: ResizeObserver | null = Observer === undefined ? null : new Observer(read);
+      resize?.observe(element);
+      onCleanup((): void => {
+        element.removeEventListener('scroll', read);
+        resize?.disconnect();
+      });
+    });
+
+    // The row height is measured, not assumed, so a font-size or display-scale change is followed.
+    // Read in the render's read phase, after the rows are laid out.
+    afterRenderEffect({
+      read: (): void => {
+        if (!this.virtual() || this.renderedRows().length === 0) {
+          return;
+        }
+        const row: HTMLElement | null = this.host.nativeElement.querySelector('.table-row');
+        const height: number = row?.getBoundingClientRect().height ?? 0;
+        if (height > 0 && Math.abs(height - this.rowHeight()) > 0.01) {
+          this.rowHeight.set(height);
+        }
+      },
+    });
+  }
 
   /**
    * Determines whether a group is currently collapsed.

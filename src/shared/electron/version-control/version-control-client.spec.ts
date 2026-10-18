@@ -49,13 +49,14 @@ const reply = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
  * worth testing, and a fake handing over whole messages exercises none of them.
  * @param name The script name.
  * @param body The script body, run after {@link PRELUDE}.
+ * @param maxLineLength The longest stdout line the client buffers, or undefined for the default.
  * @returns Returns the client, not yet started.
  */
-function stub(name: string, body: string): VersionControlClient {
+function stub(name: string, body: string, maxLineLength?: number): VersionControlClient {
   const file: string = join(directory, `${name}.cjs`);
   writeFileSync(file, `${PRELUDE}\n${body}`, 'utf8');
   const spec: VersionControlSpec = { command: process.execPath, args: [file] };
-  const client: VersionControlClient = new VersionControlClient(name, spec);
+  const client: VersionControlClient = new VersionControlClient(name, spec, maxLineLength);
   clients.push(client);
   return client;
 }
@@ -187,6 +188,48 @@ describe('VersionControlClient', () => {
 
     expect(response).toMatchObject({ ok: false, error: 'crash exited.' });
     expect(client.running).toBe(false);
+  });
+
+  it('request_whenTheAnswerOutgrowsTheLineCap_failsCleanly_andTheNextAnswerStillArrives', async () => {
+    // #980 P10: an unending line no longer grows the buffer without bound; the stream stays in step.
+    const client: VersionControlClient = stub(
+      'oversized',
+      `let first = true;
+      lines.on('line', (line) => {
+        const request = JSON.parse(line);
+        if (request.op === 'initialize') {
+          reply({ id: request.id, ok: true, result: { protocol: '1.0', capabilities: [], toolVersion: null } });
+        } else if (first) {
+          first = false;
+          const head = '{"id":' + request.id + ',"ok":true,"result":"';
+          process.stdout.write(head + 'x'.repeat(3000));
+          setTimeout(() => process.stdout.write('x'.repeat(3000) + '"}\\n'), 50);
+        } else {
+          reply({ id: request.id, ok: true, result: { branch: 'after', upstream: null, ahead: 0,
+            behind: 0, staged: [], unstaged: [], conflicted: [] } });
+        }
+      });`,
+      1024,
+    );
+    await client.start(null);
+
+    const refused: VersionControlResponse<'status'> = await client.request(
+      'status',
+      '/r',
+      {},
+      2_000,
+    );
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 150);
+    });
+    const next: VersionControlResponse<'status'> = await client.request('status', '/r', {}, 2_000);
+
+    expect(refused).toMatchObject({
+      ok: false,
+      error: 'oversized sent an answer too large to read.',
+    });
+    expect(next.ok && next.result.branch).toBe('after');
+    expect(client.running).toBe(true);
   });
 
   it('request_whenNotStarted_failsWithoutSpawning', async () => {

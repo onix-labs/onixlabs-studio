@@ -293,6 +293,17 @@ export class LockfileProvisioner {
     id: string,
   ): Promise<boolean> {
     const destination: string = path.join(directory, entry.path);
+    // The lockfile's paths are checked lexically when it is parsed, but a package unpacked earlier
+    // could have left a symlink where a later path passes through, and `mkdir` and `tar -C` would both
+    // follow it. Where the directory really is, not where its name says, decides whether it is inside
+    // — checked before `mkdir`, so not even an empty directory is created through such a link.
+    if (!(await isInside(directory, destination))) {
+      logger.error(
+        this.logName,
+        `Refusing to install ${id}: ${entry.path} resolves outside the install directory`,
+      );
+      return false;
+    }
     await fs.mkdir(destination, { recursive: true });
     const tarball: string = path.join(destination, '.package.tgz');
     await downloadTo(entry.url, tarball);
@@ -309,4 +320,33 @@ export class LockfileProvisioner {
     await fs.rm(tarball, { force: true });
     return true;
   }
+}
+
+/**
+ * Determines whether a directory, with every symlink on its way resolved, is the install root or lies
+ * beneath it. A directory not yet created is judged by its nearest existing ancestor — the part of
+ * the path a link could already redirect — with the rest of the path appended unresolved.
+ * @param root The install root; it must exist.
+ * @param candidate The directory to check, which need not exist yet.
+ * @returns Returns true when the candidate's real path is inside the root's real path.
+ */
+async function isInside(root: string, candidate: string): Promise<boolean> {
+  const realRoot: string = await fs.realpath(root);
+  let existing: string = candidate;
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      existing = await fs.realpath(existing);
+      break;
+    } catch {
+      const parent: string = path.dirname(existing);
+      if (parent === existing) {
+        return false;
+      }
+      missing.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+  const relative: string = path.relative(realRoot, path.join(existing, ...missing));
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }

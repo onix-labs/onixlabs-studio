@@ -1,4 +1,4 @@
-<div class="table-scroll">
+<div #scroller class="table-scroll" [class.table-scroll--virtual]="virtual()">
   <table
     class="table"
     [class.table--comfortable]="rowSize() === 'comfortable'"
@@ -46,7 +46,14 @@
       </tr>
     </thead>
     <tbody>
-      @for (row of visibleRows(); track row.id) {
+      <!-- A virtual table renders only the window's rows; these stand in for the rest, so the scroll
+           range and position are those of the whole list. -->
+      @if (rowWindow().before > 0) {
+        <tr class="table-spacer" aria-hidden="true">
+          <td [attr.colspan]="columns().length" [style.height.px]="rowWindow().before"></td>
+        </tr>
+      }
+      @for (row of renderedRows(); track row.id) {
         @if (row.group) {
           <tr
             class="table-group"
@@ -90,12 +97,16 @@
             />
           </tr>
         }
-      } @empty {
-        @if (emptyText().length > 0) {
-          <tr>
-            <td class="table-empty" [attr.colspan]="columns().length">{{ emptyText() }}</td>
-          </tr>
-        }
+      }
+      @if (rowWindow().after > 0) {
+        <tr class="table-spacer" aria-hidden="true">
+          <td [attr.colspan]="columns().length" [style.height.px]="rowWindow().after"></td>
+        </tr>
+      }
+      @if (visibleRows().length === 0 && emptyText().length > 0) {
+        <tr>
+          <td class="table-empty" [attr.colspan]="columns().length">{{ emptyText() }}</td>
+        </tr>
       }
     </tbody>
   </table>

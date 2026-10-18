@@ -188,6 +188,34 @@ describe('VersionControlProvider', () => {
     expect(files[0].target).toEqual({ kind: 'commit', hash: 'c1', parent: 'p1' });
   });
 
+  it('getFileDiff_saysWhyASideWasRefused_andLeavesOtherFailuresEmpty', async () => {
+    // #980: a file too large to show reads as the plugin's reason, not as an empty side.
+    const answering: (refused: boolean) => SourceControlClient = (
+      refused: boolean,
+    ): SourceControlClient => ({
+      ...client({}),
+      request: <Op extends VersionControlOp>(): Promise<VersionControlResponse<Op>> =>
+        Promise.resolve({
+          id: 0,
+          ok: false,
+          error: 'a.ts is too large to show (over 8 MB)',
+          ...(refused ? { code: 'refused' as const } : {}),
+        }),
+    });
+
+    const refused: FileDiff = await new VersionControlProvider(
+      '/repo',
+      answering(true),
+    ).getFileDiff(workingChange({}));
+    const failed: FileDiff = await new VersionControlProvider(
+      '/repo',
+      answering(false),
+    ).getFileDiff(workingChange({}));
+
+    expect(refused.modified).toBe('a.ts is too large to show (over 8 MB)');
+    expect(failed).toEqual({ original: '', modified: '' });
+  });
+
   it('getFileDiff_readsEachSideFromTheRightVersion', async () => {
     const provider: VersionControlProvider = new VersionControlProvider(
       '/repo',

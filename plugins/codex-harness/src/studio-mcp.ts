@@ -14,7 +14,7 @@
 // 🔒 Loopback only, behind a random bearer token the CLI is given through its environment, so another
 // process on the machine cannot drive Studio's tools through this port.
 
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { StudioTool } from './protocol';
@@ -105,6 +105,24 @@ export async function startStudioMcpServer(bridge: StudioToolBridge): Promise<St
 }
 
 /**
+ * Determines whether an `Authorization` header carries the server's bearer token. The comparison is
+ * constant-time, so the time a refusal takes says nothing about how much of a guess was right; the
+ * length is checked first because `timingSafeEqual` throws on buffers of different lengths, and the
+ * length of a fixed-size random token is no secret.
+ * @param header The request's `Authorization` header, if any.
+ * @param token The bearer token a client must present.
+ * @returns Returns true when the header presents exactly that token.
+ */
+export function presentsToken(header: string | undefined, token: string): boolean {
+  if (header === undefined) {
+    return false;
+  }
+  const presented: Buffer = Buffer.from(header, 'utf8');
+  const expected: Buffer = Buffer.from(`Bearer ${token}`, 'utf8');
+  return presented.length === expected.length && timingSafeEqual(presented, expected);
+}
+
+/**
  * Answers one HTTP request.
  * @param request The request.
  * @param response The response.
@@ -117,7 +135,7 @@ async function handle(
   token: string,
   bridge: StudioToolBridge,
 ): Promise<void> {
-  if (request.headers.authorization !== `Bearer ${token}`) {
+  if (!presentsToken(request.headers.authorization, token)) {
     reply(response, 401, { error: 'unauthorized' });
     return;
   }

@@ -153,14 +153,30 @@ export class Log {
    * @returns Returns a function that unsubscribes the listener; a no-op outside Electron.
    */
   public onRecord(listener: (record: LogRecord) => void): () => void {
+    return this.onRecords((records: readonly LogRecord[]): void => {
+      for (const record of records) {
+        listener(record);
+      }
+    });
+  }
+
+  /**
+   * Subscribes to newly-recorded log records pushed from the main process, a flush window's batch at
+   * a time, so a consumer holding them in a signal can append the whole batch in one write rather than
+   * one per record. Opens and closes the main-process stream as {@link onRecord} does.
+   * @param listener The listener invoked with each batch, oldest first.
+   * @returns Returns a function that unsubscribes the listener; a no-op outside Electron.
+   */
+  public onRecords(listener: (records: readonly LogRecord[]) => void): () => void {
     if (this.bridge === undefined) {
       return (): void => {
         // No bridge outside Electron; there is nothing to unsubscribe.
       };
     }
     const detach: () => void = this.bridge.on(LogChannel.Record, (...args: unknown[]): void => {
-      for (const record of args[0] as readonly LogRecord[]) {
-        listener(record);
+      const records: readonly LogRecord[] = args[0] as readonly LogRecord[];
+      if (records.length > 0) {
+        listener(records);
       }
     });
     this.recordListeners += 1;

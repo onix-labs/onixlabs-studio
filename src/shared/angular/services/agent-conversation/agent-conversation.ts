@@ -58,6 +58,84 @@ const SAVE_DEBOUNCE_MS: number = 700;
 const SAVE_MAX_WAIT_MS: number = 5000;
 
 /**
+ * The serialised size (characters) up to which a conversation keeps the base save timing. Past it, the
+ * debounce and the longest wait grow in proportion to the size: every save hands the WHOLE
+ * conversation — inline base64 images included — across IPC and through `JSON.stringify`, so a
+ * conversation four times this size saving as often would cost four times as much each time.
+ */
+const SAVE_BACKOFF_CHARS: number = 256 * 1024;
+
+/**
+ * The longest debounce (ms) however large the conversation grows.
+ */
+const SAVE_DEBOUNCE_CEILING_MS: number = 3000;
+
+/**
+ * The longest wait (ms) however large the conversation grows — the most a crash mid-run can lose.
+ */
+const SAVE_MAX_WAIT_CEILING_MS: number = 30_000;
+
+/**
+ * How long a conversation's saves wait, scaled to its size by {@link saveTimingFor}.
+ */
+interface SaveTiming {
+  /**
+   * Gets how long (ms) the transcript must stay unchanged before it is saved.
+   */
+  readonly debounceMs: number;
+
+  /**
+   * Gets the longest (ms) a change waits to be saved while the transcript keeps changing.
+   */
+  readonly maxWaitMs: number;
+}
+
+/**
+ * Holds each transcript item's serialised size, measured once per item: items are immutable, so a
+ * streaming run re-measures only the item still being written, never the history behind it.
+ */
+const itemChars: WeakMap<AgentItem, number> = new WeakMap<AgentItem, number>();
+
+/**
+ * Measures a transcript item's serialised size. Image payloads are counted by length rather than run
+ * through `JSON.stringify` — base64 never needs escaping, so its length is its serialised length.
+ * @param item The transcript item.
+ * @returns Returns the approximate serialised size in characters.
+ */
+function itemCharsOf(item: AgentItem): number {
+  const known: number | undefined = itemChars.get(item);
+  if (known !== undefined) {
+    return known;
+  }
+  let chars: number = JSON.stringify(
+    item.images === undefined ? item : { ...item, images: undefined },
+  ).length;
+  for (const image of item.images ?? []) {
+    chars += image.data.length + image.mediaType.length + (image.name?.length ?? 0);
+  }
+  itemChars.set(item, chars);
+  return chars;
+}
+
+/**
+ * Works out how long a conversation's saves wait: the base timing up to {@link SAVE_BACKOFF_CHARS},
+ * then proportionally longer, up to the ceilings.
+ * @param items The transcript items.
+ * @returns Returns the save timing.
+ */
+function saveTimingFor(items: readonly AgentItem[]): SaveTiming {
+  let chars: number = 0;
+  for (const item of items) {
+    chars += itemCharsOf(item);
+  }
+  const scale: number = Math.max(1, chars / SAVE_BACKOFF_CHARS);
+  return {
+    debounceMs: Math.min(SAVE_DEBOUNCE_CEILING_MS, Math.round(SAVE_DEBOUNCE_MS * scale)),
+    maxWaitMs: Math.min(SAVE_MAX_WAIT_CEILING_MS, Math.round(SAVE_MAX_WAIT_MS * scale)),
+  };
+}
+
+/**
  * The maximum length of a derived conversation title before it is truncated.
  */
 const TITLE_MAX_LENGTH: number = 60;
@@ -331,6 +409,12 @@ export class AgentConversation implements AgentSessionHandle {
    * Holds when (epoch ms) the oldest change not yet saved was made, or null when there is none.
    */
   private unsavedSince: number | null = null;
+
+  /**
+   * Holds the timing of the save waiting to be made, worked out from the conversation's size when the
+   * oldest unsaved change was made.
+   */
+  private saveTiming: SaveTiming = { debounceMs: SAVE_DEBOUNCE_MS, maxWaitMs: SAVE_MAX_WAIT_MS };
 
   /**
    * Initializes a new instance of the {@link AgentConversation} class, wiring the autosave of the
@@ -748,14 +832,21 @@ export class AgentConversation implements AgentSessionHandle {
 
   /**
    * Schedules a debounced save of the current transcript, coalescing a streaming run's rapid updates
-   * into a single write. The save waits for a pause, but never longer than {@link SAVE_MAX_WAIT_MS}
-   * after the oldest unsaved change.
+   * into a single write. The save waits for a pause, but never longer than the longest wait after the
+   * oldest unsaved change — {@link SAVE_DEBOUNCE_MS} and {@link SAVE_MAX_WAIT_MS} for an ordinary
+   * conversation, longer for a large one (see {@link saveTimingFor}). The timing is worked out once
+   * per batch of changes, when its first change arrives, so a streaming run does not re-measure the
+   * transcript on every delta.
    */
   private scheduleSave(): void {
+    if (this.unsavedSince === null) {
+      this.saveTiming = saveTimingFor(this.agent.items());
+    }
     const since: number = this.unsavedSince ?? Date.now();
     this.cancelScheduledSave();
     this.unsavedSince = since;
-    const wait: number = Math.min(SAVE_DEBOUNCE_MS, since + SAVE_MAX_WAIT_MS - Date.now());
+    const timing: SaveTiming = this.saveTiming;
+    const wait: number = Math.min(timing.debounceMs, since + timing.maxWaitMs - Date.now());
     this.saveTimer = setTimeout((): void => void this.savePending(), Math.max(0, wait));
   }
 

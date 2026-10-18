@@ -74,18 +74,23 @@
         [columns]="columns"
         [rows]="rows()"
         [selectedIds]="selected()"
+        [virtual]="true"
         emptyText="No log records match the current filters."
         (rowClick)="toggleRow($event)"
       >
+        <!-- Every string is built once per record (rowFor), so a pass only reads them (#980 P5). -->
         <ng-template appTableRow let-row>
+          @let entry = entryOf(row);
           <td>
-            <app-chip class="system-monitor__badge" [tone]="severityTone(rec(row).severity)">
-              {{ severityLabel(rec(row).severity) }}
+            <app-chip class="system-monitor__badge" [tone]="entry.tone">
+              {{ entry.severityLabel }}
             </app-chip>
           </td>
-          <td class="system-monitor__where" [title]="origin(rec(row))">{{ rec(row).source }}</td>
-          <td class="system-monitor__message" [title]="rec(row).message">{{ rec(row).message }}</td>
-          <td class="system-monitor__time">{{ formatTime(rec(row).timestamp) }}</td>
+          <td class="system-monitor__where" [title]="entry.origin">{{ entry.record.source }}</td>
+          <td class="system-monitor__message" [title]="entry.record.message">
+            {{ entry.record.message }}
+          </td>
+          <td class="system-monitor__time">{{ entry.time }}</td>
         </ng-template>
       </app-table>
     </section>

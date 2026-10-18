@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import { marked, Token, Tokens, TokenizerAndRendererExtension } from 'marked';
+import { marked, Token, Tokens, TokenizerAndRendererExtension, TokensList } from 'marked';
 
 /**
  * Renders markdown into an ordered list of blocks: prose (as a sanitised HTML string) and fenced code
@@ -254,12 +254,182 @@ function renderRun(group: readonly Token[]): string {
 }
 
 /**
- * Empties the render cache. Rendering is a pure function of its input, so this only ever costs time —
- * it exists to isolate tests and to release memory on demand.
+ * A remembered lex: the text and the top-level tokens a full lex of it produced.
+ */
+interface LexEntry {
+  /**
+   * Gets the lexed text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets the top-level tokens, identical to `marked.lexer(text)`.
+   */
+  readonly tokens: readonly Token[];
+
+  /**
+   * Gets whether the text defines link references, which a tail re-lex cannot account for.
+   */
+  readonly linked: boolean;
+}
+
+/**
+ * The most remembered lexes. One per reply being streamed (or mirrored) at once is all that is needed;
+ * a few spare cover Mission Control showing several live conversations side by side.
+ */
+const LEX_CACHE_ENTRIES: number = 8;
+
+/**
+ * The fewest top-level tokens a remembered lex needs before re-lexing its tail is worth it. Below this
+ * the whole text is barely longer than the tail would be.
+ */
+const MIN_INCREMENTAL_TOKENS: number = 3;
+
+/**
+ * Matches the inline HTML tags that leave the lexer in a state carried into later blocks (`<a …>`
+ * suppresses autolinks; `<pre>`/`<code>`/`<kbd>`/`<script>` stop text escaping). A fresh lexer for the
+ * tail would start without that state, so a stable prefix holding one of these is lexed whole.
+ */
+const STATEFUL_INLINE_TAG: RegExp = /<(?:a |(?:pre|code|kbd|script)[\s>])/i;
+
+/**
+ * Holds recent lexes, most recently used last, so a streaming reply can re-lex only its growing tail.
+ */
+const lexCache: LexEntry[] = [];
+
+/**
+ * Lexes markdown text into its top-level tokens — exactly what `marked.lexer(text)` returns — without
+ * re-lexing the whole of a streaming reply on every flush.
+ *
+ * A streaming reply arrives as a series of texts, each extending the one before. Every top-level token
+ * of the previous text except the last two is settled: block boundaries are decided line by line, so
+ * text appended past two further tokens cannot reach back across them. Only the last token is still
+ * growing, and it can change meaning entirely as lines arrive (a paragraph becoming a setext heading
+ * on `===`, a pipe row becoming a table once its delimiter row lands, a list turning loose), so the tail
+ * is re-lexed from the start of the second-to-last token instead. The re-lex is accepted only when its
+ * first token reproduces that second-to-last token exactly — same type, same source — which proves the
+ * boundary before it did not move; anything else falls back to a full lex.
+ *
+ * Two things reach backwards across blocks in marked and also force a full lex: link reference
+ * definitions (a `[label]: url` anywhere resolves `[label]` everywhere, and duplicates are dropped from
+ * the token list) and the inline tags matched by {@link STATEFUL_INLINE_TAG}. Carriage returns, which
+ * marked normalises before lexing (so token sources no longer index the text), do too.
+ * @param text The markdown text.
+ * @returns Returns the top-level tokens.
+ */
+export function lexMarkdown(text: string): Token[] {
+  ensureExtensions();
+  const incremental: Token[] | undefined = lexIncrementally(text);
+  if (incremental !== undefined) {
+    rememberLex({ text, tokens: incremental, linked: false });
+    return incremental;
+  }
+  const lexed: TokensList = marked.lexer(text);
+  const tokens: Token[] = [...lexed];
+  rememberLex({ text, tokens, linked: definesLinks(lexed) });
+  return tokens;
+}
+
+/**
+ * Reports whether a lex collected any link reference definitions.
+ * @param lexed The lexer's output.
+ * @returns Returns `true` when at least one definition was collected.
+ */
+function definesLinks(lexed: TokensList): boolean {
+  return Object.keys(lexed.links).length > 0;
+}
+
+/**
+ * Re-lexes only the tail of a text that extends a remembered lex.
+ * @param text The markdown text.
+ * @returns Returns the tokens, or `undefined` when a full lex is needed.
+ */
+function lexIncrementally(text: string): Token[] | undefined {
+  if (text.includes('\r')) {
+    return undefined;
+  }
+  const previous: LexEntry | undefined = findExtendedLex(text);
+  if (previous === undefined) {
+    return undefined;
+  }
+  if (previous.text.length === text.length) {
+    return [...previous.tokens];
+  }
+  if (previous.linked) {
+    return undefined;
+  }
+  const count: number = previous.tokens.length;
+  if (count < MIN_INCREMENTAL_TOKENS) {
+    return undefined;
+  }
+  // Where the second-to-last token starts, found by summing the sources before it. The sources must
+  // add up to the whole text, or a token was merged or dropped and offsets cannot be trusted (marked
+  // splices a paragraph clipped at a non-math `$$` back together with a newline the source lacks, so
+  // a reply holding one lexes whole from then on — correct, merely no faster than before).
+  const anchor: Token = previous.tokens[count - 2];
+  let start: number = 0;
+  for (let index: number = 0; index < count - 2; index++) {
+    start += previous.tokens[index].raw.length;
+  }
+  if (start + anchor.raw.length + previous.tokens[count - 1].raw.length !== previous.text.length) {
+    return undefined;
+  }
+  if (STATEFUL_INLINE_TAG.test(text.slice(0, start))) {
+    return undefined;
+  }
+  const tail: TokensList = marked.lexer(text.slice(start));
+  if (definesLinks(tail)) {
+    return undefined;
+  }
+  if (tail.length === 0 || tail[0].type !== anchor.type || tail[0].raw !== anchor.raw) {
+    return undefined;
+  }
+  return [...previous.tokens.slice(0, count - 2), ...tail];
+}
+
+/**
+ * Finds the remembered lex whose text is the longest prefix of the given text.
+ * @param text The markdown text.
+ * @returns Returns the remembered lex, or `undefined` when none is a prefix.
+ */
+function findExtendedLex(text: string): LexEntry | undefined {
+  let best: LexEntry | undefined;
+  for (const entry of lexCache) {
+    if (
+      (best === undefined || entry.text.length > best.text.length) &&
+      text.startsWith(entry.text)
+    ) {
+      best = entry;
+    }
+  }
+  return best;
+}
+
+/**
+ * Remembers a lex, replacing any entry it extends (the same reply, one flush on) and evicting the
+ * least-recently-used entries beyond the budget.
+ * @param entry The lex to remember.
+ */
+function rememberLex(entry: LexEntry): void {
+  for (let index: number = lexCache.length - 1; index >= 0; index--) {
+    if (entry.text.startsWith(lexCache[index].text)) {
+      lexCache.splice(index, 1);
+    }
+  }
+  lexCache.push(entry);
+  while (lexCache.length > LEX_CACHE_ENTRIES) {
+    lexCache.shift();
+  }
+}
+
+/**
+ * Empties the render and lex caches. Rendering is a pure function of its input, so this only ever costs
+ * time — it exists to isolate tests and to release memory on demand.
  */
 export function resetMarkdownCache(): void {
   blockCache.clear();
   blockCacheChars = 0;
+  lexCache.length = 0;
 }
 
 /**
@@ -281,8 +451,7 @@ export function renderMarkdownBlocks(text: string): MarkdownBlock[] {
   if (text.length === 0) {
     return [];
   }
-  ensureExtensions();
-  const tokens: Token[] = marked.lexer(text);
+  const tokens: Token[] = lexMarkdown(text);
   const blocks: MarkdownBlock[] = [];
   let group: Token[] = [];
   const flush: () => void = (): void => {

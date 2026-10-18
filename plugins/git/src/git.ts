@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   VERSION_CONTROL_CAPABILITIES,
@@ -56,6 +56,13 @@ const GIT_INTEGRATION_TIMEOUT_MS: number = 120_000;
  * Holds the maximum size, in bytes, of a git invocation's captured output (large logs and blobs).
  */
 const GIT_MAX_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * Holds the largest file, in bytes, `readFile` will return. The content crosses two process
+ * boundaries as one JSON line and lands in an editor model, so a huge blob is refused up front with
+ * an error the UI can show rather than buffered whole and frozen on.
+ */
+export const MAX_READ_FILE_BYTES: number = 8 * 1024 * 1024;
 
 /**
  * Holds the largest commit count a log will read, clamping an untrusted limit.
@@ -588,8 +595,12 @@ export class GitVersionControl {
       return fail('Invalid file version');
     }
     if (version.kind === 'working') {
+      const absolute: string = path.resolve(root, relative);
       try {
-        return ok({ content: await readFile(path.resolve(root, relative), 'utf8') });
+        if ((await stat(absolute)).size > MAX_READ_FILE_BYTES) {
+          return fail(tooLargeToRead(relative), 'refused');
+        }
+        return ok({ content: await readFile(absolute, 'utf8') });
       } catch {
         return ok({ content: null });
       }
@@ -597,6 +608,15 @@ export class GitVersionControl {
     const spec: string | null = revisionSpec(version, relative);
     if (spec === null) {
       return fail('Invalid file version');
+    }
+    // The blob's size is asked first so an oversized one is never buffered; a blob that does not
+    // exist in that version fails here too, and reads as an empty side exactly as `show` would.
+    const size: GitRun = await this.git(root, ['cat-file', '-s', spec]);
+    if (!size.success) {
+      return ok({ content: null });
+    }
+    if (Number(size.stdout.trim()) > MAX_READ_FILE_BYTES) {
+      return fail(tooLargeToRead(relative), 'refused');
     }
     const run: GitRun = await this.git(root, ['show', spec]);
     return ok({ content: run.success ? run.stdout : null });
@@ -791,7 +811,8 @@ export class GitVersionControl {
       !isSafeOperand(remote) ||
       !isSafeOperand(sourceRef) ||
       !isSafeOperand(localBranch) ||
-      [remote, sourceRef, localBranch].some((part: string): boolean => part.includes(':'))
+      [remote, sourceRef, localBranch].some((part: string): boolean => part.includes(':')) ||
+      sourceRef.startsWith('+')
     ) {
       return Promise.resolve(fail('Invalid remote, ref, or branch name'));
     }
@@ -1175,6 +1196,15 @@ export class GitVersionControl {
       );
     });
   }
+}
+
+/**
+ * Describes a file refused for being larger than {@link MAX_READ_FILE_BYTES}.
+ * @param relative The repository-relative path.
+ * @returns Returns the error message.
+ */
+function tooLargeToRead(relative: string): string {
+  return `${relative} is too large to show (over ${MAX_READ_FILE_BYTES / (1024 * 1024)} MB)`;
 }
 
 /**

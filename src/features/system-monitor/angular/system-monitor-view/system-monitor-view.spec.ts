@@ -114,9 +114,14 @@ class FakeLog {
     return Promise.resolve(this.sessionList);
   }
 
-  public onRecord(listener: (record: LogRecord) => void): () => void {
-    this.listener = listener;
+  public batchListener: ((records: readonly LogRecord[]) => void) | null = null;
+
+  public onRecords(listener: (records: readonly LogRecord[]) => void): () => void {
+    this.batchListener = listener;
+    // Most tests push one record at a time; a record is a batch of one.
+    this.listener = (record: LogRecord): void => listener([record]);
     return (): void => {
+      this.batchListener = null;
       this.listener = null;
     };
   }
@@ -288,6 +293,46 @@ describe('SystemMonitorView', () => {
     await create([record({ id: 1 }), record({ id: 2 })]);
     fake.listener?.(record({ id: 2, sessionId: 'current', message: 'duplicate broadcast' }));
     expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
+  });
+
+  it('onRecords_appendsABatchInOneWrite_skippingDuplicatesAndOtherSessions', async () => {
+    // #980 P5: a write per record copied the whole buffer and re-ran the filter once per record.
+    await create([record({ id: 1 }), record({ id: 2 })]);
+    const writes: number[] = [];
+    const records: WritableSignal<readonly LogRecord[]> = view.records;
+    const update: WritableSignal<readonly LogRecord[]>['update'] = records.update.bind(records);
+    records.update = (fn: (value: readonly LogRecord[]) => readonly LogRecord[]): void => {
+      writes.push(1);
+      update(fn);
+    };
+
+    fake.batchListener?.([
+      record({ id: 2, message: 'already loaded' }),
+      record({ id: 3 }),
+      record({ id: 4, sessionId: 'past' }),
+      record({ id: 5 }),
+    ]);
+
+    expect(writes).toHaveLength(1);
+    expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2, 3, 5]);
+  });
+
+  it('rows_formatEachRecordOnce_andReuseTheRowAcrossFilterChanges', async () => {
+    await create([
+      record({ id: 1, severity: 'error', origin: 'renderer', window: 'Main' }),
+      record({ id: 2, timestamp: 'not a time' }),
+    ]);
+    const first: TableRow = view.rows()[0];
+    expect(first.data).toMatchObject({
+      severityLabel: 'ERROR',
+      tone: 'danger',
+      origin: 'renderer · Main',
+      time: new Date('2026-08-10T10:00:00.000Z').toLocaleTimeString(),
+    });
+    expect((view.rows()[1].data as { time: string }).time).toBe('not a time');
+
+    view.text.set('hello');
+    expect(view.rows()[0]).toBe(first);
   });
 
   it('onRecord_ignoresRecordsFromAnotherSession', async () => {

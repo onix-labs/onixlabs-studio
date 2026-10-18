@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { startStudioMcpServer, type StudioMcpServer } from './studio-mcp';
+import { presentsToken, startStudioMcpServer, type StudioMcpServer } from './studio-mcp';
 import type { StudioTool } from './protocol';
 
 const TOOL: StudioTool = {
@@ -66,6 +66,26 @@ describe('the Studio tool server Codex is pointed at (#854)', () => {
 
     expect((await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, null)).status).toBe(401);
     expect((await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'wrong')).status).toBe(401);
+  });
+
+  it('refusesATokenOfTheWrongLength_orWithOneCharacterWrong', async () => {
+    const { token } = await start();
+    const flipped: string = `${token.slice(0, -1)}${token.endsWith('0') ? '1' : '0'}`;
+
+    expect((await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, flipped)).status).toBe(401);
+    expect((await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, `${token}0`)).status).toBe(
+      401,
+    );
+    expect((await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, token)).status).toBe(200);
+  });
+
+  it('presentsToken_comparesTheWholeHeader_withoutThrowingOnALengthMismatch', () => {
+    // #980 S15: the comparison is constant-time, and `timingSafeEqual` throws on unequal lengths.
+    expect(presentsToken('Bearer abc', 'abc')).toBe(true);
+    expect(presentsToken('Bearer abd', 'abc')).toBe(false);
+    expect(presentsToken('Bearer ab', 'abc')).toBe(false);
+    expect(presentsToken('abc', 'abc')).toBe(false);
+    expect(presentsToken(undefined, 'abc')).toBe(false);
   });
 
   it('initializes_echoingTheClientsProtocolVersion_andOfferingTools', async () => {
