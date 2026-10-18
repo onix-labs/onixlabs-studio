@@ -11,7 +11,9 @@
 //     handlers all call `getTurn()` on each invocation, so across a held-open session they follow the
 //     turn actually running: its posture, its policies, its request id.
 //
-// The one exception is the model, which is structural but changed live through `Query.setModel`.
+// The one exception is the model, which is structural but changed live through `Query.setModel`. The
+// system prompt is the one the session watches itself: when Studio's instructions change, it reopens
+// between turns, resuming the same conversation (#955).
 
 import { homedir } from 'node:os';
 import type {
@@ -708,7 +710,11 @@ export function buildOptions(
       ],
     },
     sandbox: sandboxFor(open),
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt },
+    // ⛔ `snapshot: false` (#955): by default the CLI records a conversation's system prompt on its
+    // first request and resends that record on every resume, ignoring a different `append`. Studio's
+    // instructions carry the user's prompt profiles and skills, which can change mid-conversation, and
+    // the session reopens to apply them — which only works if the prompt is rendered fresh.
+    systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt, snapshot: false },
     mcpServers: { studio },
     // Read-only project exploration is auto-allowed when there is something to read; everything else
     // reaches the gate. Studio's own tools are not listed here — the gate allows them by prefix,

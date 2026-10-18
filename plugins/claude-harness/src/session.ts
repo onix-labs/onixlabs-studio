@@ -22,6 +22,11 @@
 //     echoed. Settling on that result answers the user's message with nothing (#722). Studio's turns
 //     are stamped with a uuid the CLI echoes back on the frames that answer them, and the pump
 //     settles only on a result that is, or could be, the awaited turn's own.
+//
+// Held open is not frozen, though. Studio's instructions — the prompt profiles, the skills listing —
+// go into the system prompt, which only an open can set, so each turn compares them with the ones the
+// query opened with. A change reopens the query between turns, resuming the same session, and the new
+// instructions apply from that message on (#955).
 
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
@@ -272,9 +277,34 @@ export class Session {
   private readonly refreshTools: () => void;
 
   /**
-   * Holds the SDK options, built once from the opening turn.
+   * Holds the SDK options, built once from the opening turn and again at each reopen.
    */
   private options: Options | null = null;
+
+  /**
+   * Holds the instructions the live query opened with — exactly the text appended to its system
+   * prompt — or null before it has opened.
+   *
+   * The system prompt is structural, so this is what each turn compares Studio's current offer
+   * against: a profile edited, switched on or off, or a skill added changes the offer, and only a
+   * reopen can carry it into the conversation (#955).
+   */
+  private openedInstructions: string | null = null;
+
+  /**
+   * Counts the queries this session has opened, so a retired query's prompt stream and pump can tell
+   * they are no longer the live one and stand down without touching the session's state.
+   */
+  private generation: number = 0;
+
+  /**
+   * Holds the session id a reopen resumed, until the reopened query reports it back, or null when no
+   * reopen is awaiting confirmation.
+   *
+   * ⛔ A resume that comes back under any other id has started a fresh conversation, and the user's
+   * history did not come with it — which is refused, never adopted.
+   */
+  private resumedSessionId: string | null = null;
 
   /**
    * Holds the MCP server exposing Studio's tools.
@@ -340,6 +370,8 @@ export class Session {
    * @param turn The turn envelope.
    */
   public async run(turn: TurnRequest): Promise<void> {
+    // Read before the reset below, which would otherwise hide a turn the CLI is still running.
+    const busy: boolean = this.isBusy();
     this.current = turn;
     // A Studio run is awaiting this turn, so it owns the terminal status from here: whatever the
     // renderer had adopted before is no longer what its spinner is waiting on.
@@ -354,12 +386,12 @@ export class Session {
     }
     try {
       if (this.query === null) {
-        await this.open(turn);
+        await this.open(turn, await this.describeOffer());
         this.appliedModel = turn.model;
-      } else {
+      } else if (!(await this.reopenForInstructions(turn, busy))) {
         if (turn.model !== this.appliedModel) {
           // The query's model was bound at open, so a later turn applies the change live rather than
-          // forcing a reopen that would lose the conversation.
+          // forcing a reopen for it.
           this.appliedModel = turn.model;
           void this.query.setModel(turn.model);
         }
@@ -376,7 +408,7 @@ export class Session {
     }
     // Aim remote control at this turn's mode, like the live model change above: the bridge attaches
     // claude.ai-side, so a toggle lands on the held-open session rather than waiting for a reopen
-    // that never comes.
+    // that may never come.
     this.setRemoteControl(turn.remoteControl);
     const uuid: ReturnType<typeof randomUUID> = randomUUID();
     this.awaitedUuid = uuid;
@@ -469,9 +501,9 @@ export class Session {
   /**
    * Aims the session's remote-control exposure at a mode, in place.
    *
-   * Landing on the live session — even mid-turn — is the point: a held-open harness never reopens
-   * between turns, so a binding that only took effect at open would leave the toggle dangling
-   * forever. A repeat of the current aim is a no-op; anything unrecognised aims off.
+   * Landing on the live session — even mid-turn — is the point: a held-open harness reopens only when
+   * Studio's instructions change, so a binding that only took effect at open would leave the toggle
+   * dangling indefinitely. A repeat of the current aim is a no-op; anything unrecognised aims off.
    * @param mode The mode to aim at.
    */
   public setRemoteControl(mode: 'off' | 'mirror' | 'control'): void {
@@ -521,16 +553,98 @@ export class Session {
   }
 
   /**
-   * Opens the SDK query and starts the pump.
-   * @param turn The opening turn.
+   * Determines whether the CLI may be mid-turn, which is when a reopen would cut it off: a Studio
+   * turn still awaited, a turn the renderer adopted (a peer's, or a background task's report-back),
+   * a queued input, or a background task still running — which dies with the query's process.
+   * @returns Returns true when the session is not safely between turns.
    */
-  private async open(turn: TurnRequest): Promise<void> {
-    const { query } = await import('@anthropic-ai/claude-agent-sdk');
-    this.controller = new AbortController();
-    // Asked before the query opens because the system prompt is a structural option: the instructions
-    // describe the tools, and both are settled for the session at this point.
+  private isBusy(): boolean {
+    return (
+      this.settle !== null || this.adopted || this.pending.length > 0 || this.liveTasks.size > 0
+    );
+  }
+
+  /**
+   * Reopens the query when Studio's instructions have changed since it opened (#955), resuming the
+   * same session so the conversation carries on under the new system prompt.
+   *
+   * Called only at the start of a turn, before its message is queued, so a reopen always falls
+   * between turns. When the session is busy the change waits: the comparison runs again at the next
+   * turn, and the instructions land then.
+   * @param turn The turn about to run.
+   * @param busy Whether the session was mid-turn when this turn arrived.
+   * @returns Returns true when the query was reopened, so the live updates are already applied.
+   */
+  private async reopenForInstructions(turn: TurnRequest, busy: boolean): Promise<boolean> {
     const offer: { tools: readonly StudioTool[]; systemPrompt: string } =
       await this.describeOffer();
+    // Compared as text — exactly what is appended to the system prompt — so an offer rebuilt with the
+    // same words is no change at all.
+    if (offer.systemPrompt === this.openedInstructions) {
+      return false;
+    }
+    const sessionId: string | null = this.reportedSessionId;
+    if (busy || sessionId === null) {
+      // Nothing to resume yet, or a turn the CLI is still running: reopening now would lose one or
+      // the other, so the old instructions stand until a later turn can carry the new ones.
+      note(
+        `session: instructions changed but the session is ${busy ? 'busy' : 'not yet identified'}, ` +
+          'so they wait for a later turn',
+      );
+      return false;
+    }
+    note(`session: instructions changed, reopening session ${sessionId} to apply them`);
+    await this.retire();
+    // The reopen resumes the session as it stands now: never a branch point, never a fork, which
+    // would carry the conversation to a new id and leave this one behind.
+    this.resumedSessionId = sessionId;
+    try {
+      await this.open(
+        { ...turn, resumeSessionId: sessionId, resumeSessionAt: null, forkSession: false },
+        offer,
+      );
+    } catch (error: unknown) {
+      // ⛔ No fallback to a fresh session: the session is ended rather than continued without its
+      // history, and the turn reports why.
+      this.resumedSessionId = null;
+      this.inputClosed = true;
+      throw error;
+    }
+    this.appliedModel = turn.model;
+    return true;
+  }
+
+  /**
+   * Retires the live query ahead of a reopen: ends its input, stops its process, and waits for its
+   * pump to stand down. The session itself — its id, its tasks, its bridge — is left as it was.
+   */
+  private async retire(): Promise<void> {
+    const controller: AbortController | null = this.controller;
+    const pumpDone: Promise<void> | null = this.pumpDone;
+    this.generation += 1;
+    this.query = null;
+    this.controller = null;
+    this.pumpDone = null;
+    this.options = null;
+    this.openedInstructions = null;
+    // The retired prompt stream sees the generation move on and returns, ending the old input.
+    this.wake?.();
+    controller?.abort();
+    await pumpDone?.catch((): undefined => undefined);
+  }
+
+  /**
+   * Opens the SDK query and starts the pump.
+   * @param turn The turn the query opens for.
+   * @param offer Studio's tools and instructions for that turn, asked before the query opens because
+   * the system prompt is a structural option.
+   */
+  private async open(
+    turn: TurnRequest,
+    offer: { tools: readonly StudioTool[]; systemPrompt: string },
+  ): Promise<void> {
+    const { query } = await import('@anthropic-ai/claude-agent-sdk');
+    const controller: AbortController = new AbortController();
     const gate: GateContext = {
       getTurn: (): TurnRequest => this.current,
       getBridge: (): RemoteControlBridge | null => this.bridge,
@@ -575,23 +689,31 @@ export class Session {
       audit: (requestId: string, name: string, detail: string, source: string): void =>
         this.host.send({ type: 'audit', requestId, name, detail, source }),
     };
+    const apiKey: string | null = await this.credential(turn);
+    if (this.closed) {
+      // Closed while this was opening: starting a CLI process now would outlive the session.
+      throw new Error('The Claude session has ended.');
+    }
+    this.controller = controller;
     this.options = buildOptions(
       gate,
       turn,
       this.studio.config,
       offer.systemPrompt,
-      await this.credential(turn),
-      this.controller,
+      apiKey,
+      controller,
     );
-    this.query = query({ prompt: this.promptStream(), options: this.options });
-    this.pumpDone = this.pump();
+    this.openedInstructions = offer.systemPrompt;
+    const generation: number = this.generation;
+    this.query = query({ prompt: this.promptStream(generation), options: this.options });
+    this.pumpDone = this.pump(generation, this.query);
     // Discover the session's slash commands once it is open; refreshed later by the
     // `commands_changed` push the pump handles. Best-effort — a failure never disturbs the session.
     void this.discoverCommands();
   }
 
   /**
-   * Asks Studio for its tools and instructions for the opening turn.
+   * Asks Studio for its tools and instructions for the turn in flight.
    * @returns Returns the offer.
    */
   private async describeOffer(): Promise<{
@@ -660,11 +782,17 @@ export class Session {
 
   /**
    * The streaming-input generator: yields queued messages, then parks until the next one arrives or
-   * the input closes.
+   * the input closes or the query it feeds is retired.
+   * @param generation The query this stream feeds.
    * @returns Yields the session's user messages.
    */
-  private async *promptStream(): AsyncGenerator<SDKUserMessage> {
+  private async *promptStream(generation: number): AsyncGenerator<SDKUserMessage> {
     while (true) {
+      // Checked before taking a message, so a retired stream never swallows one meant for its
+      // successor.
+      if (generation !== this.generation) {
+        return;
+      }
       const next: SDKUserMessage | undefined = this.pending.shift();
       if (next !== undefined) {
         yield next;
@@ -673,10 +801,15 @@ export class Session {
       if (this.inputClosed) {
         return;
       }
+      let wake: (() => void) | null = null;
       await new Promise<void>((resolve: () => void): void => {
+        wake = resolve;
         this.wake = resolve;
       });
-      this.wake = null;
+      // Cleared only if still ours: a retired stream resuming late must not unhook its successor.
+      if (this.wake === wake) {
+        this.wake = null;
+      }
     }
   }
 
@@ -802,17 +935,38 @@ export class Session {
    *
    * ⛔ It does **not** break on `result`. A result settles the in-flight turn and leaves the stream
    * open for the next one; the stream ends only when the input closes.
+   *
+   * A pump whose query has been retired for a reopen stands down without touching the session: the
+   * turn it would settle, the input it would close and the status it would emit all belong to the
+   * query that replaced it.
+   * @param generation The query this pump drains.
+   * @param query The query.
    */
-  private async pump(): Promise<void> {
-    const query: Query | null = this.query;
-    if (query === null) {
-      return;
-    }
+  private async pump(generation: number, query: Query): Promise<void> {
+    const retired: () => boolean = (): boolean => generation !== this.generation;
     // Whether a Studio run was awaiting the in-flight turn when the stream ended; null until known.
     let unawaitedAtEnd: boolean | null = null;
     try {
       for await (const message of query) {
+        if (retired()) {
+          break;
+        }
         const sessionId: string | null = sessionIdOf(message);
+        if (sessionId !== null && this.resumedSessionId !== null) {
+          if (sessionId !== this.resumedSessionId) {
+            // ⛔ The resume came back as a different conversation. Adopting it would silently drop
+            // the user's history, so the session ends and the turn says why.
+            note(`session: resuming ${this.resumedSessionId} opened ${sessionId} instead`);
+            this.resumedSessionId = null;
+            this.inputClosed = true;
+            this.controller?.abort();
+            this.failTurn(
+              'The Claude session could not be resumed, so the conversation has ended.',
+            );
+            break;
+          }
+          this.resumedSessionId = null;
+        }
         if (sessionId !== null && sessionId !== this.reportedSessionId) {
           this.reportedSessionId = sessionId;
           this.sink.emit({ requestId: this.current.requestId, kind: 'session', sessionId });
@@ -863,6 +1017,10 @@ export class Session {
         }
       }
     } catch (error: unknown) {
+      if (retired()) {
+        // The abort that retired this query, surfacing as a stream error: not the session's to act on.
+        return;
+      }
       // Read BEFORE settling: the settle below clears it, and the finally block needs the answer.
       unawaitedAtEnd = this.settle === null;
       if (this.closed) {
@@ -873,20 +1031,22 @@ export class Session {
         this.failTurn(error instanceof Error ? error.message : String(error));
       }
     } finally {
-      // The stream has ended, so the session cannot take another turn. Marking the input closed stops
-      // a stray later turn parking forever on a pump that has exited.
-      this.inputClosed = true;
-      unawaitedAtEnd ??= this.settle === null;
-      this.settleTurn();
-      // The stream ended under a turn the renderer had adopted that no run is awaiting: no result
-      // will ever emit its terminal status now, so without this it spins "Working" forever.
-      //
-      // ⚠️ Both conditions are load-bearing. Unawaited alone is not enough: a transient session closes
-      // the moment its own awaited turn settles, so the stream always ends unawaited there — and this
-      // abort would reach the renderer ahead of the run's own completion, claiming a stop that never
-      // happened.
-      if (unawaitedAtEnd && this.adopted) {
-        emitStatus(this.sink, 'aborted');
+      if (!retired()) {
+        // The stream has ended, so the session cannot take another turn. Marking the input closed
+        // stops a stray later turn parking forever on a pump that has exited.
+        this.inputClosed = true;
+        unawaitedAtEnd ??= this.settle === null;
+        this.settleTurn();
+        // The stream ended under a turn the renderer had adopted that no run is awaiting: no result
+        // will ever emit its terminal status now, so without this it spins "Working" forever.
+        //
+        // ⚠️ Both conditions are load-bearing. Unawaited alone is not enough: a transient session
+        // closes the moment its own awaited turn settles, so the stream always ends unawaited there —
+        // and this abort would reach the renderer ahead of the run's own completion, claiming a stop
+        // that never happened.
+        if (unawaitedAtEnd && this.adopted) {
+          emitStatus(this.sink, 'aborted');
+        }
       }
     }
   }
