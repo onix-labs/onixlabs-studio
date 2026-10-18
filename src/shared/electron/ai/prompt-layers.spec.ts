@@ -42,6 +42,14 @@ describe('withSystemPromptExtra', () => {
     expect(result.endsWith('### Style\nExplicit types.')).toBe(true);
     expect(result).toContain('standing instructions');
   });
+
+  it('withSystemPromptExtra_saysTheInstructionsMayChange_soAnEditIsNotApologisedFor', () => {
+    // #955: told nothing, a model handed edited instructions apologises for earlier replies.
+    const result: string = withSystemPromptExtra('base', contextFor({ systemPromptExtra: 'x' }));
+
+    expect(result).toContain('may change them during a conversation');
+    expect(result).toContain('do not comment on whether earlier replies followed them');
+  });
 });
 
 describe('skillsAppendix', () => {

@@ -1,4 +1,4 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { DestroyRef, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import {
   AgentSurface,
   GLOBAL_SCOPE,
@@ -90,13 +90,21 @@ export class PromptProfiles {
 
   /**
    * Initializes the service, rewriting the store once when it still holds profiles in the old
-   * two-layer shape, so the migration happens one time rather than on every read.
+   * two-layer shape, so the migration happens one time rather than on every read. It then follows
+   * edits made in another window (#955): every window holds its own copy, and the AI Manager is
+   * rarely in the window whose agent is about to send the next message, which would otherwise carry
+   * the profiles as they were when its window opened.
    */
   public constructor() {
     if (this.migrated) {
       this.persist();
       this.log.info('PromptProfiles', 'Profiles migrated to a single instructions text');
     }
+    const unfollow: () => void = this.store.onExternalChange(STORE_KEY, (): void => {
+      this.profilesState.set(this.load());
+      this.log.debug('PromptProfiles', 'Applied profiles changed by another window');
+    });
+    inject(DestroyRef).onDestroy(unfollow);
   }
 
   /**
