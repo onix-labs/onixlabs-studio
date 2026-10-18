@@ -167,16 +167,27 @@ export async function extractArchive(
 export async function refuseEscapingSymlinks(destination: string): Promise<void> {
   const root: string = await fs.realpath(destination);
   const escaping: string[] = [];
-  const entries: string[] = await fs.readdir(root, { recursive: true });
-  for (const entry of entries) {
-    const link: string = path.join(root, entry);
-    if (!(await fs.lstat(link)).isSymbolicLink()) {
-      continue;
-    }
-    const target: string = path.resolve(path.dirname(link), await fs.readlink(link));
-    const relative: string = path.relative(root, target);
-    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      escaping.push(entry);
+  // ⛔ Walked by hand, never descending into a link: `readdir(…, { recursive: true })` follows a
+  // symlinked directory on Linux, so it would read wherever an escaping link points before the link
+  // was ever judged.
+  const pending: string[] = [''];
+  while (pending.length > 0) {
+    const directory: string = pending.pop() ?? '';
+    for (const dirent of await fs.readdir(path.join(root, directory), { withFileTypes: true })) {
+      const entry: string = path.join(directory, dirent.name);
+      if (dirent.isDirectory()) {
+        pending.push(entry);
+        continue;
+      }
+      if (!dirent.isSymbolicLink()) {
+        continue;
+      }
+      const link: string = path.join(root, entry);
+      const target: string = path.resolve(path.dirname(link), await fs.readlink(link));
+      const relative: string = path.relative(root, target);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        escaping.push(entry);
+      }
     }
   }
   if (escaping.length === 0) {
