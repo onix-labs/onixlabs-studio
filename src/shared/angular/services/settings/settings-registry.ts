@@ -16,6 +16,7 @@ import type {
   CursorSmoothCaretAnimation,
   DocumentDiffSwitch,
   FileExplorerExpandAll,
+  GoToStyle,
   ImageAlignment,
   ImageSizing,
   LanguageOverrides,
@@ -90,6 +91,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
+  readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
 
   readonly 'markdownEditor.fontFamily': string;
@@ -678,6 +680,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,
+      },
+      {
+        key: 'textEditor.goToStyle',
+        title: 'Go to style',
+        description:
+          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'quick-open', label: 'Quick-open box' },
+            { value: 'dialogs', label: 'Dialogs' },
+          ],
+        },
+        default: 'quick-open',
       },
       {
         key: 'textEditor.languageOverrides',

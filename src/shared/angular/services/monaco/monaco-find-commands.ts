@@ -51,6 +51,20 @@ export const STUDIO_FIND_REPLACE_COMMAND: string = 'studio.findReplace';
 export const FIND_PASSTHROUGH_CONTEXT_KEY: string = 'studioFindPassthrough';
 
 /**
+ * Finds the editor of a Monaco instance that holds the keyboard, which is the one a keybinding fired
+ * from: exactly one has focus when a chord runs.
+ * @param monaco The Monaco instance.
+ * @returns Returns the focused editor, or undefined when none has focus.
+ */
+export function focusedEditor(monaco: typeof MonacoApi): MonacoApi.editor.ICodeEditor | undefined {
+  const editors: readonly MonacoApi.editor.ICodeEditor[] = monaco.editor.getEditors();
+  return (
+    editors.find((editor: MonacoApi.editor.ICodeEditor): boolean => editor.hasTextFocus()) ??
+    editors.find((editor: MonacoApi.editor.ICodeEditor): boolean => editor.hasWidgetFocus())
+  );
+}
+
+/**
  * Removes Monaco's find-widget chords from a Monaco instance and binds Studio's find commands in their
  * place. Each instance (the main window's, and each child window's) has its own keybinding service, so
  * each is prepared once, as it loads.
@@ -66,11 +80,7 @@ export function installFindCommands(
   const run: (mode: FindMode) => () => void =
     (mode: FindMode): (() => void) =>
     (): void => {
-      // A keybinding fires from the editor that holds the keyboard, so exactly one has focus.
-      const editors: readonly MonacoApi.editor.ICodeEditor[] = monaco.editor.getEditors();
-      const focused: MonacoApi.editor.ICodeEditor | undefined =
-        editors.find((editor: MonacoApi.editor.ICodeEditor): boolean => editor.hasTextFocus()) ??
-        editors.find((editor: MonacoApi.editor.ICodeEditor): boolean => editor.hasWidgetFocus());
+      const focused: MonacoApi.editor.ICodeEditor | undefined = focusedEditor(monaco);
       if (focused !== undefined) {
         onFind(focused, mode);
       }

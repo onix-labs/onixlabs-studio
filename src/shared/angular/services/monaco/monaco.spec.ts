@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 
 import { buildHeuristicSemanticTokens, MonarchToken, Monaco } from './monaco';
 import {
@@ -10,6 +11,12 @@ import {
   STUDIO_FIND_COMMAND,
   STUDIO_FIND_REPLACE_COMMAND,
 } from './monaco-find-commands';
+import {
+  installGoToCommands,
+  MONACO_GOTO_COMMANDS,
+  STUDIO_GO_TO_LINE_COMMAND,
+  STUDIO_GO_TO_SYMBOL_COMMAND,
+} from './monaco-goto-commands';
 
 /**
  * A decoded semantic token, for readable assertions.
@@ -107,6 +114,16 @@ describe('Monaco', () => {
     expect([...names]).toEqual(
       [...names].sort((a: string, b: string): number => a.localeCompare(b)),
     );
+  });
+
+  it('getEditorOptions_turnsMonacosRightClickMenuOff', () => {
+    // #1009: Monaco's menu offers its own Go to Symbol and Command Palette, so it is off everywhere
+    // until Studio draws its own (#946 phase 3).
+    expect(monaco.getEditorOptions('typescript').contextmenu).toBe(false);
+  });
+
+  it('getDiffEditorOptions_turnsMonacosRightClickMenuOff', () => {
+    expect(monaco.getDiffEditorOptions().contextmenu).toBe(false);
   });
 
   it('getThemeName_whenOutline_returnsOutlineThemeForResolvedMode', () => {
@@ -347,5 +364,134 @@ describe('installFindCommands', () => {
     installed.commands.get(STUDIO_FIND_COMMAND)?.();
 
     expect(installed.found).toEqual([]);
+  });
+});
+
+describe('installGoToCommands', () => {
+  /**
+   * What a fake Monaco instance was asked to do.
+   */
+  interface Installed {
+    readonly rules: MonacoApi.editor.IKeybindingRule[];
+    readonly commands: Map<string, () => void>;
+    readonly opened: { editor: MonacoApi.editor.ICodeEditor; mode: GoToMode }[];
+  }
+
+  /**
+   * The key codes the fake instance names, as Monaco numbers them.
+   */
+  const KEYS: { CtrlCmd: number; Shift: number; Alt: number; WinCtrl: number } = {
+    CtrlCmd: 2048,
+    Shift: 1024,
+    Alt: 512,
+    WinCtrl: 256,
+  };
+
+  /**
+   * Installs the go-to commands into a fake Monaco instance holding the given editors.
+   * @param isMac Whether to install as macOS.
+   * @param editors The editors the instance holds.
+   * @returns Returns what the instance was asked to do.
+   */
+  function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[]): Installed {
+    const installed: Installed = { rules: [], commands: new Map(), opened: [] };
+    const fake: typeof MonacoApi = {
+      KeyMod: KEYS,
+      KeyCode: { KeyG: 37, KeyO: 45 },
+      editor: {
+        getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
+        registerCommand: (id: string, handler: () => void): void =>
+          void installed.commands.set(id, handler),
+        addKeybindingRules: (rules: MonacoApi.editor.IKeybindingRule[]): void =>
+          void installed.rules.push(...rules),
+      },
+    } as unknown as typeof MonacoApi;
+    installGoToCommands(fake, isMac, (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode) =>
+      installed.opened.push({ editor, mode }),
+    );
+    return installed;
+  }
+
+  /**
+   * Builds a fake editor with the given focus.
+   * @param textFocus Whether its text holds the keyboard.
+   * @returns Returns the editor.
+   */
+  function editorWith(textFocus: boolean): MonacoApi.editor.ICodeEditor {
+    return {
+      hasTextFocus: (): boolean => textFocus,
+      hasWidgetFocus: (): boolean => textFocus,
+    } as unknown as MonacoApi.editor.ICodeEditor;
+  }
+
+  const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
+
+  it('removesEveryChordOfMonacosQuickOutlineGoToLineAndGoToOffset_onEveryPlatform', () => {
+    for (const isMac of [true, false]) {
+      const installed: Installed = install(isMac, []);
+
+      const removals: MonacoApi.editor.IKeybindingRule[] = installed.rules.filter(
+        (rule: MonacoApi.editor.IKeybindingRule): boolean => rule.command?.startsWith('-') === true,
+      );
+      expect(removals).toEqual([
+        { keybinding: 0, command: '-editor.action.quickOutline' },
+        { keybinding: 0, command: '-editor.action.gotoLine' },
+        { keybinding: 0, command: '-editor.action.gotoOffset' },
+      ]);
+      expect(MONACO_GOTO_COMMANDS).toHaveLength(3);
+    }
+  });
+
+  it('bindsGoToSymbolToCmdShiftO_andGoToLineToControlG_onMac', () => {
+    const installed: Installed = install(true, []);
+
+    expect(installed.rules).toContainEqual({
+      keybinding: KEYS.CtrlCmd | KEYS.Shift | 45,
+      command: STUDIO_GO_TO_SYMBOL_COMMAND,
+      when,
+    });
+    // ⌃G is the Control key on macOS, which Monaco names WinCtrl — not ⌘G.
+    expect(installed.rules).toContainEqual({
+      keybinding: KEYS.WinCtrl | 37,
+      command: STUDIO_GO_TO_LINE_COMMAND,
+      when,
+    });
+  });
+
+  it('bindsGoToSymbolToCtrlShiftO_andGoToLineToCtrlG_onWindowsAndLinux', () => {
+    const installed: Installed = install(false, []);
+
+    expect(installed.rules).toContainEqual({
+      keybinding: KEYS.CtrlCmd | KEYS.Shift | 45,
+      command: STUDIO_GO_TO_SYMBOL_COMMAND,
+      when,
+    });
+    expect(installed.rules).toContainEqual({
+      keybinding: KEYS.CtrlCmd | 37,
+      command: STUDIO_GO_TO_LINE_COMMAND,
+      when,
+    });
+  });
+
+  it('theCommands_handTheFocusedEditorOn_withTheirMode', () => {
+    const idle: MonacoApi.editor.ICodeEditor = editorWith(false);
+    const focused: MonacoApi.editor.ICodeEditor = editorWith(true);
+    const installed: Installed = install(true, [idle, focused]);
+
+    installed.commands.get(STUDIO_GO_TO_SYMBOL_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_LINE_COMMAND)?.();
+
+    expect(installed.opened).toEqual([
+      { editor: focused, mode: 'symbol' },
+      { editor: focused, mode: 'line' },
+    ]);
+  });
+
+  it('theCommands_doNothing_whenNoEditorHasFocus', () => {
+    const installed: Installed = install(false, [editorWith(false)]);
+
+    installed.commands.get(STUDIO_GO_TO_LINE_COMMAND)?.();
+
+    expect(installed.opened).toEqual([]);
   });
 });

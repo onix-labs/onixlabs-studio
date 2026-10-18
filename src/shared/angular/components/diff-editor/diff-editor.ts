@@ -5,6 +5,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   OnDestroy,
@@ -17,6 +18,7 @@ import { Settings, TextEditorSettings } from '@shared/angular/services/settings/
 import { Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -89,6 +91,17 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly findRouter: FindRouter = inject(FindRouter);
 
   /**
+   * Holds the go-to router both sides are attached to, so ⌘⇧O / ⌃G open Go to in this pane's window
+   * (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds this pane's injector, which resolves the window it is drawn in.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
    * Gets the absolute path of the compared file, which a find from either side searches — the
    * modified side being the file as it stands — or null when it is unknown.
    */
@@ -151,7 +164,8 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly subscriptions: MonacoApi.IDisposable[] = [];
 
   /**
-   * Holds the functions that detach both sides from the find router, called with the editor's disposal.
+   * Holds the functions that detach both sides from the find and go-to routers, called with the
+   * editor's disposal.
    */
   private readonly findDetachers: (() => void)[] = [];
 
@@ -324,6 +338,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       this.editor.getModifiedEditor().onDidChangeCursorPosition((): void => this.notifySummary()),
     );
     this.attachFind(this.editor);
+    this.attachGoTo(this.editor);
 
     this.ready = true;
     this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
@@ -341,6 +356,19 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     this.findDetachers.push(
       this.findRouter.attach(editor.getOriginalEditor(), { filePath }),
       this.findRouter.attach(editor.getModifiedEditor(), { filePath }),
+    );
+  }
+
+  /**
+   * Attaches both sides to the go-to router, with the injector that places the quick-open box in this
+   * pane's window. Either side can go to a line; symbols come from Monaco's own providers, since a
+   * diff's anonymous models are no document a language server serves.
+   * @param editor The diff editor.
+   */
+  private attachGoTo(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    this.findDetachers.push(
+      this.goToRouter.attach(editor.getOriginalEditor(), { injector: this.injector }),
+      this.goToRouter.attach(editor.getModifiedEditor(), { injector: this.injector }),
     );
   }
 

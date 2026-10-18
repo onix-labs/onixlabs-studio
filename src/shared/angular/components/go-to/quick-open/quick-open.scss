@@ -1,0 +1,66 @@
+// The quick-open box floats over the editor's window in a CDK overlay, so it draws its own surface:
+// the popup-menu colours, border and shadow, which make it read as something raised over the page
+// rather than part of it.
+:host {
+  display: block;
+}
+
+.quick-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  inline-size: min(36rem, calc(100vw - 2rem));
+  padding: 0.5rem;
+  background: var(--menu-background-color);
+  color: var(--menu-foreground-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.quick-open__field {
+  inline-size: 100%;
+}
+
+.quick-open__hint {
+  margin: 0;
+  padding: 0.25rem 0.375rem;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.quick-open__hint--invalid {
+  color: var(--error-color);
+}
+
+// Tall enough for a dozen symbols; a longer list scrolls inside the box. The list's own row container
+// fills its host's height, which a maximum alone does not give it, so the host is what scrolls.
+.quick-open__list {
+  max-block-size: min(22rem, 60vh);
+  overflow-y: auto;
+}
+
+.quick-open__icon {
+  flex: none;
+  color: var(--accent-color);
+}
+
+.quick-open__name {
+  flex: none;
+  max-inline-size: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.quick-open__container {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}

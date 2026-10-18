@@ -25,8 +25,12 @@ import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
+import { installGoToCommands } from './monaco-goto-commands';
+import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -176,6 +180,11 @@ export class Monaco {
    * Holds the find router Studio's ⌘F / ⌘⌥F commands hand the focused editor to (#1007).
    */
   private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router Studio's ⌘⇧O / ⌃G commands hand the focused editor to (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
    * Holds a value indicating whether Monaco has finished loading.
@@ -416,6 +425,9 @@ export class Monaco {
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
       // the languages with a built-in Monaco worker.
       'semanticHighlighting.enabled': true,
+      // Monaco's right-click menu offers its own Go to Symbol and Command Palette, past every chord
+      // Studio removes; it stays off in every editor until Studio draws its own menu (#946, #1009).
+      contextmenu: false,
     };
   }
 
@@ -442,6 +454,8 @@ export class Monaco {
       fontFamily: `"${resolved.fontFamily}", monospace`,
       lineNumbers: 'on',
       padding: { top: 12 },
+      // Off in every editor until Studio draws its own right-click menu (#946, #1009).
+      contextmenu: false,
     };
   }
 
@@ -453,11 +467,17 @@ export class Monaco {
   private async load(): Promise<void> {
     window.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
     await this.loadScript();
+    // First, before anything registers a provider: Go to Symbol asks the recorded providers for a
+    // document no language server serves (#1009).
+    if (window.monaco !== undefined) {
+      captureDocumentSymbolProviders(window.monaco);
+    }
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerBraceFolding(window.monaco);
     this.installFindCommands(window.monaco);
+    this.installGoToCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -479,6 +499,26 @@ export class Monaco {
       (editor: MonacoApi.editor.ICodeEditor, mode: FindMode): void => {
         this.log.info('Monaco', 'Studio find command', mode);
         this.findRouter.openFromEditor(editor, mode);
+      },
+    );
+  }
+
+  /**
+   * Removes Monaco's go-to chords from an instance and binds Studio's Go to Symbol and Go to Line in
+   * their place, so ⌘⇧O / ⌃G (Ctrl+Shift+O / Ctrl+G) in any of its editors reach the
+   * {@link GoToRouter} and Monaco's quick-input box never opens (#1009).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installGoToCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installGoToCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode): void => {
+        this.log.info('Monaco', 'Studio go-to command', mode);
+        this.goToRouter.open(editor, mode);
       },
     );
   }
@@ -530,11 +570,13 @@ export class Monaco {
     const monaco: typeof MonacoApi = await this.loadInto(target);
     target.monaco = monaco;
     try {
+      captureDocumentSymbolProviders(monaco);
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerBraceFolding(monaco);
       this.installFindCommands(monaco);
+      this.installGoToCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

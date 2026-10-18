@@ -27,6 +27,8 @@ import {
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
@@ -177,6 +179,12 @@ export class CodeDocumentPanel {
    * panel scoped to this file (#1007).
    */
   private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router the strip's Go to Symbol and Go to Line route through, to Studio's own
+   * quick-open box or dialogs (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
    * Holds the command handler registered with the {@link EditorCommands} registry, or null before the
@@ -585,6 +593,8 @@ export class CodeDocumentPanel {
       // The well carries no find panel of its own: the workspace's Search panel answers, scoped to this
       // file.
       find: (): void => this.find(),
+      goToSymbol: (): void => this.openGoTo('symbol'),
+      goToLine: (): void => this.openGoTo('line'),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
@@ -667,6 +677,20 @@ export class CodeDocumentPanel {
   }
 
   /**
+   * Opens Studio's Go to Symbol or Go to Line for this document's editor, as ⌘⇧O and ⌃G do.
+   * @param mode What to ask for: a symbol, or a line.
+   */
+  private openGoTo(mode: GoToMode): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.core()?.getPane()?.getEditor() ?? null;
+    if (editor === null) {
+      return;
+    }
+    this.log.info('code.document', `Go to ${mode} in well document`, this.documentId());
+    this.goToRouter.open(editor, mode);
+  }
+
+  /**
    * Undoes the last edit in this document's editor. The strip calls this panel's own handler rather
    * than the {@link EditorCommands} registry, whose commands go to whichever editor is active: a
    * button on this document's strip must act on this document even when another one holds focus.
@@ -720,10 +744,10 @@ export class CodeDocumentPanel {
     }
     switch (id) {
       case MENU_GO_TO_SYMBOL:
-        this.runEditorAction('editor.action.quickOutline');
+        this.openGoTo('symbol');
         break;
       case MENU_GO_TO_LINE:
-        this.runEditorAction('editor.action.gotoLine');
+        this.openGoTo('line');
         break;
       case MENU_WORD_WRAP:
         this.toggleWordWrap();
