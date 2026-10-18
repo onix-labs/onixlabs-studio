@@ -22,6 +22,8 @@ import { Settings, TextEditorSettings } from '@shared/angular/services/settings/
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -87,6 +89,24 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the find router this pane's editor is attached to, so Studio's ⌘F reaches the tab that
+   * answers it (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the enclosing tab's own Find panel, or null when the pane sits in no such tab (a workspace
+   * well document, where the Search panel answers instead).
+   */
+  private readonly findHost: FindHost | null = inject(FIND_HOST, { optional: true });
+
+  /**
+   * Holds the function that detaches this pane's editor from the find router, or null before creation
+   * and after disposal.
+   */
+  private detachFind: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -305,6 +325,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.bracketColorizationGuard = null;
     this.foldingPlaceholders?.dispose();
     this.foldingPlaceholders = null;
+    this.detachFind?.();
+    this.detachFind = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -399,17 +421,32 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Reveals and moves the caret to a position, then focuses the editor.
+   * Reveals and moves the caret to a position — or selects a span on its line, as a search match —
+   * centred, then focuses the editor.
    * @param line The one-based line number.
    * @param column The one-based column number.
+   * @param endColumn The one-based column the selection ends at on the line, or undefined to place
+   * the caret alone.
    */
-  public reveal(line: number, column: number): void {
+  public reveal(line: number, column: number, endColumn?: number): void {
     const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
     if (editor === null) {
       return;
     }
+    // Measured first: a tab just brought forward has not been laid out since it was hidden, and a line
+    // centred in a viewport of no height lands at the top once the editor is shown.
+    editor.layout();
     editor.revealLineInCenter(line);
-    editor.setPosition({ lineNumber: line, column });
+    if (endColumn === undefined) {
+      editor.setPosition({ lineNumber: line, column });
+    } else {
+      editor.setSelection({
+        startLineNumber: line,
+        startColumn: column,
+        endLineNumber: line,
+        endColumn,
+      });
+    }
     editor.focus();
   }
 
@@ -548,6 +585,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // Draw Visual-Studio-style collapsed-region placeholders (`signature {...}`). Harmless on editors
     // whose language has no brace folding — the controller simply finds no collapsed ranges.
     this.foldingPlaceholders = new FoldingPlaceholderController(monaco, this.editor);
+
+    // Hand the editor to the find router with the tab whose Find panel answers it outside a workspace.
+    this.detachFind = this.findRouter.attach(this.editor, { host: this.findHost });
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

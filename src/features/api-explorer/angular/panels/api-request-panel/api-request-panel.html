@@ -286,6 +286,19 @@
           }
         </div>
       </app-panel>
+
+      <!-- Mounts while shown: ⌘F in either body opens it over that body (#1007). -->
+      @if (editorSearch.visible()) {
+        <app-panel
+          panelId="find"
+          defaultEdge="right"
+          [defaultSize]="320"
+          [minSize]="260"
+          [maxSize]="520"
+        >
+          <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
+        </app-panel>
+      }
     </app-panel-layout>
   }
 

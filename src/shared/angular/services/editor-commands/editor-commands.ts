@@ -31,7 +31,8 @@ export interface EditorCommandHandler {
   redo(): void;
 
   /**
-   * Opens the editor's find widget.
+   * Opens Studio's find for the editor, through the find router: the workspace's Search panel when a
+   * workspace is active, else the tab's own Find panel (#1007).
    */
   find(): void;
 

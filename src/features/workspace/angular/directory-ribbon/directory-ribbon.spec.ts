@@ -25,6 +25,8 @@ import {
   DockPanelCommands,
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { DirectoryRibbon } from './directory-ribbon';
 
 /**
@@ -942,6 +944,19 @@ describe('DirectoryRibbon', () => {
       expect(edit.map((entry: MenuEntry): string | undefined => entry.id)).toEqual([
         'directory.find',
       ]);
+    });
+
+    it('find_opensTheSearchPanelScopedToTheCurrentFile_throughTheFindRouter', () => {
+      // #1007: Edit › Find… is ⌘F from anywhere that is not an editor, so it asks for what ⌘F in an
+      // editor asks for — the current file — only with no selection to seed it.
+      const opened: FindRequest[] = [];
+      vi.spyOn(TestBed.inject(FindRouter), 'open').mockImplementation(
+        (request: FindRequest): void => void opened.push(request),
+      );
+
+      menu.dispatch('directory.find');
+
+      expect(opened).toEqual([{ mode: 'find', scope: 'file' }]);
     });
   });
 

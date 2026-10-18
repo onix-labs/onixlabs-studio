@@ -11,6 +11,8 @@ import { DirectoryHost } from './directory-host/directory-host';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
 import { DirectoryStatusStrip } from './directory-status/directory-status-strip';
 import { AgentRunConfigurationCapabilities } from './agent-run-configuration-capabilities/agent-run-configuration-capabilities';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { WorkspaceFind } from './workspace-find/workspace-find';
 
 /**
  * Describes the workspace feature's contribution to the application shell: the directory view mounted
@@ -32,7 +34,9 @@ const workspaceFeature: FeatureDescriptor = {
  * to its provider list — the one place that enumerates features. Each directory tab is a full IDE
  * instance composing the shared dock, editors, and git layers; the feature owns no electron or api
  * surface of its own. It also eagerly instantiates the agent's run-configuration capabilities so they
- * are available to the AI runtime whenever an agent authors run configurations.
+ * are available to the AI runtime whenever an agent authors run configurations, and hands the shared
+ * find router the workspace's find seam, so an editor's ⌘F reaches the active workspace's Search panel
+ * without the router importing the feature (#1007).
  * @returns Returns the environment providers that stand the workspace feature up at start-up.
  */
 export function provideWorkspaceFeature(): EnvironmentProviders {
@@ -41,6 +45,7 @@ export function provideWorkspaceFeature(): EnvironmentProviders {
     provideKeybindingCatalogue(WORKSPACE_KEYBINDINGS),
     provideAppInitializer((): void => {
       inject(AgentRunConfigurationCapabilities);
+      inject(FindRouter).useWorkspace(inject(WorkspaceFind));
     }),
   ]);
 }

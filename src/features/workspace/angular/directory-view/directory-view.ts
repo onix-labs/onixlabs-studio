@@ -72,7 +72,13 @@ import {
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
-import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
+import {
+  WorkspaceFind,
+  WorkspaceFindReveal,
+} from '@features/workspace/angular/workspace-find/workspace-find';
+import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
+import { OpenDiffEditor } from '@shared/angular/services/diffs/diffs';
 import {
   WorkspaceDocumentCommandHandler,
   WorkspaceDocumentCommands,
@@ -243,6 +249,8 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // The find requests on their way to this tab's Search panel (#1007), per view as the panel is.
+    SearchPanelRequests,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
     DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
@@ -872,10 +880,16 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
 
   /**
-   * Holds a stable reveal callback registered with {@link workspaceFind}, so it can be unregistered by
-   * identity.
+   * Holds the channel find requests reach this tab's Search panel through (#1007).
    */
-  private readonly revealSearchHandler: () => void = (): void => this.revealSearch();
+  private readonly searchRequests: SearchPanelRequests = inject(SearchPanelRequests);
+
+  /**
+   * Holds a stable reveal callback registered with {@link workspaceFind}, so it can be unregistered by
+   * identity. An editor's ⌘F / ⌘⌥F arrives through it with its request (#1007).
+   */
+  private readonly revealSearchHandler: WorkspaceFindReveal = (request?: FindRequest): void =>
+    this.revealSearch(request);
 
   /**
    * Holds this tab's dock context, carrying its id and rooted folder to the docked terminal panel.
@@ -1388,7 +1402,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (this.isActive()) {
         this.keybindings.register(this.viewScope(), [
-          { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
+          {
+            id: 'workspace.findInFiles',
+            command: (): void => this.revealSearch({ mode: 'find', scope: 'workspace' }),
+          },
           { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
@@ -1449,9 +1466,22 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Reveals the Find & Replace panel in this tab's dock — tabbing it into the right-hand group, or
-   * docking a new one on the right when the layout has none — then activating and focusing it.
+   * docking a new one on the right when the layout has none — then activating and focusing it. A
+   * request (#1007) is posted to the panel first, so a panel the reveal creates takes it as it opens.
+   * @param request The find to open the panel to, or undefined to reveal it as it stands.
    */
-  private revealSearch(): void {
+  private revealSearch(request?: FindRequest): void {
+    if (request !== undefined) {
+      // Whether the find came from a diff has to be read now: focus moves to the panel straight after.
+      const fromDiff: boolean = this.diffs
+        .openEditors()
+        .some(
+          (diff: OpenDiffEditor): boolean =>
+            diff.path() === (request.filePath ?? null) &&
+            diff.modifiedEditor()?.hasTextFocus() === true,
+        );
+      this.searchRequests.post(request, fromDiff);
+    }
     // Opened on the right, beside the Agent, rather than over the explorers on the left: you search
     // while looking at the tree, not instead of it. A layout with no right-hand group (Agentic
     // Engineering, whose Agent is in the centre) gets one, docked to the right edge. A panel the layout

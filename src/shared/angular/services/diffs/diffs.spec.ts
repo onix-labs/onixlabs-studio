@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
-import { Diffs } from './diffs';
+import { Diffs, OpenDiffEditor } from './diffs';
 
 /**
  * Builds a minimal file change for the store tests.
@@ -69,5 +69,26 @@ describe('Diffs', () => {
 
     expect(diffs.has(kept)).toBe(true);
     expect(diffs.has(gone)).toBe(false);
+  });
+
+  it('registerEditor_listsTheOpenDiffsEditors_untilEachIsUnregistered', () => {
+    const first: OpenDiffEditor = {
+      id: 'diff:a',
+      path: () => '/ws/a.ts',
+      modifiedEditor: () => null,
+    };
+    const stale: OpenDiffEditor = {
+      id: 'diff:a',
+      path: () => '/ws/a.ts',
+      modifiedEditor: () => null,
+    };
+    diffs.registerEditor(first);
+
+    // Only the registration for an id unregisters it: a stale panel cannot drop its successor.
+    diffs.unregisterEditor(stale);
+    expect(diffs.openEditors()).toEqual([first]);
+
+    diffs.unregisterEditor(first);
+    expect(diffs.openEditors()).toEqual([]);
   });
 });

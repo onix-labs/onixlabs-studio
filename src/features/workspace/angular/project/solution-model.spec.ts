@@ -649,6 +649,51 @@ describe('SolutionModel', () => {
     expect(model.selectedKey()).toBeNull();
   });
 
+  it('owningProject_aFileInsideAProject_isThatProjectWithItsDirectory', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(model.owningProject('/root/A/Sub/f.cs')).toEqual({
+      name: 'A',
+      path: '/root/A/A.csproj',
+      directory: '/root/A',
+    });
+  });
+
+  it('owningProject_aProjectNestedInAnother_ownsItsOwnFiles', async () => {
+    project.model = {
+      ...sampleModel(),
+      projects: [
+        { name: 'Outer', path: '/root/Outer/Outer.csproj' },
+        { name: 'Inner', path: '/root/Outer/Inner/Inner.csproj' },
+      ],
+    };
+    const model: SolutionModel = build();
+    await open(model);
+
+    // The deepest directory wins, whichever order the projects are listed in.
+    expect(model.owningProject('/root/Outer/Inner/x.cs')?.name).toBe('Inner');
+    expect(model.owningProject('/root/Outer/y.cs')?.name).toBe('Outer');
+  });
+
+  it('owningProject_aFileOutsideEveryProject_isNull', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    // A sibling directory sharing a name prefix ("/root/AB") is not inside "/root/A".
+    expect(model.owningProject('/root/AB/x.cs')).toBeNull();
+    expect(model.owningProject('/elsewhere/x.cs')).toBeNull();
+  });
+
+  it('owningProject_withoutAModel_isNull', async () => {
+    const model: SolutionModel = build();
+    await open(model);
+
+    expect(model.owningProject('/root/A/x.cs')).toBeNull();
+  });
+
   it('select_marksTheRowSelected', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());

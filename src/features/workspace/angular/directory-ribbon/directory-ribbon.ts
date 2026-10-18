@@ -20,7 +20,7 @@ import {
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { Log } from '@shared/angular/services/log/log';
-import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
@@ -223,9 +223,9 @@ export class DirectoryRibbon {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the workspace find seam the Find command reveals the Search panel through.
+   * Holds the find router the Find command opens the workspace's Search panel through (#1007).
    */
-  private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
+  private readonly findRouter: FindRouter = inject(FindRouter);
 
   /**
    * Holds the workspace document seam the File group's Save and Save All dispatch through.
@@ -540,12 +540,14 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Reveals the workspace's multi-file Search panel. Reached from the application menu's Edit
-   * section, the ribbon no longer carrying an Edit group of its own.
+   * Opens the workspace's Search panel scoped to the current file, as ⌘F in an editor does. Reached
+   * from the application menu's Edit section, the ribbon no longer carrying an Edit group of its own,
+   * when the keyboard is somewhere other than an editor (which runs Studio's find itself, seeded from
+   * its selection).
    */
   protected onFind(): void {
-    this.log.info('workspace.ribbon', 'Find in Files invoked');
-    this.workspaceFind.reveal();
+    this.log.info('workspace.ribbon', 'Find invoked');
+    this.findRouter.open({ mode: 'find', scope: 'file' });
   }
 
   /**

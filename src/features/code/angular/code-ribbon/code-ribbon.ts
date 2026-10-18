@@ -409,7 +409,7 @@ export class CodeRibbon {
   }
 
   /**
-   * Opens the find widget.
+   * Opens Studio's find for the active editor, scoped to its file.
    */
   protected onFind(): void {
     this.log.info('code.ribbon', 'Find requested');

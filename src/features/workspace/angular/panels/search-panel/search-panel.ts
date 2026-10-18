@@ -1,132 +1,81 @@
 import {
-  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
-  ElementRef,
+  effect,
   inject,
   input,
   InputSignal,
-  OnDestroy,
   signal,
   Signal,
-  viewChild,
+  untracked,
   WritableSignal,
 } from '@angular/core';
-import { Button } from '@shared/angular/components/forms/button/button';
-import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Chip } from '@shared/angular/components/chip/chip';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
-import { fileIconFor } from '@shared/angular/icons/file-icon';
-import { FindQuery, FindResultItem } from '@shared/angular/components/find-panel/find-adapter';
-import { WorkspaceSearchAdapter } from '@features/workspace/angular/find/workspace-search-adapter';
-import { Icon } from '@shared/angular/icons/icon';
+import type * as MonacoApi from 'monaco-editor';
+import { FindRequest, FindScope } from '@shared/angular/components/find-panel/find-request';
+import { EditorSearchTarget } from '@shared/angular/components/search-view/open-editors-find-adapter';
+import { SearchView } from '@shared/angular/components/search-view/search-view';
+import { ScopedSearchAdapter } from '@features/workspace/angular/find/scoped-search-adapter';
+import {
+  EditorSearchOrigin,
+  EditorSearchTargets,
+} from '@features/workspace/angular/find/editor-search-targets';
+import { OwningProject, SolutionModel } from '@features/workspace/angular/project/solution-model';
+import {
+  SearchPanelRequest,
+  SearchPanelRequests,
+} from '@features/workspace/angular/panels/search-panel/search-panel-requests';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { Documents } from '@shared/angular/services/documents/documents';
-import { Log } from '@shared/angular/services/log/log';
-import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { ReplaceFailure, ReplaceResponse } from '@shared/api/search-channels';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { Diffs, OpenDiffEditor } from '@shared/angular/services/diffs/diffs';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 
 /**
- * The most result rows rendered at once. Beyond this the list adds nothing to navigate by and every
- * row is DOM cost, so the rest are counted rather than drawn.
+ * The scopes the workspace's dropdown offers, in the order it lists them (#1007).
  */
-const MAX_RENDERED_MATCHES: number = 1000;
+const WORKSPACE_SCOPES: readonly FindScope[] = [
+  'workspace',
+  'project',
+  'open-files',
+  'file',
+  'selection',
+];
 
 /**
- * The most characters of a line shown before its match: enough to read what the match is part of,
- * short enough that the match is on screen in a panel of ordinary width.
+ * What a find is taken to be asked from before any request has said: nothing in particular, so
+ * Current File follows the well's active document.
  */
-const MAX_LEAD: number = 20;
+const NO_ORIGIN: EditorSearchOrigin = { filePath: null, selection: null, fromDiff: false };
 
 /**
- * Names the panel's two forms, chosen by the strip's toggles.
- */
-export type SearchPanelMode = 'find' | 'replace';
-
-/**
- * A results-tree row for a file that has matches: the group its matches sit under.
- */
-export interface SearchFileRow {
-  /**
-   * Gets the discriminant.
-   */
-  readonly kind: 'file';
-
-  /**
-   * Gets the file's path relative to the searched root.
-   */
-  readonly file: string;
-
-  /**
-   * Gets how many matches the file has.
-   */
-  readonly count: number;
-}
-
-/**
- * A results-tree row for one match, beneath its file.
- */
-export interface SearchMatchRow {
-  /**
-   * Gets the discriminant.
-   */
-  readonly kind: 'match';
-
-  /**
-   * Gets the match.
-   */
-  readonly item: FindResultItem;
-
-  /**
-   * Gets the match's index in the adapter's flat match list, which is what selecting it takes.
-   */
-  readonly index: number;
-}
-
-/**
- * A row of the results tree.
- */
-export type SearchResultRow = SearchFileRow | SearchMatchRow;
-
-/**
- * The workspace's Find & Replace panel: search across the open folder's files, or replace in them.
+ * The workspace's Find & Replace panel: the shared {@link SearchView} in the dock, searching the open
+ * folder's files or its open editors.
  *
- * Its tool strip (#882) holds two toggles — Find in Files and Replace in Files — in the Terminal
- * strip's style; each shows its own form beneath the strip, and the rest of the panel is the results.
- * The two forms share one query and one set of options, so moving from finding to replacing keeps what
- * was found.
+ * A scope dropdown (#1007) says where: the files on disk across the Whole Workspace or the active
+ * file's Current Project, or the open editors — Open Files, Current File, Current Selection — unsaved
+ * edits and all, where a replace is an editor edit the editor's undo takes back. An editor's ⌘F and
+ * ⌘⌥F arrive through {@link SearchPanelRequests}; this panel snapshots what each was asked from, then
+ * hands it to the view, which chooses the form and scope, seeds the query and searches at once.
  *
- * ⛔ A search runs when asked — the Find button, or Enter in a field — never on each keystroke: a
- * workspace search crawls every file under the root. Changing a match option re-runs the search last
- * asked for, since the option refines it.
- *
- * The replace form previews what it would do, row by row, and writes the files on disk: Replace changes
- * the selected match and moves to the next, Replace All changes every match in the files listed. ⛔ A
- * file open with unsaved edits is never replaced under the user — it is skipped and named, so their
- * edits are neither overwritten nor met with a conflict they did not cause.
+ * The view is the same one a code tab shows outside a workspace; this panel supplies what only a
+ * workspace has — its files, its projects, its open documents and diffs, and the files with unsaved
+ * edits that a replace on disk must leave alone.
  */
 @Component({
   selector: 'app-search-panel',
-  imports: [Chip, AppIcon, Button, ButtonRow, Checkbox, PanelToolbar, TextField, TreeView],
+  imports: [SearchView],
   templateUrl: './search-panel.html',
   styleUrl: './search-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SearchPanel implements OnDestroy {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
+export class SearchPanel {
   /**
    * Gets the dock panel descriptor this body renders. Set by the dock outlet, which binds it on every
    * projected panel component; unused here because the dock chrome renders the title.
@@ -134,7 +83,12 @@ export class SearchPanel implements OnDestroy {
   public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
 
   /**
-   * Holds the search client that runs the query in the main process.
+   * Gets the scopes the dropdown offers, exposed for the template.
+   */
+  protected readonly scopes: readonly FindScope[] = WORKSPACE_SCOPES;
+
+  /**
+   * Holds the search client that runs a disk search in the main process.
    */
   private readonly search: Search = inject(Search);
 
@@ -159,399 +113,116 @@ export class SearchPanel implements OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
-   * Holds the notification centre a replace reports its outcome to.
+   * Holds this view's project model, which says which project the active file belongs to.
    */
-  private readonly notifications: Notifications = inject(Notifications);
+  private readonly solution: SolutionModel = inject(SolutionModel);
 
   /**
-   * Holds the structured logger, which records why a replace failed.
+   * Holds this view's open diffs, whose changed sides the in-memory scopes search read-only.
    */
-  private readonly log: Log = inject(Log);
+  private readonly diffs: Diffs = inject(Diffs);
 
   /**
-   * Holds the workspace adapter the panel drives, rooted at the active workspace.
+   * Holds the Monaco loader, whose main-window instance holds the open editors' models.
    */
-  protected readonly adapter: WorkspaceSearchAdapter = new WorkspaceSearchAdapter(
-    this.search,
-    this.fileOpener,
-    this.editors,
-    (): string | null => this.activeWorkspace.rootPath(),
-  );
+  private readonly monaco: Monaco = inject(Monaco);
 
   /**
-   * Holds which form the strip's toggles have chosen. Find, until the user asks to replace.
+   * Holds this view's dock layout, through which a diff's tab is brought forward.
    */
-  protected readonly mode: WritableSignal<SearchPanelMode> = signal<SearchPanelMode>('find');
+  private readonly dockState: DockState = inject(DockState);
 
   /**
-   * Holds the find text in the field, which is not a search until it is asked for.
+   * Holds the channel this view's find requests arrive through (#1007).
    */
-  protected readonly draft: WritableSignal<string> = signal<string>('');
+  private readonly requests: SearchPanelRequests = inject(SearchPanelRequests);
 
   /**
-   * Holds the replacement text in the replace form's field.
+   * Holds what the last find request was asked from — its file and selection, snapshotted — or
+   * nothing before any request.
    */
-  protected readonly replacement: WritableSignal<string> = signal<string>('');
+  private readonly origin: WritableSignal<EditorSearchOrigin> =
+    signal<EditorSearchOrigin>(NO_ORIGIN);
 
   /**
-   * Holds the text last searched for, or null before any search — what an option change re-runs.
+   * Holds the latest request handed to the view — a fresh object per request — or null before any.
    */
-  private readonly searched: WritableSignal<string | null> = signal<string | null>(null);
+  protected readonly request: WritableSignal<FindRequest | null> = signal<FindRequest | null>(null);
 
   /**
-   * Holds whether the search is case-sensitive.
+   * Gets the absolute path of the well's active document, or null when none is active or it is
+   * unsaved.
    */
-  protected readonly caseSensitive: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds whether the search matches whole words only.
-   */
-  protected readonly wholeWord: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds whether the text is a regular expression.
-   */
-  protected readonly regexp: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets the matches for the last search.
-   */
-  protected readonly matches: Signal<readonly FindResultItem[]> = this.adapter.matches;
-
-  /**
-   * Holds the files whose matches are folded away. Every file starts open: the matches are what was
-   * asked for, and a fold is the user's to make.
-   */
-  private readonly collapsedFiles: WritableSignal<ReadonlySet<string>> = signal<
-    ReadonlySet<string>
-  >(new Set<string>());
-
-  /**
-   * Gets the results as a tree: each file, in the order its first match was found, with its matches
-   * beneath it while it is open. Capped at {@link MAX_RENDERED_MATCHES} matches, so a broad search
-   * cannot materialise rows past the point of being navigable.
-   */
-  protected readonly resultRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const shown: readonly FindResultItem[] = this.matches().slice(0, MAX_RENDERED_MATCHES);
-    const byFile: Map<string, { readonly item: FindResultItem; readonly index: number }[]> =
-      new Map<string, { readonly item: FindResultItem; readonly index: number }[]>();
-    shown.forEach((item: FindResultItem, index: number): void => {
-      const file: string = item.file ?? '';
-      const group: { readonly item: FindResultItem; readonly index: number }[] =
-        byFile.get(file) ?? [];
-      group.push({ item, index });
-      byFile.set(file, group);
-    });
-    const collapsed: ReadonlySet<string> = this.collapsedFiles();
-    const rows: TreeRow[] = [];
-    for (const [file, group] of byFile) {
-      const open: boolean = !collapsed.has(file);
-      const fileRow: SearchFileRow = { kind: 'file', file, count: group.length };
-      rows.push({ id: `file:${file}`, depth: 0, expandable: true, expanded: open, data: fileRow });
-      if (open) {
-        for (const { item, index } of group) {
-          const matchRow: SearchMatchRow = { kind: 'match', item, index };
-          rows.push({
-            id: `match:${index}`,
-            depth: 1,
-            expandable: false,
-            expanded: false,
-            data: matchRow,
-          });
-        }
-      }
-    }
-    return rows;
+  private readonly activeDocumentPath: Signal<string | null> = computed((): string | null => {
+    const id: string | null = this.documents.activeDocumentId();
+    return id === null ? null : (this.documents.get(id)?.filePath() ?? null);
   });
 
   /**
-   * Gets the id of the selected match's row, or null when no match is selected.
+   * Gets the file Current File searches: the one the last request came from, else the well's active
+   * document.
    */
-  protected readonly selectedRowId: Signal<string | null> = computed((): string | null =>
-    this.adapter.activeIndex() >= 0 ? `match:${this.adapter.activeIndex()}` : null,
+  private readonly currentFile: Signal<string | null> = computed(
+    (): string | null => this.origin().filePath ?? this.activeDocumentPath(),
   );
 
   /**
-   * Gets how many matches lie beyond the rendered cap.
+   * Gets the folder Current Project searches — the current file's project's — or null when the file
+   * belongs to no project, or there is no project system.
    */
-  protected readonly matchOverflow: Signal<number> = computed((): number =>
-    Math.max(0, this.matches().length - MAX_RENDERED_MATCHES),
-  );
-
-  /**
-   * Gets whether the results preview their replacement: in the replace form, once there is something
-   * to replace with.
-   */
-  protected readonly previewsReplacement: Signal<boolean> = computed(
-    (): boolean => this.mode() === 'replace',
-  );
-
-  /**
-   * Holds whether a replace is writing files, during which neither replace button runs another.
-   */
-  private readonly replacing: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets whether Replace can run: a match is selected and no replace is under way.
-   */
-  protected readonly canReplace: Signal<boolean> = computed(
-    (): boolean => this.adapter.activeIndex() >= 0 && !this.replacing(),
-  );
-
-  /**
-   * Gets whether Replace All can run: there are results and no replace is under way.
-   */
-  protected readonly canReplaceAll: Signal<boolean> = computed(
-    (): boolean => this.matches().length > 0 && !this.replacing(),
-  );
-
-  /**
-   * Gets the summary beside the form's buttons, or empty before anything has been searched for.
-   */
-  protected readonly summary: Signal<string> = computed((): string => {
-    const searched: string | null = this.searched();
-    if (searched === null || searched.length === 0) {
-      return '';
-    }
-    const count: number = this.matches().length;
-    if (count === 0) {
-      return 'No results';
-    }
-    const files: number = new Set<string | undefined>(
-      this.matches().map((item: FindResultItem): string | undefined => item.file),
-    ).size;
-    return `${count} ${count === 1 ? 'result' : 'results'} in ${files} ${files === 1 ? 'file' : 'files'}`;
+  private readonly projectDirectory: Signal<string | null> = computed((): string | null => {
+    const file: string | null = this.currentFile();
+    const owner: OwningProject | null = file === null ? null : this.solution.owningProject(file);
+    return owner?.directory ?? null;
   });
 
   /**
-   * Holds the find field's host element, focused when the panel opens or a form is chosen.
+   * Gets the scopes with nothing to search: Current Project without a project for the current file,
+   * Current File without a file, Current Selection without a selection.
    */
-  private readonly findField: Signal<ElementRef<HTMLElement> | undefined> =
-    viewChild<ElementRef<HTMLElement>>('findField');
-
-  /**
-   * Initializes a new instance of the {@link SearchPanel} class, focusing the find field once
-   * rendered: the panel is opened to be typed into.
-   */
-  public constructor() {
-    afterNextRender((): void => this.focusFind());
-  }
-
-  /**
-   * Shows one of the two forms, keeping the query and options the other was using.
-   * @param mode The form to show.
-   */
-  protected show(mode: SearchPanelMode): void {
-    this.mode.set(mode);
-    queueMicrotask((): void => this.focusFind());
-  }
-
-  /**
-   * Runs the search for the text in the find field, with the current options.
-   */
-  protected find(): void {
-    this.searched.set(this.draft());
-    // A new search starts with every file open: a fold made in the last one says nothing about this.
-    this.collapsedFiles.set(new Set<string>());
-    this.run();
-  }
-
-  /**
-   * Re-runs the last search after a match option changed.
-   */
-  protected optionChanged(): void {
-    if (this.searched() !== null) {
-      this.run();
-    }
-  }
-
-  /**
-   * Handles a click on a results row: a file folds or unfolds its matches, and a match opens its file
-   * at the match.
-   * @param treeRow The row clicked.
-   */
-  protected onRowClick(treeRow: TreeRow): void {
-    const row: SearchResultRow = this.rowOf(treeRow);
-    if (row.kind === 'match') {
-      this.adapter.select(row.index);
-      return;
-    }
-    this.collapsedFiles.update((collapsed: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(collapsed);
-      if (!next.delete(row.file)) {
-        next.add(row.file);
-      }
-      return next;
-    });
-  }
-
-  /**
-   * Gets whether there are results to fold, which is what the strip's Expand and Collapse All act on.
-   */
-  protected readonly hasResults: Signal<boolean> = computed(
-    (): boolean => this.matches().length > 0,
+  protected readonly disabledScopes: Signal<ReadonlySet<FindScope>> = computed(
+    (): ReadonlySet<FindScope> =>
+      new Set<FindScope>([
+        ...(this.projectDirectory() === null ? (['project'] as const) : []),
+        ...(this.currentFile() === null ? (['file'] as const) : []),
+        ...(this.origin().selection === null ? (['selection'] as const) : []),
+      ]),
   );
 
   /**
-   * Opens every file in the results, showing all their matches.
+   * Holds the resolver of the open editors the in-memory scopes search.
    */
-  protected expandAll(): void {
-    this.collapsedFiles.set(new Set<string>());
-  }
+  private readonly editorTargets: EditorSearchTargets = new EditorSearchTargets({
+    documents: (): readonly CodeDocument[] => this.documents.list(),
+    diffs: (): readonly OpenDiffEditor[] => this.diffs.openEditors(),
+    modelUriForPath: (path: string): string | undefined => this.editors.modelUriForPath(path),
+    monaco: (): typeof MonacoApi | undefined => this.monaco.getMonaco(),
+    rootOf: (): string | null => this.activeWorkspace.rootPath(),
+    openFile: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    activatePanel: (id: string): void => this.activatePanel(id),
+  });
 
   /**
-   * Folds every file in the results, leaving one row per file.
+   * Holds the adapter the view drives, searching whichever scope is chosen.
    */
-  protected collapseAll(): void {
-    this.collapsedFiles.set(
-      new Set<string>(this.matches().map((item: FindResultItem): string => item.file ?? '')),
-    );
-  }
+  protected readonly adapter: ScopedSearchAdapter = new ScopedSearchAdapter({
+    search: this.search,
+    fileOpener: this.fileOpener,
+    editors: this.editors,
+    rootOf: (): string | null => this.activeWorkspace.rootPath(),
+    projectDirectoryOf: (): string | null => untracked(this.projectDirectory),
+    editorTargetsOf: (scope: FindScope): readonly EditorSearchTarget[] =>
+      this.editorTargets.resolve(scope, {
+        ...untracked(this.origin),
+        filePath: untracked(this.currentFile),
+      }),
+  });
 
   /**
-   * Unwraps a results row's payload.
-   * @param treeRow The tree row.
-   * @returns Returns the results row.
+   * Resolves the paths of this view's files open with unsaved edits, which a replace on disk leaves
+   * alone; exposed for the template.
    */
-  protected rowOf(treeRow: TreeRow): SearchResultRow {
-    return treeRow.data as SearchResultRow;
-  }
-
-  /**
-   * Shortens the text before a match to its last {@link MAX_LEAD} characters, so the match itself
-   * stays in view: a row is one line, and a long lead-in pushed the match past the panel's edge, where
-   * the ellipsis swallowed exactly the part that was searched for.
-   * @param before The line text before the match.
-   * @returns Returns the lead-in, with a leading ellipsis when it was shortened.
-   */
-  protected lead(before: string): string {
-    const trimmed: string = before.trimStart();
-    return trimmed.length <= MAX_LEAD ? trimmed : `…${trimmed.slice(-MAX_LEAD)}`;
-  }
-
-  /**
-   * Gets the icon a result file is drawn with, the same as in the File Explorer.
-   * @param file The file's relative path.
-   * @returns Returns the icon.
-   */
-  protected fileIcon(file: string): Icon {
-    return fileIconFor(file);
-  }
-
-  /**
-   * Replaces the selected match and moves to the next — unless its file has unsaved edits.
-   */
-  protected async replaceSelected(): Promise<void> {
-    const path: string | null = this.adapter.activePath();
-    if (path === null || !this.canReplace()) {
-      return;
-    }
-    if (this.unsavedPaths().has(path)) {
-      this.notifications.notify({
-        severity: 'warning',
-        title: `Save “${baseName(path)}” first`,
-        detail: 'It has unsaved edits, so the match was not replaced.',
-      });
-      return;
-    }
-    await this.replaceWith(
-      (): Promise<ReplaceResponse | null> => this.adapter.replaceMatch(this.replacement()),
-      [],
-    );
-  }
-
-  /**
-   * Replaces every match in the files listed, but for those with unsaved edits.
-   */
-  protected async replaceEvery(): Promise<void> {
-    if (!this.canReplaceAll()) {
-      return;
-    }
-    const unsaved: ReadonlySet<string> = this.unsavedPaths();
-    const skipped: readonly string[] = this.adapter
-      .paths()
-      .filter((path: string): boolean => unsaved.has(path));
-    await this.replaceWith(
-      (): Promise<ReplaceResponse | null> =>
-        this.adapter.replaceFiles(this.replacement(), new Set<string>(skipped)),
-      skipped,
-    );
-  }
-
-  /**
-   * Clears the results when the panel goes, so nothing stays highlighted behind it.
-   */
-  public ngOnDestroy(): void {
-    this.adapter.clear();
-  }
-
-  /**
-   * Hands the last searched-for text and the current options to the adapter.
-   */
-  private run(): void {
-    const query: FindQuery = {
-      text: this.searched() ?? '',
-      caseSensitive: this.caseSensitive(),
-      wholeWord: this.wholeWord(),
-      regexp: this.regexp(),
-    };
-    this.adapter.setQuery(query);
-  }
-
-  /**
-   * Runs a replace, holding the buttons off while it writes, and reports what it did.
-   * @param replace Runs the replace.
-   * @param skipped The files left alone for their unsaved edits.
-   */
-  private async replaceWith(
-    replace: () => Promise<ReplaceResponse | null>,
-    skipped: readonly string[],
-  ): Promise<void> {
-    this.replacing.set(true);
-    try {
-      const response: ReplaceResponse | null = await replace();
-      this.report(response ?? { replaced: 0, files: 0, failed: [] }, skipped);
-    } catch (error: unknown) {
-      this.log.error('SearchPanel', 'Replace failed', error);
-      this.notifications.notify({
-        severity: 'error',
-        title: 'Could not replace',
-        detail: 'The files could not be reached.',
-      });
-    } finally {
-      this.replacing.set(false);
-    }
-  }
-
-  /**
-   * Reports a replace's outcome: what changed, and every file that was left alone and why.
-   * @param response What the replace did.
-   * @param skipped The files left alone for their unsaved edits.
-   */
-  private report(response: ReplaceResponse, skipped: readonly string[]): void {
-    const notes: string[] = [
-      ...skipped.map((path: string): string => `${baseName(path)} has unsaved edits.`),
-      ...response.failed.map(
-        (failure: ReplaceFailure): string => `${baseName(failure.path)}: ${failure.reason}`,
-      ),
-    ];
-    const replaced: number = response.replaced;
-    const title: string =
-      replaced === 0
-        ? 'Nothing was replaced'
-        : `Replaced ${replaced} ${replaced === 1 ? 'match' : 'matches'} in ${response.files} ${response.files === 1 ? 'file' : 'files'}`;
-    this.notifications.notify({
-      severity: notes.length > 0 ? 'warning' : 'success',
-      title,
-      ...(notes.length > 0 ? { detail: notes.join(' ') } : {}),
-    });
-  }
-
-  /**
-   * Gets the paths of this view's files that are open with unsaved edits.
-   * @returns Returns the absolute paths.
-   */
-  private unsavedPaths(): ReadonlySet<string> {
+  protected readonly unsavedPaths: () => ReadonlySet<string> = (): ReadonlySet<string> => {
     const paths: Set<string> = new Set<string>();
     for (const document of this.documents.list()) {
       const path: string | null = document.filePath();
@@ -560,21 +231,50 @@ export class SearchPanel implements OnDestroy {
       }
     }
     return paths;
+  };
+
+  /**
+   * Initializes a new instance of the {@link SearchPanel} class, answering each find request as it
+   * arrives — or, for a panel the request's reveal created, the one waiting for it — taking it so it
+   * is answered once.
+   */
+  public constructor() {
+    effect((): void => {
+      if (this.requests.pending() === null) {
+        return;
+      }
+      untracked((): void => {
+        const pending: SearchPanelRequest | null = this.requests.take();
+        if (pending !== null) {
+          this.answer(pending);
+        }
+      });
+    });
   }
 
   /**
-   * Puts the cursor in the find field.
+   * Answers a find request (#1007): snapshots what it was asked from — so Current File and Current
+   * Selection keep meaning what they meant as results move the caret — then hands it to the view.
+   * @param pending The request.
    */
-  private focusFind(): void {
-    this.findField()?.nativeElement.querySelector('input')?.focus();
+  private answer(pending: SearchPanelRequest): void {
+    const { request } = pending;
+    this.origin.set({
+      filePath: request.filePath ?? this.activeDocumentPath(),
+      selection: request.selection ?? null,
+      fromDiff: pending.fromDiff,
+    });
+    this.request.set({ ...request });
   }
-}
 
-/**
- * Gets the last segment of a path, its file name.
- * @param path The path.
- * @returns Returns the file name.
- */
-function baseName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
+  /**
+   * Brings a dock panel — a diff a match is in — to the front of its stack.
+   * @param id The panel's id.
+   */
+  private activatePanel(id: string): void {
+    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
+    if (stack !== null) {
+      this.dockState.setActive(stack.id, id);
+    }
+  }
 }
