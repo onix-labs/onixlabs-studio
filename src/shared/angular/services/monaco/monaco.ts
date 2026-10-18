@@ -27,6 +27,7 @@ import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
+import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
@@ -468,9 +469,11 @@ export class Monaco {
     window.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
     await this.loadScript();
     // First, before anything registers a provider: Go to Symbol asks the recorded providers for a
-    // document no language server serves (#1009).
+    // document no language server serves (#1009), and the right-click menu asks what each language
+    // can do — go to a definition, comment a line (#1012).
     if (window.monaco !== undefined) {
       captureDocumentSymbolProviders(window.monaco);
+      captureEditorCapabilities(window.monaco);
     }
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
@@ -571,6 +574,7 @@ export class Monaco {
     target.monaco = monaco;
     try {
       captureDocumentSymbolProviders(monaco);
+      captureEditorCapabilities(monaco);
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);

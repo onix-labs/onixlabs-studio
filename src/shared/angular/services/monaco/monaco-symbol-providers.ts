@@ -123,7 +123,7 @@ export async function providedDocumentSymbols(
  * @param language The language identifier.
  * @returns Returns true when the selector selects the language.
  */
-function selects(selector: MonacoApi.languages.LanguageSelector, language: string): boolean {
+export function selects(selector: MonacoApi.languages.LanguageSelector, language: string): boolean {
   if (Array.isArray(selector)) {
     return selector.some((entry: string | MonacoApi.languages.LanguageFilter): boolean =>
       selects(entry, language),

@@ -1,0 +1,12 @@
+<!--
+  The shared menu, and the CDK context-menu trigger that opens it. The trigger never receives a
+  right-click of its own: the editor's right-click reaches it through `open()`, which hands it the
+  event to place the menu at the pointer. It sits here, inside the editor's own view, so the overlay
+  it creates resolves the editor's window — a popped-out dock's or a modal's, not the main window's.
+-->
+<app-menu #menu [itemsFor]="rowsFor" (chosen)="onChosen($event)" />
+<span
+  class="editor-context-menu__trigger"
+  [cdkContextMenuTriggerFor]="menu.panel() ?? null"
+  (cdkContextMenuClosed)="onClosed()"
+></span>

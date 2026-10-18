@@ -116,6 +116,20 @@ describe('FindRouter', () => {
       expect((): void => router.open({ mode: 'find', scope: 'file' })).not.toThrow();
     });
 
+    it('answers_onlyWhenTheWorkspaceIsActive_orTheEditorWasAttachedWithATabsFindPanel', () => {
+      // #1012: the right-click menu offers Find only where it would open.
+      const attached: MonacoApi.editor.ICodeEditor = editorOver(['alpha'], null);
+      const bare: MonacoApi.editor.ICodeEditor = editorOver(['alpha'], null);
+      router.attach(attached, { host });
+      workspace.available.set(false);
+      router.useWorkspace(workspace);
+
+      expect(router.answers(attached)).toBe(true);
+      expect(router.answers(bare)).toBe(false);
+      workspace.available.set(true);
+      expect(router.answers(bare)).toBe(true);
+    });
+
     it('openFromEditor_outsideAWorkspace_opensTheAttachedTabsPanelOverThatEditor', () => {
       const editor: MonacoApi.editor.ICodeEditor = editorOver(['alpha'], null);
       router.attach(editor, { host });

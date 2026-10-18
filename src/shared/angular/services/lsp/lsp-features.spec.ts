@@ -294,6 +294,66 @@ describe('LspFeatures', () => {
     ).toBeNull();
   });
 
+  it('definitions_answersWithPaths_evenForAFileNoEditorHasOpen_linksByTheirName', async () => {
+    // #1012: the right-click Go to Definition opens a file nobody has opened yet, which the Monaco
+    // provider (open files only) would drop.
+    responses['textDocument/definition'] = [
+      {
+        targetUri: 'file:///root/lib/greeter.ts',
+        targetSelectionRange: {
+          start: { line: 4, character: 13 },
+          end: { line: 4, character: 20 },
+        },
+      },
+      {
+        uri: 'file:///root/app.ts',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } },
+      },
+    ];
+    const features: LspFeatures = await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+
+    const definitions: unknown = await features.definitions(
+      model as Parameters<LspFeatures['definitions']>[0],
+      { lineNumber: 3, column: 7 },
+    );
+
+    expect(requests.at(-1)).toEqual({
+      sessionId: '/root::typescript',
+      method: 'textDocument/definition',
+      params: { textDocument: { uri: 'file:///root/app.ts' }, position: { line: 2, character: 6 } },
+    });
+    expect(definitions).toEqual([
+      {
+        path: '/root/lib/greeter.ts',
+        range: { startLineNumber: 5, startColumn: 14, endLineNumber: 5, endColumn: 21 },
+      },
+      {
+        path: '/root/app.ts',
+        range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 4 },
+      },
+    ]);
+  });
+
+  it('definitions_isNull_forADocumentNoServerServes_andEmptyWhenTheServerKnowsNone', async () => {
+    const features: LspFeatures = await build();
+    const unowned: unknown = { uri: { toString: (): string => 'inmemory://model/unowned' } };
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+
+    expect(
+      await features.definitions(unowned as Parameters<LspFeatures['definitions']>[0], {
+        lineNumber: 1,
+        column: 1,
+      }),
+    ).toBeNull();
+    expect(
+      await features.definitions(owned as Parameters<LspFeatures['definitions']>[0], {
+        lineNumber: 1,
+        column: 1,
+      }),
+    ).toEqual([]);
+  });
+
   it('wiresEveryLanguageEitherCatalogueHasAServerFor', () => {
     // #882: Rust, Go and Kotlin had servers but only diagnostics, because this list stopped at seven.
     // The suite runs from the repository root — as the plugin contract specs assume — and a bundled

@@ -1,0 +1,5 @@
+// The host draws nothing in the editor's layout: the menu renders in an overlay, and the trigger is
+// only ever opened from code, at the pointer's coordinates rather than its own box.
+:host {
+  display: none;
+}

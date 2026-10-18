@@ -47,6 +47,21 @@ export interface LspDocumentRef {
 }
 
 /**
+ * A place a language server says a symbol is defined: the file, and the span of its name there.
+ */
+export interface LspDefinition {
+  /**
+   * Gets the absolute path of the file the definition is in.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the span of the definition, one-based as the editor counts.
+   */
+  readonly range: MonacoApi.IRange;
+}
+
+/**
  * Resolves a file path to the language-server document it is open as, or null when the caller does not
  * own it.
  */
@@ -766,6 +781,40 @@ export class LspFeatures {
    */
   public servesDocument(model: MonacoApi.editor.ITextModel): boolean {
     return this.resolve(model) !== null;
+  }
+
+  /**
+   * Asks the language server that serves a document where the symbol at a position is defined, for
+   * the editor's right-click Go to Definition (#1012). Unlike the definition provider Monaco calls,
+   * which can only name files already open in an editor, this answers with paths — so a definition in
+   * a file nobody has opened yet can be opened and gone to.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the definitions, in the server's order, or null when no server serves the
+   * document (an empty list is a server answering that it knows of none).
+   */
+  public async definitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    if (this.resolve(model) === null) {
+      return null;
+    }
+    const result: unknown = await this.request(
+      model,
+      'textDocument/definition',
+      position as MonacoApi.Position,
+    );
+    if (result === null || result === undefined) {
+      return [];
+    }
+    const raw: readonly (LspLocation | LspLocationLink)[] = Array.isArray(result)
+      ? (result as (LspLocation | LspLocationLink)[])
+      : [result as LspLocation];
+    return raw.map((entry: LspLocation | LspLocationLink): LspDefinition => ({
+      path: this.uriToPath('uri' in entry ? entry.uri : entry.targetUri),
+      range: this.toRange('range' in entry ? entry.range : entry.targetSelectionRange),
+    }));
   }
 
   /**

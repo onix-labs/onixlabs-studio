@@ -279,6 +279,14 @@
   color: var(--form-muted-foreground-color);
 }
 
+// A shortcut hint, right-aligned the same way and muted like a status; held apart from the label so
+// a column of hints reads as one, and never wrapped, since half a chord is no hint at all.
+.app-menu-panel__item-shortcut {
+  margin-inline-start: 1.5rem;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+}
+
 // A row that is a binary switch draws the checkbox control's box in place of an icon, so a menu
 // switch reads as the same control the settings pages use.
 //
