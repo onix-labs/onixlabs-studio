@@ -5,6 +5,8 @@ import { TextEditorCursor } from '@shared/angular/components/text-editor/text-ed
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import {
   EditorCommandHandler,
@@ -239,6 +241,37 @@ describe('CodeDocumentPanel', () => {
     expect(opened).toEqual([
       { mode: 'find', scope: 'file', seed: undefined, filePath: null, selection: null },
     ]);
+  });
+
+  it('theMenusGoToItems_openStudiosGoTo_throughTheRouter_neverMonacosActions', async () => {
+    // #1009: Go to Symbol and Go to Line no longer run Monaco's quick outline and go to line.
+    const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+    const opened: GoToMode[] = [];
+    vi.spyOn(TestBed.inject(GoToRouter), 'open').mockImplementation(
+      (_editor: unknown, mode: GoToMode): void => void opened.push(mode),
+    );
+    const panel: { onMenu(id: string): void } = fixture.componentInstance as unknown as {
+      onMenu(id: string): void;
+    };
+
+    panel.onMenu('code.goToSymbol');
+    panel.onMenu('code.goToLine');
+
+    expect(opened).toEqual(['symbol', 'line']);
+    expect(StandInEditor.moves.actions).toEqual([]);
+  });
+
+  it('theCommandHandler_offersGoTo_throughTheRouter', async () => {
+    await built();
+    const opened: GoToMode[] = [];
+    vi.spyOn(TestBed.inject(GoToRouter), 'open').mockImplementation(
+      (_editor: unknown, mode: GoToMode): void => void opened.push(mode),
+    );
+
+    TestBed.inject(EditorCommands).goToSymbol();
+    TestBed.inject(EditorCommands).goToLine();
+
+    expect(opened).toEqual(['symbol', 'line']);
   });
 
   it('theStripsHistoryAndClipboardButtons_actOnThisEditor_evenWhenAnotherIsActive', async () => {

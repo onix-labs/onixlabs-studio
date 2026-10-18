@@ -26,19 +26,8 @@ const CONTAINER_KINDS: ReadonlySet<number> = new Set<number>([
   SymbolKind.Package,
 ]);
 
-/**
- * The languages that qualify a name with `::` (`app::Greeter`) rather than `.`.
- */
-const SCOPE_OPERATOR_LANGUAGES: ReadonlySet<string> = new Set<string>(['c', 'cpp', 'rust']);
-
-/**
- * Gets how a language joins a type's name to what it is declared in.
- * @param language The document's language identifier.
- * @returns Returns `::` for the languages that write it, and `.` for the rest.
- */
-export function qualifierFor(language: string): string {
-  return SCOPE_OPERATOR_LANGUAGES.has(language) ? '::' : '.';
-}
+// Shared with Go to Symbol (#1009), which names each symbol's container the same way.
+export { qualifierFor } from '@shared/angular/services/lsp/lsp-symbols';
 
 /**
  * The identifier of the entry for what is declared outside any type: a module's functions, a script's

@@ -37,6 +37,17 @@ export interface EditorCommandHandler {
   find(): void;
 
   /**
+   * Opens Studio's Go to Symbol for the editor, through the go-to router (#1009). Optional, since only
+   * an editor with a document to navigate offers it.
+   */
+  goToSymbol?(): void;
+
+  /**
+   * Opens Studio's Go to Line for the editor, through the go-to router (#1009). Optional, as above.
+   */
+  goToLine?(): void;
+
+  /**
    * Formats the whole document.
    */
   formatDocument(): void;
@@ -365,6 +376,20 @@ export class EditorCommands {
    */
   public find(): void {
     this.activeHandler()?.find();
+  }
+
+  /**
+   * Invokes Go to Symbol on the active editor, when it offers one.
+   */
+  public goToSymbol(): void {
+    this.activeHandler()?.goToSymbol?.();
+  }
+
+  /**
+   * Invokes Go to Line on the active editor, when it offers one.
+   */
+  public goToLine(): void {
+    this.activeHandler()?.goToLine?.();
   }
 
   /**

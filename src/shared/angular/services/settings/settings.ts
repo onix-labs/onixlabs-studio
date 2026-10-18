@@ -154,6 +154,13 @@ export type FileExplorerExpandAll = 'loaded-only' | 'entire-tree';
 export type DocumentDiffSwitch = 'tab' | 'swap';
 
 /**
+ * Identifies how an editor's Go to Symbol and Go to Line ask where to go (#1009): `quick-open`, a light
+ * box near the top of the editor's window that filters as you type; `dialogs`, a dialog window for
+ * each.
+ */
+export type GoToStyle = 'quick-open' | 'dialogs';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -570,6 +577,12 @@ export class Settings {
   public readonly textEditorAccentSelection: Signal<boolean> = this.value(
     'textEditor.global.accentSelection',
   );
+
+  /**
+   * Gets how Go to Symbol and Go to Line ask where to go (#1009). An editor-wide choice rather than a
+   * per-language profile setting, so it is exposed directly rather than via {@link globalTextEditor}.
+   */
+  public readonly textEditorGoToStyle: Signal<GoToStyle> = this.value('textEditor.goToStyle');
 
   /**
    * Gets the global text editor settings.

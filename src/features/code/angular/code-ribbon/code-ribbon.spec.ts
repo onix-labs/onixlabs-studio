@@ -66,6 +66,8 @@ describe('CodeRibbon', () => {
       undo: (): void => void calls.push('undo'),
       redo: (): void => void calls.push('redo'),
       find: (): void => void calls.push('find'),
+      goToSymbol: (): void => void calls.push('goToSymbol'),
+      goToLine: (): void => void calls.push('goToLine'),
       formatDocument: (): void => void calls.push('format'),
     };
     const printingStub: Partial<Printing> = {
@@ -158,6 +160,24 @@ describe('CodeRibbon', () => {
     menu.dispatch('code.format');
 
     expect(calls).toEqual(['find', 'format']);
+  });
+
+  it('goTo_fromTheRibbonOrTheMenu_routesToTheEditorCommands_withoutClaimingAChord', () => {
+    // #1009: ⌘⇧O and ⌃G live in the editor; a menu accelerator would take Ctrl+G from a docked
+    // terminal or composer.
+    button('Go to Symbol').click();
+    button('Go to Line').click();
+    menu.dispatch('code.goToSymbol');
+    menu.dispatch('code.goToLine');
+
+    expect(calls).toEqual(['goToSymbol', 'goToLine', 'goToSymbol', 'goToLine']);
+    const goTo: readonly MenuEntry[] = menuItems('edit').filter(
+      (entry: MenuEntry): boolean => entry.id === 'code.goToSymbol' || entry.id === 'code.goToLine',
+    );
+    expect(goTo.map((entry: MenuEntry): string | undefined => entry.accelerator)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it('menu_whenPrintOrExportIsChosen_reachesPrinting', () => {

@@ -55,6 +55,8 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
 import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
@@ -159,6 +161,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost {
    * when one is active and this tab's Find panel otherwise.
    */
   private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router the ribbon's and menu's Go to Symbol and Go to Line route through (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
    * Holds the edges the integrated terminal panel may dock to. Unlike the other panels — restricted
@@ -489,6 +496,17 @@ export class CodeView implements OnInit, OnDestroy, FindHost {
   }
 
   /**
+   * Opens Go to Symbol or Go to Line for the code editor, as the ribbon's and menu's items ask.
+   * @param mode What to ask for: a symbol, or a line.
+   */
+  private goTo(mode: GoToMode): void {
+    const editor: MonacoApi.editor.ICodeEditor | null = this.pane()?.getEditor() ?? null;
+    if (editor !== null) {
+      this.goToRouter.open(editor, mode);
+    }
+  }
+
+  /**
    * Hides the find panel when the shared panel asks to be dismissed.
    */
   protected onFindClosed(): void {
@@ -624,6 +642,8 @@ export class CodeView implements OnInit, OnDestroy, FindHost {
       undo: (): void => pane.trigger('undo'),
       redo: (): void => pane.trigger('redo'),
       find: (): void => this.find(),
+      goToSymbol: (): void => this.goTo('symbol'),
+      goToLine: (): void => this.goTo('line'),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter

@@ -8,6 +8,7 @@ import {
   FindAttachment,
   FindHost,
 } from '@shared/angular/services/find-router/find-host';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { TextEditor } from './text-editor';
 
 describe('TextEditor', () => {
@@ -111,6 +112,33 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       attach.mock.calls[0];
     expect(attached).toBe(editor);
     expect(attachment.host).toBe(host);
+    fixture.destroy();
+    expect(detached).toBe(1);
+  });
+
+  it('attachesItsEditorToTheGoToRouter_withItsOwnInjector_andDetachesOnDestroy', async () => {
+    // #1009: the injector places the quick-open box in the pane's own window.
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    let detached: number = 0;
+    const attach: MockInstance<GoToRouter['attach']> = vi
+      .spyOn(TestBed.inject(GoToRouter), 'attach')
+      .mockReturnValue((): void => void (detached += 1));
+
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(attach.mock.calls[0][0]).toBe(editor);
+    expect(attach.mock.calls[0][1].injector).toBeTruthy();
     fixture.destroy();
     expect(detached).toBe(1);
   });

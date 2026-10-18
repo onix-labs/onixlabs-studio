@@ -5,6 +5,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   OnDestroy,
@@ -24,6 +25,7 @@ import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -107,6 +109,24 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * and after disposal.
    */
   private detachFind: (() => void) | null = null;
+
+  /**
+   * Holds the go-to router this pane's editor is attached to, so Studio's ⌘⇧O / ⌃G open Go to in
+   * this pane's window (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds this pane's injector, which resolves the window it is drawn in — a popped-out dock's own —
+   * so the quick-open box opens there.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the function that detaches this pane's editor from the go-to router, or null before
+   * creation and after disposal.
+   */
+  private detachGoTo: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -327,6 +347,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.foldingPlaceholders = null;
     this.detachFind?.();
     this.detachFind = null;
+    this.detachGoTo?.();
+    this.detachGoTo = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -588,6 +610,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
 
     // Hand the editor to the find router with the tab whose Find panel answers it outside a workspace.
     this.detachFind = this.findRouter.attach(this.editor, { host: this.findHost });
+    this.detachGoTo = this.goToRouter.attach(this.editor, { injector: this.injector });
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();
