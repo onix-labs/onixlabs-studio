@@ -19,6 +19,8 @@ import { Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -58,6 +60,7 @@ export interface DiffSummary {
  */
 @Component({
   selector: 'app-diff-editor',
+  imports: [EditorContextMenuHost],
   templateUrl: './diff-editor.html',
   styleUrl: './diff-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -100,6 +103,17 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Holds this pane's injector, which resolves the window it is drawn in.
    */
   private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the service both sides are attached to for Studio's right-click menu (#1012).
+   */
+  private readonly contextMenu: EditorContextMenu = inject(EditorContextMenu);
+
+  /**
+   * Holds the component that draws the right-click menu in this pane's window.
+   */
+  private readonly contextMenuHost: Signal<EditorContextMenuHost> =
+    viewChild.required<EditorContextMenuHost>(EditorContextMenuHost);
 
   /**
    * Gets the absolute path of the compared file, which a find from either side searches — the
@@ -164,8 +178,8 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly subscriptions: MonacoApi.IDisposable[] = [];
 
   /**
-   * Holds the functions that detach both sides from the find and go-to routers, called with the
-   * editor's disposal.
+   * Holds the functions that detach both sides from the find and go-to routers and the right-click
+   * menu, called with the editor's disposal.
    */
   private readonly findDetachers: (() => void)[] = [];
 
@@ -339,6 +353,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     );
     this.attachFind(this.editor);
     this.attachGoTo(this.editor);
+    this.attachContextMenu(this.editor);
 
     this.ready = true;
     this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
@@ -369,6 +384,19 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     this.findDetachers.push(
       this.goToRouter.attach(editor.getOriginalEditor(), { injector: this.injector }),
       this.goToRouter.attach(editor.getModifiedEditor(), { injector: this.injector }),
+    );
+  }
+
+  /**
+   * Attaches both sides to the right-click menu, drawn by the host in this pane's view — so in its
+   * window. Both sides are read-only, so each offers Copy and Select All beside the navigation.
+   * @param editor The diff editor.
+   */
+  private attachContextMenu(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    const host: EditorContextMenuHost = this.contextMenuHost();
+    this.findDetachers.push(
+      this.contextMenu.attach(editor.getOriginalEditor(), host),
+      this.contextMenu.attach(editor.getModifiedEditor(), host),
     );
   }
 

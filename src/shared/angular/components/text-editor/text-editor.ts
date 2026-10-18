@@ -26,6 +26,9 @@ import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { pasteIntoEditor } from './editor-paste';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -62,6 +65,7 @@ export type TextEditorEol = 'CRLF' | 'LF';
  */
 @Component({
   selector: 'app-text-editor',
+  imports: [EditorContextMenuHost],
   templateUrl: './text-editor.html',
   styleUrl: './text-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -127,6 +131,23 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * creation and after disposal.
    */
   private detachGoTo: (() => void) | null = null;
+
+  /**
+   * Holds the service this pane's editor is attached to for Studio's right-click menu (#1012).
+   */
+  private readonly contextMenu: EditorContextMenu = inject(EditorContextMenu);
+
+  /**
+   * Holds the component that draws the right-click menu in this pane's window.
+   */
+  private readonly contextMenuHost: Signal<EditorContextMenuHost> =
+    viewChild.required<EditorContextMenuHost>(EditorContextMenuHost);
+
+  /**
+   * Holds the function that detaches this pane's editor from the right-click menu, or null before
+   * creation and after disposal.
+   */
+  private detachContextMenu: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -349,6 +370,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachFind = null;
     this.detachGoTo?.();
     this.detachGoTo = null;
+    this.detachContextMenu?.();
+    this.detachContextMenu = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -506,20 +529,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
    */
   public paste(): void {
-    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-    if (editor === null) {
-      return;
+    if (this.editor !== null) {
+      pasteIntoEditor(this.editor, COMMAND_SOURCE);
     }
-    editor.focus();
-    void navigator.clipboard
-      .readText()
-      .then((text: string): void => {
-        const selection: MonacoApi.Selection | null = editor.getSelection();
-        if (selection !== null) {
-          editor.executeEdits(COMMAND_SOURCE, [{ range: selection, text, forceMoveMarkers: true }]);
-        }
-      })
-      .catch((): void => undefined);
   }
 
   /**
@@ -611,6 +623,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // Hand the editor to the find router with the tab whose Find panel answers it outside a workspace.
     this.detachFind = this.findRouter.attach(this.editor, { host: this.findHost });
     this.detachGoTo = this.goToRouter.attach(this.editor, { injector: this.injector });
+    // Right-clicks open Studio's menu, drawn by the host in this pane's view — so in its window.
+    this.detachContextMenu = this.contextMenu.attach(this.editor, this.contextMenuHost());
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

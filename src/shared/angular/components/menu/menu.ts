@@ -106,6 +106,14 @@ export interface MenuItem {
   readonly status?: string;
 
   /**
+   * Gets the keyboard shortcut shown at the end of the row (for example `⌘F`), as a hint only: it is
+   * text, and binds nothing. The chord itself is served wherever it already is — the editor, or the
+   * core menu's native roles — so a row can name ⌘C without ever claiming it (see the editing-chords
+   * rule in `docs/agents.md`).
+   */
+  readonly shortcut?: string;
+
+  /**
    * Gets the secondary action shown as a trailing button on the row, if any. Acting on it emits
    * through {@link Menu.actioned} rather than {@link Menu.selected}, and leaves the menu open so the
    * next row can be acted on in turn.

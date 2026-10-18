@@ -1,5 +1,9 @@
+import { DebugElement } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import type * as MonacoApi from 'monaco-editor';
+import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import type { MockInstance } from 'vitest';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
@@ -141,6 +145,71 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
     expect(attach.mock.calls[0][1].injector).toBeTruthy();
     fixture.destroy();
     expect(detached).toBe(1);
+  });
+
+  it('attachesItsEditorToTheRightClickMenu_withTheHostInItsOwnView_andDetachesOnDestroy', async () => {
+    // #1012: the host sits in the pane's view, so the menu opens in the pane's window.
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    let detached: number = 0;
+    const attach: MockInstance<EditorContextMenu['attach']> = vi
+      .spyOn(TestBed.inject(EditorContextMenu), 'attach')
+      .mockReturnValue((): void => void (detached += 1));
+
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(attach.mock.calls[0][0]).toBe(editor);
+    const host: DebugElement = fixture.debugElement.query(By.directive(EditorContextMenuHost));
+    expect(attach.mock.calls[0][1]).toBe(host.componentInstance);
+    fixture.destroy();
+    expect(detached).toBe(1);
+  });
+
+  it('paste_readsTheClipboardThroughTheEditorsWindow_andReplacesTheSelection', async () => {
+    const edits: { text: string }[] = [];
+    const container: HTMLElement = document.createElement('div');
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor({
+      focus: (): void => undefined,
+      getContainerDomNode: (): HTMLElement => container,
+      getSelection: (): unknown => ({ startLineNumber: 1, startColumn: 1 }),
+      executeEdits: (_source: string, operations: { text: string }[]): boolean => {
+        edits.push(...operations);
+        return true;
+      },
+    });
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { readText: (): Promise<string> => Promise.resolve('from the clipboard') },
+    });
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    fixture.componentInstance.paste();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(edits.map((edit: { text: string }): string => edit.text)).toEqual([
+      'from the clipboard',
+    ]);
   });
 
   it('reveal_withAnEndColumn_selectsTheSpan_centredAndFocused', async () => {

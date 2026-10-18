@@ -1,6 +1,7 @@
 import {
   EnvironmentProviders,
   inject,
+  Injector,
   makeEnvironmentProviders,
   provideAppInitializer,
 } from '@angular/core';
@@ -12,6 +13,8 @@ import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
 import { DirectoryStatusStrip } from './directory-status/directory-status-strip';
 import { AgentRunConfigurationCapabilities } from './agent-run-configuration-capabilities/agent-run-configuration-capabilities';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { WorkspaceFind } from './workspace-find/workspace-find';
 
 /**
@@ -46,6 +49,12 @@ export function provideWorkspaceFeature(): EnvironmentProviders {
     provideAppInitializer((): void => {
       inject(AgentRunConfigurationCapabilities);
       inject(FindRouter).useWorkspace(inject(WorkspaceFind));
+      // A right-click Go to Definition in another file opens it in the workspace (#1012). The opener
+      // is resolved as it is used, so start-up builds nothing it did not before.
+      const injector: Injector = inject(Injector);
+      inject(EditorContextMenu).useFileOpener((path: string): Promise<boolean> =>
+        injector.get(FileOpener).openPath(path),
+      );
     }),
   ]);
 }

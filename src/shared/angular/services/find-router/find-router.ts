@@ -95,6 +95,19 @@ export class FindRouter {
   }
 
   /**
+   * Determines whether a find from an editor would open anywhere: the workspace's Search panel is
+   * there, or the editor was attached with a tab whose Find panel answers it. The right-click menu
+   * offers Find only then (#1012).
+   * @param editor The editor.
+   * @returns Returns true when a surface answers.
+   */
+  public answers(editor: MonacoApi.editor.ICodeEditor): boolean {
+    return (
+      this.workspace?.available() === true || (this.attachments.get(editor)?.host ?? null) !== null
+    );
+  }
+
+  /**
    * Opens a find from an editor — Studio's ⌘F / ⌘⌥F commands — seeded from its selection and routed
    * through the tab it was attached with.
    * @param editor The focused editor.
