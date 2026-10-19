@@ -11,6 +11,11 @@ import {
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
+import { LinePreviews } from '@shared/angular/services/references/line-previews';
+import type {
+  CodeLocation,
+  ReferenceItem,
+} from '@shared/angular/services/references/reference-list';
 import {
   buildHeuristicSemanticTokens,
   HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
@@ -231,6 +236,11 @@ export class LspFeatures {
    * Holds the editor registry used to map a model URI to its file path and back.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the reader of each reference's line, for Find All References (#1014).
+   */
+  private readonly linePreviews: LinePreviews = inject(LinePreviews);
 
   /**
    * Holds the structured logger.
@@ -815,6 +825,42 @@ export class LspFeatures {
       path: this.uriToPath('uri' in entry ? entry.uri : entry.targetUri),
       range: this.toRange('range' in entry ? entry.range : entry.targetSelectionRange),
     }));
+  }
+
+  /**
+   * Asks the language server that serves a document for every reference to the symbol at a position,
+   * its declaration included, for Find All References (#1014). Like {@link definitions}, this answers
+   * with paths rather than the open models Monaco's reference provider is limited to, so references in
+   * files nobody has opened are listed too — each with its line, read from the open editor where there
+   * is one and from disk otherwise (see {@link LinePreviews}).
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the references, in the server's order, or null when no server serves the document
+   * (an empty list is a server answering that it knows of none).
+   */
+  public async references(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly ReferenceItem[] | null> {
+    if (this.resolve(model) === null) {
+      return null;
+    }
+    const result: unknown = await this.request(
+      model,
+      'textDocument/references',
+      position as MonacoApi.Position,
+      { context: { includeDeclaration: true } },
+    );
+    if (!Array.isArray(result)) {
+      return [];
+    }
+    const locations: readonly CodeLocation[] = (result as LspLocation[]).map(
+      (entry: LspLocation): CodeLocation => ({
+        path: this.uriToPath(entry.uri),
+        range: this.toRange(entry.range),
+      }),
+    );
+    return this.linePreviews.fill(locations, this.monaco.getMonaco());
   }
 
   /**

@@ -26,6 +26,11 @@ import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import {
+  REFERENCES_HOST,
+  ReferencesHost,
+} from '@shared/angular/services/references/reference-list';
+import { ReferencesRouter } from '@shared/angular/services/references/references-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { pasteIntoEditor } from './editor-paste';
@@ -131,6 +136,26 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * creation and after disposal.
    */
   private detachGoTo: (() => void) | null = null;
+
+  /**
+   * Holds the references router this pane's editor is attached to, so Find All References reaches the
+   * tab that lists it (#1014).
+   */
+  private readonly referencesRouter: ReferencesRouter = inject(ReferencesRouter);
+
+  /**
+   * Holds the enclosing tab's own References panel, or null when the pane sits in no such tab (a
+   * workspace well document, where the workspace's References panel answers instead).
+   */
+  private readonly referencesHost: ReferencesHost | null = inject(REFERENCES_HOST, {
+    optional: true,
+  });
+
+  /**
+   * Holds the function that detaches this pane's editor from the references router, or null before
+   * creation and after disposal.
+   */
+  private detachReferences: (() => void) | null = null;
 
   /**
    * Holds the service this pane's editor is attached to for Studio's right-click menu (#1012).
@@ -372,6 +397,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachGoTo = null;
     this.detachContextMenu?.();
     this.detachContextMenu = null;
+    this.detachReferences?.();
+    this.detachReferences = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -623,6 +650,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // Hand the editor to the find router with the tab whose Find panel answers it outside a workspace.
     this.detachFind = this.findRouter.attach(this.editor, { host: this.findHost });
     this.detachGoTo = this.goToRouter.attach(this.editor, { injector: this.injector });
+    this.detachReferences = this.referencesRouter.attach(this.editor, this.referencesHost);
     // Right-clicks open Studio's menu, drawn by the host in this pane's view — so in its window.
     this.detachContextMenu = this.contextMenu.attach(this.editor, this.contextMenuHost());
 

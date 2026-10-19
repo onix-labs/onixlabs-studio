@@ -745,6 +745,11 @@ export class Icon {
   public static readonly GO_TO_LINE: Icon = new Icon('ph-duotone ph-list-numbers');
 
   /**
+   * Gets the References panel's icon: a list searched through (#1014).
+   */
+  public static readonly REFERENCES: Icon = new Icon('ph-duotone ph-list-magnifying-glass');
+
+  /**
    * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
    */
   public static readonly SYMBOL_CLASS: Icon = new Icon('ph ph-cube');

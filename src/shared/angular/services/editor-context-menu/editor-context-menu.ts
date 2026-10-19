@@ -1,18 +1,12 @@
-import { inject, Injector, Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import type { MenuItem } from '@shared/angular/components/menu/menu';
 import { pasteIntoEditor } from '@shared/angular/components/text-editor/editor-paste';
-import { EditorLocation, Editors } from '@shared/angular/services/editors/editors';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
-import { revealTarget } from '@shared/angular/services/go-to/go-to-model';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Log } from '@shared/angular/services/log/log';
-import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
-import {
-  hasComments,
-  hasDefinitionProvider,
-  providedDefinitions,
-} from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { hasComments } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
@@ -25,6 +19,7 @@ const COMMAND_SOURCE: string = 'app-editor-context-menu';
  */
 export type EditorContextMenuCommand =
   | 'definition'
+  | 'references'
   | 'symbol'
   | 'line'
   | 'find'
@@ -43,16 +38,6 @@ export type EditorContextMenuCommand =
  * gutter, a scroll bar, the minimap or a widget drawn over the text.
  */
 const MENU_TARGETS: ReadonlySet<number> = new Set<number>([1, 6, 7]);
-
-/**
- * Holds how long to wait between looks for an opened file's editor, in milliseconds.
- */
-const REVEAL_POLL_MS: number = 80;
-
-/**
- * Holds how many times to look for an opened file's editor before giving up (two seconds in all).
- */
-const REVEAL_POLL_ATTEMPTS: number = 25;
 
 /**
  * Maps the Monaco actions the menu runs to the commands that run them.
@@ -93,6 +78,7 @@ interface ShortcutHints {
  */
 const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   definition: { mac: 'F12', windows: 'F12' },
+  references: { mac: '⇧F12', windows: 'Shift+F12' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   find: { mac: '⌘F', windows: 'Ctrl+F' },
@@ -141,7 +127,8 @@ export interface EditorContextMenuOpener {
  *
  * A right-click over the text moves the caret there when it falls outside the selection, as Monaco
  * does, then opens the menu with the rows that editor can use: Go to Definition where its language
- * offers definitions, Go to Symbol and Go to Line, Find where a find panel answers, Format and Toggle
+ * offers definitions, Find All References where it offers references (#1014), Go to Symbol and Go to
+ * Line, Find where a find panel answers, Format and Toggle
  * Comment where the language supports them and the editor can be edited, and the clipboard — Copy and
  * Select All alone in a read-only editor.
  *
@@ -160,9 +147,9 @@ export class EditorContextMenu {
   private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
-   * Holds the editor registry, which knows the file each document editor shows.
+   * Holds the navigation Go to Definition and Find All References go through (#1014).
    */
-  private readonly editors: Editors = inject(Editors);
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
 
   /**
    * Holds the host platform, which decides the shortcut hints.
@@ -170,32 +157,9 @@ export class EditorContextMenu {
   private readonly studio: Studio = inject(Studio);
 
   /**
-   * Holds the injector the language-server features are resolved from as they are needed. Resolved
-   * then rather than injected here: they reach into Monaco, which every editor would otherwise pull in
-   * to be built.
-   */
-  private readonly injector: Injector = inject(Injector);
-
-  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the function that opens a file in the workspace, or null until the workspace feature
-   * contributes it — outside a workspace, nothing can open another file.
-   */
-  private openFile: ((path: string) => Promise<boolean>) | null = null;
-
-  /**
-   * Sets how a definition in another file is opened, called once by the workspace feature at start-up.
-   * A seam rather than an injection: the workspace's file opener reaches the diff panels, whose diff
-   * editor attaches here, so importing it would be a cycle.
-   * @param openFile Opens a file by absolute path, resolving whether it opened.
-   */
-  public useFileOpener(openFile: (path: string) => Promise<boolean>): void {
-    this.openFile = openFile;
-  }
 
   /**
    * Attaches an editor: its right-clicks open the menu through the given opener.
@@ -228,8 +192,15 @@ export class EditorContextMenu {
     const selected: boolean = editor.getSelection()?.isEmpty() === false;
 
     const navigation: MenuItem[] = [];
-    if (this.offersDefinitions(model, monaco)) {
+    if (this.navigation.offersDefinitions(editor)) {
       navigation.push(this.item('definition', 'Go to Definition'));
+    }
+    // Shown where the language can answer, but inert where no References panel would list the
+    // answer — as Find is where no find panel answers.
+    if (this.navigation.offersReferences(editor)) {
+      navigation.push(
+        this.item('references', 'Find All References', !this.navigation.listsReferences(editor)),
+      );
     }
     navigation.push(this.item('symbol', 'Go to Symbol…'), this.item('line', 'Go to Line…'));
 
@@ -274,6 +245,9 @@ export class EditorContextMenu {
       case 'definition':
         void this.goToDefinition(editor);
         return;
+      case 'references':
+        void this.navigation.findReferences(editor);
+        return;
       case 'symbol':
         this.goToRouter.open(editor, 'symbol');
         return;
@@ -311,49 +285,15 @@ export class EditorContextMenu {
   }
 
   /**
-   * Goes to the definition of the symbol at the caret — straight there, the first when there are
-   * several — never through Monaco's peek. A language server's answer comes first, by path, so a
-   * definition in a file not yet open is opened; otherwise the definition providers Monaco's own
-   * languages register answer, within the files Studio has open.
+   * Goes to the definition of the symbol at the caret, never through Monaco's peek: straight there
+   * when there is one — across files through the workspace — and the list of them in the References
+   * panel when there are several (#1014), through the shared {@link EditorNavigation} F12 and
+   * ⌘-click use too.
    * @param editor The editor.
    * @returns Returns a promise that resolves once the definition is shown, or found not to be.
    */
-  public async goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
-    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
-    const position: MonacoApi.Position | null = editor.getPosition();
-    if (model === null || position === null) {
-      return;
-    }
-    const served: readonly LspDefinition[] | null = await this.injector
-      .get(LspFeatures)
-      .definitions(model, position);
-    if (served !== null) {
-      const first: LspDefinition | undefined = served[0];
-      if (first === undefined) {
-        this.log.debug('editorContextMenu', 'The language server knows no definition');
-        return;
-      }
-      await this.goTo(editor, first.path, first.range);
-      return;
-    }
-    const monaco: typeof MonacoApi | undefined = instanceOf(editor);
-    const provided: readonly MonacoApi.languages.Location[] =
-      monaco === undefined ? [] : await providedDefinitions(monaco, model, position);
-    const first: MonacoApi.languages.Location | undefined = provided[0];
-    if (first === undefined) {
-      this.log.debug('editorContextMenu', 'No provider knows a definition', model.getLanguageId());
-      return;
-    }
-    if (first.uri.toString() === model.uri.toString()) {
-      revealTarget(editor, startOf(first.range));
-      return;
-    }
-    const path: string | null = this.editors.locate(first.uri.toString())?.path ?? null;
-    if (path === null) {
-      this.log.debug('editorContextMenu', 'The definition is in no file Studio can open');
-      return;
-    }
-    await this.goTo(editor, path, first.range);
+  public goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.navigation.goToDefinition(editor);
   }
 
   /**
@@ -421,64 +361,6 @@ export class EditorContextMenu {
     }
     return editor.getRawOptions().readOnly === true;
   }
-
-  /**
-   * Determines whether Go to Definition can answer for a document: a language server serves it, or a
-   * definition provider is registered for its language.
-   * @param model The editor model.
-   * @param monaco The editor's Monaco instance, or undefined when its window has none.
-   * @returns Returns true when the row is offered.
-   */
-  private offersDefinitions(
-    model: MonacoApi.editor.ITextModel,
-    monaco: typeof MonacoApi | undefined,
-  ): boolean {
-    if (monaco !== undefined && hasDefinitionProvider(monaco, model.getLanguageId())) {
-      return true;
-    }
-    return this.injector.get(LspFeatures).servesDocument(model);
-  }
-
-  /**
-   * Goes to a place in a file: in the editor itself when it shows that file, otherwise by opening the
-   * file in the workspace and revealing the place in its editor once that has registered.
-   * @param editor The editor the menu was opened in.
-   * @param path The absolute path of the file.
-   * @param range The span of the definition.
-   * @returns Returns a promise that resolves once the place is shown, or found not to be.
-   */
-  private async goTo(
-    editor: MonacoApi.editor.ICodeEditor,
-    path: string,
-    range: MonacoApi.IRange,
-  ): Promise<void> {
-    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
-    const shown: string | null =
-      model === null ? null : (this.editors.locate(model.uri.toString())?.path ?? null);
-    if (shown === path) {
-      revealTarget(editor, startOf(range));
-      return;
-    }
-    // Only a workspace opens another file; a standalone tab has nowhere to put it.
-    const opened: boolean = this.openFile === null ? false : await this.openFile(path);
-    if (!opened) {
-      this.log.debug('editorContextMenu', 'The definition is in a file that could not be opened');
-      return;
-    }
-    for (let attempt: number = 0; attempt < REVEAL_POLL_ATTEMPTS; attempt++) {
-      const modelUri: string | undefined = this.editors.modelUriForPath(path);
-      const location: EditorLocation | undefined =
-        modelUri === undefined ? undefined : this.editors.locate(modelUri);
-      if (location !== undefined) {
-        this.editors.requestReveal(location.documentId, range.startLineNumber, range.startColumn);
-        return;
-      }
-      await new Promise<void>((resolve: () => void): void => {
-        setTimeout(resolve, REVEAL_POLL_MS);
-      });
-    }
-    this.log.debug('editorContextMenu', 'The opened file never showed an editor', path);
-  }
 }
 
 /**
@@ -505,14 +387,4 @@ function supports(
 ): boolean {
   const action: string | undefined = MONACO_ACTIONS[command];
   return action !== undefined && editor.getAction(action)?.isSupported() === true;
-}
-
-/**
- * Collapses a definition's span to its start, where the caret goes — as an editor's go to definition
- * places it, rather than selecting the name.
- * @param range The span.
- * @returns Returns the place to go to.
- */
-function startOf(range: MonacoApi.IRange): { readonly line: number; readonly column: number } {
-  return { line: range.startLineNumber, column: range.startColumn };
 }

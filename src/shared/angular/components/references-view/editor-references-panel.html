@@ -1,0 +1,9 @@
+<app-tool-panel
+  title="References"
+  [icon]="Icon.REFERENCES"
+  closeLabel="Close references"
+  [flush]="true"
+  (closed)="closed.emit()"
+>
+  <app-references-view [list]="list()" (chosen)="chosen.emit($event)" />
+</app-tool-panel>

@@ -10,6 +10,7 @@ import {
 import { OwningProject, SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { SearchResultsTree } from '@shared/angular/components/search-view/search-results-tree';
 import { SearchView } from '@shared/angular/components/search-view/search-view';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
@@ -476,16 +477,24 @@ describe('SearchPanel', () => {
     expect(rows[0].getAttribute('aria-expanded')).toBe('true');
     expect(rows[1].textContent).toContain('3');
     expect(rows[1].textContent).toContain('const todo = 1;');
+    // The lead-in is isolated left-to-right inside a right-to-left box, so it gives way from its start.
+    expect(rows[1].querySelector('.search-results__before > bdi[dir="ltr"]')?.textContent).toBe(
+      'const ',
+    );
   });
 
-  it('lead_keepsTheMatchInView_byShorteningALongLeadInToItsEnd', () => {
-    // A row is one line: a long lead-in pushed the match past the edge, into the ellipsis.
-    const lead: (before: string) => string =
-      member<(before: string) => string>('lead').bind(view());
+  it('lead_dropsTheIndentation_andLeavesTheLengthToTheRow', () => {
+    // The lead-in fills the room the panel has and gives way from its start, so the words beside the
+    // match stay in view; a fixed cut left a wide panel showing only a few words (#1014).
+    const tree: SearchResultsTree = fixture.debugElement.query(By.directive(SearchResultsTree))
+      .componentInstance as SearchResultsTree;
+    const lead: (before: string) => string = (
+      tree as unknown as Record<string, (before: string) => string>
+    )['lead'].bind(tree);
 
     expect(lead('const ')).toBe('const ');
     expect(lead('    return ')).toBe('return ');
-    expect(lead('export function greet(')).toBe('…port function greet(');
+    expect(lead('export function greet(')).toBe('export function greet(');
   });
 
   it('clickingAFile_foldsItsMatches_andClickingAgainUnfoldsThem', async () => {

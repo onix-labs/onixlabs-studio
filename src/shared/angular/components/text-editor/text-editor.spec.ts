@@ -13,6 +13,11 @@ import {
   FindHost,
 } from '@shared/angular/services/find-router/find-host';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import {
+  REFERENCES_HOST,
+  ReferencesHost,
+} from '@shared/angular/services/references/reference-list';
+import { ReferencesRouter } from '@shared/angular/services/references/references-router';
 import { TextEditor } from './text-editor';
 
 describe('TextEditor', () => {
@@ -116,6 +121,38 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       attach.mock.calls[0];
     expect(attached).toBe(editor);
     expect(attachment.host).toBe(host);
+    fixture.destroy();
+    expect(detached).toBe(1);
+  });
+
+  it('attachesItsEditorToTheReferencesRouter_withTheEnclosingTabsPanel_andDetachesOnDestroy', async () => {
+    // #1014: outside a workspace, Find All References lists in the tab's own References panel.
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
+    const referencesHost: ReferencesHost = { openReferences: (): void => undefined };
+    await TestBed.configureTestingModule({
+      imports: [TextEditor],
+      providers: [{ provide: REFERENCES_HOST, useValue: referencesHost }],
+    }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    let detached: number = 0;
+    const attach: MockInstance<ReferencesRouter['attach']> = vi
+      .spyOn(TestBed.inject(ReferencesRouter), 'attach')
+      .mockReturnValue((): void => void (detached += 1));
+
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    // Compared by identity: the stand-in editor answers every member, so deep equality never ends.
+    expect(attach.mock.calls[0][0]).toBe(editor);
+    expect(attach.mock.calls[0][1]).toBe(referencesHost);
     fixture.destroy();
     expect(detached).toBe(1);
   });
