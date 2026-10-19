@@ -101,6 +101,7 @@ function fakeMonaco(models: readonly MonacoApi.editor.ITextModel[]): typeof Mona
       registerCodeActionProvider: (): MonacoApi.IDisposable => ({
         dispose: (): void => undefined,
       }),
+      registerHoverProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
     CancellationTokenSource: class {

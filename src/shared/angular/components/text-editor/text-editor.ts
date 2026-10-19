@@ -34,6 +34,7 @@ import { ReferencesRouter } from '@shared/angular/services/references/references
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { pasteIntoEditor } from './editor-paste';
 
 /**
@@ -185,6 +186,17 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * disposal.
    */
   private detachQuickFixes: (() => void) | null = null;
+
+  /**
+   * Holds the hover cards this pane's editor shows in place of Monaco's hover (#1020).
+   */
+  private readonly hoverCards: HoverCards = inject(HoverCards);
+
+  /**
+   * Holds the function that takes this pane's hover card away, or null before creation and after
+   * disposal.
+   */
+  private detachHoverCards: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -413,6 +425,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachReferences = null;
     this.detachQuickFixes?.();
     this.detachQuickFixes = null;
+    this.detachHoverCards?.();
+    this.detachHoverCards = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -669,6 +683,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachContextMenu = this.contextMenu.attach(this.editor, this.contextMenuHost());
     // Studio's fix icon beside the caret's line while fixes exist there; hidden while read-only.
     this.detachQuickFixes = this.quickFixes.attach(this.editor, monaco);
+    // Studio's hover card over a symbol, a problem or a breakpoint, drawn in this pane's window.
+    this.detachHoverCards = this.hoverCards.attach(this.editor, this.injector);
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

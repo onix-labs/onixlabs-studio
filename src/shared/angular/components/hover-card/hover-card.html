@@ -1,0 +1,65 @@
+<div class="hover-card__body">
+  @for (section of content().sections; track $index) {
+    <app-markdown-renderer class="hover-card__section" [text]="section" [codeFooters]="false" />
+  }
+  @if (content().problems.length > 0) {
+    <ul class="hover-card__problems" aria-label="Problems">
+      @for (problem of content().problems; track $index) {
+        <li class="hover-card__problem">
+          <app-icon
+            class="hover-card__severity"
+            [icon]="iconFor(problem)"
+            [color]="colorFor(problem)"
+          />
+          <div class="hover-card__problem-text">
+            <span class="hover-card__message">{{ problem.message }}</span>
+            @if (detailOf(problem); as detail) {
+              <span class="hover-card__detail">{{ detail }}</span>
+            }
+            <div class="hover-card__links">
+              @if (content().quickFix) {
+                <app-button
+                  variant="none"
+                  size="small"
+                  label="Quick Fix…"
+                  (click)="quickFix.emit(problem)"
+                />
+              }
+              <app-button
+                variant="none"
+                size="small"
+                label="Go to Problem"
+                (click)="goToProblem.emit(problem)"
+              />
+            </div>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>
+@if (content().actions; as actions) {
+  @if (actions.definition || actions.references) {
+    <div class="hover-card__actions">
+      @if (actions.definition) {
+        <app-button
+          variant="none"
+          size="small"
+          label="Go to Definition"
+          [icon]="Icon.GO_TO_SYMBOL"
+          (click)="goToDefinition.emit()"
+        />
+      }
+      @if (actions.references) {
+        <app-button
+          variant="none"
+          size="small"
+          label="Find All References"
+          [icon]="Icon.REFERENCES"
+          [disabled]="!actions.referencesListed"
+          (click)="findReferences.emit()"
+        />
+      }
+    </div>
+  }
+}

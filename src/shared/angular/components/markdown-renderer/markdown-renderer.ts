@@ -125,6 +125,12 @@ export class MarkdownRenderer {
   );
 
   /**
+   * Gets whether each code block shows its footer of language, copy and run. A hover card (#1020)
+   * shows its snippets bare.
+   */
+  public readonly codeFooters: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Holds the sanitiser used to bind the already-sanitised prose HTML as trusted.
    */
   private readonly sanitizer: DomSanitizer = inject(DomSanitizer);

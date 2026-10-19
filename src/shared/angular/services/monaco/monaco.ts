@@ -33,6 +33,11 @@ import {
 } from './monaco-navigation-commands';
 import { installRenameCommands } from './monaco-rename-commands';
 import { installQuickFixCommands, QUICK_FIX_EDITOR_OPTIONS } from './monaco-quick-fix-commands';
+import {
+  HOVER_EDITOR_OPTIONS,
+  installHoverCommands,
+  ProblemDirection,
+} from './monaco-hover-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
@@ -42,6 +47,7 @@ import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -450,6 +456,8 @@ export class Monaco {
       ...NAVIGATION_EDITOR_OPTIONS,
       // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
       ...QUICK_FIX_EDITOR_OPTIONS,
+      // Monaco's hover never shows: Studio draws its own hover card (#1020).
+      ...HOVER_EDITOR_OPTIONS,
     };
   }
 
@@ -482,6 +490,8 @@ export class Monaco {
       ...NAVIGATION_EDITOR_OPTIONS,
       // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
       ...QUICK_FIX_EDITOR_OPTIONS,
+      // Monaco's hover never shows: Studio draws its own hover card (#1020).
+      ...HOVER_EDITOR_OPTIONS,
     };
   }
 
@@ -509,6 +519,7 @@ export class Monaco {
     this.installNavigationCommands(window.monaco);
     this.installRenameCommands(window.monaco);
     this.installQuickFixCommands(window.monaco);
+    this.installHoverCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -612,6 +623,31 @@ export class Monaco {
   }
 
   /**
+   * Removes Monaco's Show Hover and problem navigation chords from an instance and binds Studio's in
+   * their place, and routes every other way into Monaco's hover, gutter hover and problem peek to
+   * Studio's, so ⌘K ⌘I (Ctrl+K Ctrl+I) and F8 / ⇧F8 reach the {@link HoverCards} and none of Monaco's
+   * hover widgets is ever built (#1020).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installHoverCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installHoverCommands(monaco, {
+      showHover: (editor: MonacoApi.editor.ICodeEditor, position?: MonacoApi.IPosition): void => {
+        this.log.info('Monaco', 'Studio show-hover command');
+        this.injector.get(HoverCards).showAt(editor, position);
+      },
+      goToProblem: (editor: MonacoApi.editor.ICodeEditor, direction: ProblemDirection): void => {
+        this.log.info('Monaco', 'Studio problem navigation', direction);
+        this.injector.get(HoverCards).goToProblem(editor, direction);
+      },
+      showProblem: (editor: MonacoApi.editor.ICodeEditor, problem: MonacoApi.IRange): void =>
+        this.injector.get(HoverCards).showProblem(editor, problem),
+    });
+  }
+
+  /**
    * Resolves the worker script URL for a Monaco language label. Workers are served from the copied
    * `vs/` assets.
    * @param _moduleId The requesting module identifier (unused).
@@ -669,6 +705,7 @@ export class Monaco {
       this.installNavigationCommands(monaco);
       this.installRenameCommands(monaco);
       this.installQuickFixCommands(monaco);
+      this.installHoverCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

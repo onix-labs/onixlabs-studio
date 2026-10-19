@@ -6,7 +6,9 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import type { LspDiagnostic } from './lsp-client';
 import {
+  escapeMarkdown,
   FEATURE_LANGUAGES,
+  hoverContents,
   LspCodeAction,
   LspCodeActionSupport,
   LspFeatures,
@@ -293,6 +295,39 @@ describe('LspFeatures', () => {
       endLineNumber: 1,
       endColumn: 15,
     });
+  });
+
+  it('hover_mapsEachPartAsTheProtocolMeansIt_codeFenced_plainTextEscaped (#1020)', async () => {
+    responses['textDocument/hover'] = {
+      contents: [
+        { language: 'csharp', value: 'void Main()' },
+        'A *markdown* string',
+        { kind: 'plaintext', value: 'List<int> *not* bold' },
+        '',
+      ],
+    };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const hover: MappedHover = (await captured.hover?.provideHover(model, {
+      lineNumber: 1,
+      column: 9,
+    })) as MappedHover;
+
+    expect(hover.contents.map((content: { value: string }): string => content.value)).toEqual([
+      '```csharp\nvoid Main()\n```',
+      'A *markdown* string',
+      'List\\<int\\> \\*not\\* bold',
+    ]);
+    expect(hover.range).toBeUndefined();
+  });
+
+  it('hoverContents_fencesASnippetPastItsOwnBackticks_andEscapesPlainTextLineByLine (#1020)', () => {
+    expect(hoverContents({ language: 'md', value: 'a ``` b' })).toEqual([
+      { value: '````md\na ``` b\n````' },
+    ]);
+    expect(hoverContents({ kind: 'markdown', value: '# Title' })).toEqual([{ value: '# Title' }]);
+    expect(hoverContents({ value: 'no kind' })).toEqual([{ value: 'no kind' }]);
+    expect(escapeMarkdown('a_b\n[c](d) $e & `f`')).toBe('a\\_b\n\n\\[c\\]\\(d\\) \\$e \\& \\`f\\`');
   });
 
   it('documentSymbols_asksTheServer_andGivesMonacoTheSameSymbols_kindsFromZero', async () => {

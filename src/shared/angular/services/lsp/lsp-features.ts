@@ -333,10 +333,24 @@ interface LspCompletionList {
 }
 
 /**
+ * A marked string from a server's hover (the protocol's older form): a code snippet in a language.
+ */
+interface LspMarkedString {
+  readonly language: string;
+  readonly value: string;
+}
+
+/**
+ * One part of a server's hover: markdown text (a bare string), a code snippet in a language, or markup
+ * content that says whether it is markdown or plain text.
+ */
+export type LspHoverPart = string | LspMarkup | LspMarkedString;
+
+/**
  * A hover response from a server.
  */
 interface LspHover {
-  readonly contents: string | LspMarkup | readonly (string | LspMarkup)[];
+  readonly contents: LspHoverPart | readonly LspHoverPart[];
   readonly range?: LspRange;
 }
 
@@ -584,13 +598,17 @@ export class LspFeatures {
         ): Promise<MonacoApi.languages.CompletionList | undefined> =>
           this.provideCompletion(monaco, model, position),
       });
-      monaco.languages.registerHoverProvider(language, {
+      const hoverProvider: MonacoApi.languages.HoverProvider = {
         provideHover: (
           model: MonacoApi.editor.ITextModel,
           position: MonacoApi.Position,
         ): Promise<MonacoApi.languages.Hover | undefined> =>
           this.provideHover(monaco, model, position),
-      });
+      };
+      monaco.languages.registerHoverProvider(language, hoverProvider);
+      // Marked as Studio's, so a hover card prefers the language server's answer to the one Monaco's
+      // own worker gives for the same language (#1020): both answering showed the docs twice.
+      markStudioProvider(hoverProvider);
       monaco.languages.registerDefinitionProvider(language, {
         provideDefinition: (
           model: MonacoApi.editor.ITextModel,
@@ -909,7 +927,8 @@ export class LspFeatures {
   }
 
   /**
-   * Handles a hover request, mapping the server's hover to Monaco's hover shape.
+   * Handles a hover request, mapping the server's hover to Monaco's hover shape — each part as
+   * markdown (see {@link hoverContents}), which Studio's hover card renders (#1020).
    * @param monaco The loaded Monaco namespace.
    * @param model The model the hover was requested in.
    * @param position The one-based cursor position.
@@ -925,15 +944,10 @@ export class LspFeatures {
       return undefined;
     }
     const hover: LspHover = result as LspHover;
-    const parts: readonly (string | LspMarkup)[] = Array.isArray(hover.contents)
-      ? hover.contents
-      : [hover.contents];
-    const contents: MonacoApi.IMarkdownString[] = parts.map(
-      (part: string | LspMarkup): MonacoApi.IMarkdownString => ({
-        value: typeof part === 'string' ? part : part.value,
-      }),
-    );
-    return { contents, range: hover.range === undefined ? undefined : this.toRange(hover.range) };
+    return {
+      contents: hoverContents(hover.contents),
+      range: hover.range === undefined ? undefined : this.toRange(hover.range),
+    };
   }
 
   /**
@@ -1737,4 +1751,64 @@ function wordPreparation(
 function serverMessage(error: unknown): string {
   const message: string = error instanceof Error ? error.message : String(error);
   return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '');
+}
+
+/**
+ * Maps a server's hover contents to markdown blocks (#1020), as the protocol means each form: a bare
+ * string is markdown; a marked string (`{ language, value }`) is a code snippet, fenced in its
+ * language so it is highlighted; markup content is markdown when it says so and plain text otherwise,
+ * whose markdown characters are escaped so it reads exactly as sent. Empty parts are dropped.
+ * @param contents The server's hover contents: one part, or several.
+ * @returns Returns the blocks, in the server's order.
+ */
+export function hoverContents(
+  contents: LspHoverPart | readonly LspHoverPart[],
+): MonacoApi.IMarkdownString[] {
+  const parts: readonly LspHoverPart[] = Array.isArray(contents)
+    ? (contents as readonly LspHoverPart[])
+    : [contents as LspHoverPart];
+  const blocks: MonacoApi.IMarkdownString[] = [];
+  for (const part of parts) {
+    let value: string;
+    if (typeof part === 'string') {
+      value = part;
+    } else if ('language' in part && typeof part.language === 'string') {
+      value = fenced(part.value, part.language);
+    } else if ((part as LspMarkup).kind === 'markdown') {
+      value = part.value;
+    } else {
+      value = escapeMarkdown(part.value);
+    }
+    if (value.trim().length > 0) {
+      blocks.push({ value });
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Fences a code snippet in a language, with a fence longer than any run of backticks inside it, so the
+ * snippet can never close its own fence.
+ * @param code The snippet.
+ * @param language The language it is written in.
+ * @returns Returns the fenced block, as markdown.
+ */
+function fenced(code: string, language: string): string {
+  const longest: number = Math.max(
+    0,
+    ...[...code.matchAll(/`+/g)].map((run: RegExpMatchArray): number => run[0].length),
+  );
+  const fence: string = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}${language}\n${code}\n${fence}`;
+}
+
+/**
+ * Escapes plain text for markdown: every ASCII punctuation character markdown could read as syntax is
+ * escaped, and each line break becomes a paragraph break, so the text reads exactly as sent — as
+ * Monaco's own plain-text hover does.
+ * @param text The plain text.
+ * @returns Returns the text, as markdown.
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_{}[\]()#+\-.!<>|~$&]/g, '\\$&').replace(/\r?\n/g, '\n\n');
 }

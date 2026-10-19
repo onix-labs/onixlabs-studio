@@ -21,6 +21,7 @@ import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -116,6 +117,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     viewChild.required<EditorContextMenuHost>(EditorContextMenuHost);
 
   /**
+   * Holds the hover cards both sides show in place of Monaco's hover (#1020).
+   */
+  private readonly hoverCards: HoverCards = inject(HoverCards);
+
+  /**
    * Gets the absolute path of the compared file, which a find from either side searches — the
    * modified side being the file as it stands — or null when it is unknown.
    */
@@ -178,8 +184,8 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly subscriptions: MonacoApi.IDisposable[] = [];
 
   /**
-   * Holds the functions that detach both sides from the find and go-to routers and the right-click
-   * menu, called with the editor's disposal.
+   * Holds the functions that detach both sides from the find and go-to routers, the right-click menu
+   * and the hover cards, called with the editor's disposal.
    */
   private readonly findDetachers: (() => void)[] = [];
 
@@ -354,6 +360,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     this.attachFind(this.editor);
     this.attachGoTo(this.editor);
     this.attachContextMenu(this.editor);
+    // Studio's hover card over either side, drawn in this pane's window (#1020).
+    this.findDetachers.push(
+      this.hoverCards.attach(this.editor.getOriginalEditor(), this.injector),
+      this.hoverCards.attach(this.editor.getModifiedEditor(), this.injector),
+    );
 
     this.ready = true;
     this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
