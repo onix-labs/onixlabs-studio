@@ -3,7 +3,9 @@ import {
   captureEditorCapabilities,
   hasComments,
   hasDefinitionProvider,
+  hasReferenceProvider,
   providedDefinitions,
+  providedReferences,
 } from './monaco-editor-capabilities';
 
 /**
@@ -13,6 +15,7 @@ import {
 interface FakeMonaco {
   readonly monaco: typeof MonacoApi;
   readonly definitionProviders: MonacoApi.languages.DefinitionProvider[];
+  readonly referenceProviders: MonacoApi.languages.ReferenceProvider[];
   readonly configurations: string[];
 }
 
@@ -22,6 +25,7 @@ interface FakeMonaco {
  */
 function fakeMonaco(): FakeMonaco {
   const definitionProviders: MonacoApi.languages.DefinitionProvider[] = [];
+  const referenceProviders: MonacoApi.languages.ReferenceProvider[] = [];
   const configurations: string[] = [];
   const monaco: typeof MonacoApi = {
     languages: {
@@ -30,6 +34,13 @@ function fakeMonaco(): FakeMonaco {
         provider: MonacoApi.languages.DefinitionProvider,
       ): MonacoApi.IDisposable => {
         definitionProviders.push(provider);
+        return { dispose: (): void => undefined };
+      },
+      registerReferenceProvider: (
+        _selector: MonacoApi.languages.LanguageSelector,
+        provider: MonacoApi.languages.ReferenceProvider,
+      ): MonacoApi.IDisposable => {
+        referenceProviders.push(provider);
         return { dispose: (): void => undefined };
       },
       setLanguageConfiguration: (languageId: string): MonacoApi.IDisposable => {
@@ -46,7 +57,7 @@ function fakeMonaco(): FakeMonaco {
       }
     },
   } as unknown as typeof MonacoApi;
-  return { monaco, definitionProviders, configurations };
+  return { monaco, definitionProviders, referenceProviders, configurations };
 }
 
 /**
@@ -165,6 +176,68 @@ describe('monaco-editor-capabilities', () => {
     ).toEqual([]);
     expect(
       await providedDefinitions(fake.monaco, modelOf('rust'), { lineNumber: 1, column: 1 }),
+    ).toEqual([]);
+  });
+
+  it('capture_recordsReferenceProviders_andStillRegistersThem', () => {
+    const fake: FakeMonaco = fakeMonaco();
+    captureEditorCapabilities(fake.monaco);
+    const provider: MonacoApi.languages.ReferenceProvider = {
+      provideReferences: (): null => null,
+    };
+
+    const disposable: MonacoApi.IDisposable = fake.monaco.languages.registerReferenceProvider(
+      'typescript',
+      provider,
+    );
+
+    expect(fake.referenceProviders).toEqual([provider]);
+    expect(hasReferenceProvider(fake.monaco, 'typescript')).toBe(true);
+    expect(hasReferenceProvider(fake.monaco, 'rust')).toBe(false);
+    disposable.dispose();
+    expect(hasReferenceProvider(fake.monaco, 'typescript')).toBe(false);
+  });
+
+  it('providedReferences_newestFirst_includingTheDeclaration_skippingEmptyAndFailingProviders', async () => {
+    const fake: FakeMonaco = fakeMonaco();
+    captureEditorCapabilities(fake.monaco);
+    const uri: MonacoApi.Uri = { toString: (): string => 'inmemory://model/1' } as MonacoApi.Uri;
+    const contexts: MonacoApi.languages.ReferenceContext[] = [];
+    fake.monaco.languages.registerReferenceProvider('typescript', {
+      provideReferences: (
+        _model: MonacoApi.editor.ITextModel,
+        _position: MonacoApi.Position,
+        context: MonacoApi.languages.ReferenceContext,
+      ): MonacoApi.languages.Location[] => {
+        contexts.push(context);
+        return [
+          { uri, range: span(2, 5, 8) },
+          { uri, range: span(7, 1, 4) },
+        ];
+      },
+    });
+    fake.monaco.languages.registerReferenceProvider('typescript', {
+      provideReferences: (): never => {
+        throw new Error('worker gone');
+      },
+    });
+    fake.monaco.languages.registerReferenceProvider('typescript', {
+      provideReferences: (): MonacoApi.languages.Location[] => [],
+    });
+
+    const found: readonly MonacoApi.languages.Location[] = await providedReferences(
+      fake.monaco,
+      modelOf('typescript'),
+      { lineNumber: 2, column: 6 },
+    );
+
+    expect(found).toEqual([
+      { uri, range: span(2, 5, 8) },
+      { uri, range: span(7, 1, 4) },
+    ]);
+    expect(contexts).toEqual([{ includeDeclaration: true }]);
+    expect(
+      await providedReferences(fake.monaco, modelOf('rust'), { lineNumber: 1, column: 1 }),
     ).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { FEATURE_LANGUAGES, LspFeatures } from './lsp-features';
@@ -53,7 +54,10 @@ interface MappedHover {
 /**
  * A minimal fake of the Monaco namespace covering only what the feature providers use.
  */
-function fakeMonacoNamespace(captured: CapturedProviders): unknown {
+function fakeMonacoNamespace(
+  captured: CapturedProviders,
+  models: readonly unknown[] = [],
+): unknown {
   const created: FakeEmitter[] = [];
   const emitterClass: new () => FakeEmitter = class extends FakeEmitter {
     public constructor() {
@@ -66,6 +70,8 @@ function fakeMonacoNamespace(captured: CapturedProviders): unknown {
       // The heuristic fallback tokenizes with Monarch only to skip strings/comments/keywords; an
       // empty token line means nothing is skipped, which is what these tests want.
       tokenize: (): unknown[][] => [],
+      // The models of the open editors, whose lines a references list previews (#1014).
+      getModels: (): readonly unknown[] => models,
     },
     languages: {
       CompletionItemKind: { Method: 0, Function: 1, Text: 18 },
@@ -128,6 +134,9 @@ describe('LspFeatures', () => {
   let responses: Record<string, unknown>;
   let semanticLegend: LspSemanticTokensLegend | null;
   let suppressWhen: ((model: unknown) => boolean) | undefined;
+  let openModels: unknown[];
+  let files: Record<string, string>;
+  let reads: string[];
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -139,8 +148,17 @@ describe('LspFeatures', () => {
     responses = {};
     semanticLegend = null;
     suppressWhen = undefined;
+    openModels = [];
+    files = {};
+    reads = [];
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
+        if (channel === (FileChannel.Read as string)) {
+          const filePath: string = args[0] as string;
+          reads.push(filePath);
+          const content: string | undefined = files[filePath];
+          return Promise.resolve((content === undefined ? null : { path: filePath, content }) as T);
+        }
         if (channel === (LspChannel.Request as string)) {
           const [sessionId, method, params] = args as [string, string, unknown];
           requests.push({ sessionId, method, params });
@@ -166,7 +184,7 @@ describe('LspFeatures', () => {
   async function build(): Promise<LspFeatures> {
     const monaco: unknown = {
       ensureLoaded: (): Promise<void> => Promise.resolve(),
-      getMonaco: (): unknown => fakeMonacoNamespace(captured),
+      getMonaco: (): unknown => fakeMonacoNamespace(captured, openModels),
       suppressHeuristicTokensWhen: (predicate: (model: unknown) => boolean): (() => void) => {
         suppressWhen = predicate;
         return (): void => undefined;
@@ -348,6 +366,82 @@ describe('LspFeatures', () => {
     ).toBeNull();
     expect(
       await features.definitions(owned as Parameters<LspFeatures['definitions']>[0], {
+        lineNumber: 1,
+        column: 1,
+      }),
+    ).toEqual([]);
+  });
+
+  it('references_askTheServerWithTheDeclaration_andPreviewOpenAndUnopenedFiles', async () => {
+    // #1014: a reference in a file nobody has opened is listed, its line read from disk; one in an
+    // open editor is read from its model, unsaved edits and all.
+    const lspRange: (line: number, from: number, to: number) => unknown = (
+      line: number,
+      from: number,
+      to: number,
+    ): unknown => ({ start: { line, character: from }, end: { line, character: to } });
+    responses['textDocument/references'] = [
+      { uri: 'file:///root/app.ts', range: lspRange(1, 6, 11) },
+      { uri: 'file:///root/lib/greeter.ts', range: lspRange(0, 9, 14) },
+      { uri: 'file:///root/lib/greeter.ts', range: lspRange(2, 2, 7) },
+    ];
+    files['/root/lib/greeter.ts'] = 'function greet() {\n  // …\n  greet();\n}';
+    openModels.push({
+      uri: { toString: (): string => MODEL_URI },
+      isDisposed: (): boolean => false,
+      getLinesContent: (): string[] => ['import x;', 'const greet = 1; // unsaved'],
+    });
+    const features: LspFeatures = await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+
+    const references: unknown = await features.references(
+      model as Parameters<LspFeatures['references']>[0],
+      { lineNumber: 2, column: 8 },
+    );
+
+    expect(requests.at(-1)).toEqual({
+      sessionId: '/root::typescript',
+      method: 'textDocument/references',
+      params: {
+        textDocument: { uri: 'file:///root/app.ts' },
+        position: { line: 1, character: 7 },
+        context: { includeDeclaration: true },
+      },
+    });
+    expect(references).toEqual([
+      {
+        path: '/root/app.ts',
+        range: { startLineNumber: 2, startColumn: 7, endLineNumber: 2, endColumn: 12 },
+        preview: 'const greet = 1; // unsaved',
+      },
+      {
+        path: '/root/lib/greeter.ts',
+        range: { startLineNumber: 1, startColumn: 10, endLineNumber: 1, endColumn: 15 },
+        preview: 'function greet() {',
+      },
+      {
+        path: '/root/lib/greeter.ts',
+        range: { startLineNumber: 3, startColumn: 3, endLineNumber: 3, endColumn: 8 },
+        preview: '  greet();',
+      },
+    ]);
+    // Read once, however many references fall in it; the open file never.
+    expect(reads).toEqual(['/root/lib/greeter.ts']);
+  });
+
+  it('references_isNull_forADocumentNoServerServes_andEmptyWhenTheServerKnowsNone', async () => {
+    const features: LspFeatures = await build();
+    const unowned: unknown = { uri: { toString: (): string => 'inmemory://model/unowned' } };
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+
+    expect(
+      await features.references(unowned as Parameters<LspFeatures['references']>[0], {
+        lineNumber: 1,
+        column: 1,
+      }),
+    ).toBeNull();
+    expect(
+      await features.references(owned as Parameters<LspFeatures['references']>[0], {
         lineNumber: 1,
         column: 1,
       }),

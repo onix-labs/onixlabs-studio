@@ -1,4 +1,4 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import {
   CurrentLineHighlightStyle,
@@ -26,12 +26,18 @@ import { registerScssLanguage } from './monaco-scss-language';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
+import {
+  installNavigationCommands,
+  NAVIGATION_EDITOR_OPTIONS,
+  NavigationMode,
+} from './monaco-navigation-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -186,6 +192,13 @@ export class Monaco {
    * Holds the go-to router Studio's ⌘⇧O / ⌃G commands hand the focused editor to (#1009).
    */
   private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds the injector Studio's F12 / ⇧F12 / ⌘-click navigation is resolved from as it runs (#1014).
+   * Resolved then rather than injected here: the navigation reaches the language-server features,
+   * which inject this service.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Holds a value indicating whether Monaco has finished loading.
@@ -429,6 +442,8 @@ export class Monaco {
       // Monaco's right-click menu offers its own Go to Symbol and Command Palette, past every chord
       // Studio removes; it stays off in every editor until Studio draws its own menu (#946, #1009).
       contextmenu: false,
+      // None of Monaco's go-to navigations ever peeks (#1014).
+      ...NAVIGATION_EDITOR_OPTIONS,
     };
   }
 
@@ -457,6 +472,8 @@ export class Monaco {
       padding: { top: 12 },
       // Off in every editor until Studio draws its own right-click menu (#946, #1009).
       contextmenu: false,
+      // None of Monaco's go-to navigations ever peeks (#1014).
+      ...NAVIGATION_EDITOR_OPTIONS,
     };
   }
 
@@ -481,6 +498,7 @@ export class Monaco {
     registerBraceFolding(window.monaco);
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
+    this.installNavigationCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -522,6 +540,30 @@ export class Monaco {
       (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode): void => {
         this.log.info('Monaco', 'Studio go-to command', mode);
         this.goToRouter.open(editor, mode);
+      },
+    );
+  }
+
+  /**
+   * Removes Monaco's definition and references chords from an instance and binds Studio's Go to
+   * Definition and Find All References in their place, and takes over ⌘-click (Ctrl-click) in its
+   * editors, so F12, ⇧F12 and a ⌘-click reach the {@link EditorNavigation} and Monaco's peek never
+   * opens (#1014).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installNavigationCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installNavigationCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void => {
+        this.log.info('Monaco', 'Studio navigation command', mode);
+        const navigation: EditorNavigation = this.injector.get(EditorNavigation);
+        void (mode === 'definition'
+          ? navigation.goToDefinition(editor)
+          : navigation.findReferences(editor));
       },
     );
   }
@@ -581,6 +623,7 @@ export class Monaco {
       registerBraceFolding(monaco);
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
+      this.installNavigationCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

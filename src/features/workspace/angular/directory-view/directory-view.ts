@@ -77,6 +77,13 @@ import {
   WorkspaceFindReveal,
 } from '@features/workspace/angular/workspace-find/workspace-find';
 import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
+import { ReferencesPanelState } from '@features/workspace/angular/panels/references-panel/references-panel-state';
+import {
+  WorkspaceReferences,
+  WorkspaceReferencesOpen,
+  WorkspaceReferencesReveal,
+} from '@features/workspace/angular/workspace-references/workspace-references';
+import type { ReferenceList } from '@shared/angular/services/references/reference-list';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { OpenDiffEditor } from '@shared/angular/services/diffs/diffs';
 import {
@@ -201,6 +208,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   terminal: ['errors', 'output'],
   output: ['errors', 'terminal'],
   packages: ['errors', 'terminal'],
+  references: ['errors', 'terminal'],
   debug: ['errors', 'terminal'],
   history: ['errors', 'terminal'],
 };
@@ -251,6 +259,8 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     DiffOpener,
     // The find requests on their way to this tab's Search panel (#1007), per view as the panel is.
     SearchPanelRequests,
+    // The list this tab's References panel shows (#1014), per view so it outlives the panel.
+    ReferencesPanelState,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
     DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
@@ -892,6 +902,33 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.revealSearch(request);
 
   /**
+   * Holds the workspace references seam Find All References routes through (#1014).
+   */
+  private readonly workspaceReferences: WorkspaceReferences = inject(WorkspaceReferences);
+
+  /**
+   * Holds the list this tab's References panel shows.
+   */
+  private readonly referencesState: ReferencesPanelState = inject(ReferencesPanelState);
+
+  /**
+   * Holds a stable reveal callback registered with {@link workspaceReferences}, so it can be
+   * unregistered by identity.
+   */
+  private readonly revealReferencesHandler: WorkspaceReferencesReveal = (
+    list: ReferenceList,
+  ): void => this.revealReferences(list);
+
+  /**
+   * Holds the opener registered with {@link workspaceReferences} beside the reveal callback, so a
+   * chosen reference or definition in another file opens in this tab's well — through this tab's own
+   * {@link FileOpener}, not the application-wide one, whose dock no view renders.
+   */
+  private readonly openReferenceHandler: WorkspaceReferencesOpen = (
+    path: string,
+  ): Promise<boolean> => this.fileOpener.openPath(path);
+
+  /**
    * Holds this tab's dock context, carrying its id and rooted folder to the docked terminal panel.
    */
   private readonly dockTabContext: DockTabContext = inject(DockTabContext);
@@ -1409,11 +1446,13 @@ export class DirectoryView implements OnInit, OnDestroy {
           { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
+        this.workspaceReferences.register(this.revealReferencesHandler, this.openReferenceHandler);
         this.workspaceDocuments.register(this.documentHandler);
         this.dockPanelCommands.register(this.dockPanelHandler);
       } else {
         this.keybindings.deactivate(this.viewScope());
         this.workspaceFind.unregister(this.revealSearchHandler);
+        this.workspaceReferences.unregister(this.revealReferencesHandler);
         this.workspaceDocuments.unregister(this.documentHandler);
         this.dockPanelCommands.unregister(this.dockPanelHandler);
       }
@@ -1499,6 +1538,28 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.dockState.setActive(stack.id, 'search');
       this.dockFocus.focus(stack.id);
     }
+  }
+
+  /**
+   * Shows a references list in this tab's References panel (#1014) — tabbing the panel into the bottom
+   * group beside the Error List (or the Terminal, or any tool group) when the layout has none — then
+   * bringing it forward and focusing it. A panel the layout already holds stays wherever it was put.
+   * @param list The list, which replaces the one shown.
+   */
+  private revealReferences(list: ReferenceList): void {
+    this.referencesState.show(list);
+    if (!collectPanelIds(this.dockState.layout()).includes('references')) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
+        findStackOfPanel(this.dockState.layout(), 'terminal') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, 'references');
+      } else {
+        this.dockState.dockEdge('references', 'bottom');
+      }
+    }
+    this.dockReveal.reveal('references');
   }
 
   /**
@@ -1901,6 +1962,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.workspaceSourceControl.unregister(this.sourceControlHandler);
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
+    this.workspaceReferences.unregister(this.revealReferencesHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
     this.dockPanelCommands.unregister(this.dockPanelHandler);
     this.forgeRepository.dispose();

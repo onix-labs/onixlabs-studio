@@ -94,23 +94,42 @@ export function firstStackOfRole(tree: DockNode, role: StackRole): StackNode | n
 }
 
 /**
- * Finds the layout's right-hand tool group: the tool stack that is the last column of a row at the
- * root — where the Agent sits in the Default and Version Control layouts.
+ * Finds the layout's right-hand tool group: the tool stack at the right-hand end of a row — where the
+ * Agent sits in the Default and Version Control layouts, whether that row is the whole layout or sits
+ * above a bottom strip that runs under it (the Error List beneath both the well and the Agent).
  *
- * Only a stack that is itself the whole last column counts. A layout whose last column is a split (the
- * Agentic Engineering layout's agent-over-bottom-strip) has no right-hand group, and a caller that wants
- * one docks a new stack against the right edge instead.
+ * The search follows the right-most column down. A row's last child counts when it is a tool stack
+ * that is not the layout's primary slot; when it is a split, the search goes into it. Within a column
+ * only rows are searched, top first, so a strip spanning the whole width — a stack straight in a column
+ * — is never taken for a right-hand group. A layout whose right-most column has no such row (the
+ * Agentic Engineering layout's agent-over-bottom-strip, the Agent being the primary slot) has none, and
+ * a caller that wants one docks a new stack against the right edge instead.
  * @param tree The root of the tree to search.
  * @returns Returns the right-hand tool stack, or null when the layout has none.
  */
 export function rightHandToolStack(tree: DockNode): StackNode | null {
-  if (isStackNode(tree) || tree.dir !== 'row') {
+  if (isStackNode(tree)) {
     return null;
   }
-  const last: DockNode | undefined = tree.children.at(-1);
-  return last !== undefined && isStackNode(last) && last.role === 'tool' && last.primary !== true
-    ? last
-    : null;
+  if (tree.dir === 'row') {
+    const last: DockNode | undefined = tree.children.at(-1);
+    if (last === undefined) {
+      return null;
+    }
+    if (isStackNode(last)) {
+      return last.role === 'tool' && last.primary !== true && tree.children.length > 1
+        ? last
+        : null;
+    }
+    return rightHandToolStack(last);
+  }
+  for (const child of tree.children) {
+    const found: StackNode | null = rightHandToolStack(child);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
 }
 
 /**

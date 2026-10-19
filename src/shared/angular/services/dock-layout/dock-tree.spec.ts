@@ -118,6 +118,32 @@ describe('dock-tree', () => {
       expect(rightHandToolStack(tree)).toBe(agent);
     });
 
+    it('isTheAgent_whenABottomStripRunsUnderBothTheWellAndIt', () => {
+      // Matthew's layout: the Error List and References beneath the well AND the Agent, so the root
+      // row's last column is a split. The Agent is still the right-hand group, and Find & Replace
+      // joins it rather than docking a new group on the right edge.
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [
+          mkSplit('row', [mkStack('document', [], true), agent]),
+          mkStack('tool', ['errors', 'references']),
+        ]),
+      ]);
+
+      expect(rightHandToolStack(tree)).toBe(agent);
+    });
+
+    it('isNull_whenTheRightMostColumnHoldsOnlyAWellAndAFullWidthStrip', () => {
+      // A strip running the whole width under the well is not a right-hand group.
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [mkStack('document', [], true), mkStack('tool', ['errors'])]),
+      ]);
+
+      expect(rightHandToolStack(tree)).toBeNull();
+    });
+
     it('isNull_whenTheLastColumnIsASplit', () => {
       // The Agentic Engineering layout's shape: the Agent in the centre over a bottom strip.
       const tree: DockNode = mkSplit('row', [

@@ -20,30 +20,16 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Chip } from '@shared/angular/components/chip/chip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { FindQuery, FindResultItem } from '@shared/angular/components/find-panel/find-adapter';
 import { FindRequest, FindScope } from '@shared/angular/components/find-panel/find-request';
-import { fileIconFor } from '@shared/angular/icons/file-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { ReplaceFailure, ReplaceResponse } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
-
-/**
- * The most result rows rendered at once. Beyond this the list adds nothing to navigate by and every
- * row is DOM cost, so the rest are counted rather than drawn.
- */
-const MAX_RENDERED_MATCHES: number = 1000;
-
-/**
- * The most characters of a line shown before its match: enough to read what the match is part of,
- * short enough that the match is on screen in a panel of ordinary width.
- */
-const MAX_LEAD: number = 20;
+import { SearchResultsTree } from './search-results-tree';
 
 /**
  * Labels each scope as the scope dropdown offers it (#1007).
@@ -79,51 +65,6 @@ const NO_UNSAVED_PATHS: () => ReadonlySet<string> = (): ReadonlySet<string> => n
 export type SearchViewMode = 'find' | 'replace';
 
 /**
- * A results-tree row for a file that has matches: the group its matches sit under.
- */
-export interface SearchFileRow {
-  /**
-   * Gets the discriminant.
-   */
-  readonly kind: 'file';
-
-  /**
-   * Gets the file's path relative to the searched root.
-   */
-  readonly file: string;
-
-  /**
-   * Gets how many matches the file has.
-   */
-  readonly count: number;
-}
-
-/**
- * A results-tree row for one match, beneath its file.
- */
-export interface SearchMatchRow {
-  /**
-   * Gets the discriminant.
-   */
-  readonly kind: 'match';
-
-  /**
-   * Gets the match.
-   */
-  readonly item: FindResultItem;
-
-  /**
-   * Gets the match's index in the adapter's flat match list, which is what selecting it takes.
-   */
-  readonly index: number;
-}
-
-/**
- * A row of the results tree.
- */
-export type SearchResultRow = SearchFileRow | SearchMatchRow;
-
-/**
  * Studio's Find & Replace, as one view wherever it is asked for (#1007): the workspace's Search panel,
  * and a code tab, a binary tab's disassembly or an API Explorer request outside a workspace. The host
  * supplies the {@link SearchAdapter} that searches, the scopes it offers, and each find request; the
@@ -147,15 +88,14 @@ export type SearchResultRow = SearchFileRow | SearchMatchRow;
 @Component({
   selector: 'app-search-view',
   imports: [
-    Chip,
     AppIcon,
     Button,
     ButtonRow,
     Checkbox,
     Dropdown,
     PanelToolbar,
+    SearchResultsTree,
     TextField,
-    TreeView,
   ],
   templateUrl: './search-view.html',
   styleUrl: './search-view.scss',
@@ -294,66 +234,6 @@ export class SearchView implements OnDestroy {
   );
 
   /**
-   * Holds the files whose matches are folded away. Every file starts open: the matches are what was
-   * asked for, and a fold is the user's to make.
-   */
-  private readonly collapsedFiles: WritableSignal<ReadonlySet<string>> = signal<
-    ReadonlySet<string>
-  >(new Set<string>());
-
-  /**
-   * Gets the results as a tree: each file, in the order its first match was found, with its matches
-   * beneath it while it is open. Capped at {@link MAX_RENDERED_MATCHES} matches, so a broad search
-   * cannot materialise rows past the point of being navigable.
-   */
-  protected readonly resultRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const shown: readonly FindResultItem[] = this.matches().slice(0, MAX_RENDERED_MATCHES);
-    const byFile: Map<string, { readonly item: FindResultItem; readonly index: number }[]> =
-      new Map<string, { readonly item: FindResultItem; readonly index: number }[]>();
-    shown.forEach((item: FindResultItem, index: number): void => {
-      const file: string = item.file ?? '';
-      const group: { readonly item: FindResultItem; readonly index: number }[] =
-        byFile.get(file) ?? [];
-      group.push({ item, index });
-      byFile.set(file, group);
-    });
-    const collapsed: ReadonlySet<string> = this.collapsedFiles();
-    const rows: TreeRow[] = [];
-    for (const [file, group] of byFile) {
-      const open: boolean = !collapsed.has(file);
-      const fileRow: SearchFileRow = { kind: 'file', file, count: group.length };
-      rows.push({ id: `file:${file}`, depth: 0, expandable: true, expanded: open, data: fileRow });
-      if (open) {
-        for (const { item, index } of group) {
-          const matchRow: SearchMatchRow = { kind: 'match', item, index };
-          rows.push({
-            id: `match:${index}`,
-            depth: 1,
-            expandable: false,
-            expanded: false,
-            data: matchRow,
-          });
-        }
-      }
-    }
-    return rows;
-  });
-
-  /**
-   * Gets the id of the selected match's row, or null when no match is selected.
-   */
-  protected readonly selectedRowId: Signal<string | null> = computed((): string | null =>
-    this.adapter().activeIndex() >= 0 ? `match:${this.adapter().activeIndex()}` : null,
-  );
-
-  /**
-   * Gets how many matches lie beyond the rendered cap.
-   */
-  protected readonly matchOverflow: Signal<number> = computed((): number =>
-    Math.max(0, this.matches().length - MAX_RENDERED_MATCHES),
-  );
-
-  /**
    * Gets whether the results preview their replacement: in the replace form.
    */
   protected readonly previewsReplacement: Signal<boolean> = computed(
@@ -413,6 +293,12 @@ export class SearchView implements OnDestroy {
     viewChild<ElementRef<HTMLElement>>('findField');
 
   /**
+   * Holds the results tree, which the strip's Expand and Collapse All fold and a new search opens.
+   */
+  private readonly resultsTree: Signal<SearchResultsTree | undefined> =
+    viewChild<SearchResultsTree>(SearchResultsTree);
+
+  /**
    * Initializes a new instance of the {@link SearchView} class, focusing the find field once rendered
    * (the view is opened to be typed into) and answering each find request as it arrives.
    */
@@ -451,7 +337,7 @@ export class SearchView implements OnDestroy {
   protected find(): void {
     this.searched.set(this.draft());
     // A new search starts with every file open: a fold made in the last one says nothing about this.
-    this.collapsedFiles.set(new Set<string>());
+    this.resultsTree()?.expandAll();
     this.run();
   }
 
@@ -465,69 +351,17 @@ export class SearchView implements OnDestroy {
   }
 
   /**
-   * Handles a click on a results row: a file folds or unfolds its matches, and a match takes its
-   * editor to it.
-   * @param treeRow The row clicked.
-   */
-  protected onRowClick(treeRow: TreeRow): void {
-    const row: SearchResultRow = this.rowOf(treeRow);
-    if (row.kind === 'match') {
-      this.adapter().select(row.index);
-      return;
-    }
-    this.collapsedFiles.update((collapsed: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(collapsed);
-      if (!next.delete(row.file)) {
-        next.add(row.file);
-      }
-      return next;
-    });
-  }
-
-  /**
    * Opens every file in the results, showing all their matches.
    */
   protected expandAll(): void {
-    this.collapsedFiles.set(new Set<string>());
+    this.resultsTree()?.expandAll();
   }
 
   /**
    * Folds every file in the results, leaving one row per file.
    */
   protected collapseAll(): void {
-    this.collapsedFiles.set(
-      new Set<string>(this.matches().map((item: FindResultItem): string => item.file ?? '')),
-    );
-  }
-
-  /**
-   * Unwraps a results row's payload.
-   * @param treeRow The tree row.
-   * @returns Returns the results row.
-   */
-  protected rowOf(treeRow: TreeRow): SearchResultRow {
-    return treeRow.data as SearchResultRow;
-  }
-
-  /**
-   * Shortens the text before a match to its last {@link MAX_LEAD} characters, so the match itself
-   * stays in view: a row is one line, and a long lead-in pushed the match past the panel's edge, where
-   * the ellipsis swallowed exactly the part that was searched for.
-   * @param before The line text before the match.
-   * @returns Returns the lead-in, with a leading ellipsis when it was shortened.
-   */
-  protected lead(before: string): string {
-    const trimmed: string = before.trimStart();
-    return trimmed.length <= MAX_LEAD ? trimmed : `…${trimmed.slice(-MAX_LEAD)}`;
-  }
-
-  /**
-   * Gets the icon a result file is drawn with, the same as in the File Explorer.
-   * @param file The file's relative path.
-   * @returns Returns the icon.
-   */
-  protected fileIcon(file: string): Icon {
-    return fileIconFor(file);
+    this.resultsTree()?.collapseAll();
   }
 
   /**

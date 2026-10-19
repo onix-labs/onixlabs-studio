@@ -8,6 +8,12 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type {
+  ReferenceItem,
+  ReferenceList,
+} from '@shared/angular/services/references/reference-list';
+import { ReferencesRouter } from '@shared/angular/services/references/references-router';
 import { Studio } from '@shared/angular/services/studio/studio';
 import {
   EditorContextMenu,
@@ -94,6 +100,11 @@ function fakeEditor(setup: EditorSetup = {}): FakeEditor {
   const model: unknown = {
     uri: { toString: (): string => MODEL_URI },
     getLanguageId: (): string => setup.language ?? 'typescript',
+    getWordAtPosition: (): MonacoApi.editor.IWordAtPosition => ({
+      word: 'greet',
+      startColumn: 1,
+      endColumn: 6,
+    }),
   };
   const container: HTMLElement = document.createElement('div');
   const editor: unknown = {
@@ -169,9 +180,13 @@ function fakeEditor(setup: EditorSetup = {}): FakeEditor {
  */
 function fakeMonaco(): typeof MonacoApi {
   const monaco: typeof MonacoApi = {
-    editor: { EditorOption: { readOnly: READ_ONLY_OPTION } },
+    editor: {
+      EditorOption: { readOnly: READ_ONLY_OPTION },
+      getModels: (): MonacoApi.editor.ITextModel[] => [],
+    },
     languages: {
       registerDefinitionProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerReferenceProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
     CancellationTokenSource: class {
@@ -211,6 +226,7 @@ describe('EditorContextMenu (#1012)', () => {
   let lsp: {
     servesDocument: Mock<LspFeatures['servesDocument']>;
     definitions: Mock<LspFeatures['definitions']>;
+    references: Mock<LspFeatures['references']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -227,7 +243,7 @@ describe('EditorContextMenu (#1012)', () => {
       ],
     });
     const menu: EditorContextMenu = TestBed.inject(EditorContextMenu);
-    menu.useFileOpener(opener.openPath);
+    TestBed.inject(EditorNavigation).useFileOpener(opener.openPath);
     return menu;
   }
 
@@ -237,6 +253,9 @@ describe('EditorContextMenu (#1012)', () => {
     lsp = {
       servesDocument: vi.fn<LspFeatures['servesDocument']>((): boolean => false),
       definitions: vi.fn<LspFeatures['definitions']>((): Promise<readonly LspDefinition[] | null> =>
+        Promise.resolve(null),
+      ),
+      references: vi.fn<LspFeatures['references']>((): Promise<readonly ReferenceItem[] | null> =>
         Promise.resolve(null),
       ),
     };
@@ -520,7 +539,9 @@ describe('EditorContextMenu (#1012)', () => {
   });
 
   describe('go to definition', () => {
-    it('sameFile_fromTheLanguageServer_goesStraightThere_theFirstOfSeveral', async () => {
+    it('sameFile_fromTheLanguageServer_goesStraightThere_theFirstOfSeveral_whereNothingListsThem', async () => {
+      // No References panel answers this editor (no workspace, no tab host), so several definitions
+      // still go somewhere: the first.
       const menu: EditorContextMenu = build();
       TestBed.inject(Editors).register(MODEL_URI, {
         documentId: 'doc-1',
@@ -632,6 +653,86 @@ describe('EditorContextMenu (#1012)', () => {
 
       expect(provide).not.toHaveBeenCalled();
       expect(fake.calls).toEqual([]);
+    });
+
+    it('several_fromTheLanguageServer_openTheReferencesList_withTheirLines_neverJumping', async () => {
+      const menu: EditorContextMenu = build();
+      const editors: Editors = TestBed.inject(Editors);
+      editors.register(MODEL_URI, { documentId: 'doc-1', path: '/root/app.ts', name: 'app.ts' });
+      lsp.definitions.mockResolvedValue([
+        {
+          path: '/root/app.ts',
+          range: { startLineNumber: 8, startColumn: 3, endLineNumber: 8, endColumn: 9 },
+        },
+        {
+          path: '/root/lib/other.ts',
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 },
+        },
+        {
+          path: '/root/lib/third.ts',
+          range: { startLineNumber: 4, startColumn: 1, endLineNumber: 4, endColumn: 2 },
+        },
+      ]);
+      const fake: FakeEditor = fakeEditor();
+      const shown: ReferenceList[] = [];
+      TestBed.inject(ReferencesRouter).attach(fake.editor, {
+        openReferences: (list: ReferenceList): void => void shown.push(list),
+      });
+
+      await menu.goToDefinition(fake.editor);
+
+      expect(fake.calls).toEqual([]);
+      expect(opener.openPath).not.toHaveBeenCalled();
+      expect(shown.length).toBe(1);
+      expect(shown[0]).toMatchObject({ kind: 'definitions', symbol: 'greet', status: 'done' });
+      expect(shown[0].items.map((item: ReferenceItem): string => item.path)).toEqual([
+        '/root/app.ts',
+        '/root/lib/other.ts',
+        '/root/lib/third.ts',
+      ]);
+    });
+  });
+
+  describe('find all references (#1014)', () => {
+    it('row_shownWhereTheLanguageCanAnswer_inertWhereNoPanelListsIt_withItsHint', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'csharp' });
+
+      expect(rowOf(menu.itemsFor(editor), 'references')).toBeUndefined();
+      lsp.servesDocument.mockReturnValue(true);
+      expect(rowOf(menu.itemsFor(editor), 'references')).toMatchObject({
+        label: 'Find All References',
+        shortcut: '⇧F12',
+        disabled: true,
+      });
+      TestBed.inject(ReferencesRouter).attach(editor, { openReferences: (): void => undefined });
+      expect(rowOf(menu.itemsFor(editor), 'references')?.disabled).toBeUndefined();
+      // In the go-to group, after Go to Definition.
+      expect(idsOf(menu.itemsFor(editor)).slice(0, 4)).toEqual([
+        'definition',
+        'references',
+        'symbol',
+        'line',
+      ]);
+    });
+
+    it('row_hintsShiftF12_onWindowsAndLinux', () => {
+      lsp.servesDocument.mockReturnValue(true);
+      const { editor } = fakeEditor();
+
+      expect(rowOf(build('win32').itemsFor(editor), 'references')?.shortcut).toBe('Shift+F12');
+    });
+
+    it('run_findsReferencesThroughTheNavigation', () => {
+      const menu: EditorContextMenu = build();
+      const { editor } = fakeEditor();
+      const find: MockInstance<EditorNavigation['findReferences']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'findReferences')
+        .mockResolvedValue(undefined);
+
+      menu.run('references', editor);
+
+      expect(find).toHaveBeenCalledWith(editor);
     });
   });
 });

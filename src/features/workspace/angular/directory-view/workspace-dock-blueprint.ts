@@ -3,6 +3,7 @@ import { DebugPanel } from '@features/workspace/angular/panels/debug-panel/debug
 import { OutputPanel } from '@features/workspace/angular/panels/output-panel/output-panel';
 import { PackagesPanel } from '@features/workspace/angular/panels/packages-panel/packages-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
+import { ReferencesPanel } from '@features/workspace/angular/panels/references-panel/references-panel';
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
@@ -17,7 +18,9 @@ import { DockNode, mkSplit, mkStack } from '@shared/angular/services/dock-layout
  * in the centre with Output, the Error List, and a terminal tabbed along the bottom. The Solution
  * Explorer is catalogued but not in the starting layout — the directory view adds it only when the
  * open root has a recognised project system, and removes it otherwise. Search is likewise catalogued
- * but not in the starting layout — the directory view reveals it on the find accelerator. The Debug
+ * but not in the starting layout — the directory view reveals it on the find accelerator — and so is
+ * References, which the directory view reveals at the bottom beside the Error List on Find All
+ * References (#1014). The Debug
  * panel (call stack / variables / watch) is likewise catalogued but revealed only while a debug session
  * is running, tabbed beside Output. Every panel is dockable.
  *
@@ -110,6 +113,15 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PROBLEMS,
       role: 'tool',
       component: ProblemsPanel,
+    },
+    {
+      // Find All References' list (#1014): catalogued for every workspace tab but added to the layout
+      // only when a search is made, tabbed into the bottom group beside the Error List.
+      id: 'references',
+      title: 'References',
+      icon: Icon.REFERENCES,
+      role: 'tool',
+      component: ReferencesPanel,
     },
     {
       id: 'terminal',

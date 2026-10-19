@@ -131,41 +131,13 @@
   </div>
 </div>
 
-<!-- Everything below the form is the results: the shared tree, grouped by file, the explorers' rows. In
-     the replace form, each match previews its replacement. -->
+<!-- Everything below the form is the results: the shared tree, grouped by file. In the replace form,
+     each match previews its replacement. -->
 <div class="search-view__results">
-  <app-tree-view
-    [rows]="resultRows()"
-    [selectedId]="selectedRowId()"
-    [virtual]="true"
-    (rowClick)="onRowClick($event)"
-  >
-    <ng-template let-row>
-      @let result = rowOf(row);
-      @if (result.kind === 'file') {
-        <app-icon class="tree-icon" [icon]="fileIcon(result.file)" />
-        <span class="tree-name" [title]="result.file">{{ result.file }}</span>
-        <app-chip class="tree-count">{{ result.count }}</app-chip>
-      } @else {
-        <span class="search-view__match-line">{{ result.item.line }}</span>
-        <span
-          class="tree-name search-view__match-preview"
-          [title]="result.item.before + result.item.text + result.item.after"
-          ><span class="search-view__match-before">{{ lead(result.item.before) }}</span>
-          @if (previewsReplacement()) {
-            <del class="search-view__match-removed">{{ result.item.text }}</del
-            ><ins class="search-view__match-added">{{ replacement() }}</ins>
-          } @else {
-            <span class="search-view__match-text">{{ result.item.text }}</span>
-          }
-          <span class="search-view__match-after">{{ result.item.after }}</span></span
-        >
-      }
-    </ng-template>
-  </app-tree-view>
-  @if (matchOverflow() > 0) {
-    <div class="search-view__overflow">
-      …and {{ matchOverflow() }} more — refine the search to list them.
-    </div>
-  }
+  <app-search-results-tree
+    [items]="matches()"
+    [activeIndex]="adapter().activeIndex()"
+    [replacement]="previewsReplacement() ? replacement() : null"
+    (chosen)="adapter().select($event)"
+  />
 </div>

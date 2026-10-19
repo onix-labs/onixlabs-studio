@@ -59,6 +59,14 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
 import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
+import { EditorReferencesPanel } from '@shared/angular/components/references-view/editor-references-panel';
+import {
+  REFERENCES_HOST,
+  ReferenceItem,
+  ReferenceList,
+  ReferencesHost,
+} from '@shared/angular/services/references/reference-list';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
@@ -83,6 +91,7 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
     CodeAgentPanel,
     CodeGeneratedPanel,
     EditorSearchPanel,
+    EditorReferencesPanel,
   ],
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel now
   // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
@@ -97,12 +106,14 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
     // The tab answers its editors' finds — the code's and the generated code's — with its own Find
     // panel, outside a workspace (#1007).
     { provide: FIND_HOST, useExisting: forwardRef((): unknown => CodeView) },
+    // …and lists their references in its own References panel, as it does a find (#1014).
+    { provide: REFERENCES_HOST, useExisting: forwardRef((): unknown => CodeView) },
   ],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView implements OnInit, OnDestroy, FindHost {
+export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   /**
    * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
@@ -185,6 +196,23 @@ export class CodeView implements OnInit, OnDestroy, FindHost {
         ? (this.doc()?.fileName() ?? 'Current File')
         : 'Generated Code',
   });
+
+  /**
+   * Holds the navigation a chosen reference goes through (#1014).
+   */
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
+   * Holds the list this tab's References panel shows, or null while the panel is hidden (#1014).
+   */
+  protected readonly references: WritableSignal<ReferenceList | null> =
+    signal<ReferenceList | null>(null);
+
+  /**
+   * Holds the editor the latest references search was made in — the code's or the generated code's —
+   * which a chosen reference is gone to in.
+   */
+  private referencesEditor: MonacoApi.editor.ICodeEditor | null = null;
 
   /**
    * Holds the docked run-terminal panel state.
@@ -482,6 +510,35 @@ export class CodeView implements OnInit, OnDestroy, FindHost {
   public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
     this.log.debug('code.view', 'Open find panel', this.tabId(), request.mode);
     this.editorSearch.open(request, editor);
+  }
+
+  /**
+   * Shows this tab's References panel with a list, replacing the one it showed (#1014).
+   * @param list The list.
+   * @param editor The editor the search was made in.
+   */
+  public openReferences(list: ReferenceList, editor: MonacoApi.editor.ICodeEditor): void {
+    this.log.debug('code.view', 'Open references panel', this.tabId(), list.kind, list.status);
+    this.referencesEditor = editor;
+    this.references.set(list);
+  }
+
+  /**
+   * Goes to a chosen reference in the editor the search was made in: a reference in this tab's file
+   * is selected there; one in another file has nowhere to open outside a workspace.
+   * @param item The reference.
+   */
+  protected onReferenceChosen(item: ReferenceItem): void {
+    void this.navigation.goTo(this.referencesEditor, item, true);
+  }
+
+  /**
+   * Hides the References panel when the shared panel asks to be dismissed.
+   */
+  protected onReferencesClosed(): void {
+    this.references.set(null);
+    this.referencesEditor?.focus();
+    this.referencesEditor = null;
   }
 
   /**
