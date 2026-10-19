@@ -60,9 +60,6 @@ interface CapturedProviders {
   commands?: Map<string, (...args: unknown[]) => unknown>;
   hover?: { provideHover(model: unknown, position: unknown): Promise<unknown> };
   symbols?: { provideDocumentSymbols(model: unknown): Promise<unknown> };
-  codeActions?: {
-    provideCodeActions(model: unknown, range: unknown, context: unknown): Promise<unknown>;
-  };
   semantic?: {
     getLegend(): { tokenTypes: string[]; tokenModifiers: string[] };
     provideDocumentSemanticTokens(model: unknown): Promise<{ data: Uint32Array } | undefined>;
@@ -133,9 +130,6 @@ function fakeMonacoNamespace(
       },
       registerDefinitionProvider: (): void => undefined,
       registerReferenceProvider: (): void => undefined,
-      registerCodeActionProvider: (_language: string, provider: unknown): void => {
-        captured.codeActions = provider as CapturedProviders['codeActions'];
-      },
       registerDocumentSymbolProvider: (_language: string, provider: unknown): void => {
         captured.symbols = provider as CapturedProviders['symbols'];
       },
@@ -1252,36 +1246,6 @@ describe('LspFeatures', () => {
       expect(
         await features.executeCommand(model, { title: 'Format', command: 'server.format' }),
       ).toEqual({ ran: false, reason: 'It failed.' });
-    });
-
-    it('monacosHoverQuestion_isAnsweredWithTheServersFixes_andNothingElseOfMonacos', async () => {
-      codeActionSupport = 'actions';
-      responses['textDocument/codeAction'] = [
-        { title: 'Add using', kind: 'quickfix', isPreferred: true },
-        { title: 'Suppress', kind: 'quickfix', disabled: { reason: 'No.' } },
-        { title: 'Extract', kind: 'refactor' },
-      ];
-      const features: LspFeatures = await build();
-      const marker: unknown = { message: 'boom' };
-
-      const fixes: { actions: unknown[] } = (await captured.codeActions?.provideCodeActions(
-        model,
-        caret,
-        { markers: [marker], only: 'quickfix', trigger: 1 },
-      )) as { actions: unknown[] };
-      requests = [];
-      const others: { actions: unknown[] } = (await captured.codeActions?.provideCodeActions(
-        model,
-        caret,
-        { markers: [], only: 'source.organizeImports', trigger: 1 },
-      )) as { actions: unknown[] };
-
-      expect(fixes.actions).toEqual([
-        { title: 'Add using', kind: 'quickfix', isPreferred: true, diagnostics: [marker] },
-      ]);
-      expect(others.actions).toEqual([]);
-      expect(requests).toEqual([]);
-      expect(features).toBeDefined();
     });
   });
 

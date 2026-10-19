@@ -760,20 +760,6 @@ export class LspFeatures {
               );
         },
       });
-      // The server's fixes for a problem, for the "Quick Fix…" link in Monaco's hover over it, which
-      // opens Studio's menu (#1016). Answers that hover's question alone — whether there are fixes —
-      // and nothing else of Monaco's; marked as Studio's so the quick-fix menu, which asks the server
-      // itself, never asks it a second time through here.
-      const codeActionProvider: MonacoApi.languages.CodeActionProvider = {
-        provideCodeActions: (
-          model: MonacoApi.editor.ITextModel,
-          range: MonacoApi.Range,
-          context: MonacoApi.languages.CodeActionContext,
-        ): Promise<MonacoApi.languages.CodeActionList> =>
-          this.provideMarkerFixes(model, range, context),
-      };
-      markStudioProvider(codeActionProvider);
-      monaco.languages.registerCodeActionProvider(language, codeActionProvider);
       const semanticTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
       this.semanticTokensChanged.set(language, semanticTokensChanged);
       monaco.languages.registerDocumentSemanticTokensProvider(language, {
@@ -1659,49 +1645,6 @@ export class LspFeatures {
   }
 
   /**
-   * Answers the question Monaco's hover over a problem asks — whether it has fixes — so the hover
-   * offers its "Quick Fix…" link, which opens Studio's menu (#1016). Only that question is answered:
-   * anything else Monaco asks gets no actions, so no route of Monaco's ever applies one.
-   * @param model The model the problem is in.
-   * @param range The problem's span.
-   * @param context What Monaco asks for, and the problem's marker.
-   * @returns Returns the fixes that can run, titled, without their edits.
-   */
-  private async provideMarkerFixes(
-    model: MonacoApi.editor.ITextModel,
-    range: MonacoApi.IRange,
-    context: MonacoApi.languages.CodeActionContext,
-  ): Promise<MonacoApi.languages.CodeActionList> {
-    const none: MonacoApi.languages.CodeActionList = {
-      actions: [],
-      dispose: (): void => undefined,
-    };
-    if (context.only === undefined || !isFixKind(context.only)) {
-      return none;
-    }
-    const actions: readonly LspCodeAction[] | null = await this.codeActions(model, range, [
-      'quickfix',
-    ]);
-    if (actions === null) {
-      return none;
-    }
-    return {
-      actions: actions
-        .filter(
-          (action: LspCodeAction): boolean =>
-            action.disabledReason === null && (action.kind === '' || isFixKind(action.kind)),
-        )
-        .map((action: LspCodeAction): MonacoApi.languages.CodeAction => ({
-          title: action.title,
-          kind: action.kind.length > 0 ? action.kind : 'quickfix',
-          isPreferred: action.isPreferred,
-          diagnostics: context.markers,
-        })),
-      dispose: (): void => undefined,
-    };
-  }
-
-  /**
    * Reads one entry of a server's code-action answer: a code action, or a bare command, which is an
    * action that only runs its command.
    * @param raw The entry, untrusted.
@@ -1926,15 +1869,6 @@ function touches(diagnostic: LspRange, range: MonacoApi.IRange): boolean {
     endLine > range.startLineNumber ||
     (endLine === range.startLineNumber && endColumn >= range.startColumn);
   return startsBeforeRangeEnds && endsAfterRangeStarts;
-}
-
-/**
- * Determines whether a code-action kind is a fix: `quickfix` itself, or a kind below it.
- * @param kind The kind.
- * @returns Returns true when it is.
- */
-function isFixKind(kind: string): boolean {
-  return kind === 'quickfix' || kind.startsWith('quickfix.');
 }
 
 /**

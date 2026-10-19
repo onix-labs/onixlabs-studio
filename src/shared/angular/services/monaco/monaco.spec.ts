@@ -126,6 +126,15 @@ describe('Monaco', () => {
     expect(monaco.getDiffEditorOptions().contextmenu).toBe(false);
   });
 
+  it('getDiffEditorOptions_drawNoGutterToolbarOrRevertArrows_butKeepHiddenUnchangedLines', () => {
+    // #1024: the gutter between the sides holds no Monaco controls; the folded unchanged runs stay.
+    const options: ReturnType<Monaco['getDiffEditorOptions']> = monaco.getDiffEditorOptions();
+
+    expect(options.renderGutterMenu).toBe(false);
+    expect(options.renderMarginRevertIcon).toBe(false);
+    expect(options.hideUnchangedRegions).toBeUndefined();
+  });
+
   it('editorAndDiffOptions_neverPeek_soSeveralAnswersGoToTheFirst', () => {
     // #1014: no chord, click or menu ever opens Monaco's peek widget.
     for (const options of [monaco.getEditorOptions('typescript'), monaco.getDiffEditorOptions()]) {

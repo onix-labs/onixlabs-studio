@@ -45,6 +45,11 @@ import {
   ParameterHintsPresenter,
   SuggestPresenter,
 } from './monaco-suggest-commands';
+import {
+  DIFF_GUARD_EDITOR_OPTIONS,
+  installWidgetGuard,
+  WIDGET_GUARD_EDITOR_OPTIONS,
+} from './monaco-widget-guard';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
@@ -55,6 +60,9 @@ import { EditorNavigation } from '@shared/angular/services/references/editor-nav
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { ReadOnlyNotice } from '@shared/angular/services/read-only-notice/read-only-notice';
+import { LineTerminatorsConfirmation } from '@shared/angular/services/line-terminators/line-terminators-confirmation';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -481,6 +489,8 @@ export class Monaco {
       ...QUICK_FIX_EDITOR_OPTIONS,
       // Monaco's hover never shows: Studio draws its own hover card (#1020).
       ...HOVER_EDITOR_OPTIONS,
+      // No swatch click, inline suggestion, paste or drop opens Monaco's UI (#1024).
+      ...WIDGET_GUARD_EDITOR_OPTIONS,
     };
   }
 
@@ -515,6 +525,10 @@ export class Monaco {
       ...QUICK_FIX_EDITOR_OPTIONS,
       // Monaco's hover never shows: Studio draws its own hover card (#1020).
       ...HOVER_EDITOR_OPTIONS,
+      // No swatch click, inline suggestion, paste or drop opens Monaco's UI (#1024).
+      ...WIDGET_GUARD_EDITOR_OPTIONS,
+      // No toolbar or revert arrows in the gutter between the sides (#1024).
+      ...DIFF_GUARD_EDITOR_OPTIONS,
     };
   }
 
@@ -544,6 +558,7 @@ export class Monaco {
     this.installQuickFixCommands(window.monaco);
     this.installHoverCommands(window.monaco);
     this.installSuggestCommands(window.monaco);
+    this.installWidgetGuard(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -693,6 +708,34 @@ export class Monaco {
   }
 
   /**
+   * Removes the chords of Monaco's remaining widget commands from an instance, binds Studio's
+   * right-click menu to ⇧F10 (Shift+F10) in place of Monaco's, and closes the routes into Monaco's UI
+   * that no chord takes, so no chord, click, paste or drop in any of its editors opens Monaco-drawn UI
+   * (#1024). An attempt to edit a read-only editor raises Studio's notice, and a document with unusual
+   * line terminators asks through Studio's dialog.
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installWidgetGuard(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installWidgetGuard(monaco, {
+      showContextMenu: (editor: MonacoApi.editor.ICodeEditor): void => {
+        this.log.info('Monaco', 'Studio show-context-menu command');
+        this.injector.get(EditorContextMenu).openAtCaretFromKeyboard(editor);
+      },
+      readOnlyEdit: (): void => this.injector.get(ReadOnlyNotice).show(),
+      confirmUnusualLineTerminators: (
+        _editor: MonacoApi.editor.ICodeEditor,
+        document: string,
+      ): Promise<boolean> => {
+        this.log.info('Monaco', 'Unusual line terminators found', document);
+        return this.injector.get(LineTerminatorsConfirmation).ask({ document });
+      },
+    });
+  }
+
+  /**
    * Resolves the worker script URL for a Monaco language label. Workers are served from the copied
    * `vs/` assets.
    * @param _moduleId The requesting module identifier (unused).
@@ -752,6 +795,7 @@ export class Monaco {
       this.installQuickFixCommands(monaco);
       this.installHoverCommands(monaco);
       this.installSuggestCommands(monaco);
+      this.installWidgetGuard(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

@@ -75,7 +75,51 @@ interface CodeActionContribution extends MonacoApi.editor.IEditorContribution {
    * Opens Monaco's widget: where every other route to it ends.
    */
   showCodeActionList?: (actions: MonacoCodeActionSet, at: unknown, options: unknown) => unknown;
+
+  /**
+   * Asks Monaco's code-action model for actions — what a request to apply one kind straight away ends
+   * in. A request with a `context` shows Monaco's overlay message when nothing applies; one without
+   * shows nothing.
+   */
+  _trigger?: (trigger: {
+    readonly type: number;
+    readonly triggerAction: unknown;
+    readonly filter?: { readonly include?: unknown };
+    readonly autoApply?: string;
+  }) => unknown;
+
+  /**
+   * Holds Monaco's lightbulb, built the first time the contribution's actions update: a lazy value
+   * whose `value` builds the lightbulb widget into the editor, hidden or not.
+   */
+  _lightBulbWidget?: LazyValue;
 }
+
+/**
+ * The shape of Monaco's lazy values the takeover puts its stand-in in place of.
+ */
+interface LazyValue {
+  /**
+   * Gets the value, building it the first time.
+   */
+  readonly value: unknown;
+
+  /**
+   * Gets the value if it has been built, without building it.
+   */
+  readonly rawValue: unknown;
+}
+
+/**
+ * Names `CodeActionTriggerType.Invoke`, written as its value: the enum is not loaded here.
+ */
+const INVOKE_TRIGGER: number = 1;
+
+/**
+ * Stands in for Monaco's lightbulb wherever Monaco's code-action contribution asks for it: it is never
+ * built, so it adds nothing to the editor.
+ */
+const NO_LIGHTBULB: LazyValue = Object.freeze({ value: undefined, rawValue: undefined });
 
 /**
  * The part of Monaco's set of code actions the takeover reads: where the problem they fix is, and how
@@ -105,7 +149,8 @@ interface MonacoCodeActionSet {
  *
  * A request for one kind of action to apply straight away — Code Cleanup organising imports — still
  * goes through Monaco's command: it applies without a widget, and if it would show one, Studio's menu
- * opens instead.
+ * opens instead. Monaco's lightbulb, which that request would build hidden into the editor, and its
+ * overlay message when nothing applies, never appear (#1024).
  *
  * A markdown code fence sets the find passthrough context key, and ⌘. passes through it as the find,
  * go-to and navigation chords do: a fence is a few lines inside a document, with nothing to fix.
@@ -141,7 +186,33 @@ export function installQuickFixCommands(
     if (!replaced) {
       replaced = takeOverCodeActions(editor, onQuickFix);
     }
+    removeLightbulb(editor);
   });
+}
+
+/**
+ * Puts a stand-in in place of Monaco's lightbulb in one editor, before it is built (#1024). With the
+ * lightbulb off it never shows, but the code-action contribution still builds it — hidden, into the
+ * editor — the first time its actions update, which a request to apply one kind straight away (Code
+ * Cleanup organising imports) does. The lightbulb is held per editor, so each editor gets the
+ * stand-in as it is created.
+ * @param editor The editor, just created.
+ * @returns Returns true when the contribution was reached and its lightbulb replaced.
+ */
+export function removeLightbulb(editor: MonacoApi.editor.ICodeEditor): boolean {
+  // Reaching the contribution makes it if it was not yet made (Monaco makes it at idle in every editor
+  // anyway); making it builds no DOM — the lightbulb waits for its first update.
+  const contribution: CodeActionContribution | null =
+    editor.getContribution<CodeActionContribution>(CODE_ACTION_CONTRIBUTION);
+  if (
+    contribution === null ||
+    typeof contribution._lightBulbWidget !== 'object' ||
+    contribution._lightBulbWidget === null
+  ) {
+    return false;
+  }
+  contribution._lightBulbWidget = NO_LIGHTBULB;
+  return true;
 }
 
 /**
@@ -176,9 +247,20 @@ export function takeOverCodeActions(
     filter?: { readonly include?: unknown },
     autoApply?: string,
   ): void {
-    // One kind to apply straight away (organise imports) is Monaco's to run: no widget opens.
+    // One kind to apply straight away (organise imports) is Monaco's to run: no widget opens. Asked
+    // without a context, so Monaco never shows its overlay message when nothing applies (#1024); if
+    // several apply, Monaco's list is Studio's menu.
     if (filter?.include !== undefined || autoApply !== undefined) {
-      trigger.call(this, notAvailableMessage, triggerAction, filter, autoApply);
+      if (typeof this._trigger === 'function') {
+        void this._trigger({
+          type: INVOKE_TRIGGER,
+          triggerAction,
+          ...(filter === undefined ? {} : { filter }),
+          ...(autoApply === undefined ? {} : { autoApply }),
+        });
+      } else {
+        trigger.call(this, notAvailableMessage, triggerAction, filter, autoApply);
+      }
       return;
     }
     onQuickFix(this._editor ?? editor);

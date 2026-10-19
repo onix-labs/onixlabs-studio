@@ -251,6 +251,23 @@ export class EditorContextMenu {
   }
 
   /**
+   * Opens the right-click menu at an attached editor's caret, just below its line — what ⇧F10
+   * (Shift+F10) opens in place of Monaco's own menu (#1024) — with the rows a right-click there would
+   * show.
+   * @param editor The editor.
+   * @returns Returns true when the menu opened; false for an editor nobody attached, or with no model or
+   * caret.
+   */
+  public openAtCaretFromKeyboard(editor: MonacoApi.editor.ICodeEditor): boolean {
+    if (editor.getModel() === null) {
+      return false;
+    }
+    return this.openAtCaret(editor, this.itemsFor(editor), (id: string): void =>
+      this.run(id, editor),
+    );
+  }
+
+  /**
    * Builds the rows for an editor as it stands: what it can do, given whether it can be edited, what
    * its language supports, and what is selected.
    * @param editor The editor.

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { GoToPresenter } from '@shared/angular/services/go-to/go-to-presenter';
 import { GoToLineModal } from './go-to-line-modal';
 import { GoToSymbolModal } from './go-to-symbol-modal';
+import { LineTerminatorsConfirmModal } from './line-terminators-confirm-modal';
 import { RenameConfirmModal } from './rename-confirm-modal';
 import { RenameSymbolModal } from './rename-symbol-modal';
 
@@ -10,11 +11,19 @@ import { RenameSymbolModal } from './rename-symbol-modal';
  * whichever editor asks — in whichever tab or window — the "Dialogs" Go to style shows the same
  * dialog, and there is exactly one of it. Each dialog is created as it opens, so it always starts
  * empty. Rename Symbol's prompt for a new name (#1015) shows here too, by the same setting, and so
- * does its confirmation of a rename across several files — which every style shows as a dialog.
+ * does its confirmation of a rename across several files — which every style shows as a dialog — and
+ * the question about a document's unusual line terminators (#1024), which Monaco asked in the
+ * browser's confirm box.
  */
 @Component({
   selector: 'app-go-to-dialog-host',
-  imports: [GoToLineModal, GoToSymbolModal, RenameSymbolModal, RenameConfirmModal],
+  imports: [
+    GoToLineModal,
+    GoToSymbolModal,
+    RenameSymbolModal,
+    RenameConfirmModal,
+    LineTerminatorsConfirmModal,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (presenter.dialog(); as dialog) {
@@ -42,6 +51,7 @@ import { RenameSymbolModal } from './rename-symbol-modal';
       }
     }
     <app-rename-confirm-modal />
+    <app-line-terminators-confirm-modal />
   `,
 })
 export class GoToDialogHost {
