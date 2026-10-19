@@ -95,6 +95,12 @@ export class CodeBlock {
   public readonly lang: InputSignal<string> = input<string>('');
 
   /**
+   * Gets whether the footer — the language label, copy and run — shows. A hover card's snippet
+   * (#1020) is something to read, not to take away, so it shows the code alone.
+   */
+  public readonly footer: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Holds the terminal sessions the play action launches into — the hosting view's when one is in
    * scope, otherwise the app-wide instance.
    */

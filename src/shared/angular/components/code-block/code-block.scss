@@ -38,6 +38,12 @@
     }
   }
 
+  // With no footer (a hover card's snippet) the panel stands alone, rounded at all four corners.
+  &--bare &__pre {
+    border-end-start-radius: calc(0.5rem * var(--border-radius-multiplier)) !important;
+    border-end-end-radius: calc(0.5rem * var(--border-radius-multiplier)) !important;
+  }
+
   // The footer: the language label at the leading (left) edge and the actions at the trailing (right)
   // edge, in a band a step lighter than the panel, joined directly beneath it. Rounded across its
   // bottom two corners; its top joins the panel squarely.

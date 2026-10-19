@@ -12,6 +12,8 @@ import {
   hasReferenceProvider,
   hasRenameProvider,
   providedDefinitions,
+  ProvidedHover,
+  providedHovers,
   providedReferences,
   ProvidedRename,
   providedRenameEdits,
@@ -28,6 +30,7 @@ interface FakeMonaco {
   readonly referenceProviders: MonacoApi.languages.ReferenceProvider[];
   readonly renameProviders: MonacoApi.languages.RenameProvider[];
   readonly codeActionProviders: MonacoApi.languages.CodeActionProvider[];
+  readonly hoverProviders: MonacoApi.languages.HoverProvider[];
   readonly configurations: string[];
 }
 
@@ -40,6 +43,7 @@ function fakeMonaco(): FakeMonaco {
   const referenceProviders: MonacoApi.languages.ReferenceProvider[] = [];
   const renameProviders: MonacoApi.languages.RenameProvider[] = [];
   const codeActionProviders: MonacoApi.languages.CodeActionProvider[] = [];
+  const hoverProviders: MonacoApi.languages.HoverProvider[] = [];
   const configurations: string[] = [];
   const monaco: typeof MonacoApi = {
     languages: {
@@ -71,6 +75,13 @@ function fakeMonaco(): FakeMonaco {
         codeActionProviders.push(provider);
         return { dispose: (): void => undefined };
       },
+      registerHoverProvider: (
+        _selector: MonacoApi.languages.LanguageSelector,
+        provider: MonacoApi.languages.HoverProvider,
+      ): MonacoApi.IDisposable => {
+        hoverProviders.push(provider);
+        return { dispose: (): void => undefined };
+      },
       setLanguageConfiguration: (languageId: string): MonacoApi.IDisposable => {
         configurations.push(languageId);
         return { dispose: (): void => undefined };
@@ -100,6 +111,7 @@ function fakeMonaco(): FakeMonaco {
     referenceProviders,
     renameProviders,
     codeActionProviders,
+    hoverProviders,
     configurations,
   };
 }
@@ -592,6 +604,113 @@ describe('monaco-editor-capabilities', () => {
         ],
         fileOperations: 1,
       });
+    });
+  });
+
+  describe('hover providers (#1020)', () => {
+    /**
+     * Builds a hover provider answering with the given blocks.
+     * @param values The blocks' markdown, or null to answer nothing.
+     * @param range The span answered for, if any.
+     * @returns Returns the provider.
+     */
+    function hoverProvider(
+      values: readonly string[] | null,
+      range?: MonacoApi.IRange,
+    ): MonacoApi.languages.HoverProvider {
+      return {
+        provideHover: (): MonacoApi.languages.Hover | null =>
+          values === null
+            ? null
+            : {
+                contents: values.map((value: string): MonacoApi.IMarkdownString => ({ value })),
+                ...(range === undefined ? {} : { range }),
+              },
+      };
+    }
+
+    it('capture_recordsHoverProviders_andStillRegistersThem_untilDisposed', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const provider: MonacoApi.languages.HoverProvider = hoverProvider(['`x: number`']);
+
+      const disposable: MonacoApi.IDisposable = fake.monaco.languages.registerHoverProvider(
+        'typescript',
+        provider,
+      );
+
+      expect(fake.hoverProviders).toEqual([provider]);
+      expect(
+        await providedHovers(fake.monaco, modelOf('typescript'), { lineNumber: 1, column: 1 }),
+      ).toHaveLength(1);
+      disposable.dispose();
+      expect(
+        await providedHovers(fake.monaco, modelOf('typescript'), { lineNumber: 1, column: 1 }),
+      ).toEqual([]);
+    });
+
+    it('providedHovers_asksEveryProviderForTheLanguage_newestFirst_droppingEmptyAndFailingOnes', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      fake.monaco.languages.registerHoverProvider('typescript', hoverProvider(['older']));
+      fake.monaco.languages.registerHoverProvider('typescript', hoverProvider(null));
+      fake.monaco.languages.registerHoverProvider('typescript', hoverProvider(['  ', '']));
+      fake.monaco.languages.registerHoverProvider('typescript', {
+        provideHover: (): never => {
+          throw new Error('boom');
+        },
+      });
+      fake.monaco.languages.registerHoverProvider('csharp', hoverProvider(['other language']));
+      fake.monaco.languages.registerHoverProvider(
+        ['typescript'],
+        hoverProvider(['newer', ' '], span(1, 2, 5)),
+      );
+
+      const hovers: readonly ProvidedHover[] = await providedHovers(
+        fake.monaco,
+        modelOf('typescript'),
+        { lineNumber: 1, column: 3 },
+      );
+
+      expect(hovers).toEqual([
+        { contents: [{ value: 'newer' }], range: span(1, 2, 5), studio: false },
+        { contents: [{ value: 'older' }], range: null, studio: false },
+      ]);
+    });
+
+    it('providedHovers_aLanguageServersAnswerStandsAlone_overMonacosWorker', async () => {
+      // Matthew's live test of #1020 showed TypeScript's docs twice: the server's and the worker's.
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      fake.monaco.languages.registerHoverProvider('typescript', hoverProvider(['from the worker']));
+      const server: MonacoApi.languages.HoverProvider = hoverProvider(['from the server']);
+      markStudioProvider(server);
+      fake.monaco.languages.registerHoverProvider('typescript', server);
+
+      const served: readonly ProvidedHover[] = await providedHovers(
+        fake.monaco,
+        modelOf('typescript'),
+        { lineNumber: 1, column: 1 },
+      );
+      expect(served.map((hover: ProvidedHover) => hover.contents[0].value)).toEqual([
+        'from the server',
+      ]);
+
+      // Where the server says nothing, the worker's answer still shows.
+      const silent: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(silent.monaco);
+      silent.monaco.languages.registerHoverProvider(
+        'typescript',
+        hoverProvider(['from the worker']),
+      );
+      const quiet: MonacoApi.languages.HoverProvider = hoverProvider(null);
+      markStudioProvider(quiet);
+      silent.monaco.languages.registerHoverProvider('typescript', quiet);
+      expect(
+        (
+          await providedHovers(silent.monaco, modelOf('typescript'), { lineNumber: 1, column: 1 })
+        ).map((hover: ProvidedHover) => hover.contents[0].value),
+      ).toEqual(['from the worker']);
     });
   });
 });

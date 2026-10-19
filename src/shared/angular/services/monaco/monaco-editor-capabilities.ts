@@ -62,6 +62,43 @@ interface RegisteredCodeActionProvider {
 }
 
 /**
+ * One hover provider registered with a Monaco instance, with the languages it serves (#1020).
+ */
+interface RegisteredHoverProvider {
+  /**
+   * Gets the language selector it was registered for.
+   */
+  readonly selector: MonacoApi.languages.LanguageSelector;
+
+  /**
+   * Gets the provider.
+   */
+  readonly provider: MonacoApi.languages.HoverProvider;
+}
+
+/**
+ * One hover provider's answer at a position (#1020): what it says of the symbol there, and the span it
+ * says it of.
+ */
+export interface ProvidedHover {
+  /**
+   * Gets the answer's blocks, as markdown, in the provider's order.
+   */
+  readonly contents: readonly MonacoApi.IMarkdownString[];
+
+  /**
+   * Gets the span the answer is about, one-based, or null when the provider gave none.
+   */
+  readonly range: MonacoApi.IRange | null;
+
+  /**
+   * Gets whether the answer came from one of Studio's own providers (a language server's), which a
+   * hover card prefers to Monaco's built-in workers for the same language.
+   */
+  readonly studio: boolean;
+}
+
+/**
  * One code action a Monaco provider offered (#1016), with the provider that can fill it in.
  */
 export interface ProvidedCodeAction {
@@ -213,6 +250,11 @@ interface CapturedCapabilities {
   readonly codeActions: RegisteredCodeActionProvider[];
 
   /**
+   * Gets the hover providers registered, in registration order (#1020).
+   */
+  readonly hovers: RegisteredHoverProvider[];
+
+  /**
    * Gets the comment rules each language's configuration set, by language identifier.
    */
   readonly comments: Map<string, MonacoApi.languages.CommentRule>;
@@ -256,6 +298,14 @@ interface CapabilityRegistration {
   ) => MonacoApi.IDisposable;
 
   /**
+   * Registers a hover provider for the languages a selector selects.
+   */
+  registerHoverProvider: (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.HoverProvider,
+  ) => MonacoApi.IDisposable;
+
+  /**
    * Sets a language's configuration: its brackets, comments and the like.
    */
   setLanguageConfiguration: (
@@ -291,7 +341,9 @@ export function markStudioProvider(provider: object): void {
  * the definition providers registered with it, which Go to Definition asks where no language server
  * answers and which decide whether the item shows; the reference providers, which Find All References
  * asks the same way (#1014); the rename providers, which Rename Symbol asks the same way (#1015); the
- * code-action providers, which the quick-fix menu asks the same way (#1016); and the comment rules each language's configuration sets, which decide whether Toggle Comment does.
+ * code-action providers, which the quick-fix menu asks the same way (#1016); the hover providers,
+ * every one of which Studio's hover card asks (#1020); and the comment rules each language's
+ * configuration sets, which decide whether Toggle Comment does.
  *
  * Monaco keeps these registries internal, as it does the document-symbol providers (see
  * {@link import('./monaco-symbol-providers').captureDocumentSymbolProviders}), so the public
@@ -309,6 +361,7 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     references: [],
     renames: [],
     codeActions: [],
+    hovers: [],
     comments: new Map(),
   };
   CAPTURED.set(monaco.languages, captured);
@@ -322,6 +375,8 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     languages.registerRenameProvider.bind(languages);
   const registerCodeActions: CapabilityRegistration['registerCodeActionProvider'] =
     languages.registerCodeActionProvider.bind(languages);
+  const registerHover: CapabilityRegistration['registerHoverProvider'] =
+    languages.registerHoverProvider.bind(languages);
   const setConfiguration: CapabilityRegistration['setLanguageConfiguration'] =
     languages.setLanguageConfiguration.bind(languages);
   languages.registerDefinitionProvider = (
@@ -388,6 +443,23 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
         const index: number = captured.codeActions.indexOf(entry);
         if (index >= 0) {
           captured.codeActions.splice(index, 1);
+        }
+        disposable.dispose();
+      },
+    };
+  };
+  languages.registerHoverProvider = (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.HoverProvider,
+  ): MonacoApi.IDisposable => {
+    const entry: RegisteredHoverProvider = { selector, provider };
+    captured.hovers.push(entry);
+    const disposable: MonacoApi.IDisposable = registerHover(selector, provider);
+    return {
+      dispose: (): void => {
+        const index: number = captured.hovers.indexOf(entry);
+        if (index >= 0) {
+          captured.hovers.splice(index, 1);
         }
         disposable.dispose();
       },
@@ -650,6 +722,60 @@ export async function providedRenameEdits(
     }
   }
   return null;
+}
+
+/**
+ * Asks every hover provider registered with a Monaco instance for its language what it says of the
+ * symbol at a position (#1020) — a language server's and Monaco's own workers' alike, all at once, as
+ * Monaco asks them — the most recently registered first, as Monaco ranks them. A provider that fails,
+ * or says nothing, is left out.
+ * @param monaco The Monaco instance the model belongs to.
+ * @param model The model.
+ * @param position The one-based position.
+ * @returns Returns the answers, in rank order; empty when no provider serves the language or none
+ * said anything.
+ */
+export async function providedHovers(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  position: MonacoApi.IPosition,
+): Promise<readonly ProvidedHover[]> {
+  const language: string = model.getLanguageId();
+  const candidates: readonly RegisteredHoverProvider[] = [
+    ...(CAPTURED.get(monaco.languages)?.hovers ?? []),
+  ]
+    .reverse()
+    .filter((entry: RegisteredHoverProvider): boolean => selects(entry.selector, language));
+  const answers: readonly (ProvidedHover | null)[] = await Promise.all(
+    candidates.map(async ({ provider }: RegisteredHoverProvider): Promise<ProvidedHover | null> => {
+      const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+      try {
+        const hover: MonacoApi.languages.Hover | null =
+          (await provider.provideHover(model, position as MonacoApi.Position, source.token)) ??
+          null;
+        const contents: readonly MonacoApi.IMarkdownString[] = (hover?.contents ?? []).filter(
+          (content: MonacoApi.IMarkdownString): boolean => content.value.trim().length > 0,
+        );
+        return hover === null || contents.length === 0
+          ? null
+          : { contents, range: hover.range ?? null, studio: STUDIO_PROVIDERS.has(provider) };
+      } catch {
+        // A provider that fails says nothing; the others may.
+        return null;
+      } finally {
+        source.dispose();
+      }
+    }),
+  );
+  const given: readonly ProvidedHover[] = answers.filter(
+    (answer: ProvidedHover | null): answer is ProvidedHover => answer !== null,
+  );
+  // A language server's answer stands alone. Monaco's own worker answers for the same language with
+  // the same signature and docs in its own words, so taking both showed everything twice; the
+  // worker's answer is kept only where no server spoke.
+  return given.some((answer: ProvidedHover): boolean => answer.studio)
+    ? given.filter((answer: ProvidedHover): boolean => answer.studio)
+    : given;
 }
 
 /**

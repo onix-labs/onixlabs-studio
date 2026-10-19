@@ -1,4 +1,4 @@
-import { DebugElement } from '@angular/core';
+import { DebugElement, Injector } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type * as MonacoApi from 'monaco-editor';
@@ -6,6 +6,7 @@ import type { MockInstance } from 'vitest';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { DiffEditor } from './diff-editor';
 
 describe('DiffEditor', () => {
@@ -72,6 +73,10 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     const attach: MockInstance<EditorContextMenu['attach']> = vi
       .spyOn(TestBed.inject(EditorContextMenu), 'attach')
       .mockReturnValue((): void => void (detached += 1));
+    let cardsDetached: number = 0;
+    const attachCards: MockInstance<HoverCards['attach']> = vi
+      .spyOn(TestBed.inject(HoverCards), 'attach')
+      .mockReturnValue((): void => void (cardsDetached += 1));
 
     const fixture: ComponentFixture<DiffEditor> = TestBed.createComponent(DiffEditor);
     await fixture.whenStable();
@@ -81,7 +86,16 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
       [original, host.componentInstance],
       [modified, host.componentInstance],
     ]);
+    // #1020: both sides show Studio's hover card, drawn in this pane's window.
+    expect(attachCards.mock.calls.map((call: [unknown, Injector]): unknown => call[0])).toEqual([
+      original,
+      modified,
+    ]);
+    for (const [, injector] of attachCards.mock.calls) {
+      expect(injector.get(DiffEditor)).toBe(fixture.componentInstance);
+    }
     fixture.destroy();
     expect(detached).toBe(2);
+    expect(cardsDetached).toBe(2);
   });
 });

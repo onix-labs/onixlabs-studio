@@ -65,6 +65,21 @@ describe('CodeBlock', () => {
     expect(host.querySelector('.code-block__lang')?.textContent).toBe('bash');
   });
 
+  it('withoutItsFooter_showsTheCodeAlone_noLabelCopyOrRun (#1020)', () => {
+    TestBed.configureTestingModule({ imports: [CodeBlock] });
+    const fixture: ComponentFixture<CodeBlock> = TestBed.createComponent(CodeBlock);
+    fixture.componentRef.setInput('code', 'npm test');
+    fixture.componentRef.setInput('lang', 'bash');
+    fixture.componentRef.setInput('footer', false);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('code')?.textContent).toBe('npm test');
+    expect(host.querySelector('.code-block--bare')).not.toBeNull();
+    expect(host.querySelector('.code-block__footer')).toBeNull();
+    expect(host.querySelector('[aria-label="Copy code"]')).toBeNull();
+  });
+
   it('offers a play button for a shell language', () => {
     const { host } = build(new FakeTerminals());
     expect(host.querySelector('[aria-label="Run in terminal"]')).not.toBeNull();
