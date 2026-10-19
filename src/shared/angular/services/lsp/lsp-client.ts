@@ -23,6 +23,7 @@ import {
   LspDocumentRef,
   LspFeatures,
   LspRenameSupport,
+  LspSessionSupport,
 } from './lsp-features';
 import {
   fromLspWorkspaceEdit,
@@ -45,6 +46,7 @@ import {
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
+import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
 /**
  * Describes the state of an open document the client keeps a server in sync with.
@@ -443,6 +445,14 @@ export class LspClient implements OnDestroy {
   private readonly codeActionSupport: Map<string, LspCodeActionSupport> = new Map<
     string,
     LspCodeActionSupport
+  >();
+
+  /**
+   * Holds how each started session's server completes and answers signature help (#1021).
+   */
+  private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
+    string,
+    LspSessionSupport
   >();
 
   /**
@@ -910,7 +920,10 @@ export class LspClient implements OnDestroy {
       rename: this.renameSupport.get(sessionId) ?? 'none',
       codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
       commands: this.executeCommands.get(sessionId) ?? [],
+      completion: this.assistSupport.get(sessionId)?.completion ?? null,
+      signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
+      sync: (text: string): Promise<void> => this.change(tracked, text),
     };
   }
 
@@ -1314,6 +1327,10 @@ export class LspClient implements OnDestroy {
     this.legends.clear();
     this.renameSupport.clear();
     this.codeActionSupport.clear();
+    for (const sessionId of this.assistSupport.keys()) {
+      this.features.setSessionSupport(sessionId, null);
+    }
+    this.assistSupport.clear();
     this.executeCommands.clear();
     this.serverDiagnostics.clear();
     this.pullCapable.clear();
@@ -1570,6 +1587,13 @@ export class LspClient implements OnDestroy {
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
+          const assist: LspSessionSupport = {
+            completion: completionSupportOf(result.capabilities),
+            signatureHelp: signatureHelpSupportOf(result.capabilities),
+          };
+          this.assistSupport.set(sessionId, assist);
+          // The completion and signature-help providers trigger on every session's characters.
+          this.features.setSessionSupport(sessionId, assist);
           const pull: boolean = supportsPullDiagnostics(result.capabilities);
           if (pull) {
             this.pullCapable.add(sessionId);

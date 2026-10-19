@@ -337,6 +337,15 @@ export function markStudioProvider(provider: object): void {
 }
 
 /**
+ * Determines whether a provider is Studio's own — a language server's, registered by Studio.
+ * @param provider The provider.
+ * @returns Returns true when it was marked with {@link markStudioProvider}.
+ */
+export function isStudioProvider(provider: object): boolean {
+  return STUDIO_PROVIDERS.has(provider);
+}
+
+/**
  * Starts recording what a Monaco instance's languages can do for Studio's right-click menu (#1012):
  * the definition providers registered with it, which Go to Definition asks where no language server
  * answers and which decide whether the item shows; the reference providers, which Find All References

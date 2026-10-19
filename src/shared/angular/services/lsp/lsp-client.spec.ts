@@ -16,7 +16,7 @@ import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
-import { LspDocumentRef, LspFeatures } from './lsp-features';
+import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
   WorkspaceEditOutcome,
@@ -234,6 +234,12 @@ class FakeFeatures {
     this.refreshes.push(languages);
   }
 
+  public readonly supports: [string, LspSessionSupport | null][] = [];
+
+  public setSessionSupport(sessionId: string, support: LspSessionSupport | null): void {
+    this.supports.push([sessionId, support]);
+  }
+
   public served(sessionId: string): void {
     this.servedListener?.(sessionId);
   }
@@ -422,6 +428,32 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
+    });
+
+    it('documentRefs_carryHowTheSessionsServerCompletes_andTheFeaturesHearOfIt (#1021)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: {
+          completionProvider: { triggerCharacters: ['.', ':'], resolveProvider: true },
+          signatureHelpProvider: { triggerCharacters: ['('], retriggerCharacters: [','] },
+        },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      const ref: LspDocumentRef | null | undefined = features.resolver?.('/root/src/a.ts');
+      expect(ref?.completion).toEqual({ triggerCharacters: ['.', ':'], resolve: true });
+      expect(ref?.signatureHelp).toEqual({ triggerCharacters: ['('], retriggerCharacters: [','] });
+      expect(features.supports).toEqual([
+        [
+          '/root::typescript',
+          {
+            completion: { triggerCharacters: ['.', ':'], resolve: true },
+            signatureHelp: { triggerCharacters: ['('], retriggerCharacters: [','] },
+          },
+        ],
+      ]);
     });
 
     it('documentRefs_carryTheSessionsCodeActions_itsCommands_andTheDiagnosticsWithTheirCodeAndData (#1016)', async () => {

@@ -1,0 +1,58 @@
+<div
+  #scroller
+  class="completion-list__list"
+  role="listbox"
+  aria-label="Suggestions"
+  [attr.id]="view().idPrefix"
+  [attr.aria-activedescendant]="activeId()"
+  [style.block-size.px]="view().count > 0 ? listHeight() : null"
+  (scroll)="onScroll($event)"
+>
+  @if (view().count === 0) {
+    <div class="completion-list__message" role="status">{{ view().message }}</div>
+  } @else {
+    <div class="completion-list__spacer" [style.block-size.px]="before()"></div>
+    @for (entry of rendered(); track entry.index) {
+      <div
+        class="completion-list__row"
+        role="option"
+        [attr.id]="optionId(entry.index)"
+        [attr.aria-selected]="entry.index === view().focused"
+        [attr.aria-setsize]="view().count"
+        [attr.aria-posinset]="entry.index + 1"
+        [attr.aria-label]="entry.row.label + ', ' + entry.row.kindName"
+        [attr.data-index]="entry.index"
+        [class.completion-list__row--focused]="entry.index === view().focused"
+      >
+        <app-icon class="completion-list__icon" [icon]="entry.row.icon" aria-hidden="true" />
+        <span
+          class="completion-list__label"
+          [class.completion-list__label--deprecated]="entry.row.deprecated"
+        >
+          <!-- Each run its own element, so no whitespace of the template's comes between them. -->
+          @for (run of entry.row.runs; track $index) {
+            <span [class.completion-list__match]="run.match">{{ run.text }}</span>
+          }
+          @if (entry.row.labelDetail; as labelDetail) {
+            <span class="completion-list__label-detail">{{ labelDetail }}</span>
+          }
+        </span>
+        @if (entry.row.detail; as detail) {
+          <span class="completion-list__detail">{{ detail }}</span>
+        }
+      </div>
+    }
+    <div class="completion-list__spacer" [style.block-size.px]="after()"></div>
+  }
+</div>
+@if (view().details; as details) {
+  <div class="completion-list__details">
+    @for (section of details.sections; track $index) {
+      <app-markdown-renderer
+        class="completion-list__section"
+        [text]="section"
+        [codeFooters]="false"
+      />
+    }
+  </div>
+}

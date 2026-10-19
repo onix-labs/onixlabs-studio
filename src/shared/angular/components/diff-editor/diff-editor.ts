@@ -22,6 +22,7 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -120,6 +121,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Holds the hover cards both sides show in place of Monaco's hover (#1020).
    */
   private readonly hoverCards: HoverCards = inject(HoverCards);
+
+  /**
+   * Holds the completion list and signature card either side shows in place of Monaco's (#1021).
+   */
+  private readonly autocomplete: Autocomplete = inject(Autocomplete);
 
   /**
    * Gets the absolute path of the compared file, which a find from either side searches — the
@@ -364,6 +370,9 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     this.findDetachers.push(
       this.hoverCards.attach(this.editor.getOriginalEditor(), this.injector),
       this.hoverCards.attach(this.editor.getModifiedEditor(), this.injector),
+      // Studio's completion list and signature card, for a side that can be edited (#1021).
+      this.autocomplete.attach(this.editor.getOriginalEditor(), this.injector),
+      this.autocomplete.attach(this.editor.getModifiedEditor(), this.injector),
     );
 
     this.ready = true;

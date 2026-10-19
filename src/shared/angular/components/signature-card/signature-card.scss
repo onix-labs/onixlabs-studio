@@ -1,0 +1,90 @@
+// Studio's signature card (#1021): the signature of the call being typed, above the caret, on the
+// popup-menu surface as the hover card is. Its documentation scrolls when long; the signature stays at
+// the top. A static shadow gives it depth over the text — a resting panel, not a hover effect.
+:host {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 10rem;
+  max-inline-size: min(36rem, calc(100vw - 1rem));
+  max-block-size: min(16rem, calc(100vh - 1rem));
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--menu-foreground-color);
+  background: var(--menu-background-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.signature-card__head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.signature-card__overloads {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-inline-start: -0.5rem;
+}
+
+.signature-card__count {
+  min-inline-size: 2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.signature-card__signature {
+  padding-block-start: 0.1rem;
+  font-family: var(--monospace-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// The parameter being typed: the accent colour, underlined, as Monaco's card marks it.
+.signature-card__parameter {
+  color: var(--accent-color);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.signature-card__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: 0.4rem 0.75rem 0.5rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border-block-start: 0.0625rem solid var(--menu-border-color);
+}
+
+.signature-card__section + .signature-card__section {
+  margin-block-start: 0.4rem;
+}
+
+// The markdown arrives as [innerHTML], whose children carry no encapsulation attribute.
+.signature-card__section ::ng-deep {
+  p,
+  ul,
+  ol {
+    margin: 0 0 0.4rem;
+  }
+
+  .markdown-renderer__prose:last-child > :last-child {
+    margin-block-end: 0;
+  }
+
+  code {
+    font-family: var(--monospace-font-family, monospace);
+    font-size: 0.9em;
+  }
+
+  .code-block {
+    margin-block: 0 0.4rem;
+  }
+}

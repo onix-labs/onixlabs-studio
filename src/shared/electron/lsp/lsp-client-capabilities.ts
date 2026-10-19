@@ -16,7 +16,49 @@ export function clientCapabilities(): ClientCapabilities {
       // `textDocument/diagnostic`; without this the server treats the client as push-only and the
       // Error List never receives its errors.
       diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
-      completion: { completionItem: { snippetSupport: true } },
+      // Studio's completion list (#1021) inserts snippets with tab stops, honours the characters
+      // that accept a completion, shows a completion's documentation as markdown (struck through when
+      // deprecated, preselected when the server says), offers insert-or-replace, shows a label's
+      // details, and asks the server to fill a completion in — its documentation, detail and extra
+      // edits (an auto-import) — as it is focused. It sends what started each request, and reads a
+      // list's item defaults.
+      completion: {
+        dynamicRegistration: false,
+        completionItem: {
+          snippetSupport: true,
+          commitCharactersSupport: true,
+          documentationFormat: ['markdown', 'plaintext'],
+          deprecatedSupport: true,
+          preselectSupport: true,
+          tagSupport: { valueSet: [1] },
+          insertReplaceSupport: true,
+          resolveSupport: { properties: ['documentation', 'detail', 'additionalTextEdits'] },
+          insertTextModeSupport: { valueSet: [1, 2] },
+          labelDetailsSupport: true,
+        },
+        contextSupport: true,
+        completionList: {
+          itemDefaults: [
+            'commitCharacters',
+            'editRange',
+            'insertTextFormat',
+            'insertTextMode',
+            'data',
+          ],
+        },
+      },
+      // Studio's signature card (#1021) shows the active signature's documentation as markdown, with
+      // the active parameter highlighted by its offsets or its text, and each signature's own active
+      // parameter. It sends what started each request and the signatures showing.
+      signatureHelp: {
+        dynamicRegistration: false,
+        signatureInformation: {
+          documentationFormat: ['markdown', 'plaintext'],
+          parameterInformation: { labelOffsetSupport: true },
+          activeParameterSupport: true,
+        },
+        contextSupport: true,
+      },
       hover: { contentFormat: ['markdown', 'plaintext'] },
       definition: { linkSupport: false },
       references: {},

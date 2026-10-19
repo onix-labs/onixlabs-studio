@@ -38,6 +38,13 @@ import {
   installHoverCommands,
   ProblemDirection,
 } from './monaco-hover-commands';
+import {
+  IDLE_PARAMETER_HINTS_PRESENTER,
+  IDLE_SUGGEST_PRESENTER,
+  installSuggestCommands,
+  ParameterHintsPresenter,
+  SuggestPresenter,
+} from './monaco-suggest-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
@@ -241,6 +248,22 @@ export class Monaco {
    */
   private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Holds predicates that leave Monaco's word-based suggestions out of the completion list for the
+   * documents they own. A language server registers one (via {@link suppressWordSuggestionsWhen}), so
+   * a document it serves lists only what the server suggests (#1021).
+   */
+  private readonly wordSuggestionSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
+    new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Holds what draws the completion list and the signature card (#1021): the `Autocomplete` service,
+   * which hands itself over as it is made — the first editor that shows makes it — or null before
+   * then, when nothing is drawn. Handed over rather than injected: the service's components reach
+   * back here through the markdown renderer's code blocks.
+   */
+  private assist: (SuggestPresenter & ParameterHintsPresenter) | null = null;
 
   /**
    * Gets a value indicating whether Monaco has finished loading.
@@ -520,6 +543,7 @@ export class Monaco {
     this.installRenameCommands(window.monaco);
     this.installQuickFixCommands(window.monaco);
     this.installHoverCommands(window.monaco);
+    this.installSuggestCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -648,6 +672,27 @@ export class Monaco {
   }
 
   /**
+   * Removes Monaco's Trigger Suggest and Trigger Parameter Hints chords from an instance and binds
+   * Studio's in their place, binds the completion list's and signature card's keys, and puts Studio's
+   * stand-ins in place of Monaco's suggest and parameter-hints widgets in every editor, so ⌃Space,
+   * typing and the language's trigger characters show the `Autocomplete` service's list and card and
+   * neither of Monaco's widgets is ever built (#1021).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installSuggestCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installSuggestCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (): SuggestPresenter => this.assist ?? IDLE_SUGGEST_PRESENTER,
+      (): ParameterHintsPresenter => this.assist ?? IDLE_PARAMETER_HINTS_PRESENTER,
+      (model: MonacoApi.editor.ITextModel): boolean => this.isWordSuggestionSuppressed(model),
+    );
+  }
+
+  /**
    * Resolves the worker script URL for a Monaco language label. Workers are served from the copied
    * `vs/` assets.
    * @param _moduleId The requesting module identifier (unused).
@@ -706,6 +751,7 @@ export class Monaco {
       this.installRenameCommands(monaco);
       this.installQuickFixCommands(monaco);
       this.installHoverCommands(monaco);
+      this.installSuggestCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(
@@ -772,6 +818,46 @@ export class Monaco {
     return (): void => {
       this.heuristicTokenSuppressors.delete(predicate);
     };
+  }
+
+  /**
+   * Takes what draws the completion list and the signature card in every editor (#1021): the
+   * `Autocomplete` service hands itself over as it is made.
+   * @param assist The presenter of both.
+   */
+  public useAssist(assist: SuggestPresenter & ParameterHintsPresenter): void {
+    this.assist = assist;
+  }
+
+  /**
+   * Registers a predicate that leaves Monaco's word-based suggestions out of the completion list for
+   * the documents it owns (#1021): a language server registers one, so the words of the document never
+   * stand in for the server's own silence. Predicates accumulate, as {@link suppressHeuristicTokensWhen}
+   * does.
+   * @param predicate Returns true for a model the caller serves completions for.
+   * @returns Returns a function that removes the predicate.
+   */
+  public suppressWordSuggestionsWhen(
+    predicate: (model: MonacoApi.editor.ITextModel) => boolean,
+  ): () => void {
+    this.wordSuggestionSuppressors.add(predicate);
+    return (): void => {
+      this.wordSuggestionSuppressors.delete(predicate);
+    };
+  }
+
+  /**
+   * Gets whether Monaco's word-based suggestions are left out for a model.
+   * @param model The model.
+   * @returns Returns true when any registered predicate claims the model.
+   */
+  private isWordSuggestionSuppressed(model: MonacoApi.editor.ITextModel): boolean {
+    for (const predicate of this.wordSuggestionSuppressors) {
+      if (predicate(model)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

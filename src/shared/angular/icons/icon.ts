@@ -805,6 +805,46 @@ export class Icon {
   public static readonly SYMBOL_OTHER: Icon = new Icon('ph ph-dot-outline');
 
   /**
+   * Gets the icon of a keyword in the completion list (#1021).
+   */
+  public static readonly SYMBOL_KEYWORD: Icon = new Icon('ph ph-key');
+
+  /**
+   * Gets the icon of a snippet in the completion list: text with tab stops to fill in.
+   */
+  public static readonly SYMBOL_SNIPPET: Icon = new Icon('ph ph-code-block');
+
+  /**
+   * Gets the icon of plain text in the completion list: a word from the document, say.
+   */
+  public static readonly SYMBOL_TEXT: Icon = new Icon('ph ph-text-aa');
+
+  /**
+   * Gets the icon of a colour in the completion list.
+   */
+  public static readonly SYMBOL_COLOR: Icon = new Icon('ph ph-palette');
+
+  /**
+   * Gets the icon of an operator in the completion list.
+   */
+  public static readonly SYMBOL_OPERATOR: Icon = new Icon('ph ph-plus-minus');
+
+  /**
+   * Gets the icon of a unit in the completion list (`px`, `em`).
+   */
+  public static readonly SYMBOL_UNIT: Icon = new Icon('ph ph-ruler');
+
+  /**
+   * Gets the icon of a value in the completion list.
+   */
+  public static readonly SYMBOL_VALUE: Icon = new Icon('ph ph-hash');
+
+  /**
+   * Gets the icon of a type parameter in the completion list.
+   */
+  public static readonly SYMBOL_TYPE_PARAMETER: Icon = new Icon('ph ph-brackets-angle');
+
+  /**
    * Gets the open-file icon on a diff's strip, which opens the compared file to edit.
    */
   public static readonly OPEN_FILE: Icon = new Icon('ph-duotone ph-file-text');
