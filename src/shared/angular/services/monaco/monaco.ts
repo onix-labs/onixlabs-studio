@@ -32,6 +32,7 @@ import {
   NavigationMode,
 } from './monaco-navigation-commands';
 import { installRenameCommands } from './monaco-rename-commands';
+import { installQuickFixCommands, QUICK_FIX_EDITOR_OPTIONS } from './monaco-quick-fix-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
@@ -40,6 +41,7 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -446,6 +448,8 @@ export class Monaco {
       contextmenu: false,
       // None of Monaco's go-to navigations ever peeks (#1014).
       ...NAVIGATION_EDITOR_OPTIONS,
+      // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
+      ...QUICK_FIX_EDITOR_OPTIONS,
     };
   }
 
@@ -476,6 +480,8 @@ export class Monaco {
       contextmenu: false,
       // None of Monaco's go-to navigations ever peeks (#1014).
       ...NAVIGATION_EDITOR_OPTIONS,
+      // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
+      ...QUICK_FIX_EDITOR_OPTIONS,
     };
   }
 
@@ -502,6 +508,7 @@ export class Monaco {
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
     this.installRenameCommands(window.monaco);
+    this.installQuickFixCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -588,6 +595,23 @@ export class Monaco {
   }
 
   /**
+   * Removes the chords of Monaco's code-action commands from an instance and binds Studio's Quick Fix
+   * in their place, turns Monaco's lightbulb off, and routes every other way into Monaco's code-action
+   * widget to Studio's, so ⌘. (Ctrl+.) reaches the {@link QuickFixes} and Monaco's widget never opens
+   * (#1016).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installQuickFixCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installQuickFixCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+      this.log.info('Monaco', 'Studio quick-fix command');
+      void this.injector.get(QuickFixes).open(editor);
+    });
+  }
+
+  /**
    * Resolves the worker script URL for a Monaco language label. Workers are served from the copied
    * `vs/` assets.
    * @param _moduleId The requesting module identifier (unused).
@@ -644,6 +668,7 @@ export class Monaco {
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);
       this.installRenameCommands(monaco);
+      this.installQuickFixCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

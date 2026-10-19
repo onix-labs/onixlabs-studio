@@ -18,7 +18,12 @@ import { Output } from '../output/output';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspDocumentRef, LspFeatures, LspRenameSupport } from './lsp-features';
+import {
+  LspCodeActionSupport,
+  LspDocumentRef,
+  LspFeatures,
+  LspRenameSupport,
+} from './lsp-features';
 import {
   fromLspWorkspaceEdit,
   SkippedEdit,
@@ -30,6 +35,8 @@ import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-path
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
+  codeActionSupportOf,
+  executeCommandsOf,
   renameSupportOf,
   saveIncludesText,
   semanticLegendOf,
@@ -117,6 +124,19 @@ export interface LspDiagnostic {
    * Gets the producing source (for example `typescript`), or undefined.
    */
   readonly source?: string;
+
+  /**
+   * Gets the diagnostic's code (for example `CS0246`), or undefined. Shown with the marker, and sent
+   * back with a code-action request (#1016): servers find their fixes by it.
+   */
+  readonly code?: number | string;
+
+  /**
+   * Gets whatever the server attached to the diagnostic for itself, or undefined. Never read here, but
+   * kept and sent back with a code-action request (#1016): servers such as Roslyn resolve their fixes
+   * from it.
+   */
+  readonly data?: unknown;
 }
 
 /**
@@ -418,6 +438,22 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds how each started session's server offers code actions (#1016).
+   */
+  private readonly codeActionSupport: Map<string, LspCodeActionSupport> = new Map<
+    string,
+    LspCodeActionSupport
+  >();
+
+  /**
+   * Holds the commands each started session's server runs through `workspace/executeCommand` (#1016).
+   */
+  private readonly executeCommands: Map<string, readonly string[]> = new Map<
+    string,
+    readonly string[]
+  >();
+
+  /**
    * Holds the sessions whose server advertises pull diagnostics, so the client requests diagnostics via
    * `textDocument/diagnostic` (Roslyn and other pull-based servers) rather than relying on push.
    */
@@ -442,6 +478,15 @@ export class LspClient implements OnDestroy {
   private readonly diagnosticsByDocument: Map<string, readonly Diagnostic[]> = new Map<
     string,
     readonly Diagnostic[]
+  >();
+
+  /**
+   * Holds each document's diagnostics exactly as its server sent them — codes, data and all — keyed
+   * by document id, so a code-action request can send back the ones at the caret (#1016).
+   */
+  private readonly serverDiagnostics: Map<string, readonly LspDiagnostic[]> = new Map<
+    string,
+    readonly LspDiagnostic[]
   >();
 
   /**
@@ -798,6 +843,7 @@ export class LspClient implements OnDestroy {
         toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
       ),
     );
+    this.serverDiagnostics.set(tracked.documentId, diagnostics);
     this.setMarkers(tracked, diagnostics);
     this.publish();
   }
@@ -862,6 +908,9 @@ export class LspClient implements OnDestroy {
       suppressServerTokens:
         FROZEN_TOKEN_SERVERS.has(tracked.serverId) && !this.settledSessions.has(sessionId),
       rename: this.renameSupport.get(sessionId) ?? 'none',
+      codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
+      commands: this.executeCommands.get(sessionId) ?? [],
+      diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
     };
   }
 
@@ -967,6 +1016,7 @@ export class LspClient implements OnDestroy {
       }
       this.tracked.delete(key);
       this.diagnosticsByDocument.delete(documentId);
+      this.serverDiagnostics.delete(documentId);
       this.setMarkers(tracked, []);
       this.publish();
       this.enqueue(tracked, (): Promise<void> => this.close(tracked));
@@ -1263,6 +1313,9 @@ export class LspClient implements OnDestroy {
     this.sessions.clear();
     this.legends.clear();
     this.renameSupport.clear();
+    this.codeActionSupport.clear();
+    this.executeCommands.clear();
+    this.serverDiagnostics.clear();
     this.pullCapable.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
@@ -1515,6 +1568,8 @@ export class LspClient implements OnDestroy {
           this.startFailures.delete(sessionId);
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
+          this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
+          this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
           const pull: boolean = supportsPullDiagnostics(result.capabilities);
           if (pull) {
             this.pullCapable.add(sessionId);

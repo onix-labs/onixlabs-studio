@@ -6,7 +6,7 @@
     [content]="value()"
     [language]="language()"
     [readOnly]="readOnly() || disabled()"
-    [options]="editorOptions"
+    [options]="editorOptions()"
     (ready)="onReady()"
     (contentChange)="onChange($event)"
   />

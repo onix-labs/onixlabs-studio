@@ -18,6 +18,7 @@ import {
   ReferencesHost,
 } from '@shared/angular/services/references/reference-list';
 import { ReferencesRouter } from '@shared/angular/services/references/references-router';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { TextEditor } from './text-editor';
 
 describe('TextEditor', () => {
@@ -153,6 +154,33 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
     // Compared by identity: the stand-in editor answers every member, so deep equality never ends.
     expect(attach.mock.calls[0][0]).toBe(editor);
     expect(attach.mock.calls[0][1]).toBe(referencesHost);
+    fixture.destroy();
+    expect(detached).toBe(1);
+  });
+
+  it('attachesItsEditorsFixIcon_withItsMonaco_andTakesItAwayOnDestroy (#1016)', async () => {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    const instance: typeof MonacoApi = {
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi;
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue(instance);
+    let detached: number = 0;
+    const attach: MockInstance<QuickFixes['attach']> = vi
+      .spyOn(TestBed.inject(QuickFixes), 'attach')
+      .mockReturnValue((): void => void (detached += 1));
+
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(attach.mock.calls[0][0]).toBe(editor);
+    expect(attach.mock.calls[0][1]).toBe(instance);
     fixture.destroy();
     expect(detached).toBe(1);
   });

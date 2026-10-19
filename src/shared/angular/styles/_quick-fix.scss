@@ -1,0 +1,26 @@
+// Studio's fix icon (#1016), drawn by `QuickFixIndicator` as a glyph-margin decoration in the margin's
+// right lane beside the caret's line while fixes exist at the caret, in place of Monaco's own lightbulb
+// (which is off). Monaco renders decorations into its own DOM, outside Angular's view encapsulation, so
+// the icon is styled here.
+//
+// The decoration's element carries the icon set's classes (`ph-fill ph-lightbulb`, whose `::before` is
+// the glyph) and fills its lane cell: Monaco sizes it to the lane's width and the line's height. It is
+// a size container, so the glyph is sized to the cell's shorter side, centred on the line and set to
+// the cell's inner side, at any font size, line height or display scale.
+.monaco-editor .glyph-margin-widgets .cgmr.quick-fix-glyph {
+  display: flex;
+  align-items: center;
+  // Kept off the editor's left edge: the lane is the margin's first column when no breakpoint shares
+  // the line, so a centred glyph sat hard against the edge. Set to the lane's inner side instead.
+  justify-content: flex-end;
+  padding-inline-end: 0.0625rem;
+  container-type: size;
+  color: var(--warning-color);
+  cursor: pointer;
+
+  &::before {
+    display: block;
+    font-size: 62cqmin;
+    line-height: 1;
+  }
+}

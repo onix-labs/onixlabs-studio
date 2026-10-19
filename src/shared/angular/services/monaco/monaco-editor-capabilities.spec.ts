@@ -1,6 +1,12 @@
 import type * as MonacoApi from 'monaco-editor';
 import {
   captureEditorCapabilities,
+  groupWorkspaceEdit,
+  hasCodeActionProvider,
+  markStudioProvider,
+  ProvidedCodeActions,
+  providedCodeActions,
+  resolveProvidedCodeAction,
   hasComments,
   hasDefinitionProvider,
   hasReferenceProvider,
@@ -21,6 +27,7 @@ interface FakeMonaco {
   readonly definitionProviders: MonacoApi.languages.DefinitionProvider[];
   readonly referenceProviders: MonacoApi.languages.ReferenceProvider[];
   readonly renameProviders: MonacoApi.languages.RenameProvider[];
+  readonly codeActionProviders: MonacoApi.languages.CodeActionProvider[];
   readonly configurations: string[];
 }
 
@@ -32,6 +39,7 @@ function fakeMonaco(): FakeMonaco {
   const definitionProviders: MonacoApi.languages.DefinitionProvider[] = [];
   const referenceProviders: MonacoApi.languages.ReferenceProvider[] = [];
   const renameProviders: MonacoApi.languages.RenameProvider[] = [];
+  const codeActionProviders: MonacoApi.languages.CodeActionProvider[] = [];
   const configurations: string[] = [];
   const monaco: typeof MonacoApi = {
     languages: {
@@ -56,10 +64,26 @@ function fakeMonaco(): FakeMonaco {
         renameProviders.push(provider);
         return { dispose: (): void => undefined };
       },
+      registerCodeActionProvider: (
+        _selector: MonacoApi.languages.LanguageSelector,
+        provider: MonacoApi.languages.CodeActionProvider,
+      ): MonacoApi.IDisposable => {
+        codeActionProviders.push(provider);
+        return { dispose: (): void => undefined };
+      },
       setLanguageConfiguration: (languageId: string): MonacoApi.IDisposable => {
         configurations.push(languageId);
         return { dispose: (): void => undefined };
       },
+      CodeActionTriggerType: { Invoke: 1, Auto: 2 },
+    },
+    Range: class {
+      public constructor(
+        public readonly startLineNumber: number,
+        public readonly startColumn: number,
+        public readonly endLineNumber: number,
+        public readonly endColumn: number,
+      ) {}
     },
     CancellationTokenSource: class {
       public readonly token: MonacoApi.CancellationToken = {
@@ -70,7 +94,14 @@ function fakeMonaco(): FakeMonaco {
       }
     },
   } as unknown as typeof MonacoApi;
-  return { monaco, definitionProviders, referenceProviders, renameProviders, configurations };
+  return {
+    monaco,
+    definitionProviders,
+    referenceProviders,
+    renameProviders,
+    codeActionProviders,
+    configurations,
+  };
 }
 
 /**
@@ -412,6 +443,155 @@ describe('monaco-editor-capabilities', () => {
           '1x',
         ),
       ).toEqual({ kind: 'refused', reason: 'Not a valid name.' });
+    });
+  });
+
+  describe('code actions (#1016)', () => {
+    /**
+     * Builds a code-action provider answering with the given actions, recording what it was asked.
+     * @param actions The actions.
+     * @param asked Records each context it is asked with.
+     * @param released Counts how often its answer is released.
+     * @returns Returns the provider.
+     */
+    function provider(
+      actions: MonacoApi.languages.CodeAction[],
+      asked: MonacoApi.languages.CodeActionContext[] = [],
+      released: { count: number } = { count: 0 },
+    ): MonacoApi.languages.CodeActionProvider {
+      return {
+        provideCodeActions: (
+          _model: MonacoApi.editor.ITextModel,
+          _range: MonacoApi.Range,
+          context: MonacoApi.languages.CodeActionContext,
+        ): MonacoApi.languages.CodeActionList => {
+          asked.push(context);
+          return { actions, dispose: (): void => void (released.count += 1) };
+        },
+      };
+    }
+
+    it('capture_recordsCodeActionProviders_butNotStudiosOwn_andStillRegistersThem', () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const studios: MonacoApi.languages.CodeActionProvider = provider([]);
+      markStudioProvider(studios);
+
+      fake.monaco.languages.registerCodeActionProvider('csharp', studios);
+      expect(hasCodeActionProvider(fake.monaco, 'csharp')).toBe(false);
+
+      const disposable: MonacoApi.IDisposable = fake.monaco.languages.registerCodeActionProvider(
+        'typescript',
+        provider([]),
+      );
+      expect(fake.codeActionProviders).toHaveLength(2);
+      expect(hasCodeActionProvider(fake.monaco, 'typescript')).toBe(true);
+      disposable.dispose();
+      expect(hasCodeActionProvider(fake.monaco, 'typescript')).toBe(false);
+    });
+
+    it('providedCodeActions_asksEveryProvider_newestFirst_withTheMarkersAndKind_andReleasesThem', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const asked: MonacoApi.languages.CodeActionContext[] = [];
+      const released: { count: number } = { count: 0 };
+      fake.monaco.languages.registerCodeActionProvider(
+        'typescript',
+        provider([{ title: 'Older' }], asked, released),
+      );
+      fake.monaco.languages.registerCodeActionProvider(
+        'typescript',
+        provider([{ title: 'Newer' }], asked, released),
+      );
+      const studios: MonacoApi.languages.CodeActionProvider = provider([{ title: 'Studio' }]);
+      markStudioProvider(studios);
+      fake.monaco.languages.registerCodeActionProvider('typescript', studios);
+      fake.monaco.languages.registerCodeActionProvider('typescript', {
+        provideCodeActions: (): never => {
+          throw new Error('boom');
+        },
+      });
+      const marker: MonacoApi.editor.IMarkerData = {
+        severity: 8,
+        message: 'Cannot find name',
+        ...span(1, 1, 4),
+      };
+
+      const answer: ProvidedCodeActions = await providedCodeActions(
+        fake.monaco,
+        modelOf('typescript'),
+        span(1, 2, 2),
+        [marker],
+        'quickfix',
+      );
+
+      expect(
+        answer.actions.map(
+          (entry: ProvidedCodeActions['actions'][number]): string => entry.action.title,
+        ),
+      ).toEqual(['Newer', 'Older']);
+      expect(asked).toEqual([
+        { markers: [marker], only: 'quickfix', trigger: 1 },
+        { markers: [marker], only: 'quickfix', trigger: 1 },
+      ]);
+      answer.dispose();
+      expect(released.count).toBe(2);
+    });
+
+    it('resolveProvidedCodeAction_fillsInAMissingEdit_andLeavesAWholeActionAlone', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      const edit: MonacoApi.languages.WorkspaceEdit = { edits: [] };
+      const resolving: MonacoApi.languages.CodeActionProvider = {
+        ...provider([]),
+        resolveCodeAction: (action: MonacoApi.languages.CodeAction) => ({ ...action, edit }),
+      };
+
+      expect(
+        (
+          await resolveProvidedCodeAction(fake.monaco, {
+            action: { title: 'Fix' },
+            provider: resolving,
+          })
+        ).edit,
+      ).toBe(edit);
+      const whole: MonacoApi.languages.CodeAction = { title: 'Fix', edit: { edits: [] } };
+      expect(
+        await resolveProvidedCodeAction(fake.monaco, { action: whole, provider: resolving }),
+      ).toBe(whole);
+    });
+
+    it('groupWorkspaceEdit_groupsByDocument_andCountsFileOperations', () => {
+      const uri: (value: string) => MonacoApi.Uri = (value: string): MonacoApi.Uri =>
+        ({ toString: (): string => value }) as unknown as MonacoApi.Uri;
+
+      expect(
+        groupWorkspaceEdit({
+          edits: [
+            {
+              resource: uri('inmemory://a'),
+              textEdit: { range: span(1, 1, 2), text: 'x' },
+              versionId: undefined,
+            },
+            {
+              resource: uri('inmemory://a'),
+              textEdit: { range: span(2, 1, 2), text: 'y' },
+              versionId: undefined,
+            },
+            { newResource: uri('inmemory://b') },
+          ],
+        }),
+      ).toEqual({
+        files: [
+          {
+            uri: 'inmemory://a',
+            edits: [
+              { range: span(1, 1, 2), text: 'x' },
+              { range: span(2, 1, 2), text: 'y' },
+            ],
+          },
+        ],
+        fileOperations: 1,
+      });
     });
   });
 });

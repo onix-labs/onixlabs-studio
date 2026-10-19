@@ -423,6 +423,35 @@ describe('LspClient', () => {
 
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
     });
+
+    it('documentRefs_carryTheSessionsCodeActions_itsCommands_andTheDiagnosticsWithTheirCodeAndData (#1016)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: {
+          codeActionProvider: { resolveProvider: true },
+          executeCommandProvider: { commands: ['server.fix'] },
+        },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+      const sent: unknown = {
+        range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+        severity: 1,
+        message: 'Cannot find name',
+        code: 'CS0103',
+        data: { id: 'server-17' },
+        source: 'csharp',
+      };
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/src/a.ts', [sent]);
+      await flush();
+
+      const ref: LspDocumentRef | null | undefined = features.resolver?.('/root/src/a.ts');
+      expect(ref?.codeActions).toBe('resolve');
+      expect(ref?.commands).toEqual(['server.fix']);
+      expect(ref?.diagnostics).toEqual([sent]);
+    });
   });
 
   it('pullDiagnostics_ingestsAFullReportIntoTheAggregate', async () => {

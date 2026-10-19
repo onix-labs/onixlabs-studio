@@ -1233,6 +1233,12 @@ export class Icon {
   public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
 
   /**
+   * Gets the fix icon Studio draws beside an editor's caret line while fixes exist at the caret
+   * (#1016), in place of Monaco's own lightbulb.
+   */
+  public static readonly QUICK_FIX: Icon = new Icon('ph-fill ph-lightbulb');
+
+  /**
    * Gets the success icon shown when there are no problems.
    */
   public static readonly SUCCESS: Icon = new Icon('ph ph-check-circle');

@@ -9,11 +9,22 @@ import { BreakpointGutterController } from './breakpoint-gutter-controller';
 const GUTTER_GLYPH_MARGIN: number = 2;
 
 /**
+ * Monaco's glyph-margin lanes, as the stub numbers them.
+ */
+const GlyphMarginLane: { readonly Left: number; readonly Center: number; readonly Right: number } =
+  {
+    Left: 1,
+    Center: 2,
+    Right: 3,
+  };
+
+/**
  * Captures a glyph decoration's class and the line it sits on.
  */
 interface CapturedGlyph {
   readonly className: string | null | undefined;
   readonly line: number;
+  readonly lane: number | undefined;
 }
 
 /**
@@ -25,7 +36,7 @@ interface EditorHarness {
   readonly editor: MonacoApi.editor.IStandaloneCodeEditor;
   click(
     line: number | undefined,
-    options?: { right?: boolean; alt?: boolean; type?: number },
+    options?: { right?: boolean; alt?: boolean; type?: number; lane?: number },
   ): void;
   glyphs(): CapturedGlyph[];
 }
@@ -70,6 +81,7 @@ function createHarness(): EditorHarness {
     Range,
     editor: {
       MouseTargetType: { GUTTER_GLYPH_MARGIN },
+      GlyphMarginLane,
       TrackedRangeStickiness: { NeverGrowsWhenTypingAtEdges: 0 },
     },
   } as unknown as typeof MonacoApi;
@@ -82,6 +94,7 @@ function createHarness(): EditorHarness {
         target: {
           type: options.type ?? GUTTER_GLYPH_MARGIN,
           position: line === undefined ? null : { lineNumber: line, column: 1 },
+          detail: { glyphMarginLane: options.lane ?? GlyphMarginLane.Center },
         },
         event: { rightButton: options.right ?? false, altKey: options.alt ?? false },
       } as unknown as MonacoApi.editor.IEditorMouseEvent);
@@ -90,6 +103,7 @@ function createHarness(): EditorHarness {
       written.map((decoration: MonacoApi.editor.IModelDeltaDecoration): CapturedGlyph => ({
         className: decoration.options.glyphMarginClassName,
         line: (decoration.range as unknown as { startLineNumber: number }).startLineNumber,
+        lane: decoration.options.glyphMargin?.position,
       })),
   };
 }
@@ -196,5 +210,38 @@ describe('BreakpointGutterController', () => {
     controller.render([]);
     harness.click(5, { type: 6 });
     expect(toggled).toEqual([]);
+  });
+
+  it('ignores clicks in the right lane, the fix icon lane (#1016)', () => {
+    const harness: EditorHarness = createHarness();
+    const toggled: number[] = [];
+    const edited: number[] = [];
+    const controller: BreakpointGutterController = new BreakpointGutterController(
+      harness.monaco,
+      harness.editor,
+      (line) => toggled.push(line),
+      (line) => edited.push(line),
+    );
+    controller.render([breakpoint({ line: 5 })]);
+    harness.click(5, { lane: GlyphMarginLane.Right });
+    harness.click(5, { lane: GlyphMarginLane.Right, right: true });
+    harness.click(8, { lane: GlyphMarginLane.Right });
+    expect(toggled).toEqual([]);
+    expect(edited).toEqual([]);
+
+    harness.click(8, { lane: GlyphMarginLane.Center });
+    expect(toggled).toEqual([8]);
+  });
+
+  it('draws breakpoints in the default (centre) lane, clear of the fix icon lane', () => {
+    const harness: EditorHarness = createHarness();
+    const controller: BreakpointGutterController = new BreakpointGutterController(
+      harness.monaco,
+      harness.editor,
+      () => undefined,
+      () => undefined,
+    );
+    controller.render([breakpoint({ line: 2 })]);
+    expect(harness.glyphs()[0].lane).not.toBe(GlyphMarginLane.Right);
   });
 });

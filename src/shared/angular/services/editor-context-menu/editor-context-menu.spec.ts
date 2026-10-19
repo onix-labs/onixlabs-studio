@@ -14,6 +14,7 @@ import type {
   ReferenceList,
 } from '@shared/angular/services/references/reference-list';
 import { ReferencesRouter } from '@shared/angular/services/references/references-router';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
 import {
@@ -130,6 +131,13 @@ function fakeEditor(setup: EditorSetup = {}): FakeEditor {
     },
     revealPositionInCenter: (position: MonacoApi.IPosition): void =>
       void calls.push(`centre ${position.lineNumber}:${position.column}`),
+    revealPosition: (position: MonacoApi.IPosition): void =>
+      void calls.push(`reveal ${position.lineNumber}:${position.column}`),
+    getScrolledVisiblePosition: (): { top: number; left: number; height: number } => ({
+      top: 40,
+      left: 72,
+      height: 18,
+    }),
     layout: (): void => undefined,
     focus: (): void => void calls.push('focus'),
     trigger: (_source: string, action: string): void => void calls.push(`trigger ${action}`),
@@ -189,6 +197,9 @@ function fakeMonaco(): typeof MonacoApi {
       registerDefinitionProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       registerReferenceProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       registerRenameProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerCodeActionProvider: (): MonacoApi.IDisposable => ({
+        dispose: (): void => undefined,
+      }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
     CancellationTokenSource: class {
@@ -230,6 +241,7 @@ describe('EditorContextMenu (#1012)', () => {
     definitions: Mock<LspFeatures['definitions']>;
     references: Mock<LspFeatures['references']>;
     servesRename: Mock<LspFeatures['servesRename']>;
+    servesCodeActions: Mock<LspFeatures['servesCodeActions']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -262,6 +274,7 @@ describe('EditorContextMenu (#1012)', () => {
         Promise.resolve(null),
       ),
       servesRename: vi.fn<LspFeatures['servesRename']>((): boolean => false),
+      servesCodeActions: vi.fn<LspFeatures['servesCodeActions']>((): boolean => false),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -460,6 +473,89 @@ describe('EditorContextMenu (#1012)', () => {
       menu.run('rename', editor);
 
       expect(rename).toHaveBeenCalledWith(editor);
+    });
+  });
+
+  describe('quick fix (#1016)', () => {
+    it('shownWhereAServerOffersCodeActions_firstInTheEditingGroup_withCmdPeriod', () => {
+      const menu: EditorContextMenu = build('darwin');
+      monaco.languages.registerRenameProvider('typescript', { provideRenameEdits: () => null });
+      expect(rowOf(menu.itemsFor(fakeEditor().editor), 'quickFix')).toBeUndefined();
+
+      lsp.servesCodeActions.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(fakeEditor().editor);
+
+      expect(idsOf(items).slice(idsOf(items).indexOf('find') + 1)).toEqual([
+        '|',
+        'quickFix',
+        'rename',
+        '|',
+        'cut',
+        'copy',
+        'paste',
+        'selectAll',
+      ]);
+      expect(rowOf(items, 'quickFix')).toMatchObject({ label: 'Quick Fix…', shortcut: '⌘.' });
+      expect(
+        rowOf(menu.itemsFor(fakeEditor({ readOnly: true }).editor), 'quickFix'),
+      ).toBeUndefined();
+    });
+
+    it('shownWhereAProviderOffersCodeActions_withCtrlPeriodOnWindowsAndLinux', () => {
+      for (const platform of ['win32', 'linux']) {
+        TestBed.resetTestingModule();
+        const menu: EditorContextMenu = build(platform);
+        monaco.languages.registerCodeActionProvider('typescript', {
+          provideCodeActions: () => null,
+        });
+
+        expect(rowOf(menu.itemsFor(fakeEditor().editor), 'quickFix')?.shortcut).toBe('Ctrl+.');
+      }
+    });
+
+    it('run_opensTheQuickFixes', () => {
+      const menu: EditorContextMenu = build();
+      const open: MockInstance<QuickFixes['open']> = vi
+        .spyOn(TestBed.inject(QuickFixes), 'open')
+        .mockResolvedValue(undefined);
+      const { editor } = fakeEditor();
+
+      menu.run('quickFix', editor);
+
+      expect(open).toHaveBeenCalledWith(editor);
+    });
+
+    it('openAtCaret_opensThroughTheAttachedEditorsHost_justBelowTheCaret_runningItsOwnRows', () => {
+      const menu: EditorContextMenu = build();
+      const fake: FakeEditor = fakeEditor({
+        selection: { startLineNumber: 3, startColumn: 7, endLineNumber: 3, endColumn: 7 },
+      });
+      const opened: { event: MouseEvent; subject: EditorContextMenuSubject }[] = [];
+      const ran: string[] = [];
+      expect(menu.openAtCaret(fake.editor, [], (id: string): void => void ran.push(id))).toBe(
+        false,
+      );
+      const detach: () => void = menu.attach(fake.editor, {
+        open: (event: MouseEvent, subject: EditorContextMenuSubject): void =>
+          void opened.push({ event, subject }),
+      });
+      const rows: readonly MenuItem[] = [{ id: 'quick-fix-0', label: 'Add import' }];
+
+      expect(menu.openAtCaret(fake.editor, rows, (id: string): void => void ran.push(id))).toBe(
+        true,
+      );
+
+      expect(fake.calls).toEqual(['reveal 3:7']);
+      // The container sits at the page's origin under jsdom: the caret's own offsets place the menu.
+      expect(opened[0].event.clientX).toBe(72);
+      expect(opened[0].event.clientY).toBe(58);
+      expect(opened[0].event.button).toBe(0);
+      expect(opened[0].subject.items).toBe(rows);
+      opened[0].subject.run?.('quick-fix-0');
+      expect(ran).toEqual(['quick-fix-0']);
+
+      detach();
+      expect(menu.openAtCaret(fake.editor, rows, (): void => undefined)).toBe(false);
     });
   });
 

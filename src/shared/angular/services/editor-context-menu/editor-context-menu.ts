@@ -7,6 +7,7 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Log } from '@shared/angular/services/log/log';
 import { hasComments } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
 
@@ -24,6 +25,7 @@ export type EditorContextMenuCommand =
   | 'symbol'
   | 'line'
   | 'rename'
+  | 'quickFix'
   | 'find'
   | 'formatDocument'
   | 'formatSelection'
@@ -84,6 +86,7 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   rename: { mac: 'F2', windows: 'F2' },
+  quickFix: { mac: '⌘.', windows: 'Ctrl+.' },
   find: { mac: '⌘F', windows: 'Ctrl+F' },
   // Monaco's own chords: Linux gives Format Document a chord of its own.
   formatDocument: { mac: '⌥⇧F', windows: 'Shift+Alt+F', linux: 'Ctrl+Shift+I' },
@@ -108,6 +111,13 @@ export interface EditorContextMenuSubject {
    * Gets the menu's rows.
    */
   readonly items: readonly MenuItem[];
+
+  /**
+   * Runs a chosen row, or undefined for the right-click menu's own rows, which the
+   * {@link EditorContextMenu} runs. Another menu opened through the same host — the quick-fix menu
+   * (#1016) — runs its rows itself.
+   */
+  readonly run?: (id: string) => void;
 }
 
 /**
@@ -131,11 +141,15 @@ export interface EditorContextMenuOpener {
  * A right-click over the text moves the caret there when it falls outside the selection, as Monaco
  * does, then opens the menu with the rows that editor can use: Go to Definition where its language
  * offers definitions, Find All References where it offers references (#1014), Go to Symbol and Go to
- * Line, Find where a find panel answers, Rename Symbol where the language can rename (#1015), Format
+ * Line, Find where a find panel answers, Quick Fix where the language offers code actions (#1016),
+ * Rename Symbol where the language can rename (#1015), Format
  * and Toggle Comment where the language supports them and the editor can be edited, and the clipboard
  * — Copy and Select All alone in a read-only editor.
  *
  * Editors nobody attached — a markdown document's code fences — keep their own right-click.
+ *
+ * The same host opens other menus of Studio's at an editor's caret — the quick-fix menu (#1016) — so
+ * they are drawn in the editor's window too: see {@link openAtCaret}.
  */
 @Service()
 export class EditorContextMenu {
@@ -160,6 +174,17 @@ export class EditorContextMenu {
   private readonly renameSymbol: RenameSymbol = inject(RenameSymbol);
 
   /**
+   * Holds the quick fixes, which the menu's Quick Fix row opens (#1016).
+   */
+  private readonly quickFixes: QuickFixes = inject(QuickFixes);
+
+  /**
+   * Holds the opener each attached editor's menus open through.
+   */
+  private readonly openers: WeakMap<MonacoApi.editor.ICodeEditor, EditorContextMenuOpener> =
+    new WeakMap<MonacoApi.editor.ICodeEditor, EditorContextMenuOpener>();
+
+  /**
    * Holds the host platform, which decides the shortcut hints.
    */
   private readonly studio: Studio = inject(Studio);
@@ -180,7 +205,49 @@ export class EditorContextMenu {
       (event: MonacoApi.editor.IEditorMouseEvent): void =>
         this.onContextMenu(editor, event, opener),
     );
-    return (): void => subscription.dispose();
+    this.openers.set(editor, opener);
+    return (): void => {
+      subscription.dispose();
+      if (this.openers.get(editor) === opener) {
+        this.openers.delete(editor);
+      }
+    };
+  }
+
+  /**
+   * Opens a menu of Studio's at an attached editor's caret, just below its line, through the host that
+   * draws the right-click menu in the editor's window — the quick-fix menu (#1016), which ⌘., the fix
+   * icon and the right-click menu's Quick Fix all open.
+   * @param editor The editor.
+   * @param items The menu's rows.
+   * @param run Runs the chosen row.
+   * @returns Returns true when the menu opened; false for an editor nobody attached, or with no caret.
+   */
+  public openAtCaret(
+    editor: MonacoApi.editor.ICodeEditor,
+    items: readonly MenuItem[],
+    run: (id: string) => void,
+  ): boolean {
+    const opener: EditorContextMenuOpener | undefined = this.openers.get(editor);
+    const position: MonacoApi.Position | null = editor.getPosition();
+    if (opener === undefined || position === null) {
+      return false;
+    }
+    editor.revealPosition(position);
+    const visible: { top: number; left: number; height: number } | null =
+      editor.getScrolledVisiblePosition(position);
+    const box: DOMRect = editor.getContainerDomNode().getBoundingClientRect();
+    const view: (Window & typeof globalThis) | null =
+      editor.getContainerDomNode().ownerDocument.defaultView;
+    // The menu is placed where a click would be: a click with the primary button, so the menu's first
+    // row takes the keyboard, as it does when a menu opens from a key.
+    const event: MouseEvent = new (view ?? window).MouseEvent('contextmenu', {
+      clientX: box.left + (visible?.left ?? 0),
+      clientY: box.top + (visible === null ? 0 : visible.top + visible.height),
+      button: 0,
+    });
+    opener.open(event, { editor, items, run });
+    return true;
   }
 
   /**
@@ -216,6 +283,9 @@ export class EditorContextMenu {
 
     // Hidden, not disabled, in a read-only editor: it can never be edited, so the rows are noise.
     const editing: MenuItem[] = [];
+    if (writable && this.quickFixes.offersQuickFixes(editor)) {
+      editing.push(this.item('quickFix', 'Quick Fix…'));
+    }
     if (writable && this.renameSymbol.offersRename(editor)) {
       editing.push(this.item('rename', 'Rename Symbol…'));
     }
@@ -270,6 +340,9 @@ export class EditorContextMenu {
         return;
       case 'rename':
         void this.renameSymbol.rename(editor);
+        return;
+      case 'quickFix':
+        void this.quickFixes.open(editor);
         return;
       case 'paste':
         pasteIntoEditor(editor, COMMAND_SOURCE);

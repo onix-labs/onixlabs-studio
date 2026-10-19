@@ -24,6 +24,8 @@ import {
   fromLspWorkspaceEdit,
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
+import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import type { LspDiagnostic } from './lsp-client';
 
 /**
  * References the language-server document an editor model maps to: which session owns it and the
@@ -60,7 +62,116 @@ export interface LspDocumentRef {
    * last: asking first is always allowed, and a server that cannot answer is read as refusing.
    */
   readonly rename?: LspRenameSupport;
+
+  /**
+   * Gets how the server offers code actions (#1016): not at all, whole, or with their edits filled in
+   * when one is chosen. Undefined is taken as not at all.
+   */
+  readonly codeActions?: LspCodeActionSupport;
+
+  /**
+   * Gets the commands the server runs through `workspace/executeCommand` (#1016). Undefined is taken
+   * as none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
+   * code-action request sends back for the span it asks about (#1016). Undefined is taken as none.
+   */
+  readonly diagnostics?: readonly LspDiagnostic[];
 }
+
+/**
+ * Names how a server offers code actions (#1016): `none` — it does not; `actions` — each comes whole,
+ * its edit and command included; `resolve` — each may come without its edit and command, which the
+ * server fills in when the action is chosen (`codeAction/resolve`).
+ */
+export type LspCodeActionSupport = 'none' | 'actions' | 'resolve';
+
+/**
+ * A command a code action runs (#1016), as a language server names it.
+ */
+export interface LspCommand {
+  /**
+   * Gets the command's title.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the command's identifier.
+   */
+  readonly command: string;
+
+  /**
+   * Gets the arguments it runs with, or undefined for none.
+   */
+  readonly arguments?: readonly unknown[];
+}
+
+/**
+ * One code action a language server offers at a span (#1016): a fix, a refactor or a source action.
+ */
+export interface LspCodeAction {
+  /**
+   * Gets the action's title, as the menu lists it.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the action's kind (`quickfix`, `refactor.extract`, `source.organizeImports`…), or empty when
+   * the server gave none.
+   */
+  readonly kind: string;
+
+  /**
+   * Gets whether the server prefers it among the fixes for the same problem.
+   */
+  readonly isPreferred: boolean;
+
+  /**
+   * Gets why the action cannot be run here, as the server put it, or null when it can.
+   */
+  readonly disabledReason: string | null;
+
+  /**
+   * Gets the edits it makes, by file path, or null when it makes none — or the server fills them in
+   * only when it is chosen.
+   */
+  readonly edit: WorkspaceTextEdits | null;
+
+  /**
+   * Gets the command it runs after its edits, or null for none.
+   */
+  readonly command: LspCommand | null;
+
+  /**
+   * Gets the action exactly as the server sent it, which is what a `codeAction/resolve` sends back.
+   */
+  readonly raw: unknown;
+}
+
+/**
+ * What running a code action's command on its server came to (#1016).
+ */
+export type LspCommandOutcome =
+  | {
+      /**
+       * Gets that the server ran it.
+       */
+      readonly ran: true;
+    }
+  | {
+      /**
+       * Gets that it was not run, or failed.
+       */
+      readonly ran: false;
+
+      /**
+       * Gets why, for the user.
+       */
+      readonly reason: string;
+    };
 
 /**
  * Names how a server renames a symbol (#1015): `none` — it does not; `rename` — it renames, but
@@ -510,6 +621,20 @@ export class LspFeatures {
               );
         },
       });
+      // The server's fixes for a problem, for the "Quick Fix…" link in Monaco's hover over it, which
+      // opens Studio's menu (#1016). Answers that hover's question alone — whether there are fixes —
+      // and nothing else of Monaco's; marked as Studio's so the quick-fix menu, which asks the server
+      // itself, never asks it a second time through here.
+      const codeActionProvider: MonacoApi.languages.CodeActionProvider = {
+        provideCodeActions: (
+          model: MonacoApi.editor.ITextModel,
+          range: MonacoApi.Range,
+          context: MonacoApi.languages.CodeActionContext,
+        ): Promise<MonacoApi.languages.CodeActionList> =>
+          this.provideMarkerFixes(model, range, context),
+      };
+      markStudioProvider(codeActionProvider);
+      monaco.languages.registerCodeActionProvider(language, codeActionProvider);
       const semanticTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
       this.semanticTokensChanged.set(language, semanticTokensChanged);
       monaco.languages.registerDocumentSemanticTokensProvider(language, {
@@ -1063,6 +1188,222 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether a language server that serves a document offers code actions in it (#1016).
+   * @param model The editor model.
+   * @returns Returns true when a server serves the document and offers code actions.
+   */
+  public servesCodeActions(model: MonacoApi.editor.ITextModel): boolean {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    return ref !== null && (ref.codeActions ?? 'none') !== 'none';
+  }
+
+  /**
+   * Asks the language server that serves a document for the code actions at a span (#1016) — the
+   * fixes for its problems there, and the refactors and source actions it offers — sending back the
+   * diagnostics that touch the span exactly as the server sent them, so it can find its fixes by
+   * their codes and data. Edits come back keyed by file path, so files nobody has opened change too.
+   * @param model The editor model.
+   * @param range The span, one-based: the selection, or the caret as an empty span.
+   * @param only The kinds to ask for (`quickfix`, `refactor`…), or undefined for every kind.
+   * @param automatic Whether the request was made without the user asking (the fix icon), rather than
+   * by the user (the menu).
+   * @returns Returns the actions, in the server's order, or null when no server that offers code
+   * actions serves the document (an empty list is a server answering that it has none).
+   */
+  public async codeActions(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    only?: readonly string[],
+    automatic: boolean = false,
+  ): Promise<readonly LspCodeAction[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || (ref.codeActions ?? 'none') === 'none') {
+      return null;
+    }
+    const diagnostics: readonly LspDiagnostic[] = (ref.diagnostics ?? []).filter(
+      (diagnostic: LspDiagnostic): boolean => touches(diagnostic.range, range),
+    );
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/codeAction', {
+      textDocument: { uri: ref.uri },
+      range: {
+        start: toLspPosition({ lineNumber: range.startLineNumber, column: range.startColumn }),
+        end: toLspPosition({ lineNumber: range.endLineNumber, column: range.endColumn }),
+      },
+      context: {
+        diagnostics,
+        ...(only === undefined ? {} : { only: [...only] }),
+        // CodeActionTriggerKind: 1 when the user asked, 2 when it was asked for them.
+        triggerKind: automatic ? 2 : 1,
+      },
+    });
+    if (!outcome.ok || !Array.isArray(outcome.result)) {
+      return [];
+    }
+    const actions: LspCodeAction[] = [];
+    for (const raw of outcome.result as unknown[]) {
+      const action: LspCodeAction | null = this.toCodeAction(raw);
+      if (action !== null) {
+        actions.push(action);
+      }
+    }
+    return actions;
+  }
+
+  /**
+   * Fills in a chosen code action's edit and command (#1016), for a server that leaves them out until
+   * an action is chosen (`codeAction/resolve`). An action that is already whole, a server that does
+   * not resolve, and a resolve that fails all leave the action as it was.
+   * @param model The editor model the action was offered in.
+   * @param action The action.
+   * @returns Returns the action, filled in where the server filled it in.
+   */
+  public async resolveCodeAction(
+    model: MonacoApi.editor.ITextModel,
+    action: LspCodeAction,
+  ): Promise<LspCodeAction> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref?.codeActions !== 'resolve' || isCommand(action.raw)) {
+      return action;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'codeAction/resolve', action.raw);
+    const resolved: LspCodeAction | null = outcome.ok ? this.toCodeAction(outcome.result) : null;
+    if (resolved === null) {
+      return action;
+    }
+    return {
+      ...resolved,
+      edit: resolved.edit ?? action.edit,
+      command: resolved.command ?? action.command,
+    };
+  }
+
+  /**
+   * Runs a code action's command on the language server that serves a document (#1016)
+   * (`workspace/executeCommand`). Only a command the server lists among those it runs is sent: any
+   * other is a command for the client, which Studio does not run. Whatever the command changes, the
+   * server sends as a `workspace/applyEdit`, which is applied as it arrives.
+   * @param model The editor model the action was offered in.
+   * @param command The command.
+   * @returns Returns whether the server ran it, or why it was not run.
+   */
+  public async executeCommand(
+    model: MonacoApi.editor.ITextModel,
+    command: LspCommand,
+  ): Promise<LspCommandOutcome> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null) {
+      return { ran: false, reason: 'No language server serves this document any more.' };
+    }
+    if (!(ref.commands ?? []).includes(command.command)) {
+      return {
+        ran: false,
+        reason: `“${command.title.length > 0 ? command.title : command.command}” is a step Studio can't run yet.`,
+      };
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: command.command,
+      ...(command.arguments === undefined ? {} : { arguments: [...command.arguments] }),
+    });
+    return outcome.ok ? { ran: true } : { ran: false, reason: outcome.message };
+  }
+
+  /**
+   * Answers the question Monaco's hover over a problem asks — whether it has fixes — so the hover
+   * offers its "Quick Fix…" link, which opens Studio's menu (#1016). Only that question is answered:
+   * anything else Monaco asks gets no actions, so no route of Monaco's ever applies one.
+   * @param model The model the problem is in.
+   * @param range The problem's span.
+   * @param context What Monaco asks for, and the problem's marker.
+   * @returns Returns the fixes that can run, titled, without their edits.
+   */
+  private async provideMarkerFixes(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    context: MonacoApi.languages.CodeActionContext,
+  ): Promise<MonacoApi.languages.CodeActionList> {
+    const none: MonacoApi.languages.CodeActionList = {
+      actions: [],
+      dispose: (): void => undefined,
+    };
+    if (context.only === undefined || !isFixKind(context.only)) {
+      return none;
+    }
+    const actions: readonly LspCodeAction[] | null = await this.codeActions(model, range, [
+      'quickfix',
+    ]);
+    if (actions === null) {
+      return none;
+    }
+    return {
+      actions: actions
+        .filter(
+          (action: LspCodeAction): boolean =>
+            action.disabledReason === null && (action.kind === '' || isFixKind(action.kind)),
+        )
+        .map((action: LspCodeAction): MonacoApi.languages.CodeAction => ({
+          title: action.title,
+          kind: action.kind.length > 0 ? action.kind : 'quickfix',
+          isPreferred: action.isPreferred,
+          diagnostics: context.markers,
+        })),
+      dispose: (): void => undefined,
+    };
+  }
+
+  /**
+   * Reads one entry of a server's code-action answer: a code action, or a bare command, which is an
+   * action that only runs its command.
+   * @param raw The entry, untrusted.
+   * @returns Returns the action, or null when it is malformed.
+   */
+  private toCodeAction(raw: unknown): LspCodeAction | null {
+    if (typeof raw !== 'object' || raw === null) {
+      return null;
+    }
+    const entry: {
+      title?: unknown;
+      kind?: unknown;
+      isPreferred?: unknown;
+      disabled?: unknown;
+      edit?: unknown;
+      command?: unknown;
+    } = raw;
+    if (typeof entry.title !== 'string') {
+      return null;
+    }
+    if (isCommand(raw)) {
+      return {
+        title: entry.title,
+        kind: '',
+        isPreferred: false,
+        disabledReason: null,
+        edit: null,
+        command: toCommand(raw),
+        raw,
+      };
+    }
+    const disabled: unknown = entry.disabled;
+    const reason: unknown = (disabled as { reason?: unknown } | undefined)?.reason;
+    return {
+      title: entry.title,
+      kind: typeof entry.kind === 'string' ? entry.kind : '',
+      isPreferred: entry.isPreferred === true,
+      disabledReason:
+        typeof disabled !== 'object' || disabled === null
+          ? null
+          : typeof reason === 'string' && reason.length > 0
+            ? reason
+            : "It can't be applied here.",
+      edit:
+        typeof entry.edit === 'object' && entry.edit !== null
+          ? fromLspWorkspaceEdit(entry.edit, (uri: string): string => this.uriToPath(uri))
+          : null,
+      command: toCommand(entry.command),
+      raw,
+    };
+  }
+
+  /**
    * Sends a request to a document's server, keeping the server's error rather than swallowing it: a
    * rename's refusal is the server's message, for the user.
    * @param ref The document.
@@ -1295,6 +1636,70 @@ export class LspFeatures {
  */
 function toLspPosition(position: MonacoApi.IPosition): LspPosition {
   return { line: position.lineNumber - 1, character: position.column - 1 };
+}
+
+/**
+ * Determines whether a server diagnostic's span touches a span of the editor's — overlaps it, or
+ * meets it at an end, as a caret at either end of a problem is on it.
+ * @param diagnostic The diagnostic's span, zero-based.
+ * @param range The editor's span, one-based.
+ * @returns Returns true when they touch.
+ */
+function touches(diagnostic: LspRange, range: MonacoApi.IRange): boolean {
+  const startLine: number = diagnostic.start.line + 1;
+  const startColumn: number = diagnostic.start.character + 1;
+  const endLine: number = diagnostic.end.line + 1;
+  const endColumn: number = diagnostic.end.character + 1;
+  const startsBeforeRangeEnds: boolean =
+    startLine < range.endLineNumber ||
+    (startLine === range.endLineNumber && startColumn <= range.endColumn);
+  const endsAfterRangeStarts: boolean =
+    endLine > range.startLineNumber ||
+    (endLine === range.startLineNumber && endColumn >= range.startColumn);
+  return startsBeforeRangeEnds && endsAfterRangeStarts;
+}
+
+/**
+ * Determines whether a code-action kind is a fix: `quickfix` itself, or a kind below it.
+ * @param kind The kind.
+ * @returns Returns true when it is.
+ */
+function isFixKind(kind: string): boolean {
+  return kind === 'quickfix' || kind.startsWith('quickfix.');
+}
+
+/**
+ * Determines whether an entry of a code-action answer is a bare command — `command` naming it, rather
+ * than a code action's `command` holding one.
+ * @param raw The entry, untrusted.
+ * @returns Returns true when it is.
+ */
+function isCommand(raw: unknown): boolean {
+  return (
+    typeof raw === 'object' &&
+    raw !== null &&
+    typeof (raw as { command?: unknown }).command === 'string'
+  );
+}
+
+/**
+ * Reads a server's command.
+ * @param raw The command, untrusted.
+ * @returns Returns the command, or null when there is none or it is malformed.
+ */
+function toCommand(raw: unknown): LspCommand | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const entry: { title?: unknown; command?: unknown; arguments?: unknown } = raw;
+  if (typeof entry.command !== 'string') {
+    return null;
+  }
+  return {
+    title: typeof entry.title === 'string' ? entry.title : '',
+    command: entry.command,
+    ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
+  };
 }
 
 /**

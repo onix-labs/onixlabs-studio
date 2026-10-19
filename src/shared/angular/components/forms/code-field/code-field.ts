@@ -44,8 +44,10 @@ const XML_VALIDATE_DEBOUNCE_MS: number = 250;
 
 /**
  * The editor options a code field pins over the settings-derived defaults. A field is a compact,
- * chromeless control, not a page: no line numbers, gutter, minimap, folding, ruler or sticky header,
- * and it grows with its content between its row bounds rather than scrolling within a fixed box.
+ * chromeless control, not a page: no line numbers, minimap, folding, ruler or sticky header, and it
+ * grows with its content between its row bounds rather than scrolling within a fixed box. Its only
+ * gutter is the glyph margin, and only while the text can be edited: Studio's fix icon draws there
+ * (#1016); see {@link CodeField.editorOptions}.
  * The scrollbar gives the wheel back to the page while the content fits, so a field inside a
  * scrolling form does not trap the scroll.
  */
@@ -197,9 +199,15 @@ export class CodeField {
     output<readonly CodeFieldMarker[]>();
 
   /**
-   * Gets the editor options pinned over the settings-derived defaults.
+   * Gets the editor options pinned over the settings-derived defaults: the field's chrome, with the
+   * glyph margin on only while the text can be edited, for Studio's fix icon (#1016).
    */
-  protected readonly editorOptions: MonacoApi.editor.IEditorOptions = FIELD_OPTIONS;
+  protected readonly editorOptions: Signal<MonacoApi.editor.IEditorOptions> = computed(
+    (): MonacoApi.editor.IEditorOptions => ({
+      ...FIELD_OPTIONS,
+      glyphMargin: !this.readOnly() && !this.disabled(),
+    }),
+  );
 
   /**
    * Holds whether the Monaco editor has been created.

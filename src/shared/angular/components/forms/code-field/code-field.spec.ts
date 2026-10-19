@@ -68,6 +68,22 @@ describe('CodeField', () => {
     expect(host.classList.contains('code-field--disabled')).toBe(true);
   });
 
+  it('glyphMargin_isOnOnlyWhileTheTextCanBeEdited_forTheFixIcon (#1016)', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(editor().options().glyphMargin).toBe(true);
+    expect(editor().options().lineNumbers).toBe('off');
+
+    fixture.componentRef.setInput('readOnly', true);
+    fixture.detectChanges();
+    expect(editor().options().glyphMargin).toBe(false);
+
+    fixture.componentRef.setInput('readOnly', false);
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    expect(editor().options().glyphMargin).toBe(false);
+  });
+
   it('value_whenGiven_seedsTheEditor_andEditsReportThroughTheModel', async () => {
     fixture.componentRef.setInput('value', '{"a":1}');
     fixture.detectChanges();

@@ -81,7 +81,8 @@ export function toDiagnostic(diagnostic: LspDiagnostic, context: DiagnosticConte
 
 /**
  * Maps server diagnostics into Monaco marker data (converting the protocol's zero-based positions to
- * Monaco's one-based line and column numbers).
+ * Monaco's one-based line and column numbers). A diagnostic's code rides along, so the marker shows it
+ * (#1016); its server data stays with the client, which sends it back with a code-action request.
  * @param monaco The loaded Monaco namespace.
  * @param diagnostics The server diagnostics.
  * @returns Returns the Monaco marker data.
@@ -90,13 +91,16 @@ export function toMarkerData(
   monaco: typeof MonacoApi,
   diagnostics: readonly LspDiagnostic[],
 ): MonacoApi.editor.IMarkerData[] {
-  return diagnostics.map((diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => ({
-    severity: markerSeverityOf(monaco, diagnostic.severity),
-    message: diagnostic.message,
-    source: diagnostic.source,
-    startLineNumber: diagnostic.range.start.line + 1,
-    startColumn: diagnostic.range.start.character + 1,
-    endLineNumber: diagnostic.range.end.line + 1,
-    endColumn: diagnostic.range.end.character + 1,
-  }));
+  return diagnostics.map((diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => {
+    const marker: MonacoApi.editor.IMarkerData = {
+      severity: markerSeverityOf(monaco, diagnostic.severity),
+      message: diagnostic.message,
+      source: diagnostic.source,
+      startLineNumber: diagnostic.range.start.line + 1,
+      startColumn: diagnostic.range.start.character + 1,
+      endLineNumber: diagnostic.range.end.line + 1,
+      endColumn: diagnostic.range.end.character + 1,
+    };
+    return diagnostic.code === undefined ? marker : { ...marker, code: String(diagnostic.code) };
+  });
 }

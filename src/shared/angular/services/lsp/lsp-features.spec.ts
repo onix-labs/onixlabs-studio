@@ -4,8 +4,11 @@ import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import type { LspDiagnostic } from './lsp-client';
 import {
   FEATURE_LANGUAGES,
+  LspCodeAction,
+  LspCodeActionSupport,
   LspFeatures,
   LspRenameAnswer,
   LspRenamePreparation,
@@ -34,6 +37,9 @@ interface CapturedProviders {
   completion?: { provideCompletionItems(model: unknown, position: unknown): Promise<unknown> };
   hover?: { provideHover(model: unknown, position: unknown): Promise<unknown> };
   symbols?: { provideDocumentSymbols(model: unknown): Promise<unknown> };
+  codeActions?: {
+    provideCodeActions(model: unknown, range: unknown, context: unknown): Promise<unknown>;
+  };
   semantic?: {
     getLegend(): { tokenTypes: string[]; tokenModifiers: string[] };
     provideDocumentSemanticTokens(model: unknown): Promise<{ data: Uint32Array } | undefined>;
@@ -90,6 +96,9 @@ function fakeMonacoNamespace(
       },
       registerDefinitionProvider: (): void => undefined,
       registerReferenceProvider: (): void => undefined,
+      registerCodeActionProvider: (_language: string, provider: unknown): void => {
+        captured.codeActions = provider as CapturedProviders['codeActions'];
+      },
       registerDocumentSymbolProvider: (_language: string, provider: unknown): void => {
         captured.symbols = provider as CapturedProviders['symbols'];
       },
@@ -144,6 +153,9 @@ describe('LspFeatures', () => {
   let files: Record<string, string>;
   let reads: string[];
   let renameSupport: LspRenameSupport | undefined;
+  let codeActionSupport: LspCodeActionSupport | undefined;
+  let serverCommands: readonly string[] | undefined;
+  let serverDiagnostics: readonly LspDiagnostic[] | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -159,6 +171,9 @@ describe('LspFeatures', () => {
     files = {};
     reads = [];
     renameSupport = undefined;
+    codeActionSupport = undefined;
+    serverCommands = undefined;
+    serverDiagnostics = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         if (channel === (FileChannel.Read as string)) {
@@ -213,6 +228,9 @@ describe('LspFeatures', () => {
             uri: 'file:///root/app.ts',
             semanticLegend,
             ...(renameSupport === undefined ? {} : { rename: renameSupport }),
+            ...(codeActionSupport === undefined ? {} : { codeActions: codeActionSupport }),
+            ...(serverCommands === undefined ? {} : { commands: serverCommands }),
+            ...(serverDiagnostics === undefined ? {} : { diagnostics: serverDiagnostics }),
           }
         : null,
     );
@@ -660,6 +678,266 @@ describe('LspFeatures', () => {
         kind: 'refused',
         reason: 'The new name is not valid.',
       });
+    });
+  });
+
+  describe('code actions (#1016)', () => {
+    /**
+     * The owned model.
+     */
+    const model: Parameters<LspFeatures['codeActions']>[0] = {
+      uri: { toString: (): string => MODEL_URI },
+    } as unknown as Parameters<LspFeatures['codeActions']>[0];
+
+    /**
+     * The caret on line 3, column 6, as an empty span.
+     */
+    const caret: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } = {
+      startLineNumber: 3,
+      startColumn: 6,
+      endLineNumber: 3,
+      endColumn: 6,
+    };
+
+    /**
+     * A diagnostic under the caret, with the code and data a server finds its fixes by.
+     */
+    const underCaret: LspDiagnostic = {
+      range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+      severity: 1,
+      message: "The type or namespace name 'List<>' could not be found",
+      code: 'CS0246',
+      data: { id: 'roslyn-17' },
+    };
+
+    /**
+     * A diagnostic elsewhere.
+     */
+    const elsewhere: LspDiagnostic = {
+      range: { start: { line: 9, character: 0 }, end: { line: 9, character: 3 } },
+      message: 'Unused',
+    };
+
+    it('askTheServer_sendingBackTheDiagnosticsAtTheSpan_withTheirCodeAndData', async () => {
+      codeActionSupport = 'resolve';
+      serverDiagnostics = [underCaret, elsewhere];
+      responses['textDocument/codeAction'] = [];
+      const features: LspFeatures = await build();
+
+      await features.codeActions(model, caret, ['quickfix'], true);
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/codeAction',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          range: { start: { line: 2, character: 5 }, end: { line: 2, character: 5 } },
+          context: { diagnostics: [underCaret], only: ['quickfix'], triggerKind: 2 },
+        },
+      });
+    });
+
+    it('readActionsAndBareCommands_byPath_withPreferenceAndWhyOneCannotRun', async () => {
+      codeActionSupport = 'actions';
+      responses['textDocument/codeAction'] = [
+        {
+          title: 'Add using System.Collections.Generic',
+          kind: 'quickfix',
+          isPreferred: true,
+          edit: {
+            changes: {
+              'file:///root/app.ts': [
+                {
+                  range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                  newText: 'using System.Collections.Generic;\n',
+                },
+              ],
+            },
+          },
+          command: { title: 'Format', command: 'server.format', arguments: [1] },
+        },
+        {
+          title: 'Extract method',
+          kind: 'refactor.extract',
+          disabled: { reason: 'Select some code.' },
+        },
+        { title: 'Organize', command: 'server.organize' },
+        { kind: 'quickfix' },
+      ];
+      const features: LspFeatures = await build();
+
+      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
+
+      expect(actions?.map((action: LspCodeAction) => ({ ...action, raw: undefined }))).toEqual([
+        {
+          title: 'Add using System.Collections.Generic',
+          kind: 'quickfix',
+          isPreferred: true,
+          disabledReason: null,
+          edit: {
+            files: [
+              {
+                path: '/root/app.ts',
+                edits: [
+                  {
+                    range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+                    text: 'using System.Collections.Generic;\n',
+                  },
+                ],
+              },
+            ],
+            refused: [],
+          },
+          command: { title: 'Format', command: 'server.format', arguments: [1] },
+          raw: undefined,
+        },
+        {
+          title: 'Extract method',
+          kind: 'refactor.extract',
+          isPreferred: false,
+          disabledReason: 'Select some code.',
+          edit: null,
+          command: null,
+          raw: undefined,
+        },
+        {
+          title: 'Organize',
+          kind: '',
+          isPreferred: false,
+          disabledReason: null,
+          edit: null,
+          command: { title: 'Organize', command: 'server.organize' },
+          raw: undefined,
+        },
+      ]);
+      expect((await features.codeActions(model, caret))?.[0].raw).toEqual(
+        (responses['textDocument/codeAction'] as unknown[])[0],
+      );
+    });
+
+    it('areNull_forADocumentNoServerServes_orAServerWithoutCodeActions_andEmptyOnAnError', async () => {
+      const features: LspFeatures = await build();
+      expect(await features.codeActions(model, caret)).toBeNull();
+      expect(features.servesCodeActions(model)).toBe(false);
+
+      codeActionSupport = 'actions';
+      TestBed.resetTestingModule();
+      const serving: LspFeatures = await build();
+      responses['textDocument/codeAction'] = new Error('boom');
+      expect(serving.servesCodeActions(model)).toBe(true);
+      expect(await serving.codeActions(model, caret)).toEqual([]);
+    });
+
+    it('resolve_fillsInTheEdit_forAServerThatResolves_andLeavesAWholeOrRefusedActionAlone', async () => {
+      codeActionSupport = 'resolve';
+      responses['textDocument/codeAction'] = [{ title: 'Fix', kind: 'quickfix', data: { id: 7 } }];
+      responses['codeAction/resolve'] = {
+        title: 'Fix',
+        kind: 'quickfix',
+        edit: {
+          changes: {
+            'file:///root/lib.ts': [
+              {
+                range: { start: { line: 1, character: 0 }, end: { line: 1, character: 0 } },
+                newText: 'x',
+              },
+            ],
+          },
+        },
+      };
+      const features: LspFeatures = await build();
+      const [action] = (await features.codeActions(model, caret)) ?? [];
+
+      const resolved: LspCodeAction = await features.resolveCodeAction(model, action);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'codeAction/resolve',
+        params: { title: 'Fix', kind: 'quickfix', data: { id: 7 } },
+      });
+      expect(resolved.edit?.files.map((file: { path: string }): string => file.path)).toEqual([
+        '/root/lib.ts',
+      ]);
+
+      responses['codeAction/resolve'] = new Error('gone');
+      expect(await features.resolveCodeAction(model, action)).toBe(action);
+    });
+
+    it('resolve_isNotAsked_ofAServerThatDoesNotResolve', async () => {
+      codeActionSupport = 'actions';
+      responses['textDocument/codeAction'] = [{ title: 'Fix', kind: 'quickfix' }];
+      const features: LspFeatures = await build();
+      const [action] = (await features.codeActions(model, caret)) ?? [];
+      requests = [];
+
+      expect(await features.resolveCodeAction(model, action)).toBe(action);
+      expect(requests).toEqual([]);
+    });
+
+    it('executeCommand_runsACommandTheServerLists_andRefusesAnyOther', async () => {
+      codeActionSupport = 'actions';
+      serverCommands = ['server.format'];
+      const features: LspFeatures = await build();
+
+      expect(
+        await features.executeCommand(model, {
+          title: 'Format',
+          command: 'server.format',
+          arguments: [1],
+        }),
+      ).toEqual({ ran: true });
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'workspace/executeCommand',
+        params: { command: 'server.format', arguments: [1] },
+      });
+
+      requests = [];
+      expect(
+        await features.executeCommand(model, { title: 'Nested', command: 'roslyn.client.nested' }),
+      ).toEqual({ ran: false, reason: "“Nested” is a step Studio can't run yet." });
+      expect(requests).toEqual([]);
+
+      responses['workspace/executeCommand'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: It failed.",
+      );
+      expect(
+        await features.executeCommand(model, { title: 'Format', command: 'server.format' }),
+      ).toEqual({ ran: false, reason: 'It failed.' });
+    });
+
+    it('monacosHoverQuestion_isAnsweredWithTheServersFixes_andNothingElseOfMonacos', async () => {
+      codeActionSupport = 'actions';
+      responses['textDocument/codeAction'] = [
+        { title: 'Add using', kind: 'quickfix', isPreferred: true },
+        { title: 'Suppress', kind: 'quickfix', disabled: { reason: 'No.' } },
+        { title: 'Extract', kind: 'refactor' },
+      ];
+      const features: LspFeatures = await build();
+      const marker: unknown = { message: 'boom' };
+
+      const fixes: { actions: unknown[] } = (await captured.codeActions?.provideCodeActions(
+        model,
+        caret,
+        { markers: [marker], only: 'quickfix', trigger: 1 },
+      )) as { actions: unknown[] };
+      requests = [];
+      const others: { actions: unknown[] } = (await captured.codeActions?.provideCodeActions(
+        model,
+        caret,
+        { markers: [], only: 'source.organizeImports', trigger: 1 },
+      )) as { actions: unknown[] };
+
+      expect(fixes.actions).toEqual([
+        { title: 'Add using', kind: 'quickfix', isPreferred: true, diagnostics: [marker] },
+      ]);
+      expect(others.actions).toEqual([]);
+      expect(requests).toEqual([]);
+      expect(features).toBeDefined();
     });
   });
 
