@@ -230,6 +230,7 @@ interface MonacoLike {
       getModel(): { setValue(value: string): void; getValue(): string } | null;
       updateOptions(options: Record<string, unknown>): void;
       setPosition(position: { lineNumber: number; column: number }): void;
+      getSelections(): readonly { toString(): string }[] | null;
       focus(): void;
       getAction(id: string): { run(): Promise<void> } | null;
       readonly _standaloneKeybindingService: {
@@ -272,6 +273,59 @@ async function load(page: Page, language: string, text: string): Promise<void> {
  * chords.
  */
 test.describe('editor widgets (#1024)', () => {
+  test('theReplacementsAnswer_selectionChordsSelect_andShiftF10OpensStudiosMenu', async ({
+    app,
+    page,
+  }) => {
+    // #1034: the guard proves no Monaco widget opens; this proves Studio's answers actually come.
+    await openTabFromWelcome(app, page, 'New Code File', 'app-code-view');
+    const monaco: Locator = page.locator('app-code-view .monaco-editor');
+    await expect(monaco).toBeVisible();
+    await monaco.locator('.view-lines').click();
+    await load(
+      page,
+      'typescript',
+      ['const value = 1;', 'const other = value + value;', 'const third = value * 2;'].join('\n'),
+    );
+    const selections: () => Promise<readonly string[]> = (): Promise<readonly string[]> =>
+      page.evaluate((): readonly string[] =>
+        (
+          (window as unknown as { monaco: MonacoLike }).monaco.editor
+            .getEditors()[0]
+            .getSelections() ?? []
+        ).map((selection: { toString(): string }): string => selection.toString()),
+      );
+    const caretInValue: () => Promise<void> = (): Promise<void> =>
+      page.evaluate((): void => {
+        const editor: ReturnType<MonacoLike['editor']['getEditors']>[number] = (
+          window as unknown as { monaco: MonacoLike }
+        ).monaco.editor.getEditors()[0];
+        editor.focus();
+        editor.setPosition({ lineNumber: 1, column: 9 });
+      });
+    const mod: string = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+    // ⌘D (Ctrl+D) selects the word, then adds its next occurrence.
+    await caretInValue();
+    await page.keyboard.press(`${mod}+D`);
+    await page.keyboard.press(`${mod}+D`);
+    await expect.poll(selections).toEqual(['[1,7 -> 1,12]', '[2,15 -> 2,20]']);
+
+    // ⌘⇧L (Ctrl+Shift+L) selects every occurrence.
+    await caretInValue();
+    await page.keyboard.press(`${mod}+Shift+L`);
+    await expect.poll(async (): Promise<number> => (await selections()).length).toBe(4);
+    await expect(page.locator('.find-widget')).toHaveCount(0);
+
+    // ⇧F10 opens Studio's right-click menu at the caret.
+    await caretInValue();
+    await page.keyboard.press('Shift+F10');
+    await expect(
+      page.locator('[role="menu"] [role="menuitem"]', { hasText: 'Go to Symbol' }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+  });
+
   test('noChordClickOrCleanup_opensMonacosOwnUI', async ({ app, page }) => {
     test.setTimeout(180_000);
     await openTabFromWelcome(app, page, 'New Code File', 'app-code-view');
