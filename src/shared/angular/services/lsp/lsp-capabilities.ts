@@ -1,4 +1,5 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import type { LspRenameSupport } from './lsp-features';
 
 /**
  * Extracts the semantic token legend from a server's initialize capabilities, or null when the server
@@ -49,4 +50,25 @@ export function supportsPullDiagnostics(capabilities: unknown): boolean {
   const provider: unknown = (capabilities as { diagnosticProvider?: unknown } | undefined)
     ?.diagnosticProvider;
   return provider !== undefined && provider !== null;
+}
+
+/**
+ * Reads how a server renames a symbol (#1015) from its `renameProvider`: not at all when it has none,
+ * after saying first whether a symbol can be renamed when it advertises `prepareProvider`, and
+ * straight away otherwise.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how the server renames.
+ */
+export function renameSupportOf(capabilities: unknown): LspRenameSupport {
+  const provider: unknown = (capabilities as { renameProvider?: unknown } | undefined)
+    ?.renameProvider;
+  if (provider === true) {
+    return 'rename';
+  }
+  if (typeof provider !== 'object' || provider === null) {
+    return 'none';
+  }
+  return (provider as { prepareProvider?: unknown }).prepareProvider === true
+    ? 'prepare'
+    : 'rename';
 }

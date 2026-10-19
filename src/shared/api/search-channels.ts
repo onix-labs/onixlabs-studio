@@ -20,6 +20,12 @@ export enum SearchChannel {
    * Replaces matches of a query in a workspace's files on disk (renderer→main, invoke).
    */
   Replace = 'search:replace',
+
+  /**
+   * Applies text edits to workspace files on disk — a rename's edits to the files no editor has open
+   * (#1015) (renderer→main, invoke).
+   */
+  ApplyTextEdits = 'search:apply-text-edits',
 }
 
 /**
@@ -124,6 +130,93 @@ export interface ReplaceResponse {
 
   /**
    * Gets the files that could not be changed, each with its reason.
+   */
+  readonly failed: readonly ReplaceFailure[];
+}
+
+/**
+ * One text edit to a file on disk: the span it replaces, one-based as the editor counts — columns in
+ * UTF-16 code units, as a language server's are — and the text that replaces it.
+ */
+export interface DiskTextEdit {
+  /**
+   * Gets the line the span starts on.
+   */
+  readonly startLineNumber: number;
+
+  /**
+   * Gets the column the span starts at.
+   */
+  readonly startColumn: number;
+
+  /**
+   * Gets the line the span ends on.
+   */
+  readonly endLineNumber: number;
+
+  /**
+   * Gets the column the span ends at (exclusive).
+   */
+  readonly endColumn: number;
+
+  /**
+   * Gets the text that replaces the span.
+   */
+  readonly text: string;
+}
+
+/**
+ * Names one file's edits in a {@link TextEditsRequest}.
+ */
+export interface DiskFileEdits {
+  /**
+   * Gets the absolute path of the file, which must lie inside an open workspace root.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the edits, in any order; none may overlap another.
+   */
+  readonly edits: readonly DiskTextEdit[];
+}
+
+/**
+ * Defines a request to apply text edits to workspace files on disk (#1015): the files a rename
+ * changes that no editor has open. Each file is written whole or not at all.
+ */
+export interface TextEditsRequest {
+  /**
+   * Gets the files and their edits.
+   */
+  readonly files: readonly DiskFileEdits[];
+}
+
+/**
+ * Names a file a {@link TextEditsRequest} wrote, and how many edits it took.
+ */
+export interface WrittenFile {
+  /**
+   * Gets the absolute path of the file, as the request named it.
+   */
+  readonly path: string;
+
+  /**
+   * Gets how many edits were applied to it.
+   */
+  readonly edits: number;
+}
+
+/**
+ * Reports what a {@link TextEditsRequest} did.
+ */
+export interface TextEditsResponse {
+  /**
+   * Gets the files written.
+   */
+  readonly written: readonly WrittenFile[];
+
+  /**
+   * Gets the files that were not changed, each with its reason.
    */
   readonly failed: readonly ReplaceFailure[];
 }
@@ -262,4 +355,11 @@ export interface SearchClient {
    * @returns Returns what was replaced, and what could not be.
    */
   replace(request: ReplaceRequest): Promise<ReplaceResponse>;
+
+  /**
+   * Applies text edits to workspace files on disk (#1015).
+   * @param request The files and their edits.
+   * @returns Returns the files written, and those that were not.
+   */
+  applyTextEdits(request: TextEditsRequest): Promise<TextEditsResponse>;
 }

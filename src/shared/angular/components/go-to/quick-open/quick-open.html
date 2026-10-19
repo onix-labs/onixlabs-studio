@@ -1,14 +1,10 @@
-<div
-  class="quick-open"
-  role="dialog"
-  [attr.aria-label]="mode() === 'line' ? 'Go to Line' : 'Go to Symbol'"
->
+<div class="quick-open" role="dialog" [attr.aria-label]="label()">
   <app-text-field
     class="quick-open__field"
-    [kind]="mode() === 'line' ? 'text' : 'search'"
+    [kind]="mode() === 'symbol' ? 'search' : 'text'"
     [(value)]="picker.query"
     [placeholder]="placeholder()"
-    [ariaLabel]="mode() === 'line' ? 'Line, or line:column' : 'Symbol name'"
+    [ariaLabel]="fieldLabel()"
     (keydown.enter)="commit($event)"
     (escape)="dismissed.emit()"
     (keydown.arrowdown)="step($event, 1)"
@@ -22,6 +18,14 @@
       aria-live="polite"
     >
       {{ picker.lineHint() }}
+    </p>
+  } @else if (mode() === 'rename') {
+    <p
+      class="quick-open__hint"
+      [class.quick-open__hint--invalid]="renameInvalid()"
+      aria-live="polite"
+    >
+      {{ picker.renameEntry().hint }}
     </p>
   } @else if (symbols() === null) {
     <p class="quick-open__hint" aria-live="polite">Reading the file's symbols…</p>

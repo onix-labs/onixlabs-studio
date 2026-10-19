@@ -32,6 +32,101 @@ interface RegisteredReferenceProvider {
 }
 
 /**
+ * One rename provider registered with a Monaco instance, with the languages it serves (#1015).
+ */
+interface RegisteredRenameProvider {
+  /**
+   * Gets the language selector it was registered for.
+   */
+  readonly selector: MonacoApi.languages.LanguageSelector;
+
+  /**
+   * Gets the provider.
+   */
+  readonly provider: MonacoApi.languages.RenameProvider;
+}
+
+/**
+ * What a rename provider says of the symbol at a position, before the new name is asked for (#1015).
+ */
+export type ProvidedRenameLocation =
+  | {
+      /**
+       * Gets that the symbol can be renamed.
+       */
+      readonly kind: 'ready';
+
+      /**
+       * Gets the span of the name.
+       */
+      readonly range: MonacoApi.IRange;
+
+      /**
+       * Gets the name as it stands.
+       */
+      readonly placeholder: string;
+    }
+  | {
+      /**
+       * Gets that the symbol cannot be renamed.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the provider put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
+ * One document's edits in a rename provider's answer, by the URI of its model.
+ */
+export interface ProvidedFileEdits {
+  /**
+   * Gets the model's URI.
+   */
+  readonly uri: string;
+
+  /**
+   * Gets the edits: each span, one-based, and the text that replaces it.
+   */
+  readonly edits: readonly { readonly range: MonacoApi.IRange; readonly text: string }[];
+}
+
+/**
+ * A rename provider's answer for a new name (#1015).
+ */
+export type ProvidedRename =
+  | {
+      /**
+       * Gets that the provider answered with edits.
+       */
+      readonly kind: 'edits';
+
+      /**
+       * Gets the edits, by document, in the provider's order.
+       */
+      readonly files: readonly ProvidedFileEdits[];
+
+      /**
+       * Gets how many file operations (creating, renaming or deleting a file) the answer held, which
+       * are not applied.
+       */
+      readonly fileOperations: number;
+    }
+  | {
+      /**
+       * Gets that the provider refused.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the provider put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
  * What is recorded of one Monaco instance since it was captured.
  */
 interface CapturedCapabilities {
@@ -44,6 +139,11 @@ interface CapturedCapabilities {
    * Gets the reference providers registered, in registration order (#1014).
    */
   readonly references: RegisteredReferenceProvider[];
+
+  /**
+   * Gets the rename providers registered, in registration order (#1015).
+   */
+  readonly renames: RegisteredRenameProvider[];
 
   /**
    * Gets the comment rules each language's configuration set, by language identifier.
@@ -72,6 +172,14 @@ interface CapabilityRegistration {
   ) => MonacoApi.IDisposable;
 
   /**
+   * Registers a rename provider for the languages a selector selects.
+   */
+  registerRenameProvider: (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.RenameProvider,
+  ) => MonacoApi.IDisposable;
+
+  /**
    * Sets a language's configuration: its brackets, comments and the like.
    */
   setLanguageConfiguration: (
@@ -90,8 +198,8 @@ const CAPTURED: WeakMap<object, CapturedCapabilities> = new WeakMap<object, Capt
  * Starts recording what a Monaco instance's languages can do for Studio's right-click menu (#1012):
  * the definition providers registered with it, which Go to Definition asks where no language server
  * answers and which decide whether the item shows; the reference providers, which Find All References
- * asks the same way (#1014); and the comment rules each language's configuration sets, which decide
- * whether Toggle Comment does.
+ * asks the same way (#1014); the rename providers, which Rename Symbol asks the same way (#1015); and
+ * the comment rules each language's configuration sets, which decide whether Toggle Comment does.
  *
  * Monaco keeps these registries internal, as it does the document-symbol providers (see
  * {@link import('./monaco-symbol-providers').captureDocumentSymbolProviders}), so the public
@@ -104,7 +212,12 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
   if (CAPTURED.has(monaco.languages)) {
     return;
   }
-  const captured: CapturedCapabilities = { definitions: [], references: [], comments: new Map() };
+  const captured: CapturedCapabilities = {
+    definitions: [],
+    references: [],
+    renames: [],
+    comments: new Map(),
+  };
   CAPTURED.set(monaco.languages, captured);
   // Typed as the writable members it replaces; at runtime the namespace is a plain object.
   const languages: CapabilityRegistration = monaco.languages;
@@ -112,6 +225,8 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     languages.registerDefinitionProvider.bind(languages);
   const registerReferences: CapabilityRegistration['registerReferenceProvider'] =
     languages.registerReferenceProvider.bind(languages);
+  const registerRename: CapabilityRegistration['registerRenameProvider'] =
+    languages.registerRenameProvider.bind(languages);
   const setConfiguration: CapabilityRegistration['setLanguageConfiguration'] =
     languages.setLanguageConfiguration.bind(languages);
   languages.registerDefinitionProvider = (
@@ -143,6 +258,23 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
         const index: number = captured.references.indexOf(entry);
         if (index >= 0) {
           captured.references.splice(index, 1);
+        }
+        disposable.dispose();
+      },
+    };
+  };
+  languages.registerRenameProvider = (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.RenameProvider,
+  ): MonacoApi.IDisposable => {
+    const entry: RegisteredRenameProvider = { selector, provider };
+    captured.renames.push(entry);
+    const disposable: MonacoApi.IDisposable = registerRename(selector, provider);
+    return {
+      dispose: (): void => {
+        const index: number = captured.renames.indexOf(entry);
+        if (index >= 0) {
+          captured.renames.splice(index, 1);
         }
         disposable.dispose();
       },
@@ -190,6 +322,16 @@ export function hasReferenceProvider(monaco: typeof MonacoApi, language: string)
   return (CAPTURED.get(monaco.languages)?.references ?? []).some(
     (entry: RegisteredReferenceProvider): boolean => selects(entry.selector, language),
   );
+}
+
+/**
+ * Determines whether a rename provider registered with a Monaco instance serves a language (#1015).
+ * @param monaco The Monaco instance.
+ * @param language The language identifier.
+ * @returns Returns true when one does.
+ */
+export function hasRenameProvider(monaco: typeof MonacoApi, language: string): boolean {
+  return renameCandidates(monaco, language).length > 0;
 }
 
 /**
@@ -291,6 +433,159 @@ export async function providedReferences(
     }
   }
   return [];
+}
+
+/**
+ * Asks the rename providers registered with a Monaco instance what the symbol at a position is named
+ * and where (#1015), the most recently registered first, as Monaco ranks them. The first that serves
+ * the language decides: Monaco renames through one provider, the first to answer. A provider that
+ * cannot say where (it has no `resolveRenameLocation`) is answered for by the word at the position.
+ * @param monaco The Monaco instance the model belongs to.
+ * @param model The model.
+ * @param position The one-based position.
+ * @returns Returns what the provider says, or null when no provider serves the language.
+ */
+export async function providedRenameLocation(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  position: MonacoApi.IPosition,
+): Promise<ProvidedRenameLocation | null> {
+  const candidates: readonly RegisteredRenameProvider[] = renameCandidates(
+    monaco,
+    model.getLanguageId(),
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+  for (const { provider } of candidates) {
+    if (provider.resolveRenameLocation === undefined) {
+      continue;
+    }
+    const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+    try {
+      const answer: (MonacoApi.languages.RenameLocation & MonacoApi.languages.Rejection) | null =
+        (await provider.resolveRenameLocation(
+          model,
+          position as MonacoApi.Position,
+          source.token,
+        )) ?? null;
+      if (answer === null) {
+        continue;
+      }
+      if (answer.rejectReason !== undefined) {
+        return { kind: 'refused', reason: answer.rejectReason };
+      }
+      return { kind: 'ready', range: answer.range, placeholder: answer.text };
+    } catch (error: unknown) {
+      return { kind: 'refused', reason: error instanceof Error ? error.message : null };
+    } finally {
+      source.dispose();
+    }
+  }
+  const word: MonacoApi.editor.IWordAtPosition | null = model.getWordAtPosition(position);
+  if (word === null) {
+    return { kind: 'refused', reason: null };
+  }
+  return {
+    kind: 'ready',
+    range: {
+      startLineNumber: position.lineNumber,
+      startColumn: word.startColumn,
+      endLineNumber: position.lineNumber,
+      endColumn: word.endColumn,
+    },
+    placeholder: word.word,
+  };
+}
+
+/**
+ * Asks the rename providers registered with a Monaco instance for the edits that rename the symbol at
+ * a position to a new name (#1015) — the first to answer winning, the most recently registered first.
+ * @param monaco The Monaco instance the model belongs to.
+ * @param model The model.
+ * @param position The one-based position.
+ * @param newName The new name.
+ * @returns Returns the answer, or null when no provider serves the language or none answered.
+ */
+export async function providedRenameEdits(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  position: MonacoApi.IPosition,
+  newName: string,
+): Promise<ProvidedRename | null> {
+  for (const { provider } of renameCandidates(monaco, model.getLanguageId())) {
+    const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+    try {
+      const answer: (MonacoApi.languages.WorkspaceEdit & MonacoApi.languages.Rejection) | null =
+        (await provider.provideRenameEdits(
+          model,
+          position as MonacoApi.Position,
+          newName,
+          source.token,
+        )) ?? null;
+      if (answer === null) {
+        continue;
+      }
+      if (answer.rejectReason !== undefined) {
+        return { kind: 'refused', reason: answer.rejectReason };
+      }
+      return groupEdits(answer);
+    } catch (error: unknown) {
+      return { kind: 'refused', reason: error instanceof Error ? error.message : null };
+    } finally {
+      source.dispose();
+    }
+  }
+  return null;
+}
+
+/**
+ * Lists the rename providers that serve a language, the most recently registered first.
+ * @param monaco The Monaco instance.
+ * @param language The language identifier.
+ * @returns Returns the providers.
+ */
+function renameCandidates(
+  monaco: typeof MonacoApi,
+  language: string,
+): readonly RegisteredRenameProvider[] {
+  return [...(CAPTURED.get(monaco.languages)?.renames ?? [])]
+    .reverse()
+    .filter((entry: RegisteredRenameProvider): boolean => selects(entry.selector, language));
+}
+
+/**
+ * Groups a rename provider's workspace edit by document, counting the file operations it holds
+ * rather than applying them.
+ * @param answer The provider's edit.
+ * @returns Returns the edits, by document, in the provider's order.
+ */
+function groupEdits(answer: MonacoApi.languages.WorkspaceEdit): ProvidedRename {
+  const files: Map<string, { range: MonacoApi.IRange; text: string }[]> = new Map<
+    string,
+    { range: MonacoApi.IRange; text: string }[]
+  >();
+  let fileOperations: number = 0;
+  for (const entry of answer.edits) {
+    if (!('textEdit' in entry)) {
+      fileOperations += 1;
+      continue;
+    }
+    const uri: string = entry.resource.toString();
+    const edits: { range: MonacoApi.IRange; text: string }[] = files.get(uri) ?? [];
+    edits.push({ range: entry.textEdit.range, text: entry.textEdit.text });
+    files.set(uri, edits);
+  }
+  return {
+    kind: 'edits',
+    files: [...files].map(
+      ([uri, edits]: [string, { range: MonacoApi.IRange; text: string }[]]): ProvidedFileEdits => ({
+        uri,
+        edits,
+      }),
+    ),
+    fileOperations,
+  };
 }
 
 /**

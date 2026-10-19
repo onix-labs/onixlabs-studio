@@ -7,6 +7,7 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { Log } from '@shared/angular/services/log/log';
 import { hasComments } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
@@ -22,6 +23,7 @@ export type EditorContextMenuCommand =
   | 'references'
   | 'symbol'
   | 'line'
+  | 'rename'
   | 'find'
   | 'formatDocument'
   | 'formatSelection'
@@ -81,6 +83,7 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
+  rename: { mac: 'F2', windows: 'F2' },
   find: { mac: '⌘F', windows: 'Ctrl+F' },
   // Monaco's own chords: Linux gives Format Document a chord of its own.
   formatDocument: { mac: '⌥⇧F', windows: 'Shift+Alt+F', linux: 'Ctrl+Shift+I' },
@@ -128,9 +131,9 @@ export interface EditorContextMenuOpener {
  * A right-click over the text moves the caret there when it falls outside the selection, as Monaco
  * does, then opens the menu with the rows that editor can use: Go to Definition where its language
  * offers definitions, Find All References where it offers references (#1014), Go to Symbol and Go to
- * Line, Find where a find panel answers, Format and Toggle
- * Comment where the language supports them and the editor can be edited, and the clipboard — Copy and
- * Select All alone in a read-only editor.
+ * Line, Find where a find panel answers, Rename Symbol where the language can rename (#1015), Format
+ * and Toggle Comment where the language supports them and the editor can be edited, and the clipboard
+ * — Copy and Select All alone in a read-only editor.
  *
  * Editors nobody attached — a markdown document's code fences — keep their own right-click.
  */
@@ -150,6 +153,11 @@ export class EditorContextMenu {
    * Holds the navigation Go to Definition and Find All References go through (#1014).
    */
   private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
+   * Holds Rename Symbol, which the menu's row runs (#1015).
+   */
+  private readonly renameSymbol: RenameSymbol = inject(RenameSymbol);
 
   /**
    * Holds the host platform, which decides the shortcut hints.
@@ -208,6 +216,9 @@ export class EditorContextMenu {
 
     // Hidden, not disabled, in a read-only editor: it can never be edited, so the rows are noise.
     const editing: MenuItem[] = [];
+    if (writable && this.renameSymbol.offersRename(editor)) {
+      editing.push(this.item('rename', 'Rename Symbol…'));
+    }
     if (writable && supports(editor, 'formatDocument')) {
       editing.push(this.item('formatDocument', 'Format Document'));
     }
@@ -256,6 +267,9 @@ export class EditorContextMenu {
         return;
       case 'find':
         this.findRouter.openFromEditor(editor, 'find');
+        return;
+      case 'rename':
+        void this.renameSymbol.rename(editor);
         return;
       case 'paste':
         pasteIntoEditor(editor, COMMAND_SOURCE);

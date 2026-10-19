@@ -73,4 +73,22 @@ export class GoToRouter {
       injector: this.attachments.get(editor)?.injector ?? null,
     });
   }
+
+  /**
+   * Asks for a symbol's new name in an editor's window (#1015), the way the Go to style says.
+   * @param editor The editor the symbol is in.
+   * @param currentName The symbol's name as it stands.
+   * @returns Returns a promise resolving to the new name, or null when none was given.
+   */
+  public promptRename(
+    editor: MonacoApi.editor.ICodeEditor,
+    currentName: string,
+  ): Promise<string | null> {
+    this.log.debug('goTo', 'Route Rename Symbol');
+    return this.presenter.promptRename({
+      editor,
+      currentName,
+      injector: this.attachments.get(editor)?.injector ?? null,
+    });
+  }
 }

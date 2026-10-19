@@ -31,6 +31,7 @@ import {
   NAVIGATION_EDITOR_OPTIONS,
   NavigationMode,
 } from './monaco-navigation-commands';
+import { installRenameCommands } from './monaco-rename-commands';
 import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
 import { captureEditorCapabilities } from './monaco-editor-capabilities';
 import { Studio } from '@shared/angular/services/studio/studio';
@@ -38,6 +39,7 @@ import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -499,6 +501,7 @@ export class Monaco {
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
+    this.installRenameCommands(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
@@ -569,6 +572,22 @@ export class Monaco {
   }
 
   /**
+   * Removes Monaco's Rename Symbol chord from an instance and binds Studio's Rename Symbol in its
+   * place, and routes every other way into Monaco's rename to Studio's, so F2 reaches the
+   * {@link RenameSymbol} and Monaco's rename box never opens (#1015).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installRenameCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installRenameCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+      this.log.info('Monaco', 'Studio rename command');
+      void this.injector.get(RenameSymbol).rename(editor);
+    });
+  }
+
+  /**
    * Resolves the worker script URL for a Monaco language label. Workers are served from the copied
    * `vs/` assets.
    * @param _moduleId The requesting module identifier (unused).
@@ -624,6 +643,7 @@ export class Monaco {
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);
+      this.installRenameCommands(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(

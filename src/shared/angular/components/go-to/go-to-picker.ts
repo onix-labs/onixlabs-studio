@@ -7,13 +7,16 @@ import {
   LineEntry,
   lineHint,
   parseLineEntry,
+  parseRenameEntry,
+  RenameEntry,
   stepSelection,
 } from '@shared/angular/services/go-to/go-to-model';
 
 /**
- * Holds the state behind every Go to surface (#1009) — the quick-open box and both dialogs — so they
+ * Holds the state behind every Go to surface (#1009) — the quick-open box and the dialogs — so they
  * read what was typed, filter and step through symbols, and decide where Enter goes, the same way:
- * what was typed, the symbols it matches, the one selected, and the line it names.
+ * what was typed, the symbols it matches, the one selected, the line it names, and — for Rename
+ * Symbol (#1015) — the new name it gives.
  *
  * A plain class over signals rather than a service: each surface owns one for as long as it is open,
  * fed its document's line count and symbols.
@@ -61,6 +64,13 @@ export class GoToPicker {
   );
 
   /**
+   * Gets the new name what has been typed gives a symbol, and the hint under a rename field (#1015).
+   */
+  public readonly renameEntry: Signal<RenameEntry> = computed((): RenameEntry =>
+    parseRenameEntry(this.query(), this.currentName()),
+  );
+
+  /**
    * Gets why the symbol list is empty, or an empty string when it is not.
    */
   public readonly emptyText: Signal<string> = computed((): string => {
@@ -74,10 +84,12 @@ export class GoToPicker {
    * Initializes a new instance of the {@link GoToPicker} class.
    * @param symbols Reads the document's symbols, or null while they are being read.
    * @param lineCount Reads the number of lines in the document.
+   * @param currentName Reads the name of the symbol being renamed, for a rename field (#1015).
    */
   public constructor(
     private readonly symbols: () => readonly GoToSymbol[] | null,
     private readonly lineCount: () => number,
+    private readonly currentName: () => string = (): string => '',
   ) {}
 
   /**

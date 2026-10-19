@@ -4,8 +4,12 @@ import {
   hasComments,
   hasDefinitionProvider,
   hasReferenceProvider,
+  hasRenameProvider,
   providedDefinitions,
   providedReferences,
+  ProvidedRename,
+  providedRenameEdits,
+  providedRenameLocation,
 } from './monaco-editor-capabilities';
 
 /**
@@ -16,6 +20,7 @@ interface FakeMonaco {
   readonly monaco: typeof MonacoApi;
   readonly definitionProviders: MonacoApi.languages.DefinitionProvider[];
   readonly referenceProviders: MonacoApi.languages.ReferenceProvider[];
+  readonly renameProviders: MonacoApi.languages.RenameProvider[];
   readonly configurations: string[];
 }
 
@@ -26,6 +31,7 @@ interface FakeMonaco {
 function fakeMonaco(): FakeMonaco {
   const definitionProviders: MonacoApi.languages.DefinitionProvider[] = [];
   const referenceProviders: MonacoApi.languages.ReferenceProvider[] = [];
+  const renameProviders: MonacoApi.languages.RenameProvider[] = [];
   const configurations: string[] = [];
   const monaco: typeof MonacoApi = {
     languages: {
@@ -43,6 +49,13 @@ function fakeMonaco(): FakeMonaco {
         referenceProviders.push(provider);
         return { dispose: (): void => undefined };
       },
+      registerRenameProvider: (
+        _selector: MonacoApi.languages.LanguageSelector,
+        provider: MonacoApi.languages.RenameProvider,
+      ): MonacoApi.IDisposable => {
+        renameProviders.push(provider);
+        return { dispose: (): void => undefined };
+      },
       setLanguageConfiguration: (languageId: string): MonacoApi.IDisposable => {
         configurations.push(languageId);
         return { dispose: (): void => undefined };
@@ -57,7 +70,7 @@ function fakeMonaco(): FakeMonaco {
       }
     },
   } as unknown as typeof MonacoApi;
-  return { monaco, definitionProviders, referenceProviders, configurations };
+  return { monaco, definitionProviders, referenceProviders, renameProviders, configurations };
 }
 
 /**
@@ -239,5 +252,166 @@ describe('monaco-editor-capabilities', () => {
     expect(
       await providedReferences(fake.monaco, modelOf('rust'), { lineNumber: 1, column: 1 }),
     ).toEqual([]);
+  });
+
+  describe('rename providers (#1015)', () => {
+    /**
+     * Builds a model with a word at every position.
+     * @param language The language identifier.
+     * @returns Returns the model.
+     */
+    function wordyModel(language: string): MonacoApi.editor.ITextModel {
+      return {
+        getLanguageId: (): string => language,
+        getWordAtPosition: (): MonacoApi.editor.IWordAtPosition => ({
+          word: 'greet',
+          startColumn: 3,
+          endColumn: 8,
+        }),
+      } as unknown as MonacoApi.editor.ITextModel;
+    }
+
+    /**
+     * Builds a URI that prints as given.
+     * @param value The URI.
+     * @returns Returns it.
+     */
+    function uri(value: string): MonacoApi.Uri {
+      return { toString: (): string => value } as unknown as MonacoApi.Uri;
+    }
+
+    it('capture_recordsRenameProviders_andStillRegistersThem_untilDisposed', () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const provider: MonacoApi.languages.RenameProvider = {
+        provideRenameEdits: (): null => null,
+      };
+
+      const registration: MonacoApi.IDisposable = fake.monaco.languages.registerRenameProvider(
+        'typescript',
+        provider,
+      );
+
+      expect(fake.renameProviders).toEqual([provider]);
+      expect(hasRenameProvider(fake.monaco, 'typescript')).toBe(true);
+      expect(hasRenameProvider(fake.monaco, 'python')).toBe(false);
+      registration.dispose();
+      expect(hasRenameProvider(fake.monaco, 'typescript')).toBe(false);
+    });
+
+    it('providedRenameLocation_asksTheNewestProvider_readsARejection_andFallsBackToTheWord', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      expect(
+        await providedRenameLocation(fake.monaco, wordyModel('typescript'), {
+          lineNumber: 2,
+          column: 4,
+        }),
+      ).toBeNull();
+
+      fake.monaco.languages.registerRenameProvider('typescript', {
+        provideRenameEdits: (): null => null,
+      });
+      expect(
+        await providedRenameLocation(fake.monaco, wordyModel('typescript'), {
+          lineNumber: 2,
+          column: 4,
+        }),
+      ).toEqual({ kind: 'ready', range: span(2, 3, 8), placeholder: 'greet' });
+
+      fake.monaco.languages.registerRenameProvider('typescript', {
+        provideRenameEdits: (): null => null,
+        resolveRenameLocation: (): MonacoApi.languages.RenameLocation &
+          MonacoApi.languages.Rejection => ({
+          range: span(2, 1, 1),
+          text: '',
+          rejectReason: 'You cannot rename a keyword.',
+        }),
+      });
+      expect(
+        await providedRenameLocation(fake.monaco, wordyModel('typescript'), {
+          lineNumber: 2,
+          column: 4,
+        }),
+      ).toEqual({ kind: 'refused', reason: 'You cannot rename a keyword.' });
+    });
+
+    it('providedRenameEdits_groupsTheEditsByModel_countingFileOperations', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      fake.monaco.languages.registerRenameProvider('typescript', {
+        provideRenameEdits: (): MonacoApi.languages.WorkspaceEdit => ({
+          edits: [
+            {
+              resource: uri('inmemory://model/1'),
+              textEdit: { range: span(1, 1, 6), text: 'salute' },
+              versionId: 1,
+            },
+            {
+              resource: uri('inmemory://model/2'),
+              textEdit: { range: span(4, 2, 7), text: 'salute' },
+              versionId: undefined,
+            },
+            {
+              resource: uri('inmemory://model/1'),
+              textEdit: { range: span(9, 1, 6), text: 'salute' },
+              versionId: 1,
+            },
+            { oldResource: uri('inmemory://model/1'), newResource: uri('inmemory://model/3') },
+          ],
+        }),
+      });
+
+      const answer: ProvidedRename | null = await providedRenameEdits(
+        fake.monaco,
+        wordyModel('typescript'),
+        { lineNumber: 1, column: 2 },
+        'salute',
+      );
+
+      expect(answer).toEqual({
+        kind: 'edits',
+        files: [
+          {
+            uri: 'inmemory://model/1',
+            edits: [
+              { range: span(1, 1, 6), text: 'salute' },
+              { range: span(9, 1, 6), text: 'salute' },
+            ],
+          },
+          { uri: 'inmemory://model/2', edits: [{ range: span(4, 2, 7), text: 'salute' }] },
+        ],
+        fileOperations: 1,
+      });
+    });
+
+    it('providedRenameEdits_readsARejection_andIsNullWithNoProvider', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      expect(
+        await providedRenameEdits(
+          fake.monaco,
+          wordyModel('typescript'),
+          { lineNumber: 1, column: 1 },
+          'x',
+        ),
+      ).toBeNull();
+      fake.monaco.languages.registerRenameProvider('typescript', {
+        provideRenameEdits: (): MonacoApi.languages.WorkspaceEdit &
+          MonacoApi.languages.Rejection => ({
+          edits: [],
+          rejectReason: 'Not a valid name.',
+        }),
+      });
+
+      expect(
+        await providedRenameEdits(
+          fake.monaco,
+          wordyModel('typescript'),
+          { lineNumber: 1, column: 1 },
+          '1x',
+        ),
+      ).toEqual({ kind: 'refused', reason: 'Not a valid name.' });
+    });
   });
 });

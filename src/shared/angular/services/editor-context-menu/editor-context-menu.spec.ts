@@ -14,6 +14,7 @@ import type {
   ReferenceList,
 } from '@shared/angular/services/references/reference-list';
 import { ReferencesRouter } from '@shared/angular/services/references/references-router';
+import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { Studio } from '@shared/angular/services/studio/studio';
 import {
   EditorContextMenu,
@@ -187,6 +188,7 @@ function fakeMonaco(): typeof MonacoApi {
     languages: {
       registerDefinitionProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       registerReferenceProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerRenameProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
     CancellationTokenSource: class {
@@ -227,6 +229,7 @@ describe('EditorContextMenu (#1012)', () => {
     servesDocument: Mock<LspFeatures['servesDocument']>;
     definitions: Mock<LspFeatures['definitions']>;
     references: Mock<LspFeatures['references']>;
+    servesRename: Mock<LspFeatures['servesRename']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -258,6 +261,7 @@ describe('EditorContextMenu (#1012)', () => {
       references: vi.fn<LspFeatures['references']>((): Promise<readonly ReferenceItem[] | null> =>
         Promise.resolve(null),
       ),
+      servesRename: vi.fn<LspFeatures['servesRename']>((): boolean => false),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -404,6 +408,58 @@ describe('EditorContextMenu (#1012)', () => {
       expect(register).not.toHaveBeenCalled();
       expect(registerGlobal).not.toHaveBeenCalled();
       expect(contribute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rename symbol (#1015)', () => {
+    it('shownWhereAProviderServesTheLanguage_firstInTheEditingGroup_withF2OnEveryPlatform', () => {
+      for (const platform of ['darwin', 'win32', 'linux']) {
+        TestBed.resetTestingModule();
+        const menu: EditorContextMenu = build(platform);
+        monaco = fakeMonaco();
+        (window as unknown as { monaco?: unknown }).monaco = monaco;
+        monaco.languages.registerRenameProvider('typescript', { provideRenameEdits: () => null });
+        const { editor } = fakeEditor({ supported: ['editor.action.formatDocument'] });
+
+        const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+        expect(idsOf(items)).toEqual([
+          'symbol',
+          'line',
+          '|',
+          'find',
+          '|',
+          'rename',
+          'formatDocument',
+          '|',
+          'cut',
+          'copy',
+          'paste',
+          'selectAll',
+        ]);
+        expect(rowOf(items, 'rename')).toMatchObject({ label: 'Rename Symbol…', shortcut: 'F2' });
+      }
+    });
+
+    it('shownWhereAServerThatRenamesServesTheDocument_hiddenOtherwise_andInAReadOnlyEditor', () => {
+      const menu: EditorContextMenu = build();
+      expect(rowOf(menu.itemsFor(fakeEditor().editor), 'rename')).toBeUndefined();
+
+      lsp.servesRename.mockReturnValue(true);
+      expect(rowOf(menu.itemsFor(fakeEditor().editor), 'rename')).toBeDefined();
+      expect(rowOf(menu.itemsFor(fakeEditor({ readOnly: true }).editor), 'rename')).toBeUndefined();
+    });
+
+    it('run_renamesThroughStudiosRenameSymbol', () => {
+      const menu: EditorContextMenu = build();
+      const rename: MockInstance<RenameSymbol['rename']> = vi
+        .spyOn(TestBed.inject(RenameSymbol), 'rename')
+        .mockResolvedValue(undefined);
+      const { editor } = fakeEditor();
+
+      menu.run('rename', editor);
+
+      expect(rename).toHaveBeenCalledWith(editor);
     });
   });
 
