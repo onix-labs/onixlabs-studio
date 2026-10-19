@@ -1,5 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 import { ReferencesView } from '@shared/angular/components/references-view/references-view';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Log } from '@shared/angular/services/log/log';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import type {
@@ -24,6 +32,12 @@ import { ReferencesPanelState } from './references-panel-state';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ReferencesPanel {
+  /**
+   * Gets the dock panel descriptor this body renders. Supplied by the dock outlet, which sets it on
+   * every projected panel component; unused here because the dock chrome renders the title.
+   */
+  public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
+
   /**
    * Holds the list this workspace's panel shows.
    */
