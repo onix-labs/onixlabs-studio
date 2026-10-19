@@ -363,3 +363,30 @@ function codeOf(code: MonacoApi.editor.IMarker['code']): string | null {
   const value: string | undefined = typeof code === 'string' ? code : code?.value;
   return value !== undefined && value.length > 0 ? value : null;
 }
+
+/**
+ * Fences a code snippet in a language, with a fence longer than any run of backticks inside it, so the
+ * snippet can never close its own fence.
+ * @param code The snippet.
+ * @param language The language it is written in.
+ * @returns Returns the fenced block, as markdown.
+ */
+export function fenced(code: string, language: string): string {
+  const longest: number = Math.max(
+    0,
+    ...[...code.matchAll(/`+/g)].map((run: RegExpMatchArray): number => run[0].length),
+  );
+  const fence: string = '`'.repeat(Math.max(3, longest + 1));
+  return `${fence}${language}\n${code}\n${fence}`;
+}
+
+/**
+ * Escapes plain text for markdown: every ASCII punctuation character markdown could read as syntax is
+ * escaped, and each line break becomes a paragraph break, so the text reads exactly as sent — as
+ * Monaco's own plain-text hover does.
+ * @param text The plain text.
+ * @returns Returns the text, as markdown.
+ */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_{}[\]()#+\-.!<>|~$&]/g, '\\$&').replace(/\r?\n/g, '\n\n');
+}

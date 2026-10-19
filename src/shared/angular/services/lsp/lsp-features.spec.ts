@@ -15,7 +15,9 @@ import {
   LspRenameAnswer,
   LspRenamePreparation,
   LspRenameSupport,
+  STUDIO_LSP_COMMAND,
 } from './lsp-features';
+import type { LspCompletionSupport, LspSignatureHelpSupport } from './lsp-completion';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
@@ -36,7 +38,26 @@ class FakeEmitter {
  * Captures the providers registered against the fake Monaco namespace, so the test can invoke them.
  */
 interface CapturedProviders {
-  completion?: { provideCompletionItems(model: unknown, position: unknown): Promise<unknown> };
+  completion?: {
+    triggerCharacters?: string[];
+    provideCompletionItems(model: unknown, position: unknown, context?: unknown): Promise<unknown>;
+    resolveCompletionItem?(item: unknown): Promise<unknown>;
+  };
+  signature?: {
+    signatureHelpTriggerCharacters?: string[];
+    signatureHelpRetriggerCharacters?: string[];
+    provideSignatureHelp(
+      model: unknown,
+      position: unknown,
+      token: unknown,
+      context: unknown,
+    ): Promise<unknown>;
+  };
+  /** How many completion providers were registered, and how many of those were disposed. */
+  completionRegistrations?: number;
+  completionDisposals?: number;
+  /** The Monaco commands registered, by id. */
+  commands?: Map<string, (...args: unknown[]) => unknown>;
   hover?: { provideHover(model: unknown, position: unknown): Promise<unknown> };
   symbols?: { provideDocumentSymbols(model: unknown): Promise<unknown> };
   codeActions?: {
@@ -86,12 +107,26 @@ function fakeMonacoNamespace(
       tokenize: (): unknown[][] => [],
       // The models of the open editors, whose lines a references list previews (#1014).
       getModels: (): readonly unknown[] => models,
+      registerCommand: (id: string, handler: (...args: unknown[]) => unknown): void => {
+        captured.commands ??= new Map();
+        captured.commands.set(id, handler);
+      },
     },
     languages: {
-      CompletionItemKind: { Method: 0, Function: 1, Text: 18 },
-      CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
-      registerCompletionItemProvider: (_language: string, provider: unknown): void => {
+      CompletionItemKind: { Method: 0, Function: 1, Class: 5, Text: 18, Snippet: 28 },
+      CompletionItemInsertTextRule: { KeepWhitespace: 1, InsertAsSnippet: 4 },
+      registerCompletionItemProvider: (_language: string, provider: unknown): unknown => {
         captured.completion = provider as CapturedProviders['completion'];
+        captured.completionRegistrations = (captured.completionRegistrations ?? 0) + 1;
+        return {
+          dispose: (): void => {
+            captured.completionDisposals = (captured.completionDisposals ?? 0) + 1;
+          },
+        };
+      },
+      registerSignatureHelpProvider: (_language: string, provider: unknown): unknown => {
+        captured.signature = provider as CapturedProviders['signature'];
+        return { dispose: (): void => undefined };
       },
       registerHoverProvider: (_language: string, provider: unknown): void => {
         captured.hover = provider as CapturedProviders['hover'];
@@ -151,6 +186,9 @@ describe('LspFeatures', () => {
   let responses: Record<string, unknown>;
   let semanticLegend: LspSemanticTokensLegend | null;
   let suppressWhen: ((model: unknown) => boolean) | undefined;
+  let wordsSuppressedWhen: ((model: unknown) => boolean) | undefined;
+  let completionSupport: LspCompletionSupport | null | undefined;
+  let signatureSupport: LspSignatureHelpSupport | null | undefined;
   let openModels: unknown[];
   let files: Record<string, string>;
   let reads: string[];
@@ -158,9 +196,15 @@ describe('LspFeatures', () => {
   let codeActionSupport: LspCodeActionSupport | undefined;
   let serverCommands: readonly string[] | undefined;
   let serverDiagnostics: readonly LspDiagnostic[] | undefined;
+  /** The document's catch-up hook, when a test gives it one. */
+  let syncHook: ((text: string) => Promise<void>) | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
+    captured.signature = undefined;
+    captured.completionRegistrations = 0;
+    captured.completionDisposals = 0;
+    captured.commands = undefined;
     captured.hover = undefined;
     captured.symbols = undefined;
     captured.semantic = undefined;
@@ -169,6 +213,9 @@ describe('LspFeatures', () => {
     responses = {};
     semanticLegend = null;
     suppressWhen = undefined;
+    wordsSuppressedWhen = undefined;
+    completionSupport = undefined;
+    signatureSupport = undefined;
     openModels = [];
     files = {};
     reads = [];
@@ -176,6 +223,7 @@ describe('LspFeatures', () => {
     codeActionSupport = undefined;
     serverCommands = undefined;
     serverDiagnostics = undefined;
+    syncHook = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         if (channel === (FileChannel.Read as string)) {
@@ -218,6 +266,10 @@ describe('LspFeatures', () => {
         suppressWhen = predicate;
         return (): void => undefined;
       },
+      suppressWordSuggestionsWhen: (predicate: (model: unknown) => boolean): (() => void) => {
+        wordsSuppressedWhen = predicate;
+        return (): void => undefined;
+      },
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -233,12 +285,38 @@ describe('LspFeatures', () => {
             ...(codeActionSupport === undefined ? {} : { codeActions: codeActionSupport }),
             ...(serverCommands === undefined ? {} : { commands: serverCommands }),
             ...(serverDiagnostics === undefined ? {} : { diagnostics: serverDiagnostics }),
+            ...(completionSupport === undefined ? {} : { completion: completionSupport }),
+            ...(signatureSupport === undefined ? {} : { signatureHelp: signatureSupport }),
+            ...(syncHook === undefined ? {} : { sync: syncHook }),
           }
         : null,
     );
     await flush();
     return features;
   }
+
+  it('aRequestAboutAPosition_bringsTheServerUpToDateFirst', async () => {
+    // Matthew's live check of #1021: a completion on "." overtook the change that typed it, and the
+    // server answered for the text before — the globals, not the members after `message.`.
+    responses['textDocument/completion'] = { items: [{ label: 'charAt' }] };
+    const order: string[] = [];
+    syncHook = (text: string): Promise<void> => {
+      order.push(`sync ${text}`);
+      return Promise.resolve();
+    };
+    await build();
+    const model: unknown = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => 'message.',
+      getWordUntilPosition: (): unknown => ({ startColumn: 9, endColumn: 9, word: '' }),
+    };
+    const before: number = requests.length;
+
+    await captured.completion?.provideCompletionItems(model, { lineNumber: 1, column: 9 });
+    order.push(`request ${requests[before]?.method}`);
+
+    expect(order).toEqual(['sync message.', 'request textDocument/completion']);
+  });
 
   it('completion_mapsTextEditRangeAndInsertText', async () => {
     responses['textDocument/completion'] = {
@@ -274,6 +352,237 @@ describe('LspFeatures', () => {
       endLineNumber: 2,
       endColumn: 22,
     });
+  });
+
+  /**
+   * Builds a model of the served document, at whose caret the word typed so far starts at column 1.
+   * @returns Returns the model.
+   */
+  function servedModel(): unknown {
+    return {
+      uri: { toString: (): string => MODEL_URI },
+      getWordUntilPosition: (): unknown => ({ startColumn: 1, endColumn: 4, word: 'abc' }),
+    };
+  }
+
+  it('completion_sendsWhatStartedIt_andKeepsAnIncompleteList (#1021)', async () => {
+    completionSupport = { triggerCharacters: ['.'], resolve: false };
+    responses['textDocument/completion'] = { isIncomplete: true, items: [{ label: 'length' }] };
+    await build();
+
+    const list: { incomplete?: boolean } = (await captured.completion?.provideCompletionItems(
+      servedModel(),
+      { lineNumber: 1, column: 4 },
+      // Monaco's TriggerCharacter is 1; the protocol's is 2.
+      { triggerKind: 1, triggerCharacter: '.' },
+    )) as { incomplete?: boolean };
+
+    expect((requests[0]?.params as { context: unknown }).context).toEqual({
+      triggerKind: 2,
+      triggerCharacter: '.',
+    });
+    expect(list.incomplete).toBe(true);
+  });
+
+  it('completion_onATriggerCharacterTheServerDoesNotTriggerOn_asksNothing (#1021)', async () => {
+    completionSupport = { triggerCharacters: ['.'], resolve: false };
+    await build();
+
+    const list: unknown = await captured.completion?.provideCompletionItems(
+      servedModel(),
+      { lineNumber: 1, column: 4 },
+      { triggerKind: 1, triggerCharacter: ':' },
+    );
+
+    expect(requests).toHaveLength(0);
+    expect(list).toBeUndefined();
+  });
+
+  it('completion_resolve_sendsTheItemBack_andFillsItIn (#1021)', async () => {
+    completionSupport = { triggerCharacters: [], resolve: true };
+    responses['textDocument/completion'] = {
+      items: [{ label: 'List', kind: 7 }],
+      itemDefaults: { data: { id: 7 } },
+    };
+    responses['completionItem/resolve'] = {
+      label: 'List',
+      detail: 'class List<T>',
+      documentation: { kind: 'markdown', value: 'A **list**.' },
+      additionalTextEdits: [
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          newText: 'using System;\n',
+        },
+      ],
+    };
+    await build();
+    const list: { suggestions: unknown[] } = (await captured.completion?.provideCompletionItems(
+      servedModel(),
+      { lineNumber: 1, column: 4 },
+      { triggerKind: 0 },
+    )) as { suggestions: unknown[] };
+
+    const resolved: Record<string, unknown> = (await captured.completion?.resolveCompletionItem?.(
+      list.suggestions[0],
+    )) as Record<string, unknown>;
+
+    expect(requests[1]?.method).toBe('completionItem/resolve');
+    expect(requests[1]?.sessionId).toBe('/root::typescript');
+    expect(requests[1]?.params).toMatchObject({ label: 'List', data: { id: 7 } });
+    expect(resolved['detail']).toBe('class List<T>');
+    expect(resolved['documentation']).toEqual({ value: 'A **list**.' });
+    expect(resolved['additionalTextEdits']).toEqual([
+      {
+        range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        text: 'using System;\n',
+      },
+    ]);
+  });
+
+  it('completion_resolve_forAServerThatDoesNotResolve_asksNothing (#1021)', async () => {
+    completionSupport = { triggerCharacters: [], resolve: false };
+    responses['textDocument/completion'] = { items: [{ label: 'x' }] };
+    await build();
+    const list: { suggestions: unknown[] } = (await captured.completion?.provideCompletionItems(
+      servedModel(),
+      { lineNumber: 1, column: 4 },
+    )) as { suggestions: unknown[] };
+
+    const resolved: unknown = await captured.completion?.resolveCompletionItem?.(
+      list.suggestions[0],
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(resolved).toBe(list.suggestions[0]);
+  });
+
+  it('completion_commands_runOnTheServer_orAsMonacosOwn_orNotAtAll (#1021)', async () => {
+    serverCommands = ['server.addImport'];
+    responses['textDocument/completion'] = {
+      items: [
+        { label: 'a', command: { title: 'Import', command: 'server.addImport', arguments: [1] } },
+        { label: 'b', command: { title: 'Hints', command: 'editor.action.triggerParameterHints' } },
+        { label: 'c', command: { title: 'Client', command: 'client.only' } },
+      ],
+    };
+    await build();
+    const list: { suggestions: { command?: { id: string; arguments?: unknown[] } }[] } =
+      (await captured.completion?.provideCompletionItems(servedModel(), {
+        lineNumber: 1,
+        column: 4,
+      })) as { suggestions: { command?: { id: string; arguments?: unknown[] } }[] };
+
+    expect(list.suggestions[0].command?.id).toBe(STUDIO_LSP_COMMAND);
+    expect(list.suggestions[1].command?.id).toBe('editor.action.triggerParameterHints');
+    expect(list.suggestions[2].command).toBeUndefined();
+
+    // Accepting the first runs Studio's command, which sends it to its server.
+    await captured.commands?.get(STUDIO_LSP_COMMAND)?.(
+      undefined,
+      ...(list.suggestions[0].command?.arguments ?? []),
+    );
+    expect(requests[1]).toEqual({
+      sessionId: '/root::typescript',
+      method: 'workspace/executeCommand',
+      params: { command: 'server.addImport', arguments: [1] },
+    });
+  });
+
+  it('setSessionSupport_registersEveryServersTriggerCharacters_onlyWhenTheyChange (#1021)', async () => {
+    const features: LspFeatures = await build();
+    const registered: number = captured.completionRegistrations ?? 0;
+    expect(captured.completion?.triggerCharacters).toEqual([]);
+
+    features.setSessionSupport('/a::ts', {
+      completion: { triggerCharacters: ['.', '"'], resolve: true },
+      signatureHelp: { triggerCharacters: ['('], retriggerCharacters: [','] },
+    });
+    features.setSessionSupport('/b::rust', {
+      completion: { triggerCharacters: [':', '.'], resolve: false },
+      signatureHelp: null,
+    });
+    const afterTwo: number = captured.completionRegistrations ?? 0;
+    features.setSessionSupport('/b::rust', {
+      completion: { triggerCharacters: [':', '.'], resolve: false },
+      signatureHelp: null,
+    });
+
+    expect(captured.completion?.triggerCharacters).toEqual(['"', '.', ':']);
+    expect(captured.signature?.signatureHelpTriggerCharacters).toEqual(['(']);
+    expect(captured.signature?.signatureHelpRetriggerCharacters).toEqual([',']);
+    expect(afterTwo - registered).toBe(FEATURE_LANGUAGES.length * 2);
+    // Each re-registration disposed the providers it replaced; the same characters again change nothing.
+    expect(captured.completionDisposals).toBe(FEATURE_LANGUAGES.length * 2);
+    expect(captured.completionRegistrations).toBe(afterTwo);
+  });
+
+  it('signatureHelp_asksWithWhatStartedIt_andMapsTheAnswer (#1021)', async () => {
+    signatureSupport = { triggerCharacters: ['('], retriggerCharacters: [','] };
+    responses['textDocument/signatureHelp'] = {
+      signatures: [
+        {
+          label: 'add(a: number, b: number)',
+          documentation: 'Adds.',
+          parameters: [
+            { label: [4, 13] },
+            { label: 'b: number', documentation: { kind: 'markdown', value: 'The *b*.' } },
+          ],
+        },
+      ],
+      activeSignature: 0,
+      activeParameter: 1,
+    };
+    await build();
+
+    const result: { value: unknown } = (await captured.signature?.provideSignatureHelp(
+      servedModel(),
+      { lineNumber: 1, column: 9 },
+      undefined,
+      { triggerKind: 2, triggerCharacter: ',', isRetrigger: true },
+    )) as { value: unknown };
+
+    expect((requests[0]?.params as { context: unknown }).context).toEqual({
+      triggerKind: 2,
+      triggerCharacter: ',',
+      isRetrigger: true,
+    });
+    expect(result.value).toEqual({
+      signatures: [
+        {
+          label: 'add(a: number, b: number)',
+          documentation: 'Adds.',
+          parameters: [
+            { label: [4, 13], documentation: undefined },
+            { label: 'b: number', documentation: { value: 'The *b*.' } },
+          ],
+        },
+      ],
+      activeSignature: 0,
+      activeParameter: 1,
+    });
+  });
+
+  it('signatureHelp_forAServerWithout_asksNothing (#1021)', async () => {
+    await build();
+
+    const result: unknown = await captured.signature?.provideSignatureHelp(
+      servedModel(),
+      { lineNumber: 1, column: 9 },
+      undefined,
+      { triggerKind: 1, isRetrigger: false },
+    );
+
+    expect(requests).toHaveLength(0);
+    expect(result).toBeUndefined();
+  });
+
+  it('wordSuggestions_areLeftOut_forADocumentAServerServes (#1021)', async () => {
+    await build();
+
+    expect(wordsSuppressedWhen?.(servedModel())).toBe(true);
+    expect(
+      wordsSuppressedWhen?.({ uri: { toString: (): string => 'inmemory://model/other' } }),
+    ).toBe(false);
   });
 
   it('hover_extractsMarkupAndMapsRange', async () => {

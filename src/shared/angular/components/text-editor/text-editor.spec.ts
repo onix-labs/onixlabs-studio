@@ -20,6 +20,7 @@ import {
 import { ReferencesRouter } from '@shared/angular/services/references/references-router';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import { TextEditor } from './text-editor';
 
 describe('TextEditor', () => {
@@ -208,6 +209,33 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
     expect(attach).toHaveBeenCalledTimes(1);
     expect(attach.mock.calls[0][0]).toBe(editor);
     // The pane's own injector, which draws the card in the pane's window.
+    expect(attach.mock.calls[0][1].get(TextEditor)).toBe(fixture.componentInstance);
+    fixture.destroy();
+    expect(detached).toBe(1);
+  });
+
+  it('attachesItsEditorsCompletionList_withItsOwnInjector_andTakesItAwayOnDestroy (#1021)', async () => {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();
+    await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+      },
+    } as unknown as typeof MonacoApi);
+    let detached: number = 0;
+    const attach: MockInstance<Autocomplete['attach']> = vi
+      .spyOn(TestBed.inject(Autocomplete), 'attach')
+      .mockReturnValue((): void => void (detached += 1));
+
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    await fixture.whenStable();
+
+    expect(attach).toHaveBeenCalledTimes(1);
+    expect(attach.mock.calls[0][0]).toBe(editor);
+    // The pane's own injector, which draws the list and the card in the pane's window.
     expect(attach.mock.calls[0][1].get(TextEditor)).toBe(fixture.componentInstance);
     fixture.destroy();
     expect(detached).toBe(1);

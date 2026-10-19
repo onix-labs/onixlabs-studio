@@ -43,6 +43,12 @@ export interface StudioCrepeOptions {
    * Gets the shared colorizer threaded into the Monaco code-block node view.
    */
   readonly highlighter: MonacoCodeBlockDeps['highlighter'];
+
+  /**
+   * Gets Studio's completion list and signature card threaded into each fence's editor (#1021), or
+   * undefined for fences with neither.
+   */
+  readonly assist?: MonacoCodeBlockDeps['assist'];
 }
 
 /**
@@ -87,7 +93,11 @@ export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
   // Registered after Crepe's features have loaded, so its Monaco code_block node view overrides
   // CodeMirror's (which stays enabled for the Latex feature that depends on it).
   crepe.editor.use(
-    createMonacoCodeBlockPlugin({ monaco: options.monaco, highlighter: options.highlighter }),
+    createMonacoCodeBlockPlugin({
+      monaco: options.monaco,
+      highlighter: options.highlighter,
+      assist: options.assist,
+    }),
   );
   crepe.editor.use(subscriptSuperscriptPlugin);
   crepe.editor.use(htmlImagePlugin);
