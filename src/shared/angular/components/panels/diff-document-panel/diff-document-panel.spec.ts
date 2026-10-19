@@ -92,6 +92,8 @@ function renderProviders(): unknown[] {
         getMonaco: (): undefined => undefined,
         getDiffEditorOptions: (): Record<string, unknown> => ({}),
         getThemeName: (): string => 'studio-dark',
+        // Autocomplete (#1021) registers itself with the Monaco service as it starts.
+        useAssist: (): void => undefined,
       },
     },
     { provide: Theme, useValue: { resolvedMode: signal<ResolvedThemeMode>('dark') } },
