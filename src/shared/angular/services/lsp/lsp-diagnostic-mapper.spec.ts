@@ -67,4 +67,11 @@ describe('lsp-diagnostic-mapper', () => {
       },
     ]);
   });
+
+  it('toMarkerData_carriesTheDiagnosticsCode_butNotTheServersData (#1016)', () => {
+    const [marker] = toMarkerData(monaco, [{ ...diagnostic, code: 2304, data: { id: 1 } }]);
+
+    expect(marker.code).toBe('2304');
+    expect('data' in marker).toBe(false);
+  });
 });

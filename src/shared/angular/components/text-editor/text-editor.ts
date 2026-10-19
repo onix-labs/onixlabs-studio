@@ -33,6 +33,7 @@ import {
 import { ReferencesRouter } from '@shared/angular/services/references/references-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { pasteIntoEditor } from './editor-paste';
 
 /**
@@ -173,6 +174,17 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * creation and after disposal.
    */
   private detachContextMenu: (() => void) | null = null;
+
+  /**
+   * Holds the quick fixes this pane's editor draws its fix icon for (#1016).
+   */
+  private readonly quickFixes: QuickFixes = inject(QuickFixes);
+
+  /**
+   * Holds the function that takes this pane's fix icon away, or null before creation and after
+   * disposal.
+   */
+  private detachQuickFixes: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -399,6 +411,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachContextMenu = null;
     this.detachReferences?.();
     this.detachReferences = null;
+    this.detachQuickFixes?.();
+    this.detachQuickFixes = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -653,6 +667,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachReferences = this.referencesRouter.attach(this.editor, this.referencesHost);
     // Right-clicks open Studio's menu, drawn by the host in this pane's view — so in its window.
     this.detachContextMenu = this.contextMenu.attach(this.editor, this.contextMenuHost());
+    // Studio's fix icon beside the caret's line while fixes exist there; hidden while read-only.
+    this.detachQuickFixes = this.quickFixes.attach(this.editor, monaco);
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

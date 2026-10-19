@@ -29,7 +29,8 @@ interface EditorContextMenuContext {
  *
  * Being in the editor's view is the point: the trigger builds its overlay from its own injector, so
  * the menu is drawn in the editor's window — a popped-out dock or a modal is a window of its own —
- * exactly as a tree's row menu is.
+ * exactly as a tree's row menu is. Other menus Studio opens at an editor's caret — the quick-fix menu
+ * (#1016) — open through it for the same reason, carrying a `run` of their own for their rows.
  */
 @Component({
   selector: 'app-editor-context-menu',
@@ -96,7 +97,11 @@ export class EditorContextMenuHost implements EditorContextMenuOpener {
     if (subject === undefined) {
       return;
     }
-    queueMicrotask((): void => this.contextMenu.run(choice.id, subject.editor));
+    queueMicrotask((): void =>
+      subject.run === undefined
+        ? this.contextMenu.run(choice.id, subject.editor)
+        : subject.run(choice.id),
+    );
   }
 
   /**

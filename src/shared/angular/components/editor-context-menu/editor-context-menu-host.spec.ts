@@ -124,6 +124,30 @@ describe('EditorContextMenuHost (#1012)', () => {
     expect(rows()).toEqual([]);
   });
 
+  it('aMenuWithRowsOfItsOwn_runsThemItself_notTheRightClickCommands (#1016)', async () => {
+    const run: MockInstance<EditorContextMenu['run']> = vi
+      .spyOn(TestBed.inject(EditorContextMenu), 'run')
+      .mockImplementation((): void => undefined);
+    const ran: string[] = [];
+    fixture.componentInstance
+      .host()
+      .open(
+        new MouseEvent('contextmenu', { clientX: 40, clientY: 60, button: 0, cancelable: true }),
+        {
+          editor,
+          items: [{ id: 'quick-fix-0', label: 'Add import' }],
+          run: (id: string): void => void ran.push(id),
+        },
+      );
+    await fixture.whenStable();
+
+    rows()[0].click();
+    await Promise.resolve();
+
+    expect(ran).toEqual(['quick-fix-0']);
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('dismissing_givesTheEditorFocusBack', async () => {
     await openMenu();
     const panel: HTMLElement | null = document.querySelector<HTMLElement>(

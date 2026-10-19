@@ -47,6 +47,68 @@ interface RegisteredRenameProvider {
 }
 
 /**
+ * One code-action provider registered with a Monaco instance, with the languages it serves (#1016).
+ */
+interface RegisteredCodeActionProvider {
+  /**
+   * Gets the language selector it was registered for.
+   */
+  readonly selector: MonacoApi.languages.LanguageSelector;
+
+  /**
+   * Gets the provider.
+   */
+  readonly provider: MonacoApi.languages.CodeActionProvider;
+}
+
+/**
+ * One code action a Monaco provider offered (#1016), with the provider that can fill it in.
+ */
+export interface ProvidedCodeAction {
+  /**
+   * Gets the action, as the provider offered it.
+   */
+  readonly action: MonacoApi.languages.CodeAction;
+
+  /**
+   * Gets the provider that offered it.
+   */
+  readonly provider: MonacoApi.languages.CodeActionProvider;
+}
+
+/**
+ * The code actions Monaco's providers offered at a span (#1016), held until they are released.
+ */
+export interface ProvidedCodeActions {
+  /**
+   * Gets the actions, the most recently registered provider's first.
+   */
+  readonly actions: readonly ProvidedCodeAction[];
+
+  /**
+   * Releases what the providers hold for their actions. Called once an action has been chosen and
+   * run, or the actions are no longer wanted.
+   */
+  dispose(): void;
+}
+
+/**
+ * A workspace edit from one of Monaco's providers, by document (#1016).
+ */
+export interface ProvidedWorkspaceEdit {
+  /**
+   * Gets the edits, by document, in the provider's order.
+   */
+  readonly files: readonly ProvidedFileEdits[];
+
+  /**
+   * Gets how many file operations (creating, renaming or deleting a file) it held, which are not
+   * applied.
+   */
+  readonly fileOperations: number;
+}
+
+/**
  * What a rename provider says of the symbol at a position, before the new name is asked for (#1015).
  */
 export type ProvidedRenameLocation =
@@ -146,6 +208,11 @@ interface CapturedCapabilities {
   readonly renames: RegisteredRenameProvider[];
 
   /**
+   * Gets the code-action providers registered, in registration order (#1016).
+   */
+  readonly codeActions: RegisteredCodeActionProvider[];
+
+  /**
    * Gets the comment rules each language's configuration set, by language identifier.
    */
   readonly comments: Map<string, MonacoApi.languages.CommentRule>;
@@ -180,6 +247,15 @@ interface CapabilityRegistration {
   ) => MonacoApi.IDisposable;
 
   /**
+   * Registers a code-action provider for the languages a selector selects.
+   */
+  registerCodeActionProvider: (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.CodeActionProvider,
+    metadata?: MonacoApi.languages.CodeActionProviderMetadata,
+  ) => MonacoApi.IDisposable;
+
+  /**
    * Sets a language's configuration: its brackets, comments and the like.
    */
   setLanguageConfiguration: (
@@ -195,11 +271,27 @@ interface CapabilityRegistration {
 const CAPTURED: WeakMap<object, CapturedCapabilities> = new WeakMap<object, CapturedCapabilities>();
 
 /**
+ * Holds the providers Studio registers itself to answer Monaco's own questions (#1016), which the
+ * capabilities below pass over: they stand in for a language server that Studio asks directly.
+ */
+const STUDIO_PROVIDERS: WeakSet<object> = new WeakSet<object>();
+
+/**
+ * Marks a provider as Studio's own (#1016): registered to answer a question of Monaco's on a language
+ * server's behalf, so whether a language offers code actions, and the actions themselves, are never
+ * read from it — Studio asks the server itself.
+ * @param provider The provider.
+ */
+export function markStudioProvider(provider: object): void {
+  STUDIO_PROVIDERS.add(provider);
+}
+
+/**
  * Starts recording what a Monaco instance's languages can do for Studio's right-click menu (#1012):
  * the definition providers registered with it, which Go to Definition asks where no language server
  * answers and which decide whether the item shows; the reference providers, which Find All References
- * asks the same way (#1014); the rename providers, which Rename Symbol asks the same way (#1015); and
- * the comment rules each language's configuration sets, which decide whether Toggle Comment does.
+ * asks the same way (#1014); the rename providers, which Rename Symbol asks the same way (#1015); the
+ * code-action providers, which the quick-fix menu asks the same way (#1016); and the comment rules each language's configuration sets, which decide whether Toggle Comment does.
  *
  * Monaco keeps these registries internal, as it does the document-symbol providers (see
  * {@link import('./monaco-symbol-providers').captureDocumentSymbolProviders}), so the public
@@ -216,6 +308,7 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     definitions: [],
     references: [],
     renames: [],
+    codeActions: [],
     comments: new Map(),
   };
   CAPTURED.set(monaco.languages, captured);
@@ -227,6 +320,8 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     languages.registerReferenceProvider.bind(languages);
   const registerRename: CapabilityRegistration['registerRenameProvider'] =
     languages.registerRenameProvider.bind(languages);
+  const registerCodeActions: CapabilityRegistration['registerCodeActionProvider'] =
+    languages.registerCodeActionProvider.bind(languages);
   const setConfiguration: CapabilityRegistration['setLanguageConfiguration'] =
     languages.setLanguageConfiguration.bind(languages);
   languages.registerDefinitionProvider = (
@@ -275,6 +370,24 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
         const index: number = captured.renames.indexOf(entry);
         if (index >= 0) {
           captured.renames.splice(index, 1);
+        }
+        disposable.dispose();
+      },
+    };
+  };
+  languages.registerCodeActionProvider = (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.CodeActionProvider,
+    metadata?: MonacoApi.languages.CodeActionProviderMetadata,
+  ): MonacoApi.IDisposable => {
+    const entry: RegisteredCodeActionProvider = { selector, provider };
+    captured.codeActions.push(entry);
+    const disposable: MonacoApi.IDisposable = registerCodeActions(selector, provider, metadata);
+    return {
+      dispose: (): void => {
+        const index: number = captured.codeActions.indexOf(entry);
+        if (index >= 0) {
+          captured.codeActions.splice(index, 1);
         }
         disposable.dispose();
       },
@@ -540,6 +653,159 @@ export async function providedRenameEdits(
 }
 
 /**
+ * Determines whether a code-action provider registered with a Monaco instance — other than Studio's
+ * own, which stand in for a language server — serves a language (#1016).
+ * @param monaco The Monaco instance.
+ * @param language The language identifier.
+ * @returns Returns true when one does.
+ */
+export function hasCodeActionProvider(monaco: typeof MonacoApi, language: string): boolean {
+  return codeActionCandidates(monaco, language).length > 0;
+}
+
+/**
+ * Asks the code-action providers registered with a Monaco instance — other than Studio's own — for the
+ * code actions at a span (#1016), the most recently registered first. Every provider that serves the
+ * language is asked, as Monaco asks them all; one that fails is skipped. What the providers hold for
+ * their actions is released by the answer's `dispose`.
+ * @param monaco The Monaco instance the model belongs to.
+ * @param model The model.
+ * @param range The span, one-based: the selection, or the caret as an empty span.
+ * @param markers The markers on the span, which the providers find their fixes by.
+ * @param only The kind to ask for, or undefined for every kind.
+ * @returns Returns the actions, empty when no provider serves the language or none had any.
+ */
+export async function providedCodeActions(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  range: MonacoApi.IRange,
+  markers: readonly MonacoApi.editor.IMarkerData[],
+  only?: string,
+): Promise<ProvidedCodeActions> {
+  const actions: ProvidedCodeAction[] = [];
+  const lists: MonacoApi.languages.CodeActionList[] = [];
+  const span: MonacoApi.Range = new monaco.Range(
+    range.startLineNumber,
+    range.startColumn,
+    range.endLineNumber,
+    range.endColumn,
+  );
+  for (const { provider } of codeActionCandidates(monaco, model.getLanguageId())) {
+    const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+    try {
+      const list: MonacoApi.languages.CodeActionList | null =
+        (await provider.provideCodeActions(
+          model,
+          span,
+          {
+            markers: [...markers],
+            ...(only === undefined ? {} : { only }),
+            trigger: monaco.languages.CodeActionTriggerType.Invoke,
+          },
+          source.token,
+        )) ?? null;
+      if (list === null) {
+        continue;
+      }
+      lists.push(list);
+      for (const action of list.actions) {
+        actions.push({ action, provider });
+      }
+    } catch {
+      // A provider that fails offers nothing; the next one may.
+    } finally {
+      source.dispose();
+    }
+  }
+  return {
+    actions,
+    dispose: (): void => {
+      for (const list of lists) {
+        list.dispose();
+      }
+    },
+  };
+}
+
+/**
+ * Asks the provider that offered a code action to fill in its edit (#1016), which a provider may leave
+ * out until the action is chosen. An action with an edit, a provider that cannot fill one in, and a
+ * provider that fails all leave the action as it was.
+ * @param monaco The Monaco instance the provider is registered with.
+ * @param provided The action, and the provider that offered it.
+ * @returns Returns the action, filled in where the provider filled it in.
+ */
+export async function resolveProvidedCodeAction(
+  monaco: typeof MonacoApi,
+  provided: ProvidedCodeAction,
+): Promise<MonacoApi.languages.CodeAction> {
+  const { action, provider } = provided;
+  if (action.edit !== undefined || provider.resolveCodeAction === undefined) {
+    return action;
+  }
+  const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+  try {
+    return (await provider.resolveCodeAction(action, source.token)) ?? action;
+  } catch {
+    return action;
+  } finally {
+    source.dispose();
+  }
+}
+
+/**
+ * Groups a workspace edit from one of Monaco's providers by document, counting the file operations it
+ * holds rather than applying them (#1016).
+ * @param edit The provider's edit.
+ * @returns Returns the edits, by document, in the provider's order.
+ */
+export function groupWorkspaceEdit(edit: MonacoApi.languages.WorkspaceEdit): ProvidedWorkspaceEdit {
+  const files: Map<string, { range: MonacoApi.IRange; text: string }[]> = new Map<
+    string,
+    { range: MonacoApi.IRange; text: string }[]
+  >();
+  let fileOperations: number = 0;
+  for (const entry of edit.edits) {
+    if (!('textEdit' in entry)) {
+      fileOperations += 1;
+      continue;
+    }
+    const uri: string = entry.resource.toString();
+    const edits: { range: MonacoApi.IRange; text: string }[] = files.get(uri) ?? [];
+    edits.push({ range: entry.textEdit.range, text: entry.textEdit.text });
+    files.set(uri, edits);
+  }
+  return {
+    files: [...files].map(
+      ([uri, edits]: [string, { range: MonacoApi.IRange; text: string }[]]): ProvidedFileEdits => ({
+        uri,
+        edits,
+      }),
+    ),
+    fileOperations,
+  };
+}
+
+/**
+ * Lists the code-action providers that serve a language, the most recently registered first, leaving
+ * out Studio's own.
+ * @param monaco The Monaco instance.
+ * @param language The language identifier.
+ * @returns Returns the providers.
+ */
+function codeActionCandidates(
+  monaco: typeof MonacoApi,
+  language: string,
+): readonly RegisteredCodeActionProvider[] {
+  return [...(CAPTURED.get(monaco.languages)?.codeActions ?? [])]
+    .reverse()
+    .filter(
+      (entry: RegisteredCodeActionProvider): boolean =>
+        !STUDIO_PROVIDERS.has(entry.provider) && selects(entry.selector, language),
+    );
+}
+
+/**
  * Lists the rename providers that serve a language, the most recently registered first.
  * @param monaco The Monaco instance.
  * @param language The language identifier.
@@ -561,31 +827,7 @@ function renameCandidates(
  * @returns Returns the edits, by document, in the provider's order.
  */
 function groupEdits(answer: MonacoApi.languages.WorkspaceEdit): ProvidedRename {
-  const files: Map<string, { range: MonacoApi.IRange; text: string }[]> = new Map<
-    string,
-    { range: MonacoApi.IRange; text: string }[]
-  >();
-  let fileOperations: number = 0;
-  for (const entry of answer.edits) {
-    if (!('textEdit' in entry)) {
-      fileOperations += 1;
-      continue;
-    }
-    const uri: string = entry.resource.toString();
-    const edits: { range: MonacoApi.IRange; text: string }[] = files.get(uri) ?? [];
-    edits.push({ range: entry.textEdit.range, text: entry.textEdit.text });
-    files.set(uri, edits);
-  }
-  return {
-    kind: 'edits',
-    files: [...files].map(
-      ([uri, edits]: [string, { range: MonacoApi.IRange; text: string }[]]): ProvidedFileEdits => ({
-        uri,
-        edits,
-      }),
-    ),
-    fileOperations,
-  };
+  return { kind: 'edits', ...groupWorkspaceEdit(answer) };
 }
 
 /**

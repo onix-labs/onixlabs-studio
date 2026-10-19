@@ -24,7 +24,7 @@ import {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
-import { RenameConfirmation, RenameConfirmationFile } from './rename-confirmation';
+import { confirmationFiles, RenameConfirmation } from './rename-confirmation';
 
 /**
  * Holds the reason shown when a symbol cannot be renamed and nothing said why.
@@ -158,7 +158,7 @@ export class RenameSymbol {
       const confirmed: boolean = await this.confirmation.ask({
         oldName: prepared.placeholder,
         newName,
-        files: this.listFiles(edits.files, monaco),
+        files: confirmationFiles(edits.files, monaco, this.editors),
       });
       if (!confirmed) {
         this.log.debug('rename', 'Rename across files cancelled');
@@ -240,36 +240,6 @@ export class RenameSymbol {
   }
 
   /**
-   * Lists the files a rename changes for its confirmation: each by name, in the folder it is in below
-   * the one they all share, with how many places change and whether it is open.
-   * @param files The files and their edits.
-   * @param monaco The Monaco instance whose models hold the open files, or undefined.
-   * @returns Returns the files, in the rename's order.
-   */
-  private listFiles(
-    files: readonly FileTextEdits[],
-    monaco: typeof MonacoApi | undefined,
-  ): readonly RenameConfirmationFile[] {
-    const models: ReadonlySet<string> = new Set<string>(
-      (monaco?.editor.getModels() ?? []).map((model: MonacoApi.editor.ITextModel): string =>
-        model.uri.toString(),
-      ),
-    );
-    const shared: string = sharedFolder(files.map((file: FileTextEdits): string => file.path));
-    return files.map((file: FileTextEdits): RenameConfirmationFile => {
-      const slash: number = Math.max(file.path.lastIndexOf('/'), file.path.lastIndexOf('\\'));
-      const folder: string = slash < 0 ? '' : file.path.slice(0, slash);
-      return {
-        path: file.path,
-        name: file.path.slice(slash + 1),
-        folder: folder.length > shared.length ? folder.slice(shared.length + 1) : '',
-        edits: file.edits.length,
-        open: this.editors.modelUriForPath(file.path) !== undefined || models.has(file.path),
-      };
-    });
-  }
-
-  /**
    * Tells the user how a rename went: nothing when it all applied in one file, which is in front of
    * them; a note when it applied across several; and each file skipped, with why, when any was.
    * @param oldName The symbol's old name.
@@ -320,27 +290,6 @@ export class RenameSymbol {
       });
     }
   }
-}
-
-/**
- * Finds the folder every path shares: the longest run of whole folders they all start with.
- * @param paths The paths.
- * @returns Returns the folder, or empty when they share none.
- */
-function sharedFolder(paths: readonly string[]): string {
-  const folders: readonly string[][] = paths.map((path: string): string[] =>
-    path.split(/[\\/]/).slice(0, -1),
-  );
-  const first: readonly string[] = folders[0] ?? [];
-  let length: number = first.length;
-  for (const folder of folders) {
-    let index: number = 0;
-    while (index < length && folder[index] === first[index]) {
-      index++;
-    }
-    length = index;
-  }
-  return first.slice(0, length).join('/');
 }
 
 /**

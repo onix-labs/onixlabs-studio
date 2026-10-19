@@ -271,6 +271,31 @@ describe('Go to dialogs', () => {
       expect(confirmation.pending()).toBeNull();
     });
 
+    it('aCodeActionAcrossFiles_asksItsOwnQuestion_withItsOwnButton (#1016)', async () => {
+      const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
+      const fixture: ComponentFixture<RenameConfirmModal> =
+        TestBed.createComponent(RenameConfirmModal);
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({
+        oldName: 'Move to a new file',
+        newName: '',
+        title: 'Apply “Move to a new file”?',
+        confirmLabel: 'Apply',
+        files: [
+          { path: '/ws/a.ts', name: 'a.ts', folder: '', edits: 2, open: false },
+          { path: '/ws/b.ts', name: 'b.ts', folder: '', edits: 1, open: false },
+        ],
+      });
+      fixture.detectChanges();
+      const host: HTMLElement = flush();
+
+      expect(host.textContent).toContain('Apply “Move to a new file”?');
+      expect(host.textContent).not.toContain('Rename');
+      button(host, 'Apply').click();
+
+      await expect(answer).resolves.toBe(true);
+    });
+
     it('cancel_answersNo', async () => {
       const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
       const fixture: ComponentFixture<RenameConfirmModal> =

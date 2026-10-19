@@ -69,6 +69,35 @@ describe('LspManager (#1015)', () => {
     });
   });
 
+  it('advertisesCodeActionLiterals_resolveAndData_andExecuteCommand (#1016)', () => {
+    const capabilities: ClientCapabilities = clientCapabilities();
+
+    expect(capabilities.textDocument?.codeAction).toEqual({
+      dynamicRegistration: false,
+      codeActionLiteralSupport: {
+        codeActionKind: {
+          valueSet: [
+            '',
+            'quickfix',
+            'refactor',
+            'refactor.extract',
+            'refactor.inline',
+            'refactor.rewrite',
+            'source',
+            'source.organizeImports',
+            'source.fixAll',
+          ],
+        },
+      },
+      isPreferredSupport: true,
+      disabledSupport: true,
+      dataSupport: true,
+      resolveSupport: { properties: ['edit', 'command'] },
+      honorsChangeAnnotations: false,
+    });
+    expect(capabilities.workspace?.executeCommand).toEqual({ dynamicRegistration: false });
+  });
+
   it('forwardsAServersApplyEditToTheFirstLiveRendererHoldingTheSession_andAnswersWithItsResult', async () => {
     const forwarder: InstanceType<typeof LspApplyEditForwarder> = new LspApplyEditForwarder();
     const forwarded: { sessionId: string; target: WebContents | null; params: unknown }[] = [];

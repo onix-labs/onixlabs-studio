@@ -26,6 +26,34 @@ export function clientCapabilities(): ClientCapabilities {
       // Studio's Rename Symbol (#1015) asks the server first whether the symbol at the caret can be
       // renamed, and what its name spans, before it asks for the new name.
       rename: { prepareSupport: true },
+      // Studio's quick-fix menu (#1016) lists a server's code actions as literals — fixes first, the
+      // preferred ones at the top, refactors and source actions below — with the ones that cannot run
+      // greyed and saying why. A server may leave an action's edit and command out until it is chosen,
+      // keeping data of its own on it to fill them in from (`codeAction/resolve`). Change annotations
+      // are not shown, so none is asked to be honoured.
+      codeAction: {
+        dynamicRegistration: false,
+        codeActionLiteralSupport: {
+          codeActionKind: {
+            valueSet: [
+              '',
+              'quickfix',
+              'refactor',
+              'refactor.extract',
+              'refactor.inline',
+              'refactor.rewrite',
+              'source',
+              'source.organizeImports',
+              'source.fixAll',
+            ],
+          },
+        },
+        isPreferredSupport: true,
+        disabledSupport: true,
+        dataSupport: true,
+        resolveSupport: { properties: ['edit', 'command'] },
+        honorsChangeAnnotations: false,
+      },
       // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
       // the standard one and feeds Monaco, colouring types, members, and parameters.
       semanticTokens: {
@@ -53,6 +81,9 @@ export function clientCapabilities(): ClientCapabilities {
       // sends anyway are refused and named rather than half-applied.
       applyEdit: true,
       workspaceEdit: { documentChanges: true, resourceOperations: [] },
+      // A chosen code action's command runs on the server (#1016), when the server lists it among
+      // the commands it runs; whatever it changes comes back as a `workspace/applyEdit`.
+      executeCommand: { dynamicRegistration: false },
     },
     window: { workDoneProgress: true },
   };
