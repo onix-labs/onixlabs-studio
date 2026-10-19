@@ -560,6 +560,31 @@ describe('EditorContextMenu (#1012)', () => {
     });
   });
 
+  describe('shift+F10 (#1024)', () => {
+    it('opensTheRightClickMenuAtTheCaret_withItsRows_runningThemAsARightClickWould', () => {
+      const menu: EditorContextMenu = build();
+      const fake: FakeEditor = fakeEditor({
+        selection: { startLineNumber: 3, startColumn: 7, endLineNumber: 3, endColumn: 7 },
+      });
+      const opened: EditorContextMenuSubject[] = [];
+      expect(menu.openAtCaretFromKeyboard(fake.editor)).toBe(false);
+      menu.attach(fake.editor, {
+        open: (_event: MouseEvent, subject: EditorContextMenuSubject): void =>
+          void opened.push(subject),
+      });
+      const find: MockInstance<FindRouter['openFromEditor']> = vi
+        .spyOn(TestBed.inject(FindRouter), 'openFromEditor')
+        .mockImplementation((): void => undefined);
+
+      expect(menu.openAtCaretFromKeyboard(fake.editor)).toBe(true);
+
+      expect(fake.calls).toEqual(['reveal 3:7']);
+      expect(opened[0].items).toEqual(menu.itemsFor(fake.editor));
+      opened[0].run?.('find');
+      expect(find).toHaveBeenCalledWith(fake.editor, 'find');
+    });
+  });
+
   describe('right-click', () => {
     it('outsideTheSelection_movesTheCaretToTheClick_andOpensAtThePointer', () => {
       const menu: EditorContextMenu = build();

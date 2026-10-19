@@ -11,9 +11,11 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToDialogHost } from './go-to-dialog-host';
 import { GoToLineModal } from './go-to-line-modal';
 import { GoToSymbolModal } from './go-to-symbol-modal';
+import { LineTerminatorsConfirmModal } from './line-terminators-confirm-modal';
 import { RenameConfirmModal } from './rename-confirm-modal';
 import { RenameSymbolModal } from './rename-symbol-modal';
 import { RenameConfirmation } from '@shared/angular/services/rename/rename-confirmation';
+import { LineTerminatorsConfirmation } from '@shared/angular/services/line-terminators/line-terminators-confirmation';
 
 /**
  * Builds a symbol on the given line.
@@ -311,6 +313,52 @@ describe('Go to dialogs', () => {
       button(flush(), 'Cancel').click();
 
       await expect(answer).resolves.toBe(false);
+    });
+  });
+
+  describe('LineTerminatorsConfirmModal (#1024)', () => {
+    it('namesTheDocument_andAnswersRemoveThem', async () => {
+      const confirmation: LineTerminatorsConfirmation = TestBed.inject(LineTerminatorsConfirmation);
+      const fixture: ComponentFixture<LineTerminatorsConfirmModal> = TestBed.createComponent(
+        LineTerminatorsConfirmModal,
+      );
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({ document: '“notes.txt”' });
+      fixture.detectChanges();
+      const host: HTMLElement = flush();
+
+      expect(host.textContent).toContain('Remove unusual line terminators?');
+      expect(host.textContent).toContain('“notes.txt” contains Line Separator');
+      button(host, 'Remove Them').click();
+
+      await expect(answer).resolves.toBe(true);
+      expect(confirmation.pending()).toBeNull();
+    });
+
+    it('leaveAsIs_answersNo', async () => {
+      const confirmation: LineTerminatorsConfirmation = TestBed.inject(LineTerminatorsConfirmation);
+      const fixture: ComponentFixture<LineTerminatorsConfirmModal> = TestBed.createComponent(
+        LineTerminatorsConfirmModal,
+      );
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({ document: 'This document' });
+      fixture.detectChanges();
+
+      button(flush(), 'Leave As Is').click();
+
+      await expect(answer).resolves.toBe(false);
+    });
+
+    it('askingAgain_answersTheFirstLeaveAsIs', async () => {
+      const confirmation: LineTerminatorsConfirmation = TestBed.inject(LineTerminatorsConfirmation);
+
+      const first: Promise<boolean> = confirmation.ask({ document: 'This document' });
+      const second: Promise<boolean> = confirmation.ask({ document: '“b.txt”' });
+
+      await expect(first).resolves.toBe(false);
+      expect(confirmation.pending()).toEqual({ document: '“b.txt”' });
+      confirmation.answer(true);
+      await expect(second).resolves.toBe(true);
     });
   });
 

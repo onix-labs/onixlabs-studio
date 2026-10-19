@@ -294,6 +294,70 @@ describe('installQuickFixCommands (#1016)', () => {
     expect(installed.fixed).toEqual([]);
   });
 
+  it('aKindToApplyStraightAway_asksMonacosModelWithoutAContext_soNoOverlayMessageCanShow', () => {
+    const triggers: unknown[] = [];
+    class Controller extends FakeCodeActionController {
+      /**
+       * Records what Monaco's code-action model is asked for.
+       * @param trigger The request.
+       */
+      public _trigger(trigger: unknown): void {
+        triggers.push(trigger);
+      }
+    }
+    const installed: Installed = install([]);
+    const editor: FakeEditor = fakeEditor(false, Controller);
+    installed.create(editor.editor);
+
+    controllerOf(editor.editor).manualTriggerAtCurrentPosition(
+      'No organize imports action available',
+      'default',
+      { include: 'source.organizeImports' },
+      'ifSingle',
+    );
+
+    expect(triggers).toEqual([
+      {
+        type: 1,
+        triggerAction: 'default',
+        filter: { include: 'source.organizeImports' },
+        autoApply: 'ifSingle',
+      },
+    ]);
+    expect(FakeCodeActionController.opened).toEqual([]);
+    expect(installed.fixed).toEqual([]);
+  });
+
+  it('everyEditor_getsAStandInForMonacosLightbulb_soNoneIsEverBuilt', () => {
+    let built: number = 0;
+    class Controller extends FakeCodeActionController {
+      /**
+       * Stands in for Monaco's lazy lightbulb: reading its value builds it.
+       */
+      public _lightBulbWidget: { readonly value: unknown; readonly rawValue: unknown } = {
+        get value(): unknown {
+          built += 1;
+          return {};
+        },
+        rawValue: undefined,
+      };
+    }
+    const installed: Installed = install([]);
+    const first: FakeEditor = fakeEditor(false, Controller);
+    const second: FakeEditor = fakeEditor(false, Controller);
+    installed.create(first.editor);
+    installed.create(second.editor);
+
+    for (const editor of [first.editor, second.editor]) {
+      const lightbulb: { readonly value: unknown; readonly rawValue: unknown } = (
+        controllerOf(editor) as Controller
+      )._lightBulbWidget;
+      expect(lightbulb.value).toBeUndefined();
+      expect(lightbulb.rawValue).toBeUndefined();
+    }
+    expect(built).toBe(0);
+  });
+
   it('anEditorWithoutTheContribution_isLeft_andTheNextOneTakenOver', async () => {
     class Controller extends FakeCodeActionController {}
     const installed: Installed = install([]);
