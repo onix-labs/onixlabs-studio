@@ -20,6 +20,12 @@ export const STUDIO_RENAME_SYMBOL_COMMAND: string = 'studio.renameSymbol';
 export const RENAME_CONTRIBUTION: string = 'editor.contrib.renameController';
 
 /**
+ * Names the content widget Monaco's rename controller attaches to its editor when it is made: the
+ * rename box Studio's own prompt replaces.
+ */
+export const MONACO_RENAME_WIDGET_ID: string = '__renameInputWidget';
+
+/**
  * The part of the rename contribution Studio replaces: the run that opens Monaco's rename box, and
  * the editor it belongs to.
  */
@@ -98,5 +104,13 @@ export function takeOverRename(
     onRename(this.editor ?? editor);
     return Promise.resolve();
   };
+  // ⛔ Reaching the controller built it, and Monaco's controller builds its rename box as it is made,
+  // attached to this editor as a hidden content widget. Nothing can show it now that every route is
+  // Studio's, so it is taken out of the page: Monaco's UI is never in the document, even unseen.
+  editor.removeContentWidget({
+    getId: (): string => MONACO_RENAME_WIDGET_ID,
+    getDomNode: (): HTMLElement => editor.getContainerDomNode(),
+    getPosition: (): null => null,
+  });
   return true;
 }

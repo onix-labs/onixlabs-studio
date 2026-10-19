@@ -3,6 +3,7 @@ import { FIND_PASSTHROUGH_CONTEXT_KEY } from './monaco-find-commands';
 import {
   installRenameCommands,
   MONACO_RENAME_COMMAND,
+  MONACO_RENAME_WIDGET_ID,
   RENAME_CONTRIBUTION,
   STUDIO_RENAME_SYMBOL_COMMAND,
 } from './monaco-rename-commands';
@@ -98,7 +99,12 @@ function fakeEditor(
   controller: typeof FakeRenameController | null = FakeRenameController,
 ): MonacoApi.editor.ICodeEditor {
   let contribution: FakeRenameController | null = null;
+  const removed: string[] = [];
   const editor: MonacoApi.editor.ICodeEditor = {
+    removedWidgets: removed,
+    getContainerDomNode: (): HTMLElement => document.createElement('div'),
+    removeContentWidget: (widget: MonacoApi.editor.IContentWidget): void =>
+      void removed.push(widget.getId()),
     hasTextFocus: (): boolean => focused,
     hasWidgetFocus: (): boolean => focused,
     getContribution: (id: string): unknown => {
@@ -153,6 +159,20 @@ describe('installRenameCommands (#1015)', () => {
 
     expect(installed.renamed).toEqual([first, second]);
     expect(FakeRenameController.opened).toBe(0);
+  });
+
+  it('takesMonacosRenameBoxOutOfThePage_whenReachingTheControllerBuiltIt', () => {
+    // Reaching the controller builds it, and it attaches its rename box to the editor, hidden. Left
+    // in, it was Monaco UI in the document, and it broke an E2E locator for the code editor.
+    class Controller extends FakeRenameController {}
+    const installed: Installed = install([]);
+    const editor: MonacoApi.editor.ICodeEditor = fakeEditor(false, Controller);
+
+    installed.create(editor);
+
+    expect((editor as unknown as { removedWidgets: string[] }).removedWidgets).toEqual([
+      MONACO_RENAME_WIDGET_ID,
+    ]);
   });
 
   it('anEditorWithoutTheContribution_isLeft_andTheNextOneTakenOver', async () => {
