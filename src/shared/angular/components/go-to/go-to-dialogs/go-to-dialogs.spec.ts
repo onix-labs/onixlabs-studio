@@ -11,6 +11,9 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToDialogHost } from './go-to-dialog-host';
 import { GoToLineModal } from './go-to-line-modal';
 import { GoToSymbolModal } from './go-to-symbol-modal';
+import { RenameConfirmModal } from './rename-confirm-modal';
+import { RenameSymbolModal } from './rename-symbol-modal';
+import { RenameConfirmation } from '@shared/angular/services/rename/rename-confirmation';
 
 /**
  * Builds a symbol on the given line.
@@ -188,7 +191,128 @@ describe('Go to dialogs', () => {
     });
   });
 
+  describe('RenameSymbolModal (#1015)', () => {
+    let fixture: ComponentFixture<RenameSymbolModal>;
+    let renamed: string[];
+
+    beforeEach(() => {
+      fixture = TestBed.createComponent(RenameSymbolModal);
+      fixture.componentRef.setInput('open', true);
+      fixture.componentRef.setInput('currentName', 'greet');
+      renamed = [];
+      fixture.componentInstance.renamed.subscribe((name: string): number => renamed.push(name));
+      fixture.detectChanges();
+    });
+
+    it('opensHoldingTheName_andOffersRenameOnlyForANewOne', () => {
+      let host: HTMLElement = flush();
+      expect(host.querySelector<HTMLInputElement>('app-text-field input')?.value).toBe('greet');
+      expect(button(host, 'Rename').disabled).toBe(true);
+
+      type(host, 'greeting');
+      host = flush();
+      expect(button(host, 'Rename').disabled).toBe(false);
+      button(host, 'Rename').click();
+
+      expect(renamed).toEqual(['greeting']);
+    });
+
+    it('enter_renames', () => {
+      const host: HTMLElement = flush();
+      type(host, 'salute');
+      flush();
+
+      press(host, 'Enter');
+
+      expect(renamed).toEqual(['salute']);
+    });
+
+    it('cancel_dismisses', () => {
+      let dismissed: number = 0;
+      fixture.componentInstance.dismissed.subscribe((): number => (dismissed += 1));
+
+      button(flush(), 'Cancel').click();
+
+      expect(dismissed).toBe(1);
+      expect(renamed).toEqual([]);
+    });
+  });
+
+  describe('RenameConfirmModal (#1015)', () => {
+    it('listsEachFileWithItsChanges_andAnswersRenameOrCancel', async () => {
+      const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
+      const fixture: ComponentFixture<RenameConfirmModal> =
+        TestBed.createComponent(RenameConfirmModal);
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({
+        oldName: 'greet',
+        newName: 'salute',
+        files: [
+          { path: '/ws/src/a.ts', name: 'a.ts', folder: 'src', edits: 3, open: true },
+          { path: '/ws/lib/b.ts', name: 'b.ts', folder: 'lib', edits: 1, open: false },
+        ],
+      });
+      fixture.detectChanges();
+      const host: HTMLElement = flush();
+
+      expect(host.textContent).toContain('Rename “greet” to “salute”?');
+      expect(host.textContent).toContain('4 changes in 2 files.');
+      expect(host.textContent).toContain('Open files change in their editors, unsaved');
+      const rows: string[] = Array.from(host.querySelectorAll<HTMLElement>('.list-row')).map(
+        (row: HTMLElement): string =>
+          Array.from(row.querySelectorAll<HTMLElement>('span[class^="go-to-dialog__"]'))
+            .map((span: HTMLElement): string => (span.textContent ?? '').trim())
+            .join(' | '),
+      );
+      expect(rows).toEqual(['a.ts | src | 3 changes · open, unsaved', 'b.ts | lib | 1 change']);
+      button(host, 'Rename').click();
+
+      await expect(answer).resolves.toBe(true);
+      expect(confirmation.pending()).toBeNull();
+    });
+
+    it('cancel_answersNo', async () => {
+      const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
+      const fixture: ComponentFixture<RenameConfirmModal> =
+        TestBed.createComponent(RenameConfirmModal);
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({
+        oldName: 'a',
+        newName: 'b',
+        files: [{ path: '/ws/a.ts', name: 'a.ts', folder: '', edits: 2, open: false }],
+      });
+      fixture.detectChanges();
+
+      button(flush(), 'Cancel').click();
+
+      await expect(answer).resolves.toBe(false);
+    });
+  });
+
   describe('GoToDialogHost', () => {
+    it('showsTheRenameDialog_andAnswersTheNameEntered (#1015)', async () => {
+      TestBed.inject(Settings).set('textEditor.goToStyle', 'dialogs');
+      const fixture: ComponentFixture<GoToDialogHost> = TestBed.createComponent(GoToDialogHost);
+      fixture.detectChanges();
+      const editor: MonacoApi.editor.ICodeEditor = {
+        focus: (): void => undefined,
+      } as unknown as MonacoApi.editor.ICodeEditor;
+
+      const answer: Promise<string | null> = TestBed.inject(GoToPresenter).promptRename({
+        editor,
+        currentName: 'greet',
+        injector: null,
+      });
+      fixture.detectChanges();
+      let host: HTMLElement = flush();
+      expect(host.textContent).toContain('Rename Symbol');
+      type(host, 'salute');
+      host = flush();
+      button(host, 'Rename').click();
+
+      await expect(answer).resolves.toBe('salute');
+    });
+
     it('showsThePresentersDialog_andGoesWherePicked', () => {
       TestBed.overrideProvider(GoToSymbols, {
         useValue: { symbolsFor: (): Promise<readonly GoToSymbol[]> => Promise.resolve([]) },

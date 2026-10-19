@@ -2,12 +2,16 @@ import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
+  DiskFileEdits,
+  ReplaceFailure,
   ReplaceRequest,
   ReplaceResponse,
   SearchChannel,
   SearchClient,
   SearchRequest,
   SearchResponse,
+  TextEditsRequest,
+  TextEditsResponse,
 } from '@shared/api/search-channels';
 
 /**
@@ -77,5 +81,26 @@ export class Search implements SearchClient {
         : `Replacing one '${request.query}' in ${request.target.path}`,
     );
     return this.bridge.invoke<ReplaceResponse>(SearchChannel.Replace, request);
+  }
+
+  /**
+   * Applies text edits to workspace files on disk (#1015): a rename's edits to the files no editor has
+   * open. The main process confines every file to an open workspace root.
+   * @param request The files and their edits.
+   * @returns Returns the files written and those that were not, or every file refused when the bridge
+   * is absent.
+   */
+  public async applyTextEdits(request: TextEditsRequest): Promise<TextEditsResponse> {
+    if (this.bridge === undefined) {
+      return {
+        written: [],
+        failed: request.files.map((file: DiskFileEdits): ReplaceFailure => ({
+          path: file.path,
+          reason: 'Files can only be changed on disk in the desktop app.',
+        })),
+      };
+    }
+    this.log.info('Search', `Applying text edits to ${request.files.length} file(s) on disk`);
+    return this.bridge.invoke<TextEditsResponse>(SearchChannel.ApplyTextEdits, request);
   }
 }

@@ -3,6 +3,8 @@ import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
+  LspApplyEditReply,
+  LspApplyEditRequest,
   LspChannel,
   LspExit,
   LspMessage,
@@ -16,12 +18,23 @@ import { Output } from '../output/output';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspDocumentRef, LspFeatures } from './lsp-features';
+import { LspDocumentRef, LspFeatures, LspRenameSupport } from './lsp-features';
+import {
+  fromLspWorkspaceEdit,
+  SkippedEdit,
+  WorkspaceEditOutcome,
+} from '@shared/angular/services/workspace-edit/workspace-edit';
+import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
-import { saveIncludesText, semanticLegendOf, supportsPullDiagnostics } from './lsp-capabilities';
+import {
+  renameSupportOf,
+  saveIncludesText,
+  semanticLegendOf,
+  supportsPullDiagnostics,
+} from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
@@ -329,6 +342,11 @@ export class LspClient implements OnDestroy {
   private readonly features: LspFeatures = inject(LspFeatures);
 
   /**
+   * Holds the applier a server's own edits go through (#1015).
+   */
+  private readonly applier: WorkspaceEditApplier = inject(WorkspaceEditApplier);
+
+  /**
    * Holds the user's language-server settings, used to skip a server the user has disabled.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
@@ -392,6 +410,14 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds how each started session's server renames a symbol (#1015).
+   */
+  private readonly renameSupport: Map<string, LspRenameSupport> = new Map<
+    string,
+    LspRenameSupport
+  >();
+
+  /**
    * Holds the sessions whose server advertises pull diagnostics, so the client requests diagnostics via
    * `textDocument/diagnostic` (Roslyn and other pull-based servers) rather than relying on push.
    */
@@ -439,6 +465,11 @@ export class LspClient implements OnDestroy {
    * Holds the disposer for the server-exit subscription, or null when not subscribed.
    */
   private exitDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the disposer for the server-edit subscription (#1015), or null when not subscribed.
+   */
+  private applyEditDisposer: (() => void) | null = null;
 
   /**
    * Holds the disposer for the served-listener subscription, or null when not subscribed.
@@ -545,6 +576,9 @@ export class LspClient implements OnDestroy {
     this.exitDisposer = this.bridge.on(LspChannel.ServerExit, (...args: unknown[]): void =>
       this.onExit(args[0] as LspExit),
     );
+    this.applyEditDisposer = this.bridge.on(LspChannel.ApplyEdit, (...args: unknown[]): void => {
+      void this.onApplyEdit(args[0] as LspApplyEditRequest);
+    });
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
@@ -827,6 +861,7 @@ export class LspClient implements OnDestroy {
       // editor goes heuristic → correct in one step instead of flashing the degraded colours between.
       suppressServerTokens:
         FROZEN_TOKEN_SERVERS.has(tracked.serverId) && !this.settledSessions.has(sessionId),
+      rename: this.renameSupport.get(sessionId) ?? 'none',
     };
   }
 
@@ -1203,6 +1238,7 @@ export class LspClient implements OnDestroy {
   public ngOnDestroy(): void {
     this.notificationDisposer?.();
     this.exitDisposer?.();
+    this.applyEditDisposer?.();
     this.featuresDisposer?.();
     this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
@@ -1226,6 +1262,7 @@ export class LspClient implements OnDestroy {
     this.recolorTimers.clear();
     this.sessions.clear();
     this.legends.clear();
+    this.renameSupport.clear();
     this.pullCapable.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
@@ -1477,6 +1514,7 @@ export class LspClient implements OnDestroy {
         if (result.success) {
           this.startFailures.delete(sessionId);
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
+          this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           const pull: boolean = supportsPullDiagnostics(result.capabilities);
           if (pull) {
             this.pullCapable.add(sessionId);
@@ -1778,6 +1816,41 @@ export class LspClient implements OnDestroy {
         tracked.opened = false;
       }
     }
+  }
+
+  /**
+   * Applies a server's own edit (#1015) — a code action's, a command's — for one of this client's
+   * sessions, through the same applier a rename uses: open files in their editors, undoable and left
+   * unsaved, closed files on disk, confined to the workspace. The server is told whether all of it
+   * was applied and, when not, what was skipped and why. A session another client owns is left to it.
+   * @param request The server's edit, from the main process.
+   */
+  private async onApplyEdit(request: LspApplyEditRequest): Promise<void> {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    this.log.info('LspClient', 'Applying a server edit', request.label ?? '');
+    let reply: LspApplyEditReply;
+    try {
+      const outcome: WorkspaceEditOutcome = await this.applier.apply(
+        fromLspWorkspaceEdit(request.edit, uriToPath),
+        this.monaco.getMonaco(),
+      );
+      reply =
+        outcome.skipped.length === 0
+          ? { requestId: request.requestId, applied: true }
+          : {
+              requestId: request.requestId,
+              applied: false,
+              failureReason: outcome.skipped
+                .map((skipped: SkippedEdit): string => `${skipped.path}: ${skipped.reason}`)
+                .join('\n'),
+            };
+    } catch (error: unknown) {
+      this.log.error('LspClient', 'A server edit could not be applied', error);
+      reply = { requestId: request.requestId, applied: false, failureReason: String(error) };
+    }
+    this.bridge?.send(LspChannel.ApplyEditReply, reply);
   }
 
   /**

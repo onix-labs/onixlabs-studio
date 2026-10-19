@@ -16,7 +16,12 @@ import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
-import { LspFeatures } from './lsp-features';
+import { LspDocumentRef, LspFeatures } from './lsp-features';
+import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
+import type {
+  WorkspaceEditOutcome,
+  WorkspaceTextEdits,
+} from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus } from './lsp-status';
@@ -56,6 +61,8 @@ class FakeLsp implements Bridge {
   public diagnosticReport: unknown = null;
   private notificationListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
+  private applyEditListener: ((...args: unknown[]) => void) | null = null;
+  public readonly applyEditReplies: unknown[] = [];
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     switch (channel) {
@@ -101,6 +108,9 @@ class FakeLsp implements Bridge {
   }
 
   public send(channel: string, ...args: unknown[]): void {
+    if (channel === (LspChannel.ApplyEditReply as string)) {
+      this.applyEditReplies.push(args[0]);
+    }
     if (channel === (LspChannel.Notify as string)) {
       this.notifications.push({
         sessionId: args[0] as string,
@@ -117,6 +127,12 @@ class FakeLsp implements Bridge {
         this.notificationListener = null;
       };
     }
+    if (channel === (LspChannel.ApplyEdit as string)) {
+      this.applyEditListener = listener;
+      return (): void => {
+        this.applyEditListener = null;
+      };
+    }
     if (channel === (LspChannel.ServerExit as string)) {
       this.exitListener = listener;
       return (): void => {
@@ -124,6 +140,10 @@ class FakeLsp implements Bridge {
       };
     }
     return (): void => undefined;
+  }
+
+  public applyEdit(sessionId: string, edit: unknown): void {
+    this.applyEditListener?.({ requestId: 'r1', sessionId, edit });
   }
 
   public publishDiagnostics(sessionId: string, uri: string, diagnostics: unknown[]): void {
@@ -196,8 +216,10 @@ class FakeMonaco {
 class FakeFeatures {
   public readonly refreshes: (readonly string[] | undefined)[] = [];
   private servedListener: ((sessionId: string) => void) | null = null;
+  public resolver: ((path: string) => LspDocumentRef | null) | null = null;
 
-  public registerDocuments(): () => void {
+  public registerDocuments(resolver: (path: string) => LspDocumentRef | null): () => void {
+    this.resolver = resolver;
     return (): void => undefined;
   }
 
@@ -294,6 +316,113 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('rename and server edits (#1015)', () => {
+    let applied: WorkspaceTextEdits[];
+    let outcome: WorkspaceEditOutcome;
+
+    beforeEach(() => {
+      applied = [];
+      outcome = { applied: [{ path: '/root/src/a.ts', edits: 1, where: 'editor' }], skipped: [] };
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: WorkspaceEditApplier,
+            useValue: {
+              apply: (edits: WorkspaceTextEdits): Promise<WorkspaceEditOutcome> => {
+                applied.push(edits);
+                return Promise.resolve(outcome);
+              },
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Opens a TypeScript document, starting its session.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/src/a.ts',
+        languageId: 'typescript',
+        content: 'const a = 1;',
+      });
+      await flush();
+    }
+
+    it('aServersEditForItsOwnSession_isAppliedByPath_andAnsweredApplied', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.applyEdit('/root::typescript', {
+        changes: {
+          'file:///root/src/a.ts': [
+            {
+              range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+              newText: 'b',
+            },
+          ],
+        },
+      });
+      await flush();
+
+      expect(applied).toEqual([
+        {
+          files: [
+            {
+              path: '/root/src/a.ts',
+              edits: [
+                {
+                  range: { startLineNumber: 1, startColumn: 7, endLineNumber: 1, endColumn: 8 },
+                  text: 'b',
+                },
+              ],
+            },
+          ],
+          refused: [],
+        },
+      ]);
+      expect(lsp.applyEditReplies).toEqual([{ requestId: 'r1', applied: true }]);
+    });
+
+    it('anEditWithSkippedParts_isAnsweredNotApplied_namingThem', async () => {
+      outcome = { applied: [], skipped: [{ path: '/elsewhere/b.ts', reason: 'It is outside.' }] };
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.applyEdit('/root::typescript', { changes: {} });
+      await flush();
+
+      expect(lsp.applyEditReplies).toEqual([
+        { requestId: 'r1', applied: false, failureReason: '/elsewhere/b.ts: It is outside.' },
+      ]);
+    });
+
+    it('anEditForAnotherClientsSession_isLeftToIt', async () => {
+      build();
+
+      lsp.applyEdit('/other::typescript', { changes: {} });
+      await flush();
+
+      expect(applied).toEqual([]);
+      expect(lsp.applyEditReplies).toEqual([]);
+    });
+
+    it('documentRefs_carryHowTheSessionsServerRenames', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { renameProvider: { prepareProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
+    });
   });
 
   it('pullDiagnostics_ingestsAFullReportIntoTheAggregate', async () => {

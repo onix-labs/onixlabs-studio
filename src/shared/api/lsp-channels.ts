@@ -61,6 +61,18 @@ export enum LspChannel {
    * Gets the registered language servers and the languages each serves (invoke).
    */
   GetCatalogue = 'lsp:get-catalogue',
+
+  /**
+   * Asks the renderer to apply a server's `workspace/applyEdit` (#1015) — a code action's or a
+   * command's edits — through the same applier a rename uses (main→renderer, send). The renderer
+   * answers on {@link ApplyEditReply}.
+   */
+  ApplyEdit = 'lsp:apply-edit',
+
+  /**
+   * Answers an {@link ApplyEdit} with what was applied (renderer→main, send).
+   */
+  ApplyEditReply = 'lsp:apply-edit-reply',
 }
 
 /**
@@ -236,6 +248,52 @@ export interface LspMessage {
    * Gets the method parameters, whose shape is defined by the LSP method.
    */
   readonly params?: unknown;
+}
+
+/**
+ * Carries a server's `workspace/applyEdit` request to the renderer that holds its session (#1015).
+ */
+export interface LspApplyEditRequest {
+  /**
+   * Gets the correlation identifier the answer carries back.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the identifier of the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the server's label for the change, when it gave one.
+   */
+  readonly label?: string;
+
+  /**
+   * Gets the edit to apply: an LSP `WorkspaceEdit`, opaque at this layer and read by the renderer.
+   */
+  readonly edit: unknown;
+}
+
+/**
+ * Answers an {@link LspApplyEditRequest}: the LSP `ApplyWorkspaceEditResult`, with its correlation
+ * identifier.
+ */
+export interface LspApplyEditReply {
+  /**
+   * Gets the correlation identifier of the request this answers.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets whether every part of the edit was applied.
+   */
+  readonly applied: boolean;
+
+  /**
+   * Gets why some or all of the edit was not applied, when it was not.
+   */
+  readonly failureReason?: string;
 }
 
 /**

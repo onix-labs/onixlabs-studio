@@ -4,7 +4,13 @@ import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
-import { FEATURE_LANGUAGES, LspFeatures } from './lsp-features';
+import {
+  FEATURE_LANGUAGES,
+  LspFeatures,
+  LspRenameAnswer,
+  LspRenamePreparation,
+  LspRenameSupport,
+} from './lsp-features';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 
@@ -137,6 +143,7 @@ describe('LspFeatures', () => {
   let openModels: unknown[];
   let files: Record<string, string>;
   let reads: string[];
+  let renameSupport: LspRenameSupport | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -151,6 +158,7 @@ describe('LspFeatures', () => {
     openModels = [];
     files = {};
     reads = [];
+    renameSupport = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         if (channel === (FileChannel.Read as string)) {
@@ -162,7 +170,11 @@ describe('LspFeatures', () => {
         if (channel === (LspChannel.Request as string)) {
           const [sessionId, method, params] = args as [string, string, unknown];
           requests.push({ sessionId, method, params });
-          return Promise.resolve((responses[method] ?? null) as T);
+          const response: unknown = responses[method];
+          // A server's error reaches the renderer as Electron's wrapped rejection.
+          return response instanceof Error
+            ? Promise.reject(response)
+            : Promise.resolve((response ?? null) as T);
         }
         return Promise.resolve(null as T);
       },
@@ -200,6 +212,7 @@ describe('LspFeatures', () => {
             sessionId: '/root::typescript',
             uri: 'file:///root/app.ts',
             semanticLegend,
+            ...(renameSupport === undefined ? {} : { rename: renameSupport }),
           }
         : null,
     );
@@ -446,6 +459,208 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('rename (#1015)', () => {
+    /**
+     * Builds the owned model, with the word and text a rename's preparation reads.
+     * @returns Returns the model.
+     */
+    function renameModel(): Parameters<LspFeatures['prepareRename']>[0] {
+      return {
+        uri: { toString: (): string => MODEL_URI },
+        getWordAtPosition: (): unknown => ({ word: 'greet', startColumn: 5, endColumn: 10 }),
+        getValueInRange: (): string => 'greet',
+      } as unknown as Parameters<LspFeatures['prepareRename']>[0];
+    }
+
+    it('prepareRename_asksTheServer_andReadsARangeWithItsPlaceholder', async () => {
+      responses['textDocument/prepareRename'] = {
+        range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+        placeholder: 'Greeter.greet',
+      };
+      const features: LspFeatures = await build();
+
+      const prepared: LspRenamePreparation | null = await features.prepareRename(renameModel(), {
+        lineNumber: 3,
+        column: 6,
+      });
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/prepareRename',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          position: { line: 2, character: 5 },
+        },
+      });
+      expect(prepared).toEqual({
+        kind: 'ready',
+        range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        placeholder: 'Greeter.greet',
+      });
+    });
+
+    it('prepareRename_readsABareRangeByItsText_andTheDefaultAsTheWord', async () => {
+      const features: LspFeatures = await build();
+      responses['textDocument/prepareRename'] = {
+        start: { line: 2, character: 4 },
+        end: { line: 2, character: 9 },
+      };
+      expect(await features.prepareRename(renameModel(), { lineNumber: 3, column: 6 })).toEqual({
+        kind: 'ready',
+        range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        placeholder: 'greet',
+      });
+
+      responses['textDocument/prepareRename'] = { defaultBehavior: true };
+      expect(await features.prepareRename(renameModel(), { lineNumber: 3, column: 6 })).toEqual({
+        kind: 'ready',
+        range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        placeholder: 'greet',
+      });
+    });
+
+    it('prepareRename_aNullOrAnError_isARefusal_withTheServersMessage', async () => {
+      const features: LspFeatures = await build();
+      expect(await features.prepareRename(renameModel(), { lineNumber: 1, column: 1 })).toEqual({
+        kind: 'refused',
+        reason: null,
+      });
+
+      responses['textDocument/prepareRename'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: You cannot rename this element.",
+      );
+      expect(await features.prepareRename(renameModel(), { lineNumber: 1, column: 1 })).toEqual({
+        kind: 'refused',
+        reason: 'You cannot rename this element.',
+      });
+    });
+
+    it('prepareRename_aServerThatCannotPrepare_isAnsweredByTheWord_withoutAsking', async () => {
+      renameSupport = 'rename';
+      const features: LspFeatures = await build();
+
+      expect(await features.prepareRename(renameModel(), { lineNumber: 3, column: 6 })).toEqual({
+        kind: 'ready',
+        range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        placeholder: 'greet',
+      });
+      expect(requests).toEqual([]);
+    });
+
+    it('isNull_forADocumentNoServerServes_orAServerThatCannotRename', async () => {
+      renameSupport = 'none';
+      const features: LspFeatures = await build();
+      const unowned: unknown = { uri: { toString: (): string => 'inmemory://model/unowned' } };
+
+      expect(await features.prepareRename(renameModel(), { lineNumber: 1, column: 1 })).toBeNull();
+      expect(await features.rename(renameModel(), { lineNumber: 1, column: 1 }, 'x')).toBeNull();
+      expect(
+        await features.prepareRename(unowned as Parameters<LspFeatures['prepareRename']>[0], {
+          lineNumber: 1,
+          column: 1,
+        }),
+      ).toBeNull();
+      expect(features.servesRename(renameModel())).toBe(false);
+    });
+
+    it('rename_readsPerFileChanges_byPath', async () => {
+      responses['textDocument/rename'] = {
+        changes: {
+          'file:///root/app.ts': [
+            {
+              range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+              newText: 'salute',
+            },
+          ],
+          'file:///root/lib/greeter.ts': [
+            {
+              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+              newText: 'salute',
+            },
+          ],
+        },
+      };
+      const features: LspFeatures = await build();
+
+      const answer: LspRenameAnswer | null = await features.rename(
+        renameModel(),
+        { lineNumber: 3, column: 6 },
+        'salute',
+      );
+
+      expect(requests.at(-1)?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        position: { line: 2, character: 5 },
+        newName: 'salute',
+      });
+      expect(answer?.kind).toBe('edits');
+      expect(
+        answer?.kind === 'edits'
+          ? answer.edits.files.map((file: { path: string }): string => file.path)
+          : [],
+      ).toEqual(['/root/app.ts', '/root/lib/greeter.ts']);
+    });
+
+    it('rename_readsVersionedDocumentChanges_andRefusesTheirFileOperations', async () => {
+      responses['textDocument/rename'] = {
+        documentChanges: [
+          {
+            textDocument: { uri: 'file:///root/app.ts', version: 3 },
+            edits: [
+              {
+                range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+                newText: 'salute',
+              },
+            ],
+          },
+          { kind: 'rename', oldUri: 'file:///root/greet.ts', newUri: 'file:///root/salute.ts' },
+        ],
+      };
+      const features: LspFeatures = await build();
+
+      const answer: LspRenameAnswer | null = await features.rename(
+        renameModel(),
+        { lineNumber: 3, column: 6 },
+        'salute',
+      );
+
+      expect(answer).toEqual({
+        kind: 'edits',
+        edits: {
+          files: [
+            {
+              path: '/root/app.ts',
+              edits: [
+                {
+                  range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+                  text: 'salute',
+                },
+              ],
+            },
+          ],
+          refused: [
+            {
+              path: '/root/greet.ts',
+              reason: "Creating, renaming or deleting files isn't supported yet.",
+            },
+          ],
+        },
+      });
+    });
+
+    it('rename_anError_isARefusal_withTheServersMessage', async () => {
+      responses['textDocument/rename'] = new Error(
+        "Error invoking remote method 'lsp:request': Error: The new name is not valid.",
+      );
+      const features: LspFeatures = await build();
+
+      expect(await features.rename(renameModel(), { lineNumber: 1, column: 1 }, '1x')).toEqual({
+        kind: 'refused',
+        reason: 'The new name is not valid.',
+      });
+    });
   });
 
   it('wiresEveryLanguageEitherCatalogueHasAServerFor', () => {

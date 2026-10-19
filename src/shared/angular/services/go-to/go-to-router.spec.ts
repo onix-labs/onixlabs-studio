@@ -5,7 +5,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToSymbol, GoToTarget } from './go-to-model';
-import { GoToDialog, GoToPresenter, GoToRequest } from './go-to-presenter';
+import { GoToDialog, GoToPresenter, GoToRequest, RenamePromptRequest } from './go-to-presenter';
 import { GoToRouter } from './go-to-router';
 import { GoToSymbols } from './go-to-symbols';
 
@@ -78,6 +78,23 @@ describe('GoToRouter', () => {
 
     expect(presented).toEqual([{ editor, mode: 'line', injector: null }]);
   });
+
+  it('promptRename_asksThePresenter_withTheNameAndTheAttachedInjector_andAnswersWithItsName', async () => {
+    const router: GoToRouter = TestBed.inject(GoToRouter);
+    const prompts: RenamePromptRequest[] = [];
+    vi.spyOn(TestBed.inject(GoToPresenter), 'promptRename').mockImplementation(
+      (request: RenamePromptRequest): Promise<string | null> => {
+        prompts.push(request);
+        return Promise.resolve('greeting');
+      },
+    );
+    const editor: MonacoApi.editor.ICodeEditor = editorOver([]);
+    const injector: Injector = Injector.create({ providers: [] });
+    router.attach(editor, { injector });
+
+    await expect(router.promptRename(editor, 'greet')).resolves.toBe('greeting');
+    expect(prompts).toEqual([{ editor, currentName: 'greet', injector }]);
+  });
 });
 
 describe('GoToPresenter', () => {
@@ -149,6 +166,63 @@ describe('GoToPresenter', () => {
 
       expect(calls).toEqual(['focus']);
       expect(presenter.dialog()).toBeNull();
+    });
+  });
+
+  describe('rename (#1015)', () => {
+    it('asDialogs_opensTheRenameDialog_withTheName_andAnswersTheNameEntered', async () => {
+      settings.set('textEditor.goToStyle', 'dialogs');
+      const calls: string[] = [];
+      const answer: Promise<string | null> = presenter.promptRename({
+        editor: editorOver(calls),
+        currentName: 'greet',
+        injector: null,
+      });
+
+      expect(presenter.dialog()?.mode).toBe('rename');
+      expect(presenter.dialog()?.currentName).toBe('greet');
+      expect(overlay.querySelector('app-quick-open')).toBeNull();
+      presenter.completeRename('greeting');
+
+      await expect(answer).resolves.toBe('greeting');
+      expect(presenter.dialog()).toBeNull();
+      expect(calls).toEqual(['focus']);
+    });
+
+    it('byDefault_opensTheQuickOpenBoxHoldingTheNameSelected', async () => {
+      const answer: Promise<string | null> = presenter.promptRename({
+        editor: editorOver([]),
+        currentName: 'greet',
+        injector: null,
+      });
+      TestBed.tick();
+
+      const field: HTMLInputElement | null = overlay.querySelector('app-quick-open input');
+      expect(field?.value).toBe('greet');
+      expect(overlay.querySelector('[aria-label="Rename Symbol"]')).not.toBeNull();
+      expect(presenter.dialog()).toBeNull();
+      presenter.completeRename('greeting');
+
+      await expect(answer).resolves.toBe('greeting');
+      expect(overlay.querySelector('app-quick-open')).toBeNull();
+    });
+
+    it('cancel_orAnotherGoTo_answersNoName', async () => {
+      const cancelled: Promise<string | null> = presenter.promptRename({
+        editor: editorOver([]),
+        currentName: 'greet',
+        injector: null,
+      });
+      presenter.cancel();
+      await expect(cancelled).resolves.toBeNull();
+
+      const replaced: Promise<string | null> = presenter.promptRename({
+        editor: editorOver([]),
+        currentName: 'greet',
+        injector: null,
+      });
+      presenter.present({ editor: editorOver([]), mode: 'line', injector: null });
+      await expect(replaced).resolves.toBeNull();
     });
   });
 

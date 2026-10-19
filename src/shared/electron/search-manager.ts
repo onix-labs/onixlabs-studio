@@ -10,7 +10,9 @@ import {
   SearchRequest,
   SearchResponse,
   SearchResultFile,
+  TextEditsResponse,
 } from '@shared/api/search-channels';
+import { applyTextEdits, isTextEditsRequest } from './apply-text-edits';
 import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
 import { logger } from './logger';
@@ -110,6 +112,17 @@ export class SearchManager {
           return Promise.resolve({ replaced: 0, files: 0, failed: [] });
         }
         return replaceInFiles(request, this.workspace);
+      },
+    );
+    ipcMain.handle(
+      SearchChannel.ApplyTextEdits,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<TextEditsResponse> => {
+        logger.trace('SearchManager.register', `IPC ${SearchChannel.ApplyTextEdits}`);
+        if (!isTextEditsRequest(request)) {
+          logger.warn('SearchManager', 'Rejected malformed text-edits request');
+          return Promise.resolve({ written: [], failed: [] });
+        }
+        return applyTextEdits(request, this.workspace);
       },
     );
     logger.info('SearchManager', 'Registered search IPC handlers');

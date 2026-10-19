@@ -20,6 +20,10 @@ import {
   buildHeuristicSemanticTokens,
   HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
 } from '@shared/angular/services/monaco/monaco-heuristic-tokens';
+import {
+  fromLspWorkspaceEdit,
+  WorkspaceTextEdits,
+} from '@shared/angular/services/workspace-edit/workspace-edit';
 
 /**
  * References the language-server document an editor model maps to: which session owns it and the
@@ -49,7 +53,106 @@ export interface LspDocumentRef {
    * this off once the session's semantics have demonstrably settled.
    */
   readonly suppressServerTokens?: boolean;
+
+  /**
+   * Gets how the server renames a symbol (#1015): not at all, straight away, or after saying first
+   * whether the symbol at the caret can be renamed and what its name spans. Undefined is taken as the
+   * last: asking first is always allowed, and a server that cannot answer is read as refusing.
+   */
+  readonly rename?: LspRenameSupport;
 }
+
+/**
+ * Names how a server renames a symbol (#1015): `none` — it does not; `rename` — it renames, but
+ * cannot say beforehand whether a symbol can be; `prepare` — it says first (`textDocument/prepareRename`).
+ */
+export type LspRenameSupport = 'none' | 'rename' | 'prepare';
+
+/**
+ * What a language server says of the symbol at a position before the new name is asked for (#1015).
+ */
+export type LspRenamePreparation =
+  | {
+      /**
+       * Gets that the symbol can be renamed.
+       */
+      readonly kind: 'ready';
+
+      /**
+       * Gets the span of the name, one-based as the editor counts.
+       */
+      readonly range: MonacoApi.IRange;
+
+      /**
+       * Gets the name as it stands, which the new-name box opens holding.
+       */
+      readonly placeholder: string;
+    }
+  | {
+      /**
+       * Gets that the symbol cannot be renamed.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the server put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
+ * A language server's answer to a rename (#1015).
+ */
+export type LspRenameAnswer =
+  | {
+      /**
+       * Gets that the server answered with the edits.
+       */
+      readonly kind: 'edits';
+
+      /**
+       * Gets the edits, by file path.
+       */
+      readonly edits: WorkspaceTextEdits;
+    }
+  | {
+      /**
+       * Gets that the server refused.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the server put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
+ * The outcome of one request to a server: its result, or the error it answered with.
+ */
+type LspOutcome =
+  | {
+      /**
+       * Gets that the server answered.
+       */
+      readonly ok: true;
+
+      /**
+       * Gets the server's result.
+       */
+      readonly result: unknown;
+    }
+  | {
+      /**
+       * Gets that the server answered with an error, or the request could not be made.
+       */
+      readonly ok: false;
+
+      /**
+       * Gets the error's message, as the server put it.
+       */
+      readonly message: string;
+    };
 
 /**
  * A place a language server says a symbol is defined: the file, and the span of its name there.
@@ -864,6 +967,131 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether a language server that serves a document can rename a symbol in it (#1015).
+   * @param model The editor model.
+   * @returns Returns true when a server serves the document and renames.
+   */
+  public servesRename(model: MonacoApi.editor.ITextModel): boolean {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    return ref !== null && ref.rename !== 'none';
+  }
+
+  /**
+   * Asks the language server that serves a document whether the symbol at a position can be renamed,
+   * and what its name spans, for Rename Symbol (#1015). A server that cannot say beforehand is
+   * answered for by the word at the position.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns what the server says, or null when no server that renames serves the document.
+   */
+  public async prepareRename(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<LspRenamePreparation | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.rename === 'none') {
+      return null;
+    }
+    if (ref.rename === 'rename') {
+      return wordPreparation(model, position);
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/prepareRename', {
+      textDocument: { uri: ref.uri },
+      position: toLspPosition(position),
+    });
+    if (!outcome.ok) {
+      return { kind: 'refused', reason: outcome.message };
+    }
+    const result: unknown = outcome.result;
+    if (result === null || result === undefined || typeof result !== 'object') {
+      return { kind: 'refused', reason: null };
+    }
+    // Three shapes: a bare range, a range with the name to show, or "the default" — the word.
+    const answer: {
+      range?: unknown;
+      placeholder?: unknown;
+      defaultBehavior?: unknown;
+      start?: unknown;
+    } = result;
+    if (answer.defaultBehavior === true) {
+      return wordPreparation(model, position);
+    }
+    const raw: unknown = answer.start !== undefined ? result : answer.range;
+    if (typeof raw !== 'object' || raw === null || !('start' in raw) || !('end' in raw)) {
+      return { kind: 'refused', reason: null };
+    }
+    const range: MonacoApi.IRange = this.toRange(raw as LspRange);
+    return {
+      kind: 'ready',
+      range,
+      placeholder:
+        typeof answer.placeholder === 'string' ? answer.placeholder : model.getValueInRange(range),
+    };
+  }
+
+  /**
+   * Asks the language server that serves a document for the edits that rename the symbol at a
+   * position (#1015), keyed by file path — so files nobody has opened are renamed too. Both shapes a
+   * server may answer in are read: per-file `changes`, or versioned `documentChanges`, whose file
+   * operations are refused and named.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param newName The new name.
+   * @returns Returns the server's answer, or null when no server that renames serves the document.
+   */
+  public async rename(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    newName: string,
+  ): Promise<LspRenameAnswer | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.rename === 'none') {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/rename', {
+      textDocument: { uri: ref.uri },
+      position: toLspPosition(position),
+      newName,
+    });
+    if (!outcome.ok) {
+      return { kind: 'refused', reason: outcome.message };
+    }
+    return {
+      kind: 'edits',
+      edits: fromLspWorkspaceEdit(outcome.result, (uri: string): string => this.uriToPath(uri)),
+    };
+  }
+
+  /**
+   * Sends a request to a document's server, keeping the server's error rather than swallowing it: a
+   * rename's refusal is the server's message, for the user.
+   * @param ref The document.
+   * @param method The protocol method to call.
+   * @param params The request's parameters.
+   * @returns Returns the server's result, or its error's message.
+   */
+  private async ask(ref: LspDocumentRef, method: string, params: unknown): Promise<LspOutcome> {
+    if (this.bridge === undefined) {
+      return { ok: false, message: 'No language server is available.' };
+    }
+    try {
+      const result: unknown = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        method,
+        params,
+      );
+      if (result !== null && result !== undefined) {
+        this.notifyServed(ref.sessionId);
+      }
+      return { ok: true, result };
+    } catch (error: unknown) {
+      this.log.debug('LspFeatures', `${method} failed`, error);
+      return { ok: false, message: serverMessage(error) };
+    }
+  }
+
+  /**
    * Reads the symbols a language server reports for a document — its types and their members, nested
    * — for the editor strip's navigation and Monaco's Go to Symbol (#882).
    * @param model The editor model.
@@ -1058,4 +1286,50 @@ export class LspFeatures {
     const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
     return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
   }
+}
+
+/**
+ * Converts a one-based editor position to a zero-based protocol position.
+ * @param position The editor position.
+ * @returns Returns the protocol position.
+ */
+function toLspPosition(position: MonacoApi.IPosition): LspPosition {
+  return { line: position.lineNumber - 1, character: position.column - 1 };
+}
+
+/**
+ * Answers a rename's preparation with the word at a position, for a server that cannot say itself.
+ * @param model The model.
+ * @param position The one-based position.
+ * @returns Returns the word's span and text, or a refusal when there is no word there.
+ */
+function wordPreparation(
+  model: MonacoApi.editor.ITextModel,
+  position: MonacoApi.IPosition,
+): LspRenamePreparation {
+  const word: MonacoApi.editor.IWordAtPosition | null = model.getWordAtPosition(position);
+  if (word === null) {
+    return { kind: 'refused', reason: null };
+  }
+  return {
+    kind: 'ready',
+    range: {
+      startLineNumber: position.lineNumber,
+      startColumn: word.startColumn,
+      endLineNumber: position.lineNumber,
+      endColumn: word.endColumn,
+    },
+    placeholder: word.word,
+  };
+}
+
+/**
+ * Reads a server's error message out of a failed request: the IPC layer wraps it as "Error invoking
+ * remote method '…': Error: <message>", and only the message is for the user.
+ * @param error The failure.
+ * @returns Returns the message.
+ */
+function serverMessage(error: unknown): string {
+  const message: string = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '');
 }

@@ -8,6 +8,47 @@ import { CodeSymbol, SymbolKind, SymbolPosition } from '@shared/angular/services
 export type GoToMode = 'symbol' | 'line';
 
 /**
+ * Names what one of the Go to surfaces — the quick-open box, or a dialog — asks for: a Go to's symbol
+ * or line, or a symbol's new name for Rename Symbol (#1015), which the "Go to style" setting places
+ * the same way.
+ */
+export type GoToSurfaceMode = GoToMode | 'rename';
+
+/**
+ * The outcome of reading what was typed as a symbol's new name (#1015).
+ */
+export interface RenameEntry {
+  /**
+   * Gets the new name, trimmed, or null while what was typed names no new name: nothing, or the
+   * name the symbol already has.
+   */
+  readonly name: string | null;
+
+  /**
+   * Gets the hint shown under the field.
+   */
+  readonly hint: string;
+}
+
+/**
+ * Reads what was typed as a symbol's new name (#1015): a name with something in it, and not the one
+ * it has now.
+ * @param text The entry.
+ * @param current The symbol's name as it stands.
+ * @returns Returns the new name, if there is one, and the hint to show.
+ */
+export function parseRenameEntry(text: string, current: string): RenameEntry {
+  const name: string = text.trim();
+  if (name.length === 0) {
+    return { name: null, hint: 'Type the new name' };
+  }
+  if (name === current) {
+    return { name: null, hint: `It is already named “${current}”` };
+  }
+  return { name, hint: 'Enter to rename, Escape to cancel' };
+}
+
+/**
  * A place in a document to go to: a caret position, or the span to select there (a symbol's name).
  * One-based, as the editor counts.
  */

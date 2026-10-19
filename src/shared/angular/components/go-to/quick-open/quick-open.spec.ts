@@ -25,21 +25,30 @@ describe('QuickOpen', () => {
   let element: HTMLElement;
   let picked: GoToTarget[];
   let dismissed: number;
+  let renamed: string[];
 
   /**
    * Opens the box in a mode.
    * @param mode What it asks for.
    * @param symbols The document's symbols, or null while they are read.
+   * @param currentName The name of the symbol being renamed, for rename mode.
    */
-  function open(mode: 'symbol' | 'line', symbols: readonly GoToSymbol[] | null = null): void {
+  function open(
+    mode: 'symbol' | 'line' | 'rename',
+    symbols: readonly GoToSymbol[] | null = null,
+    currentName: string = '',
+  ): void {
     fixture = TestBed.createComponent(QuickOpen);
     element = fixture.nativeElement as HTMLElement;
     fixture.componentRef.setInput('mode', mode);
     fixture.componentRef.setInput('lineCount', 250);
     fixture.componentRef.setInput('symbols', symbols);
+    fixture.componentRef.setInput('currentName', currentName);
     picked = [];
     dismissed = 0;
+    renamed = [];
     fixture.componentInstance.picked.subscribe((target: GoToTarget): number => picked.push(target));
+    fixture.componentInstance.renamed.subscribe((name: string): number => renamed.push(name));
     fixture.componentInstance.dismissed.subscribe((): number => (dismissed += 1));
     fixture.detectChanges();
   }
@@ -207,6 +216,48 @@ describe('QuickOpen', () => {
       open('symbol', []);
 
       expect(element.textContent).toContain('No symbols in this file');
+    });
+  });
+
+  describe('rename mode (#1015)', () => {
+    beforeEach(() => open('rename', null, 'greet'));
+
+    it('opensHoldingTheName_asksForANewOne_andListsNothing', () => {
+      expect(field().value).toBe('greet');
+      expect(field().placeholder).toBe('New name');
+      expect(element.querySelector('[aria-label="Rename Symbol"]')).not.toBeNull();
+      expect(element.querySelector('app-list-view')).toBeNull();
+      expect(hint()).toBe('It is already named “greet”');
+    });
+
+    it('givesTheNewName_trimmed_onEnter', () => {
+      type(' greeting ');
+      expect(hint()).toBe('Enter to rename, Escape to cancel');
+
+      const enter: KeyboardEvent = press('Enter');
+
+      expect(renamed).toEqual(['greeting']);
+      expect(picked).toEqual([]);
+      expect(enter.defaultPrevented).toBe(true);
+    });
+
+    it('anEmptyNameOrTheSameName_saysSo_andEnterGivesNothing', () => {
+      type('   ');
+      expect(hint()).toBe('Type the new name');
+      expect(element.querySelector('.quick-open__hint--invalid')).toBeNull();
+      press('Enter');
+
+      type('greet');
+      expect(element.querySelector('.quick-open__hint--invalid')).not.toBeNull();
+      press('Enter');
+
+      expect(renamed).toEqual([]);
+    });
+
+    it('escape_dismisses', () => {
+      press('Escape');
+
+      expect(dismissed).toBe(1);
     });
   });
 });

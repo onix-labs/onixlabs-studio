@@ -65,4 +65,24 @@ export class WorkspaceContext {
     }
     return false;
   }
+
+  /**
+   * Finds the open workspace root a path lies inside (#1015): the deepest one, when roots nest.
+   * @param target The path to test.
+   * @returns Returns the root's absolute path, or undefined when the path is inside none (a root
+   * itself is not inside one).
+   */
+  public rootContaining(target: string): string | undefined {
+    const resolved: string = path.resolve(target);
+    let found: string | undefined;
+    for (const root of this.roots) {
+      if (
+        resolved.startsWith(root + path.sep) &&
+        (found === undefined || root.length > found.length)
+      ) {
+        found = root;
+      }
+    }
+    return found;
+  }
 }

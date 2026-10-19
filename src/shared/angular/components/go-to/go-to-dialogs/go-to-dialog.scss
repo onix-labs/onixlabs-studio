@@ -61,3 +61,23 @@
 .go-to-dialog__actions {
   margin-block-start: 0.4rem;
 }
+
+// Rename Symbol's confirmation (#1015): the line under the title, and each file's count of changes,
+// set at the row's end.
+.go-to-dialog__summary {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.go-to-dialog__count {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// A rename's files are a handful, as a rule: a shorter list than Go to Symbol's, still fixed in
+// height for the list's rows to fill.
+.go-to-dialog__list--files {
+  block-size: 12rem;
+}

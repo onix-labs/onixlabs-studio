@@ -2,16 +2,19 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { GoToPresenter } from '@shared/angular/services/go-to/go-to-presenter';
 import { GoToLineModal } from './go-to-line-modal';
 import { GoToSymbolModal } from './go-to-symbol-modal';
+import { RenameConfirmModal } from './rename-confirm-modal';
+import { RenameSymbolModal } from './rename-symbol-modal';
 
 /**
  * Mounts the Go to dialogs at the application root (#1009), bound to the {@link GoToPresenter}, so
  * whichever editor asks — in whichever tab or window — the "Dialogs" Go to style shows the same
  * dialog, and there is exactly one of it. Each dialog is created as it opens, so it always starts
- * empty.
+ * empty. Rename Symbol's prompt for a new name (#1015) shows here too, by the same setting, and so
+ * does its confirmation of a rename across several files — which every style shows as a dialog.
  */
 @Component({
   selector: 'app-go-to-dialog-host',
-  imports: [GoToLineModal, GoToSymbolModal],
+  imports: [GoToLineModal, GoToSymbolModal, RenameSymbolModal, RenameConfirmModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (presenter.dialog(); as dialog) {
@@ -20,6 +23,13 @@ import { GoToSymbolModal } from './go-to-symbol-modal';
           [open]="true"
           [lineCount]="dialog.lineCount"
           (picked)="presenter.complete($event)"
+          (dismissed)="presenter.cancel()"
+        />
+      } @else if (dialog.mode === 'rename') {
+        <app-rename-symbol-modal
+          [open]="true"
+          [currentName]="dialog.currentName"
+          (renamed)="presenter.completeRename($event)"
           (dismissed)="presenter.cancel()"
         />
       } @else {
@@ -31,6 +41,7 @@ import { GoToSymbolModal } from './go-to-symbol-modal';
         />
       }
     }
+    <app-rename-confirm-modal />
   `,
 })
 export class GoToDialogHost {
