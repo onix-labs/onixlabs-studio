@@ -20,7 +20,7 @@
     [cdkContextMenuDisabled]="!rowHasMenu(row)"
     (click)="rowClick.emit(row)"
     (dblclick)="rowDoubleClick.emit(row)"
-    (keydown.enter)="activate($event, row)"
+    (keydown.enter)="activate($event, row, true)"
     (keydown.space)="activate($event, row)"
   >
     @if (row.expandable) {

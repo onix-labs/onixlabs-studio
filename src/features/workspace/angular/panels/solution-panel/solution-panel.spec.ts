@@ -287,17 +287,39 @@ describe('SolutionPanel', () => {
     expect(opener.opened).toEqual([]);
   });
 
-  it('onRowClick_aFileRow_opensIt', () => {
+  it('onRowClick_aFileRow_selectsItWithoutOpeningIt_andDoubleClickOpensIt', () => {
+    // #1047: a click only selects; a double click (or Enter) opens.
+    const file: SolutionRow = makeRow({
+      key: 'g',
+      label: 'g.cs',
+      kind: 'file',
+      expandable: false,
+      path: '/root/A/g.cs',
+    });
     solution.model.set(model);
-    solution.rows.set([
-      makeRow({ label: 'g.cs', kind: 'file', expandable: false, path: '/root/A/g.cs' }),
-    ]);
+    solution.rows.set([file]);
     fixture.detectChanges();
 
     rowButtons()[0].click();
+    expect(opener.opened).toEqual([]);
+    expect(solution.selectedKey()).toBe('g');
 
+    rowButtons()[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(opener.opened).toEqual(['/root/A/g.cs']);
     expect(solution.toggled).toEqual([]);
+  });
+
+  it('onRowOpen_anExpandableRow_opensNothing', () => {
+    const project: SolutionRow = makeRow({ label: 'A', kind: 'project', expandable: true });
+    component.onRowOpen({
+      id: project.key,
+      depth: 0,
+      expandable: true,
+      expanded: false,
+      data: project,
+    });
+
+    expect(opener.opened).toEqual([]);
   });
 
   /**

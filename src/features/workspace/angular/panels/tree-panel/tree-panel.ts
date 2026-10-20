@@ -330,8 +330,8 @@ export class TreePanel {
   }
 
   /**
-   * Handles a click on a tree row: selects the entry, toggles directories, and opens files into the
-   * right editor tab (reusing an existing tab when the file is already open).
+   * Handles a click on a tree row: selects the entry, and toggles a directory. A file is only selected
+   * — clicking around the tree to look, or to pick a row before right-clicking, opens nothing (#1047).
    * @param row The tree row that was clicked.
    */
   public onRowClick(row: TreeRow): void {
@@ -340,7 +340,17 @@ export class TreePanel {
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
-    } else {
+    }
+  }
+
+  /**
+   * Opens a file row — on a double click, or Enter — into the right editor tab, reusing an existing tab
+   * when the file is already open (#1047). A directory opens nothing: its clicks already toggled it.
+   * @param row The tree row to open.
+   */
+  public onRowOpen(row: TreeRow): void {
+    const node: WorkspaceTreeNode = this.nodeOf(row);
+    if (node.type === 'file') {
       this.log.info('workspace.tree', 'Open file from tree', node.path);
       void this.fileOpener.openPath(node.path);
     }

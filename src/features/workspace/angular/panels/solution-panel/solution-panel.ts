@@ -695,8 +695,8 @@ export class SolutionPanel {
   }
 
   /**
-   * Handles a click on a row: toggles an expandable row, or opens a file. A still-loading project is
-   * inert until its contents arrive.
+   * Handles a click on a row: selects it, and toggles an expandable row. A file is only selected —
+   * double click or Enter opens it (#1047). A still-loading project is inert until its contents arrive.
    * @param treeRow The tree row that was clicked.
    */
   public onRowClick(treeRow: TreeRow): void {
@@ -704,14 +704,25 @@ export class SolutionPanel {
     if (row.loading) {
       return;
     }
+    this.solution.select(row.key);
     if (row.expandable) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
-    } else if (row.path !== null) {
-      this.log.info('workspace.solution', 'Open file from solution', row.path);
-      this.solution.select(row.key);
-      void this.fileOpener.openPath(row.path);
     }
+  }
+
+  /**
+   * Opens a file row — on a double click, or Enter (#1047). Rows that expand open nothing: their clicks
+   * already toggled them, and a project's file has its own Edit Project File.
+   * @param treeRow The row to open.
+   */
+  public onRowOpen(treeRow: TreeRow): void {
+    const row: SolutionRow = this.rowOf(treeRow);
+    if (row.loading || row.expandable || row.path === null) {
+      return;
+    }
+    this.log.info('workspace.solution', 'Open file from solution', row.path);
+    void this.fileOpener.openPath(row.path);
   }
 
   /**
