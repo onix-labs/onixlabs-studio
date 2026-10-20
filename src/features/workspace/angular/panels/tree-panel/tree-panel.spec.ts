@@ -495,6 +495,25 @@ describe('TreePanel row context menu', () => {
     });
   });
 
+  it('onRowClick_aFile_selectsItWithoutOpening_andOnRowOpenOpensIt', () => {
+    // #1047: clicking around the tree to look opens nothing; a double click or Enter does.
+    const file: WorkspaceTreeNode = node('main.ts', '/ws/main.ts', 'file');
+
+    component.onRowClick(treeRow(file));
+    expect(workspace.selectedPath()).toBe('/ws/main.ts');
+    expect(opener.opened).toEqual([]);
+
+    component.onRowOpen(treeRow(file));
+    expect(opener.opened).toEqual(['/ws/main.ts']);
+  });
+
+  it('onRowOpen_aDirectory_opensNothing', () => {
+    component.onRowOpen(treeRow(node('src', '/ws/src', 'directory')));
+
+    expect(opener.opened).toEqual([]);
+    expect(workspace.toggled).toEqual([]);
+  });
+
   it('rows_anExpandedFolder_isNotBold', async () => {
     // Opening a folder is navigation, not emphasis: the weight is kept for a conflicted file.
     workspace.rows.set([{ node: node('src', '/ws/src', 'directory'), depth: 0, expanded: true }]);

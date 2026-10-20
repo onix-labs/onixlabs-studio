@@ -24,6 +24,7 @@ function makeRow(id: string, depth: number, expandable: boolean, expanded: boole
       [selectedId]="selectedId()"
       [selectedIds]="selectedIds()"
       (rowClick)="onRow($event)"
+      (rowActivate)="activated.push($event)"
       (backgroundClick)="backgroundClicks = backgroundClicks + 1"
     >
       <ng-template let-row
@@ -41,6 +42,7 @@ class TestHost {
   public readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
   public readonly selectedIds: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
   public readonly clicked: TreeRow[] = [];
+  public readonly activated: TreeRow[] = [];
   public backgroundClicks: number = 0;
 
   public onRow(row: TreeRow): void {
@@ -71,6 +73,16 @@ describe('TreeView', () => {
   function rowElements(): readonly HTMLElement[] {
     return Array.from(host.querySelectorAll<HTMLElement>('.tree-row'));
   }
+
+  it('enter_clicksAndActivatesTheRow_whileSpaceOnlyClicksIt', () => {
+    // #1047: Enter is the keyboard's double click; a tree where a click only selects opens on it.
+    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.tree-row'));
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+
+    expect(component.clicked.map((row: TreeRow): string => row.id)).toEqual(['child', 'child']);
+    expect(component.activated.map((row: TreeRow): string => row.id)).toEqual(['child']);
+  });
 
   it('render_showsARowPerEntryWithTheProjectedContent', () => {
     const labels: (string | null)[] = Array.from(host.querySelectorAll('.probe-label')).map(

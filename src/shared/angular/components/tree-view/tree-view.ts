@@ -254,6 +254,15 @@ export class TreeView {
   public readonly rowDoubleClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
 
   /**
+   * Emits the row Enter was pressed on — the keyboard's double click (#1047).
+   *
+   * Enter still emits {@link rowClick} first, so a tree that treats a click as everything behaves as
+   * it always has; a tree where a click only selects listens here too, to open what Enter asks for.
+   * Space emits only {@link rowClick}.
+   */
+  public readonly rowActivate: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
    * Emits when a click lands on the tree's own area but on no row — the empty space below the last
    * row, or beside a short one — which is how a person says "nothing selected".
    *
@@ -445,13 +454,18 @@ export class TreeView {
   }
 
   /**
-   * Activates a row from the keyboard (Enter or Space), suppressing the default scroll on Space.
+   * Activates a row from the keyboard, suppressing the default scroll on Space: both keys click it,
+   * and Enter also asks for it to be opened.
    * @param event The keyboard event.
    * @param row The row to activate.
+   * @param open Whether the key was Enter, which opens as well as clicks.
    */
-  protected activate(event: Event, row: TreeRow): void {
+  protected activate(event: Event, row: TreeRow, open: boolean = false): void {
     event.preventDefault();
     this.rowClick.emit(row);
+    if (open) {
+      this.rowActivate.emit(row);
+    }
   }
 
   /**

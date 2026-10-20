@@ -18,6 +18,8 @@
     [editValue]="editing()?.initial ?? ''"
     [editSelection]="editing()?.selection ?? 'all'"
     (rowClick)="onRowClick($event)"
+    (rowDoubleClick)="onRowOpen($event)"
+    (rowActivate)="onRowOpen($event)"
     (backgroundClick)="workspace.clearSelection()"
     (contextMenuSelect)="onContextAction($event)"
     (editCommit)="onEditCommit($event)"
