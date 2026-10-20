@@ -518,6 +518,25 @@ export class WorkspaceGit {
   }
 
   /**
+   * Gets the path the history narrows to for a row: repository-relative, with forward slashes — when
+   * the plugin can read one path's history and the path has any (#1044). An untracked, ignored or
+   * newly added path has no commits yet, and the root's history is the whole history.
+   * @param path The absolute file or folder path.
+   * @returns Returns the repository-relative path, or null when Show History does not apply.
+   */
+  public historyPathOf(path: string): string | null {
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    const key: string = this.realKey(path);
+    if (!this.supports('pathHistory') || root === null || !key.startsWith(`${root}/`)) {
+      return null;
+    }
+    const state: ExplorerScmState | null = this.stateFor(path);
+    return state === 'untracked' || state === 'ignored' || state === 'added'
+      ? null
+      : key.slice(root.length + 1);
+  }
+
+  /**
    * Trusts the restricted repository, after which the folder is bound and read like any other. The
    * way back in for a user who did not trust the repository when first asked.
    * @returns Returns a promise that resolves once the folder has been bound.

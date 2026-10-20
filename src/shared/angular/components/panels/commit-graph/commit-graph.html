@@ -43,6 +43,19 @@
   </button>
 </app-panel-toolbar>
 
+@if (repository.historyPath(); as path) {
+  <!-- Narrowed to one file or folder (#1044): says which, and widens it back. -->
+  <div class="commit-graph__form commit-graph__path">
+    <div class="commit-graph__actions">
+      <span class="commit-graph__summary" [title]="path">
+        <span class="commit-graph__path-lead">History of</span>
+        <span class="commit-graph__path-name">{{ path }}</span>
+      </span>
+      <app-button variant="outline" label="Show All History" (click)="clearHistoryPath()" />
+    </div>
+  </div>
+}
+
 @if (filtering()) {
   <!-- The filter form: it filters the loaded commits when asked, never on each keystroke. -->
   <div class="commit-graph__form">
@@ -63,7 +76,7 @@
         <app-button
           variant="outline"
           label="Clear"
-          [disabled]="!filtered()"
+          [disabled]="!textFiltered()"
           (click)="clearFilter()"
         />
       </app-button-row>

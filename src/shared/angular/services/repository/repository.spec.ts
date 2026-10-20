@@ -1348,15 +1348,19 @@ describe('Repository history (#882)', () => {
   /**
    * The history's requests, and how many commits the repository has to give.
    */
-  let reads: { limit: number; all: boolean }[];
+  let reads: { limit: number; all: boolean; path?: string }[];
   let total: number;
 
   /**
    * A provider holding a long linear history, recording what each read asks for.
    */
   class HistoryProvider extends FakeProvider {
-    public override getCommits(limit: number = 500, all: boolean = false): Promise<GitCommit[]> {
-      reads.push({ limit, all });
+    public override getCommits(
+      limit: number = 500,
+      all: boolean = false,
+      path?: string,
+    ): Promise<GitCommit[]> {
+      reads.push({ limit, all, ...(path === undefined ? {} : { path }) });
       const count: number = Math.min(limit, total);
       return Promise.resolve(
         Array.from({ length: count }, (_: unknown, index: number): GitCommit => {
@@ -1408,6 +1412,32 @@ describe('Repository history (#882)', () => {
     reads = [];
     total = 1200;
     localStorage.removeItem('repository.historyScope');
+  });
+
+  it('showHistoryOf_narrowsEveryReadToThePath_untilCleared', async () => {
+    // #1044: Show History from an explorer. Load More and refreshes keep to the path.
+    const repository: Repository = await bound(['pathHistory']);
+
+    await repository.showHistoryOf('src/a.ts');
+    expect(repository.historyPath()).toBe('src/a.ts');
+    expect(reads.at(-1)).toEqual({ limit: 500, all: false, path: 'src/a.ts' });
+    await repository.loadMoreHistory();
+    expect(reads.at(-1)).toEqual({ limit: 1000, all: false, path: 'src/a.ts' });
+    await repository.refresh();
+    expect(reads.at(-1)?.path).toBe('src/a.ts');
+
+    await repository.clearHistoryPath();
+    expect(repository.historyPath()).toBeNull();
+    expect(reads.at(-1)).toEqual({ limit: 500, all: false });
+  });
+
+  it('bind_startsWithTheWholeHistory_evenAfterAPathWasShown', async () => {
+    const repository: Repository = await bound(['pathHistory']);
+    await repository.showHistoryOf('src/a.ts');
+
+    repository.bind({ root: '/other', name: 'other', trust: 'trusted' });
+
+    expect(repository.historyPath()).toBeNull();
   });
 
   it('readsOnePage_andSaysThereMayBeMore_whenItStoppedAtTheLimit', async () => {

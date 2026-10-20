@@ -162,9 +162,11 @@ export interface SourceControlProvider {
    * Reads the commit history (newest first) with parents and ref decorations.
    * @param limit The maximum number of commits to read.
    * @param all Whether to read every branch's history rather than only the checked-out branch's.
+   * @param path A repository-relative path to read only the history of (#1044); the plugin must
+   * support `pathHistory`.
    * @returns Returns the commits.
    */
-  getCommits(limit: number, all?: boolean): Promise<GitCommit[]>;
+  getCommits(limit: number, all?: boolean, path?: string): Promise<GitCommit[]>;
 
   /**
    * Reads the branches, remotes, and tags.

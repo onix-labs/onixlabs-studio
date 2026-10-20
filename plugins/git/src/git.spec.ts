@@ -249,6 +249,33 @@ describe('GitVersionControl', () => {
     expect((await result('status', {})).staged).toEqual([]);
   });
 
+  it('log_withAPath_readsOnlyItsHistory_andAFileFollowsItsRenames', GIT_TEST_TIMEOUT, async () => {
+    // #1044: Show History. A file's history continues past a rename; a folder's covers everything in it.
+    await fs.writeFile(path.join(repo, 'a.txt'), 'a\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'add a');
+    await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+    await git(repo, 'commit', '-am', 'edit readme');
+    await fs.mkdir(path.join(repo, 'docs'));
+    await git(repo, 'mv', 'a.txt', 'docs/b.txt');
+    await git(repo, 'commit', '-m', 'move a');
+
+    const summaries: (target: string) => Promise<string[]> = async (
+      target: string,
+    ): Promise<string[]> =>
+      (await result('log', { limit: 50, path: target })).map((commit: VcsCommit) => commit.summary);
+
+    expect(await summaries('README.md')).toEqual(['edit readme', 'initial']);
+    expect(await summaries('docs/b.txt')).toEqual(['move a', 'add a']);
+    expect(await summaries('docs')).toEqual(['move a']);
+    expect((await result('log', { limit: 50 })).length).toBe(4);
+  });
+
+  it('log_withAPathOutsideTheRepository_isRefused', GIT_TEST_TIMEOUT, async () => {
+    expect(await ask('log', { limit: 5, path: '../elsewhere' })).toMatchObject({ ok: false });
+    expect(await ask('log', { limit: 5, path: '--all' })).toMatchObject({ ok: false });
+  });
+
   it('log_all_readsEveryBranch_butNotTheStash', GIT_TEST_TIMEOUT, async () => {
     // #882: the history can draw branches side by side. The stash's commits are not history.
     await git(repo, 'checkout', '-b', 'topic');

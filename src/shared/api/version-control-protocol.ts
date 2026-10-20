@@ -24,7 +24,9 @@
 // of its own. An addition, so a 1.0 plugin is still understood: it simply does not offer `init`.
 // 1.2 (#1043) adds `ignore` and `stopTracking`, each behind a capability of its own, so the explorers can
 // keep a path out of version control. An addition: a 1.1 plugin simply does not offer them.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.2';
+// 1.3 (#1044) adds `log`'s optional `path`, behind `pathHistory`, so a file's or folder's history can be
+// read on its own. An addition: a plugin without the capability is never sent a path.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.3';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -102,7 +104,13 @@ export type VersionControlCapability =
   /**
    * Taking tracked paths out of version control while keeping them on disk (1.2, #1043).
    */
-  | 'stopTracking';
+  | 'stopTracking'
+
+  /**
+   * Reading the history of one file or folder — only the commits that touched it, a file's followed
+   * across renames where the system can (1.3, #1044).
+   */
+  | 'pathHistory';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -123,6 +131,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'allBranchHistory',
   'ignore',
   'stopTracking',
+  'pathHistory',
 ];
 
 /**
@@ -138,6 +147,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
 export const VCS_HANDSHAKE_CAPABILITIES: readonly VersionControlCapability[] = [
   'ignore',
   'stopTracking',
+  'pathHistory',
 ];
 
 /**
@@ -671,6 +681,13 @@ export interface VersionControlOperations {
        * plugin lists `allBranchHistory`. A plugin without it reads the checked-out branch's.
        */
       readonly all?: boolean;
+
+      /**
+       * Gets a repository-relative path to read the history of, only the commits that touched it —
+       * when the plugin lists `pathHistory` (1.3, #1044). The host never sends it to one that does
+       * not, which would answer with the whole history as though it were this path's.
+       */
+      readonly path?: string;
     };
     readonly result: readonly VcsCommit[];
   };

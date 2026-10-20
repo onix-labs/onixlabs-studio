@@ -8,13 +8,13 @@
       "name": "git",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/git": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-git-v0.5.0/onixlabs-git-0.5.0.tgz"
+        "@onixlabs/git": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-git-v0.6.0/onixlabs-git-0.6.0.tgz"
       }
     },
     "node_modules/@onixlabs/git": {
-      "version": "0.5.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-git-v0.5.0/onixlabs-git-0.5.0.tgz",
-      "integrity": "sha512-CyOImHnrc5EjdpUA53pKTpQn1od4t24gIh3M13JAE1dDjyZMe1pMM0rvelvB80aEdfuL9pYDAx6BKvjmk3aK/w=="
+      "version": "0.6.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-git-v0.6.0/onixlabs-git-0.6.0.tgz",
+      "integrity": "sha512-aJLQmzxs5vB38dcVDfYzl2PMJ/bOuTcEI8fHkSLcxXkFarHmk16+QUrSeYpWl6aZBi84A1tLbkbexExLVZ/Rpw=="
     }
   }
 }

@@ -426,18 +426,7 @@ export class GitVersionControl {
       case 'operationState':
         return this.operationState(root).then(ok);
       case 'log':
-        return this.read(
-          root,
-          [
-            'log',
-            `--max-count=${logLimit(params['limit'])}`,
-            `--format=${LOG_FORMAT}`,
-            // Every branch, remote branch and tag — but not the stash, whose commits are not history.
-            // Date order keeps each commit above its parents however the branches interleave.
-            ...(params['all'] === true ? ['--date-order', '--exclude=refs/stash', '--all'] : []),
-          ],
-          parseLog,
-        );
+        return this.log(root, params['limit'], params['all'] === true, params['path']);
       case 'refs':
         return this.refs(root);
       case 'stashes':
@@ -735,6 +724,41 @@ export class GitVersionControl {
     return toRestore.length > 0
       ? this.mutate(root, ['restore', '--staged', '--worktree', '--', ...toRestore])
       : ok(DONE);
+  }
+
+  /**
+   * Reads the history, newest first: the checked-out branch's or every branch's, and — given a path —
+   * only the commits that touched it (1.3, #1044). A single file's history follows it across renames;
+   * `--follow` takes exactly one file, so a directory's history does not.
+   * @param root The repository root.
+   * @param limit The most commits to read.
+   * @param all Whether to read every branch.
+   * @param target The repository-relative path to narrow to, or undefined for the whole history.
+   * @returns Returns the outcome.
+   */
+  private async log(root: string, limit: unknown, all: boolean, target: unknown): Promise<Outcome> {
+    const args: string[] = [
+      'log',
+      `--max-count=${logLimit(limit)}`,
+      `--format=${LOG_FORMAT}`,
+      // Every branch, remote branch and tag — but not the stash, whose commits are not history.
+      // Date order keeps each commit above its parents however the branches interleave.
+      ...(all ? ['--date-order', '--exclude=refs/stash', '--all'] : []),
+    ];
+    if (target !== undefined) {
+      const confined: string[] | null = confinedPaths(root, [target]);
+      if (confined === null) {
+        return fail('Invalid path');
+      }
+      let file: boolean = false;
+      try {
+        file = (await stat(path.resolve(root, confined[0]))).isFile();
+      } catch {
+        // Gone from the working tree: its history is still there, read without following renames.
+      }
+      args.push(...(file ? ['--follow'] : []), '--', confined[0]);
+    }
+    return this.read(root, args, parseLog);
   }
 
   /**
