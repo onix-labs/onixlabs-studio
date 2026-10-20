@@ -1,9 +1,11 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import {
   DetectedRepository,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
+import type { VcsIgnoreRule, VersionControlCapability } from '@shared/api/version-control-protocol';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
@@ -178,6 +180,13 @@ export class WorkspaceGit {
   private readonly revertable: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
     new Set<string>(),
   );
+
+  /**
+   * Holds the capabilities the bound repository's plugin confirmed, or null until they are known —
+   * which offers none of the commands that need one, so a plugin too old to have them is never asked.
+   */
+  private readonly capabilities: WritableSignal<ReadonlySet<VersionControlCapability> | null> =
+    signal<ReadonlySet<VersionControlCapability> | null>(null);
 
   /**
    * Holds the current branch, or null when detached or not a repository.
@@ -444,6 +453,71 @@ export class WorkspaceGit {
   }
 
   /**
+   * Gets whether an untracked path can be added to the ignore list: the plugin can, and the path is
+   * untracked (#1043).
+   * @param path The absolute file or folder path.
+   * @returns Returns true when the context menu offers Ignore.
+   */
+  public canIgnore(path: string): boolean {
+    return this.supports('ignore') && this.stateFor(path) === 'untracked';
+  }
+
+  /**
+   * Adds a path — or, given an extension, every file with it — to the ignore list, and reads the
+   * status again so the row turns ignored (#1043).
+   * @param path The absolute file or folder path the command was chosen on.
+   * @param extension The extension, without the dot, to ignore everywhere; omitted for the path itself.
+   * @returns Returns the outcome.
+   */
+  public ignore(path: string, extension?: string): Promise<MutationResult> {
+    return this.mutate(
+      'Ignoring',
+      [path],
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> => {
+        const rule: VcsIgnoreRule =
+          extension === undefined
+            ? { kind: 'path', path: relative[0] }
+            : { kind: 'extension', extension };
+        return provider.ignore([rule]);
+      },
+    );
+  }
+
+  /**
+   * Gets whether a path can be taken out of version control: the plugin can, the path lies inside the
+   * repository (never the root itself), and it is tracked — unchanged, edited, or a folder holding
+   * changes. An untracked, added, ignored or conflicted path has nothing to stop (#1043).
+   * @param path The absolute file or folder path.
+   * @returns Returns true when the context menu offers Stop Tracking.
+   */
+  public canStopTracking(path: string): boolean {
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    if (!this.supports('stopTracking') || root === null) {
+      return false;
+    }
+    if (!this.realKey(path).startsWith(`${root}/`)) {
+      return false;
+    }
+    const state: ExplorerScmState | null = this.stateFor(path);
+    return state === null || state === 'modified' || state === 'contains';
+  }
+
+  /**
+   * Takes a path out of version control, leaving it on disk, and reads the status again so the row
+   * turns untracked — from where it can be ignored (#1043).
+   * @param path The absolute file or folder path.
+   * @returns Returns the outcome.
+   */
+  public stopTracking(path: string): Promise<MutationResult> {
+    return this.mutate(
+      'Stopping tracking',
+      [path],
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stopTracking(relative),
+    );
+  }
+
+  /**
    * Trusts the restricted repository, after which the folder is bound and read like any other. The
    * way back in for a user who did not trust the repository when first asked.
    * @returns Returns a promise that resolves once the folder has been bound.
@@ -530,6 +604,7 @@ export class WorkspaceGit {
       this.provider = this.providers.create(info.root);
       this.boundSignal.set(true);
       this.log.debug('source-control', 'Bound workspace git repository', info.root);
+      void this.loadCapabilities(info.root);
       // Watch the repository so an on-disk branch switch or working-tree change (e.g. an agent
       // creating and working from a new branch) refreshes the status and branch live, without needing
       // the tab to be re-activated — which is what Mission Control's per-column branch reads.
@@ -621,7 +696,29 @@ export class WorkspaceGit {
     this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
     this.revertable.set(new Set<string>());
+    this.capabilities.set(null);
     this.branchSignal.set(null);
+  }
+
+  /**
+   * Gets whether the bound repository's plugin confirmed a capability. False until it has answered.
+   * @param capability The capability.
+   * @returns Returns true when it is confirmed.
+   */
+  private supports(capability: VersionControlCapability): boolean {
+    return this.provider !== null && (this.capabilities()?.has(capability) ?? false);
+  }
+
+  /**
+   * Reads what the plugin serving the bound repository can do.
+   * @param root The repository root.
+   * @returns Returns a promise that settles once read.
+   */
+  private async loadCapabilities(root: string): Promise<void> {
+    const described: RepositoryCapabilities | null = (await this.api?.describe(root)) ?? null;
+    if (described !== null && this.boundRoot === root) {
+      this.capabilities.set(new Set<VersionControlCapability>(described.capabilities));
+    }
   }
 
   /**

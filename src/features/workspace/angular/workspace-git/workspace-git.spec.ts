@@ -2,6 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DetectedRepository,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
@@ -80,6 +81,9 @@ describe('WorkspaceGit', () => {
   let staged: string[][];
   let unstaged: string[][];
   let discarded: string[][];
+  let ignored: unknown[][];
+  let untracked: string[][];
+  let capabilities: string[];
   let watched: string[];
   let fireWatch: () => void;
   let trustAnswer: boolean;
@@ -125,7 +129,16 @@ describe('WorkspaceGit', () => {
     };
 
     offers = [];
-    const client: Pick<SourceControlClient, 'resolveRepository' | 'closeRepository' | 'detect'> = {
+    const client: Pick<
+      SourceControlClient,
+      'resolveRepository' | 'closeRepository' | 'detect' | 'describe'
+    > = {
+      describe: (): Promise<RepositoryCapabilities | null> =>
+        Promise.resolve({
+          pluginId: 'onixlabs.git',
+          displayName: 'Git',
+          capabilities: capabilities as RepositoryCapabilities['capabilities'],
+        }),
       detect: (): Promise<DetectedRepository | null> => Promise.resolve(detected),
       resolveRepository: (): Promise<RepositoryInfo | null> => Promise.resolve(resolved),
       closeRepository: (repositoryRoot: string): Promise<void> => {
@@ -136,7 +149,21 @@ describe('WorkspaceGit', () => {
     staged = [];
     unstaged = [];
     discarded = [];
-    const provider: Pick<SourceControlProvider, 'getStatus' | 'stage' | 'unstage' | 'discard'> = {
+    ignored = [];
+    untracked = [];
+    capabilities = ['stagingArea', 'ignore', 'stopTracking'];
+    const provider: Pick<
+      SourceControlProvider,
+      'getStatus' | 'stage' | 'unstage' | 'discard' | 'ignore' | 'stopTracking'
+    > = {
+      ignore: (rules: readonly unknown[]): Promise<MutationResult> => {
+        ignored.push([...rules]);
+        return Promise.resolve({ success: true });
+      },
+      stopTracking: (paths: readonly string[]): Promise<MutationResult> => {
+        untracked.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
       getStatus: (): Promise<ParsedStatus> => Promise.resolve(status),
       stage: (paths: readonly string[]): Promise<MutationResult> => {
         staged.push([...paths]);
@@ -386,6 +413,47 @@ describe('WorkspaceGit', () => {
     await git.markResolved('/repo/src/both.ts');
 
     expect(staged).toEqual([['src/both.ts']]);
+  });
+
+  it('ignore_offeredOnAnUntrackedPath_writesAPathOrAnExtensionRule', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.canIgnore('/repo/README.md')).toBe(true);
+    expect(git.canIgnore('/repo/src/app/main.ts')).toBe(false);
+
+    await git.ignore('/repo/README.md');
+    await git.ignore('/repo/README.md', 'md');
+
+    expect(ignored).toEqual([
+      [{ kind: 'path', path: 'README.md' }],
+      [{ kind: 'extension', extension: 'md' }],
+    ]);
+  });
+
+  it('stopTracking_offeredOnTrackedPaths_neverTheRootOrAnUntrackedOne', async () => {
+    status = { ...status, staged: [...status.staged, change('src/new.ts', 'added')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.canStopTracking('/repo/src/app/main.ts')).toBe(true); // modified
+    expect(git.canStopTracking('/repo/src')).toBe(true); // holds changes
+    expect(git.canStopTracking('/repo/docs/guide.md')).toBe(true); // unchanged
+    expect(git.canStopTracking('/repo/README.md')).toBe(false); // untracked
+    expect(git.canStopTracking('/repo/src/new.ts')).toBe(false); // added: Undo Add instead
+    expect(git.canStopTracking('/repo')).toBe(false); // the whole repository
+
+    await git.stopTracking('/repo/src/app/main.ts');
+    expect(untracked).toEqual([['src/app/main.ts']]);
+  });
+
+  it('ignoreAndStopTracking_areNotOffered_whenThePluginCannotDoThem', async () => {
+    // A plugin built before #1043 confirms neither; one not yet described offers neither either.
+    capabilities = ['stagingArea'];
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.canIgnore('/repo/README.md')).toBe(false);
+    expect(git.canStopTracking('/repo/src/app/main.ts')).toBe(false);
   });
 
   it('stateFor_findsTheState_whenTheWorkspaceWasOpenedThroughASymlink', async () => {

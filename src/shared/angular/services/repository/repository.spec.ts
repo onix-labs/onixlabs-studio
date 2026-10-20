@@ -42,6 +42,14 @@ function workingFile(path: string): GitFileChange {
  * A canned provider whose data the repository tests load and select against.
  */
 class FakeProvider implements SourceControlProvider {
+  public ignore(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public stopTracking(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public constructor(public readonly root: string) {}
 
   /**

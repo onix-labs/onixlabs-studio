@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   VERSION_CONTROL_CAPABILITIES,
@@ -198,6 +198,57 @@ export function confinedPaths(root: string, paths: unknown): string[] | null {
 }
 
 /**
+ * Matches an extension an ignore rule may name: one segment, no dot, nothing a pattern would read as a
+ * wildcard.
+ */
+const IGNORE_EXTENSION_PATTERN: RegExp = /^[A-Za-z0-9_+-]+$/;
+
+/**
+ * Writes one ignore rule as a `.gitignore` line, or refuses it.
+ *
+ * A path is anchored to the root (a leading `/`), so ignoring `build` ignores that one directory rather
+ * than every `build` in the tree, and a directory gets a trailing `/`. The characters `.gitignore`
+ * reads as pattern syntax are escaped, so a file named `[draft].md` is ignored as itself; a line break
+ * is refused outright, since it would write a second rule nobody asked for.
+ * @param root The repository root.
+ * @param rule The candidate rule.
+ * @returns Returns the line, or null when the rule is invalid.
+ */
+export async function ignoreLine(root: string, rule: unknown): Promise<string | null> {
+  if (typeof rule !== 'object' || rule === null) {
+    return null;
+  }
+  const candidate: { kind?: unknown; path?: unknown; extension?: unknown } = rule;
+  if (candidate.kind === 'extension') {
+    return typeof candidate.extension === 'string' &&
+      IGNORE_EXTENSION_PATTERN.test(candidate.extension)
+      ? `*.${candidate.extension}`
+      : null;
+  }
+  if (candidate.kind !== 'path' || typeof candidate.path !== 'string') {
+    return null;
+  }
+  const relative: string = candidate.path.replace(/^\.\//, '').replace(/\/+$/, '');
+  if (/[\r\n]/.test(relative) || confinedPaths(root, [relative]) === null) {
+    return null;
+  }
+  const absolute: string = path.resolve(root, relative);
+  if (absolute === root) {
+    return null;
+  }
+  let directory: boolean = false;
+  try {
+    directory = (await stat(absolute)).isDirectory();
+  } catch {
+    // Gone already, or never there: ignored as a file.
+  }
+  const escaped: string = relative
+    .replace(/[\\*?[\]]/g, '\\$&')
+    .replace(/ +$/, (spaces: string): string => spaces.replace(/ /g, '\\ '));
+  return `/${escaped}${directory ? '/' : ''}`;
+}
+
+/**
  * Rewrites a failed network operation's message into an actionable one when it is an authentication
  * failure. Network git runs are non-interactive, so missing credentials fail fast — but the raw error
  * explains neither why nor what to do about it.
@@ -387,6 +438,10 @@ export class GitVersionControl {
         return this.readFile(root, params['path'], params['version']);
       case 'discard':
         return this.discard(root, params['paths']);
+      case 'ignore':
+        return this.ignore(root, params['rules']);
+      case 'stopTracking':
+        return this.stopTracking(root, params['paths']);
       case 'stage':
         return this.pathCommand(root, params['paths'], ['add', '-A'], ['add', '--']);
       case 'unstage':
@@ -664,6 +719,73 @@ export class GitVersionControl {
     return toRestore.length > 0
       ? this.mutate(root, ['restore', '--staged', '--worktree', '--', ...toRestore])
       : ok(DONE);
+  }
+
+  /**
+   * Adds rules to the repository's root `.gitignore`, creating it when there is none, and skipping
+   * any rule it already holds. Every rule is checked before anything is written, so a bad one leaves
+   * the file untouched.
+   * @param root The repository root.
+   * @param rules The rules to add.
+   * @returns Returns the outcome.
+   */
+  private async ignore(root: string, rules: unknown): Promise<Outcome> {
+    if (!Array.isArray(rules) || rules.length === 0) {
+      return fail('Invalid ignore rules');
+    }
+    const lines: string[] = [];
+    for (const rule of rules) {
+      const line: string | null = await ignoreLine(root, rule);
+      if (line === null) {
+        return fail('Invalid ignore rule');
+      }
+      lines.push(line);
+    }
+    const file: string = path.join(root, '.gitignore');
+    let existing: string = '';
+    try {
+      existing = await readFile(file, 'utf8');
+    } catch {
+      // No .gitignore yet: this creates one.
+    }
+    const held: Set<string> = new Set<string>(
+      existing.split(/\r?\n/).map((entry: string): string => entry.trim()),
+    );
+    const added: string[] = [...new Set<string>(lines)].filter(
+      (line: string): boolean => !held.has(line),
+    );
+    if (added.length === 0) {
+      return ok(DONE);
+    }
+    const separator: string = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+    try {
+      await writeFile(file, `${existing}${separator}${added.join('\n')}\n`, 'utf8');
+    } catch (error: unknown) {
+      note('GitVersionControl', 'Failed to write .gitignore', error);
+      return fail(`Failed to write .gitignore: ${String(error)}`);
+    }
+    return ok(DONE);
+  }
+
+  /**
+   * Takes paths out of the index, leaving them on disk; a directory takes everything tracked in it.
+   * Git refuses a file whose staged content differs from both the last commit and the working tree,
+   * and that refusal is passed on rather than forced: forcing it would lose the staged version.
+   * @param root The repository root.
+   * @param paths The repository-relative paths; must not be empty.
+   * @returns Returns the outcome.
+   */
+  private stopTracking(root: string, paths: unknown): Promise<Outcome> {
+    const confined: string[] | null = confinedPaths(root, paths);
+    // Never the root itself: that would take the whole repository out of version control.
+    if (
+      confined === null ||
+      confined.length === 0 ||
+      confined.some((candidate: string): boolean => path.resolve(root, candidate) === root)
+    ) {
+      return Promise.resolve(fail('Invalid path'));
+    }
+    return this.mutate(root, ['rm', '--cached', '-r', '--quiet', '--', ...confined]);
   }
 
   /**

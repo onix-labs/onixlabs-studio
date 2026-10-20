@@ -426,6 +426,34 @@ describe('VersionControlHost', () => {
     });
   });
 
+  it('describe_acceptsIgnoreAndStopTracking_fromTheHandshakeAlone', async () => {
+    // #1043: a manifest declaring them would be refused by older builds reading the same index, so the
+    // plugin confirms them itself. Every other capability still needs the manifest too.
+    const vcs: VersionControlHost = host(
+      [plugin('git', '.git', 100, ['stash'])],
+      ['.git'],
+      fakeClient(['stash', 'tags', 'ignore', 'stopTracking']),
+    );
+
+    expect(await vcs.describe(ROOT)).toMatchObject({
+      ok: true,
+      capabilities: ['stash', 'ignore', 'stopTracking'],
+    });
+    expect(await vcs.request(ROOT, 'stopTracking', { paths: ['a.ts'] })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('request_ignore_whenTheHandshakeDoesNotConfirmIt_isRefused', async () => {
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    expect(
+      await vcs.request(ROOT, 'ignore', { rules: [{ kind: 'extension', extension: 'log' }] }),
+    ).toMatchObject({ ok: false });
+    expect(fake.requests.map((request) => request.op)).not.toContain('ignore');
+  });
+
   it('metadataDirectories_isTheDistinctUnionAcrossPlugins', () => {
     const vcs: VersionControlHost = host(
       [plugin('git', '.git'), plugin('git-pro', '.git'), plugin('hg', '.hg')],
