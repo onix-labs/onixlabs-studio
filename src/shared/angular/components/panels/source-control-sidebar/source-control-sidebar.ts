@@ -912,7 +912,7 @@ export class SourceControlSidebar implements OnDestroy {
   private newBranchItem(): MenuItem {
     return {
       id: ACTION_NEW_BRANCH,
-      label: 'New Branch…',
+      label: 'New Branch',
       icon: Icon.PLUS,
       disabled: !this.repository.isBound(),
     };
@@ -925,7 +925,7 @@ export class SourceControlSidebar implements OnDestroy {
   private newTagItem(): MenuItem {
     return {
       id: ACTION_NEW_TAG,
-      label: 'New Tag…',
+      label: 'New Tag',
       icon: Icon.TAG,
       disabled: !this.repository.isBound(),
     };
@@ -938,7 +938,7 @@ export class SourceControlSidebar implements OnDestroy {
   private addRemoteItem(): MenuItem {
     return {
       id: ACTION_ADD_REMOTE,
-      label: 'Add Remote…',
+      label: 'Add Remote',
       icon: Icon.CLOUD,
       disabled: !this.repository.isBound(),
     };
@@ -999,7 +999,7 @@ export class SourceControlSidebar implements OnDestroy {
               [
                 {
                   id: ACTION_NEW_WORKTREE,
-                  label: 'New Worktree…',
+                  label: 'New Worktree',
                   icon: Icon.WORKTREE,
                   disabled: this.worktreeSource?.busy() ?? false,
                 },
@@ -1030,7 +1030,7 @@ export class SourceControlSidebar implements OnDestroy {
       return [
         {
           id: ACTION_NEW_WORKTREE,
-          label: 'New Worktree…',
+          label: 'New Worktree',
           icon: Icon.WORKTREE,
           disabled: this.worktreeSource?.busy() ?? false,
         },
@@ -1045,7 +1045,7 @@ export class SourceControlSidebar implements OnDestroy {
     return [
       {
         id: ACTION_CONVERT_TO_WORKTREES,
-        label: 'Convert to Worktrees…',
+        label: 'Convert to Worktrees',
         icon: Icon.WORKTREE,
         disabled: blocked,
         ...(blocked ? { status: 'agent is working' } : {}),
@@ -2407,7 +2407,7 @@ export class SourceControlSidebar implements OnDestroy {
         : [
             {
               id: ACTION_COMMIT_BRANCH,
-              label: 'Commit…',
+              label: 'Commit',
               icon: Icon.GIT_COMMIT,
               status: `${this.repository.changeCount()} changed`,
             },
@@ -2528,10 +2528,10 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private branchManagementItems(branch: GitBranch): readonly MenuItem[] {
     const items: MenuItem[] = [
-      { id: ACTION_RENAME_BRANCH, label: 'Rename…', icon: Icon.PENCIL },
+      { id: ACTION_RENAME_BRANCH, label: 'Rename', icon: Icon.PENCIL },
       {
         id: ACTION_SET_UPSTREAM,
-        label: 'Set Upstream…',
+        label: 'Set Upstream',
         icon: Icon.CLOUD,
         ...(branch.upstream === undefined ? {} : { status: branch.upstream }),
       },
@@ -2541,7 +2541,7 @@ export class SourceControlSidebar implements OnDestroy {
     }
     if (!branch.current) {
       items.push({ separator: true, id: 'branch.sep.delete', label: '' });
-      items.push({ id: ACTION_DELETE_BRANCH, label: 'Delete…', icon: Icon.TRASH });
+      items.push({ id: ACTION_DELETE_BRANCH, label: 'Delete', icon: Icon.TRASH });
     }
     return items;
   }
@@ -2691,7 +2691,7 @@ export class SourceControlSidebar implements OnDestroy {
         { separator: true, id: 'worktree-branch.sep', label: '' },
         {
           id: ACTION_DELETE_WORKTREE_BRANCH,
-          label: 'Delete…',
+          label: 'Delete',
           icon: Icon.TRASH,
           disabled: checkedOut,
           ...(checkedOut ? { status: 'checked out there' } : {}),
@@ -2704,7 +2704,7 @@ export class SourceControlSidebar implements OnDestroy {
       return [
         { id: ACTION_APPLY_STASH, label: 'Apply', icon: Icon.ARROW_DOWN, status: 'keep the stash' },
         { id: ACTION_POP_STASH, label: 'Pop', icon: Icon.ARROW_UP, status: 'drop the stash' },
-        { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
+        { id: ACTION_DROP_STASH, label: 'Drop', icon: Icon.TRASH },
       ];
     }
     if (node.remoteBranch !== undefined) {
@@ -2748,13 +2748,13 @@ export class SourceControlSidebar implements OnDestroy {
           ...(browsableRemoteUrl(url) === null ? { status: 'not a web address' } : {}),
         },
         { separator: true, id: 'remote.sep.remove', label: '' },
-        { id: ACTION_REMOVE_REMOTE, label: 'Remove…', icon: Icon.TRASH },
+        { id: ACTION_REMOVE_REMOTE, label: 'Remove', icon: Icon.TRASH },
       ];
     }
     if (node.tag !== undefined) {
       return [
         this.pushToRemoteItem(ACTION_PUSH_TAG, 'Push'),
-        { id: ACTION_DELETE_TAG, label: 'Delete…', icon: Icon.TRASH },
+        { id: ACTION_DELETE_TAG, label: 'Delete', icon: Icon.TRASH },
       ];
     }
     if (node.pullRequest !== undefined) {
@@ -2808,7 +2808,7 @@ export class SourceControlSidebar implements OnDestroy {
       // A branch is made in a worktree, since each is a clone of its own (#939).
       { ...this.newBranchItem(), disabled: false },
       { separator: true, id: 'worktree.sep.branch', label: '' },
-      { id: ACTION_RENAME_WORKTREE, label: 'Rename…', icon: Icon.PENCIL },
+      { id: ACTION_RENAME_WORKTREE, label: 'Rename', icon: Icon.PENCIL },
       { separator: true, id: 'worktree.sep.rename', label: '' },
       { id: ACTION_REVEAL_WORKTREE, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       { id: ACTION_COPY_WORKTREE_PATH, label: 'Copy Path', icon: Icon.COPY },
@@ -2818,7 +2818,7 @@ export class SourceControlSidebar implements OnDestroy {
     if (removable) {
       items.push(
         { separator: true, id: 'worktree.sep.remove', label: '' },
-        { id: ACTION_REMOVE_WORKTREE, label: 'Remove Worktree…', icon: Icon.TRASH, tone: 'danger' },
+        { id: ACTION_REMOVE_WORKTREE, label: 'Remove Worktree', icon: Icon.TRASH },
       );
     }
     return items;

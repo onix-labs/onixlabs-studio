@@ -171,6 +171,15 @@ export class WorkspaceGit {
   );
 
   /**
+   * Holds the normalised absolute paths of files whose changes Revert can take back to `HEAD`: edited
+   * or deleted, and nothing else (#1042). An added or renamed file is not among them, since restoring
+   * it from `HEAD` would delete it, and Revert must only ever undo edits.
+   */
+  private readonly revertable: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
    * Holds the current branch, or null when detached or not a repository.
    */
   private readonly branchSignal: WritableSignal<string | null> = signal<string | null>(null);
@@ -305,6 +314,7 @@ export class WorkspaceGit {
     this.pathState.set(states);
     this.wholeDirs.set(whole);
     this.changedDirs.set(dirs);
+    this.revertable.set(revertableKeys(root, status, states));
     this.branchSignal.set(status.branch);
   }
 
@@ -323,7 +333,7 @@ export class WorkspaceGit {
    * is modified. Only modified — a new file's diff is the whole file, and a conflict is resolved in the
    * Repository panel rather than read here.
    * @param path The absolute file path.
-   * @returns Returns true when the context menu offers Show Diff.
+   * @returns Returns true when the context menu offers Show Differences.
    */
   public canShowDiff(path: string): boolean {
     return this.provider !== null && this.stateFor(path) === 'modified';
@@ -336,19 +346,101 @@ export class WorkspaceGit {
    * @param path The absolute file or folder path.
    * @returns Returns the outcome.
    */
-  public async addToVersionControl(path: string): Promise<MutationResult> {
-    const provider: SourceControlProvider | null = this.provider;
-    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
-    const target: string = this.realKey(path);
-    if (provider === null || root === null || !target.startsWith(`${root}/`)) {
-      return { success: false, error: 'That path is not in this workspace’s repository.' };
+  public addToVersionControl(path: string): Promise<MutationResult> {
+    return this.mutate(
+      'Adding to version control',
+      [path],
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stage(relative),
+    );
+  }
+
+  /**
+   * Gets the files Revert would take back to `HEAD` for a path (#1042): the file itself when it is
+   * edited or deleted, or every such file beneath a folder. Never an added, renamed, untracked or
+   * conflicted file — reverting those would delete work rather than undo an edit.
+   * @param path The absolute file or folder path.
+   * @returns Returns the files' normalised absolute paths, empty when there is nothing to revert.
+   */
+  public revertableFiles(path: string): readonly string[] {
+    if (this.provider === null) {
+      return [];
     }
-    // Never empty: an empty list stages the whole working tree.
-    const relative: string = target.slice(root.length + 1);
-    this.log.info('workspace.git', 'Adding to version control', relative);
-    const result: MutationResult = await provider.stage([relative]);
-    await this.refresh();
-    return result;
+    const key: string = this.realKey(path);
+    const revertable: ReadonlySet<string> = this.revertable();
+    if (revertable.has(key)) {
+      return [key];
+    }
+    return [...revertable].filter((candidate: string): boolean => candidate.startsWith(`${key}/`));
+  }
+
+  /**
+   * Takes files back to `HEAD`, index and working tree, and reads the status again (#1042). The files
+   * are named one by one, never as a folder: a folder handed to the version-control system would also
+   * take its untracked files with it. Destructive; the caller confirms first.
+   * @param files The files' absolute paths, as {@link revertableFiles} gives them.
+   * @returns Returns the outcome.
+   */
+  public revert(files: readonly string[]): Promise<MutationResult> {
+    const revertable: ReadonlySet<string> = this.revertable();
+    if (files.length === 0 || files.some((file: string): boolean => !revertable.has(file))) {
+      return Promise.resolve({ success: false, error: 'Only edited files can be reverted.' });
+    }
+    return this.mutate(
+      'Reverting',
+      files,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.discard(relative),
+    );
+  }
+
+  /**
+   * Gets whether a path was added to version control and not yet committed, so the context menu offers
+   * to take that back (#1042).
+   * @param path The absolute file path.
+   * @returns Returns true when the context menu offers Undo Add.
+   */
+  public canUndoAdd(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'added';
+  }
+
+  /**
+   * Takes an added path back out of version control, the reverse of {@link addToVersionControl}: it
+   * is unstaged, and turns untracked again with its contents untouched (#1042).
+   * @param path The absolute file path.
+   * @returns Returns the outcome.
+   */
+  public undoAdd(path: string): Promise<MutationResult> {
+    return this.mutate(
+      'Undoing add',
+      [path],
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.unstage(relative),
+    );
+  }
+
+  /**
+   * Gets whether a path is conflicted, so the context menu offers to mark it resolved (#1042).
+   * @param path The absolute file path.
+   * @returns Returns true when the context menu offers Mark Resolved.
+   */
+  public isConflicted(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'conflicted';
+  }
+
+  /**
+   * Marks a conflicted file resolved, which is what staging it means: the version now on disk becomes
+   * the one it carries — exactly what the Repository panel's Mark Resolved does (#1042).
+   * @param path The absolute file path.
+   * @returns Returns the outcome.
+   */
+  public markResolved(path: string): Promise<MutationResult> {
+    return this.mutate(
+      'Marking resolved',
+      [path],
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stage(relative),
+    );
   }
 
   /**
@@ -528,7 +620,46 @@ export class WorkspaceGit {
     this.pathState.set(new Map<string, ExplorerScmState>());
     this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
+    this.revertable.set(new Set<string>());
     this.branchSignal.set(null);
+  }
+
+  /**
+   * Runs a version-control write over paths in the bound repository, then reads the status again so
+   * the rows show what it did. Every path must lie inside the repository: a path outside it is refused
+   * rather than sent, and the list sent is never empty — to the provider an empty list means the whole
+   * working tree.
+   * @param action What the write is, for the log.
+   * @param paths The absolute paths it acts on.
+   * @param write The write, given the repository-relative paths.
+   * @returns Returns the outcome.
+   */
+  private async mutate(
+    action: string,
+    paths: readonly string[],
+    write: (
+      provider: SourceControlProvider,
+      relative: readonly string[],
+    ) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    const targets: string[] = paths.map((path: string): string => this.realKey(path));
+    if (
+      provider === null ||
+      root === null ||
+      targets.length === 0 ||
+      targets.some((target: string): boolean => !target.startsWith(`${root}/`))
+    ) {
+      return { success: false, error: 'That path is not in this workspace’s repository.' };
+    }
+    const relative: string[] = targets.map((target: string): string =>
+      target.slice(root.length + 1),
+    );
+    this.log.info('workspace.git', action, relative);
+    const result: MutationResult = await write(provider, relative);
+    await this.refresh();
+    return result;
   }
 
   /**
@@ -579,6 +710,35 @@ function scmStateOf(change: GitFileChange): ExplorerScmState {
     return 'untracked';
   }
   return change.status === 'conflicted' ? 'conflicted' : 'modified';
+}
+
+/**
+ * Gets the files Revert can take back to `HEAD` (#1042): those with only edits or a deletion against
+ * it, staged or not, that still read as modified. A file with any added, renamed or conflicted change
+ * is left out, since restoring it from `HEAD` would delete it.
+ * @param root The normalised repository root.
+ * @param status The status just read.
+ * @param states Each path's state, as the status was recorded.
+ * @returns Returns the files' normalised absolute paths.
+ */
+function revertableKeys(
+  root: string,
+  status: ParsedStatus,
+  states: ReadonlyMap<string, ExplorerScmState>,
+): ReadonlySet<string> {
+  const edited: Set<string> = new Set<string>();
+  const excluded: Set<string> = new Set<string>();
+  for (const change of [...status.staged, ...status.unstaged, ...status.conflicted]) {
+    const key: string = normalize(`${root}/${change.path}`);
+    const editOnly: boolean =
+      change.untracked !== true && (change.status === 'modified' || change.status === 'deleted');
+    (editOnly ? edited : excluded).add(key);
+  }
+  return new Set<string>(
+    [...edited].filter(
+      (key: string): boolean => !excluded.has(key) && states.get(key) === 'modified',
+    ),
+  );
 }
 
 /**

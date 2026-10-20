@@ -169,7 +169,7 @@ export class ImageRibbon {
         MENU_SEPARATOR,
         {
           id: 'image.exportAs',
-          label: 'Export As…',
+          label: 'Export As',
           run: (): void => this.view()?.toggleTool('export'),
         },
         {

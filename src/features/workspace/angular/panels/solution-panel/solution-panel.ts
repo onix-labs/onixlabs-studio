@@ -16,7 +16,6 @@ import {
   ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import {
@@ -24,6 +23,10 @@ import {
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  ExplorerVcsMenu,
+  ExplorerVcsTarget,
+} from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
@@ -35,7 +38,6 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
@@ -54,16 +56,6 @@ const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
-
-/**
- * Identifies the context-menu command that adds an untracked path to version control (#860).
- */
-const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
-
-/**
- * Identifies the context-menu command that opens a modified file's diff.
- */
-const ACTION_SHOW_DIFF: string = 'show-diff';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
@@ -170,9 +162,9 @@ export class SolutionPanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
-   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   * Holds the version-control commands a row offers, shared with the File Explorer (#1041).
    */
-  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+  private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
 
   /**
    * Holds the structured logger for solution explorer actions.
@@ -271,7 +263,7 @@ export class SolutionPanel {
     // solution file names it, and providers that can rewrite that name say so through their
     // capabilities. One that cannot leaves the row menu-less, exactly as before.
     if (row.kind === 'folder' && this.model()?.capabilities.renamesSolutionFolders === true) {
-      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename…', icon: Icon.PENCIL });
+      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename', icon: Icon.PENCIL });
     }
     if (path !== null) {
       items.push(
@@ -279,20 +271,8 @@ export class SolutionPanel {
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
         { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       );
-      // A path is untracked or modified, never both, so at most one of these is offered — under one
-      // separator, pushed only when there is something for it to divide.
-      const vcs: MenuItem[] = [];
-      // Offered only on a path version control does not track yet: nothing is added unasked (#860).
-      if (this.git.canAddToVersionControl(path)) {
-        vcs.push({
-          id: ACTION_ADD_TO_VCS,
-          label: 'Add to Version Control',
-          icon: Icon.PLUS_CIRCLE,
-        });
-      }
-      if (row.kind === 'file' && this.git.canShowDiff(path)) {
-        vcs.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
-      }
+      // Under one separator, pushed only when there is something for it to divide.
+      const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor(this.vcsTarget(row, path));
       if (vcs.length > 0) {
         items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
@@ -565,6 +545,9 @@ export class SolutionPanel {
       return;
     }
     this.log.info('workspace.solution', 'Context action', selection.itemId, path);
+    if (this.vcsMenu.run(selection.itemId, this.vcsTarget(row, path))) {
+      return;
+    }
 
     switch (selection.itemId) {
       case ACTION_OPEN:
@@ -581,31 +564,26 @@ export class SolutionPanel {
       case ACTION_REVEAL:
         void this.shell.revealPath(path);
         return;
-      case ACTION_ADD_TO_VCS:
-        void this.git.addToVersionControl(path).then((result: MutationResult): void => {
-          if (!result.success) {
-            this.notifications.notify({
-              severity: 'error',
-              title: `Could not add “${row.label}” to version control`,
-              detail: result.error ?? 'Version control refused it.',
-            });
-          }
-        });
-        return;
-      case ACTION_SHOW_DIFF:
-        void this.diffOpener.openPath(path).then((refusal: string | null): void => {
-          if (refusal !== null) {
-            this.notifications.notify({
-              severity: 'warning',
-              title: `No diff for “${row.label}”`,
-              detail: refusal,
-            });
-          }
-        });
-        return;
       default:
         return;
     }
+  }
+
+  /**
+   * Describes a row to the version-control commands. A folder row, and the root row (which stands for
+   * the root directory), act as folders. A project row — and a solution row backed by its `.sln` —
+   * acts on the file it is read from, so it is named by that file rather than by its label: Revert
+   * on project "A" reverts `A.csproj`, and the confirmation should say so.
+   * @param row The row.
+   * @param path The row's path.
+   * @returns Returns the target.
+   */
+  private vcsTarget(row: SolutionRow, path: string): ExplorerVcsTarget {
+    if (row.kind === 'item-folder' || row.path === null) {
+      return { path, name: row.label, kind: 'directory' };
+    }
+    const name: string = row.kind === 'file' ? row.label : (path.split(/[/\\]/).pop() ?? row.label);
+    return { path, name, kind: 'file' };
   }
 
   /**

@@ -21,6 +21,7 @@ import {
   ExplorerScmState,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -350,6 +351,27 @@ describe('SolutionPanel', () => {
 
       component.onContextAction({ itemId: 'show-diff', row: treeRow(changed) });
       expect(open).toHaveBeenCalledWith('/root/A/g.cs');
+    });
+
+    it('contextMenuFor_aProject_actsOnItsProjectFile_namedByThatFile', () => {
+      // #1042: Revert on project "A" reverts A.csproj, and the confirmation must say so.
+      const itemsFor: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(ExplorerVcsMenu), 'itemsFor')
+        .mockReturnValue([]);
+
+      menuIds(makeRow({ kind: 'project', label: 'A', path: '/root/A/A.csproj' }));
+      menuIds(makeRow({ kind: 'item-folder', label: 'src', path: '/root/A/src' }));
+
+      expect(itemsFor).toHaveBeenNthCalledWith(1, {
+        path: '/root/A/A.csproj',
+        name: 'A.csproj',
+        kind: 'file',
+      });
+      expect(itemsFor).toHaveBeenNthCalledWith(2, {
+        path: '/root/A/src',
+        name: 'src',
+        kind: 'directory',
+      });
     });
 
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {

@@ -294,17 +294,17 @@ export class EditorContextMenu {
         this.item('references', 'Find All References', !this.navigation.listsReferences(editor)),
       );
     }
-    navigation.push(this.item('symbol', 'Go to Symbol…'), this.item('line', 'Go to Line…'));
+    navigation.push(this.item('symbol', 'Go to Symbol'), this.item('line', 'Go to Line'));
 
-    const find: MenuItem[] = [this.item('find', 'Find…', !this.findRouter.answers(editor))];
+    const find: MenuItem[] = [this.item('find', 'Find', !this.findRouter.answers(editor))];
 
     // Hidden, not disabled, in a read-only editor: it can never be edited, so the rows are noise.
     const editing: MenuItem[] = [];
     if (writable && this.quickFixes.offersQuickFixes(editor)) {
-      editing.push(this.item('quickFix', 'Quick Fix…'));
+      editing.push(this.item('quickFix', 'Quick Fix'));
     }
     if (writable && this.renameSymbol.offersRename(editor)) {
-      editing.push(this.item('rename', 'Rename Symbol…'));
+      editing.push(this.item('rename', 'Rename Symbol'));
     }
     if (writable && supports(editor, 'formatDocument')) {
       editing.push(this.item('formatDocument', 'Format Document'));

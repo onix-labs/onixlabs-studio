@@ -356,8 +356,8 @@ describe('CodeDocumentPanel', () => {
       items.find((item: { label: string }): boolean => item.label === label)?.disabled;
 
     expect(items.map((item: { label: string }): string => item.label)).toEqual([
-      'Go to Symbol…',
-      'Go to Line…',
+      'Go to Symbol',
+      'Go to Line',
       '',
       'Word Wrap',
       'Minimap',

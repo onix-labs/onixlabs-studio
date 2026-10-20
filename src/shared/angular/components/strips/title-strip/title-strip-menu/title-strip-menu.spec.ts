@@ -80,7 +80,7 @@ const NESTED_SECTIONS: readonly MenuContribution[] = [
         label: 'New',
         items: [{ id: 'file.new.code', label: 'Code File', run: (): void => undefined }],
       },
-      { id: 'file.open', label: 'Open File…', run: (): void => undefined },
+      { id: 'file.open', label: 'Open File', run: (): void => undefined },
     ],
   },
 ];

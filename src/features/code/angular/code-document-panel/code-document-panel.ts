@@ -337,8 +337,8 @@ export class CodeDocumentPanel {
    */
   protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
     return [
-      { id: MENU_GO_TO_SYMBOL, label: 'Go to Symbol…', icon: Icon.GO_TO_SYMBOL },
-      { id: MENU_GO_TO_LINE, label: 'Go to Line…', icon: Icon.GO_TO_LINE },
+      { id: MENU_GO_TO_SYMBOL, label: 'Go to Symbol', icon: Icon.GO_TO_SYMBOL },
+      { id: MENU_GO_TO_LINE, label: 'Go to Line', icon: Icon.GO_TO_LINE },
       { id: 'separator', label: '', separator: true },
       // The editor's view options, the ribbon's three checkboxes (#882): editor-wide, so they agree.
       { id: MENU_WORD_WRAP, label: 'Word Wrap', checked: this.wordWrap() },

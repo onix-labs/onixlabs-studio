@@ -82,7 +82,7 @@ type WorkingRowData =
  * Commit / Commit and Push actions. Selecting a file drives the repository's file selection, which
  * the Monaco diff surface follows.
  *
- * The panel owns its tool strip, per the ribbon-versus-panel rule: Refresh, Discard All, Show Diff
+ * The panel owns its tool strip, per the ribbon-versus-panel rule: Refresh, Discard All, Show Differences
  * and Stash act on what the panel holds, and Expand All / Collapse All act on its tree — the same
  * pair, on the same glyphs, that the Solution Explorer wears.
  *

@@ -101,7 +101,7 @@ export class ContainersRibbon {
           },
           {
             id: 'containers.remove',
-            label: 'Remove…',
+            label: 'Remove',
             enabled: this.hasSelection(),
             run: (): void => this.onRemove(),
           },

@@ -384,17 +384,17 @@ export class ApiExplorerPanel {
     switch (data.kind) {
       case 'request':
         return [
-          { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
         ];
       case 'collection':
         return [
           { id: ACTION_NEW_REQUEST, label: 'New Request', icon: Icon.API_REQUEST },
-          { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
         ];
       case 'environment':
         return [
@@ -404,10 +404,10 @@ export class ApiExplorerPanel {
           ...(data.active === true
             ? []
             : [{ id: ACTION_ACTIVATE, label: 'Set as Active', icon: Icon.API_ENVIRONMENT }]),
-          { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
           { id: ACTION_DUPLICATE, label: 'Duplicate', icon: Icon.COPY },
           { id: 'api-menu.sep', label: '', separator: true },
-          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
         ];
       default:
         return [];

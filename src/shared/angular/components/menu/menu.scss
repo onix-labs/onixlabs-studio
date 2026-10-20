@@ -4,10 +4,10 @@
   display: none;
 }
 
-// A divider between groups of rows. Inset from the panel's edges so it reads as separating the rows
-// rather than as a border on the panel itself.
+// A divider between groups of rows, bled edge to edge: the negative inline margin cancels the panel's
+// own padding (`.app-menu-panel` in `_menu.scss`), so the rule meets the panel's border on both sides.
 .app-menu-panel__separator {
-  margin: 0.25rem 0.5rem;
+  margin: 0.25rem -0.25rem;
   border: none;
   border-block-start: 0.0625rem solid var(--menu-border-color);
 }

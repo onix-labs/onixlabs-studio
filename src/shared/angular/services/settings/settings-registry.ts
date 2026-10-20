@@ -475,7 +475,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'workspaces.documentDiffSwitch',
         title: 'Switching between a file and its diff',
         description:
-          "What the Show Diff and Show File buttons on a file's and a diff's tool strips do with the tab you are leaving. Open as a separate tab keeps both, opening the other view beside it (or going to it when it is already open); Replace the current tab turns the tab into the other view, asking to save a file with unsaved changes first.",
+          "What the Show Differences and Show File buttons on a file's and a diff's tool strips do with the tab you are leaving. Open as a separate tab keeps both, opening the other view beside it (or going to it when it is already open); Replace the current tab turns the tab into the other view, asking to save a file with unsaved changes first.",
         control: {
           kind: 'select',
           options: [
