@@ -41,6 +41,22 @@ function extensionOf(name: string): string | null {
 }
 
 /**
+ * Gets the extension every row shares, when they are all files with the same one — what Ignore can
+ * offer to ignore everywhere.
+ * @param targets The rows.
+ * @returns Returns the extension, without the dot, or null.
+ */
+function sharedExtension(targets: readonly ExplorerVcsTarget[]): string | null {
+  const extensions: ReadonlySet<string | null> = new Set<string | null>(
+    targets.map((target: ExplorerVcsTarget): string | null =>
+      target.kind === 'file' ? extensionOf(target.name) : null,
+    ),
+  );
+  const [only]: (string | null)[] = [...extensions];
+  return extensions.size === 1 ? (only ?? null) : null;
+}
+
+/**
  * The row a version-control command is offered on or run against.
  */
 export interface ExplorerVcsTarget {
@@ -112,106 +128,134 @@ export class ExplorerVcsMenu {
   );
 
   /**
-   * Gets the version-control commands a row offers, or none when nothing applies.
-   * @param target The row.
+   * Gets the version-control commands a row offers — or, for several selected rows (#1048), those that
+   * apply to every one of them — or none when nothing applies.
+   *
+   * A selection gets only what can act on all of it at once: the commands that need one file of their
+   * own (Show Differences, Show History, Open in Repository) are left out rather than offered for the
+   * first, and a command one row cannot take is not offered for any.
+   * @param targets The row, or the selected rows.
    * @returns Returns the items, without a separator — the explorer places them.
    */
-  public itemsFor(target: ExplorerVcsTarget): readonly MenuItem[] {
-    const { path, kind } = target;
+  public itemsFor(targets: readonly ExplorerVcsTarget[]): readonly MenuItem[] {
+    if (targets.length === 0) {
+      return [];
+    }
+    const single: ExplorerVcsTarget | null = targets.length === 1 ? targets[0] : null;
+    const every: (test: (target: ExplorerVcsTarget) => boolean) => boolean = (
+      test: (target: ExplorerVcsTarget) => boolean,
+    ): boolean => targets.every(test);
+    const files: boolean = every((target: ExplorerVcsTarget): boolean => target.kind === 'file');
     const items: MenuItem[] = [];
     // Offered only on a path version control does not track yet: nothing is added unasked (#860).
-    if (this.git.canAddToVersionControl(path)) {
+    if (
+      every((target: ExplorerVcsTarget): boolean => this.git.canAddToVersionControl(target.path))
+    ) {
       items.push({
         id: ACTION_ADD_TO_VCS,
         label: 'Add to Version Control',
         icon: Icon.PLUS_CIRCLE,
       });
     }
-    if (this.git.canIgnore(path)) {
-      items.push(this.ignoreItem(target));
+    if (every((target: ExplorerVcsTarget): boolean => this.git.canIgnore(target.path))) {
+      items.push(this.ignoreItem(targets));
     }
-    if (kind === 'file' && this.git.canUndoAdd(path)) {
+    if (files && every((target: ExplorerVcsTarget): boolean => this.git.canUndoAdd(target.path))) {
       items.push({ id: ACTION_UNDO_ADD, label: 'Undo Add', icon: Icon.MINUS_CIRCLE });
     }
-    if (kind === 'file' && this.git.canShowDiff(path)) {
+    if (single?.kind === 'file' && this.git.canShowDiff(single.path)) {
       items.push({ id: ACTION_SHOW_DIFF, label: 'Show Differences', icon: Icon.GIT_DIFF });
     }
-    if (this.git.historyPathOf(path) !== null) {
+    if (single !== null && this.git.historyPathOf(single.path) !== null) {
       items.push({ id: ACTION_SHOW_HISTORY, label: 'Show History', icon: Icon.GIT_HISTORY });
     }
-    if (this.git.revertableFiles(path).length > 0) {
+    if (
+      every(
+        (target: ExplorerVcsTarget): boolean => this.git.revertableFiles(target.path).length > 0,
+      )
+    ) {
       items.push({ id: ACTION_REVERT, label: 'Revert Changes', icon: Icon.UNDO });
     }
-    if (this.git.canStopTracking(path)) {
+    if (every((target: ExplorerVcsTarget): boolean => this.git.canStopTracking(target.path))) {
       items.push({
         id: ACTION_STOP_TRACKING,
         label: 'Stop Tracking',
         icon: Icon.GIT_STOP_TRACKING,
       });
     }
-    if (kind === 'file' && this.git.isConflicted(path)) {
-      items.push(
-        { id: ACTION_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK },
-        { id: ACTION_OPEN_IN_REPOSITORY, label: 'Open in Repository', icon: Icon.SOURCE_CONTROL },
-      );
+    if (
+      files &&
+      every((target: ExplorerVcsTarget): boolean => this.git.isConflicted(target.path))
+    ) {
+      items.push({ id: ACTION_MARK_RESOLVED, label: 'Mark Resolved', icon: Icon.CHECK });
+      if (single !== null) {
+        items.push({
+          id: ACTION_OPEN_IN_REPOSITORY,
+          label: 'Open in Repository',
+          icon: Icon.SOURCE_CONTROL,
+        });
+      }
     }
     return items;
   }
 
   /**
-   * Runs a version-control command chosen from a row's menu.
+   * Runs a version-control command chosen from a row's menu, on that row or on every selected row —
+   * one request for them all.
    * @param itemId The chosen item's id.
-   * @param target The row it was chosen for.
+   * @param targets The row, or the selected rows, it was chosen for.
    * @returns Returns true when the id was one of these commands, false when the explorer should
    * handle it.
    */
-  public run(itemId: string, target: ExplorerVcsTarget): boolean {
+  public run(itemId: string, targets: readonly ExplorerVcsTarget[]): boolean {
+    const first: ExplorerVcsTarget | undefined = targets[0];
+    if (first === undefined) {
+      return false;
+    }
+    const paths: readonly string[] = targets.map(
+      (target: ExplorerVcsTarget): string => target.path,
+    );
+    const named: string = targets.length === 1 ? `“${first.name}”` : `${targets.length} items`;
     switch (itemId) {
       case ACTION_ADD_TO_VCS:
         void this.report(
-          this.git.addToVersionControl(target.path),
-          `Could not add “${target.name}” to version control`,
+          this.git.addToVersionControl(paths),
+          `Could not add ${named} to version control`,
         );
         return true;
       case ACTION_UNDO_ADD:
-        void this.report(this.git.undoAdd(target.path), `Could not undo adding “${target.name}”`);
+        void this.report(this.git.undoAdd(paths), `Could not undo adding ${named}`);
         return true;
       case ACTION_SHOW_DIFF:
-        void this.showDiff(target);
+        void this.showDiff(first);
         return true;
       case ACTION_REVERT:
-        void this.revert(target);
+        void this.revert(targets);
         return true;
       case ACTION_MARK_RESOLVED:
-        void this.report(
-          this.git.markResolved(target.path),
-          `Could not mark “${target.name}” resolved`,
-        );
+        void this.report(this.git.markResolved(paths), `Could not mark ${named} resolved`);
         return true;
       case ACTION_OPEN_IN_REPOSITORY:
         this.sourceControl.openInSourceControl();
         return true;
       case ACTION_IGNORE:
-        void this.report(this.git.ignore(target.path), `Could not ignore “${target.name}”`);
+        void this.report(this.git.ignore(paths), `Could not ignore ${named}`);
         return true;
       case ACTION_IGNORE_EXTENSION: {
-        const extension: string | null = extensionOf(target.name);
+        const extension: string | null = sharedExtension(targets);
         if (extension !== null) {
           void this.report(
-            this.git.ignore(target.path, extension),
+            this.git.ignore([first.path], extension),
             `Could not ignore .${extension} files`,
           );
         }
         return true;
       }
       case ACTION_SHOW_HISTORY:
-        void this.showHistory(target);
+        void this.showHistory(first);
         return true;
       case ACTION_STOP_TRACKING:
-        void this.report(
-          this.git.stopTracking(target.path),
-          `Could not stop tracking “${target.name}”`,
-        );
+        void this.report(this.git.stopTracking(paths), `Could not stop tracking ${named}`);
         return true;
       default:
         return false;
@@ -219,13 +263,13 @@ export class ExplorerVcsMenu {
   }
 
   /**
-   * Builds the Ignore command: the row itself, or — for a file with an extension — a choice between the
-   * file and every file with its extension.
-   * @param target The row.
+   * Builds the Ignore command: the rows themselves, or — when they are files sharing an extension — a
+   * choice between them and every file with that extension.
+   * @param targets The row, or the selected rows.
    * @returns Returns the item.
    */
-  private ignoreItem(target: ExplorerVcsTarget): MenuItem {
-    const extension: string | null = target.kind === 'file' ? extensionOf(target.name) : null;
+  private ignoreItem(targets: readonly ExplorerVcsTarget[]): MenuItem {
+    const extension: string | null = sharedExtension(targets);
     if (extension === null) {
       return { id: ACTION_IGNORE, label: 'Ignore', icon: Icon.GIT_IGNORE };
     }
@@ -234,7 +278,7 @@ export class ExplorerVcsMenu {
       label: 'Ignore',
       icon: Icon.GIT_IGNORE,
       children: [
-        { id: ACTION_IGNORE, label: 'This File' },
+        { id: ACTION_IGNORE, label: targets.length === 1 ? 'This File' : 'These Files' },
         { id: ACTION_IGNORE_EXTENSION, label: `All .${extension} Files` },
       ],
     };
@@ -270,30 +314,42 @@ export class ExplorerVcsMenu {
   }
 
   /**
-   * Takes a file, or every edited file in a folder, back to the last commit — once the user has said
-   * so, since the edits cannot be recovered.
-   * @param target The row.
+   * Takes a file — or every edited file in the folders and files chosen — back to the last commit, once
+   * the user has said so, since the edits cannot be recovered. The confirmation counts the files.
+   * @param targets The row, or the selected rows.
    */
-  private async revert(target: ExplorerVcsTarget): Promise<void> {
-    const files: readonly string[] = this.git.revertableFiles(target.path);
-    if (files.length === 0) {
+  private async revert(targets: readonly ExplorerVcsTarget[]): Promise<void> {
+    const files: readonly string[] = [
+      ...new Set<string>(
+        targets.flatMap((target: ExplorerVcsTarget): readonly string[] =>
+          this.git.revertableFiles(target.path),
+        ),
+      ),
+    ];
+    const first: ExplorerVcsTarget | undefined = targets[0];
+    if (files.length === 0 || first === undefined) {
       return;
     }
+    const count: string = files.length === 1 ? '1 file' : `${files.length} files`;
+    const oneFile: boolean = targets.length === 1 && first.kind === 'file';
     const confirmed: boolean = await this.fileSystem.confirmDestructive({
       title: 'Revert Changes',
-      message:
-        target.kind === 'file'
-          ? `Revert the changes to “${target.name}”?`
-          : `Revert the changes to ${files.length === 1 ? '1 file' : `${files.length} files`} in “${target.name}”?`,
-      detail:
-        target.kind === 'file'
-          ? 'The file goes back to how it was at the last commit. This cannot be undone.'
-          : 'Each edited file goes back to how it was at the last commit; new files are left ' +
-            'alone. This cannot be undone.',
+      message: oneFile
+        ? `Revert the changes to “${first.name}”?`
+        : targets.length === 1
+          ? `Revert the changes to ${count} in “${first.name}”?`
+          : `Revert the changes to ${count}?`,
+      detail: oneFile
+        ? 'The file goes back to how it was at the last commit. This cannot be undone.'
+        : 'Each edited file goes back to how it was at the last commit; new files are left ' +
+          'alone. This cannot be undone.',
       confirmLabel: 'Revert',
     });
     if (confirmed) {
-      await this.report(this.git.revert(files), `Could not revert “${target.name}”`);
+      await this.report(
+        this.git.revert(files),
+        targets.length === 1 ? `Could not revert “${first.name}”` : `Could not revert ${count}`,
+      );
     }
   }
 

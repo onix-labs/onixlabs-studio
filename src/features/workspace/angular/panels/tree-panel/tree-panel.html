@@ -12,6 +12,8 @@
   <app-tree-view
     [rows]="rows()"
     [selectedId]="workspace.selectedPath()"
+    [selectedIds]="selection.ids()"
+    [multiSelect]="true"
     [virtual]="true"
     [contextMenuFor]="contextMenuFor"
     [editingId]="editing()?.rowId ?? null"
@@ -20,6 +22,8 @@
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowOpen($event)"
     (rowActivate)="onRowOpen($event)"
+    (rowSelect)="onRowSelect($event)"
+    (selectAll)="onSelectAll()"
     (backgroundClick)="workspace.clearSelection()"
     (contextMenuSelect)="onContextAction($event)"
     (editCommit)="onEditCommit($event)"
@@ -56,15 +60,19 @@
      the Trash because that is what the main process reaches for; the rare location with no Trash is
      reported afterwards rather than hedged about here. -->
 <app-modal
-  [open]="deleteTarget() !== null"
+  [open]="deleteTargets() !== null"
   [width]="26"
   ariaLabel="Delete"
   (dismiss)="cancelDelete()"
 >
   <ng-template appModalContent>
-    <h2 class="tree-panel__dialog-title">Delete “{{ deleteLabel() }}”?</h2>
+    <h2 class="tree-panel__dialog-title">{{ deleteTitle() }}</h2>
     <p class="tree-panel__dialog-message">
-      It moves to the Trash, so you can put it back from there if you need it.
+      @if ((deleteTargets()?.length ?? 0) > 1) {
+        They move to the Trash, so you can put them back from there if you need them.
+      } @else {
+        It moves to the Trash, so you can put it back from there if you need it.
+      }
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />

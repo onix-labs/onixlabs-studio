@@ -175,12 +175,21 @@ describe('ExplorerVcsMenu', () => {
   }
 
   /**
+   * Gets the labels a selection of rows is offered.
+   * @param rows The rows.
+   * @returns Returns the labels.
+   */
+  function labels2(rows: readonly ExplorerVcsTarget[]): string[] {
+    return menu.itemsFor(rows).map((item: MenuItem): string => item.label);
+  }
+
+  /**
    * Gets the labels a row offers.
    * @param row The row.
    * @returns Returns the labels.
    */
   function labels(row: ExplorerVcsTarget): string[] {
-    return menu.itemsFor(row).map((item: MenuItem): string => item.label);
+    return menu.itemsFor([row]).map((item: MenuItem): string => item.label);
   }
 
   it('itemsFor_offersWhatFitsEachState', () => {
@@ -203,7 +212,7 @@ describe('ExplorerVcsMenu', () => {
     git.states.set('/ws/build', 'untracked');
 
     const ignore: MenuItem | undefined = menu
-      .itemsFor(target('/ws/debug.log'))
+      .itemsFor([target('/ws/debug.log')])
       .find((item: MenuItem): boolean => item.label === 'Ignore');
     expect(ignore?.children?.map((item: MenuItem): string => item.label)).toEqual([
       'This File',
@@ -212,7 +221,7 @@ describe('ExplorerVcsMenu', () => {
     // A dotfile's dot starts its name, not an extension; a folder is ignored as itself.
     for (const row of [target('/ws/.env'), target('/ws/build', 'directory')]) {
       const flat: MenuItem | undefined = menu
-        .itemsFor(row)
+        .itemsFor([row])
         .find((item: MenuItem): boolean => item.label === 'Ignore');
       expect(flat?.id).toBe('ignore');
       expect(flat?.children).toBeUndefined();
@@ -244,7 +253,7 @@ describe('ExplorerVcsMenu', () => {
   it('run_showHistory_narrowsTheHistory_andOpensTheRepositoryView', async () => {
     git.histories.set('/ws/src/a.ts', 'src/a.ts');
 
-    menu.run('show-history', target('/ws/src/a.ts'));
+    menu.run('show-history', [target('/ws/src/a.ts')]);
     await settle();
 
     expect(narrowedTo).toEqual(['src/a.ts']);
@@ -252,9 +261,9 @@ describe('ExplorerVcsMenu', () => {
   });
 
   it('run_ignoreAndStopTracking', async () => {
-    menu.run('ignore', target('/ws/debug.log'));
-    menu.run('ignore-extension', target('/ws/debug.log'));
-    menu.run('stop-tracking', target('/ws/same.ts'));
+    menu.run('ignore', [target('/ws/debug.log')]);
+    menu.run('ignore-extension', [target('/ws/debug.log')]);
+    menu.run('stop-tracking', [target('/ws/same.ts')]);
     await settle();
 
     expect(git.calls).toEqual([
@@ -277,8 +286,8 @@ describe('ExplorerVcsMenu', () => {
     git.states.set('/ws/both.ts', 'conflicted');
     git.edited.push('/ws/edited.ts');
     const items: MenuItem[] = [
-      ...menu.itemsFor(target('/ws/edited.ts')),
-      ...menu.itemsFor(target('/ws/both.ts')),
+      ...menu.itemsFor([target('/ws/edited.ts')]),
+      ...menu.itemsFor([target('/ws/both.ts')]),
     ];
     expect(items.every((item: MenuItem): boolean => item.tone === undefined)).toBe(true);
   });
@@ -287,13 +296,13 @@ describe('ExplorerVcsMenu', () => {
     git.edited.push('/ws/edited.ts');
 
     confirmAnswer = false;
-    expect(menu.run('revert-changes', target('/ws/edited.ts'))).toBe(true);
+    expect(menu.run('revert-changes', [target('/ws/edited.ts')])).toBe(true);
     await settle();
     expect(confirmations).toHaveLength(1);
     expect(git.calls).toEqual([]);
 
     confirmAnswer = true;
-    menu.run('revert-changes', target('/ws/edited.ts'));
+    menu.run('revert-changes', [target('/ws/edited.ts')]);
     await settle();
     expect(git.calls).toEqual(['revert /ws/edited.ts']);
   });
@@ -301,7 +310,7 @@ describe('ExplorerVcsMenu', () => {
   it('run_revert_onAFolder_saysHowManyFiles_andRevertsEachOne', async () => {
     git.edited.push('/ws/src/a.ts', '/ws/src/b.ts');
 
-    menu.run('revert-changes', target('/ws/src', 'directory'));
+    menu.run('revert-changes', [target('/ws/src', 'directory')]);
     await settle();
 
     expect(confirmations[0].message).toBe('Revert the changes to 2 files in “src”?');
@@ -310,11 +319,11 @@ describe('ExplorerVcsMenu', () => {
   });
 
   it('run_routesEachCommand', async () => {
-    menu.run('add-to-version-control', target('/ws/new.ts'));
-    menu.run('undo-add', target('/ws/added.ts'));
-    menu.run('mark-resolved', target('/ws/both.ts'));
-    menu.run('show-diff', target('/ws/edited.ts'));
-    menu.run('open-in-repository', target('/ws/both.ts'));
+    menu.run('add-to-version-control', [target('/ws/new.ts')]);
+    menu.run('undo-add', [target('/ws/added.ts')]);
+    menu.run('mark-resolved', [target('/ws/both.ts')]);
+    menu.run('show-diff', [target('/ws/edited.ts')]);
+    menu.run('open-in-repository', [target('/ws/both.ts')]);
     await settle();
 
     expect(git.calls).toEqual(['add /ws/new.ts', 'undo-add /ws/added.ts', 'resolve /ws/both.ts']);
@@ -322,14 +331,66 @@ describe('ExplorerVcsMenu', () => {
     expect(openedRepository).toBe(1);
   });
 
+  it('itemsFor_aSelection_offersOnlyWhatEveryRowTakes_andNothingThatNeedsOneRow', () => {
+    // #1048: two edited files share Revert and Stop Tracking; neither Show Differences nor Show
+    // History is offered for a selection, and a third, untracked row takes the shared ones away.
+    for (const path of ['/ws/a.ts', '/ws/b.ts']) {
+      git.states.set(path, 'modified');
+      git.edited.push(path);
+      git.tracked.push(path);
+      git.histories.set(path, path.slice(4));
+    }
+    git.states.set('/ws/new.ts', 'untracked');
+
+    expect(labels2([target('/ws/a.ts'), target('/ws/b.ts')])).toEqual([
+      'Revert Changes',
+      'Stop Tracking',
+    ]);
+    expect(labels2([target('/ws/a.ts'), target('/ws/new.ts')])).toEqual([]);
+  });
+
+  it('itemsFor_ignore_onSeveralFilesSharingAnExtension_offersTheirExtension', () => {
+    for (const path of ['/ws/a.log', '/ws/b.log', '/ws/c.txt']) {
+      git.states.set(path, 'untracked');
+    }
+    const ignoreOf: (rows: ExplorerVcsTarget[]) => MenuItem | undefined = (
+      rows: ExplorerVcsTarget[],
+    ): MenuItem | undefined =>
+      menu.itemsFor(rows).find((item: MenuItem): boolean => item.label === 'Ignore');
+
+    expect(
+      ignoreOf([target('/ws/a.log'), target('/ws/b.log')])?.children?.map(
+        (item: MenuItem): string => item.label,
+      ),
+    ).toEqual(['These Files', 'All .log Files']);
+    expect(ignoreOf([target('/ws/a.log'), target('/ws/c.txt')])?.children).toBeUndefined();
+  });
+
+  it('run_onASelection_sendsOneRequestForEveryRow', async () => {
+    menu.run('stop-tracking', [target('/ws/a.ts'), target('/ws/b.ts')]);
+    await settle();
+
+    expect(git.calls).toEqual(['stop-tracking /ws/a.ts,/ws/b.ts']);
+  });
+
+  it('run_revert_onASelection_countsTheFilesAcrossThem', async () => {
+    git.edited.push('/ws/a.ts', '/ws/src/x.ts', '/ws/src/y.ts');
+
+    menu.run('revert-changes', [target('/ws/a.ts'), target('/ws/src', 'directory')]);
+    await settle();
+
+    expect(confirmations[0].message).toBe('Revert the changes to 3 files?');
+    expect(git.calls).toEqual(['revert /ws/a.ts,/ws/src/x.ts,/ws/src/y.ts']);
+  });
+
   it('run_anotherCommand_isLeftToTheExplorer', () => {
-    expect(menu.run('rename', target('/ws/a.ts'))).toBe(false);
+    expect(menu.run('rename', [target('/ws/a.ts')])).toBe(false);
   });
 
   it('run_aWriteThatFails_saysSo', async () => {
     git.result = { success: false, error: 'index.lock exists' };
 
-    menu.run('undo-add', target('/ws/added.ts'));
+    menu.run('undo-add', [target('/ws/added.ts')]);
     await settle();
 
     expect(notified).toEqual([

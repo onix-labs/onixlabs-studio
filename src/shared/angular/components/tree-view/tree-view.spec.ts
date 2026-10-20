@@ -531,3 +531,99 @@ describe('TreeView in-place edit', () => {
     expect(rows()[1].querySelector('.probe-label')?.textContent).toBe('beta');
   });
 });
+
+/**
+ * Hosts a multi-select tree, recording the gestures and clicks it reports (#1048).
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows"
+      [multiSelect]="true"
+      [selectedIds]="selected()"
+      [contextMenuFor]="menuFor"
+      (rowClick)="clicked.push($event.id)"
+      (rowSelect)="gestures.push($event.row.id + ':' + $event.mode)"
+      (selectAll)="selectedAll = selectedAll + 1"
+    >
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class MultiHost {
+  public readonly rows: readonly TreeRow[] = [
+    makeRow('a', 0, false, false),
+    makeRow('b', 0, false, false),
+    makeRow('c', 0, false, false),
+  ];
+  public readonly selected: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
+  public readonly clicked: string[] = [];
+  public readonly gestures: string[] = [];
+  public selectedAll: number = 0;
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (): readonly MenuItem[] => [
+    { id: 'act', label: 'Act' },
+  ];
+}
+
+describe('TreeView multi-select (#1048)', () => {
+  let fixture: ComponentFixture<MultiHost>;
+  let component: MultiHost;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [MultiHost] }).compileComponents();
+    fixture = TestBed.createComponent(MultiHost);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  /**
+   * Gets the rendered rows.
+   * @returns Returns the rows.
+   */
+  function rows(): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    );
+  }
+
+  it('clicks_aPlainOneSelectsAndClicks_aModifiedOneOnlySelects', () => {
+    // jsdom is not a Mac, so Ctrl is the toggle key here.
+    rows()[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    rows()[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+    rows()[2].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+
+    expect(component.gestures).toEqual(['a:replace', 'b:toggle', 'c:extend']);
+    expect(component.clicked).toEqual(['a']);
+  });
+
+  it('keys_arrowsMoveOrExtend_escapeNarrows_selectAllTakesEveryRow', () => {
+    const key: (row: HTMLElement, init: KeyboardEventInit) => void = (
+      row: HTMLElement,
+      init: KeyboardEventInit,
+    ): void => {
+      row.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+    };
+    key(rows()[0], { key: 'ArrowDown' });
+    key(rows()[1], { key: 'ArrowDown', shiftKey: true });
+    key(rows()[2], { key: 'ArrowDown' }); // the last row: nowhere to go
+    key(rows()[2], { key: 'Escape' });
+    key(rows()[1], { key: 'a', ctrlKey: true });
+
+    expect(component.gestures).toEqual(['b:replace', 'c:extend', 'c:replace']);
+    expect(component.selectedAll).toBe(1);
+  });
+
+  it('rightClick_outsideTheSelection_selectsTheRowFirst_insideKeepsIt', () => {
+    component.selected.set(['a', 'b']);
+    fixture.detectChanges();
+
+    rows()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    rows()[2].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+
+    expect(component.gestures).toEqual(['c:replace']);
+  });
+});

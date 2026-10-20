@@ -347,6 +347,24 @@ describe('SolutionPanel', () => {
   }
 
   describe('context menu', () => {
+    it('contextMenuFor_aSelectionOfFiles_offersWhatActsOnThemAll', () => {
+      // #1048: two files selected; a solution folder (no path) in the selection leaves no menu.
+      const g: SolutionRow = makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' });
+      const h: SolutionRow = makeRow({ key: 'h', kind: 'file', path: '/root/A/h.cs' });
+      const group: SolutionRow = makeRow({ key: 'f', kind: 'folder', path: null });
+      solution.model.set(model);
+      solution.rows.set([g, h, group]);
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+
+      expect(menuIds(g)).toEqual(['open', 'copy-path', 'copy-relative-path']);
+      component.onContextAction({ itemId: 'copy-path', row: treeRow(h) });
+      expect(copied).toEqual(['/root/A/g.cs\n/root/A/h.cs']);
+
+      component.onRowSelect({ row: treeRow(group), mode: 'toggle' });
+      expect(menuIds(g)).toEqual([]);
+    });
+
     it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
       expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
@@ -384,16 +402,12 @@ describe('SolutionPanel', () => {
       menuIds(makeRow({ kind: 'project', label: 'A', path: '/root/A/A.csproj' }));
       menuIds(makeRow({ kind: 'item-folder', label: 'src', path: '/root/A/src' }));
 
-      expect(itemsFor).toHaveBeenNthCalledWith(1, {
-        path: '/root/A/A.csproj',
-        name: 'A.csproj',
-        kind: 'file',
-      });
-      expect(itemsFor).toHaveBeenNthCalledWith(2, {
-        path: '/root/A/src',
-        name: 'src',
-        kind: 'directory',
-      });
+      expect(itemsFor).toHaveBeenNthCalledWith(1, [
+        { path: '/root/A/A.csproj', name: 'A.csproj', kind: 'file' },
+      ]);
+      expect(itemsFor).toHaveBeenNthCalledWith(2, [
+        { path: '/root/A/src', name: 'src', kind: 'directory' },
+      ]);
     });
 
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {

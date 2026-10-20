@@ -305,7 +305,7 @@ describe('WorkspaceGit', () => {
     expect(git.canAddToVersionControl('/repo/src/app/main.ts')).toBe(false);
 
     status = { ...status, staged: [change('README.md', 'added')], unstaged: [] };
-    const result: MutationResult = await git.addToVersionControl('/repo/README.md');
+    const result: MutationResult = await git.addToVersionControl(['/repo/README.md']);
 
     expect(result.success).toBe(true);
     expect(staged).toEqual([['README.md']]);
@@ -327,8 +327,8 @@ describe('WorkspaceGit', () => {
     root.set(listing('/repo'));
     await bind();
 
-    expect((await git.addToVersionControl('/elsewhere/a.ts')).success).toBe(false);
-    expect((await git.addToVersionControl('/repo')).success).toBe(false);
+    expect((await git.addToVersionControl(['/elsewhere/a.ts'])).success).toBe(false);
+    expect((await git.addToVersionControl(['/repo'])).success).toBe(false);
     expect(staged).toEqual([]);
   });
 
@@ -397,7 +397,7 @@ describe('WorkspaceGit', () => {
     expect(git.canUndoAdd('/repo/README.md')).toBe(false);
 
     status = { ...status, staged: [], unstaged: [change('src/new.ts', 'added', true)] };
-    await git.undoAdd('/repo/src/new.ts');
+    await git.undoAdd(['/repo/src/new.ts']);
 
     expect(unstaged).toEqual([['src/new.ts']]);
     expect(git.stateFor('/repo/src/new.ts')).toBe('untracked');
@@ -410,7 +410,7 @@ describe('WorkspaceGit', () => {
     expect(git.isConflicted('/repo/src/both.ts')).toBe(true);
     expect(git.isConflicted('/repo/src/app/main.ts')).toBe(false);
 
-    await git.markResolved('/repo/src/both.ts');
+    await git.markResolved(['/repo/src/both.ts']);
 
     expect(staged).toEqual([['src/both.ts']]);
   });
@@ -421,8 +421,8 @@ describe('WorkspaceGit', () => {
     expect(git.canIgnore('/repo/README.md')).toBe(true);
     expect(git.canIgnore('/repo/src/app/main.ts')).toBe(false);
 
-    await git.ignore('/repo/README.md');
-    await git.ignore('/repo/README.md', 'md');
+    await git.ignore(['/repo/README.md']);
+    await git.ignore(['/repo/README.md'], 'md');
 
     expect(ignored).toEqual([
       [{ kind: 'path', path: 'README.md' }],
@@ -442,7 +442,7 @@ describe('WorkspaceGit', () => {
     expect(git.canStopTracking('/repo/src/new.ts')).toBe(false); // added: Undo Add instead
     expect(git.canStopTracking('/repo')).toBe(false); // the whole repository
 
-    await git.stopTracking('/repo/src/app/main.ts');
+    await git.stopTracking(['/repo/src/app/main.ts']);
     expect(untracked).toEqual([['src/app/main.ts']]);
   });
 
@@ -494,7 +494,7 @@ describe('WorkspaceGit', () => {
     expect(git.stateFor('/repo/src')).toBe('contains');
     expect(git.stateFor('/repo/README.md')).toBe('untracked');
 
-    await git.addToVersionControl('/repo/README.md');
+    await git.addToVersionControl(['/repo/README.md']);
     expect(staged).toEqual([['README.md']]);
   });
 

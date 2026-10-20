@@ -265,6 +265,64 @@ describe('TreePanel row context menu', () => {
       .map((item: MenuItem): string => item.id);
   }
 
+  describe('with several rows selected (#1048)', () => {
+    const a: WorkspaceTreeNode = node('a.ts', '/ws/a.ts', 'file');
+    const b: WorkspaceTreeNode = node('b.ts', '/ws/b.ts', 'file');
+    const src: WorkspaceTreeNode = node('src', '/ws/src', 'directory');
+
+    beforeEach(() => {
+      workspace.rows.set([
+        { node: a, depth: 0, expanded: false },
+        { node: b, depth: 0, expanded: false },
+        { node: src, depth: 0, expanded: false },
+      ]);
+      component.onRowSelect({ row: treeRow(a), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(b), mode: 'toggle' });
+    });
+
+    it('contextMenuFor_aSelectedRow_offersWhatActsOnThemAll', () => {
+      expect(itemIds(a)).toEqual(['open', 'copy-path', 'copy-relative-path', 'delete']);
+      // A row outside the selection gets its own menu.
+      expect(itemIds(src)).toContain('rename');
+    });
+
+    it('contextMenuFor_aSelectionHoldingAFolder_offersNoOpen', () => {
+      component.onRowSelect({ row: treeRow(src), mode: 'toggle' });
+
+      expect(itemIds(src)).toEqual(['copy-path', 'copy-relative-path', 'delete']);
+    });
+
+    it('copyPaths_copiesOnePathPerLine', () => {
+      const write: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: write },
+        configurable: true,
+      });
+
+      component.onContextAction({ itemId: 'copy-path', row: treeRow(b) });
+
+      expect(write).toHaveBeenCalledWith('/ws/a.ts\n/ws/b.ts');
+    });
+
+    it('delete_confirmsOnce_andDeletesThemAll', async () => {
+      component.onContextAction({ itemId: 'delete', row: treeRow(a) });
+      expect(component.deleteTargets()?.map((target) => target.path)).toEqual([
+        '/ws/a.ts',
+        '/ws/b.ts',
+      ]);
+
+      await component.confirmDelete();
+
+      expect(workspace.deleted).toEqual(['/ws/a.ts', '/ws/b.ts']);
+    });
+
+    it('open_opensEveryFile', () => {
+      component.onContextAction({ itemId: 'open', row: treeRow(a) });
+
+      expect(opener.opened).toEqual(['/ws/a.ts', '/ws/b.ts']);
+    });
+  });
+
   it('contextMenuFor_aFile_offersOpenTheCopiesRevealAndTheWrites', () => {
     expect(itemIds(node('main.ts', '/ws/main.ts', 'file'))).toEqual([
       'open',
@@ -499,6 +557,8 @@ describe('TreePanel row context menu', () => {
     // #1047: clicking around the tree to look opens nothing; a double click or Enter does.
     const file: WorkspaceTreeNode = node('main.ts', '/ws/main.ts', 'file');
 
+    // A plain click arrives as a select gesture and a click; neither opens.
+    component.onRowSelect({ row: treeRow(file), mode: 'replace' });
     component.onRowClick(treeRow(file));
     expect(workspace.selectedPath()).toBe('/ws/main.ts');
     expect(opener.opened).toEqual([]);
@@ -541,7 +601,7 @@ describe('TreePanel row context menu', () => {
       itemId: 'add-to-version-control',
       row: treeRow(node('new.ts', '/ws/new.ts', 'file')),
     });
-    expect(add).toHaveBeenCalledWith('/ws/new.ts');
+    expect(add).toHaveBeenCalledWith(['/ws/new.ts']);
   });
 
   it('contextMenuFor_offersShowDiff_onlyOnAModifiedFile_andOpensItsDiff', () => {
@@ -752,13 +812,13 @@ describe('TreePanel row context menu', () => {
       row: treeRow(node('main.ts', '/ws/main.ts', 'file')),
     });
 
-    expect(component.deleteTarget()?.path).toBe('/ws/main.ts');
+    expect(component.deleteTargets()?.map((target) => target.path)).toEqual(['/ws/main.ts']);
     expect(workspace.deleted).toEqual([]);
   });
 
   it('confirmDelete_deletesTheEntry_andSaysNothingWhenItReachedTheTrash', async () => {
     workspace.result = { success: true, path: '/ws/main.ts', trashed: true };
-    component.deleteTarget.set(node('main.ts', '/ws/main.ts', 'file'));
+    component.deleteTargets.set([node('main.ts', '/ws/main.ts', 'file')]);
 
     await component.confirmDelete();
 
@@ -771,7 +831,7 @@ describe('TreePanel row context menu', () => {
     // The confirmation said the entry could be put back. On a volume with no Trash it cannot, and
     // that is the one case where what happened is worse than what was agreed to.
     workspace.result = { success: true, path: '/mnt/share/main.ts', trashed: false };
-    component.deleteTarget.set(node('main.ts', '/mnt/share/main.ts', 'file'));
+    component.deleteTargets.set([node('main.ts', '/mnt/share/main.ts', 'file')]);
 
     await component.confirmDelete();
 
@@ -782,7 +842,7 @@ describe('TreePanel row context menu', () => {
 
   it('confirmDelete_whenItFails_reportsTheMainProcessMessage', async () => {
     workspace.result = { success: false, error: 'Cannot delete the workspace root' };
-    component.deleteTarget.set(node('ws', '/ws', 'directory'));
+    component.deleteTargets.set([node('ws', '/ws', 'directory')]);
 
     await component.confirmDelete();
 
@@ -792,7 +852,7 @@ describe('TreePanel row context menu', () => {
   });
 
   it('cancelDelete_deletesNothing', async () => {
-    component.deleteTarget.set(node('main.ts', '/ws/main.ts', 'file'));
+    component.deleteTargets.set([node('main.ts', '/ws/main.ts', 'file')]);
     component.cancelDelete();
 
     await component.confirmDelete();
