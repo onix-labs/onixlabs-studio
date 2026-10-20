@@ -20,6 +20,7 @@ import {
 } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
 import {
+  isChangedState,
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -72,6 +73,7 @@ const ACTION_DELETE: string = 'delete';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -231,7 +233,7 @@ export class TreePanel {
    * placeholder row spliced in while one is being named.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const rows: TreeRow[] = this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
+    const rows: TreeRow[] = this.shownRows().map((row: WorkspaceTreeRow): TreeRow => ({
       id: row.node.path,
       depth: row.depth,
       expandable: row.node.type === 'directory',
@@ -245,6 +247,78 @@ export class TreePanel {
       return rows;
     }
     return this.withPlaceholder(rows, edit);
+  });
+
+  /**
+   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
+   * repository, without which nothing is changed and the switch stands for nothing.
+   */
+  protected readonly changesOnly: Signal<boolean> = computed(
+    (): boolean => this.workspace.showsChangesOnly() && this.git.isRepository(),
+  );
+
+  /**
+   * Gets the workspace's rows the tree shows: all of them, or only the changes and the folders on the
+   * way to them (#1053).
+   */
+  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
+    (): readonly WorkspaceTreeRow[] => {
+      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+      return this.changesOnly()
+        ? rows.filter((row: WorkspaceTreeRow): boolean =>
+            isChangedState(this.git.stateFor(row.node.path)),
+          )
+        : rows;
+    },
+  );
+
+  /**
+   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
+   * empty.
+   */
+  protected readonly noChanges: Signal<boolean> = computed(
+    (): boolean => this.changesOnly() && this.shownRows().length === 0,
+  );
+
+  /**
+   * Holds the folders the filter opened to lead to changes, so turning it off closes exactly those and
+   * leaves the tree as it was — and so a folder the user closes is not opened again behind their back.
+   */
+  private readonly openedForChanges: Set<string> = new Set<string>();
+
+  /**
+   * Opens the folders that lead to changes while the filter is on — level by level, as each opened
+   * folder's entries arrive — and closes them again when it is turned off.
+   */
+  private readonly followChanges: unknown = effect((): void => {
+    const on: boolean = this.changesOnly();
+    const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+    untracked((): void => {
+      if (!on) {
+        for (const path of this.openedForChanges) {
+          const row: WorkspaceTreeRow | undefined = rows.find(
+            (candidate: WorkspaceTreeRow): boolean => candidate.node.path === path,
+          );
+          if (row?.expanded === true) {
+            void this.workspace.toggleDirectory(path);
+          }
+        }
+        this.openedForChanges.clear();
+        return;
+      }
+      for (const row of rows) {
+        const path: string = row.node.path;
+        if (
+          row.node.type === 'directory' &&
+          !row.expanded &&
+          !this.openedForChanges.has(path) &&
+          this.git.stateFor(path) === 'contains'
+        ) {
+          this.openedForChanges.add(path);
+          void this.workspace.toggleDirectory(path);
+        }
+      }
+    });
   });
 
   /**
@@ -272,6 +346,13 @@ export class TreePanel {
           label: 'Show Git Status',
           checked: this.workspace.showsGitStatus(),
         },
+        {
+          id: ACTION_CHANGES_ONLY,
+          label: 'Show Changed Files Only',
+          checked: this.changesOnly(),
+          disabled: !this.git.isRepository(),
+          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
+        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
@@ -295,6 +376,9 @@ export class TreePanel {
         return;
       case ACTION_GIT_STATUS:
         this.workspace.toggleGitStatus();
+        return;
+      case ACTION_CHANGES_ONLY:
+        this.workspace.toggleChangesOnly();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:

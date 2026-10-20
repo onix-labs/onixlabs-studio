@@ -22,6 +22,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import {
   ExplorerScmState,
+  isChangedState,
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -65,6 +66,7 @@ const ACTION_REVEAL: string = 'reveal';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
@@ -236,6 +238,13 @@ export class SolutionPanel {
           id: ACTION_GIT_STATUS,
           label: 'Show Git Status',
           checked: this.solution.showsGitStatus(),
+        },
+        {
+          id: ACTION_CHANGES_ONLY,
+          label: 'Show Changed Files Only',
+          checked: this.changesOnly(),
+          disabled: !this.git.isRepository(),
+          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
         },
       ],
     },
@@ -459,7 +468,7 @@ export class SolutionPanel {
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.solution.rows().map((row: SolutionRow): TreeRow => ({
+    this.shownRows().map((row: SolutionRow): TreeRow => ({
       id: row.key,
       depth: row.depth,
       expandable: row.expandable,
@@ -473,6 +482,85 @@ export class SolutionPanel {
       data: row,
     })),
   );
+
+  /**
+   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
+   * repository, without which nothing is changed and the switch stands for nothing.
+   */
+  protected readonly changesOnly: Signal<boolean> = computed(
+    (): boolean => this.solution.showsChangesOnly() && this.git.isRepository(),
+  );
+
+  /**
+   * Gets the solution's rows the tree shows: all of them, or only the changes and the projects and
+   * folders on the way to them (#1053). The root row stays, since it heads the tree.
+   */
+  private readonly shownRows: Signal<readonly SolutionRow[]> = computed(
+    (): readonly SolutionRow[] => {
+      const rows: readonly SolutionRow[] = this.solution.rows();
+      return this.changesOnly()
+        ? rows.filter(
+            (row: SolutionRow): boolean =>
+              row.kind === 'solution' || isChangedState(this.scmStateFor(row)),
+          )
+        : rows;
+    },
+  );
+
+  /**
+   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
+   * empty.
+   */
+  protected readonly noChanges: Signal<boolean> = computed(
+    (): boolean =>
+      this.changesOnly() &&
+      this.shownRows().every((row: SolutionRow): boolean => row.kind === 'solution'),
+  );
+
+  /**
+   * Holds the rows the filter opened to lead to changes, so turning it off closes exactly those, and a
+   * row the user closes is not opened again behind their back.
+   */
+  private readonly openedForChanges: Set<string> = new Set<string>();
+
+  /**
+   * Opens the projects and folders that lead to changes while the filter is on — level by level, as
+   * each one's contents arrive — and closes them again when it is turned off.
+   */
+  private readonly followChanges: unknown = effect((): void => {
+    const on: boolean = this.changesOnly();
+    const rows: readonly SolutionRow[] = this.solution.rows();
+    untracked((): void => {
+      if (!on) {
+        for (const row of rows) {
+          if (this.openedForChanges.has(row.key) && row.expanded) {
+            this.solution.toggle(row);
+          }
+        }
+        this.openedForChanges.clear();
+        return;
+      }
+      for (const row of rows) {
+        if (
+          row.expandable &&
+          !row.expanded &&
+          !row.loading &&
+          !this.openedForChanges.has(row.key) &&
+          isChangedState(this.scmStateFor(row))
+        ) {
+          this.openedForChanges.add(row.key);
+          this.solution.toggle(row);
+        }
+      }
+    });
+  });
+
+  /**
+   * Turns *Show Changed Files Only* off again, from the empty state's button.
+   */
+  protected solutionToggleChangesOnly(): void {
+    this.solution.toggleChangesOnly();
+  }
 
   /**
    * Resolves how version control sees what a row stands for. A solution folder has no directory of
@@ -539,6 +627,9 @@ export class SolutionPanel {
         return;
       case ACTION_GIT_STATUS:
         this.solution.toggleGitStatus();
+        return;
+      case ACTION_CHANGES_ONLY:
+        this.solution.toggleChangesOnly();
         return;
       case ACTION_OPEN_ROOT: {
         const root: string | undefined = this.model()?.root;

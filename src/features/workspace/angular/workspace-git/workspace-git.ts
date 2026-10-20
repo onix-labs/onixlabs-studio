@@ -872,6 +872,17 @@ const PRESENTATION: Readonly<Record<ExplorerScmState, Pick<TreeRow, 'tone' | 'st
   };
 
 /**
+ * Determines whether a state is one *Show Changed Files Only* keeps (#1053): a change — untracked,
+ * added, modified, conflicted — or a folder on the way to one. Ignored paths and unchanged ones are
+ * hidden.
+ * @param state The state, or null when unchanged.
+ * @returns Returns true when the row is shown under the filter.
+ */
+export function isChangedState(state: ExplorerScmState | null): boolean {
+  return state !== null && state !== 'ignored';
+}
+
+/**
  * Gets the tree-row fields that present a state: none for an unchanged path.
  * @param state The state, or null when unchanged.
  * @returns Returns the fields to spread into the row.
