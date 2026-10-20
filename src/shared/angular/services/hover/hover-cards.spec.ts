@@ -112,6 +112,7 @@ function fakeMonaco(markers: MonacoApi.editor.IMarker[]): typeof MonacoApi {
       registerRenameProvider: register,
       registerCodeActionProvider: register,
       registerHoverProvider: register,
+      registerColorProvider: register,
       setLanguageConfiguration: register,
     },
     CancellationTokenSource: class {

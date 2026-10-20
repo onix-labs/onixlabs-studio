@@ -35,6 +35,7 @@ import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import { pasteIntoEditor } from './editor-paste';
 
@@ -198,6 +199,17 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * disposal.
    */
   private detachHoverCards: (() => void) | null = null;
+
+  /**
+   * Holds the colour pickers a click on this pane's colour swatches opens, in place of Monaco's (#1025).
+   */
+  private readonly colourPickers: ColourPickers = inject(ColourPickers);
+
+  /**
+   * Holds the function that detaches this pane's editor from the colour pickers, or null before
+   * creation and after disposal.
+   */
+  private detachColourPickers: (() => void) | null = null;
 
   /**
    * Holds the completion list and signature card this pane's editor shows in place of Monaco's (#1021).
@@ -439,6 +451,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachQuickFixes = null;
     this.detachHoverCards?.();
     this.detachHoverCards = null;
+    this.detachColourPickers?.();
+    this.detachColourPickers = null;
     this.detachAutocomplete?.();
     this.detachAutocomplete = null;
     if (this.editor !== null) {
@@ -699,6 +713,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachQuickFixes = this.quickFixes.attach(this.editor, monaco);
     // Studio's hover card over a symbol, a problem or a breakpoint, drawn in this pane's window.
     this.detachHoverCards = this.hoverCards.attach(this.editor, this.injector);
+    // Studio's colour picker when a colour swatch is clicked, drawn in this pane's window.
+    this.detachColourPickers = this.colourPickers.attach(this.editor, this.injector);
     // Studio's completion list and signature card at the caret, drawn in this pane's window.
     this.detachAutocomplete = this.autocomplete.attach(this.editor, this.injector);
 

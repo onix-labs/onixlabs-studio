@@ -77,6 +77,37 @@ interface RegisteredHoverProvider {
 }
 
 /**
+ * One document-colour provider registered with a Monaco instance, with the languages it serves
+ * (#1025).
+ */
+interface RegisteredColorProvider {
+  /**
+   * Gets the language selector it was registered for.
+   */
+  readonly selector: MonacoApi.languages.LanguageSelector;
+
+  /**
+   * Gets the provider.
+   */
+  readonly provider: MonacoApi.languages.DocumentColorProvider;
+}
+
+/**
+ * A colour a document-colour provider found in a document (#1025), with the provider that found it.
+ */
+export interface ProvidedColour {
+  /**
+   * Gets the colour and the span it is written over, one-based.
+   */
+  readonly info: MonacoApi.languages.IColorInformation;
+
+  /**
+   * Gets the provider that found it, which says how to write a new colour in its place.
+   */
+  readonly provider: MonacoApi.languages.DocumentColorProvider;
+}
+
+/**
  * One hover provider's answer at a position (#1020): what it says of the symbol there, and the span it
  * says it of.
  */
@@ -255,6 +286,11 @@ interface CapturedCapabilities {
   readonly hovers: RegisteredHoverProvider[];
 
   /**
+   * Gets the document-colour providers registered, in registration order (#1025).
+   */
+  readonly colors: RegisteredColorProvider[];
+
+  /**
    * Gets the comment rules each language's configuration set, by language identifier.
    */
   readonly comments: Map<string, MonacoApi.languages.CommentRule>;
@@ -306,6 +342,14 @@ interface CapabilityRegistration {
   ) => MonacoApi.IDisposable;
 
   /**
+   * Registers a document-colour provider for the languages a selector selects.
+   */
+  registerColorProvider: (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.DocumentColorProvider,
+  ) => MonacoApi.IDisposable;
+
+  /**
    * Sets a language's configuration: its brackets, comments and the like.
    */
   setLanguageConfiguration: (
@@ -351,7 +395,9 @@ export function isStudioProvider(provider: object): boolean {
  * answers and which decide whether the item shows; the reference providers, which Find All References
  * asks the same way (#1014); the rename providers, which Rename Symbol asks the same way (#1015); the
  * code-action providers, which the quick-fix menu asks the same way (#1016); the hover providers,
- * every one of which Studio's hover card asks (#1020); and the comment rules each language's
+ * every one of which Studio's hover card asks (#1020); the document-colour providers, which Studio's
+ * colour picker asks what a clicked swatch's colour is and how to write a new one (#1025); and the
+ * comment rules each language's
  * configuration sets, which decide whether Toggle Comment does.
  *
  * Monaco keeps these registries internal, as it does the document-symbol providers (see
@@ -371,6 +417,7 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     renames: [],
     codeActions: [],
     hovers: [],
+    colors: [],
     comments: new Map(),
   };
   CAPTURED.set(monaco.languages, captured);
@@ -386,6 +433,8 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
     languages.registerCodeActionProvider.bind(languages);
   const registerHover: CapabilityRegistration['registerHoverProvider'] =
     languages.registerHoverProvider.bind(languages);
+  const registerColor: CapabilityRegistration['registerColorProvider'] =
+    languages.registerColorProvider.bind(languages);
   const setConfiguration: CapabilityRegistration['setLanguageConfiguration'] =
     languages.setLanguageConfiguration.bind(languages);
   languages.registerDefinitionProvider = (
@@ -469,6 +518,23 @@ export function captureEditorCapabilities(monaco: typeof MonacoApi): void {
         const index: number = captured.hovers.indexOf(entry);
         if (index >= 0) {
           captured.hovers.splice(index, 1);
+        }
+        disposable.dispose();
+      },
+    };
+  };
+  languages.registerColorProvider = (
+    selector: MonacoApi.languages.LanguageSelector,
+    provider: MonacoApi.languages.DocumentColorProvider,
+  ): MonacoApi.IDisposable => {
+    const entry: RegisteredColorProvider = { selector, provider };
+    captured.colors.push(entry);
+    const disposable: MonacoApi.IDisposable = registerColor(selector, provider);
+    return {
+      dispose: (): void => {
+        const index: number = captured.colors.indexOf(entry);
+        if (index >= 0) {
+          captured.colors.splice(index, 1);
         }
         disposable.dispose();
       },
@@ -785,6 +851,88 @@ export async function providedHovers(
   return given.some((answer: ProvidedHover): boolean => answer.studio)
     ? given.filter((answer: ProvidedHover): boolean => answer.studio)
     : given;
+}
+
+/**
+ * Asks the document-colour providers registered with a Monaco instance for the colour written over a
+ * span (#1025) — a swatch's — the most recently registered first, as Monaco ranks them; the first
+ * that found a colour starting where the span starts wins. A provider that fails is skipped.
+ * @param monaco The Monaco instance the model belongs to.
+ * @param model The model.
+ * @param range The span, one-based.
+ * @returns Returns the colour and its provider, or null when no provider found one there.
+ */
+export async function providedColourAt(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  range: MonacoApi.IRange,
+): Promise<ProvidedColour | null> {
+  const language: string = model.getLanguageId();
+  const candidates: readonly RegisteredColorProvider[] = [
+    ...(CAPTURED.get(monaco.languages)?.colors ?? []),
+  ]
+    .reverse()
+    .filter((entry: RegisteredColorProvider): boolean => selects(entry.selector, language));
+  for (const { provider } of candidates) {
+    const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+    try {
+      const infos: readonly MonacoApi.languages.IColorInformation[] =
+        (await provider.provideDocumentColors(model, source.token)) ?? [];
+      const info: MonacoApi.languages.IColorInformation | undefined = infos.find(
+        (candidate: MonacoApi.languages.IColorInformation): boolean =>
+          candidate.range.startLineNumber === range.startLineNumber &&
+          candidate.range.startColumn === range.startColumn,
+      );
+      if (info !== undefined) {
+        return { info, provider };
+      }
+    } catch {
+      // A provider that fails found nothing; the next one may have.
+    } finally {
+      source.dispose();
+    }
+  }
+  return null;
+}
+
+/**
+ * Asks the provider that found a colour how to write a new colour in its place (#1025): the first of
+ * the ways it offers, as Monaco's own picker started from — its edit where it gave one, otherwise its
+ * label over the colour's span — with any further edits it asks for.
+ * @param monaco The Monaco instance the provider is registered with.
+ * @param model The model.
+ * @param provided The colour, and the provider that found it.
+ * @param color The new colour, each channel 0–1.
+ * @returns Returns the edits, the colour's own first, or empty when the provider offered no way or
+ * failed.
+ */
+export async function providedColourEdits(
+  monaco: typeof MonacoApi,
+  model: MonacoApi.editor.ITextModel,
+  provided: ProvidedColour,
+  color: MonacoApi.languages.IColor,
+): Promise<readonly MonacoApi.languages.TextEdit[]> {
+  const source: MonacoApi.CancellationTokenSource = new monaco.CancellationTokenSource();
+  try {
+    const presentations: readonly MonacoApi.languages.IColorPresentation[] =
+      (await provided.provider.provideColorPresentations(
+        model,
+        { range: provided.info.range, color },
+        source.token,
+      )) ?? [];
+    const first: MonacoApi.languages.IColorPresentation | undefined = presentations[0];
+    if (first === undefined) {
+      return [];
+    }
+    return [
+      first.textEdit ?? { range: provided.info.range, text: first.label },
+      ...(first.additionalTextEdits ?? []),
+    ];
+  } catch {
+    return [];
+  } finally {
+    source.dispose();
+  }
 }
 
 /**

@@ -124,6 +124,7 @@ function fakeMonaco(markers: MonacoApi.editor.IMarker[] = []): typeof MonacoApi 
         dispose: (): void => undefined,
       }),
       registerHoverProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerColorProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       CodeActionTriggerType: { Invoke: 1, Auto: 2 },
     },

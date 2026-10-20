@@ -268,7 +268,7 @@ async function load(page: Page, language: string, text: string): Promise<void> {
 
 /**
  * Presses every chord of Monaco's that once opened its UI in a code editor — and right-clicks, and
- * clicks a colour swatch, and runs Code Cleanup's organise-imports route — and checks that no Monaco
+ * clicks a colour swatch (which opens Studio's picker), and runs Code Cleanup's organise-imports route — and checks that no Monaco
  * widget ever appears (#1024). Studio's own UI opening in answer is expected, and closed between
  * chords.
  */
@@ -403,13 +403,15 @@ test.describe('editor widgets (#1024)', () => {
     expect(await monacoWidgets(page), 'organise imports').toBe(0);
     expect(await page.locator('.monaco-editor-overlaymessage').count(), 'overlay message').toBe(0);
 
-    // A colour swatch: a decoration, which a click leaves alone.
+    // A colour swatch: a decoration, whose click opens Studio's colour picker (#1025).
     await load(page, 'css', 'a {\n  color: #ff0000;\n}\n');
     const swatch: Locator = monaco.locator('.colorpicker-color-decoration').first();
     await expect(swatch).toBeVisible({ timeout: 10_000 });
     await swatch.click();
+    await expect(page.locator('app-colour-picker')).toBeVisible();
     await page.waitForTimeout(600);
     expect(await monacoWidgets(page), 'colour swatch').toBe(0);
+    await page.keyboard.press('Escape');
   });
 
   test('aReadOnlyEdit_andUnusualLineTerminators_askStudio_neverMonacoOrTheBrowser', async ({

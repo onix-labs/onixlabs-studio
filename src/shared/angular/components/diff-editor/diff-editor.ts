@@ -22,6 +22,7 @@ import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 
 /**
@@ -126,6 +127,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Holds the completion list and signature card either side shows in place of Monaco's (#1021).
    */
   private readonly autocomplete: Autocomplete = inject(Autocomplete);
+
+  /**
+   * Holds the colour pickers a click on a colour swatch opens, on a side that can be edited (#1025).
+   */
+  private readonly colourPickers: ColourPickers = inject(ColourPickers);
 
   /**
    * Gets the absolute path of the compared file, which a find from either side searches — the
@@ -373,6 +379,9 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       // Studio's completion list and signature card, for a side that can be edited (#1021).
       this.autocomplete.attach(this.editor.getOriginalEditor(), this.injector),
       this.autocomplete.attach(this.editor.getModifiedEditor(), this.injector),
+      // Studio's colour picker from a colour swatch (#1025); the read-only side opens none.
+      this.colourPickers.attach(this.editor.getOriginalEditor(), this.injector),
+      this.colourPickers.attach(this.editor.getModifiedEditor(), this.injector),
     );
 
     this.ready = true;
