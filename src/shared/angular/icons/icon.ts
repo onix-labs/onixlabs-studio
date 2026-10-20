@@ -877,6 +877,12 @@ export class Icon {
   public static readonly GIT_STOP_TRACKING: Icon = new Icon('ph-duotone ph-file-minus');
 
   /**
+   * Gets the icon of the explorers' Show History command, which lists the commits that touched a path
+   * (#1044).
+   */
+  public static readonly GIT_HISTORY: Icon = new Icon('ph-duotone ph-clock-counter-clockwise');
+
+  /**
    * Gets the pull-request icon shown on the ribbon's Pull Request action.
    */
   public static readonly GIT_PULL_REQUEST: Icon = new Icon('ph-duotone ph-git-pull-request');

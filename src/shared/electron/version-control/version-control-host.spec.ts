@@ -444,6 +444,22 @@ describe('VersionControlHost', () => {
     });
   });
 
+  it('request_logWithAPath_needsPathHistory_whileThePlainLogNeedsNothing', async () => {
+    // #1044: a plugin that does not know `path` would answer with the whole history as the path's.
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    expect(await vcs.request(ROOT, 'log', { limit: 10, path: 'a.ts' })).toMatchObject({
+      ok: false,
+      code: 'unsupported',
+    });
+    expect((await vcs.request(ROOT, 'log', { limit: 10 })).ok).toBe(true);
+
+    const confirming: FakeClient = fakeClient(['pathHistory']);
+    const able: VersionControlHost = host([plugin('git', '.git')], ['.git'], confirming);
+    expect((await able.request(ROOT, 'log', { limit: 10, path: 'a.ts' })).ok).toBe(true);
+  });
+
   it('request_ignore_whenTheHandshakeDoesNotConfirmIt_isRefused', async () => {
     const fake: FakeClient = fakeClient(['stash']);
     const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);

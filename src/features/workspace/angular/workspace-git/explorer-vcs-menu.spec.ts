@@ -7,6 +7,7 @@ import {
   NotificationRequest,
 } from '@shared/angular/services/notifications/notifications';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import { Repository } from '@shared/angular/services/repository/repository';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 
 import { ExplorerScmState, WorkspaceGit } from './workspace-git';
@@ -34,6 +35,11 @@ class FakeWorkspaceGit {
   }
 
   public readonly tracked: string[] = [];
+  public readonly histories: Map<string, string> = new Map<string, string>();
+
+  public historyPathOf(path: string): string | null {
+    return this.histories.get(path) ?? null;
+  }
 
   public canIgnore(path: string): boolean {
     return this.states.get(path) === 'untracked';
@@ -101,6 +107,7 @@ describe('ExplorerVcsMenu', () => {
   let confirmAnswer: boolean;
   let diffs: string[];
   let openedRepository: number;
+  let narrowedTo: string[];
 
   beforeEach(() => {
     git = new FakeWorkspaceGit();
@@ -109,6 +116,7 @@ describe('ExplorerVcsMenu', () => {
     confirmAnswer = true;
     diffs = [];
     openedRepository = 0;
+    narrowedTo = [];
     TestBed.configureTestingModule({
       providers: [
         ExplorerVcsMenu,
@@ -137,6 +145,15 @@ describe('ExplorerVcsMenu', () => {
         {
           provide: Notifications,
           useValue: { notify: (request: NotificationRequest): number => notified.push(request) },
+        },
+        {
+          provide: Repository,
+          useValue: {
+            showHistoryOf: (path: string): Promise<void> => {
+              narrowedTo.push(path);
+              return Promise.resolve();
+            },
+          },
         },
         {
           provide: WorkspaceSourceControlCommands,
@@ -213,6 +230,25 @@ describe('ExplorerVcsMenu', () => {
       'Stop Tracking',
     ]);
     expect(labels(target('/ws/same.ts'))).toEqual(['Stop Tracking']);
+  });
+
+  it('itemsFor_showHistory_whenThePathHasOne', () => {
+    git.histories.set('/ws/src/a.ts', 'src/a.ts');
+    git.histories.set('/ws/src', 'src');
+
+    expect(labels(target('/ws/src/a.ts'))).toEqual(['Show History']);
+    expect(labels(target('/ws/src', 'directory'))).toEqual(['Show History']);
+    expect(labels(target('/ws/new.ts'))).toEqual([]);
+  });
+
+  it('run_showHistory_narrowsTheHistory_andOpensTheRepositoryView', async () => {
+    git.histories.set('/ws/src/a.ts', 'src/a.ts');
+
+    menu.run('show-history', target('/ws/src/a.ts'));
+    await settle();
+
+    expect(narrowedTo).toEqual(['src/a.ts']);
+    expect(openedRepository).toBe(1);
   });
 
   it('run_ignoreAndStopTracking', async () => {

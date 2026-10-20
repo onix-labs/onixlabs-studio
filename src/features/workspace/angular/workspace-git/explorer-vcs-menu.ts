@@ -6,6 +6,7 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Repository } from '@shared/angular/services/repository/repository';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 
 /**
@@ -20,6 +21,7 @@ const ACTION_OPEN_IN_REPOSITORY: string = 'open-in-repository';
 const ACTION_IGNORE: string = 'ignore';
 const ACTION_IGNORE_EXTENSION: string = 'ignore-extension';
 const ACTION_STOP_TRACKING: string = 'stop-tracking';
+const ACTION_SHOW_HISTORY: string = 'show-history';
 
 /**
  * Matches an extension Ignore can offer to ignore everywhere — the same shape the protocol accepts.
@@ -68,10 +70,10 @@ export interface ExplorerVcsTarget {
  *
  * - untracked: Add to Version Control, Ignore
  * - added: Undo Add
- * - unchanged: Stop Tracking
- * - modified: Show Differences, Revert Changes, Stop Tracking
- * - conflicted: Mark Resolved, Open in Repository
- * - a folder with edited files beneath it: Revert Changes, Stop Tracking
+ * - unchanged: Show History, Stop Tracking
+ * - modified: Show Differences, Show History, Revert Changes, Stop Tracking
+ * - conflicted: Mark Resolved, Open in Repository, Show History
+ * - a folder with edited files beneath it: Show History, Revert Changes, Stop Tracking
  *
  * Scoped per directory tab, beside the {@link WorkspaceGit} it reads.
  */
@@ -98,7 +100,12 @@ export class ExplorerVcsMenu {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
-   * Holds the route to the Repository panel, where a conflict is resolved.
+   * Holds this workspace's repository, whose history Show History narrows to a path.
+   */
+  private readonly repository: Repository = inject(Repository);
+
+  /**
+   * Holds the route to the Repository panel, where a conflict is resolved and a history shown.
    */
   private readonly sourceControl: WorkspaceSourceControlCommands = inject(
     WorkspaceSourceControlCommands,
@@ -128,6 +135,9 @@ export class ExplorerVcsMenu {
     }
     if (kind === 'file' && this.git.canShowDiff(path)) {
       items.push({ id: ACTION_SHOW_DIFF, label: 'Show Differences', icon: Icon.GIT_DIFF });
+    }
+    if (this.git.historyPathOf(path) !== null) {
+      items.push({ id: ACTION_SHOW_HISTORY, label: 'Show History', icon: Icon.GIT_HISTORY });
     }
     if (this.git.revertableFiles(path).length > 0) {
       items.push({ id: ACTION_REVERT, label: 'Revert Changes', icon: Icon.UNDO });
@@ -194,6 +204,9 @@ export class ExplorerVcsMenu {
         }
         return true;
       }
+      case ACTION_SHOW_HISTORY:
+        void this.showHistory(target);
+        return true;
       case ACTION_STOP_TRACKING:
         void this.report(
           this.git.stopTracking(target.path),
@@ -225,6 +238,20 @@ export class ExplorerVcsMenu {
         { id: ACTION_IGNORE_EXTENSION, label: `All .${extension} Files` },
       ],
     };
+  }
+
+  /**
+   * Narrows the Repository history to the row's path and brings the Repository view forward.
+   * @param target The row.
+   * @returns Returns a promise that settles once the history is read.
+   */
+  private async showHistory(target: ExplorerVcsTarget): Promise<void> {
+    const path: string | null = this.git.historyPathOf(target.path);
+    if (path === null) {
+      return;
+    }
+    this.sourceControl.openInSourceControl();
+    await this.repository.showHistoryOf(path);
   }
 
   /**

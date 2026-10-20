@@ -635,7 +635,12 @@ export class VersionControlHost {
     if (typeof plugin === 'string') {
       return { id: 0, ok: false, error: plugin };
     }
-    const needed: VersionControlCapability | undefined = VCS_OP_CAPABILITY[op];
+    // A path-narrowed history is a capability of its own on an operation that needs none: a plugin
+    // without it would ignore the path and answer with the whole history as though it were the path's.
+    const needed: VersionControlCapability | undefined =
+      op === 'log' && (params as VcsParams<'log'>).path !== undefined
+        ? 'pathHistory'
+        : VCS_OP_CAPABILITY[op];
     if (needed !== undefined && !plugin.capabilities.includes(needed)) {
       return {
         id: 0,

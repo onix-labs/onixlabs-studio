@@ -174,6 +174,23 @@ describe('VersionControlProvider', () => {
     expect(commit.files).toEqual([]);
   });
 
+  it('getCommits_sendsThePath_onlyWhenGivenOne', async () => {
+    // #1044: a path is sent only for Show History; the whole history never carries one.
+    const recorded: Recorded[] = [];
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({ log: [] }, recorded),
+    );
+
+    await provider.getCommits(50, true, 'src/a.ts');
+    await provider.getCommits(50);
+
+    expect(recorded.map((request: Recorded): unknown => request.params)).toEqual([
+      { limit: 50, all: true, path: 'src/a.ts' },
+      { limit: 50 },
+    ]);
+  });
+
   it('getCommitFiles_attachesTheCommitAndItsFirstParent', async () => {
     const provider: VersionControlProvider = new VersionControlProvider(
       '/repo',

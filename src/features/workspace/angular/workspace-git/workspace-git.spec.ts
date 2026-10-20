@@ -446,6 +446,28 @@ describe('WorkspaceGit', () => {
     expect(untracked).toEqual([['src/app/main.ts']]);
   });
 
+  it('historyPathOf_isTheRepositoryRelativePath_ofAPathWithHistory', async () => {
+    capabilities = [...capabilities, 'pathHistory'];
+    status = { ...status, staged: [...status.staged, change('src/new.ts', 'added')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.historyPathOf('/repo/src/app/main.ts')).toBe('src/app/main.ts');
+    expect(git.historyPathOf('/repo/src')).toBe('src');
+    expect(git.historyPathOf('/repo/docs/guide.md')).toBe('docs/guide.md');
+    // No commits yet, or the whole history rather than a path's.
+    expect(git.historyPathOf('/repo/README.md')).toBeNull();
+    expect(git.historyPathOf('/repo/src/new.ts')).toBeNull();
+    expect(git.historyPathOf('/repo')).toBeNull();
+  });
+
+  it('historyPathOf_isNull_whenThePluginCannotReadAPathsHistory', async () => {
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.historyPathOf('/repo/src/app/main.ts')).toBeNull();
+  });
+
   it('ignoreAndStopTracking_areNotOffered_whenThePluginCannotDoThem', async () => {
     // A plugin built before #1043 confirms neither; one not yet described offers neither either.
     capabilities = ['stagingArea'];

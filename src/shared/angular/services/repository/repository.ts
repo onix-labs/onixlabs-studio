@@ -164,6 +164,17 @@ export class Repository {
   public readonly historyScope: Signal<HistoryScope> = this.historyScopeSignal.asReadonly();
 
   /**
+   * Holds the repository-relative path the history is narrowed to, or null for the whole history.
+   */
+  private readonly historyPathSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Gets the repository-relative path the history is narrowed to, or null for the whole history
+   * (#1044).
+   */
+  public readonly historyPath: Signal<string | null> = this.historyPathSignal.asReadonly();
+
+  /**
    * Holds how many commits the history asks for: one page, plus one for each Load More.
    */
   private readonly historyLimitSignal: WritableSignal<number> = signal<number>(LOG_PAGE);
@@ -528,6 +539,7 @@ export class Repository {
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
     this.historyLimitSignal.set(LOG_PAGE);
+    this.historyPathSignal.set(null);
     this.watchDisposer?.();
     this.watchDisposer = this.directoryWatch.watch(info.root, (event: DirectoryChangeEvent): void =>
       this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
@@ -716,6 +728,7 @@ export class Repository {
     this.operationSignal.set({ kind: null });
     this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
     this.commitMessageSignal.set('');
+    this.historyPathSignal.set(null);
     await (provider?.close() ?? Promise.resolve());
   }
 
@@ -739,7 +752,11 @@ export class Repository {
         GitOperationState,
       ] = await Promise.all([
         provider.getStatus(),
-        provider.getCommits(this.historyLimitSignal(), this.readsAllBranches()),
+        provider.getCommits(
+          this.historyLimitSignal(),
+          this.readsAllBranches(),
+          this.historyPathSignal() ?? undefined,
+        ),
         provider.getRefs(),
         provider.getStashes(),
         provider.getOperationState(),
@@ -810,13 +827,56 @@ export class Repository {
     if (provider === null) {
       return;
     }
+    const path: string | null = this.historyPathSignal();
     const commits: readonly GitCommit[] = await provider.getCommits(
       this.historyLimitSignal(),
       this.readsAllBranches(),
+      path ?? undefined,
     );
-    if (this.provider === provider) {
+    // Ignore an answer for a provider or a path the history has since moved on from.
+    if (this.provider === provider && this.historyPathSignal() === path) {
       this.commitsSignal.set(commits);
     }
+  }
+
+  /**
+   * Narrows the history to one file or folder — only the commits that touched it — and reads it
+   * (#1044). Needs a plugin with `pathHistory`; the caller checks {@link supports} first.
+   * @param path The repository-relative path, with forward slashes.
+   * @returns Returns a promise that settles once the history is read.
+   */
+  public async showHistoryOf(path: string): Promise<void> {
+    this.log.info('Repository', 'History narrowed to a path', path);
+    this.historyPathSignal.set(path);
+    this.historyLimitSignal.set(LOG_PAGE);
+    this.selectedNodeSignal.set(null);
+    this.selectedFileSignal.set(null);
+    await this.reloadHistory();
+  }
+
+  /**
+   * Widens the history back to the whole repository (#1044).
+   * @returns Returns a promise that settles once the history is read.
+   */
+  public async clearHistoryPath(): Promise<void> {
+    if (this.historyPathSignal() === null) {
+      return;
+    }
+    this.historyPathSignal.set(null);
+    this.historyLimitSignal.set(LOG_PAGE);
+    await this.reloadHistory();
+  }
+
+  /**
+   * Gets a commit's changed files, reading them first when they are not loaded yet.
+   * @param hash The commit's hash.
+   * @returns Returns the files, empty when the commit is not in the loaded history.
+   */
+  public async filesOf(hash: string): Promise<readonly GitFileChange[]> {
+    if (!this.commitFilesSignal().has(hash)) {
+      await this.loadCommitFiles(hash);
+    }
+    return this.commitFilesSignal().get(hash) ?? [];
   }
 
   /**

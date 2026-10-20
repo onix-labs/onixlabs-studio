@@ -42,6 +42,25 @@
   font-size: 0.8rem;
 }
 
+// The path bar sits flush under the strip like the filter form, but is a single line.
+.commit-graph__path {
+  padding-block-start: 0.375rem;
+}
+
+// The path reads as a path, in the face the hashes use, in the panel's own text colour; only the
+// lead-in before it is muted.
+.commit-graph__path .commit-graph__summary {
+  color: inherit;
+}
+
+.commit-graph__path-lead {
+  color: var(--form-muted-foreground-color);
+}
+
+.commit-graph__path-name {
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .commit-graph__field {
   min-inline-size: 0;
 }
