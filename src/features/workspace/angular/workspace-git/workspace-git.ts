@@ -352,13 +352,13 @@ export class WorkspaceGit {
    * Adds an untracked file or folder to version control (#860) — stages it, the ignore rules still
    * applying to a folder's contents — and reads the status again, so the row turns from untracked to
    * added. Nothing is ever added unasked: this is the only way a new path becomes tracked.
-   * @param path The absolute file or folder path.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public addToVersionControl(path: string): Promise<MutationResult> {
+  public addToVersionControl(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
       'Adding to version control',
-      [path],
+      paths,
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
         provider.stage(relative),
     );
@@ -416,13 +416,13 @@ export class WorkspaceGit {
   /**
    * Takes an added path back out of version control, the reverse of {@link addToVersionControl}: it
    * is unstaged, and turns untracked again with its contents untouched (#1042).
-   * @param path The absolute file path.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public undoAdd(path: string): Promise<MutationResult> {
+  public undoAdd(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
       'Undoing add',
-      [path],
+      paths,
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
         provider.unstage(relative),
     );
@@ -440,13 +440,13 @@ export class WorkspaceGit {
   /**
    * Marks a conflicted file resolved, which is what staging it means: the version now on disk becomes
    * the one it carries — exactly what the Repository panel's Mark Resolved does (#1042).
-   * @param path The absolute file path.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public markResolved(path: string): Promise<MutationResult> {
+  public markResolved(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
       'Marking resolved',
-      [path],
+      paths,
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
         provider.stage(relative),
     );
@@ -465,20 +465,20 @@ export class WorkspaceGit {
   /**
    * Adds a path — or, given an extension, every file with it — to the ignore list, and reads the
    * status again so the row turns ignored (#1043).
-   * @param path The absolute file or folder path the command was chosen on.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @param extension The extension, without the dot, to ignore everywhere; omitted for the path itself.
    * @returns Returns the outcome.
    */
-  public ignore(path: string, extension?: string): Promise<MutationResult> {
+  public ignore(paths: readonly string[], extension?: string): Promise<MutationResult> {
     return this.mutate(
       'Ignoring',
-      [path],
+      paths,
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> => {
-        const rule: VcsIgnoreRule =
+        const rules: readonly VcsIgnoreRule[] =
           extension === undefined
-            ? { kind: 'path', path: relative[0] }
-            : { kind: 'extension', extension };
-        return provider.ignore([rule]);
+            ? relative.map((path: string): VcsIgnoreRule => ({ kind: 'path', path }))
+            : [{ kind: 'extension', extension }];
+        return provider.ignore(rules);
       },
     );
   }
@@ -505,13 +505,13 @@ export class WorkspaceGit {
   /**
    * Takes a path out of version control, leaving it on disk, and reads the status again so the row
    * turns untracked — from where it can be ignored (#1043).
-   * @param path The absolute file or folder path.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public stopTracking(path: string): Promise<MutationResult> {
+  public stopTracking(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate(
       'Stopping tracking',
-      [path],
+      paths,
       (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
         provider.stopTracking(relative),
     );

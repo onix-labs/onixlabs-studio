@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import {
@@ -41,6 +43,10 @@ import { Notifications } from '@shared/angular/services/notifications/notificati
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
+import {
+  TreeSelectGesture,
+  TreeSelection,
+} from '@shared/angular/components/tree-view/tree-selection';
 import {
   TreeEdit,
   TreeMenuSelection,
@@ -248,6 +254,10 @@ export class SolutionPanel {
   public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
+    const targets: readonly SolutionRow[] = this.targetsOf(treeRow);
+    if (targets.length > 1) {
+      return this.selectionItems(targets);
+    }
     const row: SolutionRow = this.rowOf(treeRow);
     const path: string | null = this.pathFor(row);
     const items: MenuItem[] = [];
@@ -272,7 +282,7 @@ export class SolutionPanel {
         { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       );
       // Under one separator, pushed only when there is something for it to divide.
-      const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor(this.vcsTarget(row, path));
+      const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor([this.vcsTarget(row, path)]);
       if (vcs.length > 0) {
         items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
@@ -427,6 +437,25 @@ export class SolutionPanel {
   protected readonly selectedKey: Signal<string | null> = this.solution.selectedKey;
 
   /**
+   * Holds which rows are selected (#1048). The solution model's selected key is the row last acted
+   * on; this holds the rest of a multi-row selection around it.
+   */
+  protected readonly selection: TreeSelection = new TreeSelection();
+
+  /**
+   * Keeps the selection in step when the selected row is moved from outside — following the focused
+   * document, a click on empty space — by making that row the selection.
+   */
+  private readonly followSelectedKey: unknown = effect((): void => {
+    const key: string | null = this.solution.selectedKey();
+    untracked((): void => {
+      if (key !== this.selection.focused()) {
+        this.selection.replace(key);
+      }
+    });
+  });
+
+  /**
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
@@ -531,6 +560,11 @@ export class SolutionPanel {
    * @param selection The chosen item and the row it was chosen for.
    */
   public onContextAction(selection: TreeMenuSelection): void {
+    const targets: readonly SolutionRow[] = this.targetsOf(selection.row);
+    if (targets.length > 1) {
+      this.runOnSelection(selection.itemId, targets);
+      return;
+    }
     const row: SolutionRow = this.rowOf(selection.row);
     if (selection.itemId.startsWith(PROJECT_ACTION_PREFIX)) {
       this.requestProjectAction(selection.itemId.slice(PROJECT_ACTION_PREFIX.length), row);
@@ -545,7 +579,7 @@ export class SolutionPanel {
       return;
     }
     this.log.info('workspace.solution', 'Context action', selection.itemId, path);
-    if (this.vcsMenu.run(selection.itemId, this.vcsTarget(row, path))) {
+    if (this.vcsMenu.run(selection.itemId, [this.vcsTarget(row, path)])) {
       return;
     }
 
@@ -567,6 +601,107 @@ export class SolutionPanel {
       default:
         return;
     }
+  }
+
+  /**
+   * Gets the rows a command chosen on a row acts on: the selection, when the row is part of it,
+   * otherwise the row alone.
+   * @param treeRow The row the command was chosen on.
+   * @returns Returns the rows, in the order the tree shows them.
+   */
+  private targetsOf(treeRow: TreeRow): readonly SolutionRow[] {
+    const byKey: ReadonlyMap<string, SolutionRow> = new Map<string, SolutionRow>(
+      this.solution.rows().map((row: SolutionRow): [string, SolutionRow] => [row.key, row]),
+    );
+    const targets: readonly SolutionRow[] = this.selection
+      .targetsFor(treeRow.id, this.visibleOrder())
+      .map((key: string): SolutionRow | undefined => byKey.get(key))
+      .filter((row: SolutionRow | undefined): row is SolutionRow => row !== undefined);
+    return targets.length === 0 ? [this.rowOf(treeRow)] : targets;
+  }
+
+  /**
+   * Gets every visible row's key, in order — the order a selection is kept and acted on in.
+   * @returns Returns the keys.
+   */
+  private visibleOrder(): readonly string[] {
+    return this.rows().map((row: TreeRow): string => row.id);
+  }
+
+  /**
+   * Builds the menu for several selected rows (#1048): only what acts on every one of them — Open when
+   * they are all files, the path copies (one path per line) and the version-control commands they all
+   * take. A row standing for nothing on disk (a solution folder) leaves a selection holding it with no
+   * menu, as it has none of its own; project actions, Rename and Edit Project File need one row.
+   * @param targets The selected rows.
+   * @returns Returns the items.
+   */
+  private selectionItems(targets: readonly SolutionRow[]): readonly MenuItem[] {
+    const paths: readonly (string | null)[] = targets.map((row: SolutionRow): string | null =>
+      this.pathFor(row),
+    );
+    if (paths.some((path: string | null): boolean => path === null)) {
+      return [];
+    }
+    const items: MenuItem[] = [];
+    if (targets.every((row: SolutionRow): boolean => row.kind === 'file')) {
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+    }
+    items.push(
+      { id: ACTION_COPY_PATH, label: 'Copy Paths', icon: Icon.COPY },
+      { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Paths', icon: Icon.COPY },
+    );
+    const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor(this.vcsTargets(targets));
+    if (vcs.length > 0) {
+      items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
+    }
+    return items;
+  }
+
+  /**
+   * Runs a command chosen for several selected rows (#1048).
+   * @param itemId The chosen item.
+   * @param targets The selected rows.
+   */
+  private runOnSelection(itemId: string, targets: readonly SolutionRow[]): void {
+    const paths: readonly string[] = targets
+      .map((row: SolutionRow): string | null => this.pathFor(row))
+      .filter((path: string | null): path is string => path !== null);
+    if (paths.length !== targets.length) {
+      return;
+    }
+    if (this.vcsMenu.run(itemId, this.vcsTargets(targets))) {
+      return;
+    }
+    switch (itemId) {
+      case ACTION_OPEN:
+        for (const path of paths) {
+          void this.fileOpener.openPath(path);
+        }
+        return;
+      case ACTION_COPY_PATH:
+        void navigator.clipboard.writeText(paths.join('\n')).catch((): void => undefined);
+        return;
+      case ACTION_COPY_RELATIVE:
+        void navigator.clipboard
+          .writeText(paths.map((path: string): string => this.relativePath(path)).join('\n'))
+          .catch((): void => undefined);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Describes rows with paths to the version-control commands.
+   * @param rows The rows; each must stand for a path.
+   * @returns Returns the targets.
+   */
+  private vcsTargets(rows: readonly SolutionRow[]): readonly ExplorerVcsTarget[] {
+    return rows.flatMap((row: SolutionRow): readonly ExplorerVcsTarget[] => {
+      const path: string | null = this.pathFor(row);
+      return path === null ? [] : [this.vcsTarget(row, path)];
+    });
   }
 
   /**
@@ -695,8 +830,9 @@ export class SolutionPanel {
   }
 
   /**
-   * Handles a click on a row: selects it, and toggles an expandable row. A file is only selected —
-   * double click or Enter opens it (#1047). A still-loading project is inert until its contents arrive.
+   * Handles a plain click on a row: toggles an expandable row. Selecting is {@link onRowSelect}'s, and a
+   * file is only selected — double click or Enter opens it (#1047). A still-loading project is inert
+   * until its contents arrive.
    * @param treeRow The tree row that was clicked.
    */
   public onRowClick(treeRow: TreeRow): void {
@@ -704,10 +840,39 @@ export class SolutionPanel {
     if (row.loading) {
       return;
     }
-    this.solution.select(row.key);
     if (row.expandable) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
+    }
+  }
+
+  /**
+   * Applies a selection gesture — a click, ⌘- or Shift-click, an arrow key — and makes the row it
+   * landed on the selected row (#1048).
+   * @param gesture The gesture.
+   */
+  public onRowSelect(gesture: TreeSelectGesture): void {
+    this.selection.apply(gesture.row.id, gesture.mode, this.visibleOrder());
+    this.syncSelectedKey();
+  }
+
+  /**
+   * Selects every visible row, for ⌘A in the tree (#1048).
+   */
+  public onSelectAll(): void {
+    this.selection.selectAll(this.visibleOrder());
+    this.syncSelectedKey();
+  }
+
+  /**
+   * Makes the row last acted on the solution model's selected row, or clears it.
+   */
+  private syncSelectedKey(): void {
+    const focused: string | null = this.selection.focused();
+    if (focused === null) {
+      this.solution.clearSelection();
+    } else {
+      this.solution.select(focused);
     }
   }
 

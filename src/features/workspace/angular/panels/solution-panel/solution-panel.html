@@ -12,6 +12,8 @@
   <app-tree-view
     [rows]="rows()"
     [selectedId]="selectedKey()"
+    [selectedIds]="selection.ids()"
+    [multiSelect]="true"
     [virtual]="true"
     [contextMenuFor]="contextMenuFor"
     [editingId]="renameTarget()?.key ?? null"
@@ -19,6 +21,8 @@
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowOpen($event)"
     (rowActivate)="onRowOpen($event)"
+    (rowSelect)="onRowSelect($event)"
+    (selectAll)="onSelectAll()"
     (backgroundClick)="clearSelection()"
     (contextMenuSelect)="onContextAction($event)"
     (editCommit)="commitRename($event)"
