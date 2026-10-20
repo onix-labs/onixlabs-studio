@@ -691,7 +691,7 @@ describe('AgentComposer', () => {
       (label: Element): string => label.textContent?.trim() ?? '',
     );
     expect(labels[0]).toBe('/compact');
-    expect(labels).toContain('Manage prompts…');
+    expect(labels).toContain('Manage prompts');
 
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
 

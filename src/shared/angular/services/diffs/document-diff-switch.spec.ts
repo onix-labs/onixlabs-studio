@@ -146,7 +146,7 @@ describe('DocumentDiffSwitch', () => {
 
       const offered: DockPanelSwitch = toggle.forFile('doc-1')();
 
-      expect(offered.label).toBe('Show Diff');
+      expect(offered.label).toBe('Show Differences');
       expect(offered.unavailable).toBe('No changes against HEAD');
     });
 

@@ -127,7 +127,7 @@ describe('MarkdownToolstrip', () => {
     const run: () => Promise<boolean> = vi.fn((): Promise<boolean> => Promise.resolve(true));
     const fixture: ComponentFixture<MarkdownToolstrip> = TestBed.createComponent(MarkdownToolstrip);
     fixture.componentRef.setInput('documentSwitch', {
-      label: 'Show Diff',
+      label: 'Show Differences',
       icon: Icon.GIT_DIFF,
       unavailable: null,
       run,
@@ -137,22 +137,22 @@ describe('MarkdownToolstrip', () => {
     const labels: (string | null)[] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('app-button button'),
     ).map((button: Element): string | null => button.getAttribute('aria-label'));
-    expect(labels.slice(-2)).toEqual(['Show Diff', 'More Actions']);
-    buttonNamed(fixture, 'Show Diff').click();
+    expect(labels.slice(-2)).toEqual(['Show Differences', 'More Actions']);
+    buttonNamed(fixture, 'Show Differences').click();
     expect(run).toHaveBeenCalledOnce();
   });
 
   it('documentSwitch_whenUnavailable_isDisabled', () => {
     const fixture: ComponentFixture<MarkdownToolstrip> = TestBed.createComponent(MarkdownToolstrip);
     fixture.componentRef.setInput('documentSwitch', {
-      label: 'Show Diff',
+      label: 'Show Differences',
       icon: Icon.GIT_DIFF,
       unavailable: 'No changes against HEAD',
       run: (): Promise<boolean> => Promise.resolve(true),
     });
     fixture.detectChanges();
 
-    expect(buttonNamed(fixture, 'Show Diff').hasAttribute('disabled')).toBe(true);
+    expect(buttonNamed(fixture, 'Show Differences').hasAttribute('disabled')).toBe(true);
   });
 
   it('theFormatDropdown_sitsBetweenTheClipboardAndFormatting_listingTheMarkdownTabsBlockTypes', () => {

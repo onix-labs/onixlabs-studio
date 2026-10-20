@@ -224,13 +224,13 @@ export class MarkdownRibbon {
           MENU_SEPARATOR,
           {
             id: 'markdown.print',
-            label: 'Print…',
+            label: 'Print',
             accelerator: 'CmdOrCtrl+P',
             run: (): void => this.onPrint(),
           },
           {
             id: 'markdown.exportPdf',
-            label: 'Export to PDF…',
+            label: 'Export to PDF',
             run: (): void => this.onExportPdf(),
           },
         ],
@@ -247,7 +247,7 @@ export class MarkdownRibbon {
           // remain, since pressing one is an explicit instruction to act on the pane.
           {
             id: 'markdown.find',
-            label: 'Find…',
+            label: 'Find',
             accelerator: 'CmdOrCtrl+F',
             run: (): void => this.onFind(),
           },
@@ -295,14 +295,14 @@ export class MarkdownRibbon {
         items: [
           {
             id: 'markdown.link',
-            label: 'Link…',
+            label: 'Link',
             accelerator: 'CmdOrCtrl+K',
             run: (): void => this.onLink(),
           },
-          { id: 'markdown.image', label: 'Image…', run: (): void => this.onImage() },
+          { id: 'markdown.image', label: 'Image', run: (): void => this.onImage() },
           { id: 'markdown.table', label: 'Table', run: (): void => this.onTable() },
-          { id: 'markdown.diagram', label: 'Diagram…', run: (): void => this.onDiagram() },
-          { id: 'markdown.math', label: 'Equation…', run: (): void => this.onMath() },
+          { id: 'markdown.diagram', label: 'Diagram', run: (): void => this.onDiagram() },
+          { id: 'markdown.math', label: 'Equation', run: (): void => this.onMath() },
           MENU_SEPARATOR,
           { id: 'markdown.divider', label: 'Divider', run: (): void => this.onDivider() },
         ],

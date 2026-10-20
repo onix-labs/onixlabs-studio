@@ -630,19 +630,26 @@ describe('CommitDetail', () => {
         Array.from(host.querySelectorAll<HTMLButtonElement>('app-panel-toolbar [aria-label]')).map(
           (button: HTMLButtonElement): string | null => button.getAttribute('aria-label'),
         ),
-      ).toEqual(['Refresh', 'Discard All', 'Show Diff', 'Stash', 'Expand All', 'Collapse All']);
+      ).toEqual([
+        'Refresh',
+        'Discard All',
+        'Show Differences',
+        'Stash',
+        'Expand All',
+        'Collapse All',
+      ]);
     });
 
     it('showDiff_opensTheSelectedFilesDiff_andIsInertWithoutOne', async () => {
-      expect(tool('Show Diff').disabled).toBe(true);
+      expect(tool('Show Differences').disabled).toBe(true);
 
       const file: GitFileChange = makeFile('a.ts', 'modified');
       repository.unstaged.set([file]);
       repository.selectedFile.set(file);
       fixture.detectChanges();
 
-      expect(tool('Show Diff').disabled).toBe(false);
-      tool('Show Diff').click();
+      expect(tool('Show Differences').disabled).toBe(false);
+      tool('Show Differences').click();
       await fixture.whenStable();
 
       expect(opened.map((file: GitFileChange): string => file.path)).toContain('a.ts');

@@ -111,7 +111,7 @@ export class TerminalRibbon {
           // buttons remain, since pressing one is an explicit instruction to act on the terminal.
           {
             id: 'terminal.find',
-            label: 'Find…',
+            label: 'Find',
             accelerator: 'CmdOrCtrl+F',
             run: (): void => this.onFind(),
           },

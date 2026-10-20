@@ -163,8 +163,8 @@ export class AgentToolStrip {
     (): readonly MenuItem[] => {
       const attach: boolean = this.controls().attach;
       return [
-        { id: ATTACH_FILE, label: 'Attach File…', icon: Icon.ATTACH, disabled: !attach },
-        { id: ATTACH_FOLDER, label: 'Attach Folder…', icon: Icon.FOLDER_PLUS, disabled: !attach },
+        { id: ATTACH_FILE, label: 'Attach File', icon: Icon.ATTACH, disabled: !attach },
+        { id: ATTACH_FOLDER, label: 'Attach Folder', icon: Icon.FOLDER_PLUS, disabled: !attach },
         {
           id: ATTACH_SELECTION,
           label: 'Attach Selection',

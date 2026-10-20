@@ -150,7 +150,7 @@ export class DirectoryRibbon {
           // the only place it is reachable from now that the ribbon has no Edit group.
           {
             id: 'directory.find',
-            label: 'Find…',
+            label: 'Find',
             accelerator: 'CmdOrCtrl+F',
             run: (): void => this.onFind(),
           },
@@ -160,7 +160,7 @@ export class DirectoryRibbon {
         id: 'source-control',
         label: 'Version Control',
         items: [
-          { id: 'directory.commit', label: 'Commit…', run: (): void => this.onCommit() },
+          { id: 'directory.commit', label: 'Commit', run: (): void => this.onCommit() },
           MENU_SEPARATOR,
           { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
           { id: 'directory.pull', label: 'Pull', run: (): void => this.onPull() },
@@ -193,12 +193,12 @@ export class DirectoryRibbon {
           MENU_SEPARATOR,
           {
             id: 'directory.saveLayoutAs',
-            label: 'Save Layout As…',
+            label: 'Save Layout As',
             run: (): void => this.onSaveLayoutAs(),
           },
           {
             id: 'directory.manageLayouts',
-            label: 'Manage Layouts…',
+            label: 'Manage Layouts',
             run: (): void => this.onManageLayouts(),
           },
           MENU_SEPARATOR,

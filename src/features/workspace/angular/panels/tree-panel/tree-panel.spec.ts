@@ -297,12 +297,13 @@ describe('TreePanel row context menu', () => {
     expect(separators.every((item: MenuItem): boolean => item.label === '')).toBe(true);
   });
 
-  it('contextMenuFor_delete_wearsTheDangerTone', () => {
+  it('contextMenuFor_delete_isNotColoured', () => {
     const remove: MenuItem | undefined = component
       .contextMenuFor(treeRow(node('main.ts', '/ws/main.ts', 'file')))
       .find((item: MenuItem): boolean => item.id === 'delete');
 
-    expect(remove?.tone).toBe('danger');
+    // Context-menu items are never coloured; the confirmation is what guards a delete.
+    expect(remove?.tone).toBeUndefined();
   });
 
   it('onContextAction_open_selectsTheRowAndOpensIt', () => {

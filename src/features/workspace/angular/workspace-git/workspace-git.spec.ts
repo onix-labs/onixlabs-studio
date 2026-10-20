@@ -78,6 +78,8 @@ describe('WorkspaceGit', () => {
   let closed: string[];
   let status: ParsedStatus;
   let staged: string[][];
+  let unstaged: string[][];
+  let discarded: string[][];
   let watched: string[];
   let fireWatch: () => void;
   let trustAnswer: boolean;
@@ -132,10 +134,20 @@ describe('WorkspaceGit', () => {
       },
     };
     staged = [];
-    const provider: Pick<SourceControlProvider, 'getStatus' | 'stage'> = {
+    unstaged = [];
+    discarded = [];
+    const provider: Pick<SourceControlProvider, 'getStatus' | 'stage' | 'unstage' | 'discard'> = {
       getStatus: (): Promise<ParsedStatus> => Promise.resolve(status),
       stage: (paths: readonly string[]): Promise<MutationResult> => {
         staged.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
+      unstage: (paths: readonly string[]): Promise<MutationResult> => {
+        unstaged.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
+      discard: (paths: readonly string[]): Promise<MutationResult> => {
+        discarded.push([...paths]);
         return Promise.resolve({ success: true });
       },
     };
@@ -291,6 +303,89 @@ describe('WorkspaceGit', () => {
     expect((await git.addToVersionControl('/elsewhere/a.ts')).success).toBe(false);
     expect((await git.addToVersionControl('/repo')).success).toBe(false);
     expect(staged).toEqual([]);
+  });
+
+  it('revertableFiles_offersOnlyEditedOrDeletedFiles_neverOnesRevertWouldDelete', async () => {
+    // #1042: restoring an added or renamed file from HEAD deletes it, so Revert never reaches one.
+    status = {
+      ...status,
+      staged: [
+        change('src/app/main.ts', 'modified'),
+        change('src/app/new.ts', 'added'),
+        change('src/app/moved.ts', 'renamed'),
+      ],
+      unstaged: [
+        change('src/app/gone.ts', 'deleted'),
+        change('src/app/new.ts', 'modified'),
+        change('src/app/scratch.ts', 'added', true),
+      ],
+      conflicted: [change('src/both.ts', 'conflicted')],
+    };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.revertableFiles('/repo/src/app/main.ts')).toEqual(['/repo/src/app/main.ts']);
+    expect(git.revertableFiles('/repo/src/app/gone.ts')).toEqual(['/repo/src/app/gone.ts']);
+    expect(git.revertableFiles('/repo/src/app/new.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/app/moved.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/app/scratch.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/both.ts')).toEqual([]);
+    // A folder offers every edited file beneath it, and nothing else.
+    expect([...git.revertableFiles('/repo/src')].sort()).toEqual([
+      '/repo/src/app/gone.ts',
+      '/repo/src/app/main.ts',
+    ]);
+    expect(git.revertableFiles('/repo/docs')).toEqual([]);
+  });
+
+  it('revert_discardsEachFileByName_neverTheFolder_andReadsTheStatusAgain', async () => {
+    status = { ...status, unstaged: [change('src/app/other.ts', 'modified')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    status = { ...status, staged: [], unstaged: [] };
+    const result: MutationResult = await git.revert(git.revertableFiles('/repo/src'));
+
+    expect(result.success).toBe(true);
+    expect(discarded).toHaveLength(1);
+    expect([...discarded[0]].sort()).toEqual(['src/app/main.ts', 'src/app/other.ts']);
+    expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
+  });
+
+  it('revert_refusesAFileItCannotRevert_withoutDiscardingAnything', async () => {
+    root.set(listing('/repo'));
+    await bind();
+
+    // README.md is untracked: discarding it would delete it.
+    expect((await git.revert(['/repo/README.md'])).success).toBe(false);
+    expect((await git.revert([])).success).toBe(false);
+    expect(discarded).toEqual([]);
+  });
+
+  it('undoAdd_unstagesAnAddedFile_soItIsUntrackedAgain', async () => {
+    status = { ...status, staged: [change('src/new.ts', 'added')], unstaged: [] };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.canUndoAdd('/repo/src/new.ts')).toBe(true);
+    expect(git.canUndoAdd('/repo/README.md')).toBe(false);
+
+    status = { ...status, staged: [], unstaged: [change('src/new.ts', 'added', true)] };
+    await git.undoAdd('/repo/src/new.ts');
+
+    expect(unstaged).toEqual([['src/new.ts']]);
+    expect(git.stateFor('/repo/src/new.ts')).toBe('untracked');
+  });
+
+  it('markResolved_stagesAConflictedFile', async () => {
+    status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.isConflicted('/repo/src/both.ts')).toBe(true);
+    expect(git.isConflicted('/repo/src/app/main.ts')).toBe(false);
+
+    await git.markResolved('/repo/src/both.ts');
+
+    expect(staged).toEqual([['src/both.ts']]);
   });
 
   it('stateFor_findsTheState_whenTheWorkspaceWasOpenedThroughASymlink', async () => {

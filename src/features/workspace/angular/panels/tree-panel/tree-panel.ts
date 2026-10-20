@@ -9,7 +9,6 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import {
@@ -22,9 +21,9 @@ import {
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -56,16 +55,6 @@ const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
 const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
-
-/**
- * Identifies the context-menu command that adds an untracked path to version control (#860).
- */
-const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
-
-/**
- * Identifies the context-menu command that opens a modified file's diff.
- */
-const ACTION_SHOW_DIFF: string = 'show-diff';
 
 /**
  * Identifies the toolbar "…" menu's commands: the options submenu and its two switches, and the
@@ -177,9 +166,9 @@ export class TreePanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   * Holds the version-control commands a row offers, shared with the Solution Explorer (#1041).
    */
-  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+  private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
 
   /**
    * Holds the structured logger for workspace tree actions.
@@ -256,8 +245,8 @@ export class TreePanel {
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
-    { id: ACTION_NEW_FILE, label: 'New File…', icon: Icon.FILE },
-    { id: ACTION_NEW_FOLDER, label: 'New Folder…', icon: Icon.DIRECTORY },
+    { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
+    { id: ACTION_NEW_FOLDER, label: 'New Folder', icon: Icon.DIRECTORY },
     { id: 'tree-more.sep-root', label: '', separator: true },
     { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_COPY_ROOT, label: 'Copy Workspace Path', icon: Icon.COPY },
@@ -380,8 +369,8 @@ export class TreePanel {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
     }
     items.push(
-      { id: ACTION_NEW_FILE, label: 'New File…', icon: Icon.FILE },
-      { id: ACTION_NEW_FOLDER, label: 'New Folder…', icon: Icon.DIRECTORY },
+      { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
+      { id: ACTION_NEW_FOLDER, label: 'New Folder', icon: Icon.DIRECTORY },
       // A separator is a rule in its own right rather than a flag on the row below it, so it is only
       // pushed where there is genuinely something to divide.
       { id: 'tree-menu.sep-paths', label: '', separator: true },
@@ -390,64 +379,26 @@ export class TreePanel {
       { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       ...this.versionControlItems(node),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
-      { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
-      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
+      { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
     );
     return items;
   };
 
   /**
-   * Builds a row's version-control commands, under a separator, or nothing when none applies. A path
-   * is untracked or modified, never both, so at most one of the two is offered.
+   * Builds a row's version-control commands, under a separator, or nothing when none applies.
    * @param node The row's node.
    * @returns Returns the items.
    */
   private versionControlItems(node: WorkspaceTreeNode): readonly MenuItem[] {
-    const items: MenuItem[] = [];
-    // Offered only on a path version control does not track yet: nothing is added unasked (#860).
-    if (this.git.canAddToVersionControl(node.path)) {
-      items.push({
-        id: ACTION_ADD_TO_VCS,
-        label: 'Add to Version Control',
-        icon: Icon.PLUS_CIRCLE,
-      });
-    }
-    if (node.type === 'file' && this.git.canShowDiff(node.path)) {
-      items.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
-    }
+    const items: readonly MenuItem[] = this.vcsMenu.itemsFor({
+      path: node.path,
+      name: node.name,
+      kind: node.type,
+    });
     return items.length === 0
       ? []
       : [{ id: 'tree-menu.sep-vcs', label: '', separator: true }, ...items];
-  }
-
-  /**
-   * Opens a modified file's diff, saying so when there is none to show.
-   * @param node The row's node.
-   */
-  private async showDiff(node: WorkspaceTreeNode): Promise<void> {
-    const refusal: string | null = await this.diffOpener.openPath(node.path);
-    if (refusal !== null) {
-      this.notifications.notify({
-        severity: 'warning',
-        title: `No diff for “${node.name}”`,
-        detail: refusal,
-      });
-    }
-  }
-
-  /**
-   * Adds a row's untracked path to version control, saying so when it cannot be added.
-   * @param node The row's node.
-   */
-  private async addToVersionControl(node: WorkspaceTreeNode): Promise<void> {
-    const result: MutationResult = await this.git.addToVersionControl(node.path);
-    if (!result.success) {
-      this.notifications.notify({
-        severity: 'error',
-        title: `Could not add “${node.name}” to version control`,
-        detail: result.error ?? 'Version control refused it.',
-      });
-    }
   }
 
   /**
@@ -456,6 +407,9 @@ export class TreePanel {
    */
   public onContextAction(selection: TreeMenuSelection): void {
     const node: WorkspaceTreeNode = this.nodeOf(selection.row);
+    if (this.vcsMenu.run(selection.itemId, { path: node.path, name: node.name, kind: node.type })) {
+      return;
+    }
     switch (selection.itemId) {
       case ACTION_OPEN:
         this.workspace.select(node.path);
@@ -489,12 +443,6 @@ export class TreePanel {
         return;
       case ACTION_DELETE:
         this.deleteTarget.set(node);
-        return;
-      case ACTION_ADD_TO_VCS:
-        void this.addToVersionControl(node);
-        return;
-      case ACTION_SHOW_DIFF:
-        void this.showDiff(node);
         return;
       default:
         return;

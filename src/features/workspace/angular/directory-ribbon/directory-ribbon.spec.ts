@@ -989,7 +989,7 @@ describe('DirectoryRibbon', () => {
     });
 
     it('offersNoPromote_theRepositoryPanelsConvertDoingTheSameConversion', () => {
-      // Promote went from the ribbon and the menu: the Repository panel's "Convert to Worktrees…"
+      // Promote went from the ribbon and the menu: the Repository panel's "Convert to Worktrees"
       // performs the same conversion, so the ribbon carrying it too was a second way to the same
       // restructuring of the folder on disk.
       const ribbon: Record<string, unknown> = internals() as unknown as Record<string, unknown>;

@@ -258,7 +258,7 @@ export class AiManagerRibbon {
       },
       {
         id: 'skills.import',
-        label: 'Import Skill…',
+        label: 'Import Skill',
         enabled: this.registered().has('skills'),
         run: (): void => this.onImportSkill(),
       },
