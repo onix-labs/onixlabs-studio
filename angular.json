@@ -64,7 +64,8 @@
               "cytoscape-fcose",
               "cytoscape-cose-bilkent",
               "extend",
-              "@braintree/sanitize-url"
+              "@braintree/sanitize-url",
+              "elkjs/lib/elk.bundled.js"
             ]
           },
           "configurations": {
