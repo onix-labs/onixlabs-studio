@@ -17,6 +17,7 @@ import {
 import {
   confinedPaths,
   GitVersionControl,
+  ignoreLine,
   isSafeOperand,
   MAX_READ_FILE_BYTES,
   revisionSpec,
@@ -98,6 +99,17 @@ const IDENTITY: Readonly<Record<string, string>> = {
   GIT_COMMITTER_NAME: 'Spec',
   GIT_COMMITTER_EMAIL: 'spec@studio',
 };
+
+describe('ignoreLine', () => {
+  it('escapesTrailingSpaces_andTrimsTrailingSlashes_inLinearTime', async () => {
+    const root: string = os.tmpdir();
+    expect(await ignoreLine(root, { kind: 'path', path: 'notes  ' })).toBe('/notes\\ \\ ');
+    expect(await ignoreLine(root, { kind: 'path', path: './out///' })).toBe('/out');
+    // A long run of the trimmed character followed by something else: once a polynomial backtrack.
+    const long: string = `${'/'.repeat(50_000)}x`;
+    expect(await ignoreLine(root, { kind: 'path', path: `a${long}` })).not.toBeUndefined();
+  });
+});
 
 describe('GitVersionControl', () => {
   let base: string;

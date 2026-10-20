@@ -228,7 +228,7 @@ export async function ignoreLine(root: string, rule: unknown): Promise<string | 
   if (candidate.kind !== 'path' || typeof candidate.path !== 'string') {
     return null;
   }
-  const relative: string = candidate.path.replace(/^\.\//, '').replace(/\/+$/, '');
+  const relative: string = trimEnd(candidate.path.replace(/^\.\//, ''), '/');
   if (/[\r\n]/.test(relative) || confinedPaths(root, [relative]) === null) {
     return null;
   }
@@ -242,10 +242,26 @@ export async function ignoreLine(root: string, rule: unknown): Promise<string | 
   } catch {
     // Gone already, or never there: ignored as a file.
   }
-  const escaped: string = relative
-    .replace(/[\\*?[\]]/g, '\\$&')
-    .replace(/ +$/, (spaces: string): string => spaces.replace(/ /g, '\\ '));
+  // Trailing spaces are dropped by git unless escaped, so each is written as `\ `.
+  const body: string = trimEnd(relative, ' ');
+  const escaped: string =
+    body.replace(/[\\*?[\]]/g, '\\$&') + '\\ '.repeat(relative.length - body.length);
   return `/${escaped}${directory ? '/' : ''}`;
+}
+
+/**
+ * Removes every trailing occurrence of one character. A loop rather than an anchored `+$` pattern,
+ * which backtracks polynomially on a long run of the character followed by anything else.
+ * @param value The string.
+ * @param character The character to trim.
+ * @returns Returns the string without it at the end.
+ */
+function trimEnd(value: string, character: string): string {
+  let end: number = value.length;
+  while (end > 0 && value[end - 1] === character) {
+    end -= 1;
+  }
+  return value.slice(0, end);
 }
 
 /**
