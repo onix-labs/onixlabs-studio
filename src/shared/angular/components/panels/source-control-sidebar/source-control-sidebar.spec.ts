@@ -96,6 +96,14 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
  * A canned provider with two local branches, one remote, a tag, and a dirty working tree.
  */
 class FakeProvider implements SourceControlProvider {
+  public ignore(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public stopTracking(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public constructor(public readonly root: string) {}
 
   /**

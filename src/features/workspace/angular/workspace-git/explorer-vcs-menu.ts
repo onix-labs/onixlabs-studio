@@ -17,6 +17,26 @@ const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
 const ACTION_UNDO_ADD: string = 'undo-add';
 const ACTION_MARK_RESOLVED: string = 'mark-resolved';
 const ACTION_OPEN_IN_REPOSITORY: string = 'open-in-repository';
+const ACTION_IGNORE: string = 'ignore';
+const ACTION_IGNORE_EXTENSION: string = 'ignore-extension';
+const ACTION_STOP_TRACKING: string = 'stop-tracking';
+
+/**
+ * Matches an extension Ignore can offer to ignore everywhere — the same shape the protocol accepts.
+ */
+const EXTENSION_PATTERN: RegExp = /^[A-Za-z0-9_+-]+$/;
+
+/**
+ * Gets the extension of a file's name, without the dot, or null when it has none worth offering: no
+ * dot, a dotfile's leading dot (`.env` is a name, not an extension), or characters a rule cannot hold.
+ * @param name The file's name.
+ * @returns Returns the extension, or null.
+ */
+function extensionOf(name: string): string | null {
+  const dot: number = name.lastIndexOf('.');
+  const extension: string = dot > 0 ? name.slice(dot + 1) : '';
+  return EXTENSION_PATTERN.test(extension) ? extension : null;
+}
 
 /**
  * The row a version-control command is offered on or run against.
@@ -46,11 +66,12 @@ export interface ExplorerVcsTarget {
  * What a row offers follows from how version control sees it — a path is in exactly one state, so a
  * row shows at most two or three of these:
  *
- * - untracked: Add to Version Control
+ * - untracked: Add to Version Control, Ignore
  * - added: Undo Add
- * - modified: Show Differences, Revert Changes
+ * - unchanged: Stop Tracking
+ * - modified: Show Differences, Revert Changes, Stop Tracking
  * - conflicted: Mark Resolved, Open in Repository
- * - a folder with edited files beneath it: Revert Changes
+ * - a folder with edited files beneath it: Revert Changes, Stop Tracking
  *
  * Scoped per directory tab, beside the {@link WorkspaceGit} it reads.
  */
@@ -99,6 +120,9 @@ export class ExplorerVcsMenu {
         icon: Icon.PLUS_CIRCLE,
       });
     }
+    if (this.git.canIgnore(path)) {
+      items.push(this.ignoreItem(target));
+    }
     if (kind === 'file' && this.git.canUndoAdd(path)) {
       items.push({ id: ACTION_UNDO_ADD, label: 'Undo Add', icon: Icon.MINUS_CIRCLE });
     }
@@ -107,6 +131,13 @@ export class ExplorerVcsMenu {
     }
     if (this.git.revertableFiles(path).length > 0) {
       items.push({ id: ACTION_REVERT, label: 'Revert Changes', icon: Icon.UNDO });
+    }
+    if (this.git.canStopTracking(path)) {
+      items.push({
+        id: ACTION_STOP_TRACKING,
+        label: 'Stop Tracking',
+        icon: Icon.GIT_STOP_TRACKING,
+      });
     }
     if (kind === 'file' && this.git.isConflicted(path)) {
       items.push(
@@ -150,9 +181,50 @@ export class ExplorerVcsMenu {
       case ACTION_OPEN_IN_REPOSITORY:
         this.sourceControl.openInSourceControl();
         return true;
+      case ACTION_IGNORE:
+        void this.report(this.git.ignore(target.path), `Could not ignore “${target.name}”`);
+        return true;
+      case ACTION_IGNORE_EXTENSION: {
+        const extension: string | null = extensionOf(target.name);
+        if (extension !== null) {
+          void this.report(
+            this.git.ignore(target.path, extension),
+            `Could not ignore .${extension} files`,
+          );
+        }
+        return true;
+      }
+      case ACTION_STOP_TRACKING:
+        void this.report(
+          this.git.stopTracking(target.path),
+          `Could not stop tracking “${target.name}”`,
+        );
+        return true;
       default:
         return false;
     }
+  }
+
+  /**
+   * Builds the Ignore command: the row itself, or — for a file with an extension — a choice between the
+   * file and every file with its extension.
+   * @param target The row.
+   * @returns Returns the item.
+   */
+  private ignoreItem(target: ExplorerVcsTarget): MenuItem {
+    const extension: string | null = target.kind === 'file' ? extensionOf(target.name) : null;
+    if (extension === null) {
+      return { id: ACTION_IGNORE, label: 'Ignore', icon: Icon.GIT_IGNORE };
+    }
+    return {
+      id: 'ignore-menu',
+      label: 'Ignore',
+      icon: Icon.GIT_IGNORE,
+      children: [
+        { id: ACTION_IGNORE, label: 'This File' },
+        { id: ACTION_IGNORE_EXTENSION, label: `All .${extension} Files` },
+      ],
+    };
   }
 
   /**

@@ -33,6 +33,24 @@ class FakeWorkspaceGit {
     return this.states.get(path) === 'modified';
   }
 
+  public readonly tracked: string[] = [];
+
+  public canIgnore(path: string): boolean {
+    return this.states.get(path) === 'untracked';
+  }
+
+  public canStopTracking(path: string): boolean {
+    return this.tracked.includes(path);
+  }
+
+  public ignore(path: string, extension?: string): Promise<MutationResult> {
+    return this.record(extension === undefined ? `ignore ${path}` : `ignore *.${extension}`);
+  }
+
+  public stopTracking(path: string): Promise<MutationResult> {
+    return this.record(`stop-tracking ${path}`);
+  }
+
   public isConflicted(path: string): boolean {
     return this.states.get(path) === 'conflicted';
   }
@@ -155,11 +173,59 @@ describe('ExplorerVcsMenu', () => {
     git.edited.push('/ws/edited.ts');
     git.states.set('/ws/both.ts', 'conflicted');
 
-    expect(labels(target('/ws/new.ts'))).toEqual(['Add to Version Control']);
+    expect(labels(target('/ws/new.ts'))).toEqual(['Add to Version Control', 'Ignore']);
     expect(labels(target('/ws/added.ts'))).toEqual(['Undo Add']);
     expect(labels(target('/ws/edited.ts'))).toEqual(['Show Differences', 'Revert Changes']);
     expect(labels(target('/ws/both.ts'))).toEqual(['Mark Resolved', 'Open in Repository']);
     expect(labels(target('/ws/same.ts'))).toEqual([]);
+  });
+
+  it('itemsFor_ignore_onAFileWithAnExtension_offersTheFileOrEveryFileLikeIt', () => {
+    git.states.set('/ws/debug.log', 'untracked');
+    git.states.set('/ws/.env', 'untracked');
+    git.states.set('/ws/build', 'untracked');
+
+    const ignore: MenuItem | undefined = menu
+      .itemsFor(target('/ws/debug.log'))
+      .find((item: MenuItem): boolean => item.label === 'Ignore');
+    expect(ignore?.children?.map((item: MenuItem): string => item.label)).toEqual([
+      'This File',
+      'All .log Files',
+    ]);
+    // A dotfile's dot starts its name, not an extension; a folder is ignored as itself.
+    for (const row of [target('/ws/.env'), target('/ws/build', 'directory')]) {
+      const flat: MenuItem | undefined = menu
+        .itemsFor(row)
+        .find((item: MenuItem): boolean => item.label === 'Ignore');
+      expect(flat?.id).toBe('ignore');
+      expect(flat?.children).toBeUndefined();
+    }
+  });
+
+  it('itemsFor_stopTracking_followsWhatIsTracked', () => {
+    git.states.set('/ws/edited.ts', 'modified');
+    git.edited.push('/ws/edited.ts');
+    git.tracked.push('/ws/edited.ts', '/ws/same.ts');
+
+    expect(labels(target('/ws/edited.ts'))).toEqual([
+      'Show Differences',
+      'Revert Changes',
+      'Stop Tracking',
+    ]);
+    expect(labels(target('/ws/same.ts'))).toEqual(['Stop Tracking']);
+  });
+
+  it('run_ignoreAndStopTracking', async () => {
+    menu.run('ignore', target('/ws/debug.log'));
+    menu.run('ignore-extension', target('/ws/debug.log'));
+    menu.run('stop-tracking', target('/ws/same.ts'));
+    await settle();
+
+    expect(git.calls).toEqual([
+      'ignore /ws/debug.log',
+      'ignore *.log',
+      'stop-tracking /ws/same.ts',
+    ]);
   });
 
   it('itemsFor_aFolder_offersRevertForTheEditedFilesBeneathIt_butNoDiff', () => {

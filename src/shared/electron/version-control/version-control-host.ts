@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   VCS_GLOBAL_OPS,
+  VCS_HANDSHAKE_CAPABILITIES,
   VCS_NETWORK_OPS,
   VCS_OP_CAPABILITY,
   VCS_READ_OPS,
@@ -743,9 +744,12 @@ export class VersionControlHost {
     const plugin: RunningPlugin = {
       client,
       description,
-      capabilities: descriptor.capabilities.filter(
+      // Declared and confirmed — or, for the few a manifest cannot declare without older builds
+      // refusing it, confirmed alone (#1043).
+      capabilities: description.capabilities.filter(
         (capability: VersionControlCapability): boolean =>
-          description.capabilities.includes(capability),
+          descriptor.capabilities.includes(capability) ||
+          VCS_HANDSHAKE_CAPABILITIES.includes(capability),
       ),
     };
     this.running.set(descriptor.id, plugin);

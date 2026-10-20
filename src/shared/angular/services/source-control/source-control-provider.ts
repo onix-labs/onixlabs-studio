@@ -1,3 +1,4 @@
+import type { VcsIgnoreRule } from '@shared/api/version-control-protocol';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import {
   GitBranch,
@@ -212,6 +213,21 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   unstage(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
+   * Adds rules to the repository's ignore list (#1043). Refused by a plugin without `ignore`.
+   * @param rules The rules to add.
+   * @returns Returns the outcome.
+   */
+  ignore(rules: readonly VcsIgnoreRule[]): Promise<MutationResult>;
+
+  /**
+   * Takes paths out of version control, leaving them on disk (#1043). Refused by a plugin without
+   * `stopTracking`.
+   * @param paths The repository-relative paths; must not be empty.
+   * @returns Returns the outcome.
+   */
+  stopTracking(paths: readonly string[]): Promise<MutationResult>;
 
   /**
    * Commits the staged changes with a message.

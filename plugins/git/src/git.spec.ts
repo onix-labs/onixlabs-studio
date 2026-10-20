@@ -17,6 +17,7 @@ import {
 import {
   confinedPaths,
   GitVersionControl,
+  ignoreLine,
   isSafeOperand,
   MAX_READ_FILE_BYTES,
   revisionSpec,
@@ -99,6 +100,17 @@ const IDENTITY: Readonly<Record<string, string>> = {
   GIT_COMMITTER_EMAIL: 'spec@studio',
 };
 
+describe('ignoreLine', () => {
+  it('escapesTrailingSpaces_andTrimsTrailingSlashes_inLinearTime', async () => {
+    const root: string = os.tmpdir();
+    expect(await ignoreLine(root, { kind: 'path', path: 'notes  ' })).toBe('/notes\\ \\ ');
+    expect(await ignoreLine(root, { kind: 'path', path: './out///' })).toBe('/out');
+    // A long run of the trimmed character followed by something else: once a polynomial backtrack.
+    const long: string = `${'/'.repeat(50_000)}x`;
+    expect(await ignoreLine(root, { kind: 'path', path: `a${long}` })).not.toBeUndefined();
+  });
+});
+
 describe('GitVersionControl', () => {
   let base: string;
   let repo: string;
@@ -179,6 +191,62 @@ describe('GitVersionControl', () => {
     expect(
       (await result('readFile', { path: 'new.txt', version: { kind: 'head' } })).content,
     ).toBeNull();
+  });
+
+  it('ignore_appendsAnchoredRules_skipsOnesItHas_andGitHonoursThem', GIT_TEST_TIMEOUT, async () => {
+    // #1043: a path is anchored to the root, a folder ends in `/`, pattern syntax is escaped.
+    await fs.mkdir(path.join(repo, 'build'));
+    await fs.writeFile(path.join(repo, 'build', 'out.js'), 'x\n', 'utf8');
+    await fs.writeFile(path.join(repo, '[draft].md'), 'x\n', 'utf8');
+    await fs.writeFile(path.join(repo, 'debug.log'), 'x\n', 'utf8');
+    await fs.writeFile(path.join(repo, '.gitignore'), 'node_modules/', 'utf8');
+
+    await result('ignore', {
+      rules: [
+        { kind: 'path', path: 'build' },
+        { kind: 'path', path: '[draft].md' },
+        { kind: 'extension', extension: 'log' },
+      ],
+    });
+    await result('ignore', { rules: [{ kind: 'extension', extension: 'log' }] });
+
+    expect(await fs.readFile(path.join(repo, '.gitignore'), 'utf8')).toBe(
+      'node_modules/\n/build/\n/\\[draft\\].md\n*.log\n',
+    );
+    const status: VcsStatus = await result('status', {});
+    expect(status.unstaged.map((change) => change.path)).toEqual(['.gitignore']);
+  });
+
+  it('ignore_refusesARuleThatEscapesTheRepositoryOrBreaksALine', GIT_TEST_TIMEOUT, async () => {
+    for (const rule of [
+      { kind: 'path', path: '../outside' },
+      { kind: 'path', path: '.' },
+      { kind: 'path', path: 'a\nb' },
+      { kind: 'extension', extension: '*' },
+      { kind: 'extension', extension: 'tar.gz' },
+    ]) {
+      expect(await ask('ignore', { rules: [rule as never] })).toMatchObject({ ok: false });
+    }
+    await expect(fs.access(path.join(repo, '.gitignore'))).rejects.toThrow();
+  });
+
+  it('stopTracking_takesAFileOutOfTheIndex_andKeepsItOnDisk', GIT_TEST_TIMEOUT, async () => {
+    await result('stopTracking', { paths: ['README.md'] });
+
+    expect(await fs.readFile(path.join(repo, 'README.md'), 'utf8')).toBe('one\n');
+    const status: VcsStatus = await result('status', {});
+    expect(status.staged).toEqual([
+      expect.objectContaining({ path: 'README.md', status: 'deleted' }),
+    ]);
+    expect(status.unstaged).toEqual([
+      expect.objectContaining({ path: 'README.md', untracked: true }),
+    ]);
+  });
+
+  it('stopTracking_refusesTheRoot', GIT_TEST_TIMEOUT, async () => {
+    expect(await ask('stopTracking', { paths: ['.'] })).toMatchObject({ ok: false });
+    expect(await ask('stopTracking', { paths: [] })).toMatchObject({ ok: false });
+    expect((await result('status', {})).staged).toEqual([]);
   });
 
   it('log_all_readsEveryBranch_butNotTheStash', GIT_TEST_TIMEOUT, async () => {

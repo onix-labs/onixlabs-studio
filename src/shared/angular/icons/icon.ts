@@ -865,6 +865,18 @@ export class Icon {
   public static readonly GIT_DIFF: Icon = new Icon('ph-duotone ph-git-diff');
 
   /**
+   * Gets the icon of the explorers' Ignore command, which adds a path to version control's ignore
+   * list (#1043).
+   */
+  public static readonly GIT_IGNORE: Icon = new Icon('ph-duotone ph-eye-slash');
+
+  /**
+   * Gets the icon of the explorers' Stop Tracking command, which takes a path out of version control
+   * while keeping it on disk (#1043).
+   */
+  public static readonly GIT_STOP_TRACKING: Icon = new Icon('ph-duotone ph-file-minus');
+
+  /**
    * Gets the pull-request icon shown on the ribbon's Pull Request action.
    */
   public static readonly GIT_PULL_REQUEST: Icon = new Icon('ph-duotone ph-git-pull-request');

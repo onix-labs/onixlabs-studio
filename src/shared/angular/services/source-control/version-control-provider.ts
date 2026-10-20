@@ -7,6 +7,7 @@ import {
   VcsCommit,
   VcsFileChange,
   VcsFileVersion,
+  VcsIgnoreRule,
   VcsStash,
   VcsStatus,
   VersionControlOp,
@@ -271,6 +272,24 @@ export class VersionControlProvider implements SourceControlProvider {
    */
   public unstage(paths: readonly string[]): Promise<MutationResult> {
     return this.mutate('unstage', { paths });
+  }
+
+  /**
+   * Adds rules to the repository's ignore list.
+   * @param rules The rules to add.
+   * @returns Returns the outcome.
+   */
+  public ignore(rules: readonly VcsIgnoreRule[]): Promise<MutationResult> {
+    return this.mutate('ignore', { rules });
+  }
+
+  /**
+   * Takes paths out of version control, leaving them on disk.
+   * @param paths The repository-relative paths.
+   * @returns Returns the outcome.
+   */
+  public stopTracking(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate('stopTracking', { paths });
   }
 
   /**
