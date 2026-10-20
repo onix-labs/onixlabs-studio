@@ -150,6 +150,25 @@ describe('Log', () => {
     expect(seen).toEqual([record, second]);
   });
 
+  it('onRecords_deliversEachFlushWindowAsOneBatch', () => {
+    const batches: (readonly LogRecord[])[] = [];
+    setup().onRecords((records: readonly LogRecord[]): void => {
+      batches.push(records);
+    });
+    const record: LogRecord = {
+      id: 1,
+      sessionId: 's',
+      timestamp: 't',
+      severity: 'info',
+      origin: 'main',
+      source: 'x',
+      message: 'y',
+    };
+    subscribed?.listener([record, { ...record, id: 2 }]);
+    subscribed?.listener([]);
+    expect(batches).toEqual([[record, { ...record, id: 2 }]]);
+  });
+
   it('onRecord_opensTheStreamOnceAndClosesItWhenTheLastListenerDetaches', () => {
     const log: Log = setup();
     const offFirst: () => void = log.onRecord((): void => {

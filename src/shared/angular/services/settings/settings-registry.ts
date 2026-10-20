@@ -14,7 +14,9 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
+  DocumentDiffSwitch,
   FileExplorerExpandAll,
+  GoToStyle,
   ImageAlignment,
   ImageSizing,
   LanguageOverrides,
@@ -72,6 +74,7 @@ export interface SettingsValues {
   readonly 'notifications.whenMuted': MutedNotifications;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
+  readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
@@ -88,6 +91,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
+  readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
 
   readonly 'markdownEditor.fontFamily': string;
@@ -467,6 +471,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'loaded-only',
       },
+      {
+        key: 'workspaces.documentDiffSwitch',
+        title: 'Switching between a file and its diff',
+        description:
+          "What the Show Diff and Show File buttons on a file's and a diff's tool strips do with the tab you are leaving. Open as a separate tab keeps both, opening the other view beside it (or going to it when it is already open); Replace the current tab turns the tab into the other view, asking to save a file with unsaved changes first.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'tab', label: 'Open as a separate tab' },
+            { value: 'swap', label: 'Replace the current tab' },
+          ],
+        },
+        default: 'tab',
+      },
     ],
   },
   {
@@ -662,6 +680,20 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,
+      },
+      {
+        key: 'textEditor.goToStyle',
+        title: 'Go to style',
+        description:
+          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'quick-open', label: 'Quick-open box' },
+            { value: 'dialogs', label: 'Dialogs' },
+          ],
+        },
+        default: 'quick-open',
       },
       {
         key: 'textEditor.languageOverrides',
@@ -1087,6 +1119,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    id: 'plugins',
+    label: 'Plugin Manager',
+    settings: [
+      {
+        key: 'plugins.loadSideloaded',
+        // Owned by the main process, which reads it at launch before any plugin is resolved (#979), so
+        // it is never in the renderer's settings store. Always on, and locked, in the development app.
+        owner: 'plugins',
+        title: 'Load sideloaded plugins',
+        description:
+          "Load plugins placed in the plugins folder by hand. These skip Studio's integrity check " +
+          'and can replace a plugin from the catalogue, so leave this off unless you put one there ' +
+          'yourself. Takes effect after a restart.',
+        control: { kind: 'toggle' },
+        requiresRestart: true,
+      },
+    ],
+  },
+  {
     id: 'security',
     label: 'Security',
     settings: [
@@ -1121,7 +1172,7 @@ export const SETTINGS_BY_KEY: ReadonlyMap<string, SettingDef> = new Map(
 
 /**
  * Holds the default value for every Settings-owned setting key. Foreign-owned settings (Theme,
- * Display, LSP, Security) are excluded — their values live in their own services.
+ * Display, LSP, Security, Plugins) are excluded — their values live in their own services.
  */
 export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
   [...SETTINGS_BY_KEY.values()]

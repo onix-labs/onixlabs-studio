@@ -19,6 +19,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { type AppServerProcess, spawnAppServer } from './app-server';
+import { CodexClient } from './codex-client';
 import { findCodexExecutable } from './codex-executable';
 import { CodexModels, readCodexModels } from './codex-models';
 import {
@@ -41,29 +42,7 @@ import {
   type StudioTool,
   type TurnRequest,
 } from './protocol';
-import { startStudioMcpServer, type StudioMcpServer } from './studio-mcp';
-
-/**
- * The name Studio's tools are registered under in Codex's MCP configuration, and the environment
- * variable that carries the server's bearer token to the CLI (#854).
- */
-const STUDIO_SERVER: string = 'studio';
-
-/**
- * The environment variable the CLI reads the Studio tool server's bearer token from.
- */
-const STUDIO_TOKEN_VARIABLE: string = 'STUDIO_TOOLS_TOKEN';
-
-/**
- * How long Codex waits on one Studio tool call, in seconds. Generous because a call may sit on the
- * user's permission prompt.
- */
-const STUDIO_TOOL_TIMEOUT_SECONDS: number = 900;
-
-/**
- * How this harness names itself to Codex, which records it against each thread.
- */
-const ORIGINATOR: string = 'onixlabs_studio';
+import { startStudioMcpServer } from './studio-mcp';
 
 /**
  * Writes one protocol message to Studio.
@@ -98,22 +77,6 @@ const awaiting: Map<string, (answer: Answer) => void> = new Map<string, (answer:
  * Counts questions asked, so each gets its own correlation id.
  */
 let calls: number = 0;
-
-/**
- * Holds the running app-server, started on the first turn and kept across turns — this harness is a
- * `live-harness`.
- */
-let server: AppServerProcess | null = null;
-
-/**
- * Holds the server that gives Codex Studio's own tools, started with the app-server (#854).
- */
-let studioTools: StudioMcpServer | null = null;
-
-/**
- * Holds the Codex thread, once one has been started or resumed.
- */
-let threadId: string | null = null;
 
 /**
  * Holds the turn in flight: Studio's run, Codex's turn, and how to settle it.
@@ -227,19 +190,31 @@ function text(value: Record<string, unknown>, key: string, fallback: string = ''
 }
 
 /**
- * Starts the app-server and Studio's tool server on the first turn.
- * @param turn The first turn.
- * @returns Returns the server, or the reason it could not start.
+ * Builds the sandbox Codex runs a turn's commands in.
+ * @param policy The turn's confinement.
+ * @returns Returns the sandbox policy.
  */
-async function ensureServer(turn: TurnRequest): Promise<AppServerProcess | string> {
-  if (server !== null) {
-    return server;
-  }
-  const executable: { readonly path: string } | { readonly error: string } = findCodexExecutable();
-  if ('error' in executable) {
-    return executable.error;
-  }
-  studioTools ??= await startStudioMcpServer({
+function sandboxPolicy(policy: TurnPolicy): Record<string, unknown> {
+  return policy.sandbox === 'read-only'
+    ? { type: 'readOnly', networkAccess: policy.networkAccess }
+    : {
+        type: 'workspaceWrite',
+        writableRoots: [...policy.writableRoots],
+        networkAccess: policy.networkAccess,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      };
+}
+
+/**
+ * Holds Codex: the app-server, Studio's tool server and the thread, started on the first turn and kept
+ * across turns — this harness is a `live-harness`.
+ */
+const codex: CodexClient = new CodexClient({
+  findExecutable: findCodexExecutable,
+  spawn: spawnAppServer,
+  startTools: startStudioMcpServer,
+  bridge: {
     describe: async (): Promise<readonly StudioTool[]> => {
       if (running === null) {
         return [];
@@ -259,140 +234,28 @@ async function ensureServer(turn: TurnRequest): Promise<AppServerProcess | strin
         ? { result: answer.result, error: answer.error }
         : { result: null, error: 'Studio did not run the tool.' };
     },
-  });
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
-      env[key] = value;
+  },
+  apiKey: async (requestId: string): Promise<string | null> => {
+    if (hasLocalLogin()) {
+      return null;
     }
-  }
-  env[STUDIO_TOKEN_VARIABLE] = studioTools.token;
-  env['CODEX_INTERNAL_ORIGINATOR_OVERRIDE'] = ORIGINATOR;
-  if (!hasLocalLogin()) {
     // No local login, so the CLI needs a key — and the key is Studio's, held in its encrypted store.
     // Asked at the point of use rather than handed over in the turn envelope.
-    const answer: Answer = await ask(turn.requestId, { kind: 'credential' });
-    if (answer.kind === 'credential' && answer.apiKey !== null) {
-      env['CODEX_API_KEY'] = answer.apiKey;
+    const answer: Answer = await ask(requestId, { kind: 'credential' });
+    return answer.kind === 'credential' ? answer.apiKey : null;
+  },
+  onNotification: (method: string, params: unknown): void => onNotification(method, params),
+  onRequest: (method: string, params: unknown): Promise<unknown> => onRequest(method, params),
+  onLost: (error: Error | null): void => {
+    if (running !== null) {
+      running.failure ??= error?.message ?? 'Codex stopped unexpectedly.';
+      running.done('failed');
     }
-  }
-  const started: AppServerProcess = spawnAppServer(
-    executable.path,
-    env,
-    {
-      onNotification: (method: string, params: unknown): void => onNotification(method, params),
-      onRequest: (method: string, params: unknown): Promise<unknown> => onRequest(method, params),
-      onClose: (error: Error | null): void => {
-        note(`app-server closed${error === null ? '' : `: ${error.message}`}`);
-        server = null;
-        threadId = null;
-        if (running !== null) {
-          running.failure ??= error?.message ?? 'Codex stopped unexpectedly.';
-          running.done('failed');
-        }
-      },
-    },
-    (line: string): void => note(`codex: ${line}`),
-  );
-  server = started;
-  try {
-    await started.connection.request('initialize', {
-      clientInfo: { name: 'onixlabs-studio', title: 'ONIXLabs Studio', version: PROTOCOL_VERSION },
-      capabilities: { experimentalApi: true, requestAttestation: false },
-    });
-  } catch (error: unknown) {
-    started.stop();
-    server = null;
-    return `Codex could not start: ${error instanceof Error ? error.message : String(error)}`;
-  }
-  return started;
-}
-
-/**
- * Builds the thread configuration Codex is given: Studio's tools, and the notices Studio turns off.
- * @param policy The turn's confinement.
- * @returns Returns the configuration.
- */
-function threadConfig(policy: TurnPolicy): Record<string, unknown> {
-  return {
-    // Carried over from the SDK days: with an under-development feature enabled in the user's own
-    // config, the CLI's warning reached the transcript joined onto the model's reply (#541).
-    suppress_unstable_features_warning: true,
-    mcp_servers: {
-      [STUDIO_SERVER]: {
-        url: studioTools!.url,
-        bearer_token_env_var: STUDIO_TOKEN_VARIABLE,
-        tool_timeout_sec: STUDIO_TOOL_TIMEOUT_SECONDS,
-        // Codex's own approval is waived for Studio's tools, because Studio applies the user's per-tool
-        // policy and raises the permission prompt itself.
-        default_tools_approval_mode: 'approve',
-      },
-    },
-    ...(policy.webSearch === 'disabled' ? { web_search: 'disabled' } : {}),
-  };
-}
-
-/**
- * Builds the sandbox Codex runs a turn's commands in.
- * @param policy The turn's confinement.
- * @returns Returns the sandbox policy.
- */
-function sandboxPolicy(policy: TurnPolicy): Record<string, unknown> {
-  return policy.sandbox === 'read-only'
-    ? { type: 'readOnly', networkAccess: policy.networkAccess }
-    : {
-        type: 'workspaceWrite',
-        writableRoots: [...policy.writableRoots],
-        networkAccess: policy.networkAccess,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      };
-}
-
-/**
- * Opens the thread on the first turn: a new one, or the persisted one the envelope names, resumed or
- * forked.
- * @param turn The turn envelope.
- * @param policy The turn's confinement.
- * @param instructions Studio's instructions for the surface and mode.
- * @returns Returns the thread id, or the reason there is none.
- */
-async function ensureThread(
-  turn: TurnRequest,
-  policy: TurnPolicy,
-  instructions: string,
-): Promise<string> {
-  if (threadId !== null) {
-    return threadId;
-  }
-  const common: Record<string, unknown> = {
-    ...(turn.model.length > 0 ? { model: turn.model } : {}),
-    cwd: turn.workspaceRoot ?? homedir(),
-    approvalPolicy: policy.approvalPolicy,
-    sandbox: policy.sandbox,
-    config: threadConfig(policy),
-    ...(instructions.length > 0 ? { developerInstructions: instructions } : {}),
-  };
-  const method: string =
-    turn.resumeSessionId === null
-      ? 'thread/start'
-      : turn.forkSession
-        ? 'thread/fork'
-        : 'thread/resume';
-  const params: Record<string, unknown> =
-    turn.resumeSessionId === null ? common : { ...common, threadId: turn.resumeSessionId };
-  const response: Record<string, unknown> = record(
-    await server!.connection.request(method, params),
-  );
-  const thread: Record<string, unknown> = record(response['thread']);
-  const id: string = text(thread, 'id');
-  if (id.length === 0) {
-    throw new Error('Codex did not name the thread it started.');
-  }
-  threadId = id;
-  emit({ requestId: turn.requestId, kind: 'session', sessionId: id });
-  return id;
-}
+  },
+  onSession: (requestId: string, threadId: string): void =>
+    emit({ requestId, kind: 'session', sessionId: threadId }),
+  note,
+});
 
 /**
  * Runs one turn.
@@ -415,15 +278,22 @@ async function runTurn(turn: TurnRequest): Promise<void> {
     done: (outcome: 'completed' | 'failed'): void => settle(outcome),
   };
   try {
-    const started: AppServerProcess | string = await ensureServer(turn);
+    const started: AppServerProcess | string = await codex.ensureServer(turn.requestId);
     if (typeof started === 'string') {
       throw new Error(started);
     }
+    // Asked every turn, so an edit to a prompt profile or a skill applies from the next message
+    // rather than the next restart (#955): the client reloads the thread when the text has changed.
     const offer: Answer = await ask(turn.requestId, { kind: 'tools' });
     const instructions: string = offer.kind === 'tools' ? offer.systemPrompt : '';
-    const thread: string = await ensureThread(turn, policy, instructions);
+    const thread: string = await codex.ensureThread(turn, policy, instructions);
+    // The thread may have been reloaded into a fresh app-server, so the turn goes to whichever runs now.
+    const current: AppServerProcess | null = codex.server;
+    if (current === null) {
+      throw new Error('Codex stopped before the turn could start.');
+    }
     const response: Record<string, unknown> = record(
-      await started.connection.request('turn/start', {
+      await current.connection.request('turn/start', {
         threadId: thread,
         input: [{ type: 'text', text: promptFor(turn), text_elements: [] }],
         ...(turn.model.length > 0 ? { model: turn.model } : {}),
@@ -450,7 +320,8 @@ async function runTurn(turn: TurnRequest): Promise<void> {
           : { contextWindow: running.usage.contextWindow }),
       });
     }
-    send({ type: 'turn.completed', requestId: turn.requestId, sessionId: threadId });
+    codex.turnCompleted();
+    send({ type: 'turn.completed', requestId: turn.requestId, sessionId: codex.threadId });
   } catch (error: unknown) {
     send({
       type: 'turn.failed',
@@ -467,6 +338,8 @@ async function runTurn(turn: TurnRequest): Promise<void> {
  * Stops the turn in flight, leaving the thread open so the next turn continues the conversation.
  */
 function abortTurn(): void {
+  const server: AppServerProcess | null = codex.server;
+  const threadId: string | null = codex.threadId;
   if (running === null || server === null) {
     return;
   }
@@ -807,7 +680,6 @@ lines.on('line', (line: string): void => {
 });
 // End of input is Studio closing the pipe, which is how a harness is asked to stop.
 lines.on('close', (): void => {
-  server?.stop();
-  studioTools?.close();
+  codex.close();
   process.exit(0);
 });

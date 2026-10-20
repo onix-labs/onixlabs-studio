@@ -5,6 +5,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   OnDestroy,
@@ -22,6 +23,21 @@ import { Settings, TextEditorSettings } from '@shared/angular/services/settings/
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import {
+  REFERENCES_HOST,
+  ReferencesHost,
+} from '@shared/angular/services/references/reference-list';
+import { ReferencesRouter } from '@shared/angular/services/references/references-router';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
+import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
+import { pasteIntoEditor } from './editor-paste';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -58,6 +74,7 @@ export type TextEditorEol = 'CRLF' | 'LF';
  */
 @Component({
   selector: 'app-text-editor',
+  imports: [EditorContextMenuHost],
   templateUrl: './text-editor.html',
   styleUrl: './text-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -87,6 +104,123 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the find router this pane's editor is attached to, so Studio's ⌘F reaches the tab that
+   * answers it (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the enclosing tab's own Find panel, or null when the pane sits in no such tab (a workspace
+   * well document, where the Search panel answers instead).
+   */
+  private readonly findHost: FindHost | null = inject(FIND_HOST, { optional: true });
+
+  /**
+   * Holds the function that detaches this pane's editor from the find router, or null before creation
+   * and after disposal.
+   */
+  private detachFind: (() => void) | null = null;
+
+  /**
+   * Holds the go-to router this pane's editor is attached to, so Studio's ⌘⇧O / ⌃G open Go to in
+   * this pane's window (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds this pane's injector, which resolves the window it is drawn in — a popped-out dock's own —
+   * so the quick-open box opens there.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the function that detaches this pane's editor from the go-to router, or null before
+   * creation and after disposal.
+   */
+  private detachGoTo: (() => void) | null = null;
+
+  /**
+   * Holds the references router this pane's editor is attached to, so Find All References reaches the
+   * tab that lists it (#1014).
+   */
+  private readonly referencesRouter: ReferencesRouter = inject(ReferencesRouter);
+
+  /**
+   * Holds the enclosing tab's own References panel, or null when the pane sits in no such tab (a
+   * workspace well document, where the workspace's References panel answers instead).
+   */
+  private readonly referencesHost: ReferencesHost | null = inject(REFERENCES_HOST, {
+    optional: true,
+  });
+
+  /**
+   * Holds the function that detaches this pane's editor from the references router, or null before
+   * creation and after disposal.
+   */
+  private detachReferences: (() => void) | null = null;
+
+  /**
+   * Holds the service this pane's editor is attached to for Studio's right-click menu (#1012).
+   */
+  private readonly contextMenu: EditorContextMenu = inject(EditorContextMenu);
+
+  /**
+   * Holds the component that draws the right-click menu in this pane's window.
+   */
+  private readonly contextMenuHost: Signal<EditorContextMenuHost> =
+    viewChild.required<EditorContextMenuHost>(EditorContextMenuHost);
+
+  /**
+   * Holds the function that detaches this pane's editor from the right-click menu, or null before
+   * creation and after disposal.
+   */
+  private detachContextMenu: (() => void) | null = null;
+
+  /**
+   * Holds the quick fixes this pane's editor draws its fix icon for (#1016).
+   */
+  private readonly quickFixes: QuickFixes = inject(QuickFixes);
+
+  /**
+   * Holds the function that takes this pane's fix icon away, or null before creation and after
+   * disposal.
+   */
+  private detachQuickFixes: (() => void) | null = null;
+
+  /**
+   * Holds the hover cards this pane's editor shows in place of Monaco's hover (#1020).
+   */
+  private readonly hoverCards: HoverCards = inject(HoverCards);
+
+  /**
+   * Holds the function that takes this pane's hover card away, or null before creation and after
+   * disposal.
+   */
+  private detachHoverCards: (() => void) | null = null;
+
+  /**
+   * Holds the colour pickers a click on this pane's colour swatches opens, in place of Monaco's (#1025).
+   */
+  private readonly colourPickers: ColourPickers = inject(ColourPickers);
+
+  /**
+   * Holds the function that detaches this pane's editor from the colour pickers, or null before
+   * creation and after disposal.
+   */
+  private detachColourPickers: (() => void) | null = null;
+
+  /**
+   * Holds the completion list and signature card this pane's editor shows in place of Monaco's (#1021).
+   */
+  private readonly autocomplete: Autocomplete = inject(Autocomplete);
+
+  /**
+   * Holds the function that takes this pane's completion list and signature card away, or null before
+   * creation and after disposal.
+   */
+  private detachAutocomplete: (() => void) | null = null;
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -305,6 +439,22 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.bracketColorizationGuard = null;
     this.foldingPlaceholders?.dispose();
     this.foldingPlaceholders = null;
+    this.detachFind?.();
+    this.detachFind = null;
+    this.detachGoTo?.();
+    this.detachGoTo = null;
+    this.detachContextMenu?.();
+    this.detachContextMenu = null;
+    this.detachReferences?.();
+    this.detachReferences = null;
+    this.detachQuickFixes?.();
+    this.detachQuickFixes = null;
+    this.detachHoverCards?.();
+    this.detachHoverCards = null;
+    this.detachColourPickers?.();
+    this.detachColourPickers = null;
+    this.detachAutocomplete?.();
+    this.detachAutocomplete = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
@@ -399,17 +549,32 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Reveals and moves the caret to a position, then focuses the editor.
+   * Reveals and moves the caret to a position — or selects a span on its line, as a search match —
+   * centred, then focuses the editor.
    * @param line The one-based line number.
    * @param column The one-based column number.
+   * @param endColumn The one-based column the selection ends at on the line, or undefined to place
+   * the caret alone.
    */
-  public reveal(line: number, column: number): void {
+  public reveal(line: number, column: number, endColumn?: number): void {
     const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
     if (editor === null) {
       return;
     }
+    // Measured first: a tab just brought forward has not been laid out since it was hidden, and a line
+    // centred in a viewport of no height lands at the top once the editor is shown.
+    editor.layout();
     editor.revealLineInCenter(line);
-    editor.setPosition({ lineNumber: line, column });
+    if (endColumn === undefined) {
+      editor.setPosition({ lineNumber: line, column });
+    } else {
+      editor.setSelection({
+        startLineNumber: line,
+        startColumn: column,
+        endLineNumber: line,
+        endColumn,
+      });
+    }
     editor.focus();
   }
 
@@ -447,20 +612,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
    */
   public paste(): void {
-    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
-    if (editor === null) {
-      return;
+    if (this.editor !== null) {
+      pasteIntoEditor(this.editor, COMMAND_SOURCE);
     }
-    editor.focus();
-    void navigator.clipboard
-      .readText()
-      .then((text: string): void => {
-        const selection: MonacoApi.Selection | null = editor.getSelection();
-        if (selection !== null) {
-          editor.executeEdits(COMMAND_SOURCE, [{ range: selection, text, forceMoveMarkers: true }]);
-        }
-      })
-      .catch((): void => undefined);
   }
 
   /**
@@ -548,6 +702,21 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // Draw Visual-Studio-style collapsed-region placeholders (`signature {...}`). Harmless on editors
     // whose language has no brace folding — the controller simply finds no collapsed ranges.
     this.foldingPlaceholders = new FoldingPlaceholderController(monaco, this.editor);
+
+    // Hand the editor to the find router with the tab whose Find panel answers it outside a workspace.
+    this.detachFind = this.findRouter.attach(this.editor, { host: this.findHost });
+    this.detachGoTo = this.goToRouter.attach(this.editor, { injector: this.injector });
+    this.detachReferences = this.referencesRouter.attach(this.editor, this.referencesHost);
+    // Right-clicks open Studio's menu, drawn by the host in this pane's view — so in its window.
+    this.detachContextMenu = this.contextMenu.attach(this.editor, this.contextMenuHost());
+    // Studio's fix icon beside the caret's line while fixes exist there; hidden while read-only.
+    this.detachQuickFixes = this.quickFixes.attach(this.editor, monaco);
+    // Studio's hover card over a symbol, a problem or a breakpoint, drawn in this pane's window.
+    this.detachHoverCards = this.hoverCards.attach(this.editor, this.injector);
+    // Studio's colour picker when a colour swatch is clicked, drawn in this pane's window.
+    this.detachColourPickers = this.colourPickers.attach(this.editor, this.injector);
+    // Studio's completion list and signature card at the caret, drawn in this pane's window.
+    this.detachAutocomplete = this.autocomplete.attach(this.editor, this.injector);
 
     // Seed the caret and end-of-line before any edit, so the host's status is correct on first show.
     const seed: MonacoApi.Position | null = this.editor.getPosition();

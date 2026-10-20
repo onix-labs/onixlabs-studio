@@ -64,6 +64,59 @@ interface Drag {
 }
 
 /**
+ * Which axes a scroll area scrolls along, read from one style lookup.
+ */
+interface Overflow {
+  readonly vertical: boolean;
+  readonly horizontal: boolean;
+}
+
+/**
+ * Where one thumb goes, or null when its axis has nowhere to scroll.
+ */
+interface ThumbPlacement {
+  readonly offset: number;
+  readonly length: number;
+}
+
+/**
+ * Everything one redraw writes for an area's bars, measured before any of it is written so a redraw
+ * of many areas costs one layout rather than several each (#980 P8).
+ */
+interface Placement {
+  /**
+   * The bars being redrawn.
+   */
+  readonly bars: Bars;
+
+  /**
+   * Whether the bars show.
+   */
+  readonly shown: boolean;
+
+  /**
+   * The part of the area that can be seen, or null when none of it can (the frame is hidden). Unused
+   * when the bars are not shown.
+   */
+  readonly visible: Box | null;
+
+  /**
+   * The area's padding box.
+   */
+  readonly area: Box | null;
+
+  /**
+   * Where the thumb for scrolling down goes, or null when it hides.
+   */
+  readonly vertical: ThumbPlacement | null;
+
+  /**
+   * Where the thumb for scrolling across goes, or null when it hides.
+   */
+  readonly horizontal: ThumbPlacement | null;
+}
+
+/**
  * The bars drawn over one scroll area.
  */
 interface Bars {
@@ -218,21 +271,33 @@ export class ScrollbarLayer {
 
   /**
    * Redraws every area's bars now: shows the ones the pointer is over or that are scrolling, sizes
-   * and places them, and hides the rest.
+   * and places them, and hides the rest. Every area is measured before anything is written, so the
+   * whole pass costs one layout however many bars show.
    */
   public update(): void {
     this.pending = false;
     const hovered: ReadonlySet<HTMLElement> = new Set<HTMLElement>(this.hovered);
-    for (const bars of [...this.bars.values()]) {
+    const gone: Bars[] = [];
+    const placements: Placement[] = [];
+    // Read: every shown area's geometry, with nothing written in between.
+    for (const bars of this.bars.values()) {
       if (!bars.scroller.isConnected) {
-        this.remove(bars);
+        gone.push(bars);
         continue;
       }
       const shown: boolean = hovered.has(bars.scroller) || bars.scrolling || bars.drag !== null;
-      bars.frame.classList.toggle('app-scrollbars__frame--shown', shown);
-      if (shown) {
+      placements.push(shown ? this.measure(bars) : this.hiddenPlacement(bars));
+    }
+    // Write: every style, class and removal.
+    for (const bars of gone) {
+      this.remove(bars);
+    }
+    for (const placement of placements) {
+      const bars: Bars = placement.bars;
+      bars.frame.classList.toggle('app-scrollbars__frame--shown', placement.shown);
+      if (placement.shown) {
         this.cancelRemoval(bars);
-        this.place(bars);
+        this.apply(placement);
       } else {
         bars.removing ??= setTimeout((): void => this.remove(bars), REMOVE_MS);
       }
@@ -517,10 +582,22 @@ export class ScrollbarLayer {
   }
 
   /**
-   * Sizes and places an area's bars over the part of it that can be seen.
+   * Gets the placement of bars that are not shown: nothing is measured, and only their class is
+   * written.
    * @param bars The bars.
+   * @returns Returns the placement.
    */
-  private place(bars: Bars): void {
+  private hiddenPlacement(bars: Bars): Placement {
+    return { bars, shown: false, visible: null, area: null, vertical: null, horizontal: null };
+  }
+
+  /**
+   * Measures where an area's bars go over the part of it that can be seen, writing nothing. The area's
+   * style is looked up once, however many questions are asked of it.
+   * @param bars The bars.
+   * @returns Returns the placement.
+   */
+  private measure(bars: Bars): Placement {
     const scroller: HTMLElement = bars.scroller;
     const area: Box = this.paddingBox(scroller);
     let visible: Box = {
@@ -539,48 +616,75 @@ export class ScrollbarLayer {
       };
     }
     if (visible.right <= visible.left || visible.bottom <= visible.top) {
+      return { bars, shown: true, visible: null, area, vertical: null, horizontal: null };
+    }
+    const overflow: Overflow = this.overflow(scroller);
+    return {
+      bars,
+      shown: true,
+      visible,
+      area,
+      vertical: overflow.vertical ? this.measureThumb(scroller, 'vertical', overflow) : null,
+      horizontal: overflow.horizontal ? this.measureThumb(scroller, 'horizontal', overflow) : null,
+    };
+  }
+
+  /**
+   * Writes a measured placement: positions the frame and box, and sizes and places each thumb or hides
+   * it when its axis has nowhere to scroll.
+   * @param placement The placement.
+   */
+  private apply(placement: Placement): void {
+    const bars: Bars = placement.bars;
+    if (placement.visible === null || placement.area === null) {
       bars.frame.hidden = true;
       return;
     }
     bars.frame.hidden = false;
-    this.setBox(bars.frame, visible, null);
-    this.setBox(bars.box, area, visible);
-
-    const showsY: boolean = this.overflows(bars, 'vertical');
-    const showsX: boolean = this.overflows(bars, 'horizontal');
-    this.placeThumb(bars, 'vertical', showsY);
-    this.placeThumb(bars, 'horizontal', showsX);
+    this.setBox(bars.frame, placement.visible, null);
+    this.setBox(bars.box, placement.area, placement.visible);
+    this.applyThumb(bars.vertical, 'vertical', placement.vertical);
+    this.applyThumb(bars.horizontal, 'horizontal', placement.horizontal);
   }
 
   /**
-   * Sizes and places one thumb, or hides it when its axis has nowhere to scroll.
-   * @param bars The bars.
+   * Measures where one thumb goes along an axis the area scrolls along.
+   * @param scroller The area.
    * @param axis The thumb's axis.
-   * @param shows Whether the axis scrolls.
+   * @param overflow Which axes the area scrolls along.
+   * @returns Returns the thumb's offset and length.
    */
-  private placeThumb(bars: Bars, axis: Axis, shows: boolean): void {
-    const thumb: HTMLElement = axis === 'vertical' ? bars.vertical : bars.horizontal;
-    thumb.hidden = !shows;
-    if (!shows) {
-      return;
-    }
-    const scroller: HTMLElement = bars.scroller;
+  private measureThumb(scroller: HTMLElement, axis: Axis, overflow: Overflow): ThumbPlacement {
     const visible: number = axis === 'vertical' ? scroller.clientHeight : scroller.clientWidth;
     const content: number = axis === 'vertical' ? scroller.scrollHeight : scroller.scrollWidth;
     const position: number = axis === 'vertical' ? scroller.scrollTop : scroller.scrollLeft;
-    const track: number = this.track(bars, axis);
+    const track: number = this.trackOf(scroller, axis, overflow);
     const length: number = Math.min(
       track,
       Math.max(MIN_THUMB_PX, Math.round((track * visible) / content)),
     );
     const travel: number = Math.max(0, track - length);
     const offset: number = INSET_PX + Math.round((position / (content - visible)) * travel);
+    return { offset, length };
+  }
+
+  /**
+   * Sizes and places one thumb, or hides it when its axis has nowhere to scroll.
+   * @param thumb The thumb.
+   * @param axis The thumb's axis.
+   * @param placement Where it goes, or null to hide it.
+   */
+  private applyThumb(thumb: HTMLElement, axis: Axis, placement: ThumbPlacement | null): void {
+    thumb.hidden = placement === null;
+    if (placement === null) {
+      return;
+    }
     if (axis === 'vertical') {
-      thumb.style.top = `${offset}px`;
-      thumb.style.height = `${length}px`;
+      thumb.style.top = `${placement.offset}px`;
+      thumb.style.height = `${placement.length}px`;
     } else {
-      thumb.style.left = `${offset}px`;
-      thumb.style.width = `${length}px`;
+      thumb.style.left = `${placement.offset}px`;
+      thumb.style.width = `${placement.length}px`;
     }
   }
 
@@ -592,24 +696,35 @@ export class ScrollbarLayer {
    * @returns Returns the length, in pixels.
    */
   private track(bars: Bars, axis: Axis): number {
-    const scroller: HTMLElement = bars.scroller;
-    const side: number = axis === 'vertical' ? scroller.clientHeight : scroller.clientWidth;
-    const other: Axis = axis === 'vertical' ? 'horizontal' : 'vertical';
-    return side - INSET_PX * 2 - (this.overflows(bars, other) ? CORNER_PX : 0);
+    return this.trackOf(bars.scroller, axis, this.overflow(bars.scroller));
   }
 
   /**
-   * Gets whether an area scrolls along an axis.
-   * @param bars The bars.
-   * @param axis The axis.
-   * @returns Returns true if it does.
+   * Gets the length of a thumb's track from an overflow already read.
+   * @param scroller The area.
+   * @param axis The thumb's axis.
+   * @param overflow Which axes the area scrolls along.
+   * @returns Returns the length, in pixels.
    */
-  private overflows(bars: Bars, axis: Axis): boolean {
-    const scroller: HTMLElement = bars.scroller;
+  private trackOf(scroller: HTMLElement, axis: Axis, overflow: Overflow): number {
+    const side: number = axis === 'vertical' ? scroller.clientHeight : scroller.clientWidth;
+    const corner: boolean = axis === 'vertical' ? overflow.horizontal : overflow.vertical;
+    return side - INSET_PX * 2 - (corner ? CORNER_PX : 0);
+  }
+
+  /**
+   * Gets which axes an area scrolls along, from a single style lookup.
+   * @param scroller The area.
+   * @returns Returns whether it scrolls down and whether it scrolls across.
+   */
+  private overflow(scroller: HTMLElement): Overflow {
     const style: CSSStyleDeclaration = this.view.getComputedStyle(scroller);
-    return axis === 'vertical'
-      ? scroller.scrollHeight > scroller.clientHeight && SCROLLING_OVERFLOW.has(style.overflowY)
-      : scroller.scrollWidth > scroller.clientWidth && SCROLLING_OVERFLOW.has(style.overflowX);
+    return {
+      vertical:
+        scroller.scrollHeight > scroller.clientHeight && SCROLLING_OVERFLOW.has(style.overflowY),
+      horizontal:
+        scroller.scrollWidth > scroller.clientWidth && SCROLLING_OVERFLOW.has(style.overflowX),
+    };
   }
 
   /**

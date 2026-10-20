@@ -5,7 +5,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { findStackOfPanel, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
@@ -26,6 +26,11 @@ import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-pan
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
+
+import { ReferencesPanelState } from '@features/workspace/angular/panels/references-panel/references-panel-state';
+import { WorkspaceReferences } from '@features/workspace/angular/workspace-references/workspace-references';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import type { ReferenceList } from '@shared/angular/services/references/reference-list';
 
 import { DirectoryView } from './directory-view';
 
@@ -74,6 +79,60 @@ describe('DirectoryView', () => {
     // The scoped workspace is the instance provided by this directory view.
     const scopedWorkspace: Workspace = seeded.debugElement.injector.get(Workspace);
     expect(scopedWorkspace.rootName()).toBe('ws');
+  });
+
+  describe('the References panel (#1014)', () => {
+    it('aListWhileActive_tabsThePanelBesideTheErrorList_bringsItForward_andShowsTheList', async () => {
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+      const list: ReferenceList = { kind: 'references', symbol: 'Foo', status: 'done', items: [] };
+
+      TestBed.inject(WorkspaceReferences).reveal(list);
+
+      const stack: StackNode | null = findStackOfPanel(dock.layout(), 'references');
+      expect(stack).not.toBeNull();
+      expect(stack?.panels).toContain('errors');
+      expect(stack?.active).toBe('references');
+      expect(fixture.debugElement.injector.get(ReferencesPanelState).list()).toBe(list);
+    });
+
+    it('aChosenPlaceInAnotherFile_opensThroughThisTabsOwnOpener_notTheApplicationWideOne', async () => {
+      // The application-wide opener's dock is rendered by no view: a file it opened never showed an
+      // editor, so a chosen reference went nowhere.
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      const own: FileOpener = fixture.debugElement.injector.get(FileOpener);
+      const appWide: FileOpener = TestBed.inject(FileOpener);
+      expect(own).not.toBe(appWide);
+      const ownOpen: Mock = vi.spyOn(own, 'openPath').mockResolvedValue(true);
+      const appWideOpen: Mock = vi.spyOn(appWide, 'openPath').mockResolvedValue(true);
+
+      await expect(TestBed.inject(WorkspaceReferences).open('/ws/README.md')).resolves.toBe(true);
+
+      expect(ownOpen).toHaveBeenCalledWith('/ws/README.md');
+      expect(appWideOpen).not.toHaveBeenCalled();
+    });
+
+    it('onceInactive_opensNothing', async () => {
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      fixture.componentRef.setInput('isActive', false);
+      await fixture.whenStable();
+      const ownOpen: Mock = vi
+        .spyOn(fixture.debugElement.injector.get(FileOpener), 'openPath')
+        .mockResolvedValue(true);
+
+      await expect(TestBed.inject(WorkspaceReferences).open('/ws/README.md')).resolves.toBe(false);
+
+      expect(ownOpen).not.toHaveBeenCalled();
+    });
+
+    it('whileInactive_registersNothing_soNoListReachesIt', async () => {
+      await fixture.whenStable();
+
+      expect(TestBed.inject(WorkspaceReferences).available()).toBe(false);
+    });
   });
 
   describe('the published well (#713)', () => {

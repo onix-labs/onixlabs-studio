@@ -28,6 +28,13 @@ export interface StartupPreferences {
    * does.
    */
   readonly logLevel: LogLevelSetting | null;
+
+  /**
+   * Gets whether the plugins placed in the plugins folder by hand are loaded, or null when the user has
+   * not chosen (#979). It lives here because the main process resolves every plugin before any window
+   * exists, and a choice made in a window could only ever arrive too late to keep one out.
+   */
+  readonly loadSideloadedPlugins: boolean | null;
 }
 
 /**
@@ -51,6 +58,7 @@ interface LegacyStartupPreferences {
 const DEFAULT_STARTUP_PREFERENCES: StartupPreferences = {
   graphicsAcceleration: null,
   logLevel: null,
+  loadSideloadedPlugins: null,
 };
 
 /**
@@ -88,10 +96,12 @@ export class StartupPreferencesStore {
       const preferences: StartupPreferences = {
         graphicsAcceleration: StartupPreferencesStore.level(parsed),
         logLevel: StartupPreferencesStore.logLevel(parsed),
+        loadSideloadedPlugins:
+          typeof parsed.loadSideloadedPlugins === 'boolean' ? parsed.loadSideloadedPlugins : null,
       };
       logger.debug(
         'StartupPreferences',
-        `Read startup preferences (graphicsAcceleration: ${preferences.graphicsAcceleration ?? 'unset'}, logLevel: ${preferences.logLevel ?? 'unset'})`,
+        `Read startup preferences (graphicsAcceleration: ${preferences.graphicsAcceleration ?? 'unset'}, logLevel: ${preferences.logLevel ?? 'unset'}, loadSideloadedPlugins: ${preferences.loadSideloadedPlugins ?? 'unset'})`,
       );
       return preferences;
     } catch (error: unknown) {

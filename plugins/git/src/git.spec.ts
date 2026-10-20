@@ -14,7 +14,13 @@ import {
   VcsParams,
   VcsResult,
 } from './protocol';
-import { confinedPaths, GitVersionControl, isSafeOperand, revisionSpec } from './git';
+import {
+  confinedPaths,
+  GitVersionControl,
+  isSafeOperand,
+  MAX_READ_FILE_BYTES,
+  revisionSpec,
+} from './git';
 
 /**
  * The per-test timeout: these tests run real git, which is quick but not instant.
@@ -196,6 +202,39 @@ describe('GitVersionControl', () => {
     expect(
       await ask('readFile', { path: '../outside', version: { kind: 'working' } }),
     ).toMatchObject({ ok: false });
+  });
+
+  it('readFile_refusesAFileOverTheSizeCap_inEveryVersion', GIT_TEST_TIMEOUT, async () => {
+    // #980 P10: a huge blob is refused with a message the UI can show, never buffered whole.
+    await fs.writeFile(path.join(repo, 'big.bin'), Buffer.alloc(MAX_READ_FILE_BYTES + 1, 0x61));
+    await git(repo, 'add', 'big.bin');
+    await git(repo, 'commit', '-m', 'big');
+
+    for (const version of [{ kind: 'working' }, { kind: 'head' }] as const) {
+      const response: VersionControlResponse<'readFile'> = await ask('readFile', {
+        path: 'big.bin',
+        version,
+      });
+      expect(response).toMatchObject({ ok: false });
+      expect(response.ok ? '' : response.error).toMatch(/too large/);
+    }
+    expect(
+      (await result('readFile', { path: 'README.md', version: { kind: 'head' } })).content,
+    ).toBe('one\n');
+  });
+
+  it('fetchRef_refusesAForcePrefixOrASmuggledRefspec', GIT_TEST_TIMEOUT, async () => {
+    // #980 S11: `+main:topic` would force-update the local branch.
+    for (const params of [
+      { remote: 'origin', sourceRef: '+main', localBranch: 'topic' },
+      { remote: 'origin', sourceRef: 'main:other', localBranch: 'topic' },
+      { remote: 'origin', sourceRef: 'main', localBranch: '-f' },
+    ]) {
+      expect(await ask('fetchRef', params)).toMatchObject({
+        ok: false,
+        error: 'Invalid remote, ref, or branch name',
+      });
+    }
   });
 
   it('commit_log_andCommitFiles_roundTrip', GIT_TEST_TIMEOUT, async () => {

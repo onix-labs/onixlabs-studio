@@ -13,11 +13,12 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import type * as MonacoApi from 'monaco-editor';
+import { DockPanel, DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
-import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { Diffs, OpenDiffEditor } from '@shared/angular/services/diffs/diffs';
 import {
   GitChangeStatus,
   GitFileChange,
@@ -172,6 +173,14 @@ export class DiffDocumentPanel {
   );
 
   /**
+   * Gets the switch to the compared file, or undefined where the panel offers none — then the strip's
+   * button opens the file the plain way, beside the diff.
+   */
+  protected readonly fileSwitch: Signal<DockPanelSwitch | undefined> = computed(
+    (): DockPanelSwitch | undefined => this.panel().switch?.(),
+  );
+
+  /**
    * Gets the strip menu's items: the file's own commands.
    */
   protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
@@ -250,8 +259,30 @@ export class DiffDocumentPanel {
       });
     });
 
+    // Offer the changed side to the Search panel's in-memory scopes (#1007), read-only.
+    let searchable: OpenDiffEditor | null = null;
+    effect((): void => {
+      const id: string = this.panel().id;
+      if (searchable?.id === id) {
+        return;
+      }
+      if (searchable !== null) {
+        this.diffs.unregisterEditor(searchable);
+      }
+      searchable = {
+        id,
+        path: (): string | null => this.absolutePath(),
+        modifiedEditor: (): MonacoApi.editor.ICodeEditor | null =>
+          this.view()?.modifiedEditor() ?? null,
+      };
+      this.diffs.registerEditor(searchable);
+    });
+
     destroyRef.onDestroy((): void => {
       this.documentStatus.clear(this.panel().id);
+      if (searchable !== null) {
+        this.diffs.unregisterEditor(searchable);
+      }
     });
   }
 
@@ -287,7 +318,11 @@ export class DiffDocumentPanel {
     }
     const position: { readonly line: number; readonly column: number } | null =
       this.view()?.modifiedPosition() ?? null;
-    if (!(await this.fileOpener.openPath(path)) || position === null) {
+    // The switch shows the file beside the diff or in its place, as the Workspaces setting says.
+    const change: DockPanelSwitch | undefined = this.fileSwitch();
+    const opened: boolean =
+      change !== undefined ? await change.run() : await this.fileOpener.openPath(path);
+    if (!opened || position === null) {
       return;
     }
     for (let attempt: number = 0; attempt < REVEAL_POLL_ATTEMPTS; attempt++) {

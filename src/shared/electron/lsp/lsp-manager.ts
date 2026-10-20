@@ -10,11 +10,7 @@ import {
   StreamMessageReader,
   StreamMessageWriter,
 } from 'vscode-jsonrpc/node';
-import type {
-  ClientCapabilities,
-  InitializeParams,
-  InitializeResult,
-} from 'vscode-languageserver-protocol';
+import type { InitializeParams, InitializeResult } from 'vscode-languageserver-protocol';
 import {
   LspChannel,
   LspExit,
@@ -22,8 +18,6 @@ import {
   LspServerSummary,
   LspStartRequest,
   LspStartResult,
-  SEMANTIC_TOKEN_MODIFIERS,
-  SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
@@ -31,6 +25,8 @@ import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
 import { globToRegExp } from './lsp-watch-glob';
+import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
+import { clientCapabilities } from './lsp-client-capabilities';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -143,19 +139,27 @@ export class LspManager {
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
 
   /**
+   * Holds the forwarder that hands a server's `workspace/applyEdit` to the renderer (#1015).
+   */
+  private readonly applyEdits: LspApplyEditForwarder;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
+   * @param applyEdits The forwarder that hands a server's edits to the renderer.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
+    applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
+    this.applyEdits = applyEdits;
   }
 
   /**
@@ -194,6 +198,7 @@ export class LspManager {
     ipcMain.handle(LspChannel.GetCatalogue, (): readonly LspServerSummary[] =>
       this.registry.catalogue(),
     );
+    this.applyEdits.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
@@ -202,6 +207,7 @@ export class LspManager {
    */
   public disposeAll(): void {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
+    this.applyEdits.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -394,7 +400,7 @@ export class LspManager {
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: rootPath }],
       initializationOptions: spec.initializationOptions,
-      capabilities: this.clientCapabilities(),
+      capabilities: clientCapabilities(),
     };
     logger.trace('LspManager', `Sending initialize handshake for root ${rootPath}`);
     const result: InitializeResult = await this.withTimeout<InitializeResult>(
@@ -639,9 +645,31 @@ export class LspManager {
       (params: { items?: readonly unknown[] }): unknown[] =>
         (params.items ?? []).map((): unknown => null),
     );
+    // A server's own edit — a code action's or a command's — is applied by the renderer that holds
+    // the session, as a rename is (#1015), and the server told whether it was: `{ applied }`, never
+    // the bare null the catch-all below would give, which a server reads as an unexplained failure.
+    connection.onRequest('workspace/applyEdit', (params: unknown): Promise<ApplyEditResult> =>
+      this.applyEdits.forward(sessionId, this.applierOf(session), params),
+    );
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);
+  }
+
+  /**
+   * Chooses the one renderer that applies a session's server edits: the first still attached to it,
+   * or the main window when none is.
+   * @param session The session.
+   * @returns Returns the renderer, or null when there is none.
+   */
+  private applierOf(session: LspSession): WebContents | null {
+    for (const contents of session.clients.keys()) {
+      if (!contents.isDestroyed()) {
+        return contents;
+      }
+    }
+    const window: BrowserWindow | null = this.windowGetter();
+    return window === null || window.isDestroyed() ? null : window.webContents;
   }
 
   /**
@@ -763,54 +791,6 @@ export class LspManager {
       return false;
     }
     return path.dirname(file) === path.resolve(request.rootPath);
-  }
-
-  /**
-   * Builds the client capabilities advertised to every server. They cover diagnostics, document
-   * synchronisation, and the core language features the renderer client surfaces.
-   * @returns Returns the client capabilities.
-   */
-  private clientCapabilities(): ClientCapabilities {
-    return {
-      textDocument: {
-        synchronization: { dynamicRegistration: true, didSave: true },
-        publishDiagnostics: { relatedInformation: true },
-        // Advertise pull diagnostics so a pull-based server (notably the Roslyn C# server, which does
-        // not push `publishDiagnostics`) advertises its `diagnosticProvider` back and answers
-        // `textDocument/diagnostic`; without this the server treats the client as push-only and the
-        // Error List never receives its errors.
-        diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
-        completion: { completionItem: { snippetSupport: true } },
-        hover: { contentFormat: ['markdown', 'plaintext'] },
-        definition: { linkSupport: false },
-        references: {},
-        // Nested symbols, so a server answers with each type's members inside it rather than one flat
-        // list; the editor strip's Type and Member dropdowns read them (#882).
-        documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-        // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
-        // the standard one and feeds Monaco, colouring types, members, and parameters.
-        semanticTokens: {
-          requests: { full: true, range: false },
-          tokenTypes: [...SEMANTIC_TOKEN_TYPES],
-          tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
-          formats: ['relative'],
-          overlappingTokenSupport: false,
-          multilineTokenSupport: false,
-        },
-      },
-      // `refreshSupport` tells a server it may send `workspace/semanticTokens/refresh` when its
-      // classification improves (a project finishes loading); without it heavy servers never signal
-      // that their initial, degraded tokens should be re-requested.
-      workspace: {
-        workspaceFolders: true,
-        configuration: true,
-        semanticTokens: { refreshSupport: true },
-        // The main process watches the session root and sends `didChangeWatchedFiles`; a server
-        // narrows that to its own globs through a dynamic registration.
-        didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
-      },
-      window: { workDoneProgress: true },
-    };
   }
 
   /**

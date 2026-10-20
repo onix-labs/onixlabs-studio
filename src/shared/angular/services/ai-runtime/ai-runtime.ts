@@ -218,9 +218,14 @@ export class AiRuntime {
   private readonly listeners: Set<(event: AiEvent) => void> = new Set<(event: AiEvent) => void>();
 
   /**
-   * Holds the registered in-app capability handlers, keyed by name.
+   * Holds the registered in-app capability handlers, keyed by name. Each value is its own record —
+   * the registration's identity — so a release can tell its own registration from a newer one of the
+   * same name.
    */
-  private readonly capabilities: Map<string, AiCapability> = new Map<string, AiCapability>();
+  private readonly capabilities: Map<string, { readonly handler: AiCapability }> = new Map<
+    string,
+    { readonly handler: AiCapability }
+  >();
 
   /**
    * Holds the counter that makes run identifiers unique within this session.
@@ -459,12 +464,16 @@ export class AiRuntime {
    * Registers an in-app capability the agent can invoke through the bridge.
    * @param name The capability name.
    * @param handler The handler invoked with the request input.
-   * @returns Returns a function that unregisters the capability.
+   * @returns Returns a function that unregisters the capability — only this registration: once the
+   * name has been registered again, releasing a stale registration leaves the newer one in place.
    */
   public registerCapability(name: string, handler: AiCapability): () => void {
-    this.capabilities.set(name, handler);
+    const registration: { readonly handler: AiCapability } = { handler };
+    this.capabilities.set(name, registration);
     return (): void => {
-      this.capabilities.delete(name);
+      if (this.capabilities.get(name) === registration) {
+        this.capabilities.delete(name);
+      }
     };
   }
 
@@ -483,7 +492,7 @@ export class AiRuntime {
    * @param request The capability request.
    */
   private async handleBridgeRequest(request: AiBridgeRequest): Promise<void> {
-    const handler: AiCapability | undefined = this.capabilities.get(request.capability);
+    const handler: AiCapability | undefined = this.capabilities.get(request.capability)?.handler;
     if (handler === undefined) {
       this.log.warn('AiRuntime', `Unknown capability requested '${request.capability}'`);
       this.api?.respondBridge({

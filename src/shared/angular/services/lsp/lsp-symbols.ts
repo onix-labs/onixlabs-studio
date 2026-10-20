@@ -51,6 +51,20 @@ export const SymbolKind: {
 };
 
 /**
+ * The languages that qualify a name with `::` (`app::Greeter`) rather than `.`.
+ */
+const SCOPE_OPERATOR_LANGUAGES: ReadonlySet<string> = new Set<string>(['c', 'cpp', 'rust']);
+
+/**
+ * Gets how a language joins a symbol's name to what it is declared in.
+ * @param language The document's language identifier.
+ * @returns Returns `::` for the languages that write it, and `.` for the rest.
+ */
+export function qualifierFor(language: string): string {
+  return SCOPE_OPERATOR_LANGUAGES.has(language) ? '::' : '.';
+}
+
+/**
  * A position in a document, zero-based as the protocol counts.
  */
 export interface SymbolPosition {

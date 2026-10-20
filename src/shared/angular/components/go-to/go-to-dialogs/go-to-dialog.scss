@@ -1,0 +1,83 @@
+// Shared layout for the two Go to dialogs (#1009): a title, the field, what it finds or names, and
+// the action row.
+.go-to-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.go-to-dialog__title {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+}
+
+.go-to-dialog__field {
+  inline-size: 100%;
+}
+
+.go-to-dialog__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.go-to-dialog__hint--invalid {
+  color: var(--error-color);
+}
+
+// Tall enough for a dozen symbols; a longer list scrolls. The list's own row container fills its
+// host's height, which a fixed height gives it.
+.go-to-dialog__list {
+  block-size: 18rem;
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.go-to-dialog__icon {
+  flex: none;
+  color: var(--accent-color);
+}
+
+.go-to-dialog__name {
+  flex: none;
+  max-inline-size: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.go-to-dialog__container {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.go-to-dialog__actions {
+  margin-block-start: 0.4rem;
+}
+
+// Rename Symbol's confirmation (#1015): the line under the title, and each file's count of changes,
+// set at the row's end.
+.go-to-dialog__summary {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.go-to-dialog__count {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// A rename's files are a handful, as a rule: a shorter list than Go to Symbol's, still fixed in
+// height for the list's rows to fill.
+.go-to-dialog__list--files {
+  block-size: 12rem;
+}

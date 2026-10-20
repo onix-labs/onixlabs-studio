@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   effect,
+  forwardRef,
   inject,
   input,
   InputSignal,
@@ -51,9 +52,21 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import type * as MonacoApi from 'monaco-editor';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
-import { Monaco } from '@shared/angular/services/monaco/monaco';
-import { CodeFindAdapter } from '@features/code/angular/find/code-find-adapter';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
+import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
+import { EditorReferencesPanel } from '@shared/angular/components/references-view/editor-references-panel';
+import {
+  REFERENCES_HOST,
+  ReferenceItem,
+  ReferenceList,
+  ReferencesHost,
+} from '@shared/angular/services/references/reference-list';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
@@ -77,7 +90,8 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
     CodeTerminalPanel,
     CodeAgentPanel,
     CodeGeneratedPanel,
-    FindPanel,
+    EditorSearchPanel,
+    EditorReferencesPanel,
   ],
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel now
   // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
@@ -89,12 +103,17 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
     { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
     // One per code tab: the status strip reads this view's own context through its injector.
     CodeStatus,
+    // The tab answers its editors' finds — the code's and the generated code's — with its own Find
+    // panel, outside a workspace (#1007).
+    { provide: FIND_HOST, useExisting: forwardRef((): unknown => CodeView) },
+    // …and lists their references in its own References panel, as it does a find (#1014).
+    { provide: REFERENCES_HOST, useExisting: forwardRef((): unknown => CodeView) },
   ],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CodeView implements OnInit, OnDestroy {
+export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   /**
    * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
@@ -149,9 +168,15 @@ export class CodeView implements OnInit, OnDestroy {
   private readonly codeRunner: CodeRunner = inject(CodeRunner);
 
   /**
-   * Holds the Monaco service, used to resolve the key codes for the find accelerator.
+   * Holds the find router the ribbon's Find routes through, so a workspace's Search panel answers it
+   * when one is active and this tab's Find panel otherwise.
    */
-  private readonly monaco: Monaco = inject(Monaco);
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router the ribbon's and menu's Go to Symbol and Go to Line route through (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
 
   /**
    * Holds the edges the integrated terminal panel may dock to. Unlike the other panels — restricted
@@ -161,16 +186,33 @@ export class CodeView implements OnInit, OnDestroy {
   protected readonly terminalDockEdges: readonly PanelEdge[] = ['left', 'right', 'bottom'];
 
   /**
-   * Holds a value indicating whether the find panel is shown for this editor.
+   * Holds this tab's Find & Replace, over the editor the latest find came from: the code's own, or the
+   * generated code's (read-only, so without replace).
    */
-  protected readonly findVisible: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly editorSearch: EditorSearch = new EditorSearch({
+    mainEditor: (): MonacoApi.editor.ICodeEditor | null => this.pane()?.getEditor() ?? null,
+    labelOf: (editor: MonacoApi.editor.ICodeEditor): string =>
+      editor === this.pane()?.getEditor()
+        ? (this.doc()?.fileName() ?? 'Current File')
+        : 'Generated Code',
+  });
 
   /**
-   * Holds the find adapter the shared find panel drives, bound to this view's Monaco editor.
+   * Holds the navigation a chosen reference goes through (#1014).
    */
-  protected readonly findAdapter: CodeFindAdapter = new CodeFindAdapter(
-    () => this.pane()?.getEditor() ?? null,
-  );
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
+   * Holds the list this tab's References panel shows, or null while the panel is hidden (#1014).
+   */
+  protected readonly references: WritableSignal<ReferenceList | null> =
+    signal<ReferenceList | null>(null);
+
+  /**
+   * Holds the editor the latest references search was made in — the code's or the generated code's —
+   * which a chosen reference is gone to in.
+   */
+  private referencesEditor: MonacoApi.editor.ICodeEditor | null = null;
 
   /**
    * Holds the docked run-terminal panel state.
@@ -391,7 +433,7 @@ export class CodeView implements OnInit, OnDestroy {
       if (request.documentId !== this.tabId()) {
         return;
       }
-      pane.reveal(request.line, request.column);
+      pane.reveal(request.line, request.column, request.endColumn);
     });
   }
 
@@ -455,51 +497,77 @@ export class CodeView implements OnInit, OnDestroy {
         document.savedContent(),
         document.filePath() !== null,
       );
-      this.bindFindAccelerator(editor);
     }
     this.log.trace('code.view', 'Editor pane ready', this.tabId());
     this.paneReady.set(true);
   }
 
   /**
-   * Rebinds the editor's Cmd/Ctrl+F to the shared find panel, replacing Monaco's built-in find widget
-   * with the application's consistent panel. Monaco consumes the chord before it can reach the
-   * application keybinding router, so it must be overridden on the editor instance here.
-   * @param editor The Monaco editor to bind.
+   * Opens this tab's Find panel as a request asks, over the editor it came from (#1007).
+   * @param request The find to open.
+   * @param editor The editor to search — the code's or the generated code's — or null for the code's.
    */
-  private bindFindAccelerator(editor: MonacoApi.editor.IStandaloneCodeEditor): void {
-    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
-    if (monaco === undefined) {
-      return;
+  public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
+    this.log.debug('code.view', 'Open find panel', this.tabId(), request.mode);
+    this.editorSearch.open(request, editor);
+  }
+
+  /**
+   * Shows this tab's References panel with a list, replacing the one it showed (#1014).
+   * @param list The list.
+   * @param editor The editor the search was made in.
+   */
+  public openReferences(list: ReferenceList, editor: MonacoApi.editor.ICodeEditor): void {
+    this.log.debug('code.view', 'Open references panel', this.tabId(), list.kind, list.status);
+    this.referencesEditor = editor;
+    this.references.set(list);
+  }
+
+  /**
+   * Goes to a chosen reference in the editor the search was made in: a reference in this tab's file
+   * is selected there; one in another file has nowhere to open outside a workspace.
+   * @param item The reference.
+   */
+  protected onReferenceChosen(item: ReferenceItem): void {
+    void this.navigation.goTo(this.referencesEditor, item, true);
+  }
+
+  /**
+   * Hides the References panel when the shared panel asks to be dismissed.
+   */
+  protected onReferencesClosed(): void {
+    this.references.set(null);
+    this.referencesEditor?.focus();
+    this.referencesEditor = null;
+  }
+
+  /**
+   * Opens the find, as the ribbon's Find asks: the workspace's Search panel when one is active, else
+   * this tab's Find panel, seeded from the code editor's selection.
+   */
+  private find(): void {
+    const editor: MonacoApi.editor.ICodeEditor | null = this.pane()?.getEditor() ?? null;
+    if (editor !== null) {
+      this.findRouter.open(this.findRouter.requestFrom(editor, 'find'), this, editor);
     }
-    editor.addAction({
-      id: 'find-panel.open',
-      label: 'Find',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF],
-      run: (): void => this.toggleFind(),
-    });
   }
 
   /**
-   * Shows or hides the find panel.
+   * Opens Go to Symbol or Go to Line for the code editor, as the ribbon's and menu's items ask.
+   * @param mode What to ask for: a symbol, or a line.
    */
-  protected toggleFind(): void {
-    this.log.debug('code.view', 'Toggle find panel', this.tabId());
-    this.findVisible.update((visible: boolean): boolean => !visible);
-  }
-
-  /**
-   * Shows the find panel (used by the ribbon's Find command, which should open rather than toggle it).
-   */
-  protected showFind(): void {
-    this.findVisible.set(true);
+  private goTo(mode: GoToMode): void {
+    const editor: MonacoApi.editor.ICodeEditor | null = this.pane()?.getEditor() ?? null;
+    if (editor !== null) {
+      this.goToRouter.open(editor, mode);
+    }
   }
 
   /**
    * Hides the find panel when the shared panel asks to be dismissed.
    */
   protected onFindClosed(): void {
-    this.findVisible.set(false);
+    this.editorSearch.close();
   }
 
   /**
@@ -630,7 +698,9 @@ export class CodeView implements OnInit, OnDestroy {
       paste: (): void => pane.paste(),
       undo: (): void => pane.trigger('undo'),
       redo: (): void => pane.trigger('redo'),
-      find: (): void => this.showFind(),
+      find: (): void => this.find(),
+      goToSymbol: (): void => this.goTo('symbol'),
+      goToLine: (): void => this.goTo('line'),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
@@ -654,7 +724,8 @@ export class CodeView implements OnInit, OnDestroy {
   /**
    * Registers the code editor's keyboard accelerators for the active tab. Only commands the Monaco
    * pane does not already bind are registered here — save and save-as, which the pane leaves to the
-   * host — so the editor's own accelerators (find, undo, redo, clipboard) are left to compose.
+   * host — so the editor's own accelerators (undo, redo, clipboard, and Studio's find commands) are
+   * left to compose.
    */
   private registerKeybindings(): void {
     this.keybindings.register(this.tabId(), [

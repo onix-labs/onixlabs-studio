@@ -131,6 +131,24 @@ describe('Menu', () => {
       expect(boxes[1].classList).not.toContain('app-menu-panel__item-check--checked');
     });
 
+    it('render_aShortcut_isTrailingTextOnly_hiddenFromTheAccessibleName', () => {
+      // #1012: a hint names the chord; it binds nothing, and the row's name stays its label.
+      host.items = [
+        { id: 'copy', label: 'Copy', shortcut: '⌘C' },
+        { id: 'plain', label: 'Plain' },
+      ];
+      fixture.detectChanges();
+      open();
+
+      const hints: NodeListOf<Element> = document.querySelectorAll(
+        '.app-menu-panel__item-shortcut',
+      );
+      expect(hints.length).toBe(1);
+      expect(hints[0].textContent?.trim()).toBe('⌘C');
+      expect(hints[0].getAttribute('aria-hidden')).toBe('true');
+      expect(rows()[0].lastElementChild).toBe(hints[0]);
+    });
+
     it('render_aRowWithChildren_opensThemAsANestedPanel', () => {
       host.items = [
         { id: 'options', label: 'Options', children: [{ id: 'nested', label: 'Nested' }] },

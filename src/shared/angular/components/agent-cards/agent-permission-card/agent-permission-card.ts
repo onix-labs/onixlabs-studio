@@ -86,18 +86,41 @@ export class AgentPermissionCard {
   protected readonly remember: WritableSignal<string> = signal<string>('once');
 
   /**
-   * Gets the remember choices. The workspace one is offered only when the asking run is
-   * workspace-scoped.
+   * Gets the remember choices, each naming what it remembers (#979). A command tool's longer grants
+   * cover the exact command shown, and one whose command cannot be shown whole offers only the
+   * session. The workspace choice is offered only when the asking run is workspace-scoped.
    */
   protected readonly rememberOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      { value: 'once', label: 'Just this once' },
-      { value: 'session', label: 'For this session' },
-      ...(this.item().permissionHasWorkspace === true
-        ? [{ value: 'workspace', label: 'For this workspace' }]
-        : []),
-      { value: 'always', label: 'Always' },
-    ],
+    (): readonly DropdownOption[] => {
+      const item: AgentItem = this.item();
+      const name: string = item.permissionName ?? '';
+      const remembers: string = item.permissionRemembers ?? 'tool';
+      if (remembers === 'tool') {
+        return [
+          { value: 'once', label: 'Just this once' },
+          { value: 'session', label: `Allow ${name} for this session` },
+          ...(item.permissionHasWorkspace === true
+            ? [{ value: 'workspace', label: `Allow ${name} in this workspace` }]
+            : []),
+          { value: 'always', label: `Always allow ${name}` },
+        ];
+      }
+      const session: DropdownOption = {
+        value: 'session',
+        label: `Allow every ${name} command for this session`,
+      };
+      if (remembers === 'session') {
+        return [{ value: 'once', label: 'Just this once' }, session];
+      }
+      return [
+        { value: 'once', label: 'Just this once' },
+        session,
+        ...(item.permissionHasWorkspace === true
+          ? [{ value: 'workspace', label: 'Allow this command in this workspace' }]
+          : []),
+        { value: 'always', label: 'Always allow this command' },
+      ];
+    },
   );
 
   /**
@@ -111,13 +134,14 @@ export class AgentPermissionCard {
     if (item.permissionState !== 'allowed') {
       return 'Denied';
     }
+    const command: boolean = item.permissionRemembers === 'command';
     switch (item.permissionRemember) {
       case 'session':
         return 'Allowed for this session';
       case 'workspace':
-        return 'Allowed for this workspace';
+        return command ? 'This command allowed in this workspace' : 'Allowed for this workspace';
       case 'always':
-        return 'Always allowed';
+        return command ? 'This command always allowed' : 'Always allowed';
       default:
         return 'Allowed';
     }

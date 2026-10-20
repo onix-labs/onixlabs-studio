@@ -118,6 +118,32 @@ describe('dock-tree', () => {
       expect(rightHandToolStack(tree)).toBe(agent);
     });
 
+    it('isTheAgent_whenABottomStripRunsUnderBothTheWellAndIt', () => {
+      // Matthew's layout: the Error List and References beneath the well AND the Agent, so the root
+      // row's last column is a split. The Agent is still the right-hand group, and Find & Replace
+      // joins it rather than docking a new group on the right edge.
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [
+          mkSplit('row', [mkStack('document', [], true), agent]),
+          mkStack('tool', ['errors', 'references']),
+        ]),
+      ]);
+
+      expect(rightHandToolStack(tree)).toBe(agent);
+    });
+
+    it('isNull_whenTheRightMostColumnHoldsOnlyAWellAndAFullWidthStrip', () => {
+      // A strip running the whole width under the well is not a right-hand group.
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [mkStack('document', [], true), mkStack('tool', ['errors'])]),
+      ]);
+
+      expect(rightHandToolStack(tree)).toBeNull();
+    });
+
     it('isNull_whenTheLastColumnIsASplit', () => {
       // The Agentic Engineering layout's shape: the Agent in the centre over a bottom strip.
       const tree: DockNode = mkSplit('row', [
@@ -796,6 +822,28 @@ describe('dock-tree', () => {
         expect(moved.panels).toEqual(['a', 'b']);
         expect(moved.active).toBe('b');
       }
+    });
+
+    it('splitStackBeside_whenADocumentWellDocksBesideATool_movesTheWellWhole', () => {
+      const agent: StackNode = mkStack('tool', ['agent'], true);
+      const well: StackNode = { ...mkStack('document', ['a.ts', 'b.ts']), active: 'b.ts' };
+      const tree: DockNode = mkSplit('row', [well, agent]);
+
+      const result: DockNode = splitStackBeside(tree, well.id, agent.id, 'right');
+
+      // The same node, now on the agent's right — nothing left behind where it stood.
+      expect(isSplitNode(result) && result.children).toEqual([agent, well]);
+    });
+
+    it('splitStackBeside_whenTheLastDocumentWellMoves_keepsItsAnchorAndLeavesNoEmptyWell', () => {
+      const tool: StackNode = mkStack('tool', ['explorer']);
+      const well: StackNode = mkStack('document', ['a.ts'], true);
+      const tree: DockNode = mkSplit('row', [tool, well]);
+
+      const result: DockNode = splitStackBeside(tree, well.id, tool.id, 'left');
+
+      expect(isSplitNode(result) && result.children).toEqual([well, tool]);
+      expect(asStack(findNode(result, well.id)).primary).toBe(true);
     });
 
     it('splitStackBeside_whenTheSourceStackIsGone_reusesItsIdentity', () => {

@@ -5,6 +5,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   NgZone,
@@ -19,6 +20,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { Crepe } from '@milkdown/crepe';
+import type * as MonacoApi from 'monaco-editor';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
@@ -34,6 +36,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
+import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import {
   ImageAlignment,
   ImageSizing,
@@ -106,6 +109,17 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Holds the shared colorizer, threaded into the Monaco code-block node view.
    */
   private readonly highlighter: MonacoHighlighter = inject(MonacoHighlighter);
+
+  /**
+   * Holds the completion list and signature card a fence's editor shows (#1021).
+   */
+  private readonly autocomplete: Autocomplete = inject(Autocomplete);
+
+  /**
+   * Holds this editor's injector, which draws a fence's completion list and signature card in this
+   * editor's window.
+   */
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Holds the Angular zone, used to create the editor outside change detection.
@@ -482,6 +496,12 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
         resizableImages: imageSizing === 'sizable',
         monaco: this.monaco,
         highlighter: this.highlighter,
+        assist: {
+          attach: (editor: MonacoApi.editor.ICodeEditor): (() => void) =>
+            this.autocomplete.attach(editor, this.injector),
+          showing: (editor: MonacoApi.editor.ICodeEditor): boolean =>
+            this.autocomplete.showing(editor),
+        },
       });
 
       crepe.on((api: ListenerManager): void => {

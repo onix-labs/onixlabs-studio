@@ -1,0 +1,38 @@
+<!-- The strip heads the list with what was searched for, and folds the tree as the explorers' strips
+     fold theirs. -->
+<app-panel-toolbar class="references-view__strip">
+  <!-- Written tight, and kept so: the heading's own words carry its spaces, the symbol between them. -->
+  <!-- prettier-ignore -->
+  <span class="references-view__heading" role="status">{{ heading().lead }}@if (heading().symbol.length > 0) {<code class="references-view__symbol">{{ heading().symbol }}</code>}{{ heading().tail }}</span>
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS_SQUARE_DUOTONE"
+    ariaLabel="Expand All"
+    tooltip="Expand All"
+    [disabled]="!hasItems()"
+    (click)="expandAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.MINUS_SQUARE_DUOTONE"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
+    [disabled]="!hasItems()"
+    (click)="collapseAll()"
+  />
+</app-panel-toolbar>
+
+@if (emptyMessage(); as message) {
+  <div class="tree-empty references-view__empty">
+    <p>{{ message }}</p>
+  </div>
+} @else {
+  <div class="references-view__results">
+    <app-search-results-tree
+      [items]="items()"
+      [activeIndex]="activeIndex()"
+      (chosen)="choose($event)"
+    />
+  </div>
+}

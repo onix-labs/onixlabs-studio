@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import type { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { Icon } from '@shared/angular/icons/icon';
 import { MarkdownToolstrip } from './markdown-toolstrip';
 
 /**
@@ -120,6 +121,38 @@ describe('MarkdownToolstrip', () => {
       ...FORMATTING_LABELS.slice(2),
       'More Actions',
     ]);
+  });
+
+  it('documentSwitch_whenGiven_sitsBeforeTheMenu_andRunsWhenPressed', () => {
+    const run: () => Promise<boolean> = vi.fn((): Promise<boolean> => Promise.resolve(true));
+    const fixture: ComponentFixture<MarkdownToolstrip> = TestBed.createComponent(MarkdownToolstrip);
+    fixture.componentRef.setInput('documentSwitch', {
+      label: 'Show Diff',
+      icon: Icon.GIT_DIFF,
+      unavailable: null,
+      run,
+    });
+    fixture.detectChanges();
+
+    const labels: (string | null)[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('app-button button'),
+    ).map((button: Element): string | null => button.getAttribute('aria-label'));
+    expect(labels.slice(-2)).toEqual(['Show Diff', 'More Actions']);
+    buttonNamed(fixture, 'Show Diff').click();
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('documentSwitch_whenUnavailable_isDisabled', () => {
+    const fixture: ComponentFixture<MarkdownToolstrip> = TestBed.createComponent(MarkdownToolstrip);
+    fixture.componentRef.setInput('documentSwitch', {
+      label: 'Show Diff',
+      icon: Icon.GIT_DIFF,
+      unavailable: 'No changes against HEAD',
+      run: (): Promise<boolean> => Promise.resolve(true),
+    });
+    fixture.detectChanges();
+
+    expect(buttonNamed(fixture, 'Show Diff').hasAttribute('disabled')).toBe(true);
   });
 
   it('theFormatDropdown_sitsBetweenTheClipboardAndFormatting_listingTheMarkdownTabsBlockTypes', () => {

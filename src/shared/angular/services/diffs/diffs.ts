@@ -1,6 +1,28 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
+
+/**
+ * An open diff's editor, as a panel hosting one registers it (#1007): what the Search panel searches
+ * — read-only — on the diff's changed side.
+ */
+export interface OpenDiffEditor {
+  /**
+   * Gets the dock panel id of the diff.
+   */
+  readonly id: string;
+
+  /**
+   * Resolves the absolute path of the compared file, or null when there is none.
+   */
+  readonly path: () => string | null;
+
+  /**
+   * Resolves the editor showing the diff's changed side, or null before it exists.
+   */
+  readonly modifiedEditor: () => MonacoApi.editor.ICodeEditor | null;
+}
 
 /**
  * Holds the diffs currently open in the source-control document well, keyed by their dock panel id,
@@ -27,6 +49,11 @@ export class Diffs {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the editors of the diffs open now, by dock panel id.
+   */
+  private readonly editors: Map<string, OpenDiffEditor> = new Map<string, OpenDiffEditor>();
 
   /**
    * Gets whether diffs render inline rather than side by side.
@@ -113,5 +140,31 @@ export class Diffs {
     if (changed) {
       this.entries.set(next);
     }
+  }
+
+  /**
+   * Registers (or replaces) an open diff's editor, so the Search panel can search its changed side.
+   * @param editor The diff's editor.
+   */
+  public registerEditor(editor: OpenDiffEditor): void {
+    this.editors.set(editor.id, editor);
+  }
+
+  /**
+   * Unregisters a diff's editor, if it is the one registered for its id.
+   * @param editor The diff's editor.
+   */
+  public unregisterEditor(editor: OpenDiffEditor): void {
+    if (this.editors.get(editor.id) === editor) {
+      this.editors.delete(editor.id);
+    }
+  }
+
+  /**
+   * Lists the editors of the diffs open now.
+   * @returns Returns the editors, in the order they were opened.
+   */
+  public openEditors(): readonly OpenDiffEditor[] {
+    return [...this.editors.values()];
   }
 }

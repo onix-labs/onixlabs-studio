@@ -279,10 +279,15 @@ export class DockTabGroup {
   public constructor() {
     const destroyRef: DestroyRef = inject(DestroyRef);
 
-    afterNextRender((): void => {
+    // Registered from an effect rather than once, because a stack can change role and keep its id —
+    // a tool taking over the empty centre well, or the last home reverting to one — and drag
+    // hit-testing must judge the group by the role it has now.
+    effect((): void => {
       const stack: StackNode = this.stack();
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
+    });
 
+    afterNextRender((): void => {
       // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
       // measurement per frame: the observer can fire several times within a frame, and each
       // measurement is a forced layout (see measureTabsFill).

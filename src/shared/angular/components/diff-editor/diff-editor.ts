@@ -5,6 +5,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   OnDestroy,
@@ -16,6 +17,13 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
+import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -55,6 +63,7 @@ export interface DiffSummary {
  */
 @Component({
   selector: 'app-diff-editor',
+  imports: [EditorContextMenuHost],
   templateUrl: './diff-editor.html',
   styleUrl: './diff-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -80,6 +89,55 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the find router both sides are attached to, so ⌘F in either reaches the workspace's Search
+   * panel for the compared file (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router both sides are attached to, so ⌘⇧O / ⌃G open Go to in this pane's window
+   * (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds this pane's injector, which resolves the window it is drawn in.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the service both sides are attached to for Studio's right-click menu (#1012).
+   */
+  private readonly contextMenu: EditorContextMenu = inject(EditorContextMenu);
+
+  /**
+   * Holds the component that draws the right-click menu in this pane's window.
+   */
+  private readonly contextMenuHost: Signal<EditorContextMenuHost> =
+    viewChild.required<EditorContextMenuHost>(EditorContextMenuHost);
+
+  /**
+   * Holds the hover cards both sides show in place of Monaco's hover (#1020).
+   */
+  private readonly hoverCards: HoverCards = inject(HoverCards);
+
+  /**
+   * Holds the completion list and signature card either side shows in place of Monaco's (#1021).
+   */
+  private readonly autocomplete: Autocomplete = inject(Autocomplete);
+
+  /**
+   * Holds the colour pickers a click on a colour swatch opens, on a side that can be edited (#1025).
+   */
+  private readonly colourPickers: ColourPickers = inject(ColourPickers);
+
+  /**
+   * Gets the absolute path of the compared file, which a find from either side searches — the
+   * modified side being the file as it stands — or null when it is unknown.
+   */
+  public readonly filePath: InputSignal<string | null> = input<string | null>(null);
 
   /**
    * Gets the content of the diff's original (before) side.
@@ -138,6 +196,12 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private readonly subscriptions: MonacoApi.IDisposable[] = [];
 
   /**
+   * Holds the functions that detach both sides from the find and go-to routers, the right-click menu
+   * and the hover cards, called with the editor's disposal.
+   */
+  private readonly findDetachers: (() => void)[] = [];
+
+  /**
    * Wires effects that rebuild the model pair when the compared content changes, flip the layout when
    * the inline toggle changes, and re-apply the theme when the mode or settings change.
    */
@@ -185,6 +249,10 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('DiffEditor', 'Destroying diff pane');
+    for (const detach of this.findDetachers) {
+      detach();
+    }
+    this.findDetachers.length = 0;
     for (const subscription of this.subscriptions) {
       subscription.dispose();
     }
@@ -301,10 +369,64 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       this.editor.onDidUpdateDiff((): void => this.notifySummary()),
       this.editor.getModifiedEditor().onDidChangeCursorPosition((): void => this.notifySummary()),
     );
+    this.attachFind(this.editor);
+    this.attachGoTo(this.editor);
+    this.attachContextMenu(this.editor);
+    // Studio's hover card over either side, drawn in this pane's window (#1020).
+    this.findDetachers.push(
+      this.hoverCards.attach(this.editor.getOriginalEditor(), this.injector),
+      this.hoverCards.attach(this.editor.getModifiedEditor(), this.injector),
+      // Studio's completion list and signature card, for a side that can be edited (#1021).
+      this.autocomplete.attach(this.editor.getOriginalEditor(), this.injector),
+      this.autocomplete.attach(this.editor.getModifiedEditor(), this.injector),
+      // Studio's colour picker from a colour swatch (#1025); the read-only side opens none.
+      this.colourPickers.attach(this.editor.getOriginalEditor(), this.injector),
+      this.colourPickers.attach(this.editor.getModifiedEditor(), this.injector),
+    );
 
     this.ready = true;
     this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
     this.setModels(this.original(), this.modified(), this.language());
+  }
+
+  /**
+   * Attaches both sides to the find router. A diff only exists inside a workspace, so no tab Find
+   * panel answers; the router sends ⌘F to the Search panel with the compared file, which its anonymous
+   * models cannot name.
+   * @param editor The diff editor.
+   */
+  private attachFind(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    const filePath: () => string | null = (): string | null => this.filePath();
+    this.findDetachers.push(
+      this.findRouter.attach(editor.getOriginalEditor(), { filePath }),
+      this.findRouter.attach(editor.getModifiedEditor(), { filePath }),
+    );
+  }
+
+  /**
+   * Attaches both sides to the go-to router, with the injector that places the quick-open box in this
+   * pane's window. Either side can go to a line; symbols come from Monaco's own providers, since a
+   * diff's anonymous models are no document a language server serves.
+   * @param editor The diff editor.
+   */
+  private attachGoTo(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    this.findDetachers.push(
+      this.goToRouter.attach(editor.getOriginalEditor(), { injector: this.injector }),
+      this.goToRouter.attach(editor.getModifiedEditor(), { injector: this.injector }),
+    );
+  }
+
+  /**
+   * Attaches both sides to the right-click menu, drawn by the host in this pane's view — so in its
+   * window. Both sides are read-only, so each offers Copy and Select All beside the navigation.
+   * @param editor The diff editor.
+   */
+  private attachContextMenu(editor: MonacoApi.editor.IStandaloneDiffEditor): void {
+    const host: EditorContextMenuHost = this.contextMenuHost();
+    this.findDetachers.push(
+      this.contextMenu.attach(editor.getOriginalEditor(), host),
+      this.contextMenu.attach(editor.getModifiedEditor(), host),
+    );
   }
 
   /**

@@ -28,6 +28,13 @@ const HANDSHAKE_TIMEOUT_MS: number = 10_000;
 const KILL_GRACE_MS: number = 2_000;
 
 /**
+ * Specifies the longest stdout line, in characters, the client will buffer while waiting for its
+ * newline — matching the git plugin's own 64 MB output cap. A plugin that writes more than this in one
+ * message (or never ends a line) would otherwise grow the buffer without bound.
+ */
+const MAX_LINE_LENGTH: number = 64 * 1024 * 1024;
+
+/**
  * Holds a request awaiting its answer.
  */
 interface Pending {
@@ -69,6 +76,16 @@ export class VersionControlClient implements VersionControlEndpoint {
   private buffer: string = '';
 
   /**
+   * Holds the longest stdout line the client will buffer before refusing it.
+   */
+  private readonly maxLineLength: number;
+
+  /**
+   * Holds whether the client is skipping the rest of a refused oversized line, up to its newline.
+   */
+  private discarding: boolean = false;
+
+  /**
    * Holds the next correlation identifier.
    */
   private nextId: number = 1;
@@ -87,10 +104,16 @@ export class VersionControlClient implements VersionControlEndpoint {
    * Initializes the client. The process is not started until {@link start} is called.
    * @param id The plugin identifier, for logging.
    * @param spec How to spawn the plugin.
+   * @param maxLineLength The longest stdout line to buffer; defaults to {@link MAX_LINE_LENGTH}.
    */
-  public constructor(id: string, spec: VersionControlSpec) {
+  public constructor(
+    id: string,
+    spec: VersionControlSpec,
+    maxLineLength: number = MAX_LINE_LENGTH,
+  ) {
     this.id = id;
     this.spec = spec;
+    this.maxLineLength = maxLineLength;
   }
 
   /**
@@ -277,6 +300,14 @@ export class VersionControlClient implements VersionControlEndpoint {
    * @param chunk The received text.
    */
   private onData(chunk: string): void {
+    if (this.discarding) {
+      const end: number = chunk.indexOf('\n');
+      if (end === -1) {
+        return;
+      }
+      this.discarding = false;
+      chunk = chunk.slice(end + 1);
+    }
     this.buffer += chunk;
     let newline: number = this.buffer.indexOf('\n');
     while (newline !== -1) {
@@ -287,6 +318,25 @@ export class VersionControlClient implements VersionControlEndpoint {
       }
       newline = this.buffer.indexOf('\n');
     }
+    if (this.buffer.length > this.maxLineLength) {
+      this.refuseOversizedLine();
+    }
+  }
+
+  /**
+   * Refuses a stdout line that has outgrown {@link maxLineLength} without ending: the buffered part
+   * is dropped and the rest skipped up to its newline, so the stream stays in step for the messages
+   * after it. Which request the line answered cannot be read without parsing it whole, so every
+   * request in flight is failed rather than left to wait out its timeout for an answer that is gone.
+   */
+  private refuseOversizedLine(): void {
+    logger.error(
+      'VersionControlClient',
+      `'${this.id}' wrote a message over ${this.maxLineLength} characters; it was dropped`,
+    );
+    this.buffer = '';
+    this.discarding = true;
+    this.failPending(`${this.id} sent an answer too large to read.`);
   }
 
   /**

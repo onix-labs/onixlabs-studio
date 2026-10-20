@@ -12,6 +12,18 @@
 .table-scroll {
   block-size: 100%;
   overflow: auto;
+
+  // A virtual table swaps rows for spacer height as it scrolls; scroll anchoring would try to "keep"
+  // a row that has just been swapped out, and fight the window.
+  &--virtual {
+    overflow-anchor: none;
+  }
+}
+
+// The space standing in for a virtual table's unrendered rows: no padding or border, only height.
+.table-spacer td {
+  padding: 0;
+  border: 0;
 }
 
 .table {

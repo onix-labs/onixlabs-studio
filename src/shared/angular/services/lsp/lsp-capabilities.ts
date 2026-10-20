@@ -1,4 +1,5 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import type { LspCodeActionSupport, LspRenameSupport } from './lsp-features';
 
 /**
  * Extracts the semantic token legend from a server's initialize capabilities, or null when the server
@@ -49,4 +50,62 @@ export function supportsPullDiagnostics(capabilities: unknown): boolean {
   const provider: unknown = (capabilities as { diagnosticProvider?: unknown } | undefined)
     ?.diagnosticProvider;
   return provider !== undefined && provider !== null;
+}
+
+/**
+ * Reads how a server renames a symbol (#1015) from its `renameProvider`: not at all when it has none,
+ * after saying first whether a symbol can be renamed when it advertises `prepareProvider`, and
+ * straight away otherwise.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how the server renames.
+ */
+export function renameSupportOf(capabilities: unknown): LspRenameSupport {
+  const provider: unknown = (capabilities as { renameProvider?: unknown } | undefined)
+    ?.renameProvider;
+  if (provider === true) {
+    return 'rename';
+  }
+  if (typeof provider !== 'object' || provider === null) {
+    return 'none';
+  }
+  return (provider as { prepareProvider?: unknown }).prepareProvider === true
+    ? 'prepare'
+    : 'rename';
+}
+
+/**
+ * Reads how a server offers code actions (#1016) from its `codeActionProvider`: not at all when it has
+ * none, with their edits filled in on request when it advertises `resolveProvider`, and whole
+ * otherwise.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how the server offers code actions.
+ */
+export function codeActionSupportOf(capabilities: unknown): LspCodeActionSupport {
+  const provider: unknown = (capabilities as { codeActionProvider?: unknown } | undefined)
+    ?.codeActionProvider;
+  if (provider === true) {
+    return 'actions';
+  }
+  if (typeof provider !== 'object' || provider === null) {
+    return 'none';
+  }
+  return (provider as { resolveProvider?: unknown }).resolveProvider === true
+    ? 'resolve'
+    : 'actions';
+}
+
+/**
+ * Reads the commands a server runs through `workspace/executeCommand` (#1016) from its
+ * `executeCommandProvider`. A code action's command is sent to the server only when it is one of
+ * these; any other is the client's to run, and Studio runs none of a server's client commands.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns the command identifiers, or empty when the server runs none.
+ */
+export function executeCommandsOf(capabilities: unknown): readonly string[] {
+  const provider: unknown = (capabilities as { executeCommandProvider?: unknown } | undefined)
+    ?.executeCommandProvider;
+  const commands: unknown = (provider as { commands?: unknown } | undefined)?.commands;
+  return Array.isArray(commands)
+    ? commands.filter((command: unknown): command is string => typeof command === 'string')
+    : [];
 }

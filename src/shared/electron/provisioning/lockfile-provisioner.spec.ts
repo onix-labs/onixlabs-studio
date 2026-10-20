@@ -1,6 +1,14 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
@@ -28,11 +36,19 @@ const SCRIPT_EVIDENCE: string = 'SCRIPT-RAN';
  * bytes rather than a mock that would agree with whatever the code did.
  * @param scratch A directory to build in.
  * @param name The package name, used for the file it contains.
+ * @param links Symlinks to pack beside the package's files, package-relative name to target.
  * @returns Returns the tarball's bytes.
  */
-async function tarball(scratch: string, name: string): Promise<Buffer> {
+async function tarball(
+  scratch: string,
+  name: string,
+  links: Readonly<Record<string, string>> = {},
+): Promise<Buffer> {
   const staging: string = path.join(scratch, `stage-${name}`);
   mkdirSync(path.join(staging, 'package', 'bin'), { recursive: true });
+  for (const [link, target] of Object.entries(links)) {
+    symlinkSync(target, path.join(staging, 'package', link));
+  }
   writeFileSync(path.join(staging, 'package', 'index.js'), `module.exports = '${name}';\n`);
   writeFileSync(path.join(staging, 'package', 'bin', 'run'), `#!/usr/bin/env node\n`);
   // Every fixture package declares a lifecycle script that would leave evidence if it ever ran. An
@@ -102,12 +118,14 @@ describe('LockfileProvisioner', () => {
    * provision that installs it.
    * @param corrupt Optionally rewrites the lockfile document before it is served, to simulate a
    * registry that returns different bytes than were pinned.
+   * @param outerLinks Symlinks the outer package carries.
    * @returns Returns the provision.
    */
   async function tree(
     corrupt: (document: Record<string, unknown>) => void = (): void => undefined,
+    outerLinks: Readonly<Record<string, string>> = {},
   ): Promise<LockfileProvision> {
-    const outer: Buffer = await tarball(scratch, 'outer');
+    const outer: Buffer = await tarball(scratch, 'outer', outerLinks);
     const inner: Buffer = await tarball(scratch, 'inner');
     served.set('https://registry.invalid/outer.tgz', outer);
     served.set('https://registry.invalid/inner.tgz', inner);
@@ -163,6 +181,18 @@ describe('LockfileProvisioner', () => {
     );
     expect(isComplete(directory)).toBe(true);
     expect(provisioner.isInstalled(provision)).toBe(true);
+  });
+
+  it('ensure_refusesAPackagePath_thatAnEarlierPackagesSymlinkLeadsOutside', async () => {
+    // #980 S14: the outer package plants `node_modules` as a link out of the install, and the inner
+    // package's lexically fine path would otherwise be created, and unpacked, through it.
+    const outside: string = path.join(scratch, 'outside');
+    mkdirSync(outside);
+    const provision: LockfileProvision = await tree(undefined, { node_modules: outside });
+
+    expect(await provisioner.ensure(provision)).toBeNull();
+    expect(existsSync(path.join(outside, 'outer'))).toBe(false);
+    expect(existsSync(path.join(outside, 'inner'))).toBe(false);
   });
 
   it('ensure_stripsTheTarballsPackageRoot', async () => {

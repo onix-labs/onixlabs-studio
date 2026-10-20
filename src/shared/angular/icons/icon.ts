@@ -745,6 +745,106 @@ export class Icon {
   public static readonly GO_TO_LINE: Icon = new Icon('ph-duotone ph-list-numbers');
 
   /**
+   * Gets the References panel's icon: a list searched through (#1014).
+   */
+  public static readonly REFERENCES: Icon = new Icon('ph-duotone ph-list-magnifying-glass');
+
+  /**
+   * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
+   */
+  public static readonly SYMBOL_CLASS: Icon = new Icon('ph ph-cube');
+
+  /**
+   * Gets the icon of an interface in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_INTERFACE: Icon = new Icon('ph ph-plugs');
+
+  /**
+   * Gets the icon of an enum, or one of its values, in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_ENUM: Icon = new Icon('ph ph-list-numbers');
+
+  /**
+   * Gets the icon of a function, method or constructor in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_FUNCTION: Icon = new Icon('ph ph-function');
+
+  /**
+   * Gets the icon of a property in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_PROPERTY: Icon = new Icon('ph ph-wrench');
+
+  /**
+   * Gets the icon of a field in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_FIELD: Icon = new Icon('ph ph-tag');
+
+  /**
+   * Gets the icon of a variable in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_VARIABLE: Icon = new Icon('ph ph-cube-transparent');
+
+  /**
+   * Gets the icon of a constant in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_CONSTANT: Icon = new Icon('ph ph-pi');
+
+  /**
+   * Gets the icon of a namespace, module or package in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_NAMESPACE: Icon = new Icon('ph ph-brackets-curly');
+
+  /**
+   * Gets the icon of an event in Go to Symbol's list.
+   */
+  public static readonly SYMBOL_EVENT: Icon = new Icon('ph ph-lightning');
+
+  /**
+   * Gets the icon of any other symbol in Go to Symbol's list: an operator, a type parameter, a key.
+   */
+  public static readonly SYMBOL_OTHER: Icon = new Icon('ph ph-dot-outline');
+
+  /**
+   * Gets the icon of a keyword in the completion list (#1021).
+   */
+  public static readonly SYMBOL_KEYWORD: Icon = new Icon('ph ph-key');
+
+  /**
+   * Gets the icon of a snippet in the completion list: text with tab stops to fill in.
+   */
+  public static readonly SYMBOL_SNIPPET: Icon = new Icon('ph ph-code-block');
+
+  /**
+   * Gets the icon of plain text in the completion list: a word from the document, say.
+   */
+  public static readonly SYMBOL_TEXT: Icon = new Icon('ph ph-text-aa');
+
+  /**
+   * Gets the icon of a colour in the completion list.
+   */
+  public static readonly SYMBOL_COLOR: Icon = new Icon('ph ph-palette');
+
+  /**
+   * Gets the icon of an operator in the completion list.
+   */
+  public static readonly SYMBOL_OPERATOR: Icon = new Icon('ph ph-plus-minus');
+
+  /**
+   * Gets the icon of a unit in the completion list (`px`, `em`).
+   */
+  public static readonly SYMBOL_UNIT: Icon = new Icon('ph ph-ruler');
+
+  /**
+   * Gets the icon of a value in the completion list.
+   */
+  public static readonly SYMBOL_VALUE: Icon = new Icon('ph ph-hash');
+
+  /**
+   * Gets the icon of a type parameter in the completion list.
+   */
+  public static readonly SYMBOL_TYPE_PARAMETER: Icon = new Icon('ph ph-brackets-angle');
+
+  /**
    * Gets the open-file icon on a diff's strip, which opens the compared file to edit.
    */
   public static readonly OPEN_FILE: Icon = new Icon('ph-duotone ph-file-text');
@@ -1171,6 +1271,12 @@ export class Icon {
    * Gets the hint-severity icon.
    */
   public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
+
+  /**
+   * Gets the fix icon Studio draws beside an editor's caret line while fixes exist at the caret
+   * (#1016), in place of Monaco's own lightbulb.
+   */
+  public static readonly QUICK_FIX: Icon = new Icon('ph-fill ph-lightbulb');
 
   /**
    * Gets the success icon shown when there are no problems.

@@ -1,0 +1,148 @@
+// Studio's colour picker (#1025): a floating panel over the editor, on the popup-menu surface like the
+// hover card, so it reads as one of Studio's pop-ups. A static shadow gives it depth over the text — a
+// resting panel, not a hover effect on a control.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  inline-size: 17rem;
+  padding: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--menu-foreground-color);
+  background: var(--menu-background-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.colour-picker__modes {
+  align-self: stretch;
+}
+
+.colour-picker__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+// The wheel: the hues round a circle (from red at the top, clockwise, as the hue is measured), white
+// at the centre fading out to them — at full brightness exactly the hue-and-saturation plane — and a
+// black veil over it for the brightness.
+.colour-picker__wheel {
+  position: relative;
+  inline-size: 10rem;
+  block-size: 10rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, #ffffff, rgb(255 255 255 / 0)),
+    conic-gradient(
+      hsl(0 100% 50%),
+      hsl(60 100% 50%),
+      hsl(120 100% 50%),
+      hsl(180 100% 50%),
+      hsl(240 100% 50%),
+      hsl(300 100% 50%),
+      hsl(360 100% 50%)
+    );
+  touch-action: none;
+  cursor: crosshair;
+
+  &:focus-visible {
+    outline: 0.125rem solid var(--accent-color);
+    outline-offset: 0.125rem;
+  }
+}
+
+.colour-picker__wheel-shade {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #000000;
+  pointer-events: none;
+}
+
+.colour-picker__wheel-thumb {
+  position: absolute;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  border: 0.125rem solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.0625rem rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.colour-picker__hex {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: stretch;
+
+  app-text-field {
+    flex: 1 1 auto;
+  }
+}
+
+// Label, slider and number field per channel, the columns lined up across the rows.
+.colour-picker__rows {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  align-self: stretch;
+
+  app-number-field ::ng-deep .number-field {
+    inline-size: 3.25rem;
+  }
+}
+
+.colour-picker__label {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+  white-space: nowrap;
+}
+
+.colour-picker__preview {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+// Each swatch draws its colour over a checkerboard, so a colour that is not opaque shows as one.
+.colour-picker__swatch {
+  inline-size: 1.75rem;
+  block-size: 1.25rem;
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background:
+    linear-gradient(var(--colour-picker-swatch), var(--colour-picker-swatch)),
+    repeating-conic-gradient(#c8c8c8 0% 25%, #ffffff 0% 50%) 0 0 / 0.5rem 0.5rem;
+}
+
+.colour-picker__text {
+  margin-inline-start: 0.25rem;
+  overflow: hidden;
+  font-family: var(--monospace-font-family, monospace);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colour-picker__format {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+
+  app-button-group {
+    flex: 1 1 auto;
+  }
+}
+
+.colour-picker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

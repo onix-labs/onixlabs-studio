@@ -29,6 +29,7 @@ describe('StartupPreferencesStore', () => {
     expect(StartupPreferencesStore.read()).toEqual({
       graphicsAcceleration: 'limited',
       logLevel: 'debug',
+      loadSideloadedPlugins: null,
     });
   });
 
@@ -38,10 +39,27 @@ describe('StartupPreferencesStore', () => {
     expect(StartupPreferencesStore.read()).toEqual({
       graphicsAcceleration: 'full',
       logLevel: null,
+      loadSideloadedPlugins: null,
     });
   });
 
   it('read_whenNothingIsPersisted_reportsTheDefaults', () => {
-    expect(StartupPreferencesStore.read()).toEqual({ graphicsAcceleration: null, logLevel: null });
+    expect(StartupPreferencesStore.read()).toEqual({
+      graphicsAcceleration: null,
+      logLevel: null,
+      loadSideloadedPlugins: null,
+    });
+  });
+
+  it('write_keepsTheSideloadingChoice_andReadsItBack', () => {
+    StartupPreferencesStore.write({ loadSideloadedPlugins: true });
+
+    expect(StartupPreferencesStore.read().loadSideloadedPlugins).toBe(true);
+  });
+
+  it('read_whenTheSideloadingChoiceIsNotABoolean_reportsNone', () => {
+    writeFileSync(FILE, JSON.stringify({ loadSideloadedPlugins: 'yes' }));
+
+    expect(StartupPreferencesStore.read().loadSideloadedPlugins).toBeNull();
   });
 });

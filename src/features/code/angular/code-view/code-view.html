@@ -59,7 +59,7 @@
     </app-panel>
   }
 
-  @if (findVisible()) {
+  @if (editorSearch.visible()) {
     <app-panel
       panelId="find"
       defaultEdge="right"
@@ -67,7 +67,24 @@
       [minSize]="260"
       [maxSize]="520"
     >
-      <app-find-panel [adapter]="findAdapter" (closed)="onFindClosed()" />
+      <app-editor-search-panel [search]="editorSearch" (closed)="onFindClosed()" />
+    </app-panel>
+  }
+
+  <!-- Find All References outside a workspace (#1014): the tab's own list, beside the editor. -->
+  @if (references(); as list) {
+    <app-panel
+      panelId="references"
+      defaultEdge="right"
+      [defaultSize]="320"
+      [minSize]="260"
+      [maxSize]="520"
+    >
+      <app-editor-references-panel
+        [list]="list"
+        (chosen)="onReferenceChosen($event)"
+        (closed)="onReferencesClosed()"
+      />
     </app-panel>
   }
 </app-panel-layout>

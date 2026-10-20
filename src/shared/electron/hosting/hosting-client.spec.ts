@@ -46,17 +46,19 @@ const reply = (value) => process.stdout.write(JSON.stringify(value) + '\\n');
  * @param name The script name.
  * @param body The script body, run after {@link PRELUDE}.
  * @param credentials Where credential requests are answered from.
+ * @param maxLineLength The longest stdout line the client buffers, or undefined for the default.
  * @returns Returns the client, not yet started.
  */
 function stub(
   name: string,
   body: string,
   credentials: HostingCredentialSource = (): Promise<string | null> => Promise.resolve(null),
+  maxLineLength?: number,
 ): HostingClient {
   const file: string = join(directory, `${name}.cjs`);
   writeFileSync(file, `${PRELUDE}\n${body}`, 'utf8');
   const spec: HostingSpec = { command: process.execPath, args: [file] };
-  const client: HostingClient = new HostingClient(name, spec, credentials);
+  const client: HostingClient = new HostingClient(name, spec, credentials, maxLineLength);
   clients.push(client);
   return client;
 }
@@ -215,6 +217,50 @@ describe('HostingClient', () => {
 
     expect(response).toMatchObject({ ok: false, error: 'dies exited.' });
     expect(client.running).toBe(false);
+  });
+
+  it('request_whenTheAnswerOutgrowsTheLineCap_failsCleanly_andTheNextAnswerStillArrives', async () => {
+    // #980 P10: an unending line no longer grows the buffer without bound; the stream stays in step.
+    const client: HostingClient = stub(
+      'oversized',
+      `let first = true;
+      lines.on('line', (line) => {
+        const message = JSON.parse(line);
+        if (message.op === 'initialize') {
+          reply({ id: message.id, ok: true, result: { protocol: '1.0', capabilities: [] } });
+        } else if (first) {
+          first = false;
+          process.stdout.write('{"id":' + message.id + ',"ok":true,"result":"' + 'x'.repeat(3000));
+          setTimeout(() => process.stdout.write('x'.repeat(3000) + '"}\\n'), 50);
+        } else {
+          reply({ id: message.id, ok: true, result: [] });
+        }
+      });`,
+      undefined,
+      1024,
+    );
+    await client.start({});
+
+    const refused: HostingResponse<'listAccounts'> = await client.request(
+      'listAccounts',
+      { host: 'github.com' },
+      2_000,
+    );
+    await new Promise<void>((resolve): void => {
+      setTimeout(resolve, 150);
+    });
+    const next: HostingResponse<'listAccounts'> = await client.request(
+      'listAccounts',
+      { host: 'github.com' },
+      2_000,
+    );
+
+    expect(refused).toMatchObject({
+      ok: false,
+      error: 'oversized sent an answer too large to read.',
+    });
+    expect(next).toMatchObject({ ok: true, result: [] });
+    expect(client.running).toBe(true);
   });
 
   it('request_beforeStart_failsWithoutSpawning', async () => {

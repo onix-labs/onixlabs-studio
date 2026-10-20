@@ -42,6 +42,12 @@ export interface RevealRequest {
   readonly column: number;
 
   /**
+   * Gets the 1-based column, on the same line, where the text to select ends — a search match's end —
+   * or undefined to place the cursor alone.
+   */
+  readonly endColumn?: number;
+
+  /**
    * Gets a monotonically increasing token so two requests for the same position still re-trigger.
    */
   readonly nonce: number;
@@ -120,13 +126,21 @@ export class Editors {
   }
 
   /**
-   * Requests that the editor backing the given document reveal a position.
+   * Requests that the editor backing the given document reveal a position, or select a span on a line.
    * @param documentId The identifier of the document to reveal in.
    * @param line The 1-based line to reveal.
    * @param column The 1-based column to place the cursor at.
+   * @param endColumn The 1-based column the selection ends at on the line, or undefined to select
+   * nothing.
    */
-  public requestReveal(documentId: string, line: number, column: number): void {
+  public requestReveal(documentId: string, line: number, column: number, endColumn?: number): void {
     this.nonce += 1;
-    this.reveal.set({ documentId, line, column, nonce: this.nonce });
+    this.reveal.set({
+      documentId,
+      line,
+      column,
+      ...(endColumn === undefined ? {} : { endColumn }),
+      nonce: this.nonce,
+    });
   }
 }

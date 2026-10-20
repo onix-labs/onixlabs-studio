@@ -245,6 +245,10 @@ export class CodeRibbon {
           accelerator: 'CmdOrCtrl+F',
           run: (): void => this.onFind(),
         },
+        // No accelerators: ⌘⇧O and ⌃G are bound inside the editor (#1009), and a menu accelerator
+        // would take Ctrl+G from a terminal or composer docked beside it.
+        { id: 'code.goToSymbol', label: 'Go to Symbol…', run: (): void => this.onGoToSymbol() },
+        { id: 'code.goToLine', label: 'Go to Line…', run: (): void => this.onGoToLine() },
         {
           id: 'code.format',
           label: 'Format Document',
@@ -409,11 +413,27 @@ export class CodeRibbon {
   }
 
   /**
-   * Opens the find widget.
+   * Opens Studio's find for the active editor, scoped to its file.
    */
   protected onFind(): void {
     this.log.info('code.ribbon', 'Find requested');
     this.commands.find();
+  }
+
+  /**
+   * Opens Studio's Go to Symbol for the active editor (#1009).
+   */
+  protected onGoToSymbol(): void {
+    this.log.info('code.ribbon', 'Go to Symbol requested');
+    this.commands.goToSymbol();
+  }
+
+  /**
+   * Opens Studio's Go to Line for the active editor (#1009).
+   */
+  protected onGoToLine(): void {
+    this.log.info('code.ribbon', 'Go to Line requested');
+    this.commands.goToLine();
   }
 
   /**

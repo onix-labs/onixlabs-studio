@@ -57,10 +57,10 @@ export type ControlDef =
 
 /**
  * Identifies which service owns a setting's value. A setting owned by `settings` lives in the Settings
- * store; other owners (the Theme, Display, LSP and Security services) own their own state, and the
- * renderer binds to them through the {@link import('../../../../features/settings/angular/setting-bindings').SettingBindings} resolver.
+ * store; other owners (the Theme, Display, LSP, Security and Sideloading services) own their own state,
+ * and the renderer binds to them through the {@link import('../../../../features/settings/angular/setting-bindings').SettingBindings} resolver.
  */
-export type SettingOwner = 'settings' | 'theme' | 'display' | 'lsp' | 'security';
+export type SettingOwner = 'settings' | 'theme' | 'display' | 'lsp' | 'security' | 'plugins';
 
 /**
  * Identifies an owner other than the Settings service.
@@ -181,9 +181,9 @@ export interface SettingsOwnedDef extends BaseSettingDef {
 }
 
 /**
- * Describes a setting owned by another service (Theme, Display, LSP or Security). Its value lives in
- * that service, so it has no Settings-store default; the renderer reads and writes it through the
- * binding resolver.
+ * Describes a setting owned by another service (Theme, Display, LSP, Security or Sideloading). Its
+ * value lives in that service, so it has no Settings-store default; the renderer reads and writes it
+ * through the binding resolver.
  */
 export interface ForeignSettingDef extends BaseSettingDef {
   /**

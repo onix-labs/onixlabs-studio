@@ -28,6 +28,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownClipboard } from '@shared/angular/components/markdown-editor/markdown-clipboard';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { toggleTaskList } from '@shared/angular/milkdown/markdown-task-list';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import {
@@ -105,6 +106,13 @@ export class MarkdownToolstrip {
    * Gets the document's path, or null while it is untitled — which the menu's file commands act on.
    */
   public readonly filePath: InputSignal<string | null> = input<string | null>(null);
+
+  /**
+   * Gets the switch to the document's diff, given by hosts (the document well) that offer one.
+   */
+  public readonly documentSwitch: InputSignal<DockPanelSwitch | undefined> = input<
+    DockPanelSwitch | undefined
+  >(undefined);
 
   /**
    * Emits when Open in Tab is chosen, so the host can open its document as a tab.

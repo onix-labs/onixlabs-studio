@@ -1,4 +1,5 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import * as nodePath from 'node:path';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { rgPath } from '@vscode/ripgrep';
@@ -9,7 +10,9 @@ import {
   SearchRequest,
   SearchResponse,
   SearchResultFile,
+  TextEditsResponse,
 } from '@shared/api/search-channels';
+import { applyTextEdits, isTextEditsRequest } from './apply-text-edits';
 import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
 import { logger } from './logger';
@@ -111,6 +114,17 @@ export class SearchManager {
         return replaceInFiles(request, this.workspace);
       },
     );
+    ipcMain.handle(
+      SearchChannel.ApplyTextEdits,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<TextEditsResponse> => {
+        logger.trace('SearchManager.register', `IPC ${SearchChannel.ApplyTextEdits}`);
+        if (!isTextEditsRequest(request)) {
+          logger.warn('SearchManager', 'Rejected malformed text-edits request');
+          return Promise.resolve({ written: [], failed: [] });
+        }
+        return applyTextEdits(request, this.workspace);
+      },
+    );
     logger.info('SearchManager', 'Registered search IPC handlers');
   }
 
@@ -176,22 +190,83 @@ export class SearchManager {
   }
 
   /**
-   * Runs a search for the given request, after validating it and confining it to an open root.
+   * Runs a search for the given request, after validating it and confining it to an open root — and,
+   * when it names paths, confining each of those to the root too.
    * @param request The candidate search request.
    * @returns Returns the grouped matches, or an empty response for an invalid or empty request.
    */
-  private run(request: unknown): Promise<SearchResponse> {
+  private async run(request: unknown): Promise<SearchResponse> {
     const empty: SearchResponse = { files: [], total: 0, capped: false };
     if (!this.isValidRequest(request)) {
       logger.warn('SearchManager.run', 'Rejected malformed search request');
-      return Promise.resolve(empty);
+      return empty;
     }
     if (request.query.length === 0 || !this.workspace.isRoot(request.root)) {
       logger.warn('SearchManager.run', 'Rejected empty query or unknown root');
-      return Promise.resolve(empty);
+      return empty;
+    }
+    let targets: readonly string[] = ['.'];
+    if (request.paths !== undefined) {
+      const confined: readonly string[] | null = await this.confinePaths(
+        request.root,
+        request.paths,
+      );
+      if (confined === null) {
+        return empty;
+      }
+      targets = confined;
     }
     logger.debug('SearchManager', `Searching ${request.root} for "${request.query}"`);
-    return this.spawnSearch(request);
+    return this.spawnSearch(request, targets);
+  }
+
+  /**
+   * Confines the paths a search names to its root (#1007), as named and as resolved through any link —
+   * a link inside the workspace pointing out of it would otherwise let a search read anywhere the user
+   * can — and turns them into the root-relative paths ripgrep is given, so its results stay labelled
+   * relative to the root.
+   * @param root The validated, open workspace root.
+   * @param paths The absolute paths the request names.
+   * @returns Returns the root-relative paths, or null when any path is outside the root (or none is
+   * named), which refuses the whole search.
+   */
+  private async confinePaths(
+    root: string,
+    paths: readonly string[],
+  ): Promise<readonly string[] | null> {
+    if (paths.length === 0) {
+      logger.warn('SearchManager.run', 'Rejected a search naming an empty set of paths');
+      return null;
+    }
+    const resolvedRoot: string = nodePath.resolve(root);
+    let realRoot: string;
+    try {
+      realRoot = await fs.realpath(resolvedRoot);
+    } catch (error: unknown) {
+      logger.warn('SearchManager.run', `The root ${resolvedRoot} could not be resolved`, error);
+      return null;
+    }
+    const relative: string[] = [];
+    for (const path of paths) {
+      const resolved: string = nodePath.resolve(path);
+      if (!isWithin(resolved, resolvedRoot)) {
+        logger.warn('SearchManager.run', `Rejected a search path outside the root: ${path}`);
+        return null;
+      }
+      let real: string;
+      try {
+        real = await fs.realpath(resolved);
+      } catch {
+        logger.warn('SearchManager.run', `Rejected a search path that does not exist: ${path}`);
+        return null;
+      }
+      if (!isWithin(real, realRoot)) {
+        logger.warn('SearchManager.run', `Rejected a search path linking out of the root: ${path}`);
+        return null;
+      }
+      relative.push(nodePath.relative(resolvedRoot, resolved) || '.');
+    }
+    return relative;
   }
 
   /**
@@ -209,20 +284,30 @@ export class SearchManager {
       typeof candidate.root === 'string' &&
       typeof candidate.caseSensitive === 'boolean' &&
       typeof candidate.wholeWord === 'boolean' &&
-      typeof candidate.regexp === 'boolean'
+      typeof candidate.regexp === 'boolean' &&
+      (candidate.paths === undefined ||
+        (Array.isArray(candidate.paths) &&
+          candidate.paths.every(
+            (path: unknown): boolean => typeof path === 'string' && path.length > 0,
+          )))
     );
   }
 
   /**
    * Spawns ripgrep for a validated request and collects its results.
    * @param request The validated search request.
+   * @param targets The root-relative paths to search ('.' for the whole root).
    * @returns Returns the grouped matches.
    */
-  private spawnSearch(request: SearchRequest): Promise<SearchResponse> {
+  private spawnSearch(request: SearchRequest, targets: readonly string[]): Promise<SearchResponse> {
     return new Promise<SearchResponse>((resolve: (value: SearchResponse) => void): void => {
-      const child: ChildProcessWithoutNullStreams = spawn(rgPath, this.buildArgs(request), {
-        cwd: request.root,
-      });
+      const child: ChildProcessWithoutNullStreams = spawn(
+        rgPath,
+        this.buildArgs(request, targets),
+        {
+          cwd: request.root,
+        },
+      );
       const files: Map<string, SearchMatch[]> = new Map<string, SearchMatch[]>();
       const order: string[] = [];
       let total: number = 0;
@@ -308,14 +393,19 @@ export class SearchManager {
       return false;
     }
     // ripgrep searches the root as '.', so paths arrive as './src/...'; strip the prefix for display.
+    // Named paths (#1007) are handed over root-relative, so they arrive as 'src/...' already.
     const relativePath: string = raw.startsWith('./') ? raw.slice(2) : raw;
     const lineText: string = (event.data.lines.text ?? '').replace(/\r?\n$/, '');
     const submatch: { start: number; end: number; match: { text?: string } } | undefined =
       event.data.submatches[0];
-    const start: number = submatch?.start ?? 0;
-    const end: number = submatch?.end ?? start;
-    // ripgrep offsets are byte offsets into the line; treated here as character indices, which is
-    // exact for ASCII and a harmless preview approximation for multi-byte text.
+    // ripgrep reports UTF-8 byte offsets; editors count UTF-16 code units, which is what a JavaScript
+    // string's length is. Converted, so a match after an accented letter or an emoji puts the caret on
+    // the match rather than a few characters past it (#1007).
+    const bytes: Buffer = Buffer.from(lineText, 'utf8');
+    const toIndex: (offset: number) => number = (offset: number): number =>
+      bytes.subarray(0, offset).toString('utf8').length;
+    const start: number = toIndex(submatch?.start ?? 0);
+    const end: number = toIndex(submatch?.end ?? submatch?.start ?? 0);
     const before: string = lineText.slice(Math.max(0, start - MAX_PREVIEW_LENGTH), start);
     const text: string = submatch?.match.text ?? lineText.slice(start, end);
     const after: string = lineText.slice(end, end + MAX_PREVIEW_LENGTH);
@@ -338,11 +428,12 @@ export class SearchManager {
 
   /**
    * Builds the ripgrep argument list for a request. A leading `--` stops flag parsing, so a query
-   * beginning with a dash is searched literally rather than treated as an option.
+   * beginning with a dash is searched literally rather than treated as an option — and so is a path.
    * @param request The validated search request.
+   * @param targets The root-relative paths to search ('.' for the whole root).
    * @returns Returns the argument list.
    */
-  private buildArgs(request: SearchRequest): string[] {
+  private buildArgs(request: SearchRequest, targets: readonly string[]): string[] {
     const args: string[] = ['--json', `--max-count=${MAX_MATCHES_PER_FILE}`];
     args.push(request.caseSensitive ? '--case-sensitive' : '--ignore-case');
     if (request.wholeWord) {
@@ -351,7 +442,17 @@ export class SearchManager {
     if (!request.regexp) {
       args.push('--fixed-strings');
     }
-    args.push('--', request.query, '.');
+    args.push('--', request.query, ...targets);
     return args;
   }
+}
+
+/**
+ * Determines whether a resolved path is a directory or lies inside it.
+ * @param target The resolved path.
+ * @param directory The resolved directory.
+ * @returns Returns true when the path is the directory or inside it.
+ */
+function isWithin(target: string, directory: string): boolean {
+  return target === directory || target.startsWith(directory + nodePath.sep);
 }

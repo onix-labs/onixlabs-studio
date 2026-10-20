@@ -1,0 +1,38 @@
+<!-- The shared tree, grouped by file, the explorers' rows. In a replace form, each match previews its
+     replacement. -->
+<app-tree-view
+  [rows]="rows()"
+  [selectedId]="selectedRowId()"
+  [virtual]="true"
+  (rowClick)="onRowClick($event)"
+>
+  <ng-template let-row>
+    @let result = rowOf(row);
+    @if (result.kind === 'file') {
+      <app-icon class="tree-icon" [icon]="fileIcon(result.file)" />
+      <span class="tree-name" [title]="result.file">{{ result.file }}</span>
+      <app-chip class="tree-count">{{ result.count }}</app-chip>
+    } @else {
+      <span class="search-results__line">{{ result.item.line }}</span>
+      <span
+        class="tree-name search-results__preview"
+        [title]="result.item.before + result.item.text + result.item.after"
+        ><span class="search-results__before"
+          ><bdi dir="ltr">{{ lead(result.item.before) }}</bdi></span
+        >
+        @if (replacement() !== null) {
+          <del class="search-results__removed">{{ result.item.text }}</del
+          ><ins class="search-results__added">{{ replacement() }}</ins>
+        } @else {
+          <span class="search-results__text">{{ result.item.text }}</span>
+        }
+        <span class="search-results__after">{{ result.item.after }}</span></span
+      >
+    }
+  </ng-template>
+</app-tree-view>
+@if (overflow() > 0) {
+  <div class="search-results__overflow">
+    …and {{ overflow() }} more — refine the search to list them.
+  </div>
+}

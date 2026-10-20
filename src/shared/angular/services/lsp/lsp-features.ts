@@ -11,10 +11,38 @@ import {
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
+import { LinePreviews } from '@shared/angular/services/references/line-previews';
+import type {
+  CodeLocation,
+  ReferenceItem,
+} from '@shared/angular/services/references/reference-list';
 import {
   buildHeuristicSemanticTokens,
   HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
 } from '@shared/angular/services/monaco/monaco-heuristic-tokens';
+import {
+  fromLspWorkspaceEdit,
+  WorkspaceTextEdits,
+} from '@shared/angular/services/workspace-edit/workspace-edit';
+import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
+import type { LspDiagnostic } from './lsp-client';
+import {
+  completionAnswer,
+  LspCompletionAnswer,
+  completionContext,
+  LspCompletionItem,
+  LspCompletionSupport,
+  LspSignatureHelpSupport,
+  resolvedParts,
+  toCompletionItem,
+  toLspSignatureHelp,
+  toSignatureHelp,
+} from './lsp-completion';
+
+// Re-exported so consumers keep importing it from here: the markdown helpers moved to the hover
+// content, which the completion list's details and the signature card share (#1021).
+export { escapeMarkdown } from '@shared/angular/services/hover/hover-content';
 
 /**
  * References the language-server document an editor model maps to: which session owns it and the
@@ -44,6 +72,252 @@ export interface LspDocumentRef {
    * this off once the session's semantics have demonstrably settled.
    */
   readonly suppressServerTokens?: boolean;
+
+  /**
+   * Brings the server up to date with the editor's text before a request about a position in it.
+   *
+   * ⛔ The editor's changes reach the server through a chain of updates, so a request made the moment
+   * a key is typed — a completion on `.` — overtook the change that typed it, and the server answered
+   * for the text before it (#1021: the globals instead of the members after `message.`).
+   * @param text The editor's current text.
+   * @returns Returns a promise that resolves once any change has been sent.
+   */
+  readonly sync?: (text: string) => Promise<void>;
+
+  /**
+   * Gets how the server renames a symbol (#1015): not at all, straight away, or after saying first
+   * whether the symbol at the caret can be renamed and what its name spans. Undefined is taken as the
+   * last: asking first is always allowed, and a server that cannot answer is read as refusing.
+   */
+  readonly rename?: LspRenameSupport;
+
+  /**
+   * Gets how the server offers code actions (#1016): not at all, whole, or with their edits filled in
+   * when one is chosen. Undefined is taken as not at all.
+   */
+  readonly codeActions?: LspCodeActionSupport;
+
+  /**
+   * Gets the commands the server runs through `workspace/executeCommand` (#1016). Undefined is taken
+   * as none.
+   */
+  readonly commands?: readonly string[];
+
+  /**
+   * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
+   * code-action request sends back for the span it asks about (#1016). Undefined is taken as none.
+   */
+  readonly diagnostics?: readonly LspDiagnostic[];
+
+  /**
+   * Gets how the server completes (#1021): its trigger characters, and whether it fills a completion
+   * in on request. Undefined or null is taken as not at all.
+   */
+  readonly completion?: LspCompletionSupport | null;
+
+  /**
+   * Gets how the server answers signature help (#1021): its trigger and retrigger characters.
+   * Undefined or null is taken as not at all.
+   */
+  readonly signatureHelp?: LspSignatureHelpSupport | null;
+}
+
+/**
+ * Names how a server offers code actions (#1016): `none` — it does not; `actions` — each comes whole,
+ * its edit and command included; `resolve` — each may come without its edit and command, which the
+ * server fills in when the action is chosen (`codeAction/resolve`).
+ */
+export type LspCodeActionSupport = 'none' | 'actions' | 'resolve';
+
+/**
+ * A command a code action runs (#1016), as a language server names it.
+ */
+export interface LspCommand {
+  /**
+   * Gets the command's title.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the command's identifier.
+   */
+  readonly command: string;
+
+  /**
+   * Gets the arguments it runs with, or undefined for none.
+   */
+  readonly arguments?: readonly unknown[];
+}
+
+/**
+ * One code action a language server offers at a span (#1016): a fix, a refactor or a source action.
+ */
+export interface LspCodeAction {
+  /**
+   * Gets the action's title, as the menu lists it.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the action's kind (`quickfix`, `refactor.extract`, `source.organizeImports`…), or empty when
+   * the server gave none.
+   */
+  readonly kind: string;
+
+  /**
+   * Gets whether the server prefers it among the fixes for the same problem.
+   */
+  readonly isPreferred: boolean;
+
+  /**
+   * Gets why the action cannot be run here, as the server put it, or null when it can.
+   */
+  readonly disabledReason: string | null;
+
+  /**
+   * Gets the edits it makes, by file path, or null when it makes none — or the server fills them in
+   * only when it is chosen.
+   */
+  readonly edit: WorkspaceTextEdits | null;
+
+  /**
+   * Gets the command it runs after its edits, or null for none.
+   */
+  readonly command: LspCommand | null;
+
+  /**
+   * Gets the action exactly as the server sent it, which is what a `codeAction/resolve` sends back.
+   */
+  readonly raw: unknown;
+}
+
+/**
+ * What running a code action's command on its server came to (#1016).
+ */
+export type LspCommandOutcome =
+  | {
+      /**
+       * Gets that the server ran it.
+       */
+      readonly ran: true;
+    }
+  | {
+      /**
+       * Gets that it was not run, or failed.
+       */
+      readonly ran: false;
+
+      /**
+       * Gets why, for the user.
+       */
+      readonly reason: string;
+    };
+
+/**
+ * Names how a server renames a symbol (#1015): `none` — it does not; `rename` — it renames, but
+ * cannot say beforehand whether a symbol can be; `prepare` — it says first (`textDocument/prepareRename`).
+ */
+export type LspRenameSupport = 'none' | 'rename' | 'prepare';
+
+/**
+ * What a language server says of the symbol at a position before the new name is asked for (#1015).
+ */
+export type LspRenamePreparation =
+  | {
+      /**
+       * Gets that the symbol can be renamed.
+       */
+      readonly kind: 'ready';
+
+      /**
+       * Gets the span of the name, one-based as the editor counts.
+       */
+      readonly range: MonacoApi.IRange;
+
+      /**
+       * Gets the name as it stands, which the new-name box opens holding.
+       */
+      readonly placeholder: string;
+    }
+  | {
+      /**
+       * Gets that the symbol cannot be renamed.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the server put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
+ * A language server's answer to a rename (#1015).
+ */
+export type LspRenameAnswer =
+  | {
+      /**
+       * Gets that the server answered with the edits.
+       */
+      readonly kind: 'edits';
+
+      /**
+       * Gets the edits, by file path.
+       */
+      readonly edits: WorkspaceTextEdits;
+    }
+  | {
+      /**
+       * Gets that the server refused.
+       */
+      readonly kind: 'refused';
+
+      /**
+       * Gets why, as the server put it, or null when it gave no reason.
+       */
+      readonly reason: string | null;
+    };
+
+/**
+ * The outcome of one request to a server: its result, or the error it answered with.
+ */
+type LspOutcome =
+  | {
+      /**
+       * Gets that the server answered.
+       */
+      readonly ok: true;
+
+      /**
+       * Gets the server's result.
+       */
+      readonly result: unknown;
+    }
+  | {
+      /**
+       * Gets that the server answered with an error, or the request could not be made.
+       */
+      readonly ok: false;
+
+      /**
+       * Gets the error's message, as the server put it.
+       */
+      readonly message: string;
+    };
+
+/**
+ * A place a language server says a symbol is defined: the file, and the span of its name there.
+ */
+export interface LspDefinition {
+  /**
+   * Gets the absolute path of the file the definition is in.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the span of the definition, one-based as the editor counts.
+   */
+  readonly range: MonacoApi.IRange;
 }
 
 /**
@@ -77,32 +351,24 @@ interface LspMarkup {
 }
 
 /**
- * A single completion suggestion from a server.
+ * A marked string from a server's hover (the protocol's older form): a code snippet in a language.
  */
-interface LspCompletionItem {
-  readonly label: string;
-  readonly kind?: number;
-  readonly detail?: string;
-  readonly documentation?: string | LspMarkup;
-  readonly insertText?: string;
-  readonly insertTextFormat?: number;
-  readonly sortText?: string;
-  readonly filterText?: string;
-  readonly textEdit?: { readonly range: LspRange; readonly newText: string };
+interface LspMarkedString {
+  readonly language: string;
+  readonly value: string;
 }
 
 /**
- * A completion response from a server.
+ * One part of a server's hover: markdown text (a bare string), a code snippet in a language, or markup
+ * content that says whether it is markdown or plain text.
  */
-interface LspCompletionList {
-  readonly items: readonly LspCompletionItem[];
-}
+export type LspHoverPart = string | LspMarkup | LspMarkedString;
 
 /**
  * A hover response from a server.
  */
 interface LspHover {
-  readonly contents: string | LspMarkup | readonly (string | LspMarkup)[];
+  readonly contents: LspHoverPart | readonly LspHoverPart[];
   readonly range?: LspRange;
 }
 
@@ -156,9 +422,57 @@ export const FEATURE_LANGUAGES: readonly string[] = [
 ];
 
 /**
- * Holds the characters that trigger a completion request.
+ * Names Studio's Monaco command that runs a completion's server command (#1021): accepting a
+ * completion whose command the server runs sends it to the server (`workspace/executeCommand`).
  */
-const TRIGGER_CHARACTERS: readonly string[] = ['.'];
+export const STUDIO_LSP_COMMAND: string = 'studio.lsp.executeCommand';
+
+/**
+ * Lists the client commands a server's completion may run, which are Monaco's own: a completion that
+ * asks for the signature card or for another list (after inserting `(`, say) gets it. Studio runs none
+ * of a server's other client commands.
+ */
+export const CLIENT_COMPLETION_COMMANDS: ReadonlySet<string> = new Set<string>([
+  'editor.action.triggerParameterHints',
+  'editor.action.triggerSuggest',
+]);
+
+/**
+ * Where a completion came from, kept so it can be filled in (`completionItem/resolve`): the item as
+ * the server sent it, and its session.
+ */
+interface CompletionSource {
+  /**
+   * Gets the item as the server sent it, with its list's defaults, which a resolve sends back.
+   */
+  readonly raw: LspCompletionItem;
+
+  /**
+   * Gets the session whose server sent it.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets whether the server fills completions in.
+   */
+  readonly resolves: boolean;
+}
+
+/**
+ * The completion and signature-help support of one started session, which the providers' trigger
+ * characters are gathered from.
+ */
+export interface LspSessionSupport {
+  /**
+   * Gets how the session's server completes, or null when it does not.
+   */
+  readonly completion: LspCompletionSupport | null;
+
+  /**
+   * Gets how the session's server answers signature help, or null when it does not.
+   */
+  readonly signatureHelp: LspSignatureHelpSupport | null;
+}
 
 /**
  * The fixed semantic token legend the Monaco providers declare. Every server's own legend is mapped
@@ -216,6 +530,11 @@ export class LspFeatures {
    * Holds the editor registry used to map a model URI to its file path and back.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the reader of each reference's line, for Find All References (#1014).
+   */
+  private readonly linePreviews: LinePreviews = inject(LinePreviews);
 
   /**
    * Holds the structured logger.
@@ -277,6 +596,37 @@ export class LspFeatures {
   >();
 
   /**
+   * Holds each started session's completion and signature-help support (#1021).
+   */
+  private readonly sessionSupport: Map<string, LspSessionSupport> = new Map<
+    string,
+    LspSessionSupport
+  >();
+
+  /**
+   * Holds each language's completion and signature-help providers, re-registered when the trigger
+   * characters change (Monaco reads a provider's trigger characters when it is registered).
+   */
+  private readonly triggerRegistrations: Map<string, MonacoApi.IDisposable[]> = new Map<
+    string,
+    MonacoApi.IDisposable[]
+  >();
+
+  /**
+   * Holds the trigger characters the providers were last registered with, as a key, so they are
+   * re-registered only when the characters change.
+   */
+  private triggerKey: string = '';
+
+  /**
+   * Holds where each completion handed to Monaco came from, so it can be filled in.
+   */
+  private readonly completionSources: WeakMap<
+    MonacoApi.languages.CompletionItem,
+    CompletionSource
+  > = new WeakMap<MonacoApi.languages.CompletionItem, CompletionSource>();
+
+  /**
    * Initializes the service, registering the Monaco providers once Monaco has loaded.
    */
   public constructor() {
@@ -313,6 +663,26 @@ export class LspFeatures {
   }
 
   /**
+   * Records how a started session's server completes and answers signature help (#1021), or forgets
+   * it when the session ends. The completion and signature-help providers are registered with every
+   * session's trigger characters together — Monaco reads them per provider, and one provider per
+   * language serves every session — and each answers only its own server's characters.
+   * @param sessionId The session.
+   * @param support How its server completes and answers signature help, or null to forget it.
+   */
+  public setSessionSupport(sessionId: string, support: LspSessionSupport | null): void {
+    if (support === null) {
+      this.sessionSupport.delete(sessionId);
+    } else {
+      this.sessionSupport.set(sessionId, support);
+    }
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (this.registered && monaco !== undefined) {
+      this.registerTriggerProviders(monaco);
+    }
+  }
+
+  /**
    * Notifies the served listeners that a session's server answered a request with a useful result.
    * @param sessionId The session whose server served.
    */
@@ -336,22 +706,30 @@ export class LspFeatures {
     this.monaco.suppressHeuristicTokensWhen((model: MonacoApi.editor.ITextModel): boolean =>
       this.servesSemanticTokens(model),
     );
+    // A document a server serves lists only what the server suggests: the document's words would only
+    // stand in for the server's silence (#1021).
+    this.monaco.suppressWordSuggestionsWhen((model: MonacoApi.editor.ITextModel): boolean =>
+      this.servesDocument(model),
+    );
+    // A completion's server command, run when the completion is accepted (#1021).
+    monaco.editor.registerCommand(
+      STUDIO_LSP_COMMAND,
+      (_accessor: unknown, sessionId: unknown, command: unknown): void =>
+        void this.runCompletionCommand(sessionId, command),
+    );
+    this.registerTriggerProviders(monaco);
     for (const language of FEATURE_LANGUAGES) {
-      monaco.languages.registerCompletionItemProvider(language, {
-        triggerCharacters: [...TRIGGER_CHARACTERS],
-        provideCompletionItems: (
-          model: MonacoApi.editor.ITextModel,
-          position: MonacoApi.Position,
-        ): Promise<MonacoApi.languages.CompletionList | undefined> =>
-          this.provideCompletion(monaco, model, position),
-      });
-      monaco.languages.registerHoverProvider(language, {
+      const hoverProvider: MonacoApi.languages.HoverProvider = {
         provideHover: (
           model: MonacoApi.editor.ITextModel,
           position: MonacoApi.Position,
         ): Promise<MonacoApi.languages.Hover | undefined> =>
           this.provideHover(monaco, model, position),
-      });
+      };
+      monaco.languages.registerHoverProvider(language, hoverProvider);
+      // Marked as Studio's, so a hover card prefers the language server's answer to the one Monaco's
+      // own worker gives for the same language (#1020): both answering showed the docs twice.
+      markStudioProvider(hoverProvider);
       monaco.languages.registerDefinitionProvider(language, {
         provideDefinition: (
           model: MonacoApi.editor.ITextModel,
@@ -623,24 +1001,119 @@ export class LspFeatures {
   }
 
   /**
-   * Handles a completion request, mapping the server's suggestions to Monaco completion items.
+   * Registers each language's completion and signature-help providers with every started session's
+   * trigger characters (#1021), replacing the ones registered before — unless the characters are the
+   * same, when nothing is re-registered. Both are marked as Studio's.
+   * @param monaco The loaded Monaco namespace.
+   */
+  private registerTriggerProviders(monaco: typeof MonacoApi): void {
+    const completion: string[] = this.gathered(
+      (support: LspSessionSupport): readonly string[] =>
+        support.completion?.triggerCharacters ?? [],
+    );
+    const signature: string[] = this.gathered(
+      (support: LspSessionSupport): readonly string[] =>
+        support.signatureHelp?.triggerCharacters ?? [],
+    );
+    const retrigger: string[] = this.gathered(
+      (support: LspSessionSupport): readonly string[] =>
+        support.signatureHelp?.retriggerCharacters ?? [],
+    );
+    const key: string = JSON.stringify([completion, signature, retrigger]);
+    if (key === this.triggerKey && this.triggerRegistrations.size > 0) {
+      return;
+    }
+    this.triggerKey = key;
+    for (const language of FEATURE_LANGUAGES) {
+      for (const registration of this.triggerRegistrations.get(language) ?? []) {
+        registration.dispose();
+      }
+      const completionProvider: MonacoApi.languages.CompletionItemProvider = {
+        triggerCharacters: completion,
+        provideCompletionItems: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+          context: MonacoApi.languages.CompletionContext,
+        ): Promise<MonacoApi.languages.CompletionList | undefined> =>
+          this.provideCompletion(monaco, model, position, context),
+        resolveCompletionItem: (
+          item: MonacoApi.languages.CompletionItem,
+        ): Promise<MonacoApi.languages.CompletionItem> => this.resolveCompletion(item),
+      };
+      const signatureProvider: MonacoApi.languages.SignatureHelpProvider = {
+        signatureHelpTriggerCharacters: signature,
+        signatureHelpRetriggerCharacters: retrigger,
+        provideSignatureHelp: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+          _token: MonacoApi.CancellationToken,
+          context: MonacoApi.languages.SignatureHelpContext,
+        ): Promise<MonacoApi.languages.SignatureHelpResult | undefined> =>
+          this.provideSignatureHelp(model, position, context),
+      };
+      // Marked as Studio's, as the hover and code-action providers are: they answer for the
+      // language server, and Studio's own surfaces draw what they answer.
+      markStudioProvider(completionProvider);
+      markStudioProvider(signatureProvider);
+      this.triggerRegistrations.set(language, [
+        monaco.languages.registerCompletionItemProvider(language, completionProvider),
+        monaco.languages.registerSignatureHelpProvider(language, signatureProvider),
+      ]);
+    }
+  }
+
+  /**
+   * Gathers characters across every started session, sorted and without repeats.
+   * @param of Picks a session's characters.
+   * @returns Returns the characters.
+   */
+  private gathered(of: (support: LspSessionSupport) => readonly string[]): string[] {
+    const characters: Set<string> = new Set<string>();
+    for (const support of this.sessionSupport.values()) {
+      for (const character of of(support)) {
+        characters.add(character);
+      }
+    }
+    return [...characters].sort();
+  }
+
+  /**
+   * Handles a completion request (#1021): asks the document's server — unless a trigger character
+   * started it that the server does not trigger on (the provider is registered with every server's) —
+   * with the trigger as the protocol's context, and maps its answer to Monaco's completions, keeping
+   * whether the list is incomplete (so typing further asks the server again).
    * @param monaco The loaded Monaco namespace.
    * @param model The model the completion was requested in.
    * @param position The one-based cursor position.
+   * @param context What started the request, or undefined when nothing says.
    * @returns Returns the completion list, or undefined when there is no server or no result.
    */
   private async provideCompletion(
     monaco: typeof MonacoApi,
     model: MonacoApi.editor.ITextModel,
     position: MonacoApi.Position,
+    context?: MonacoApi.languages.CompletionContext,
   ): Promise<MonacoApi.languages.CompletionList | undefined> {
-    const result: unknown = await this.request(model, 'textDocument/completion', position);
-    if (result === null) {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null) {
       return undefined;
     }
-    const items: readonly LspCompletionItem[] = Array.isArray(result)
-      ? (result as LspCompletionItem[])
-      : ((result as LspCompletionList).items ?? []);
+    const triggeredBy: string | undefined = context?.triggerCharacter;
+    if (
+      triggeredBy !== undefined &&
+      ref.completion !== undefined &&
+      ref.completion !== null &&
+      !ref.completion.triggerCharacters.includes(triggeredBy)
+    ) {
+      return undefined;
+    }
+    const result: unknown = await this.request(model, 'textDocument/completion', position, {
+      context: completionContext(context),
+    });
+    if (result === null || result === undefined) {
+      return undefined;
+    }
+    const answer: LspCompletionAnswer = completionAnswer(result);
     const word: MonacoApi.editor.IWordAtPosition = model.getWordUntilPosition(position);
     const range: MonacoApi.IRange = {
       startLineNumber: position.lineNumber,
@@ -648,15 +1121,136 @@ export class LspFeatures {
       startColumn: word.startColumn,
       endColumn: word.endColumn,
     };
+    const resolves: boolean = ref.completion?.resolve === true;
     return {
-      suggestions: items.map((item: LspCompletionItem): MonacoApi.languages.CompletionItem =>
-        this.toCompletionItem(monaco, item, range),
+      suggestions: answer.items.map(
+        (item: LspCompletionItem): MonacoApi.languages.CompletionItem => {
+          const mapped: MonacoApi.languages.CompletionItem = toCompletionItem(
+            monaco,
+            item,
+            range,
+            (raw: unknown): MonacoApi.languages.Command | undefined =>
+              this.completionCommand(ref, raw),
+          );
+          this.completionSources.set(mapped, { raw: item, sessionId: ref.sessionId, resolves });
+          return mapped;
+        },
       ),
+      incomplete: answer.incomplete,
     };
   }
 
   /**
-   * Handles a hover request, mapping the server's hover to Monaco's hover shape.
+   * Fills a completion in (`completionItem/resolve`, #1021) — its detail, documentation and extra
+   * edits — for a server that does so. A completion of a server that does not, and a resolve that
+   * fails, stay as they were.
+   * @param item The completion, as handed to Monaco.
+   * @returns Returns the completion, filled in where the server filled it in.
+   */
+  private async resolveCompletion(
+    item: MonacoApi.languages.CompletionItem,
+  ): Promise<MonacoApi.languages.CompletionItem> {
+    const source: CompletionSource | undefined = this.completionSources.get(item);
+    if (!source?.resolves) {
+      return item;
+    }
+    const outcome: LspOutcome = await this.ask(
+      { sessionId: source.sessionId, uri: '' },
+      'completionItem/resolve',
+      source.raw,
+    );
+    return outcome.ok ? { ...item, ...resolvedParts(outcome.result) } : item;
+  }
+
+  /**
+   * Maps a completion's command to the Monaco command accepting it runs: one of Monaco's own that a
+   * server may ask for (the signature card, another list) as it is, one the server runs as Studio's
+   * command that sends it to the server, and any other — a client command Studio does not run — to
+   * none.
+   * @param ref The document the completion is for.
+   * @param raw The command, untrusted.
+   * @returns Returns the Monaco command, or undefined for none.
+   */
+  private completionCommand(
+    ref: LspDocumentRef,
+    raw: unknown,
+  ): MonacoApi.languages.Command | undefined {
+    const command: LspCommand | null = toCommand(raw);
+    if (command === null) {
+      return undefined;
+    }
+    if (CLIENT_COMPLETION_COMMANDS.has(command.command)) {
+      return {
+        id: command.command,
+        title: command.title,
+        arguments: [...(command.arguments ?? [])],
+      };
+    }
+    if ((ref.commands ?? []).includes(command.command)) {
+      return { id: STUDIO_LSP_COMMAND, title: command.title, arguments: [ref.sessionId, command] };
+    }
+    this.log.debug('LspFeatures', `A completion's command is not one Studio runs`, command.command);
+    return undefined;
+  }
+
+  /**
+   * Runs an accepted completion's server command on its server (`workspace/executeCommand`). Whatever
+   * the command changes, the server sends as a `workspace/applyEdit`, which is applied as it arrives.
+   * @param sessionId The session, untrusted (it comes through Monaco's command).
+   * @param command The command, untrusted.
+   */
+  private async runCompletionCommand(sessionId: unknown, command: unknown): Promise<void> {
+    const parsed: LspCommand | null = toCommand(command);
+    if (typeof sessionId !== 'string' || parsed === null) {
+      return;
+    }
+    const outcome: LspOutcome = await this.ask({ sessionId, uri: '' }, 'workspace/executeCommand', {
+      command: parsed.command,
+      ...(parsed.arguments === undefined ? {} : { arguments: [...parsed.arguments] }),
+    });
+    if (!outcome.ok) {
+      this.log.warn('LspFeatures', `A completion's command failed`, outcome.message);
+    }
+  }
+
+  /**
+   * Handles a signature-help request (#1021): asks the document's server — when it answers signature
+   * help — with the trigger and the signatures showing as the protocol's context, and maps its answer
+   * to Monaco's.
+   * @param model The model.
+   * @param position The one-based cursor position.
+   * @param context What started (or updated) the request.
+   * @returns Returns the signatures, or undefined when there is no server or none.
+   */
+  private async provideSignatureHelp(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+    context: MonacoApi.languages.SignatureHelpContext,
+  ): Promise<MonacoApi.languages.SignatureHelpResult | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref?.signatureHelp === undefined || ref.signatureHelp === null) {
+      return undefined;
+    }
+    const result: unknown = await this.request(model, 'textDocument/signatureHelp', position, {
+      context: {
+        // Monaco and the protocol number the kinds alike: Invoke 1, TriggerCharacter 2, ContentChange 3.
+        triggerKind: context.triggerKind,
+        ...(context.triggerCharacter === undefined
+          ? {}
+          : { triggerCharacter: context.triggerCharacter }),
+        isRetrigger: context.isRetrigger,
+        ...(context.activeSignatureHelp === undefined
+          ? {}
+          : { activeSignatureHelp: toLspSignatureHelp(context.activeSignatureHelp) }),
+      },
+    });
+    const help: MonacoApi.languages.SignatureHelp | null = toSignatureHelp(result);
+    return help === null ? undefined : { value: help, dispose: (): void => undefined };
+  }
+
+  /**
+   * Handles a hover request, mapping the server's hover to Monaco's hover shape — each part as
+   * markdown (see {@link hoverContents}), which Studio's hover card renders (#1020).
    * @param monaco The loaded Monaco namespace.
    * @param model The model the hover was requested in.
    * @param position The one-based cursor position.
@@ -672,15 +1266,10 @@ export class LspFeatures {
       return undefined;
     }
     const hover: LspHover = result as LspHover;
-    const parts: readonly (string | LspMarkup)[] = Array.isArray(hover.contents)
-      ? hover.contents
-      : [hover.contents];
-    const contents: MonacoApi.IMarkdownString[] = parts.map(
-      (part: string | LspMarkup): MonacoApi.IMarkdownString => ({
-        value: typeof part === 'string' ? part : part.value,
-      }),
-    );
-    return { contents, range: hover.range === undefined ? undefined : this.toRange(hover.range) };
+    return {
+      contents: hoverContents(hover.contents),
+      range: hover.range === undefined ? undefined : this.toRange(hover.range),
+    };
   }
 
   /**
@@ -735,6 +1324,7 @@ export class LspFeatures {
     if (ref === null || this.bridge === undefined) {
       return null;
     }
+    await ref.sync?.(model.getValue());
     const params: Record<string, unknown> = {
       textDocument: { uri: ref.uri },
       position: { line: position.lineNumber - 1, character: position.column - 1 },
@@ -766,6 +1356,374 @@ export class LspFeatures {
    */
   public servesDocument(model: MonacoApi.editor.ITextModel): boolean {
     return this.resolve(model) !== null;
+  }
+
+  /**
+   * Asks the language server that serves a document where the symbol at a position is defined, for
+   * the editor's right-click Go to Definition (#1012). Unlike the definition provider Monaco calls,
+   * which can only name files already open in an editor, this answers with paths — so a definition in
+   * a file nobody has opened yet can be opened and gone to.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the definitions, in the server's order, or null when no server serves the
+   * document (an empty list is a server answering that it knows of none).
+   */
+  public async definitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    if (this.resolve(model) === null) {
+      return null;
+    }
+    const result: unknown = await this.request(
+      model,
+      'textDocument/definition',
+      position as MonacoApi.Position,
+    );
+    if (result === null || result === undefined) {
+      return [];
+    }
+    const raw: readonly (LspLocation | LspLocationLink)[] = Array.isArray(result)
+      ? (result as (LspLocation | LspLocationLink)[])
+      : [result as LspLocation];
+    return raw.map((entry: LspLocation | LspLocationLink): LspDefinition => ({
+      path: this.uriToPath('uri' in entry ? entry.uri : entry.targetUri),
+      range: this.toRange('range' in entry ? entry.range : entry.targetSelectionRange),
+    }));
+  }
+
+  /**
+   * Asks the language server that serves a document for every reference to the symbol at a position,
+   * its declaration included, for Find All References (#1014). Like {@link definitions}, this answers
+   * with paths rather than the open models Monaco's reference provider is limited to, so references in
+   * files nobody has opened are listed too — each with its line, read from the open editor where there
+   * is one and from disk otherwise (see {@link LinePreviews}).
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the references, in the server's order, or null when no server serves the document
+   * (an empty list is a server answering that it knows of none).
+   */
+  public async references(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly ReferenceItem[] | null> {
+    if (this.resolve(model) === null) {
+      return null;
+    }
+    const result: unknown = await this.request(
+      model,
+      'textDocument/references',
+      position as MonacoApi.Position,
+      { context: { includeDeclaration: true } },
+    );
+    if (!Array.isArray(result)) {
+      return [];
+    }
+    const locations: readonly CodeLocation[] = (result as LspLocation[]).map(
+      (entry: LspLocation): CodeLocation => ({
+        path: this.uriToPath(entry.uri),
+        range: this.toRange(entry.range),
+      }),
+    );
+    return this.linePreviews.fill(locations, this.monaco.getMonaco());
+  }
+
+  /**
+   * Determines whether a language server that serves a document can rename a symbol in it (#1015).
+   * @param model The editor model.
+   * @returns Returns true when a server serves the document and renames.
+   */
+  public servesRename(model: MonacoApi.editor.ITextModel): boolean {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    return ref !== null && ref.rename !== 'none';
+  }
+
+  /**
+   * Asks the language server that serves a document whether the symbol at a position can be renamed,
+   * and what its name spans, for Rename Symbol (#1015). A server that cannot say beforehand is
+   * answered for by the word at the position.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns what the server says, or null when no server that renames serves the document.
+   */
+  public async prepareRename(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<LspRenamePreparation | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.rename === 'none') {
+      return null;
+    }
+    if (ref.rename === 'rename') {
+      return wordPreparation(model, position);
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/prepareRename', {
+      textDocument: { uri: ref.uri },
+      position: toLspPosition(position),
+    });
+    if (!outcome.ok) {
+      return { kind: 'refused', reason: outcome.message };
+    }
+    const result: unknown = outcome.result;
+    if (result === null || result === undefined || typeof result !== 'object') {
+      return { kind: 'refused', reason: null };
+    }
+    // Three shapes: a bare range, a range with the name to show, or "the default" — the word.
+    const answer: {
+      range?: unknown;
+      placeholder?: unknown;
+      defaultBehavior?: unknown;
+      start?: unknown;
+    } = result;
+    if (answer.defaultBehavior === true) {
+      return wordPreparation(model, position);
+    }
+    const raw: unknown = answer.start !== undefined ? result : answer.range;
+    if (typeof raw !== 'object' || raw === null || !('start' in raw) || !('end' in raw)) {
+      return { kind: 'refused', reason: null };
+    }
+    const range: MonacoApi.IRange = this.toRange(raw as LspRange);
+    return {
+      kind: 'ready',
+      range,
+      placeholder:
+        typeof answer.placeholder === 'string' ? answer.placeholder : model.getValueInRange(range),
+    };
+  }
+
+  /**
+   * Asks the language server that serves a document for the edits that rename the symbol at a
+   * position (#1015), keyed by file path — so files nobody has opened are renamed too. Both shapes a
+   * server may answer in are read: per-file `changes`, or versioned `documentChanges`, whose file
+   * operations are refused and named.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param newName The new name.
+   * @returns Returns the server's answer, or null when no server that renames serves the document.
+   */
+  public async rename(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    newName: string,
+  ): Promise<LspRenameAnswer | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.rename === 'none') {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/rename', {
+      textDocument: { uri: ref.uri },
+      position: toLspPosition(position),
+      newName,
+    });
+    if (!outcome.ok) {
+      return { kind: 'refused', reason: outcome.message };
+    }
+    return {
+      kind: 'edits',
+      edits: fromLspWorkspaceEdit(outcome.result, (uri: string): string => this.uriToPath(uri)),
+    };
+  }
+
+  /**
+   * Determines whether a language server that serves a document offers code actions in it (#1016).
+   * @param model The editor model.
+   * @returns Returns true when a server serves the document and offers code actions.
+   */
+  public servesCodeActions(model: MonacoApi.editor.ITextModel): boolean {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    return ref !== null && (ref.codeActions ?? 'none') !== 'none';
+  }
+
+  /**
+   * Asks the language server that serves a document for the code actions at a span (#1016) — the
+   * fixes for its problems there, and the refactors and source actions it offers — sending back the
+   * diagnostics that touch the span exactly as the server sent them, so it can find its fixes by
+   * their codes and data. Edits come back keyed by file path, so files nobody has opened change too.
+   * @param model The editor model.
+   * @param range The span, one-based: the selection, or the caret as an empty span.
+   * @param only The kinds to ask for (`quickfix`, `refactor`…), or undefined for every kind.
+   * @param automatic Whether the request was made without the user asking (the fix icon), rather than
+   * by the user (the menu).
+   * @returns Returns the actions, in the server's order, or null when no server that offers code
+   * actions serves the document (an empty list is a server answering that it has none).
+   */
+  public async codeActions(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.IRange,
+    only?: readonly string[],
+    automatic: boolean = false,
+  ): Promise<readonly LspCodeAction[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || (ref.codeActions ?? 'none') === 'none') {
+      return null;
+    }
+    const diagnostics: readonly LspDiagnostic[] = (ref.diagnostics ?? []).filter(
+      (diagnostic: LspDiagnostic): boolean => touches(diagnostic.range, range),
+    );
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/codeAction', {
+      textDocument: { uri: ref.uri },
+      range: {
+        start: toLspPosition({ lineNumber: range.startLineNumber, column: range.startColumn }),
+        end: toLspPosition({ lineNumber: range.endLineNumber, column: range.endColumn }),
+      },
+      context: {
+        diagnostics,
+        ...(only === undefined ? {} : { only: [...only] }),
+        // CodeActionTriggerKind: 1 when the user asked, 2 when it was asked for them.
+        triggerKind: automatic ? 2 : 1,
+      },
+    });
+    if (!outcome.ok || !Array.isArray(outcome.result)) {
+      return [];
+    }
+    const actions: LspCodeAction[] = [];
+    for (const raw of outcome.result as unknown[]) {
+      const action: LspCodeAction | null = this.toCodeAction(raw);
+      if (action !== null) {
+        actions.push(action);
+      }
+    }
+    return actions;
+  }
+
+  /**
+   * Fills in a chosen code action's edit and command (#1016), for a server that leaves them out until
+   * an action is chosen (`codeAction/resolve`). An action that is already whole, a server that does
+   * not resolve, and a resolve that fails all leave the action as it was.
+   * @param model The editor model the action was offered in.
+   * @param action The action.
+   * @returns Returns the action, filled in where the server filled it in.
+   */
+  public async resolveCodeAction(
+    model: MonacoApi.editor.ITextModel,
+    action: LspCodeAction,
+  ): Promise<LspCodeAction> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref?.codeActions !== 'resolve' || isCommand(action.raw)) {
+      return action;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'codeAction/resolve', action.raw);
+    const resolved: LspCodeAction | null = outcome.ok ? this.toCodeAction(outcome.result) : null;
+    if (resolved === null) {
+      return action;
+    }
+    return {
+      ...resolved,
+      edit: resolved.edit ?? action.edit,
+      command: resolved.command ?? action.command,
+    };
+  }
+
+  /**
+   * Runs a code action's command on the language server that serves a document (#1016)
+   * (`workspace/executeCommand`). Only a command the server lists among those it runs is sent: any
+   * other is a command for the client, which Studio does not run. Whatever the command changes, the
+   * server sends as a `workspace/applyEdit`, which is applied as it arrives.
+   * @param model The editor model the action was offered in.
+   * @param command The command.
+   * @returns Returns whether the server ran it, or why it was not run.
+   */
+  public async executeCommand(
+    model: MonacoApi.editor.ITextModel,
+    command: LspCommand,
+  ): Promise<LspCommandOutcome> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null) {
+      return { ran: false, reason: 'No language server serves this document any more.' };
+    }
+    if (!(ref.commands ?? []).includes(command.command)) {
+      return {
+        ran: false,
+        reason: `“${command.title.length > 0 ? command.title : command.command}” is a step Studio can't run yet.`,
+      };
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: command.command,
+      ...(command.arguments === undefined ? {} : { arguments: [...command.arguments] }),
+    });
+    return outcome.ok ? { ran: true } : { ran: false, reason: outcome.message };
+  }
+
+  /**
+   * Reads one entry of a server's code-action answer: a code action, or a bare command, which is an
+   * action that only runs its command.
+   * @param raw The entry, untrusted.
+   * @returns Returns the action, or null when it is malformed.
+   */
+  private toCodeAction(raw: unknown): LspCodeAction | null {
+    if (typeof raw !== 'object' || raw === null) {
+      return null;
+    }
+    const entry: {
+      title?: unknown;
+      kind?: unknown;
+      isPreferred?: unknown;
+      disabled?: unknown;
+      edit?: unknown;
+      command?: unknown;
+    } = raw;
+    if (typeof entry.title !== 'string') {
+      return null;
+    }
+    if (isCommand(raw)) {
+      return {
+        title: entry.title,
+        kind: '',
+        isPreferred: false,
+        disabledReason: null,
+        edit: null,
+        command: toCommand(raw),
+        raw,
+      };
+    }
+    const disabled: unknown = entry.disabled;
+    const reason: unknown = (disabled as { reason?: unknown } | undefined)?.reason;
+    return {
+      title: entry.title,
+      kind: typeof entry.kind === 'string' ? entry.kind : '',
+      isPreferred: entry.isPreferred === true,
+      disabledReason:
+        typeof disabled !== 'object' || disabled === null
+          ? null
+          : typeof reason === 'string' && reason.length > 0
+            ? reason
+            : "It can't be applied here.",
+      edit:
+        typeof entry.edit === 'object' && entry.edit !== null
+          ? fromLspWorkspaceEdit(entry.edit, (uri: string): string => this.uriToPath(uri))
+          : null,
+      command: toCommand(entry.command),
+      raw,
+    };
+  }
+
+  /**
+   * Sends a request to a document's server, keeping the server's error rather than swallowing it: a
+   * rename's refusal is the server's message, for the user.
+   * @param ref The document.
+   * @param method The protocol method to call.
+   * @param params The request's parameters.
+   * @returns Returns the server's result, or its error's message.
+   */
+  private async ask(ref: LspDocumentRef, method: string, params: unknown): Promise<LspOutcome> {
+    if (this.bridge === undefined) {
+      return { ok: false, message: 'No language server is available.' };
+    }
+    try {
+      const result: unknown = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        method,
+        params,
+      );
+      if (result !== null && result !== undefined) {
+        this.notifyServed(ref.sessionId);
+      }
+      return { ok: true, result };
+    } catch (error: unknown) {
+      this.log.debug('LspFeatures', `${method} failed`, error);
+      return { ok: false, message: serverMessage(error) };
+    }
   }
 
   /**
@@ -839,40 +1797,6 @@ export class LspFeatures {
   }
 
   /**
-   * Maps a server completion item to a Monaco completion item.
-   * @param monaco The loaded Monaco namespace.
-   * @param item The server completion item.
-   * @param range The range the item replaces when no explicit edit is given.
-   * @returns Returns the Monaco completion item.
-   */
-  private toCompletionItem(
-    monaco: typeof MonacoApi,
-    item: LspCompletionItem,
-    range: MonacoApi.IRange,
-  ): MonacoApi.languages.CompletionItem {
-    const snippet: boolean = item.insertTextFormat === 2;
-    const documentation: string | undefined =
-      item.documentation === undefined
-        ? undefined
-        : typeof item.documentation === 'string'
-          ? item.documentation
-          : item.documentation.value;
-    return {
-      label: item.label,
-      kind: this.completionKind(monaco, item.kind),
-      detail: item.detail,
-      documentation: documentation === undefined ? undefined : { value: documentation },
-      insertText: item.textEdit?.newText ?? item.insertText ?? item.label,
-      insertTextRules: snippet
-        ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-        : undefined,
-      sortText: item.sortText,
-      filterText: item.filterText,
-      range: item.textEdit === undefined ? range : this.toRange(item.textEdit.range),
-    };
-  }
-
-  /**
    * Maps a server location (or location link) to a Monaco location, when its file is open as a model.
    * @param monaco The loaded Monaco namespace.
    * @param entry The server location or location link.
@@ -907,54 +1831,6 @@ export class LspFeatures {
   }
 
   /**
-   * Maps a protocol completion-item kind to a Monaco completion-item kind.
-   * @param monaco The loaded Monaco namespace.
-   * @param kind The protocol kind, or undefined.
-   * @returns Returns the Monaco kind.
-   */
-  private completionKind(
-    monaco: typeof MonacoApi,
-    kind: number | undefined,
-  ): MonacoApi.languages.CompletionItemKind {
-    const kinds: typeof MonacoApi.languages.CompletionItemKind =
-      monaco.languages.CompletionItemKind;
-    switch (kind) {
-      case 2:
-        return kinds.Method;
-      case 3:
-        return kinds.Function;
-      case 4:
-        return kinds.Constructor;
-      case 5:
-        return kinds.Field;
-      case 6:
-        return kinds.Variable;
-      case 7:
-        return kinds.Class;
-      case 8:
-        return kinds.Interface;
-      case 9:
-        return kinds.Module;
-      case 10:
-        return kinds.Property;
-      case 13:
-        return kinds.Enum;
-      case 14:
-        return kinds.Keyword;
-      case 15:
-        return kinds.Snippet;
-      case 21:
-        return kinds.Constant;
-      case 22:
-        return kinds.Struct;
-      case 25:
-        return kinds.TypeParameter;
-      default:
-        return kinds.Text;
-    }
-  }
-
-  /**
    * Converts a `file:` URI to an absolute path.
    * @param uri The file URI.
    * @returns Returns the absolute path.
@@ -963,4 +1839,138 @@ export class LspFeatures {
     const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
     return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
   }
+}
+
+/**
+ * Converts a one-based editor position to a zero-based protocol position.
+ * @param position The editor position.
+ * @returns Returns the protocol position.
+ */
+function toLspPosition(position: MonacoApi.IPosition): LspPosition {
+  return { line: position.lineNumber - 1, character: position.column - 1 };
+}
+
+/**
+ * Determines whether a server diagnostic's span touches a span of the editor's — overlaps it, or
+ * meets it at an end, as a caret at either end of a problem is on it.
+ * @param diagnostic The diagnostic's span, zero-based.
+ * @param range The editor's span, one-based.
+ * @returns Returns true when they touch.
+ */
+function touches(diagnostic: LspRange, range: MonacoApi.IRange): boolean {
+  const startLine: number = diagnostic.start.line + 1;
+  const startColumn: number = diagnostic.start.character + 1;
+  const endLine: number = diagnostic.end.line + 1;
+  const endColumn: number = diagnostic.end.character + 1;
+  const startsBeforeRangeEnds: boolean =
+    startLine < range.endLineNumber ||
+    (startLine === range.endLineNumber && startColumn <= range.endColumn);
+  const endsAfterRangeStarts: boolean =
+    endLine > range.startLineNumber ||
+    (endLine === range.startLineNumber && endColumn >= range.startColumn);
+  return startsBeforeRangeEnds && endsAfterRangeStarts;
+}
+
+/**
+ * Determines whether an entry of a code-action answer is a bare command — `command` naming it, rather
+ * than a code action's `command` holding one.
+ * @param raw The entry, untrusted.
+ * @returns Returns true when it is.
+ */
+function isCommand(raw: unknown): boolean {
+  return (
+    typeof raw === 'object' &&
+    raw !== null &&
+    typeof (raw as { command?: unknown }).command === 'string'
+  );
+}
+
+/**
+ * Reads a server's command.
+ * @param raw The command, untrusted.
+ * @returns Returns the command, or null when there is none or it is malformed.
+ */
+function toCommand(raw: unknown): LspCommand | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const entry: { title?: unknown; command?: unknown; arguments?: unknown } = raw;
+  if (typeof entry.command !== 'string') {
+    return null;
+  }
+  return {
+    title: typeof entry.title === 'string' ? entry.title : '',
+    command: entry.command,
+    ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
+  };
+}
+
+/**
+ * Answers a rename's preparation with the word at a position, for a server that cannot say itself.
+ * @param model The model.
+ * @param position The one-based position.
+ * @returns Returns the word's span and text, or a refusal when there is no word there.
+ */
+function wordPreparation(
+  model: MonacoApi.editor.ITextModel,
+  position: MonacoApi.IPosition,
+): LspRenamePreparation {
+  const word: MonacoApi.editor.IWordAtPosition | null = model.getWordAtPosition(position);
+  if (word === null) {
+    return { kind: 'refused', reason: null };
+  }
+  return {
+    kind: 'ready',
+    range: {
+      startLineNumber: position.lineNumber,
+      startColumn: word.startColumn,
+      endLineNumber: position.lineNumber,
+      endColumn: word.endColumn,
+    },
+    placeholder: word.word,
+  };
+}
+
+/**
+ * Reads a server's error message out of a failed request: the IPC layer wraps it as "Error invoking
+ * remote method '…': Error: <message>", and only the message is for the user.
+ * @param error The failure.
+ * @returns Returns the message.
+ */
+function serverMessage(error: unknown): string {
+  const message: string = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, '');
+}
+
+/**
+ * Maps a server's hover contents to markdown blocks (#1020), as the protocol means each form: a bare
+ * string is markdown; a marked string (`{ language, value }`) is a code snippet, fenced in its
+ * language so it is highlighted; markup content is markdown when it says so and plain text otherwise,
+ * whose markdown characters are escaped so it reads exactly as sent. Empty parts are dropped.
+ * @param contents The server's hover contents: one part, or several.
+ * @returns Returns the blocks, in the server's order.
+ */
+export function hoverContents(
+  contents: LspHoverPart | readonly LspHoverPart[],
+): MonacoApi.IMarkdownString[] {
+  const parts: readonly LspHoverPart[] = Array.isArray(contents)
+    ? (contents as readonly LspHoverPart[])
+    : [contents as LspHoverPart];
+  const blocks: MonacoApi.IMarkdownString[] = [];
+  for (const part of parts) {
+    let value: string;
+    if (typeof part === 'string') {
+      value = part;
+    } else if ('language' in part && typeof part.language === 'string') {
+      value = fenced(part.value, part.language);
+    } else if ((part as LspMarkup).kind === 'markdown') {
+      value = part.value;
+    } else {
+      value = escapeMarkdown(part.value);
+    }
+    if (value.trim().length > 0) {
+      blocks.push({ value });
+    }
+  }
+  return blocks;
 }

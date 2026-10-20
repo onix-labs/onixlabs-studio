@@ -4,6 +4,10 @@ import { CodeDocumentEditor } from '@features/code/angular/code-document/code-do
 import { TextEditorCursor } from '@shared/angular/components/text-editor/text-editor';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import {
   EditorCommandHandler,
   EditorCommands,
@@ -19,6 +23,7 @@ import { CodeDocumentPanel } from './code-document-panel';
  */
 interface Moves {
   position: { lineNumber: number; column: number } | null;
+  endColumn?: number;
   focused: boolean;
   actions: string[];
 }
@@ -50,6 +55,7 @@ class StandInEditor {
     return {
       getEditor: (): unknown => ({
         getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/1' } }),
+        getSelection: (): null => null,
         setPosition: (position: { lineNumber: number; column: number }): void => {
           StandInEditor.moves.position = position;
         },
@@ -71,8 +77,9 @@ class StandInEditor {
       paste: (): void => {
         StandInEditor.moves.actions.push('paste');
       },
-      reveal: (line: number, column: number): void => {
+      reveal: (line: number, column: number, endColumn?: number): void => {
         StandInEditor.moves.position = { lineNumber: line, column };
+        StandInEditor.moves.endColumn = endColumn;
       },
     };
   }
@@ -203,8 +210,24 @@ describe('CodeDocumentPanel', () => {
     expect(StandInEditor.moves.position).toEqual({ lineNumber: 12, column: 3 });
   });
 
-  it('theStripsButtons_runTheEditorsOwnFoldAndFind', async () => {
+  it('aRevealOfASearchMatch_selectsTheMatch', async () => {
+    // #1007: a result clicked in the Search panel arrives with the match's end, so it is selected.
+    await built();
+
+    TestBed.inject(Editors).requestReveal('test-document', 12, 3, 7);
+    TestBed.tick();
+
+    expect(StandInEditor.moves.position).toEqual({ lineNumber: 12, column: 3 });
+    expect(StandInEditor.moves.endColumn).toBe(7);
+  });
+
+  it('theStripsButtons_runTheEditorsOwnFold_andFindGoesToTheSearchPanelForThisFile', async () => {
+    // #1007: Find no longer opens Monaco's widget; the router takes it to the workspace's Search panel.
     const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+    const opened: FindRequest[] = [];
+    vi.spyOn(TestBed.inject(FindRouter), 'open').mockImplementation(
+      (request: FindRequest): void => void opened.push(request),
+    );
     const press: (label: string) => void = (label: string): void =>
       (fixture.nativeElement as HTMLElement)
         .querySelector<HTMLButtonElement>(`.document-panel__strip button[aria-label="${label}"]`)
@@ -214,11 +237,41 @@ describe('CodeDocumentPanel', () => {
     press('Unfold All');
     press('Find');
 
-    expect(StandInEditor.moves.actions).toEqual([
-      'editor.foldAll',
-      'editor.unfoldAll',
-      'actions.find',
+    expect(StandInEditor.moves.actions).toEqual(['editor.foldAll', 'editor.unfoldAll']);
+    expect(opened).toEqual([
+      { mode: 'find', scope: 'file', seed: undefined, filePath: null, selection: null },
     ]);
+  });
+
+  it('theMenusGoToItems_openStudiosGoTo_throughTheRouter_neverMonacosActions', async () => {
+    // #1009: Go to Symbol and Go to Line no longer run Monaco's quick outline and go to line.
+    const fixture: ComponentFixture<CodeDocumentPanel> = await built();
+    const opened: GoToMode[] = [];
+    vi.spyOn(TestBed.inject(GoToRouter), 'open').mockImplementation(
+      (_editor: unknown, mode: GoToMode): void => void opened.push(mode),
+    );
+    const panel: { onMenu(id: string): void } = fixture.componentInstance as unknown as {
+      onMenu(id: string): void;
+    };
+
+    panel.onMenu('code.goToSymbol');
+    panel.onMenu('code.goToLine');
+
+    expect(opened).toEqual(['symbol', 'line']);
+    expect(StandInEditor.moves.actions).toEqual([]);
+  });
+
+  it('theCommandHandler_offersGoTo_throughTheRouter', async () => {
+    await built();
+    const opened: GoToMode[] = [];
+    vi.spyOn(TestBed.inject(GoToRouter), 'open').mockImplementation(
+      (_editor: unknown, mode: GoToMode): void => void opened.push(mode),
+    );
+
+    TestBed.inject(EditorCommands).goToSymbol();
+    TestBed.inject(EditorCommands).goToLine();
+
+    expect(opened).toEqual(['symbol', 'line']);
   });
 
   it('theStripsHistoryAndClipboardButtons_actOnThisEditor_evenWhenAnotherIsActive', async () => {

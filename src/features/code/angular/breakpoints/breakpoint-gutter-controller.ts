@@ -133,6 +133,11 @@ export class BreakpointGutterController {
     if (event.target.type !== this.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
       return;
     }
+    // The margin's right lane is the fix icon's (#1016): a press there opens the fixes, never toggles a
+    // breakpoint. Breakpoints are drawn in the centre lane, Monaco's default.
+    if (event.target.detail.glyphMarginLane === this.monaco.editor.GlyphMarginLane.Right) {
+      return;
+    }
     const line: number | undefined = event.target.position?.lineNumber;
     if (line === undefined) {
       return;

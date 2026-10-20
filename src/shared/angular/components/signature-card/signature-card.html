@@ -1,0 +1,42 @@
+<div class="signature-card__head">
+  @if (view().overload; as overload) {
+    <div class="signature-card__overloads">
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Previous overload"
+        tooltip="Previous overload (↑)"
+        [icon]="Icon.CARET_UP"
+        (click)="previous.emit()"
+      />
+      <span class="signature-card__count" aria-live="polite">
+        {{ overload.index + 1 }}/{{ overload.count }}
+      </span>
+      <app-button
+        variant="none"
+        size="small"
+        ariaLabel="Next overload"
+        tooltip="Next overload (↓)"
+        [icon]="Icon.CARET_DOWN"
+        (click)="next.emit()"
+      />
+    </div>
+  }
+  <!-- Each run its own element, so no whitespace of the template's comes between them. -->
+  <code class="signature-card__signature">
+    @for (run of view().runs; track $index) {
+      <span [class.signature-card__parameter]="run.active">{{ run.text }}</span>
+    }
+  </code>
+</div>
+@if (view().sections.length > 0) {
+  <div class="signature-card__body">
+    @for (section of view().sections; track $index) {
+      <app-markdown-renderer
+        class="signature-card__section"
+        [text]="section"
+        [codeFooters]="false"
+      />
+    }
+  </div>
+}

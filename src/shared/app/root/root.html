@@ -31,6 +31,10 @@
      repository asks it in the same window. -->
 <app-repository-trust-host />
 
+<!-- The Go to Symbol and Go to Line dialogs, mounted once here so every editor's Go to shows the same
+     dialog when the user's Go to style is Dialogs. -->
+<app-go-to-dialog-host />
+
 <!-- The About dialog, mounted once here because the Help menu entry that opens it lives in the
      native menu bar and can only call back into the renderer. -->
 <app-about-host />

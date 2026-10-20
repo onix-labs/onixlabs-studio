@@ -26,6 +26,9 @@ import {
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
@@ -40,6 +43,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { Icon } from '@shared/angular/icons/icon';
+import { DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
@@ -171,6 +175,18 @@ export class CodeDocumentPanel {
   private readonly editorCommands: EditorCommands = inject(EditorCommands);
 
   /**
+   * Holds the find router the strip's Find and the ribbon's route through, to the workspace's Search
+   * panel scoped to this file (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router the strip's Go to Symbol and Go to Line route through, to Studio's own
+   * quick-open box or dialogs (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
    * Holds the command handler registered with the {@link EditorCommands} registry, or null before the
    * editor exists and after disposal.
    */
@@ -209,6 +225,14 @@ export class CodeDocumentPanel {
    * document's lifecycle in the well, so this is false: a destroy is a re-parent, not a close.
    */
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the switch to this file's diff, shown on the strip, or undefined where there is none (a file
+   * outside a workspace's well).
+   */
+  public readonly documentSwitch: InputSignal<DockPanelSwitch | undefined> = input<
+    DockPanelSwitch | undefined
+  >(undefined);
 
   /**
    * Gets the backing document, or undefined before it is registered.
@@ -495,7 +519,9 @@ export class CodeDocumentPanel {
       if (request === null || !this.paneReady() || request.documentId !== this.documentId()) {
         return;
       }
-      untracked((): void => this.core()?.getPane()?.reveal(request.line, request.column));
+      untracked((): void =>
+        this.core()?.getPane()?.reveal(request.line, request.column, request.endColumn),
+      );
     });
 
     // Read the document's symbols once the editor exists, and again whenever the text settles after a
@@ -564,8 +590,11 @@ export class CodeDocumentPanel {
       paste: (): void => pane.paste(),
       undo: (): void => pane.trigger('undo'),
       redo: (): void => pane.trigger('redo'),
-      // The well carries no find panel of its own, so Find opens Monaco's own widget in place.
-      find: (): void => pane.trigger('actions.find'),
+      // The well carries no find panel of its own: the workspace's Search panel answers, scoped to this
+      // file.
+      find: (): void => this.find(),
+      goToSymbol: (): void => this.openGoTo('symbol'),
+      goToLine: (): void => this.openGoTo('line'),
       formatDocument: (): void => pane.trigger('editor.action.formatDocument'),
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
@@ -634,10 +663,31 @@ export class CodeDocumentPanel {
   }
 
   /**
-   * Opens the editor's find, as ⌘F does.
+   * Opens the find, as ⌘F does: the workspace's Search panel, scoped to this file and seeded from the
+   * editor's selection.
    */
   protected find(): void {
-    this.runEditorAction('actions.find');
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.core()?.getPane()?.getEditor() ?? null;
+    if (editor === null) {
+      return;
+    }
+    this.log.info('code.document', 'Find in well document', this.documentId());
+    this.findRouter.open(this.findRouter.requestFrom(editor, 'find'));
+  }
+
+  /**
+   * Opens Studio's Go to Symbol or Go to Line for this document's editor, as ⌘⇧O and ⌃G do.
+   * @param mode What to ask for: a symbol, or a line.
+   */
+  private openGoTo(mode: GoToMode): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.core()?.getPane()?.getEditor() ?? null;
+    if (editor === null) {
+      return;
+    }
+    this.log.info('code.document', `Go to ${mode} in well document`, this.documentId());
+    this.goToRouter.open(editor, mode);
   }
 
   /**
@@ -694,10 +744,10 @@ export class CodeDocumentPanel {
     }
     switch (id) {
       case MENU_GO_TO_SYMBOL:
-        this.runEditorAction('editor.action.quickOutline');
+        this.openGoTo('symbol');
         break;
       case MENU_GO_TO_LINE:
-        this.runEditorAction('editor.action.gotoLine');
+        this.openGoTo('line');
         break;
       case MENU_WORD_WRAP:
         this.toggleWordWrap();

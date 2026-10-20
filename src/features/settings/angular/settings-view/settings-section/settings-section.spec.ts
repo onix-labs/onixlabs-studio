@@ -115,10 +115,25 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 15 global scalar settings plus a custom "language overrides" entry, which is
+    // The Text Editor section has 16 scalar settings plus a custom "language overrides" entry, which is
     // rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(15);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
+  });
+
+  it('render_whenTextEditorSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
+    // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
+    const element: HTMLElement = await render('text-editor');
+    const row: Element | undefined = Array.from(element.querySelectorAll('app-setting-row')).find(
+      (candidate: Element): boolean =>
+        candidate.querySelector('.setting-row__label')?.textContent?.trim().toLowerCase() ===
+        'go to style',
+    );
+
+    expect(row).toBeDefined();
+    // The dropdown shows the chosen option: the quick-open box, by default.
+    expect(row?.textContent).toContain('Quick-open box');
+    expect(TestBed.inject(Settings).textEditorGoToStyle()).toBe('quick-open');
   });
 
   it('render_whenForeignOwnedSection_rendersItsRows', async () => {

@@ -1,0 +1,143 @@
+<!-- The view's tool strip (#882): two toggles, in the Terminal strip's style, choosing the form. Replace
+     is offered only where the text can be changed. -->
+<app-panel-toolbar class="search-view__strip" role="tablist" aria-label="Find & Replace">
+  <button
+    type="button"
+    class="panel-toolbar__button search-view__toggle"
+    role="tab"
+    [class.panel-toolbar__button--active]="mode() === 'find'"
+    [attr.aria-selected]="mode() === 'find'"
+    (click)="show('find')"
+  >
+    <app-icon [icon]="Icon.SEARCH" />
+    <span>{{ findLabel() }}</span>
+  </button>
+  @if (replaceable()) {
+    <button
+      type="button"
+      class="panel-toolbar__button search-view__toggle"
+      role="tab"
+      [class.panel-toolbar__button--active]="mode() === 'replace'"
+      [attr.aria-selected]="mode() === 'replace'"
+      (click)="show('replace')"
+    >
+      <app-icon [icon]="Icon.REPLACE" />
+      <span>{{ replaceLabel() }}</span>
+    </button>
+  }
+  <!-- The results are a tree, so the strip folds it the way the explorers' strips fold theirs. -->
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS_SQUARE_DUOTONE"
+    ariaLabel="Expand All"
+    tooltip="Expand All"
+    [disabled]="!hasResults()"
+    (click)="expandAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.MINUS_SQUARE_DUOTONE"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
+    [disabled]="!hasResults()"
+    (click)="collapseAll()"
+  />
+</app-panel-toolbar>
+
+<!-- The chosen form. Both share the query and the options, so switching keeps what was typed. -->
+<div class="search-view__form" role="tabpanel">
+  <div class="search-view__field" #findField>
+    <app-text-field
+      class="search-view__input"
+      kind="search"
+      placeholder="Find"
+      ariaLabel="Find"
+      [(value)]="draft"
+      (keydown.enter)="find()"
+    />
+  </div>
+
+  @if (mode() === 'replace') {
+    <div class="search-view__field">
+      <app-text-field
+        class="search-view__input"
+        placeholder="Replace with"
+        ariaLabel="Replace with"
+        [(value)]="replacement"
+        (keydown.enter)="find()"
+      />
+    </div>
+  }
+
+  <!-- Where to search (#1007): the files on disk, the open editors, or the one editor and its
+       selection. -->
+  <div class="search-view__field">
+    <app-dropdown
+      ariaLabel="Search in"
+      [fullWidth]="true"
+      [options]="scopeOptions()"
+      [value]="scope()"
+      (valueChange)="chooseScope($event)"
+    />
+  </div>
+
+  <div class="search-view__options">
+    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+         rule cannot see through the component boundary to verify this statically. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-view__option">
+      <app-checkbox [(checked)]="caseSensitive" (checkedChange)="optionChanged()" />
+      <span>Match Case</span>
+    </label>
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-view__option">
+      <app-checkbox [(checked)]="wholeWord" (checkedChange)="optionChanged()" />
+      <span>Match Whole Word</span>
+    </label>
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-view__option">
+      <app-checkbox [(checked)]="regexp" (checkedChange)="optionChanged()" />
+      <span>Match Regex</span>
+    </label>
+  </div>
+
+  <div class="search-view__actions">
+    <span class="search-view__summary">{{ summary() }}</span>
+    <!-- The primary action leads: Replace All in the replace form, Find on its own in the find form. -->
+    <app-button-row>
+      @if (mode() === 'replace') {
+        <app-button
+          variant="solid"
+          label="Replace All"
+          [disabled]="!canReplaceAll()"
+          tooltip="Replace every match in every file listed"
+          (click)="replaceEvery()"
+        />
+        <app-button
+          variant="outline"
+          label="Replace"
+          [disabled]="!canReplace()"
+          tooltip="Replace the selected match, then move to the next"
+          (click)="replaceSelected()"
+        />
+      }
+      <app-button
+        [variant]="mode() === 'find' ? 'solid' : 'outline'"
+        label="Find"
+        (click)="find()"
+      />
+    </app-button-row>
+  </div>
+</div>
+
+<!-- Everything below the form is the results: the shared tree, grouped by file. In the replace form,
+     each match previews its replacement. -->
+<div class="search-view__results">
+  <app-search-results-tree
+    [items]="matches()"
+    [activeIndex]="adapter().activeIndex()"
+    [replacement]="previewsReplacement() ? replacement() : null"
+    (chosen)="adapter().select($event)"
+  />
+</div>

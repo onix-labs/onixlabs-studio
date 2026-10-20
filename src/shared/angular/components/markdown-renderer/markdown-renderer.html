@@ -2,6 +2,10 @@
   @if (block.kind === 'html') {
     <div class="markdown-renderer__prose" [innerHTML]="asHtml(block).safe"></div>
   } @else {
-    <app-code-block [code]="asCode(block).code" [lang]="asCode(block).lang" />
+    <app-code-block
+      [code]="asCode(block).code"
+      [lang]="asCode(block).lang"
+      [footer]="codeFooters()"
+    />
   }
 }

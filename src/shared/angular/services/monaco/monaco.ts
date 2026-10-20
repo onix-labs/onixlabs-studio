@@ -1,4 +1,4 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import {
   CurrentLineHighlightStyle,
@@ -7,6 +7,7 @@ import {
 } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
+import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 import {
   extensionForLanguage,
   LanguageInfo,
@@ -23,6 +24,45 @@ import { defineThemes } from './monaco-themes';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerBraceFolding } from './monaco-folding';
+import { installFindCommands } from './monaco-find-commands';
+import { installGoToCommands } from './monaco-goto-commands';
+import {
+  installNavigationCommands,
+  NAVIGATION_EDITOR_OPTIONS,
+  NavigationMode,
+} from './monaco-navigation-commands';
+import { installRenameCommands } from './monaco-rename-commands';
+import { installQuickFixCommands, QUICK_FIX_EDITOR_OPTIONS } from './monaco-quick-fix-commands';
+import {
+  HOVER_EDITOR_OPTIONS,
+  installHoverCommands,
+  ProblemDirection,
+} from './monaco-hover-commands';
+import {
+  IDLE_PARAMETER_HINTS_PRESENTER,
+  IDLE_SUGGEST_PRESENTER,
+  installSuggestCommands,
+  ParameterHintsPresenter,
+  SuggestPresenter,
+} from './monaco-suggest-commands';
+import {
+  DIFF_GUARD_EDITOR_OPTIONS,
+  installWidgetGuard,
+  WIDGET_GUARD_EDITOR_OPTIONS,
+} from './monaco-widget-guard';
+import { captureDocumentSymbolProviders } from './monaco-symbol-providers';
+import { captureEditorCapabilities } from './monaco-editor-capabilities';
+import { Studio } from '@shared/angular/services/studio/studio';
+import { FindRouter } from '@shared/angular/services/find-router/find-router';
+import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
+import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
+import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
+import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
+import { ReadOnlyNotice } from '@shared/angular/services/read-only-notice/read-only-notice';
+import { LineTerminatorsConfirmation } from '@shared/angular/services/line-terminators/line-terminators-confirmation';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
 // is used by the code ribbon, and `MonarchToken`/`buildHeuristicSemanticTokens` by the spec.
@@ -164,6 +204,28 @@ export class Monaco {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the host-platform accessor, which decides the find-and-replace chord.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the find router Studio's ⌘F / ⌘⌥F commands hand the focused editor to (#1007).
+   */
+  private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the go-to router Studio's ⌘⇧O / ⌃G commands hand the focused editor to (#1009).
+   */
+  private readonly goToRouter: GoToRouter = inject(GoToRouter);
+
+  /**
+   * Holds the injector Studio's F12 / ⇧F12 / ⌘-click navigation is resolved from as it runs (#1014).
+   * Resolved then rather than injected here: the navigation reaches the language-server features,
+   * which inject this service.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
    * Holds a value indicating whether Monaco has finished loading.
    */
   private readonly loadedSignal: WritableSignal<boolean> = signal<boolean>(false);
@@ -194,6 +256,22 @@ export class Monaco {
    */
   private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Holds predicates that leave Monaco's word-based suggestions out of the completion list for the
+   * documents they own. A language server registers one (via {@link suppressWordSuggestionsWhen}), so
+   * a document it serves lists only what the server suggests (#1021).
+   */
+  private readonly wordSuggestionSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
+    new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Holds what draws the completion list and the signature card (#1021): the `Autocomplete` service,
+   * which hands itself over as it is made — the first editor that shows makes it — or null before
+   * then, when nothing is drawn. Handed over rather than injected: the service's components reach
+   * back here through the markdown renderer's code blocks.
+   */
+  private assist: (SuggestPresenter & ParameterHintsPresenter) | null = null;
 
   /**
    * Gets a value indicating whether Monaco has finished loading.
@@ -402,6 +480,17 @@ export class Monaco {
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
       // the languages with a built-in Monaco worker.
       'semanticHighlighting.enabled': true,
+      // Monaco's right-click menu offers its own Go to Symbol and Command Palette, past every chord
+      // Studio removes; it stays off in every editor until Studio draws its own menu (#946, #1009).
+      contextmenu: false,
+      // None of Monaco's go-to navigations ever peeks (#1014).
+      ...NAVIGATION_EDITOR_OPTIONS,
+      // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
+      ...QUICK_FIX_EDITOR_OPTIONS,
+      // Monaco's hover never shows: Studio draws its own hover card (#1020).
+      ...HOVER_EDITOR_OPTIONS,
+      // No swatch click, inline suggestion, paste or drop opens Monaco's UI (#1024).
+      ...WIDGET_GUARD_EDITOR_OPTIONS,
     };
   }
 
@@ -428,6 +517,18 @@ export class Monaco {
       fontFamily: `"${resolved.fontFamily}", monospace`,
       lineNumbers: 'on',
       padding: { top: 12 },
+      // Off in every editor until Studio draws its own right-click menu (#946, #1009).
+      contextmenu: false,
+      // None of Monaco's go-to navigations ever peeks (#1014).
+      ...NAVIGATION_EDITOR_OPTIONS,
+      // Monaco's lightbulb never shows: Studio draws its own fix icon (#1016).
+      ...QUICK_FIX_EDITOR_OPTIONS,
+      // Monaco's hover never shows: Studio draws its own hover card (#1020).
+      ...HOVER_EDITOR_OPTIONS,
+      // No swatch click, inline suggestion, paste or drop opens Monaco's UI (#1024).
+      ...WIDGET_GUARD_EDITOR_OPTIONS,
+      // No toolbar or revert arrows in the gutter between the sides (#1024).
+      ...DIFF_GUARD_EDITOR_OPTIONS,
     };
   }
 
@@ -439,13 +540,199 @@ export class Monaco {
   private async load(): Promise<void> {
     window.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
     await this.loadScript();
+    // First, before anything registers a provider: Go to Symbol asks the recorded providers for a
+    // document no language server serves (#1009), and the right-click menu asks what each language
+    // can do — go to a definition, comment a line (#1012).
+    if (window.monaco !== undefined) {
+      captureDocumentSymbolProviders(window.monaco);
+      captureEditorCapabilities(window.monaco);
+    }
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerBraceFolding(window.monaco);
+    this.installFindCommands(window.monaco);
+    this.installGoToCommands(window.monaco);
+    this.installNavigationCommands(window.monaco);
+    this.installRenameCommands(window.monaco);
+    this.installQuickFixCommands(window.monaco);
+    this.installHoverCommands(window.monaco);
+    this.installSuggestCommands(window.monaco);
+    this.installWidgetGuard(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
     this.log.info('Monaco', 'Monaco editor initialized');
+  }
+
+  /**
+   * Removes Monaco's find-widget chords from an instance and binds Studio's find commands in their
+   * place, so ⌘F / ⌘⌥F (Ctrl+F / Ctrl+H) in any of its editors reach the {@link FindRouter} and
+   * Monaco's own find widget can never open (#1007).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installFindCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installFindCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: FindMode): void => {
+        this.log.info('Monaco', 'Studio find command', mode);
+        this.findRouter.openFromEditor(editor, mode);
+      },
+    );
+  }
+
+  /**
+   * Removes Monaco's go-to chords from an instance and binds Studio's Go to Symbol and Go to Line in
+   * their place, so ⌘⇧O / ⌃G (Ctrl+Shift+O / Ctrl+G) in any of its editors reach the
+   * {@link GoToRouter} and Monaco's quick-input box never opens (#1009).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installGoToCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installGoToCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: GoToMode): void => {
+        this.log.info('Monaco', 'Studio go-to command', mode);
+        this.goToRouter.open(editor, mode);
+      },
+    );
+  }
+
+  /**
+   * Removes Monaco's definition and references chords from an instance and binds Studio's Go to
+   * Definition and Find All References in their place, and takes over ⌘-click (Ctrl-click) in its
+   * editors, so F12, ⇧F12 and a ⌘-click reach the {@link EditorNavigation} and Monaco's peek never
+   * opens (#1014).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installNavigationCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installNavigationCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void => {
+        this.log.info('Monaco', 'Studio navigation command', mode);
+        const navigation: EditorNavigation = this.injector.get(EditorNavigation);
+        void (mode === 'definition'
+          ? navigation.goToDefinition(editor)
+          : navigation.findReferences(editor));
+      },
+    );
+  }
+
+  /**
+   * Removes Monaco's Rename Symbol chord from an instance and binds Studio's Rename Symbol in its
+   * place, and routes every other way into Monaco's rename to Studio's, so F2 reaches the
+   * {@link RenameSymbol} and Monaco's rename box never opens (#1015).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installRenameCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installRenameCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+      this.log.info('Monaco', 'Studio rename command');
+      void this.injector.get(RenameSymbol).rename(editor);
+    });
+  }
+
+  /**
+   * Removes the chords of Monaco's code-action commands from an instance and binds Studio's Quick Fix
+   * in their place, turns Monaco's lightbulb off, and routes every other way into Monaco's code-action
+   * widget to Studio's, so ⌘. (Ctrl+.) reaches the {@link QuickFixes} and Monaco's widget never opens
+   * (#1016).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installQuickFixCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installQuickFixCommands(monaco, (editor: MonacoApi.editor.ICodeEditor): void => {
+      this.log.info('Monaco', 'Studio quick-fix command');
+      void this.injector.get(QuickFixes).open(editor);
+    });
+  }
+
+  /**
+   * Removes Monaco's Show Hover and problem navigation chords from an instance and binds Studio's in
+   * their place, and routes every other way into Monaco's hover, gutter hover and problem peek to
+   * Studio's, so ⌘K ⌘I (Ctrl+K Ctrl+I) and F8 / ⇧F8 reach the {@link HoverCards} and none of Monaco's
+   * hover widgets is ever built (#1020).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installHoverCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installHoverCommands(monaco, {
+      showHover: (editor: MonacoApi.editor.ICodeEditor, position?: MonacoApi.IPosition): void => {
+        this.log.info('Monaco', 'Studio show-hover command');
+        this.injector.get(HoverCards).showAt(editor, position);
+      },
+      goToProblem: (editor: MonacoApi.editor.ICodeEditor, direction: ProblemDirection): void => {
+        this.log.info('Monaco', 'Studio problem navigation', direction);
+        this.injector.get(HoverCards).goToProblem(editor, direction);
+      },
+      showProblem: (editor: MonacoApi.editor.ICodeEditor, problem: MonacoApi.IRange): void =>
+        this.injector.get(HoverCards).showProblem(editor, problem),
+    });
+  }
+
+  /**
+   * Removes Monaco's Trigger Suggest and Trigger Parameter Hints chords from an instance and binds
+   * Studio's in their place, binds the completion list's and signature card's keys, and puts Studio's
+   * stand-ins in place of Monaco's suggest and parameter-hints widgets in every editor, so ⌃Space,
+   * typing and the language's trigger characters show the `Autocomplete` service's list and card and
+   * neither of Monaco's widgets is ever built (#1021).
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installSuggestCommands(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installSuggestCommands(
+      monaco,
+      this.studio.platform === 'darwin',
+      (): SuggestPresenter => this.assist ?? IDLE_SUGGEST_PRESENTER,
+      (): ParameterHintsPresenter => this.assist ?? IDLE_PARAMETER_HINTS_PRESENTER,
+      (model: MonacoApi.editor.ITextModel): boolean => this.isWordSuggestionSuppressed(model),
+    );
+  }
+
+  /**
+   * Removes the chords of Monaco's remaining widget commands from an instance, binds Studio's
+   * right-click menu to ⇧F10 (Shift+F10) in place of Monaco's, and closes the routes into Monaco's UI
+   * that no chord takes, so no chord, click, paste or drop in any of its editors opens Monaco-drawn UI
+   * (#1024). An attempt to edit a read-only editor raises Studio's notice, and a document with unusual
+   * line terminators asks through Studio's dialog.
+   * @param monaco The Monaco instance to prepare.
+   */
+  private installWidgetGuard(monaco: typeof MonacoApi | undefined): void {
+    if (monaco === undefined) {
+      return;
+    }
+    installWidgetGuard(monaco, {
+      showContextMenu: (editor: MonacoApi.editor.ICodeEditor): void => {
+        this.log.info('Monaco', 'Studio show-context-menu command');
+        this.injector.get(EditorContextMenu).openAtCaretFromKeyboard(editor);
+      },
+      readOnlyEdit: (): void => this.injector.get(ReadOnlyNotice).show(),
+      confirmUnusualLineTerminators: (
+        _editor: MonacoApi.editor.ICodeEditor,
+        document: string,
+      ): Promise<boolean> => {
+        this.log.info('Monaco', 'Unusual line terminators found', document);
+        return this.injector.get(LineTerminatorsConfirmation).ask({ document });
+      },
+    });
   }
 
   /**
@@ -495,10 +782,20 @@ export class Monaco {
     const monaco: typeof MonacoApi = await this.loadInto(target);
     target.monaco = monaco;
     try {
+      captureDocumentSymbolProviders(monaco);
+      captureEditorCapabilities(monaco);
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerBraceFolding(monaco);
+      this.installFindCommands(monaco);
+      this.installGoToCommands(monaco);
+      this.installNavigationCommands(monaco);
+      this.installRenameCommands(monaco);
+      this.installQuickFixCommands(monaco);
+      this.installHoverCommands(monaco);
+      this.installSuggestCommands(monaco);
+      this.installWidgetGuard(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
       this.log.error(
@@ -565,6 +862,46 @@ export class Monaco {
     return (): void => {
       this.heuristicTokenSuppressors.delete(predicate);
     };
+  }
+
+  /**
+   * Takes what draws the completion list and the signature card in every editor (#1021): the
+   * `Autocomplete` service hands itself over as it is made.
+   * @param assist The presenter of both.
+   */
+  public useAssist(assist: SuggestPresenter & ParameterHintsPresenter): void {
+    this.assist = assist;
+  }
+
+  /**
+   * Registers a predicate that leaves Monaco's word-based suggestions out of the completion list for
+   * the documents it owns (#1021): a language server registers one, so the words of the document never
+   * stand in for the server's own silence. Predicates accumulate, as {@link suppressHeuristicTokensWhen}
+   * does.
+   * @param predicate Returns true for a model the caller serves completions for.
+   * @returns Returns a function that removes the predicate.
+   */
+  public suppressWordSuggestionsWhen(
+    predicate: (model: MonacoApi.editor.ITextModel) => boolean,
+  ): () => void {
+    this.wordSuggestionSuppressors.add(predicate);
+    return (): void => {
+      this.wordSuggestionSuppressors.delete(predicate);
+    };
+  }
+
+  /**
+   * Gets whether Monaco's word-based suggestions are left out for a model.
+   * @param model The model.
+   * @returns Returns true when any registered predicate claims the model.
+   */
+  private isWordSuggestionSuppressed(model: MonacoApi.editor.ITextModel): boolean {
+    for (const predicate of this.wordSuggestionSuppressors) {
+      if (predicate(model)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

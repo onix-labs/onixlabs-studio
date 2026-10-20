@@ -21,6 +21,27 @@ describe('PromptProfiles', () => {
     expect(fresh.profiles()[0].name).toBe('House style');
   });
 
+  it('followsProfilesEditedInAnotherWindow', () => {
+    // #955: the AI Manager is usually in another window; the agent here must send the edit next turn.
+    localStorage.setItem(
+      'ai.promptProfiles',
+      JSON.stringify([
+        {
+          id: 'p1',
+          name: 'Fox',
+          scope: { surfaces: [], languages: [] },
+          instructions: 'End with 🦊',
+        },
+      ]),
+    );
+    globalThis.dispatchEvent(new StorageEvent('storage', { key: 'ai.promptProfiles' }));
+
+    expect(profiles.profiles().map((profile: PromptProfile): string => profile.name)).toEqual([
+      'Fox',
+    ]);
+    expect(profiles.resolve('editor', null)).toContain('End with 🦊');
+  });
+
   it('update_whenCalled_changesTheNamedFields', () => {
     const created: PromptProfile = profiles.create('One');
 

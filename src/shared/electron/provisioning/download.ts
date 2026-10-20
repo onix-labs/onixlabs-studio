@@ -28,13 +28,45 @@ const execFileAsync: (
 export type ArchiveKind = 'tar.gz' | 'zip' | 'gz';
 
 /**
+ * Holds the most redirects one download follows before giving up.
+ */
+const MAX_REDIRECTS: number = 10;
+
+/**
+ * Fetches a URL, following redirects by hand so each hop can be inspected: a redirect may go from
+ * one https host to another (GitHub release assets are served from objects.githubusercontent.com),
+ * but never to plain http, where the payload could be swapped in transit. The digest check would
+ * still catch a swapped payload; refusing the downgrade means the request is never made at all.
+ * @param url The URL to fetch.
+ * @returns Returns the final, non-redirect response.
+ */
+async function fetchFollowingSecureRedirects(url: string): Promise<Response> {
+  let current: string = url;
+  for (let hop: number = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response: Response = await fetch(current, { redirect: 'manual' });
+    const location: string | null = response.headers.get('location');
+    if (response.status < 300 || response.status >= 400 || location === null) {
+      return response;
+    }
+    const next: URL = new URL(location, current);
+    if (next.protocol !== 'https:') {
+      throw new Error(
+        `Download refused: ${current} redirected to a non-https URL (${next.origin})`,
+      );
+    }
+    current = next.href;
+  }
+  throw new Error(`Download failed: more than ${MAX_REDIRECTS} redirects from ${url}`);
+}
+
+/**
  * Downloads a URL to a file.
  * @param url The URL to download.
  * @param destination The file to write.
  * @returns Returns a promise that resolves once the download completes.
  */
 export async function downloadTo(url: string, destination: string): Promise<void> {
-  const response: Response = await fetch(url);
+  const response: Response = await fetchFollowingSecureRedirects(url);
   if (!response.ok || response.body === null) {
     throw new Error(`Download failed: ${response.status}`);
   }
@@ -115,4 +147,54 @@ export async function extractArchive(
   }
   // `unzip` wants the members before the destination flag, unlike tar's trailing operands.
   await execFileAsync('unzip', ['-q', '-o', archive, ...members, '-d', destination]);
+  // Info-ZIP already drops `../` and leading `/` from entry names, but it restores symlinks verbatim,
+  // and a link pointing out of the destination would hand whatever later follows it — the install
+  // itself, or the server it launches — a path outside the install. It creates links only after every
+  // file is written, so nothing was written through one during extraction; checking afterwards is
+  // enough.
+  await refuseEscapingSymlinks(destination);
+}
+
+/**
+ * Walks an extracted tree and refuses it if any symlink in it points outside the tree. Each link is
+ * resolved lexically against its own directory, so a chain of links stays inside as long as every
+ * link in it does, and a dangling link is judged by where it would point. The offending links are
+ * removed before throwing, so a failed extraction does not leave them for a later caller to follow.
+ * @param destination The directory the archive was extracted into.
+ * @returns Returns a promise that resolves when every link stays inside, or rejects naming the first
+ * that does not.
+ */
+export async function refuseEscapingSymlinks(destination: string): Promise<void> {
+  const root: string = await fs.realpath(destination);
+  const escaping: string[] = [];
+  // ⛔ Walked by hand, never descending into a link: `readdir(…, { recursive: true })` follows a
+  // symlinked directory on Linux, so it would read wherever an escaping link points before the link
+  // was ever judged.
+  const pending: string[] = [''];
+  while (pending.length > 0) {
+    const directory: string = pending.pop() ?? '';
+    for (const dirent of await fs.readdir(path.join(root, directory), { withFileTypes: true })) {
+      const entry: string = path.join(directory, dirent.name);
+      if (dirent.isDirectory()) {
+        pending.push(entry);
+        continue;
+      }
+      if (!dirent.isSymbolicLink()) {
+        continue;
+      }
+      const link: string = path.join(root, entry);
+      const target: string = path.resolve(path.dirname(link), await fs.readlink(link));
+      const relative: string = path.relative(root, target);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        escaping.push(entry);
+      }
+    }
+  }
+  if (escaping.length === 0) {
+    return;
+  }
+  for (const entry of escaping) {
+    await fs.rm(path.join(root, entry), { force: true });
+  }
+  throw new Error(`Archive refused: the symlink ${escaping[0]} points outside the destination`);
 }

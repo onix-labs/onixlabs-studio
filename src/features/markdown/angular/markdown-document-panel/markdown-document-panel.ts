@@ -16,6 +16,7 @@ import {
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
 import {
@@ -139,6 +140,14 @@ export class MarkdownDocumentPanel {
    * document's lifecycle in the well, so this is false: a destroy is a re-parent, not a close.
    */
   public readonly removeOnDestroy: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the switch to this file's diff, shown on the strip, or undefined where there is none (a file
+   * outside a workspace's well).
+   */
+  public readonly documentSwitch: InputSignal<DockPanelSwitch | undefined> = input<
+    DockPanelSwitch | undefined
+  >(undefined);
 
   /**
    * Gets the backing document, or undefined before it is registered.

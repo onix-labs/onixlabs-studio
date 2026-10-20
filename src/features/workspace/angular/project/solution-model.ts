@@ -103,6 +103,36 @@ export interface SolutionRow {
    * Holds the absolute path the row opens (a project or file), or null when it opens nothing.
    */
   readonly path: string | null;
+
+  /**
+   * Holds the paths whose source-control state colours the row, in order of precedence (#860).
+   *
+   * Usually just {@link path}, but the rows that stand for more than one file differ from what they
+   * open: a project opens its project file yet stands for its whole directory, the root stands for the
+   * workspace root, and a solution folder — no directory of its own — stands for the projects beneath
+   * it. Empty when the row stands for nothing on disk.
+   */
+  readonly scmPaths: readonly string[];
+}
+
+/**
+ * The project a file belongs to, as {@link SolutionModel.owningProject} finds it.
+ */
+export interface OwningProject {
+  /**
+   * Gets the project's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the absolute path of the project file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the absolute path of the directory the project file sits in, which holds its files.
+   */
+  readonly directory: string;
 }
 
 /**
@@ -298,7 +328,9 @@ export class SolutionModel {
     // its own — each would only repeat the repository's name.
     const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, pending, null),
+      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, pending, null, [
+        model.root,
+      ]),
     ];
     const hoisted: string | null = this.hoistedProjectPath(model);
     if (expanded) {
@@ -412,7 +444,7 @@ export class SolutionModel {
     if (chain === null) {
       // The file may belong to a project whose contents have not arrived yet: request them ahead of
       // the background sweep so a later reveal (the next activation, the next document switch) lands.
-      this.warmOwningProject(model, path);
+      this.warmOwningProject(path);
       return false;
     }
     this.expandedKeys.update((current: ReadonlySet<string>): ReadonlySet<string> => {
@@ -496,24 +528,44 @@ export class SolutionModel {
   }
 
   /**
-   * Requests the contents of the project a file lies within (by deepest directory prefix) when they
-   * are not loaded yet, so features that need the file's tree position can find it shortly.
-   * @param model The model to search.
+   * Finds the project a file lies within: the one whose directory is the file's deepest prefix, so a
+   * project nested inside another's directory owns its own files (#1007, the Search panel's Current
+   * Project scope).
    * @param path The absolute file path.
+   * @returns Returns the owning project, or null when there is no model or no project holds the file.
    */
-  private warmOwningProject(model: ProjectModel, path: string): void {
+  public owningProject(path: string): OwningProject | null {
+    const model: ProjectModel | null = this.current();
+    if (model === null) {
+      return null;
+    }
     const normalized: string = path.replaceAll('\\', '/');
-    let owner: string | null = null;
+    let owner: OwningProject | null = null;
     let ownerDirectory: string = '';
     for (const project of model.projects) {
       const directory: string = project.path.replaceAll('\\', '/').replace(/\/[^/]*$/, '');
       if (normalized.startsWith(`${directory}/`) && directory.length > ownerDirectory.length) {
-        owner = project.path;
+        // Keep the project's own separators for the directory: it is handed back to the platform.
+        owner = {
+          name: project.name,
+          path: project.path,
+          directory: project.path.replace(/[\\/][^\\/]*$/, ''),
+        };
         ownerDirectory = directory;
       }
     }
+    return owner;
+  }
+
+  /**
+   * Requests the contents of the project a file lies within (by deepest directory prefix) when they
+   * are not loaded yet, so features that need the file's tree position can find it shortly.
+   * @param path The absolute file path.
+   */
+  private warmOwningProject(path: string): void {
+    const owner: OwningProject | null = this.owningProject(path);
     if (owner !== null) {
-      this.requestItems(owner);
+      this.requestItems(owner.path);
     }
   }
 
@@ -978,7 +1030,18 @@ export class SolutionModel {
         const loading: boolean = this.nodesLoading(node.children);
         const pending: boolean = this.nodesPending(node.children);
         rows.push(
-          this.row(key, depth, node.name, 'folder', true, expanded, loading, pending, null),
+          this.row(
+            key,
+            depth,
+            node.name,
+            'folder',
+            true,
+            expanded,
+            loading,
+            pending,
+            null,
+            this.projectDirectories(node.children),
+          ),
         );
         if (expanded) {
           this.appendNodes(node.children, depth + 1, key, rows);
@@ -991,7 +1054,10 @@ export class SolutionModel {
         // A project is always expandable: expanding one whose contents have not arrived requests
         // them ahead of the background sweep, and its children appear when they do.
         rows.push(
-          this.row(key, depth, node.name, 'project', true, expanded, loading, pending, node.path),
+          this.row(key, depth, node.name, 'project', true, expanded, loading, pending, node.path, [
+            node.path,
+            this.directoryOf(node.path),
+          ]),
         );
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {
@@ -1121,7 +1187,18 @@ export class SolutionModel {
           const loading: boolean = this.nodesLoading(node.children);
           const pending: boolean = this.nodesPending(node.children);
           rows.push(
-            this.row(key, depth, node.name, 'folder', true, childMatched, loading, pending, null),
+            this.row(
+              key,
+              depth,
+              node.name,
+              'folder',
+              true,
+              childMatched,
+              loading,
+              pending,
+              null,
+              this.projectDirectories(node.children),
+            ),
           );
           rows.push(...childRows);
           matched = true;
@@ -1147,6 +1224,7 @@ export class SolutionModel {
               loading,
               pending,
               node.path,
+              [node.path, this.directoryOf(node.path)],
             ),
           );
           rows.push(...childRows);
@@ -1286,6 +1364,7 @@ export class SolutionModel {
    * @param expanded Whether the row is expanded.
    * @param loading Whether the row shows a spinner.
    * @param path The path the row opens, or null.
+   * @param scmPaths The paths whose source-control state colours the row; the opened path by default.
    * @returns Returns the row.
    */
   private row(
@@ -1298,7 +1377,32 @@ export class SolutionModel {
     loading: boolean,
     pending: boolean,
     path: string | null,
+    scmPaths: readonly string[] = path !== null ? [path] : [],
   ): SolutionRow {
-    return { key, depth, label, kind, expandable, expanded, loading, pending, path };
+    return { key, depth, label, kind, expandable, expanded, loading, pending, path, scmPaths };
+  }
+
+  /**
+   * Gets the directories of every project beneath a run of solution nodes — what a solution folder,
+   * which has no directory of its own, stands for on disk.
+   * @param nodes The nodes to scan.
+   * @returns Returns the project directories, in tree order.
+   */
+  private projectDirectories(nodes: readonly ProjectNode[]): readonly string[] {
+    return nodes.flatMap((node: ProjectNode): readonly string[] =>
+      node.type === 'project'
+        ? [this.directoryOf(node.path)]
+        : this.projectDirectories(node.children),
+    );
+  }
+
+  /**
+   * Gets the directory a file lies in.
+   * @param path The absolute file path, in either slash form.
+   * @returns Returns the directory, or the path unchanged when it has no separator.
+   */
+  private directoryOf(path: string): string {
+    const slash: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return slash > 0 ? path.slice(0, slash) : path;
   }
 }

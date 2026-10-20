@@ -110,9 +110,33 @@ describe('VersionControlProvider', () => {
 
     expect(status.branch).toBe('main');
     expect(status.staged[0].target).toEqual({ kind: 'working', staged: true });
-    expect(status.unstaged[0]).toMatchObject({ untracked: true, language: '', original: '' });
+    expect(status.unstaged[0]).toMatchObject({ untracked: true, original: '' });
     expect(status.unstaged[0].target).toEqual({ kind: 'working', staged: false });
     expect(status.conflicted[0].target).toEqual({ kind: 'working', staged: false });
+  });
+
+  it('getStatus_namesEachChangesLanguageFromItsFileName', async () => {
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({
+        status: {
+          branch: 'main',
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          staged: [{ path: 'src/app.ts', status: 'modified', additions: 0, deletions: 0 }],
+          unstaged: [{ path: 'docker/Dockerfile', status: 'modified', additions: 0, deletions: 0 }],
+          conflicted: [{ path: 'notes.unknown', status: 'conflicted', additions: 0, deletions: 0 }],
+        },
+      }),
+    );
+
+    const status: ParsedStatus = await provider.getStatus();
+
+    // A diff is highlighted in this language; empty would leave Monaco guessing, which is plaintext.
+    expect(status.staged[0].language).toBe('typescript');
+    expect(status.unstaged[0].language).toBe('dockerfile');
+    expect(status.conflicted[0].language).toBe('plaintext');
   });
 
   it('reads_whenTheyFail_areEmptyRatherThanErrors', async () => {
@@ -162,6 +186,34 @@ describe('VersionControlProvider', () => {
     } as unknown as GitCommit);
 
     expect(files[0].target).toEqual({ kind: 'commit', hash: 'c1', parent: 'p1' });
+  });
+
+  it('getFileDiff_saysWhyASideWasRefused_andLeavesOtherFailuresEmpty', async () => {
+    // #980: a file too large to show reads as the plugin's reason, not as an empty side.
+    const answering: (refused: boolean) => SourceControlClient = (
+      refused: boolean,
+    ): SourceControlClient => ({
+      ...client({}),
+      request: <Op extends VersionControlOp>(): Promise<VersionControlResponse<Op>> =>
+        Promise.resolve({
+          id: 0,
+          ok: false,
+          error: 'a.ts is too large to show (over 8 MB)',
+          ...(refused ? { code: 'refused' as const } : {}),
+        }),
+    });
+
+    const refused: FileDiff = await new VersionControlProvider(
+      '/repo',
+      answering(true),
+    ).getFileDiff(workingChange({}));
+    const failed: FileDiff = await new VersionControlProvider(
+      '/repo',
+      answering(false),
+    ).getFileDiff(workingChange({}));
+
+    expect(refused.modified).toBe('a.ts is too large to show (over 8 MB)');
+    expect(failed).toEqual({ original: '', modified: '' });
   });
 
   it('getFileDiff_readsEachSideFromTheRightVersion', async () => {

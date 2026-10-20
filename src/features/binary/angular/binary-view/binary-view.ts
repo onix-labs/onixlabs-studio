@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  forwardRef,
   inject,
   input,
   InputSignal,
@@ -24,6 +25,11 @@ import {
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
 import { Log } from '@shared/angular/services/log/log';
+import type * as MonacoApi from 'monaco-editor';
+import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
+import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
+import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import {
@@ -79,7 +85,15 @@ interface DisasmWindow {
  */
 @Component({
   selector: 'app-binary-view',
-  imports: [PanelLayout, Panel, BinaryEditor, BinaryDisasmPanel, BinaryInspector, BinaryAgentPanel],
+  imports: [
+    PanelLayout,
+    Panel,
+    BinaryEditor,
+    BinaryDisasmPanel,
+    BinaryInspector,
+    BinaryAgentPanel,
+    EditorSearchPanel,
+  ],
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
   // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
   // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
@@ -89,12 +103,14 @@ interface DisasmWindow {
     { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
     // One per binary tab: the status strip reads this view's own context through its injector.
     BinaryStatus,
+    // The tab answers ⌘F in its disassembly with its own Find panel (#1007).
+    { provide: FIND_HOST, useExisting: forwardRef((): unknown => BinaryView) },
   ],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BinaryView implements OnInit, OnDestroy {
+export class BinaryView implements OnInit, OnDestroy, FindHost {
   /**
    * Holds the binary document registry the view resolves its document from.
    */
@@ -114,6 +130,15 @@ export class BinaryView implements OnInit, OnDestroy {
    * Holds the structured logger for the binary view.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds this tab's Find, over the disassembly listing ⌘F was pressed in. The listing is read-only,
+   * so it finds without replacing; it has no main editor of its own to search.
+   */
+  protected readonly editorSearch: EditorSearch = new EditorSearch({
+    mainEditor: (): MonacoApi.editor.ICodeEditor | null => null,
+    labelOf: (): string => 'Disassembly',
+  });
 
   /**
    * Holds the byte window currently decoded into the disassembly listing, or null before the first
@@ -277,6 +302,23 @@ export class BinaryView implements OnInit, OnDestroy {
    */
   protected onHideInspector(): void {
     this.binaryPanels.hide(this.tabId(), 'inspector');
+  }
+
+  /**
+   * Opens this tab's Find panel as a request asks, over the disassembly it came from (#1007).
+   * @param request The find to open.
+   * @param editor The disassembly editor ⌘F was pressed in, or null when the request names none.
+   */
+  public openFind(request: FindRequest, editor: MonacoApi.editor.ICodeEditor | null): void {
+    this.log.debug('binary.view', 'Open find panel', this.tabId(), request.mode);
+    this.editorSearch.open(request, editor);
+  }
+
+  /**
+   * Hides the Find panel when it asks to close.
+   */
+  protected onFindClosed(): void {
+    this.editorSearch.close();
   }
 
   /**

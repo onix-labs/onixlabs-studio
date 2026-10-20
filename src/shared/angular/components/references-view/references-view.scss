@@ -1,0 +1,36 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.references-view__strip {
+  flex: 0 0 auto;
+}
+
+// The heading takes the room the buttons leave, and gives way with an ellipsis in a narrow panel.
+.references-view__heading {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-inline: 0.5rem;
+  color: var(--dock-tab-foreground-color);
+  font-size: 0.8rem;
+}
+
+// The symbol searched for, set as code, as it is in the editor.
+.references-view__symbol {
+  font-family: var(--code-font-family, monospace);
+  font-size: 0.85rem;
+}
+
+// The results: the shared tree fills what the strip leaves, and scrolls itself.
+.references-view__results {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+}

@@ -193,6 +193,61 @@ describe('AgentConversation', () => {
     expect(saves).toHaveLength(2);
   });
 
+  it('autosave_whenTheConversationIsLarge_backsOffInProportion', () => {
+    // A megabyte is four times the back-off size: the 700ms debounce becomes 2.8s.
+    vi.useFakeTimers();
+    build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'x'.repeat(1024 * 1024) }]);
+    TestBed.tick();
+    vi.advanceTimersByTime(2700);
+
+    expect(saves).toHaveLength(0);
+
+    vi.advanceTimersByTime(200);
+
+    expect(saves).toHaveLength(1);
+  });
+
+  it('autosave_whenALargeConversationNeverPauses_savesWithinTheCeiling', () => {
+    // An image-heavy conversation far past the back-off size still saves at least every thirty
+    // seconds while a run streams, so a crash loses a bounded window.
+    vi.useFakeTimers();
+    build();
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'user',
+        text: 'look',
+        images: [{ mediaType: 'image/png', data: 'A'.repeat(20 * 1024 * 1024) }],
+      },
+    ]);
+    TestBed.tick();
+    for (let tick: number = 0; tick < 70; tick += 1) {
+      stream(`delta ${tick}`);
+      vi.advanceTimersByTime(400);
+    }
+
+    // Twenty-eight seconds of deltas: not yet. Two more seconds reach the thirty-second ceiling.
+    expect(saves).toHaveLength(0);
+    for (let tick: number = 0; tick < 5; tick += 1) {
+      stream(`late ${tick}`);
+      vi.advanceTimersByTime(400);
+    }
+    expect(saves).toHaveLength(1);
+  });
+
+  it('pendingSave_whenALargeConversationIsWaiting_savesItNow', async () => {
+    vi.useFakeTimers();
+    build();
+    items.set([{ id: 'item-1', kind: 'user', text: 'x'.repeat(4 * 1024 * 1024) }]);
+    TestBed.tick();
+
+    // Quitting does not wait out the longer back-off.
+    await Promise.all(pendingSaves.map((save: () => Promise<void>): Promise<void> => save()));
+
+    expect(saves).toHaveLength(1);
+  });
+
   it('autosave_putsTheSavedSummaryFirst_withoutListingEveryConversationAgain', async () => {
     vi.useFakeTimers();
     const conversation: AgentConversation = build();

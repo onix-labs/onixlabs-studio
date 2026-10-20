@@ -64,7 +64,8 @@
               "cytoscape-fcose",
               "cytoscape-cose-bilkent",
               "extend",
-              "@braintree/sanitize-url"
+              "@braintree/sanitize-url",
+              "elkjs/lib/elk.bundled.js"
             ]
           },
           "configurations": {
@@ -121,6 +122,7 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "include": ["**/*.spec.ts", "../plugins/*/src/**/*.spec.ts"],
+            "runnerConfig": "vitest.config.mjs",
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {

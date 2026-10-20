@@ -26,18 +26,11 @@
     (click)="nextChange()"
   />
 
-  <span class="diff-panel__divider" aria-hidden="true"></span>
-  <!-- The change's own commands (#882): the file itself, to edit; and, for a working-tree change,
-       staging it or discarding it. A commit's change is history, so it has neither. -->
-  <app-button
-    variant="none"
-    [icon]="Icon.OPEN_FILE"
-    ariaLabel="Open File"
-    tooltip="Open File"
-    [disabled]="!canOpenFile()"
-    (click)="openFile()"
-  />
+  <!-- The change's own commands (#882): for a working-tree change, staging it or discarding it (a
+       commit's change is history, so it has neither); then the file itself, set apart, just before
+       the menu. -->
   @if (isWorkingChange()) {
+    <span class="diff-panel__divider" aria-hidden="true"></span>
     <app-button
       variant="none"
       [icon]="isStaged() ? Icon.MINUS_CIRCLE : Icon.PLUS_CIRCLE"
@@ -55,6 +48,28 @@
       (click)="discard()"
     />
   }
+  <span class="diff-panel__divider" aria-hidden="true"></span>
+  @if (fileSwitch(); as change) {
+    <!-- Beside the diff or in its place, as the Workspaces setting says. -->
+    <app-button
+      variant="none"
+      [icon]="change.icon"
+      [ariaLabel]="change.label"
+      [tooltip]="change.unavailable ?? change.label"
+      [disabled]="change.unavailable !== null"
+      (click)="openFile()"
+    />
+  } @else {
+    <app-button
+      variant="none"
+      [icon]="Icon.OPEN_FILE"
+      ariaLabel="Open File"
+      tooltip="Open File"
+      [disabled]="!canOpenFile()"
+      (click)="openFile()"
+    />
+  }
+  <span class="diff-panel__divider" aria-hidden="true"></span>
   <!-- How the file changed is the document's status, so it is a chip on the status strip (#882). -->
   <app-button
     variant="none"
@@ -70,6 +85,7 @@
 @if (file(); as change) {
   <app-diff-view
     [fileName]="change.path"
+    [filePath]="absolutePath()"
     [original]="change.original"
     [modified]="change.modified"
     [language]="change.language"

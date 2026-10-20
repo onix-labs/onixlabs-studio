@@ -27,6 +27,18 @@
       <app-ribbon-strip-button-small [icon]="Icon.REDO" label="Redo" (action)="onRedo()" />
       <app-ribbon-strip-button-small [icon]="Icon.SEARCH" label="Find" (action)="onFind()" />
     </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.GO_TO_SYMBOL"
+        label="Go to Symbol"
+        (action)="onGoToSymbol()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.GO_TO_LINE"
+        label="Go to Line"
+        (action)="onGoToLine()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Language">

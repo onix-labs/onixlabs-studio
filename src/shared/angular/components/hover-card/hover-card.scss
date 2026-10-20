@@ -1,0 +1,124 @@
+// Studio's hover card (#1020): a floating panel over the editor, on the popup-menu surface so it reads
+// as one of the menus and dropdowns it opens among. Its body scrolls when the documentation is long;
+// the actions row stays at the foot. A static shadow gives it depth over the text — a resting panel,
+// not a hover effect on a control.
+:host {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 12rem;
+  max-inline-size: min(36rem, calc(100vw - 1rem));
+  max-block-size: min(22rem, calc(100vh - 1rem));
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--menu-foreground-color);
+  background: var(--menu-background-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+.hover-card__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: 0.5rem 0.75rem;
+  overflow: auto;
+  // A long identifier or path wraps rather than widening the card past its cap; code keeps its lines.
+  overflow-wrap: anywhere;
+}
+
+// Each section (and the problems after them) is set off from the one before by a hairline.
+.hover-card__section + .hover-card__section,
+.hover-card__section + .hover-card__problems {
+  margin-block-start: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 0.0625rem solid var(--menu-border-color);
+}
+
+// The markdown arrives as [innerHTML], whose children carry no encapsulation attribute.
+.hover-card__section ::ng-deep {
+  p,
+  ul,
+  ol {
+    margin: 0 0 0.4rem;
+  }
+
+  .markdown-renderer__prose:last-child > :last-child {
+    margin-block-end: 0;
+  }
+
+  ul,
+  ol {
+    padding-inline-start: 1.2rem;
+  }
+
+  code {
+    font-family: var(--monospace-font-family, monospace);
+    font-size: 0.9em;
+  }
+
+  a {
+    color: var(--accent-color);
+  }
+
+  .code-block {
+    margin-block: 0 0.4rem;
+  }
+
+  .code-block:last-child {
+    margin-block-end: 0;
+  }
+}
+
+.hover-card__problems {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hover-card__problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.hover-card__severity {
+  flex: none;
+  margin-block-start: 0.15rem;
+}
+
+.hover-card__problem-text {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.hover-card__message {
+  white-space: pre-wrap;
+}
+
+.hover-card__detail {
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.hover-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block-start: 0.2rem;
+  margin-inline-start: -0.4rem;
+}
+
+// The actions row: Go to Definition and Find All References, at the card's foot.
+.hover-card__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-block-start: 0.0625rem solid var(--menu-border-color);
+}

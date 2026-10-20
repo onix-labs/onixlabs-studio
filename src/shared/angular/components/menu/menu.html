@@ -54,6 +54,9 @@
             @if (item.status; as status) {
               <span class="app-menu-panel__item-status">{{ status }}</span>
             }
+            @if (item.shortcut; as shortcut) {
+              <span class="app-menu-panel__item-shortcut" aria-hidden="true">{{ shortcut }}</span>
+            }
             @if (children) {
               <app-icon class="app-menu-panel__item-caret" [icon]="Icon.CARET_RIGHT" />
             }

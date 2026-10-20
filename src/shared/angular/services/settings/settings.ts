@@ -147,6 +147,20 @@ export type WorkspaceTexture =
 export type FileExplorerExpandAll = 'loaded-only' | 'entire-tree';
 
 /**
+ * Identifies how a document well's switch between a file and its diff behaves: `tab` opens (or
+ * activates) the other view as its own tab beside the current one; `swap` replaces the current tab
+ * with it.
+ */
+export type DocumentDiffSwitch = 'tab' | 'swap';
+
+/**
+ * Identifies how an editor's Go to Symbol and Go to Line ask where to go (#1009): `quick-open`, a light
+ * box near the top of the editor's window that filters as you type; `dialogs`, a dialog window for
+ * each.
+ */
+export type GoToStyle = 'quick-open' | 'dialogs';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -382,6 +396,11 @@ export interface WorkspacesSettings {
    * Gets how the File Explorer's "Expand All" behaves.
    */
   readonly fileExplorerExpandAll: FileExplorerExpandAll;
+
+  /**
+   * Gets how a document well's switch between a file and its diff behaves.
+   */
+  readonly documentDiffSwitch: DocumentDiffSwitch;
 }
 
 /**
@@ -560,6 +579,12 @@ export class Settings {
   );
 
   /**
+   * Gets how Go to Symbol and Go to Line ask where to go (#1009). An editor-wide choice rather than a
+   * per-language profile setting, so it is exposed directly rather than via {@link globalTextEditor}.
+   */
+  public readonly textEditorGoToStyle: Signal<GoToStyle> = this.value('textEditor.goToStyle');
+
+  /**
    * Gets the global text editor settings.
    */
   public readonly globalTextEditor: Signal<TextEditorSettings> = computed(
@@ -608,6 +633,7 @@ export class Settings {
    */
   public readonly workspaces: Signal<WorkspacesSettings> = computed((): WorkspacesSettings => ({
     fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
+    documentDiffSwitch: this.read('workspaces.documentDiffSwitch'),
   }));
 
   /**
@@ -615,6 +641,13 @@ export class Settings {
    */
   public readonly fileExplorerExpandAll: Signal<FileExplorerExpandAll> = this.value(
     'workspaces.fileExplorerExpandAll',
+  );
+
+  /**
+   * Gets how a document well's switch between a file and its diff behaves.
+   */
+  public readonly documentDiffSwitch: Signal<DocumentDiffSwitch> = this.value(
+    'workspaces.documentDiffSwitch',
   );
 
   /**
@@ -971,6 +1004,14 @@ export class Settings {
    */
   public setFileExplorerExpandAll(behavior: FileExplorerExpandAll): void {
     this.set('workspaces.fileExplorerExpandAll', behavior);
+  }
+
+  /**
+   * Sets how a document well's switch between a file and its diff behaves.
+   * @param behavior The switch behavior to apply.
+   */
+  public setDocumentDiffSwitch(behavior: DocumentDiffSwitch): void {
+    this.set('workspaces.documentDiffSwitch', behavior);
   }
 
   /**

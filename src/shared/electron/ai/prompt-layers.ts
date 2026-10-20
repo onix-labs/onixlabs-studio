@@ -10,9 +10,16 @@ import type { AgentRunContext, OfferedSkill } from './agent-provider';
  * The heading that introduces the user's standing system text. Phrased so the model reads what
  * follows as the user's own instruction rather than as more of Studio's, because it is: the two are
  * appended in that order, and a model told which voice it is hearing weighs it correctly.
+ *
+ * The second sentence is there because the text can change mid-conversation (#955). A model handed
+ * new instructions reads them as if they had always applied, sees its earlier replies did not follow
+ * them, and apologises for "missing" them; told they may have changed, it just applies them from here.
+ * It is fixed wording, so it never disturbs a cached prompt prefix.
  */
 const SYSTEM_EXTRA_HEADING: string =
-  'The user has configured standing instructions for this context. Follow them alongside the above:';
+  'The user has configured standing instructions for this context. Follow them alongside the above. ' +
+  'The user may change them during a conversation: follow them as they read now, from your next ' +
+  'reply on, and do not comment on whether earlier replies followed them:';
 
 /**
  * Appends the user's standing system text to Studio's instructions.

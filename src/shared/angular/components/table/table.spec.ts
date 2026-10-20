@@ -20,6 +20,7 @@ import {
       [collapsible]="collapsible()"
       [striped]="striped()"
       [rowSize]="rowSize()"
+      [virtual]="virtual()"
       emptyText="Nothing here."
       (rowClick)="onRow($event)"
       (sortChange)="onSort($event)"
@@ -47,6 +48,7 @@ class TestHost {
   public readonly collapsible: WritableSignal<boolean> = signal<boolean>(false);
   public readonly striped: WritableSignal<boolean> = signal<boolean>(false);
   public readonly rowSize: WritableSignal<TableRowSize> = signal<TableRowSize>('compact');
+  public readonly virtual: WritableSignal<boolean> = signal<boolean>(false);
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
 
@@ -207,5 +209,78 @@ describe('Table', () => {
     fixture.detectChanges();
     host.querySelector<HTMLElement>('.table-group__twisty')!.click();
     expect(component.clicked).toEqual([]);
+  });
+
+  describe('virtual', () => {
+    /**
+     * Gives the host 500 data rows.
+     */
+    function manyRows(): void {
+      component.rows.set(
+        Array.from({ length: 500 }, (_: unknown, index: number): TableRow => ({
+          id: `r${index}`,
+          data: { name: `row ${index}`, value: String(index) },
+        })),
+      );
+    }
+
+    /**
+     * Gets the heights of the spacer rows, top then bottom.
+     * @returns Returns the heights in pixels.
+     */
+    function spacers(): string[] {
+      return Array.from(host.querySelectorAll<HTMLElement>('.table-spacer td')).map(
+        (cell: HTMLElement): string => cell.style.height,
+      );
+    }
+
+    it('rendersEveryRow_whenOff', () => {
+      manyRows();
+      fixture.detectChanges();
+      expect(host.querySelectorAll('.table-row').length).toBe(500);
+      expect(spacers()).toEqual([]);
+    });
+
+    it('rendersOnlyTheFirstWindow_andStandsInForTheRest_beforeTheAreaIsMeasured', () => {
+      // #980 P5: a 5,000-record log rendered every row; a virtual table renders a screenful.
+      manyRows();
+      component.virtual.set(true);
+      fixture.detectChanges();
+
+      // 60 unmeasured rows, a 10-row step and a 20-row overscan, at the estimated 24px a row.
+      expect(host.querySelectorAll('.table-row').length).toBe(90);
+      expect(host.querySelector('.probe-name')?.textContent?.trim()).toBe('row 0');
+      expect(spacers()).toEqual([`${410 * 24}px`]);
+    });
+
+    it('movesTheWindow_withTheScrollPosition', () => {
+      manyRows();
+      component.virtual.set(true);
+      fixture.detectChanges();
+      const scroller: HTMLElement = host.querySelector<HTMLElement>('.table-scroll')!;
+      expect(scroller.classList).toContain('table-scroll--virtual');
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 240 });
+      Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 2400 });
+
+      scroller.dispatchEvent(new Event('scroll'));
+      fixture.detectChanges();
+
+      // Row 100 is at the top: rows 80–139 render (a 20-row overscan above, the 10 visible, a step
+      // and the overscan below), and the rest is spacer.
+      const names: string[] = Array.from(host.querySelectorAll<HTMLElement>('.probe-name')).map(
+        (cell: HTMLElement): string => cell.textContent?.trim() ?? '',
+      );
+      expect(names[0]).toBe('row 80');
+      expect(names.at(-1)).toBe('row 139');
+      expect(spacers()).toEqual([`${80 * 24}px`, `${360 * 24}px`]);
+    });
+
+    it('stillShowsTheEmptyText_withNoRows', () => {
+      component.virtual.set(true);
+      component.rows.set([]);
+      fixture.detectChanges();
+      expect(host.querySelector('.table-empty')?.textContent?.trim()).toBe('Nothing here.');
+      expect(spacers()).toEqual([]);
+    });
   });
 });

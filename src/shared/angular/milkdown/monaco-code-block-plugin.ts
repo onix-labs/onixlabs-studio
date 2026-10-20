@@ -36,6 +36,7 @@ import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/kit/pr
 import type * as MonacoApi from 'monaco-editor';
 import type { Monaco } from '@shared/angular/services/monaco/monaco';
 import type { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
+import { FIND_PASSTHROUGH_CONTEXT_KEY } from '@shared/angular/services/monaco/monaco-find-commands';
 
 /**
  * The services a {@link MonacoCodeBlockView} needs: the Monaco loader/theme service and the shared
@@ -53,6 +54,32 @@ export interface MonacoCodeBlockDeps {
    * Monaco language identifiers.
    */
   readonly highlighter: MonacoHighlighter;
+
+  /**
+   * Gets Studio's completion list and signature card for each fence's editor (#1021), or undefined for
+   * a fence with neither.
+   */
+  readonly assist?: FenceAssist;
+}
+
+/**
+ * Studio's completion list and signature card, as a fence's editor uses them (#1021).
+ */
+export interface FenceAssist {
+  /**
+   * Attaches a fence's editor, so its list and card are drawn in the markdown editor's window.
+   * @param editor The fence's editor.
+   * @returns Returns a function that detaches it.
+   */
+  attach(editor: MonacoApi.editor.ICodeEditor): () => void;
+
+  /**
+   * Determines whether a fence's list or card shows, whose ↑ and ↓ come before the fence's own (which
+   * would otherwise step out of the fence on its first or last line).
+   * @param editor The fence's editor.
+   * @returns Returns true when either shows.
+   */
+  showing(editor: MonacoApi.editor.ICodeEditor): boolean;
 }
 
 /**
@@ -443,8 +470,15 @@ class MonacoCodeBlockView implements NodeView {
       return;
     }
     this.editor = editor;
+    // ⌘F / ⌘⌥F inside a fence must not run Studio's editor find (which would search the fence alone);
+    // passed through, the chord reaches the markdown document and does what it does in the prose
+    // around the fence: the document's own Find panel (#1007).
+    editor.createContextKey<boolean>(FIND_PASSTHROUGH_CONTEXT_KEY, true);
+    // Studio's completion list and signature card, drawn in the markdown editor's window (#1021).
+    const detachAssist: (() => void) | undefined = this.deps.assist?.attach(editor);
 
     this.editorDisposers = [
+      { dispose: (): void => detachAssist?.() },
       model,
       editor,
       editor.onDidChangeModelContent((event: MonacoApi.editor.IModelContentChangedEvent): void =>
@@ -566,15 +600,23 @@ class MonacoCodeBlockView implements NodeView {
     if (monaco === null) {
       return;
     }
+    const assisted: boolean =
+      this.editor !== null && this.deps.assist?.showing(this.editor) === true;
     switch (event.keyCode) {
       case monaco.KeyCode.UpArrow:
-        this.maybeEscape('line', -1, event);
+        // ↑ and ↓ move the completion list's focus (or step the signature card's overloads) while
+        // either shows, rather than stepping out of the fence.
+        if (!assisted) {
+          this.maybeEscape('line', -1, event);
+        }
         break;
       case monaco.KeyCode.LeftArrow:
         this.maybeEscape('char', -1, event);
         break;
       case monaco.KeyCode.DownArrow:
-        this.maybeEscape('line', 1, event);
+        if (!assisted) {
+          this.maybeEscape('line', 1, event);
+        }
         break;
       case monaco.KeyCode.RightArrow:
         this.maybeEscape('char', 1, event);
