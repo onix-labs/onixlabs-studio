@@ -201,6 +201,7 @@ function fakeMonaco(): typeof MonacoApi {
         dispose: (): void => undefined,
       }),
       registerHoverProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
+      registerColorProvider: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       setLanguageConfiguration: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     },
     CancellationTokenSource: class {

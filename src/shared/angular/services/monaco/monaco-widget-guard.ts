@@ -95,6 +95,20 @@ export const STANDALONE_COLOR_PICKER_CONTRIBUTION: string =
 export const STANDALONE_COLOR_PICKER_HOOKS: readonly string[] = ['showOrFocus'];
 
 /**
+ * Names the editor contribution behind Monaco's click route into its colour picker: a click on a
+ * colour swatch opens Monaco's hover with the picker in it, but only while the editor's
+ * `colorDecoratorsActivatedOn` option is `click` or `clickAndHover` — never under the guard's `hover`.
+ */
+export const COLOR_CLICK_CONTRIBUTION: string = 'editor.contrib.colorContribution';
+
+/**
+ * Names the class Monaco gives a colour swatch: the box its colour decorator draws, as text injected
+ * before a colour value, for every language with a document-colour provider. Studio's colour picker
+ * (#1025) answers a click on it.
+ */
+export const COLOUR_SWATCH_CLASS: string = 'colorpicker-color-decoration';
+
+/**
  * Names the editor contribution behind Monaco's find widget. Studio's find panel replaced the widget
  * (#1007), but the multi-cursor chords — ⌘D (Ctrl+D) and the rest — still ask it to flash its options,
  * which builds the find widget and its options strip into the editor.
@@ -157,8 +171,8 @@ export const DIFF_GUARD_EDITOR_OPTIONS: MonacoApi.editor.IDiffEditorOptions = {
  * Holds the editor options that keep Monaco's remaining widgets from opening on their own, without a
  * chord (#1024), in every editor:
  *
- * - a click on a colour swatch opens nothing (the swatch stays a decoration; Studio's own colour
- *   picker, #1025, will take the click);
+ * - a click on a colour swatch opens nothing of Monaco's (the swatch stays a decoration; Studio's
+ *   own colour picker takes the click, #1025);
  * - inline suggestions are off — Studio offers none, and Monaco would draw its toolbar over them;
  * - a paste or a drop never offers Monaco's "paste as" or "drop as" menu afterwards: the paste or the
  *   drop itself is unchanged.

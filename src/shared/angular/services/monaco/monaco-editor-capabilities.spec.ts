@@ -6,6 +6,9 @@ import {
   markStudioProvider,
   ProvidedCodeActions,
   providedCodeActions,
+  providedColourAt,
+  providedColourEdits,
+  ProvidedColour,
   resolveProvidedCodeAction,
   hasComments,
   hasDefinitionProvider,
@@ -31,6 +34,7 @@ interface FakeMonaco {
   readonly renameProviders: MonacoApi.languages.RenameProvider[];
   readonly codeActionProviders: MonacoApi.languages.CodeActionProvider[];
   readonly hoverProviders: MonacoApi.languages.HoverProvider[];
+  readonly colorProviders: MonacoApi.languages.DocumentColorProvider[];
   readonly configurations: string[];
 }
 
@@ -44,6 +48,7 @@ function fakeMonaco(): FakeMonaco {
   const renameProviders: MonacoApi.languages.RenameProvider[] = [];
   const codeActionProviders: MonacoApi.languages.CodeActionProvider[] = [];
   const hoverProviders: MonacoApi.languages.HoverProvider[] = [];
+  const colorProviders: MonacoApi.languages.DocumentColorProvider[] = [];
   const configurations: string[] = [];
   const monaco: typeof MonacoApi = {
     languages: {
@@ -82,6 +87,13 @@ function fakeMonaco(): FakeMonaco {
         hoverProviders.push(provider);
         return { dispose: (): void => undefined };
       },
+      registerColorProvider: (
+        _selector: MonacoApi.languages.LanguageSelector,
+        provider: MonacoApi.languages.DocumentColorProvider,
+      ): MonacoApi.IDisposable => {
+        colorProviders.push(provider);
+        return { dispose: (): void => undefined };
+      },
       setLanguageConfiguration: (languageId: string): MonacoApi.IDisposable => {
         configurations.push(languageId);
         return { dispose: (): void => undefined };
@@ -112,6 +124,7 @@ function fakeMonaco(): FakeMonaco {
     renameProviders,
     codeActionProviders,
     hoverProviders,
+    colorProviders,
     configurations,
   };
 }
@@ -711,6 +724,108 @@ describe('monaco-editor-capabilities', () => {
           await providedHovers(silent.monaco, modelOf('typescript'), { lineNumber: 1, column: 1 })
         ).map((hover: ProvidedHover) => hover.contents[0].value),
       ).toEqual(['from the worker']);
+    });
+  });
+  describe('colour providers (#1025)', () => {
+    /**
+     * Builds a colour provider that finds one colour at a span, and offers ways to write a new one.
+     * @param range Where it finds the colour, or null to find none.
+     * @param presentations The ways it offers, or a throw.
+     * @returns Returns the provider.
+     */
+    function colorProvider(
+      range: MonacoApi.IRange | null,
+      presentations: MonacoApi.languages.IColorPresentation[] | 'throw' = [],
+    ): MonacoApi.languages.DocumentColorProvider {
+      return {
+        provideDocumentColors: (): MonacoApi.languages.IColorInformation[] =>
+          range === null ? [] : [{ range, color: { red: 1, green: 0, blue: 0, alpha: 1 } }],
+        provideColorPresentations: (): MonacoApi.languages.IColorPresentation[] => {
+          if (presentations === 'throw') {
+            throw new Error('boom');
+          }
+          return presentations;
+        },
+      };
+    }
+
+    it('capture_recordsColourProviders_andStillRegistersThem_forgettingADisposedOne', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const provider: MonacoApi.languages.DocumentColorProvider = colorProvider(span(1, 5, 9));
+
+      const disposable: MonacoApi.IDisposable = fake.monaco.languages.registerColorProvider(
+        'css',
+        provider,
+      );
+
+      expect(fake.colorProviders).toEqual([provider]);
+      expect((await providedColourAt(fake.monaco, modelOf('css'), span(1, 5, 9)))?.provider).toBe(
+        provider,
+      );
+      disposable.dispose();
+      expect(await providedColourAt(fake.monaco, modelOf('css'), span(1, 5, 9))).toBeNull();
+    });
+
+    it('providedColourAt_takesTheNewestProviderWithAColourStartingThere_skippingFailures', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const older: MonacoApi.languages.DocumentColorProvider = colorProvider(span(1, 5, 9));
+      fake.monaco.languages.registerColorProvider('css', older);
+      fake.monaco.languages.registerColorProvider('css', colorProvider(span(1, 20, 24)));
+      fake.monaco.languages.registerColorProvider('css', {
+        provideDocumentColors: (): never => {
+          throw new Error('boom');
+        },
+        provideColorPresentations: (): [] => [],
+      });
+      fake.monaco.languages.registerColorProvider('json', colorProvider(span(1, 5, 9)));
+
+      const found: ProvidedColour | null = await providedColourAt(
+        fake.monaco,
+        modelOf('css'),
+        span(1, 5, 9),
+      );
+
+      expect(found?.provider).toBe(older);
+      expect(found?.info.range).toEqual(span(1, 5, 9));
+      expect(await providedColourAt(fake.monaco, modelOf('less'), span(1, 5, 9))).toBeNull();
+    });
+
+    it('providedColourEdits_takesTheFirstWay_itsEditOrItsLabel_withItsFurtherEdits', async () => {
+      const fake: FakeMonaco = fakeMonaco();
+      captureEditorCapabilities(fake.monaco);
+      const color: MonacoApi.languages.IColor = { red: 0, green: 0, blue: 1, alpha: 1 };
+      const at: MonacoApi.languages.IColorInformation = {
+        range: span(1, 5, 9),
+        color: { red: 1, green: 0, blue: 0, alpha: 1 },
+      };
+      const labelled: ProvidedColour = {
+        info: at,
+        provider: colorProvider(null, [
+          { label: 'blue', additionalTextEdits: [{ range: span(1, 1, 1), text: '@use x;' }] },
+          { label: 'never' },
+        ]),
+      };
+      const edited: ProvidedColour = {
+        info: at,
+        provider: colorProvider(null, [
+          { label: 'blue', textEdit: { range: span(1, 4, 10), text: '(blue)' } },
+        ]),
+      };
+
+      expect(await providedColourEdits(fake.monaco, modelOf('css'), labelled, color)).toEqual([
+        { range: span(1, 5, 9), text: 'blue' },
+        { range: span(1, 1, 1), text: '@use x;' },
+      ]);
+      expect(await providedColourEdits(fake.monaco, modelOf('css'), edited, color)).toEqual([
+        { range: span(1, 4, 10), text: '(blue)' },
+      ]);
+      for (const provider of [colorProvider(null, []), colorProvider(null, 'throw')]) {
+        expect(
+          await providedColourEdits(fake.monaco, modelOf('css'), { info: at, provider }, color),
+        ).toEqual([]);
+      }
     });
   });
 });

@@ -1,0 +1,126 @@
+<app-button-group
+  class="colour-picker__modes"
+  ariaLabel="Pick with"
+  [options]="modes"
+  [value]="pickMode()"
+  (valueChange)="onMode($event)"
+/>
+
+<div class="colour-picker__body">
+  @if (pickMode() === 'wheel') {
+    <!-- Hue round the wheel from the top, saturation out from the centre; the veil darkens it to the
+         brightness below it. -->
+    <div
+      class="colour-picker__wheel"
+      role="slider"
+      tabindex="0"
+      aria-label="Hue and saturation"
+      aria-valuemin="0"
+      aria-valuemax="360"
+      [attr.aria-valuenow]="wheelHue()"
+      [attr.aria-valuetext]="wheelText()"
+      (pointerdown)="onWheelDown($event)"
+      (pointermove)="onWheelMove($event)"
+      (pointerup)="onWheelUp($event)"
+      (pointercancel)="onWheelUp($event)"
+      (keydown)="onWheelKey($event)"
+    >
+      <span class="colour-picker__wheel-shade" [style.opacity]="wheelShade()"></span>
+      <span
+        class="colour-picker__wheel-thumb"
+        [style.left.%]="thumbX()"
+        [style.top.%]="thumbY()"
+        [style.background]="opaqueCss()"
+      ></span>
+    </div>
+  }
+
+  @if (pickMode() === 'hex') {
+    <div class="colour-picker__hex">
+      <span class="colour-picker__label" aria-hidden="true">Hex</span>
+      <app-text-field
+        ariaLabel="Hex"
+        [value]="hexText()"
+        (valueChange)="onHex($event)"
+        (blurred)="hexDraft.set(null)"
+      />
+    </div>
+  }
+
+  <div class="colour-picker__rows">
+    @for (row of rows(); track row.channel) {
+      <span class="colour-picker__label">{{ row.label }}</span>
+      <app-slider
+        [min]="0"
+        [max]="row.max"
+        [value]="row.value"
+        [trackBackground]="row.track"
+        [ariaLabel]="row.label"
+        (valueChange)="setChannel(row.channel, $event)"
+      />
+      <app-number-field
+        [min]="0"
+        [max]="row.max"
+        [value]="row.value"
+        [live]="true"
+        [spinner]="false"
+        [ariaLabel]="row.label"
+        (valueChange)="setChannel(row.channel, $event)"
+      />
+    }
+    @let alpha = alphaRow();
+    <span class="colour-picker__label">{{ alpha.label }}</span>
+    <app-slider
+      [min]="0"
+      [max]="alpha.max"
+      [value]="alpha.value"
+      [trackBackground]="alpha.track"
+      [ariaLabel]="alpha.label"
+      (valueChange)="setChannel('alpha', $event)"
+    />
+    <app-number-field
+      [min]="0"
+      [max]="alpha.max"
+      [value]="alpha.value"
+      [live]="true"
+      [spinner]="false"
+      [ariaLabel]="alpha.label"
+      (valueChange)="setChannel('alpha', $event)"
+    />
+  </div>
+</div>
+
+<div class="colour-picker__preview">
+  <span
+    class="colour-picker__swatch"
+    role="img"
+    aria-label="Colour as written"
+    [style.--colour-picker-swatch]="originalCss()"
+  ></span>
+  <span
+    class="colour-picker__swatch"
+    role="img"
+    aria-label="New colour"
+    [style.--colour-picker-swatch]="currentCss()"
+  ></span>
+  @if (previewText(); as text) {
+    <code class="colour-picker__text" aria-label="Written as">{{ text }}</code>
+  }
+</div>
+
+@if (format() !== null) {
+  <div class="colour-picker__format">
+    <span class="colour-picker__label">Write as</span>
+    <app-button-group
+      ariaLabel="Write as"
+      [options]="families"
+      [value]="family()"
+      (valueChange)="onFamily($event)"
+    />
+  </div>
+}
+
+<div class="colour-picker__actions">
+  <app-button variant="none" tone="neutral" label="Cancel" (click)="cancelled.emit()" />
+  <app-button variant="solid" label="Apply" (click)="apply()" />
+</div>

@@ -7,6 +7,7 @@ import { EditorContextMenuHost } from '@shared/angular/components/editor-context
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
+import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { DiffEditor } from './diff-editor';
 
 describe('DiffEditor', () => {
@@ -77,6 +78,10 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     const attachCards: MockInstance<HoverCards['attach']> = vi
       .spyOn(TestBed.inject(HoverCards), 'attach')
       .mockReturnValue((): void => void (cardsDetached += 1));
+    let pickersDetached: number = 0;
+    const attachPickers: MockInstance<ColourPickers['attach']> = vi
+      .spyOn(TestBed.inject(ColourPickers), 'attach')
+      .mockReturnValue((): void => void (pickersDetached += 1));
 
     const fixture: ComponentFixture<DiffEditor> = TestBed.createComponent(DiffEditor);
     await fixture.whenStable();
@@ -94,8 +99,15 @@ describe('DiffEditor over a stand-in Monaco diff editor (#1012)', () => {
     for (const [, injector] of attachCards.mock.calls) {
       expect(injector.get(DiffEditor)).toBe(fixture.componentInstance);
     }
+    // #1025: a swatch on either side opens Studio's colour picker, drawn in this pane's window.
+    expect(attachPickers.mock.calls.map((call: [unknown, Injector]): unknown => call[0])).toEqual([
+      original,
+      modified,
+    ]);
+    expect(attachPickers.mock.calls[0][1].get(DiffEditor)).toBe(fixture.componentInstance);
     fixture.destroy();
     expect(detached).toBe(2);
     expect(cardsDetached).toBe(2);
+    expect(pickersDetached).toBe(2);
   });
 });

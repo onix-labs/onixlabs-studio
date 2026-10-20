@@ -13,6 +13,8 @@ import {
   installSuggestCommands,
 } from './monaco-suggest-commands';
 import {
+  COLOR_CLICK_CONTRIBUTION,
+  COLOUR_SWATCH_CLASS,
   FIND_CONTRIBUTION,
   INLAY_HINTS_CONTRIBUTION,
   INLAY_HINTS_HOOKS,
@@ -657,6 +659,30 @@ describe('Monaco widget guard (#1024)', () => {
     expect(
       /highlightFindOptions\([^)]*\)\{this\._widget\|\|this\._createFindWidget\(\)/.test(
         buildDefining(FIND_CONTRIBUTION),
+      ),
+    ).toBe(true);
+  });
+
+  it('monacosColourClickRoute_stillOpensOnlyWhenActivatedOnClick_whichTheGuardNeverSets (#1025)', () => {
+    const body: string = classBefore(
+      buildDefining(COLOR_CLICK_CONTRIBUTION),
+      COLOR_CLICK_CONTRIBUTION,
+    );
+
+    // The route reads the option and leaves unless it is `click` or `clickAndHover`; the guard sets
+    // `hover`, so a click on a swatch reaches Studio's picker alone.
+    expect(body.length).toBeGreaterThan(0);
+    expect(/(\w+)!=="click"&&\1!=="clickAndHover"/.test(body)).toBe(true);
+  });
+
+  it('theColourDetector_stillDrawsEachSwatchAsInjectedTextWithTheClassStudioAnswers (#1025)', () => {
+    const detector: string = buildDefining('editor.contrib.colorDetector');
+
+    // Studio's picker knows a click is on a swatch by this class, and finds the colour's span by the
+    // decoration that injects it before the colour.
+    expect(
+      new RegExp(`before:\\{[^}]*inlineClassName:\`\\$\\{[^}]+\\} ${COLOUR_SWATCH_CLASS}\``).test(
+        detector,
       ),
     ).toBe(true);
   });
