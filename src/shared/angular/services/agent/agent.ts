@@ -83,12 +83,14 @@ export const STOP_SETTLE_DEADLINE_MS: number = 8_000;
 export const TASK_STOP_DEADLINE_MS: number = STOP_SETTLE_DEADLINE_MS;
 
 /**
- * How long an adopted report-back turn may go without a single event before the adoption is given
- * up, in milliseconds. The CLI starts its report within a second of a task settling; a report that
- * has not begun after this long is not coming, and holding the conversation "Working" for it is the
- * hang the adoption was meant to cure.
+ * How long an adopted report-back turn may go without a single event before the conversation stops
+ * showing "Working" for it, in milliseconds. The CLI starts its report within a second of a task
+ * settling, but the harness forwards whole messages, so a model that thinks first is silent until its
+ * first message is complete. 15 seconds proved far too short (it released real reports mid-thought).
+ * Releasing is no longer destructive either: a late event re-attaches the turn (`admitsSessionEvent`),
+ * so this only bounds the spinner for a report that genuinely never comes.
  */
-export const ADOPTION_DEADLINE_MS: number = 15_000;
+export const ADOPTION_DEADLINE_MS: number = 60_000;
 
 /**
  * Identifies the kind of transcript item.
@@ -789,6 +791,14 @@ export class Agent {
   private activeRequestId: string | null = null;
 
   /**
+   * Holds the run id of the last turn dispatched into this conversation's live session, or null before
+   * the first. The harness stamps everything it says between turns — a report-back turn it starts on
+   * its own, the prompts that turn raises — with this id, so it is how such an event is recognised as
+   * this conversation's even when no turn is active.
+   */
+  private sessionRequestId: string | null = null;
+
+  /**
    * Holds the prompt of the most recently started turn, attached to an error item when a run fails
    * so its one-click retry can re-run the turn. Null until the first send of this session.
    */
@@ -1482,6 +1492,7 @@ export class Agent {
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
       ...(images.length === 0 ? {} : { images }),
     });
+    this.sessionRequestId = this.activeRequestId;
     // The attachments belong to the message that carried them: the turn takes them, and the composer
     // starts clean rather than silently resending them on every later turn.
     this.contextPathsState.set([]);
@@ -1663,6 +1674,9 @@ export class Agent {
       this.runtime.abort(requestId);
     }
     this.runtime.stopAgent(this.agentSessionId);
+    // Stop means stop: whatever the stopped session still says on its way down must not re-attach a
+    // turn (`admitsSessionEvent`) and put "Working" back. The next message sets this afresh.
+    this.sessionRequestId = null;
     if (requestId === null) {
       return;
     }
@@ -1711,6 +1725,7 @@ export class Agent {
   private resetAgentSession(): void {
     this.runtime.closeSession(this.agentSessionId);
     this.agentSessionId = crypto.randomUUID();
+    this.sessionRequestId = null;
     // A fresh session carries no compaction seed of its own; drop any that a prior compaction left
     // unconsumed so it never leaks into an unrelated conversation (New chat, restore, fork).
     this.pendingContextSeed = null;
@@ -1988,6 +2003,7 @@ export class Agent {
         this.flushStream();
         this.push({ kind: 'user', text: event.text });
         this.activeRequestId = event.requestId;
+        this.sessionRequestId = event.requestId;
         this.busy.set(true);
       }
       return;
@@ -2005,7 +2021,7 @@ export class Agent {
       this.dismissInput(event.inputId);
       return;
     }
-    if (event.requestId !== this.activeRequestId) {
+    if (event.requestId !== this.activeRequestId && !this.admitsSessionEvent(event)) {
       return;
     }
     if (this.adoptionWatch?.requestId === event.requestId) {
@@ -2019,7 +2035,7 @@ export class Agent {
     }
     // A compaction run's output does not join the transcript: its text is buffered and folded into a
     // single summary item when the run completes.
-    if (this.compacting) {
+    if (this.compacting && event.requestId === this.activeRequestId) {
       if (event.kind === 'text') {
         this.compactionText += event.delta;
       } else if (event.kind === 'status') {
@@ -2519,8 +2535,8 @@ export class Agent {
     this.flushStream();
     this.activeRequestId = requestId;
     this.busy.set(true);
-    // Bounded: the report is expected within a second, and one that never starts must not hold the
-    // conversation "Working" forever. The first event under the adopted id clears the watch.
+    // Bounded: a report that never starts must not hold the conversation "Working" forever. The first
+    // event under the adopted id clears the watch, and one arriving after the release re-attaches.
     this.clearAdoptionWatch();
     this.adoptionWatch = {
       requestId,
@@ -2537,6 +2553,68 @@ export class Agent {
         this.busy.set(false);
       }, ADOPTION_DEADLINE_MS),
     };
+  }
+
+  /**
+   * Decides whether an event from outside the active turn is still this conversation's to show, and
+   * re-attaches the turn it belongs to when the conversation is idle.
+   *
+   * 🔥🔥 The per-turn filter used to drop every such event, and two real failures came out of it. A
+   * report-back turn that spent longer thinking than {@link ADOPTION_DEADLINE_MS} was released and its
+   * whole answer silently discarded — the harness forwards whole messages, so a model thinking for 20
+   * seconds is 20 seconds of nothing. And a question or permission that turn then raised was discarded
+   * too, leaving the CLI blocked on an answer nobody could give: the conversation stuck "Working" on the
+   * next message until Stop. So:
+   * - a prompt from this conversation's session is always shown, whatever turn is active — a prompt
+   *   nobody sees blocks the agent forever;
+   * - any other content from the session, arriving while the conversation is idle, re-attaches the turn
+   *   it came from, so it renders and ends on its own status like every turn — unless the user turned
+   *   background-task reporting off.
+   * @param event The event, whose run id is not the active one.
+   * @returns Returns true when the event should be handled.
+   */
+  private admitsSessionEvent(event: AiEvent): boolean {
+    if (this.sessionRequestId === null || event.requestId !== this.sessionRequestId) {
+      return false;
+    }
+    if (
+      event.kind === 'permission' ||
+      event.kind === 'input-request' ||
+      event.kind === 'edit-decision' ||
+      event.kind === 'workspace-proposal'
+    ) {
+      if (this.activeRequestId === null && !this.compacting) {
+        this.reattachTurn(event.requestId);
+      }
+      return true;
+    }
+    // With reporting off the user chose a quiet conversation; only prompts, which block, break it.
+    if (
+      this.activeRequestId === null &&
+      this.settings.aiReportBackgroundTasks() &&
+      (event.kind === 'text' ||
+        event.kind === 'thinking' ||
+        event.kind === 'tool-start' ||
+        event.kind === 'tool-end')
+    ) {
+      this.reattachTurn(event.requestId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Makes a turn this conversation had stopped listening to the active one again.
+   * @param requestId The turn's run id.
+   */
+  private reattachTurn(requestId: string): void {
+    this.logger.info(
+      'Agent.task',
+      `re-attached turn ${requestId}: the agent is still working in it`,
+    );
+    this.flushStream();
+    this.activeRequestId = requestId;
+    this.busy.set(true);
   }
 
   /**

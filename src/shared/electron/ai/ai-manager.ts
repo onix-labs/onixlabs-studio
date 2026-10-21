@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
+import { liveSessionBusyReason, trackTaskEvent } from './live-session-activity';
 import type {
   AiProposedChange,
   AgentContextRef,
@@ -232,6 +233,12 @@ interface LiveSessionEntry {
    * was updated or removed (#881).
    */
   retiring: boolean;
+
+  /**
+   * The background tasks the session has started and not yet seen settle, by task id. A session with
+   * one running is not idle, whatever its turns are doing, so idle-reap leaves it be.
+   */
+  readonly liveTasks: Set<string>;
 }
 
 /**
@@ -401,6 +408,13 @@ export class AiManager {
    * Holds the wall-clock budgets of in-flight runs that have one, keyed by request id.
    */
   private readonly clocks: Map<string, RunClock> = new Map<string, RunClock>();
+
+  /**
+   * Counts the user prompts still open per request id — permissions, questions, edit decisions. Unlike
+   * {@link clocks} this covers a turn the harness started on its own, which has no run and no clock: a
+   * session waiting on the user is not idle, and reaping it would take the prompt down with it.
+   */
+  private readonly openPrompts: Map<string, number> = new Map<string, number>();
 
   /**
    * Holds the runs whose wall-clock budget expired, so their abort lands as a structured timeout
@@ -1243,6 +1257,7 @@ export class AiManager {
       lastRequestId: context.requestId,
       activeTurns: 0,
       retiring: false,
+      liveTasks: new Set<string>(),
     };
     this.liveSessions.set(key, entry);
     // A session that ends on its own — harness crashed between turns, panic stop escalated — leaves
@@ -1325,11 +1340,77 @@ export class AiManager {
     entry.reapTimer = setTimeout((): void => {
       entry.reapTimer = null;
       // Reap only if still the registered session (a turn or close may have replaced it meanwhile).
-      if (this.liveSessions.get(key) === entry) {
-        logger.info('AiManager.armReap', `Idle-reaping live session ${key}`);
-        this.endSession(key, entry, 'idle');
+      if (this.liveSessions.get(key) !== entry) {
+        return;
       }
+      // Quiet is not idle (see liveSessionBusyReason): look again a lifetime later.
+      const busy: string | null = this.busyReason(entry);
+      if (busy !== null) {
+        logger.debug('AiManager.armReap', `Not reaping live session ${key}: ${busy}`);
+        this.armReap(key, entry);
+        return;
+      }
+      logger.info('AiManager.armReap', `Idle-reaping live session ${key}`);
+      this.endSession(key, entry, 'idle');
     }, entry.lifetimeMs);
+  }
+
+  /**
+   * Says why a live session is not idle even though no Studio turn is running in it, or null when it
+   * genuinely is idle.
+   * @param entry The live session entry.
+   * @returns Returns the reason the session is busy, or null.
+   */
+  private busyReason(entry: LiveSessionEntry): string | null {
+    return liveSessionBusyReason({
+      activeTurns: entry.activeTurns,
+      liveTasks: entry.liveTasks,
+      promptOpen: this.openPrompts.has(entry.lastRequestId),
+    });
+  }
+
+  /**
+   * Keeps a live session's bookkeeping current from the events it emits: the background tasks it is
+   * running, and when it was last active. Activity re-arms an armed idle-reap timer, because a session
+   * can be working with no Studio turn in flight — the turn the harness starts on its own to report a
+   * settled task back, which arrives under the session's last run id.
+   * @param event The event about to be sent.
+   */
+  private noteSessionActivity(event: AiEvent): void {
+    if (event.kind === 'session-ended') {
+      return;
+    }
+    const found: readonly [string, LiveSessionEntry] | null = this.sessionOf(event);
+    if (found === null) {
+      return;
+    }
+    const [key, entry] = found;
+    trackTaskEvent(entry.liveTasks, event);
+    entry.lastActivity = Date.now();
+    if (entry.reapTimer !== null) {
+      this.armReap(key, entry);
+    }
+  }
+
+  /**
+   * Finds the live session an event came from: by its agent session id when it carries one (the
+   * session-level events), otherwise by the run id, which a between-turn event shares with the
+   * session's last run.
+   * @param event The event.
+   * @returns Returns the session's key and entry, or null when no live session emitted it.
+   */
+  private sessionOf(event: AiEvent): readonly [string, LiveSessionEntry] | null {
+    const agentSessionId: unknown = (event as { agentSessionId?: unknown }).agentSessionId;
+    if (typeof agentSessionId === 'string') {
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+      return entry === undefined ? null : [agentSessionId, entry];
+    }
+    for (const [key, entry] of this.liveSessions) {
+      if (entry.lastRequestId === event.requestId) {
+        return [key, entry];
+      }
+    }
+    return null;
   }
 
   /**
@@ -1357,7 +1438,14 @@ export class AiManager {
         if (entryKey === keepKey) {
           continue;
         }
-        if (oldest === null || entry.lastActivity < oldest.lastActivity) {
+        // An idle session is always the victim before a busy one; between two of a kind, the older.
+        const busy: boolean = this.busyReason(entry) !== null;
+        const oldestBusy: boolean = oldest !== null && this.busyReason(oldest) !== null;
+        if (
+          oldest === null ||
+          (oldestBusy && !busy) ||
+          (oldestBusy === busy && entry.lastActivity < oldest.lastActivity)
+        ) {
           oldestKey = entryKey;
           oldest = entry;
         }
@@ -1598,6 +1686,7 @@ export class AiManager {
    * @param requestId The run's identifier.
    */
   private pauseClock(requestId: string): void {
+    this.openPrompts.set(requestId, (this.openPrompts.get(requestId) ?? 0) + 1);
     const clock: RunClock | undefined = this.clocks.get(requestId);
     if (clock === undefined) {
       return;
@@ -1617,6 +1706,12 @@ export class AiManager {
    * @param requestId The run's identifier.
    */
   private resumeClock(requestId: string): void {
+    const open: number = (this.openPrompts.get(requestId) ?? 0) - 1;
+    if (open > 0) {
+      this.openPrompts.set(requestId, open);
+    } else {
+      this.openPrompts.delete(requestId);
+    }
     const clock: RunClock | undefined = this.clocks.get(requestId);
     if (clock === undefined || clock.pauseDepth === 0) {
       return;
@@ -1676,6 +1771,7 @@ export class AiManager {
    * @param event The event to send.
    */
   private emit(event: AiEvent): void {
+    this.noteSessionActivity(event);
     if (event.kind === 'text' || event.kind === 'thinking') {
       this.emitDelta(event);
       return;
