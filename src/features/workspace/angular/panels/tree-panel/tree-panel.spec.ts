@@ -271,6 +271,44 @@ describe('TreePanel row context menu', () => {
       .map((item: MenuItem): string => item.id);
   }
 
+  describe('status strip', () => {
+    /**
+     * Gets the strip's items' text.
+     * @returns Returns the texts.
+     */
+    function status(): string[] {
+      fixture.detectChanges();
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+          'app-panel-status .panel-status__item',
+        ),
+      ).map((item: HTMLElement): string => (item.textContent ?? '').trim());
+    }
+
+    it('saysWhereTheSelectionIs_andWhatItIs', () => {
+      const main: WorkspaceTreeNode = node('main.ts', '/ws/src/app/main.ts', 'file');
+      workspace.rows.set([{ node: main, depth: 2, expanded: false }]);
+
+      expect(status()).toEqual(['ws']);
+
+      component.onRowSelect({ row: treeRow(main), mode: 'replace' });
+      expect(status()).toEqual(['ws/src/app', 'main.ts']);
+    });
+
+    it('countsSeveralSelectedRows', () => {
+      const a: WorkspaceTreeNode = node('a.ts', '/ws/a.ts', 'file');
+      const b: WorkspaceTreeNode = node('b.ts', '/ws/b.ts', 'file');
+      workspace.rows.set([
+        { node: a, depth: 0, expanded: false },
+        { node: b, depth: 0, expanded: false },
+      ]);
+      component.onRowSelect({ row: treeRow(a), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(b), mode: 'toggle' });
+
+      expect(status()).toEqual(['ws', '2 selections']);
+    });
+  });
+
   describe('Show Changed Files Only (#1053)', () => {
     const app: WorkspaceTreeNode = node('app', '/ws/src/app', 'directory');
     const changed: WorkspaceTreeNode = node('main.ts', '/ws/src/app/main.ts', 'file');

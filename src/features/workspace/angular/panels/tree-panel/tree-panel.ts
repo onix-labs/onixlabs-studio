@@ -52,6 +52,7 @@ import {
   TreeSelection,
 } from '@shared/angular/components/tree-view/tree-selection';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 
 /**
@@ -144,6 +145,7 @@ export interface NameEdit {
     HighlightedText,
     Modal,
     ModalContent,
+    PanelStatus,
   ],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
@@ -319,6 +321,48 @@ export class TreePanel {
         }
       }
     });
+  });
+
+  /**
+   * Gets where the selection is, for the status strip: the folder holding the selected row, from the
+   * workspace folder down (`studio/src/app`) — or the workspace folder alone when nothing is selected
+   * or the row sits at its top.
+   */
+  protected readonly statusLocation: Signal<string> = computed((): string => {
+    const root: string = this.workspace.root()?.name ?? '';
+    const selected: string | null = this.workspace.selectedPath();
+    if (selected === null) {
+      return root;
+    }
+    const relative: string = this.relativePath(selected);
+    const cut: number = Math.max(relative.lastIndexOf('/'), relative.lastIndexOf('\\'));
+    return cut < 0 ? root : `${root}/${relative.slice(0, cut).replaceAll('\\', '/')}`;
+  });
+
+  /**
+   * Gets what is selected, for the status strip: the row's name and icon, how many rows when several
+   * are, or null when nothing is.
+   */
+  protected readonly statusSelection: Signal<{
+    readonly text: string;
+    readonly icon: Icon;
+  } | null> = computed((): { readonly text: string; readonly icon: Icon } | null => {
+    const count: number = this.selection.ids().length;
+    if (count > 1) {
+      return { text: `${count} selections`, icon: Icon.LIST_ALL };
+    }
+    const selected: string | null = this.workspace.selectedPath();
+    if (selected === null) {
+      return null;
+    }
+    const node: WorkspaceTreeNode | undefined = this.workspace
+      .rows()
+      .find((row: WorkspaceTreeRow): boolean => row.node.path === selected)?.node;
+    const name: string = node?.name ?? selected.split(/[\\/]/).pop() ?? selected;
+    return {
+      text: name,
+      icon: node?.type === 'directory' ? Icon.DIRECTORY : fileIconFor(name),
+    };
   });
 
   /**

@@ -57,6 +57,26 @@
       </ng-template>
     </app-tree-view>
   }
+
+  <!-- Where the selection is, and what it is: the folder on the left, cut from
+       its start so the end stays visible; the selected item, or how many, on the right. -->
+  <app-panel-status>
+    <span class="panel-status__item panel-status__item--shrink" [title]="statusLocation()">
+      <app-icon [icon]="Icon.DIRECTORY" />
+      <span class="panel-status__text panel-status__text--path"
+        ><bdi>{{ statusLocation() }}</bdi></span
+      >
+    </span>
+    @if (statusSelection(); as selected) {
+      <span
+        class="panel-status__item panel-status__item--push panel-status__item--shrink"
+        [title]="selected.text"
+      >
+        <app-icon [icon]="selected.icon" />
+        <span class="panel-status__text">{{ selected.text }}</span>
+      </span>
+    }
+  </app-panel-status>
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>

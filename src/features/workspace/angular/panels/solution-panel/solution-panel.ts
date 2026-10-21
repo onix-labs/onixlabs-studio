@@ -37,6 +37,7 @@ import { HighlightedText } from '@shared/angular/components/highlighted-text/hig
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -137,6 +138,7 @@ interface PendingProjectAction {
     ModalContent,
     Button,
     ButtonRow,
+    PanelStatus,
   ],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
@@ -482,6 +484,51 @@ export class SolutionPanel {
       data: row,
     })),
   );
+
+  /**
+   * Gets where the selection is, for the status strip: the folder holding what the selected row stands
+   * for, from the solution's folder down (`studio/src/App`) — or the solution's folder alone when
+   * nothing is selected, or the row stands for no file of its own (a solution folder).
+   */
+  protected readonly statusLocation: Signal<string> = computed((): string => {
+    const root: string = this.model()?.root ?? '';
+    const rootName: string =
+      root
+        .split(/[\\/]/)
+        .filter((part: string): boolean => part !== '')
+        .pop() ?? '';
+    const key: string | null = this.solution.selectedKey();
+    const row: SolutionRow | undefined =
+      key === null
+        ? undefined
+        : this.solution.rows().find((candidate: SolutionRow): boolean => candidate.key === key);
+    if (row?.path === null || row?.path === undefined) {
+      return rootName;
+    }
+    const relative: string = this.relativePath(row.path);
+    const cut: number = Math.max(relative.lastIndexOf('/'), relative.lastIndexOf('\\'));
+    return cut < 0 ? rootName : `${rootName}/${relative.slice(0, cut).replaceAll('\\', '/')}`;
+  });
+
+  /**
+   * Gets what is selected, for the status strip: the row's label and icon, how many rows when several
+   * are, or null when nothing is.
+   */
+  protected readonly statusSelection: Signal<{
+    readonly text: string;
+    readonly icon: Icon;
+  } | null> = computed((): { readonly text: string; readonly icon: Icon } | null => {
+    const count: number = this.selection.ids().length;
+    if (count > 1) {
+      return { text: `${count} selections`, icon: Icon.LIST_ALL };
+    }
+    const key: string | null = this.solution.selectedKey();
+    const row: SolutionRow | undefined =
+      key === null
+        ? undefined
+        : this.solution.rows().find((candidate: SolutionRow): boolean => candidate.key === key);
+    return row === undefined ? null : { text: row.label, icon: this.iconFor(row) };
+  });
 
   /**
    * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
