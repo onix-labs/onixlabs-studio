@@ -114,4 +114,42 @@ describe('DockCollapsedStrip', () => {
     );
     expect(flyout?.style.blockSize).toBe('230px');
   });
+
+  /**
+   * Opens the collapsed stack's flyout, as a click on its tab does.
+   * @returns Returns the strip's element.
+   */
+  function peek(): HTMLElement {
+    renderCollapsed('output');
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('.dock-collapsed-strip__tab')?.click();
+    fixture.detectChanges();
+    return element;
+  }
+
+  it('pressInAMenuOpenedFromTheFlyout_keepsItOpen', () => {
+    // #1057: menus render in the overlay container, outside the strip. A press on one is not a
+    // click away — hiding the flyout there tore the menu down before its item could run.
+    const element: HTMLElement = peek();
+    const container: HTMLElement = document.createElement('div');
+    container.className = 'cdk-overlay-container';
+    const item: HTMLButtonElement = document.createElement('button');
+    container.appendChild(item);
+    document.body.appendChild(container);
+
+    item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(element.querySelector('.dock-collapsed-strip__flyout')).not.toBeNull();
+    container.remove();
+  });
+
+  it('pressElsewhere_stillDismissesTheFlyout', () => {
+    const element: HTMLElement = peek();
+
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(element.querySelector('.dock-collapsed-strip__flyout')).toBeNull();
+  });
 });

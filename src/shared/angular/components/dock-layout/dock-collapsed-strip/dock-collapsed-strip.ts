@@ -343,11 +343,22 @@ export class DockCollapsedStrip {
 
   /**
    * Dismisses the peek when a press lands outside this strip and its flyout.
+   *
+   * A press inside a CDK overlay is not outside (#1057). Menus, dropdowns and every other popup render
+   * in the overlay container at the end of the body, away from the flyout that opened them — so a
+   * press on a menu item would otherwise read as a click away, hide the flyout, and tear the panel and
+   * its menu down before the item's click arrived: the panel vanished and the command never ran.
    * @param event The originating mouse event.
    */
   protected onDocumentMouseDown(event: MouseEvent): void {
-    if (this.isPeeking() && !this.hostElement.nativeElement.contains(event.target as Node)) {
-      this.autoHide.hideFlyout();
+    const target: Node | null = event.target as Node | null;
+    if (
+      !this.isPeeking() ||
+      (target !== null && this.hostElement.nativeElement.contains(target)) ||
+      (target instanceof Element && target.closest('.cdk-overlay-container') !== null)
+    ) {
+      return;
     }
+    this.autoHide.hideFlyout();
   }
 }
