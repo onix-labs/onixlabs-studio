@@ -115,7 +115,7 @@ export class TitleStripTab {
     if (this.isActive()) {
       this.hostElement.nativeElement
         .querySelector<HTMLElement>('[role="tab"]')
-        ?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+        ?.scrollIntoView?.({ inline: 'nearest', block: 'nearest' });
     }
   });
 

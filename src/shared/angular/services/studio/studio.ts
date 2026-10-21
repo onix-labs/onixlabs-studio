@@ -105,6 +105,17 @@ export class Studio {
   }
 
   /**
+   * Asks for the application window's minimum size to be at least this, so its dock layout never has
+   * to crush a panel group below its content (#1064). The main process keeps the window's own floor
+   * and caps it at the screen.
+   * @param width The least width, in pixels.
+   * @param height The least height, in pixels.
+   */
+  public setWindowMinimumSize(width: number, height: number): void {
+    this.bridge?.send(WindowChannel.SetMinimumSize, width, height);
+  }
+
+  /**
    * Sets the colour of the caption-button glyphs Windows draws over every window. A no-op elsewhere,
    * where the platform draws no such buttons over the content.
    * @param color The glyph colour, as a `#rrggbb` hex string.

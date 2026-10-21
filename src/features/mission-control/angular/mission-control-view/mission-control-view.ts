@@ -169,8 +169,11 @@ export class MissionControlView implements OnInit {
       if (row !== this.observedRow) {
         this.teardownRow();
         this.rowCleanup = this.tiles.setRow(row, spacer);
-        this.resizeObserver = new ResizeObserver((): void => this.tiles.refreshSpacer());
-        this.resizeObserver.observe(row);
+        this.resizeObserver =
+          typeof ResizeObserver === 'undefined'
+            ? null
+            : new ResizeObserver((): void => this.tiles.refreshSpacer());
+        this.resizeObserver?.observe(row);
         this.observedRow = row;
       }
       this.tiles.refreshSpacer();

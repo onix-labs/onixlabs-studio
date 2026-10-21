@@ -4,10 +4,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
   ElementRef,
   inject,
   Signal,
 } from '@angular/core';
+import { Studio } from '@shared/angular/services/studio/studio';
+import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { Display } from '@shared/angular/services/display/display';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
@@ -84,6 +88,28 @@ export class DockContainer {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the dock's minimum sizes, whose root sets the window's own minimum (#1064).
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
+
+  /**
+   * Holds the shell bridge the window's minimum size is asked for through.
+   */
+  private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the last minimum asked of the window, so an unchanged one is not sent again.
+   */
+  private lastMinimum: string = '';
+
+  /**
+   * Gets the least size the whole layout can be given — its root's minimum.
+   */
+  private readonly layoutMinimum: Signal<DockMinimum> = computed((): DockMinimum =>
+    this.minimums.minimumOf(this.dockState.layout()),
+  );
+
+  /**
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
@@ -123,6 +149,53 @@ export class DockContainer {
   public constructor() {
     this.focusDocumentWell();
     afterNextRender((): void => this.geometry.setWorkspace(this.hostElement.nativeElement));
+
+    // The window may not be made smaller than the layout needs (#1064). Asked again when the layout's
+    // minimum moves and when this container is resized — which is also how a workspace tab coming to
+    // the front is noticed: hidden, its container measures nothing and asks for nothing.
+    const destroyRef: DestroyRef = inject(DestroyRef);
+    effect((): void => {
+      this.layoutMinimum();
+      this.applyWindowMinimum();
+    });
+    afterNextRender((): void => {
+      if (typeof ResizeObserver === 'undefined') {
+        return;
+      }
+      const observer: ResizeObserver = new ResizeObserver((): void => this.applyWindowMinimum());
+      observer.observe(this.hostElement.nativeElement);
+      destroyRef.onDestroy((): void => observer.disconnect());
+    });
+  }
+
+  /**
+   * Asks for the window's minimum size to fit this layout: its root's minimum, plus everything around
+   * the dock in the window — the shell's strips, the ribbon, the dock's own padding — as measured now.
+   * Only from the visible dock in the main window: a hidden workspace tab measures nothing, and a
+   * pop-out shares the main window's bridge, so it would size the wrong window.
+   */
+  private applyWindowMinimum(): void {
+    const host: HTMLElement = this.hostElement.nativeElement;
+    const root: HTMLElement | null = host.querySelector<HTMLElement>('app-dock-node');
+    if (root === null || host.ownerDocument !== document) {
+      return;
+    }
+    const box: DOMRect = root.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) {
+      // Hidden behind another workspace tab, which asks for its own minimum meanwhile: forget what this
+      // one asked, so coming back to the front asks again.
+      this.lastMinimum = '';
+      return;
+    }
+    const minimum: DockMinimum = this.layoutMinimum();
+    const width: number = Math.ceil(minimum.inline + (window.innerWidth - box.width));
+    const height: number = Math.ceil(minimum.block + (window.innerHeight - box.height));
+    const key: string = `${width}x${height}`;
+    if (key === this.lastMinimum) {
+      return;
+    }
+    this.lastMinimum = key;
+    this.studio.setWindowMinimumSize(width, height);
   }
 
   /**

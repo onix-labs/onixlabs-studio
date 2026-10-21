@@ -89,6 +89,9 @@ export class TitleStripTabList {
     });
     afterNextRender((): void => {
       const element: HTMLElement = this.tabListElement().nativeElement;
+      if (typeof ResizeObserver === 'undefined') {
+        return;
+      }
       const observer: ResizeObserver = new ResizeObserver((): void => this.measureOverflow());
       observer.observe(element);
       this.destroyRef.onDestroy((): void => observer.disconnect());

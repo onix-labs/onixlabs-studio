@@ -113,10 +113,16 @@ export class RibbonStripOverflow {
    */
   public constructor() {
     afterNextRender((): void => {
-      const observer: ResizeObserver = new ResizeObserver((): void => this.scheduleReflow());
-      observer.observe(this.host.nativeElement);
+      // Guarded, as the dock's observers are: a DOM without ResizeObserver (jsdom, where only some
+      // specs install a stand-in, and spec files share one window) still gets one reflow — it just
+      // does not follow later resizes. Unguarded, every ribbon rendered there threw after render.
+      const observer: ResizeObserver | null =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver((): void => this.scheduleReflow());
+      observer?.observe(this.host.nativeElement);
       this.destroyRef.onDestroy((): void => {
-        observer.disconnect();
+        observer?.disconnect();
         if (this.reflowHandle !== null) {
           cancelAnimationFrame(this.reflowHandle);
         }

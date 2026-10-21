@@ -18,6 +18,8 @@
           [class.dock-node__pane--end]="isEndAnchored(node, i)"
           [class.dock-node__pane--empty]="isEmptyPane(child)"
           [style.flex]="slotFlex(child, node.sizes[i])"
+          [style.min-inline-size.px]="paneMinimum(child)?.inline ?? null"
+          [style.min-block-size.px]="paneMinimum(child)?.block ?? null"
         >
           <ng-container
             [ngTemplateOutlet]="render"
