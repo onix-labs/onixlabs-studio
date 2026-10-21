@@ -740,8 +740,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
       this.titleChange.emit(title);
     });
 
-    this.resizeObserver = new ResizeObserver((): void => this.handleResize());
-    this.resizeObserver.observe(host);
+    this.resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver((): void => this.handleResize());
+    this.resizeObserver?.observe(host);
 
     // Register this terminal's output handle so a terminal agent can read its on-screen text by id.
     this.terminals.register(id, { readText: (): string => this.getBufferText() });

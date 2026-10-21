@@ -472,7 +472,11 @@ export class DockTabGroup {
       if (text !== null) {
         const range: Range = document.createRange();
         range.selectNodeContents(text);
-        textWidth = range.getBoundingClientRect().width;
+        // jsdom's ranges measure nothing; a real one always can.
+        textWidth =
+          typeof range.getBoundingClientRect === 'function'
+            ? range.getBoundingClientRect().width
+            : 0;
       }
       titleWidth =
         textWidth +

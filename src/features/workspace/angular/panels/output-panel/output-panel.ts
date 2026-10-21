@@ -194,8 +194,11 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     // Signal the streaming effect to render the active channel now that the terminal exists.
     this.ready.set(true);
 
-    this.resizeObserver = new ResizeObserver((): void => this.handleResize());
-    this.resizeObserver.observe(host);
+    this.resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver((): void => this.handleResize());
+    this.resizeObserver?.observe(host);
   }
 
   /**
