@@ -387,6 +387,37 @@ describe('SolutionPanel', () => {
       ).toHaveLength(2);
     });
 
+    it('statusStrip_saysWhereTheSelectionIs_andWhatItIs', () => {
+      const g: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const h: SolutionRow = makeRow({
+        key: 'h',
+        label: 'h.cs',
+        kind: 'file',
+        path: '/root/A/h.cs',
+      });
+      solution.model.set(model);
+      solution.rows.set([g, h]);
+      const status: () => string[] = (): string[] => {
+        fixture.detectChanges();
+        return Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+            'app-panel-status .panel-status__item',
+          ),
+        ).map((item: HTMLElement): string => (item.textContent ?? '').trim());
+      };
+
+      expect(status()).toEqual(['root']);
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      expect(status()).toEqual(['root/A', 'g.cs']);
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+      expect(status()).toEqual(['root/A', '2 selections']);
+    });
+
     it('contextMenuFor_aSelectionOfFiles_offersWhatActsOnThemAll', () => {
       // #1048: two files selected; a solution folder (no path) in the selection leaves no menu.
       const g: SolutionRow = makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' });

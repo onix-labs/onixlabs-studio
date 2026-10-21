@@ -71,3 +71,35 @@
 .panel-status__item--push {
   margin-inline-start: auto;
 }
+
+// An item that gives way when the strip is narrow, cutting its text with an ellipsis rather than
+// pushing the strip's other items out of view. The explorers' location and selection.
+.panel-status__item--shrink {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+// An item that never gives way: the room it needs is taken from the items that shrink.
+.panel-status__item--whole {
+  flex: 0 0 auto;
+}
+
+.panel-status__text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// A path cut from its START, so the end — the folder you are in — stays visible: the text runs
+// right-to-left for the purpose of overflow only, and the path inside is isolated back to left-to-right
+// so its characters read in order.
+.panel-status__text--path {
+  direction: rtl;
+  text-align: start;
+
+  > bdi {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}
