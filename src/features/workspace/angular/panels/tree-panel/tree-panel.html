@@ -9,46 +9,54 @@
     (collapseAll)="collapseAll()"
   />
 
-  <app-tree-view
-    [rows]="rows()"
-    [selectedId]="workspace.selectedPath()"
-    [selectedIds]="selection.ids()"
-    [multiSelect]="true"
-    [virtual]="true"
-    [contextMenuFor]="contextMenuFor"
-    [editingId]="editing()?.rowId ?? null"
-    [editValue]="editing()?.initial ?? ''"
-    [editSelection]="editing()?.selection ?? 'all'"
-    (rowClick)="onRowClick($event)"
-    (rowDoubleClick)="onRowOpen($event)"
-    (rowActivate)="onRowOpen($event)"
-    (rowSelect)="onRowSelect($event)"
-    (selectAll)="onSelectAll()"
-    (backgroundClick)="workspace.clearSelection()"
-    (contextMenuSelect)="onContextAction($event)"
-    (editCommit)="onEditCommit($event)"
-    (editCancel)="onEditCancel()"
-  >
-    <!-- While a row is being named, the tree's field takes the place of its name and decorations; the
-         icon stays, so a placeholder already reads as the kind of entry it is about to become. -->
-    <ng-template let-row let-editing="editing">
-      @let node = nodeOf(row);
-      <app-icon
-        class="tree-icon"
-        [class.tree-icon--folder]="node.type === 'directory'"
-        [icon]="iconFor(node)"
-      />
-      @if (!editing) {
-        <span class="tree-name">
-          <app-highlighted-text [text]="node.name" [query]="query()" />
-        </span>
+  @if (noChanges()) {
+    <!-- Show Changed Files Only, with nothing changed (#1053): said, with the way back. -->
+    <div class="tree-empty">
+      <p>No changes.</p>
+      <app-button label="Show All Files" (click)="workspace.toggleChangesOnly()" />
+    </div>
+  } @else {
+    <app-tree-view
+      [rows]="rows()"
+      [selectedId]="workspace.selectedPath()"
+      [selectedIds]="selection.ids()"
+      [multiSelect]="true"
+      [virtual]="true"
+      [contextMenuFor]="contextMenuFor"
+      [editingId]="editing()?.rowId ?? null"
+      [editValue]="editing()?.initial ?? ''"
+      [editSelection]="editing()?.selection ?? 'all'"
+      (rowClick)="onRowClick($event)"
+      (rowDoubleClick)="onRowOpen($event)"
+      (rowActivate)="onRowOpen($event)"
+      (rowSelect)="onRowSelect($event)"
+      (selectAll)="onSelectAll()"
+      (backgroundClick)="workspace.clearSelection()"
+      (contextMenuSelect)="onContextAction($event)"
+      (editCommit)="onEditCommit($event)"
+      (editCancel)="onEditCancel()"
+    >
+      <!-- While a row is being named, the tree's field takes the place of its name and decorations; the
+           icon stays, so a placeholder already reads as the kind of entry it is about to become. -->
+      <ng-template let-row let-editing="editing">
+        @let node = nodeOf(row);
+        <app-icon
+          class="tree-icon"
+          [class.tree-icon--folder]="node.type === 'directory'"
+          [icon]="iconFor(node)"
+        />
+        @if (!editing) {
+          <span class="tree-name">
+            <app-highlighted-text [text]="node.name" [query]="query()" />
+          </span>
 
-        @if (node.loading) {
-          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+          @if (node.loading) {
+            <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+          }
         }
-      }
-    </ng-template>
-  </app-tree-view>
+      </ng-template>
+    </app-tree-view>
+  }
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>

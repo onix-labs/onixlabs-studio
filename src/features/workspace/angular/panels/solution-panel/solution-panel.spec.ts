@@ -55,6 +55,12 @@ class FakeSolutionModel {
     this.showsGitStatus.update((value: boolean): boolean => !value);
   }
 
+  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+
+  public toggleChangesOnly(): void {
+    this.showsChangesOnly.update((value: boolean): boolean => !value);
+  }
+
   public refreshFromDisk(): void {
     this.refreshCount++;
   }
@@ -347,6 +353,40 @@ describe('SolutionPanel', () => {
   }
 
   describe('context menu', () => {
+    it('showChangedFilesOnly_keepsTheRootAndTheChanges_andOpensWhatLeadsToThem', async () => {
+      // #1053: project A holds the change and is opened for it; project B is hidden.
+      const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+      vi.spyOn(git, 'isRepository').mockReturnValue(true);
+      vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
+        path === '/root/A' ? 'contains' : path === '/root/A/g.cs' ? 'modified' : null,
+      );
+      const root: SolutionRow = makeRow({ key: 'root', kind: 'solution', path: null });
+      const a: SolutionRow = makeRow({
+        key: 'a',
+        kind: 'project',
+        expandable: true,
+        path: '/root/A/A.csproj',
+        scmPaths: ['/root/A'],
+      });
+      const b: SolutionRow = makeRow({
+        key: 'b',
+        kind: 'project',
+        expandable: true,
+        path: '/root/B/B.csproj',
+        scmPaths: ['/root/B'],
+      });
+      solution.model.set(model);
+      solution.rows.set([root, a, b]);
+      solution.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(solution.toggled).toEqual([a]);
+      expect(
+        rowButtons().map((button: HTMLButtonElement): string => button.textContent.trim()),
+      ).toHaveLength(2);
+    });
+
     it('contextMenuFor_aSelectionOfFiles_offersWhatActsOnThemAll', () => {
       // #1048: two files selected; a solution folder (no path) in the selection leaves no menu.
       const g: SolutionRow = makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' });
@@ -854,16 +894,25 @@ describe('SolutionPanel', () => {
       expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'changes-only',
       ]);
     });
 
     it('moreItems_theSwitches_carryTheirLiveCheckedState', () => {
       // Recomputed from the model rather than fixed, so a box read on opening the menu is current.
-      expect(checkedById()).toEqual({ 'follow-active': true, 'git-status': true });
+      expect(checkedById()).toEqual({
+        'follow-active': true,
+        'git-status': true,
+        'changes-only': false,
+      });
 
       solution.followsActiveDocument.set(false);
 
-      expect(checkedById()).toEqual({ 'follow-active': false, 'git-status': true });
+      expect(checkedById()).toEqual({
+        'follow-active': false,
+        'git-status': true,
+        'changes-only': false,
+      });
     });
 
     it('moreItems_areAllPlainRows', () => {

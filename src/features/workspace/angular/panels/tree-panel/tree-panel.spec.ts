@@ -89,6 +89,12 @@ class FakeWorkspace {
     this.showsGitStatus.update((value: boolean): boolean => !value);
   }
 
+  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+
+  public toggleChangesOnly(): void {
+    this.showsChangesOnly.update((value: boolean): boolean => !value);
+  }
+
   public refreshFromDisk(): Promise<void> {
     this.refreshes += 1;
     return Promise.resolve();
@@ -264,6 +270,102 @@ describe('TreePanel row context menu', () => {
       .filter((item: MenuItem): boolean => item.separator !== true)
       .map((item: MenuItem): string => item.id);
   }
+
+  describe('Show Changed Files Only (#1053)', () => {
+    const app: WorkspaceTreeNode = node('app', '/ws/src/app', 'directory');
+    const changed: WorkspaceTreeNode = node('main.ts', '/ws/src/app/main.ts', 'file');
+    const same: WorkspaceTreeNode = node('same.ts', '/ws/src/app/same.ts', 'file');
+    const src: WorkspaceTreeNode = node('src', '/ws/src', 'directory');
+    const docs: WorkspaceTreeNode = node('docs', '/ws/docs', 'directory');
+    let git: WorkspaceGit;
+
+    beforeEach(() => {
+      git = TestBed.inject(WorkspaceGit);
+      vi.spyOn(git, 'isRepository').mockReturnValue(true);
+      vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
+        path === '/ws/src/app/main.ts'
+          ? 'modified'
+          : path === '/ws/src' || path === '/ws/src/app'
+            ? 'contains'
+            : null,
+      );
+      workspace.rows.set([
+        { node: docs, depth: 0, expanded: false },
+        { node: src, depth: 0, expanded: false },
+      ]);
+    });
+
+    /**
+     * Gets the rendered rows' ids.
+     * @returns Returns the ids.
+     */
+    function shown(): string[] {
+      fixture.detectChanges();
+      return Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+      ).map((row: HTMLElement): string => row.dataset['treeId'] ?? '');
+    }
+
+    it('opensTheFoldersLeadingToChanges_andHidesTheRest', async () => {
+      workspace.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // The fake opens src; its entries arrive, and the effect opens app in turn.
+      expect(workspace.toggled).toEqual(['/ws/src']);
+      workspace.rows.set([
+        { node: docs, depth: 0, expanded: false },
+        { node: src, depth: 0, expanded: true },
+        { node: app, depth: 1, expanded: false },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(workspace.toggled).toEqual(['/ws/src', '/ws/src/app']);
+      workspace.rows.set([
+        { node: docs, depth: 0, expanded: false },
+        { node: src, depth: 0, expanded: true },
+        { node: app, depth: 1, expanded: true },
+        { node: changed, depth: 2, expanded: false },
+        { node: same, depth: 2, expanded: false },
+      ]);
+
+      expect(shown()).toEqual(['/ws/src', '/ws/src/app', '/ws/src/app/main.ts']);
+
+      // Off again: the folders it opened close, and everything shows.
+      workspace.showsChangesOnly.set(false);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(workspace.toggled).toEqual(['/ws/src', '/ws/src/app', '/ws/src', '/ws/src/app']);
+    });
+
+    it('withNothingChanged_saysSo_andOffersTheWayBack', () => {
+      vi.spyOn(git, 'stateFor').mockReturnValue(null);
+      workspace.showsChangesOnly.set(true);
+      fixture.detectChanges();
+
+      const element: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(element.textContent).toContain('No changes.');
+      Array.from(element.querySelectorAll('button'))
+        .find((button: HTMLButtonElement): boolean => button.textContent.includes('Show All Files'))
+        ?.click();
+      expect(workspace.showsChangesOnly()).toBe(false);
+    });
+
+    it('theSwitch_isOfferedInOptions_andDisabledOutsideARepository', () => {
+      const option: () => MenuItem | undefined = (): MenuItem | undefined =>
+        (component as unknown as { moreItems: () => readonly MenuItem[] })
+          .moreItems()
+          .find((item: MenuItem): boolean => item.id === 'options')
+          ?.children?.find((item: MenuItem): boolean => item.id === 'changes-only');
+
+      // Mocked before the menu is first read: a mocked signal is not reactive.
+      vi.spyOn(git, 'isRepository').mockReturnValue(false);
+      expect(option()).toMatchObject({
+        label: 'Show Changed Files Only',
+        disabled: true,
+        status: 'not a repository',
+      });
+    });
+  });
 
   describe('with several rows selected (#1048)', () => {
     const a: WorkspaceTreeNode = node('a.ts', '/ws/a.ts', 'file');
@@ -470,6 +572,7 @@ describe('TreePanel row context menu', () => {
       expect(moreItems()[0].children?.map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'changes-only',
       ]);
     });
 
@@ -502,7 +605,7 @@ describe('TreePanel row context menu', () => {
       expect(workspace.showsGitStatus()).toBe(false);
       expect(
         moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
-      ).toEqual([false, false]);
+      ).toEqual([false, false, false]);
     });
 
     it('showGitStatus_off_dropsTheRowColours', async () => {

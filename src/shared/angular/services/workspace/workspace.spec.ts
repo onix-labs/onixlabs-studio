@@ -360,6 +360,18 @@ describe('Workspace mutations', () => {
     expect(service.showsGitStatus()).toBe(false);
   });
 
+  it('showsChangesOnly_isOffUntilToggled_andIsRemembered', () => {
+    // #1053: unlike the two switches above, this one survives a restart.
+    localStorage.removeItem('workspace.files.changesOnly');
+    expect(service.showsChangesOnly()).toBe(false);
+
+    service.toggleChangesOnly();
+
+    expect(service.showsChangesOnly()).toBe(true);
+    expect(localStorage.getItem('workspace.files.changesOnly')).toBe('true');
+    localStorage.removeItem('workspace.files.changesOnly');
+  });
+
   it('delete_reconcilesTheDirectory_soTheEntryDropsOut', async () => {
     await service.openFolder();
     rootEntries = ROOT_LISTING.entries.filter(
