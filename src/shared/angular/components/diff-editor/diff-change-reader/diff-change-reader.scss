@@ -1,0 +1,123 @@
+// Studio's accessible change reader (#1026): docked along the foot of the diff it reads, on the popup
+// surface the hover card and menus use, so it reads as part of the same family. Its lines scroll when a
+// change is long; the head stays put.
+:host {
+  position: absolute;
+  inset-inline: 0.5rem;
+  inset-block-end: 0.5rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-block-size: 45%;
+  font-size: 0.8125rem;
+  color: var(--menu-foreground-color);
+  background: var(--menu-background-color);
+  border: 0.0625rem solid var(--menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: -0.125rem;
+  }
+}
+
+.diff-change-reader__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border-block-end: 0.0625rem solid var(--menu-border-color);
+}
+
+.diff-change-reader__position {
+  flex: 0 0 auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+// The live region doubles as the visible description: what a screen reader announces is what a
+// sighted reader sees beside the position.
+.diff-change-reader__label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+}
+
+.diff-change-reader__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.125rem;
+}
+
+.diff-change-reader__lines {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0.25rem 0;
+  overflow: auto;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.diff-change-reader__line {
+  display: flex;
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+  white-space: pre;
+
+  // Colour-keyed to the change margin, as the diff's own tallies are; the sign beside the number says
+  // the same in text, so colour is never the only signal.
+  &--removed {
+    background: color-mix(in srgb, var(--change-margin-deleted) 12%, transparent);
+  }
+
+  &--added {
+    background: color-mix(in srgb, var(--change-margin-saved) 12%, transparent);
+  }
+}
+
+.diff-change-reader__number {
+  flex: 0 0 3ch;
+  text-align: end;
+  color: var(--form-muted-foreground-color);
+}
+
+.diff-change-reader__sign {
+  flex: 0 0 1ch;
+
+  .diff-change-reader__line--removed & {
+    color: var(--change-margin-deleted);
+  }
+
+  .diff-change-reader__line--added & {
+    color: var(--change-margin-saved);
+  }
+}
+
+.diff-change-reader__text {
+  font: inherit;
+}
+
+.diff-change-reader__more {
+  margin: 0;
+  padding: 0.25rem 0.75rem 0.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// Read by a screen reader, not drawn: the line's kind and number in words.
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
