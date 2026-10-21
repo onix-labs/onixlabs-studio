@@ -59,7 +59,7 @@
   }
 
   <!-- Where the selection is, and what it is: the folder on the left, cut from
-       its start so the end stays visible; the selected item, or how many, on the right. -->
+       its start so the end stays visible; the selected item, or how many, on the right — never cut. -->
   <app-panel-status>
     <span class="panel-status__item panel-status__item--shrink" [title]="statusLocation()">
       <app-icon [icon]="Icon.DIRECTORY" />
@@ -68,12 +68,9 @@
       >
     </span>
     @if (statusSelection(); as selected) {
-      <span
-        class="panel-status__item panel-status__item--push panel-status__item--shrink"
-        [title]="selected.text"
-      >
+      <span class="panel-status__item panel-status__item--push panel-status__item--whole">
         <app-icon [icon]="selected.icon" />
-        <span class="panel-status__text">{{ selected.text }}</span>
+        {{ selected.text }}
       </span>
     }
   </app-panel-status>

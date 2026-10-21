@@ -80,6 +80,11 @@
   overflow: hidden;
 }
 
+// An item that never gives way: the room it needs is taken from the items that shrink.
+.panel-status__item--whole {
+  flex: 0 0 auto;
+}
+
 .panel-status__text {
   min-inline-size: 0;
   overflow: hidden;
