@@ -19,7 +19,7 @@ import { Notification, Notifications } from '@shared/angular/services/notificati
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { Agent, AgentItem, STREAM_FLUSH_MS } from './agent';
+import { ADOPTION_DEADLINE_MS, Agent, AgentItem, STREAM_FLUSH_MS } from './agent';
 import { ProposedChanges } from './proposed-changes';
 import {
   ProposedDiff,
@@ -973,7 +973,7 @@ describe('Agent', () => {
       });
       expect(agent.isRunning()).toBe(true);
 
-      vi.advanceTimersByTime(15_100);
+      vi.advanceTimersByTime(ADOPTION_DEADLINE_MS + 100);
 
       // Nothing arrived under the adopted id: the conversation is idle again, not "Working" for good.
       expect(agent.isRunning()).toBe(false);
@@ -1004,7 +1004,7 @@ describe('Agent', () => {
         messageUuid: 'm1',
       });
 
-      vi.advanceTimersByTime(15_100);
+      vi.advanceTimersByTime(ADOPTION_DEADLINE_MS + 100);
 
       // A report that has begun ends the way every turn does — on its status, however long it takes.
       expect(agent.isRunning()).toBe(true);
@@ -1013,6 +1013,100 @@ describe('Agent', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  /**
+   * Settles a background task while the conversation is idle and lets the adoption deadline pass, the
+   * way a report-back turn that thinks for longer than the deadline used to be released (2026-10-21:
+   * a whole research synthesis and the question after it were silently dropped this way).
+   * @returns Returns the run id the session's events arrive under.
+   */
+  function releaseAnAdoptedReportBack(): string {
+    agent.send('research this in the background');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Research done',
+      outputFile: '/tmp/task-1.out',
+    });
+    vi.advanceTimersByTime(ADOPTION_DEADLINE_MS + 100);
+    expect(agent.isRunning()).toBe(false);
+    return 'run-1';
+  }
+
+  it('backgroundTask_whenTheReportBackLandsAfterItsRelease_reattachesTheTurnAndShowsIt', () => {
+    vi.useFakeTimers();
+    try {
+      const requestId: string = releaseAnAdoptedReportBack();
+
+      // The model finally finishes thinking and its first message lands.
+      fireEvent({ requestId, kind: 'tool-start', toolId: 'w1', name: 'Write', detail: 'memory' });
+
+      expect(agent.isRunning()).toBe(true);
+      expect(
+        agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'w1'),
+      ).toBe(true);
+      fireEvent({ requestId, kind: 'status', state: 'completed', detail: '' });
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backgroundTask_whenAReleasedTurnAsksAQuestion_theQuestionIsShown', () => {
+    vi.useFakeTimers();
+    try {
+      const requestId: string = releaseAnAdoptedReportBack();
+
+      fireEvent({
+        requestId,
+        kind: 'input-request',
+        inputId: 'q1',
+        question: 'Which next?',
+        choices: [],
+      });
+
+      // A question nobody sees blocks the agent forever: it must render, and the turn is live again.
+      expect(lastItem()).toMatchObject({
+        kind: 'input-request',
+        inputId: 'q1',
+        inputState: 'pending',
+      });
+      expect(agent.isRunning()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sessionEvent_afterStop_doesNotReattachTheStoppedTurn', () => {
+    vi.useFakeTimers();
+    try {
+      const requestId: string = releaseAnAdoptedReportBack();
+
+      agent.stop();
+      fireEvent({ requestId, kind: 'text', delta: 'one last word', messageUuid: 'm9' });
+
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sessionEvent_fromAnotherRun_whileIdle_isStillDropped', () => {
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    fireEvent({ requestId: 'run-99', kind: 'tool-start', toolId: 'x', name: 'Read', detail: 'f' });
+
+    expect(agent.isRunning()).toBe(false);
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'x'),
+    ).toBe(false);
   });
 
   it('phase_followsTheConversation_emptyWorkingWaitingIdle', () => {
