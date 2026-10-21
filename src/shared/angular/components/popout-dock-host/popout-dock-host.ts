@@ -10,6 +10,7 @@ import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
+import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockNode, mkStack } from '@shared/angular/services/dock-layout/dock-node';
@@ -61,6 +62,7 @@ export const POPOUT_DOCK_CONFIG: InjectionToken<PopoutDockConfig> =
   providers: [
     DockState,
     DockGeometry,
+    DockMinimums,
     DockFocus,
     DockFloating,
     DockAutoHide,

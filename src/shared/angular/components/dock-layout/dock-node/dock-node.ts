@@ -11,6 +11,7 @@ import {
   StackNode,
 } from '../../../services/dock-layout/dock-node';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
+import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
 import { DockSplitter } from '../dock-splitter/dock-splitter';
 import { DockTabGroup } from '../dock-tab-group/dock-tab-group';
@@ -46,6 +47,11 @@ export class DockNode {
    * backing is absent is known to render nothing.
    */
   private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
+
+  /**
+   * Holds the dock's minimum sizes, which each pane carries (#1064).
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
    * Gets the flex shorthand sizing a collapsed pane to a fixed thin strip.
@@ -195,6 +201,20 @@ export class DockNode {
       return '0 0 0';
     }
     return this.isCollapsed(node) ? COLLAPSED_FLEX : this.paneFlex(grow);
+  }
+
+  /**
+   * Gets the least size a pane may be given (#1064): its node's minimum — a group's tabs, title and
+   * panels, or a nested split's sum of them — so neither a splitter nor the window can crush it. None
+   * for a collapsed or empty pane, whose own rules size it.
+   * @param node The pane's node.
+   * @returns Returns the minimum in pixels, or null to leave it to the pane's rules.
+   */
+  protected paneMinimum(node: DockTreeNode): DockMinimum | null {
+    if (this.isCollapsed(node) || this.isEmptyPane(node)) {
+      return null;
+    }
+    return this.minimums.minimumOf(node);
   }
 
   /**

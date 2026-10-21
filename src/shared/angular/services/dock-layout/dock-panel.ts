@@ -63,6 +63,19 @@ export interface DockPanel {
    * outside a workspace's well).
    */
   readonly switch?: Signal<DockPanelSwitch>;
+
+  /**
+   * Gets the narrowest width, in rem, the panel still works at (#1064): a group holding it is never
+   * made narrower, by a splitter or by the window. Absent means 16rem
+   * ({@link import('./dock-minimums').DEFAULT_PANEL_MIN_INLINE_REM}).
+   */
+  readonly minInlineSize?: number;
+
+  /**
+   * Gets the least height, in rem, the panel's content still works at, below its group's title bar
+   * and tab strip (#1064). Absent means 6rem.
+   */
+  readonly minBlockSize?: number;
 }
 
 /**

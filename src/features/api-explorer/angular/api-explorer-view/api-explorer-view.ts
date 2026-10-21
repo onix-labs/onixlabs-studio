@@ -33,6 +33,7 @@ import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
+import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
@@ -103,6 +104,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     DockTabContext,
     DockState,
     DockGeometry,
+    DockMinimums,
     DockFocus,
     DockPanelRegistry,
     DockFloating,
