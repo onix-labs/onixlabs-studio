@@ -1,2 +1,11 @@
 <div class="diff-editor" #host></div>
 <app-editor-context-menu />
+@if (readerView(); as view) {
+  <!-- Studio's accessible change reader (#1026), stepped through with F7 / ⇧F7. -->
+  <app-diff-change-reader
+    [view]="view"
+    (next)="stepReader(1)"
+    (previous)="stepReader(-1)"
+    (closed)="closeReader()"
+  />
+}
