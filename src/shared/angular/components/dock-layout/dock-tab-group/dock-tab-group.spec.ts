@@ -8,6 +8,7 @@ import { mkStack, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockState } from '../../../services/dock-layout/dock-state';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanelPlaceholder } from '../dock-panel-placeholder/dock-panel-placeholder';
 import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
@@ -40,6 +41,77 @@ describe('DockTabGroup', () => {
     floating = TestBed.inject(DockFloating);
     drag = TestBed.inject(DockDrag);
     availability = TestBed.inject(DockPanelAvailability);
+  });
+
+  describe('tab fill during a splitter drag', () => {
+    /**
+     * Reaches the component's resize handling, which jsdom (no layout, no observer) cannot drive.
+     * @returns Returns the handle.
+     */
+    function internals(): {
+      naturalTabsExtent: number | null;
+      onStripResized: (entries: readonly ResizeObserverEntry[]) => void;
+    } {
+      return component as unknown as {
+        naturalTabsExtent: number | null;
+        onStripResized: (entries: readonly ResizeObserverEntry[]) => void;
+      };
+    }
+
+    /**
+     * Builds the entry a resize observer reports for a strip of a width.
+     * @param width The strip's width.
+     * @returns Returns the entries.
+     */
+    function resized(width: number): readonly ResizeObserverEntry[] {
+      return [
+        {
+          borderBoxSize: [{ inlineSize: width, blockSize: 24 }],
+          contentRect: { width } as DOMRectReadOnly,
+        } as unknown as ResizeObserverEntry,
+      ];
+    }
+
+    /**
+     * Gets whether the group shows its tabs filling the strip.
+     * @returns Returns true when filling.
+     */
+    function filling(): boolean {
+      fixture.detectChanges();
+      return (fixture.nativeElement as HTMLElement).classList.contains('dock-tab-group--tabs-fill');
+    }
+
+    it('snapsMidDrag_fromTheReportedWidth_againstTheTabsRememberedReach', () => {
+      // The perf deferral (#560) stopped measuring mid-drag, so the tab never snapped until release.
+      render(mkStack('tool', ['output', 'errors']));
+      const geometry: DockGeometry = TestBed.inject(DockGeometry);
+      internals().naturalTabsExtent = 200;
+      geometry.beginInteractiveResize();
+
+      internals().onStripResized(resized(240));
+      expect(filling()).toBe(false);
+      internals().onStripResized(resized(214)); // within 16px of the tabs' end
+      expect(filling()).toBe(true);
+      internals().onStripResized(resized(260)); // and back out again
+      expect(filling()).toBe(false);
+
+      geometry.endInteractiveResize();
+    });
+
+    it('beforeAnyMeasurement_waitsForRelease_ratherThanGuessing', () => {
+      render(mkStack('tool', ['output', 'errors']));
+      const geometry: DockGeometry = TestBed.inject(DockGeometry);
+      internals().naturalTabsExtent = null;
+      const before: boolean = filling();
+      geometry.beginInteractiveResize();
+
+      internals().onStripResized(resized(10));
+      internals().onStripResized(resized(5000));
+
+      // Nothing remembered to compare against: the fill is left alone until the release measures it.
+      expect(filling()).toBe(before);
+      geometry.endInteractiveResize();
+    });
   });
 
   it('should create', () => {
