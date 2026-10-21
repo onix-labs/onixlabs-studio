@@ -52,6 +52,7 @@ import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
+import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -276,6 +277,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     DockTabContext,
     DockState,
     DockGeometry,
+    DockMinimums,
     DockFocus,
     DockPanelRegistry,
     // Which of this tab's panels have something behind them, which the dock filters its stacks

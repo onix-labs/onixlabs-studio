@@ -29,6 +29,7 @@ import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockState } from '../../../services/dock-layout/dock-state';
+import { DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -156,6 +157,11 @@ export class DockTabGroup {
    */
   private readonly tabstrip: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('tabstrip');
+
+  /**
+   * Holds the dock's minimum sizes, which this group reports its own chrome to (#1064).
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
    * Holds whether the tabs should fill the strip (their natural width is within the fill threshold of
@@ -316,7 +322,10 @@ export class DockTabGroup {
       this.measureTabsFill();
     });
 
-    destroyRef.onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+    destroyRef.onDestroy((): void => {
+      this.geometry.unregisterGroup(this.stack().id);
+      this.minimums.forget(this.stack().id);
+    });
 
     // Re-measure after the tab set changes (open/close/reorder/rename), once the DOM has settled.
     effect((): void => {
@@ -411,6 +420,7 @@ export class DockTabGroup {
     if (strip === undefined || this.isDocuments()) {
       this.naturalTabsExtent = null;
       this.tabsFillSignal.set(false);
+      this.reportMinimum(0);
       return;
     }
 
@@ -419,6 +429,7 @@ export class DockTabGroup {
     if (last === null) {
       this.naturalTabsExtent = null;
       this.tabsFillSignal.set(false);
+      this.reportMinimum(0);
       return;
     }
 
@@ -432,6 +443,53 @@ export class DockTabGroup {
     // drag can decide the fill without measuring again.
     this.naturalTabsExtent = lastTabRight - stripBox.left;
     this.applyTabsFill(stripBox.width);
+    this.reportMinimum(this.naturalTabsExtent);
+  }
+
+  /**
+   * Reports this group's own chrome to the dock's minimums (#1064): how wide its tabs and its title
+   * bar are at their natural size — the full title, not the ellipsis a narrow group shows — and how
+   * tall everything is but the panel's content. Read during the measurement pass, so it adds no layout
+   * of its own beyond the few reads here.
+   * @param tabs The tabs' natural width, or zero for a document well (its tabs scroll).
+   */
+  private reportMinimum(tabs: number): void {
+    const host: HTMLElement = this.hostElement.nativeElement;
+    const body: HTMLElement | null = host.querySelector<HTMLElement>('.dock-tab-group__body');
+    const title: HTMLElement | null = host.querySelector<HTMLElement>('.dock-tab-group__title');
+    let titleWidth: number = 0;
+    if (title !== null) {
+      const text: HTMLElement | null = title.querySelector<HTMLElement>(
+        '.dock-tab-group__title-text',
+      );
+      const buttons: HTMLElement | null = title.querySelector<HTMLElement>(
+        '.dock-tab-group__title-buttons',
+      );
+      const style: CSSStyleDeclaration = getComputedStyle(title);
+      // The title text stretches to fill the bar, so its own box says nothing about the title: the
+      // width of the glyphs themselves, read through a range, is what the bar must keep room for.
+      let textWidth: number = 0;
+      if (text !== null) {
+        const range: Range = document.createRange();
+        range.selectNodeContents(text);
+        textWidth = range.getBoundingClientRect().width;
+      }
+      titleWidth =
+        textWidth +
+        (buttons?.getBoundingClientRect().width ?? 0) +
+        pixels(style.paddingInlineStart) +
+        pixels(style.paddingInlineEnd) +
+        pixels(style.borderInlineStartWidth) +
+        pixels(style.borderInlineEndWidth) +
+        pixels(style.columnGap);
+    }
+    const chrome: number =
+      body === null ? 0 : host.getBoundingClientRect().height - body.clientHeight;
+    this.minimums.report(this.stack().id, {
+      tabs: Math.ceil(tabs),
+      title: Math.ceil(titleWidth),
+      chrome: Math.max(0, Math.ceil(chrome)),
+    });
   }
 
   /**
@@ -569,4 +627,14 @@ export class DockTabGroup {
     }
     this.dockDrag.beginGroup(this.stack().id, event);
   }
+}
+
+/**
+ * Reads a computed CSS length as pixels, zero when it is not one.
+ * @param value The computed value.
+ * @returns Returns the pixels.
+ */
+function pixels(value: string): number {
+  const parsed: number = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

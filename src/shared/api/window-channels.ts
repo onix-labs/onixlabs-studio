@@ -56,6 +56,13 @@ export enum WindowChannel {
    * other platforms.
    */
   SetCaptionSymbolColor = 'window:set-caption-symbol-color',
+
+  /**
+   * Raises the requesting window's minimum size to what its dock layout needs, so no panel group is
+   * ever crushed below its content (renderer→main, send; #1064). Never below the window's own floor,
+   * and never above the screen it is on.
+   */
+  SetMinimumSize = 'window:set-minimum-size',
 }
 
 /**
