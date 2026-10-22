@@ -298,6 +298,20 @@ describe('WorkspaceGit', () => {
     expect(git.stateFor('/repo')).toBeNull();
   });
 
+  it('hasChanges_onceTheStatusIsRead_saysWhetherAnythingIsChanged_notCountingIgnoredPaths', async () => {
+    expect(git.statusRead()).toBe(false);
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.statusRead()).toBe(true);
+    expect(git.hasChanges()).toBe(true);
+
+    // Committed: only ignored paths are left, which are not changes.
+    status = { ...status, staged: [], unstaged: [], conflicted: [], ignored: ['node_modules/'] };
+    await git.refresh();
+    expect(git.hasChanges()).toBe(false);
+  });
+
   it('addToVersionControl_stagesTheRepositoryRelativePath_andReadsTheStatusAgain', async () => {
     root.set(listing('/repo'));
     await bind();

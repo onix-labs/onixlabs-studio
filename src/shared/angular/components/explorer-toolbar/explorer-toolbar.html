@@ -8,6 +8,23 @@
     (valueChange)="onSearchValue($event)"
   />
   <div class="explorer-toolbar__actions">
+    <!-- Narrows the tree to what has changed, for the explorers that can (#1053). With nothing to
+         narrow to — no repository, or no changes — it stays put but cannot be pressed, and says why. -->
+    @if (changesOnly(); as filter) {
+      <app-button
+        variant="none"
+        [icon]="Icon.GIT_DIFF"
+        ariaLabel="Show Changed Files Only"
+        [tooltip]="
+          filter.unavailable === null
+            ? 'Show Changed Files Only'
+            : 'Show Changed Files Only (' + filter.unavailable + ')'
+        "
+        [pressed]="filter.on"
+        [disabled]="filter.unavailable !== null"
+        (click)="changesOnlyToggle.emit()"
+      />
+    }
     <app-button
       variant="none"
       [icon]="Icon.PLUS_SQUARE_DUOTONE"

@@ -104,24 +104,27 @@
       (action)="onCommit()"
       (selected)="onCommitMenuItem($event)"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.CLOUD_DOWN"
-      label="Fetch"
-      [disabled]="!hasRepository()"
-      (action)="onRepoFetch()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.ARROW_DOWN"
-      label="Pull"
-      [disabled]="!hasRepository()"
-      (action)="onPull()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.ARROW_UP"
-      label="Push"
-      [disabled]="!hasRepository()"
-      (action)="onPush()"
-    />
+    <!-- The three network actions are one set, stacked small beside Commit. -->
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CLOUD_DOWN"
+        label="Fetch"
+        [disabled]="!hasRepository()"
+        (action)="onRepoFetch()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ARROW_DOWN"
+        label="Pull"
+        [disabled]="!hasRepository()"
+        (action)="onPull()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ARROW_UP"
+        label="Push"
+        [disabled]="!hasRepository()"
+        (action)="onPush()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 

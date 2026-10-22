@@ -21,56 +21,51 @@
     />
   </app-ribbon-strip-group>
 
-  <!-- Reset Widths leads as the large button: it is the group's one command, and the only control here
-       that does something rather than filter. The three toggles beside it are the run-state filters —
-       empty, idle, working — which partition every column, so they read as one set and compose. -->
+  <!-- Reset Widths leads: it is the group's one command, and the only control here that does
+       something rather than filter. The three toggles beside it are the run-state filters — empty,
+       idle, working — which partition every column, so they read as one set and compose. -->
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-button
       [icon]="Icon.LAYOUT_SPLIT"
       label="Reset Widths"
       (action)="onResetLayout()"
     />
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_EMPTY"
-        label="Hide Empty"
-        [toggle]="true"
-        [pressed]="hideEmpty()"
-        (action)="onToggleHideEmpty()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_IDLE"
-        label="Hide Idle"
-        [toggle]="true"
-        [pressed]="hideIdle()"
-        (action)="onToggleHideIdle()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_WORKING"
-        label="Hide Working"
-        [toggle]="true"
-        [pressed]="hideWorking()"
-        (action)="onToggleHideWorking()"
-      />
-    </app-ribbon-strip-column>
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_EMPTY"
+      label="Hide Empty"
+      [toggle]="true"
+      [pressed]="hideEmpty()"
+      (action)="onToggleHideEmpty()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_IDLE"
+      label="Hide Idle"
+      [toggle]="true"
+      [pressed]="hideIdle()"
+      (action)="onToggleHideIdle()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.HIDE_WORKING"
+      label="Hide Working"
+      [toggle]="true"
+      [pressed]="hideWorking()"
+      (action)="onToggleHideWorking()"
+    />
   </app-ribbon-strip-group>
 
-  <!-- How much an agent may do without you. The posture is three stacked buttons rather than a
-       field — one is always pressed, and pressing one moves the posture there, so they read as the
-       answer to "how much may they do before asking?" rather than as three independent switches.
-       Stacked small, like the View filters: they are one set, not three commands. -->
+  <!-- How much an agent may do without you. The posture is three buttons rather than a field — one
+       is always pressed, and pressing one moves the posture there, so they read as the answer to "how
+       much may they do before asking?" rather than as three independent switches. -->
   <app-ribbon-strip-group title="Permissions">
-    <app-ribbon-strip-column>
-      @for (posture of postures; track posture.value) {
-        <app-ribbon-strip-button-small
-          [icon]="posture.icon"
-          [label]="posture.label"
-          [toggle]="true"
-          [pressed]="permissionPosture() === posture.value"
-          (action)="onPosture(posture.value)"
-        />
-      }
-    </app-ribbon-strip-column>
+    @for (posture of postures; track posture.value) {
+      <app-ribbon-strip-button
+        [icon]="posture.icon"
+        [label]="posture.label"
+        [toggle]="true"
+        [pressed]="permissionPosture() === posture.value"
+        (action)="onPosture(posture.value)"
+      />
+    }
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 

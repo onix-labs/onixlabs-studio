@@ -16,6 +16,7 @@ import type {
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
   DocumentDiffSwitch,
+  DocumentWellPlacement,
   FileExplorerExpandAll,
   GoToStyle,
   ImageAlignment,
@@ -81,6 +82,7 @@ export interface SettingsValues {
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
   readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
+  readonly 'workspaces.documentWellPlacement': DocumentWellPlacement;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
@@ -493,6 +495,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'tab',
+      },
+      {
+        key: 'workspaces.documentWellPlacement',
+        title: 'Opening a document beside a filling panel',
+        description:
+          'What happens when you open a document while a panel, such as an agent, fills the space documents open in. Split Horizontally puts the documents beside the panel; Split Vertically puts them above it; Collapse folds the panel into its tab strip, where it can still be opened over the documents, and gives the documents the whole space. Closing the last document gives the panel its space back.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'split-horizontal', label: 'Split Horizontally' },
+            { value: 'split-vertical', label: 'Split Vertically' },
+            { value: 'collapse', label: 'Collapse' },
+          ],
+        },
+        default: 'split-horizontal',
       },
     ],
   },

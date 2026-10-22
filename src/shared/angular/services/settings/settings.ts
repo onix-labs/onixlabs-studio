@@ -156,6 +156,14 @@ export type FileExplorerExpandAll = 'loaded-only' | 'entire-tree';
 export type DocumentDiffSwitch = 'tab' | 'swap';
 
 /**
+ * Identifies what happens when a document opens while a panel (an agent, say) fills the space the
+ * documents would: `split-horizontal` puts the document well beside the panel; `split-vertical` puts
+ * it above the panel; `collapse` collapses the panel into its tab strip, to be peeked at when wanted,
+ * and gives the well the space. Closing the last document gives the panel the space back in every case.
+ */
+export type DocumentWellPlacement = 'split-horizontal' | 'split-vertical' | 'collapse';
+
+/**
  * Identifies how an editor's Go to Symbol and Go to Line ask where to go (#1009): `quick-open`, a light
  * box near the top of the editor's window that filters as you type; `dialogs`, a dialog window for
  * each.
@@ -403,6 +411,11 @@ export interface WorkspacesSettings {
    * Gets how a document well's switch between a file and its diff behaves.
    */
   readonly documentDiffSwitch: DocumentDiffSwitch;
+
+  /**
+   * Gets what happens when a document opens while a panel fills the documents' space.
+   */
+  readonly documentWellPlacement: DocumentWellPlacement;
 }
 
 /**
@@ -636,6 +649,7 @@ export class Settings {
   public readonly workspaces: Signal<WorkspacesSettings> = computed((): WorkspacesSettings => ({
     fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
     documentDiffSwitch: this.read('workspaces.documentDiffSwitch'),
+    documentWellPlacement: this.read('workspaces.documentWellPlacement'),
   }));
 
   /**
@@ -650,6 +664,13 @@ export class Settings {
    */
   public readonly documentDiffSwitch: Signal<DocumentDiffSwitch> = this.value(
     'workspaces.documentDiffSwitch',
+  );
+
+  /**
+   * Gets what happens when a document opens while a panel fills the documents' space.
+   */
+  public readonly documentWellPlacement: Signal<DocumentWellPlacement> = this.value(
+    'workspaces.documentWellPlacement',
   );
 
   /**
@@ -1030,6 +1051,14 @@ export class Settings {
    */
   public setDocumentDiffSwitch(behavior: DocumentDiffSwitch): void {
     this.set('workspaces.documentDiffSwitch', behavior);
+  }
+
+  /**
+   * Sets what happens when a document opens while a panel fills the documents' space.
+   * @param placement The placement to apply.
+   */
+  public setDocumentWellPlacement(placement: DocumentWellPlacement): void {
+    this.set('workspaces.documentWellPlacement', placement);
   }
 
   /**

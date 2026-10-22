@@ -171,6 +171,15 @@ export class CodeRibbon {
   });
 
   /**
+   * Gets a value indicating whether the active document is in a programming language rather than plain
+   * text: only then does it have symbols for Go to Symbol to list.
+   */
+  protected readonly hasSymbols: Signal<boolean> = computed(
+    (): boolean =>
+      (this.activeDocument()?.language() ?? PLAIN_TEXT_LANGUAGE_ID) !== PLAIN_TEXT_LANGUAGE_ID,
+  );
+
+  /**
    * Gets a value indicating whether the active document's language can be run.
    */
   protected readonly canRun: Signal<boolean> = computed((): boolean =>
@@ -247,8 +256,13 @@ export class CodeRibbon {
         },
         // No accelerators: ⌘⇧O and ⌃G are bound inside the editor (#1009), and a menu accelerator
         // would take Ctrl+G from a terminal or composer docked beside it.
-        { id: 'code.goToSymbol', label: 'Go to Symbol', run: (): void => this.onGoToSymbol() },
         { id: 'code.goToLine', label: 'Go to Line', run: (): void => this.onGoToLine() },
+        {
+          id: 'code.goToSymbol',
+          label: 'Go to Symbol',
+          enabled: this.hasSymbols(),
+          run: (): void => this.onGoToSymbol(),
+        },
         {
           id: 'code.format',
           label: 'Format Document',

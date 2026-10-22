@@ -1,6 +1,6 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { DocumentWellPlacement, Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
@@ -29,6 +29,7 @@ import {
   splitWellBeside,
   tabInto,
   tabStackInto,
+  WellSplit,
 } from './dock-tree';
 
 /**
@@ -180,14 +181,24 @@ export class DockState {
   }
 
   /**
-   * Splits a fresh document well (holding the given document) off a tool-occupied centre at an even
-   * 50/50 share, the well on the left. Used when a document is opened while a tool holds the centre
-   * and no well exists.
+   * Splits a fresh document well (holding the given document) off a tool-occupied centre where the
+   * user's `workspaces.documentWellPlacement` setting puts it: beside the tool, above it, or in its
+   * place with the tool collapsed to a strip. Used when a document is opened while a tool holds the
+   * centre and no well exists.
    * @param stackId The identifier of the tool-occupied centre to split against.
    * @param panelId The identifier of the document panel to seat in the new well.
    */
   public openWellBeside(stackId: string, panelId: string): void {
-    this.commit(splitWellBeside(this.tree(), stackId, panelId));
+    this.commit(splitWellBeside(this.tree(), stackId, panelId, this.wellSplit()));
+  }
+
+  /**
+   * Reads where a fresh document well goes beside a tool-occupied centre, from the user's setting.
+   * @returns Returns the well's placement.
+   */
+  private wellSplit(): WellSplit {
+    const placement: DocumentWellPlacement = this.settings.documentWellPlacement();
+    return placement === 'split-vertical' ? 'col' : placement === 'collapse' ? 'collapse' : 'row';
   }
 
   /**
@@ -260,7 +271,7 @@ export class DockState {
    */
   public restore(panelIds: readonly string[]): void {
     this.log.warn('DockState', 'Putting back documents with unsaved changes', panelIds);
-    this.tree.set(seatDocuments(this.tree(), panelIds, panelIds[0] ?? null));
+    this.tree.set(seatDocuments(this.tree(), panelIds, panelIds[0] ?? null, this.wellSplit()));
   }
 
   /**

@@ -472,6 +472,62 @@ describe('dock-tree', () => {
         agent.id,
       ]);
     });
+
+    it('splitWellBeside_vertically_putsTheWellAboveTheTool', () => {
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const result: DockNode = splitWellBeside(tree, centre.id, 'doc', 'col');
+
+      const inner: SplitNode = (result as SplitNode).children[1] as SplitNode;
+      expect(inner.dir).toBe('col');
+      expect(inner.sizes).toEqual([1, 1]);
+      expect(inner.children[0]).toBe(asStack(findStackOfPanel(result, 'doc')));
+      expect(inner.children[1].id).toBe(centre.id);
+      // Closing the document lets the tool refill the centre, as beside does.
+      const refilled: DockNode = removeFromLayout(result, 'doc');
+      expect(firstStackOfRole(refilled, 'document')).toBeNull();
+      expect(asStack(findStackOfPanel(refilled, 'agent')).collapsed).toBeFalsy();
+    });
+
+    it('splitWellBeside_collapsing_givesTheWellTheSpace_andTheToolItBackWhenTheLastDocumentCloses', () => {
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const result: DockNode = splitWellBeside(tree, centre.id, 'doc', 'collapse');
+
+      // The tool collapses to a strip on the right of the well, remembering it made way for it.
+      const agent: StackNode = asStack(findStackOfPanel(result, 'agent'));
+      expect(agent).toMatchObject({ collapsed: true, side: 'right', yielded: true, primary: true });
+      const inner: SplitNode = (result as SplitNode).children[1] as SplitNode;
+      expect(inner.dir).toBe('row');
+      expect(inner.children.map((child: DockNode): string => child.id)).toEqual([
+        asStack(findStackOfPanel(result, 'doc')).id,
+        centre.id,
+      ]);
+
+      // A second document joins the well; closing only one keeps the tool collapsed.
+      const two: DockNode = tabInto(result, asStack(findStackOfPanel(result, 'doc')).id, 'doc2');
+      expect(asStack(findStackOfPanel(removeFromLayout(two, 'doc'), 'agent')).collapsed).toBe(true);
+
+      // The last document closing expands the tool back into the whole centre.
+      const refilled: DockNode = removeFromLayout(removeFromLayout(two, 'doc'), 'doc2');
+      const back: StackNode = asStack(findStackOfPanel(refilled, 'agent'));
+      expect(back.collapsed).toBe(false);
+      expect(back.side).toBeUndefined();
+      expect(back.yielded).toBeUndefined();
+      expect(firstStackOfRole(refilled, 'document')).toBeNull();
+    });
+
+    it('splitWellBeside_collapsing_thenExpandingByHand_forgetsItMadeWay', () => {
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const split: DockNode = splitWellBeside(tree, centre.id, 'doc', 'collapse');
+      const shown: DockNode = setCollapsed(split, centre.id, false);
+
+      expect(asStack(findStackOfPanel(shown, 'agent')).yielded).toBeUndefined();
+    });
   });
 
   describe('tabInto', () => {
