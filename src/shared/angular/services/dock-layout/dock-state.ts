@@ -9,6 +9,7 @@ import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
 import {
   carryIntoWell,
+  collectPanelIds,
   defaultLayout,
   dockEdge,
   dockNodeEdge,
@@ -19,6 +20,7 @@ import {
   removeFromLayout,
   removeNode,
   reorderTab,
+  seatDocuments,
   setActive,
   setCollapsed,
   setSizes,
@@ -101,6 +103,11 @@ export class DockState {
   private readonly future: WritableSignal<readonly DockNode[]> = signal<readonly DockNode[]>([]);
 
   /**
+   * Holds the panels closed by choice and not yet released by the host (see {@link release}).
+   */
+  private readonly released: Set<string> = new Set<string>();
+
+  /**
    * Gets a value indicating whether an earlier layout can be restored.
    */
   public readonly canUndo: Signal<boolean> = computed((): boolean => this.past().length > 0);
@@ -120,6 +127,14 @@ export class DockState {
     effect((): void => {
       if (this.persistKey !== null) {
         this.store.set<DockNode>(`dock.layout.${this.persistKey}`, this.tree());
+      }
+    });
+    // A released panel that comes back into the layout (undo, reopen) is no longer let go.
+    effect((): void => {
+      if (this.released.size > 0) {
+        for (const panelId of collectPanelIds(this.tree())) {
+          this.released.delete(panelId);
+        }
       }
     });
   }
@@ -200,8 +215,52 @@ export class DockState {
       return false;
     }
     this.log.info('DockState', `Closed panel '${panelId}'`);
-    this.removeFromLayout(panelId);
+    this.release(panelId);
     return true;
+  }
+
+  /**
+   * Removes a panel the user has chosen to close — its unsaved changes already saved or discarded —
+   * recording that it was let go on purpose, so the host may release what it holds. A panel that
+   * merely leaves the layout (undone away, or dropped by a rebuilt tree) is not released this way, and
+   * a host keeping unsaved work puts it back (see {@link restore}).
+   * @param panelId The identifier of the panel to close.
+   */
+  public release(panelId: string): void {
+    this.released.add(panelId);
+    this.removeFromLayout(panelId);
+  }
+
+  /**
+   * Records panels as let go on purpose without removing them here, for a caller about to replace the
+   * whole tree once their unsaved changes have been resolved (a layout switch).
+   * @param panelIds The identifiers of the panels to record.
+   */
+  public markReleased(panelIds: readonly string[]): void {
+    for (const panelId of panelIds) {
+      this.released.add(panelId);
+    }
+  }
+
+  /**
+   * Determines whether a panel was let go on purpose (see {@link release}). The record lasts until
+   * the panel is back in the layout, since some panels stay registered after closing.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when the panel was closed by choice.
+   */
+  public isReleased(panelId: string): boolean {
+    return this.released.has(panelId);
+  }
+
+  /**
+   * Puts documents back into the layout — its well, or a fresh well beside the centre — without
+   * recording an undo step: it repairs the tree the user is looking at rather than changing it, so
+   * undo and redo still step through their own history.
+   * @param panelIds The identifiers of the document panels to put back.
+   */
+  public restore(panelIds: readonly string[]): void {
+    this.log.warn('DockState', 'Putting back documents with unsaved changes', panelIds);
+    this.tree.set(seatDocuments(this.tree(), panelIds, panelIds[0] ?? null));
   }
 
   /**

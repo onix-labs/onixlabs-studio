@@ -29,6 +29,7 @@ import {
   reorderTab,
   replaceNode,
   rightHandToolStack,
+  seatDocuments,
   setActive,
   setCollapsed,
   setSizes,
@@ -1005,6 +1006,37 @@ describe('dock-tree', () => {
 
       expect(carryIntoWell(noWell, ['a'], 'a')).toBe(noWell);
       expect(carryIntoWell(well, [], null)).toBe(well);
+    });
+  });
+
+  describe('seatDocuments', () => {
+    it('seatDocuments_withAWell_carriesThemIntoIt', () => {
+      const well: StackNode = mkStack('document', ['open'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), well]);
+
+      const next: StackNode = asStack(findDocumentWell(seatDocuments(tree, ['back'], 'back')));
+
+      expect(next.id).toBe(well.id);
+      expect(next.panels).toEqual(['open', 'back']);
+      expect(next.active).toBe('back');
+    });
+
+    it('seatDocuments_whenAToolHoldsTheCentre_opensAWellBesideIt', () => {
+      const agent: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), agent]);
+
+      const next: DockNode = seatDocuments(tree, ['a', 'b'], 'a');
+
+      const well: StackNode = asStack(findDocumentWell(next));
+      expect(well.panels).toEqual(['a', 'b']);
+      expect(well.active).toBe('a');
+      expect(findStackOfPanel(next, 'agent')?.primary).toBe(true);
+    });
+
+    it('seatDocuments_withNothingToSeat_returnsTheSameTree', () => {
+      const tree: DockNode = mkStack('tool', ['agent'], true);
+
+      expect(seatDocuments(tree, [], null)).toBe(tree);
     });
   });
 });

@@ -409,6 +409,35 @@ export function carryIntoWell(
 }
 
 /**
+ * Seats documents in the layout wherever it holds documents: its well, or, when a tool holds the
+ * centre and there is no well, a fresh well split beside the centre (as opening a document there
+ * does). Used to put back documents that must not leave the layout.
+ * @param tree The root of the tree to transform.
+ * @param panelIds The identifiers of the document panels to seat, in tab order.
+ * @param active The panel to make the well's active tab, or null to keep the well's own.
+ * @returns Returns the transformed tree, or the original tree when there is nothing to seat or no
+ * stack to seat it beside.
+ */
+export function seatDocuments(
+  tree: DockNode,
+  panelIds: readonly string[],
+  active: string | null,
+): DockNode {
+  if (panelIds.length === 0) {
+    return tree;
+  }
+  if (findDocumentWell(tree) !== null) {
+    return carryIntoWell(tree, panelIds, active);
+  }
+  const centre: StackNode | null = findPrimaryStack(tree) ?? firstStackOfRole(tree, 'tool');
+  if (centre === null) {
+    return tree;
+  }
+  const [first, ...rest] = panelIds;
+  return carryIntoWell(splitWellBeside(tree, centre.id, first), rest, active);
+}
+
+/**
  * Adds a panel as a tab in the given stack and makes it active.
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to tab into.

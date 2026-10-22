@@ -94,6 +94,7 @@ import {
 } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { strandedDocuments } from '@shared/angular/services/dock-layout/stranded-documents';
 import {
   collectPanelIds,
   findDocumentWell,
@@ -1009,12 +1010,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (next === null || findDocumentWell(next) !== null) {
         return true;
       }
-      for (const id of this.openDocumentPanels()) {
+      const documents: readonly string[] = this.openDocumentPanels();
+      for (const id of documents) {
         const panel: DockPanel | undefined = this.registry.get(id);
         if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
           return false;
         }
       }
+      // Every unsaved change is saved or discarded, so the switch may let these documents go.
+      this.dockState.markReleased(documents);
       return true;
     },
   };
@@ -1217,16 +1221,41 @@ export class DirectoryView implements OnInit, OnDestroy {
    * run-terminal state is swept too, so it does not linger in the root store.
    */
   public constructor() {
+    // ⛔ A document with unsaved changes is never dropped. One that leaves the layout without having
+    // been closed by choice — undone or redone away, or lost to a rebuilt tree — is put back into the
+    // well before anything is released; only a document the user closed (saving or discarding first)
+    // is let go. Floating and popped-out documents are still open, just elsewhere.
     effect((): void => {
-      const present: ReadonlySet<string> = new Set<string>(
-        collectPanelIds(this.dockState.layout()),
-      );
-      for (const id of this.documents.removeMissing(present)) {
-        this.editorTerminals.remove(id);
-        // Tell the language server the document is gone (a re-parent keeps it; only a real removal
-        // reaches here), so its diagnostics are dropped and it is no longer analysed.
-        this.lspClient.closeDocument(id);
-      }
+      const docked: readonly string[] = collectPanelIds(this.dockState.layout());
+      const floating: readonly string[] = this.dockFloating
+        .floats()
+        .map((float: FloatWindow): string => float.panelId);
+      untracked((): void => {
+        const present: ReadonlySet<string> = new Set<string>([
+          ...docked,
+          ...floating,
+          ...this.registry
+            .list()
+            .filter((panel: DockPanel): boolean => this.popoutPanels.isPopped(panel.id))
+            .map((panel: DockPanel): string => panel.id),
+        ]);
+        const stranded: readonly string[] = strandedDocuments(
+          this.registry.list(),
+          present,
+          (panelId: string): boolean => this.dockState.isReleased(panelId),
+        );
+        if (stranded.length > 0) {
+          // Putting them back changes the layout, which runs this again to release the rest.
+          this.dockState.restore(stranded);
+          return;
+        }
+        for (const id of this.documents.removeMissing(present)) {
+          this.editorTerminals.remove(id);
+          // Tell the language server the document is gone (a re-parent keeps it; only a real removal
+          // reaches here), so its diagnostics are dropped and it is no longer analysed.
+          this.lspClient.closeDocument(id);
+        }
+      });
     });
 
     effect((): void => {

@@ -413,6 +413,44 @@ describe('DockState close guard', () => {
     expect(findStackOfPanel(dock.layout(), 'doc-1')).toBeNull();
   });
 
+  it('requestClose_whenTheGuardAllows_recordsThePanelAsClosedOnPurpose', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+
+    await dock.requestClose('doc-1');
+
+    // The host lets go of what a chosen close held; an undo that drops a document records nothing.
+    expect(dock.isReleased('doc-1')).toBe(true);
+    expect(dock.isReleased('doc-2')).toBe(false);
+  });
+
+  it('isReleased_whenThePanelComesBack_isForgotten', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+    await dock.requestClose('doc-1');
+
+    dock.undo();
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).not.toBeNull();
+    expect(dock.isReleased('doc-1')).toBe(false);
+  });
+
+  it('restore_putsDocumentsBackWithoutAnUndoStep_soUndoKeepsItsHistory', () => {
+    const dock: DockState = create();
+    dock.removeFromLayout('doc-1');
+    dock.removeFromLayout('doc-2');
+    dock.undo();
+    const canUndo: boolean = dock.canUndo();
+    const canRedo: boolean = dock.canRedo();
+
+    dock.restore(['doc-2']);
+
+    expect(findStackOfPanel(dock.layout(), 'doc-2')?.role).toBe('document');
+    expect(dock.canUndo()).toBe(canUndo);
+    expect(dock.canRedo()).toBe(canRedo);
+  });
+
   it('requestClose_whenTheGuardCancels_keepsThePanel', async () => {
     confirmResult = false;
     const dock: DockState = create();
