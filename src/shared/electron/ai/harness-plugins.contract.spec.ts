@@ -48,6 +48,33 @@ describe('the Claude harness plugin', () => {
     JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')),
   );
 
+  it('isCheckedAgainstTheAgentSdkVersionItShips', () => {
+    // The plugin's type-check and specs run in this repository and resolve the Agent SDK from its
+    // development copy, so that copy must be exactly the version the plugin ships (#1078): a newer one
+    // lets an API the shipped plugin does not have pass every check, and the user meets the failure.
+    const sdk: string = '@anthropic-ai/claude-agent-sdk';
+    const root: { devDependencies: Record<string, string> } = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
+    );
+    const plugin: { dependencies: Record<string, string> } = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'plugins', 'claude-harness', 'package.json'), 'utf8'),
+    );
+    const lockfile: { packages: Record<string, { version?: string }> } = JSON.parse(
+      readFileSync(
+        path.join(
+          process.cwd(),
+          'src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json',
+        ),
+        'utf8',
+      ),
+    );
+    const shipped: string | undefined = lockfile.packages[`node_modules/${sdk}`]?.version;
+
+    expect(shipped).toBeDefined();
+    expect(plugin.dependencies[sdk]).toBe(shipped);
+    expect(root.devDependencies[sdk]).toBe(shipped);
+  });
+
   it('hasAManifestThisBuildAccepts', () => {
     // Not merely well-formed JSON: run through the same validator a sideloaded or indexed manifest
     // goes through, so a contract change that breaks it is caught here rather than at install.
