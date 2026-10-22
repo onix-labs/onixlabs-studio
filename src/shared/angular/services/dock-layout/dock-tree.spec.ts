@@ -35,6 +35,7 @@ import {
   setSizes,
   splitStack,
   splitStackBeside,
+  splitPanelOut,
   splitWellBeside,
   tabInto,
   tabStackInto,
@@ -527,6 +528,43 @@ describe('dock-tree', () => {
       const shown: DockNode = setCollapsed(split, centre.id, false);
 
       expect(asStack(findStackOfPanel(shown, 'agent')).yielded).toBeUndefined();
+    });
+  });
+
+  describe('splitPanelOut', () => {
+    it('splitPanelOut_movesTheTabIntoANewGroupOfTheSameRoleOnThatSide', () => {
+      const well: StackNode = mkStack('document', ['a', 'b'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), well]);
+
+      const result: DockNode = splitPanelOut(tree, 'b', 'bottom');
+
+      const inner: SplitNode = (result as SplitNode).children[1] as SplitNode;
+      expect(inner.dir).toBe('col');
+      expect(inner.children[0].id).toBe(well.id);
+      expect(asStack(inner.children[0]).panels).toEqual(['a']);
+      const split: StackNode = asStack(inner.children[1]);
+      expect(split.role).toBe('document');
+      expect(split.panels).toEqual(['b']);
+    });
+
+    it('splitPanelOut_toTheLeft_putsTheNewGroupFirstAlongARow', () => {
+      const well: StackNode = mkStack('document', ['a', 'b'], true);
+
+      const result: DockNode = splitPanelOut(well, 'a', 'left');
+
+      expect((result as SplitNode).dir).toBe('row');
+      expect(asStack((result as SplitNode).children[0]).panels).toEqual(['a']);
+      expect((result as SplitNode).children[1].id).toBe(well.id);
+    });
+
+    it('splitPanelOut_ofAGroupsOnlyTab_orAnUnknownPanel_leavesTheTreeAlone', () => {
+      const tree: DockNode = mkSplit('row', [
+        mkStack('document', ['a'], true),
+        mkStack('tool', ['t']),
+      ]);
+
+      expect(splitPanelOut(tree, 'a', 'right')).toBe(tree);
+      expect(splitPanelOut(tree, 'missing', 'right')).toBe(tree);
     });
   });
 
