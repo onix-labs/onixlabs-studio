@@ -1,9 +1,11 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import {
   DetectedRepository,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
+import type { VcsIgnoreRule, VersionControlCapability } from '@shared/api/version-control-protocol';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
 import { Log } from '@shared/angular/services/log/log';
@@ -171,6 +173,22 @@ export class WorkspaceGit {
   );
 
   /**
+   * Holds the normalised absolute paths of files whose changes Revert can take back to `HEAD`: edited
+   * or deleted, and nothing else (#1042). An added or renamed file is not among them, since restoring
+   * it from `HEAD` would delete it, and Revert must only ever undo edits.
+   */
+  private readonly revertable: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Holds the capabilities the bound repository's plugin confirmed, or null until they are known —
+   * which offers none of the commands that need one, so a plugin too old to have them is never asked.
+   */
+  private readonly capabilities: WritableSignal<ReadonlySet<VersionControlCapability> | null> =
+    signal<ReadonlySet<VersionControlCapability> | null>(null);
+
+  /**
    * Holds the current branch, or null when detached or not a repository.
    */
   private readonly branchSignal: WritableSignal<string | null> = signal<string | null>(null);
@@ -305,6 +323,7 @@ export class WorkspaceGit {
     this.pathState.set(states);
     this.wholeDirs.set(whole);
     this.changedDirs.set(dirs);
+    this.revertable.set(revertableKeys(root, status, states));
     this.branchSignal.set(status.branch);
   }
 
@@ -323,7 +342,7 @@ export class WorkspaceGit {
    * is modified. Only modified — a new file's diff is the whole file, and a conflict is resolved in the
    * Repository panel rather than read here.
    * @param path The absolute file path.
-   * @returns Returns true when the context menu offers Show Diff.
+   * @returns Returns true when the context menu offers Show Differences.
    */
   public canShowDiff(path: string): boolean {
     return this.provider !== null && this.stateFor(path) === 'modified';
@@ -333,22 +352,188 @@ export class WorkspaceGit {
    * Adds an untracked file or folder to version control (#860) — stages it, the ignore rules still
    * applying to a folder's contents — and reads the status again, so the row turns from untracked to
    * added. Nothing is ever added unasked: this is the only way a new path becomes tracked.
-   * @param path The absolute file or folder path.
+   * @param paths The absolute paths, files or folders, all inside the repository.
    * @returns Returns the outcome.
    */
-  public async addToVersionControl(path: string): Promise<MutationResult> {
-    const provider: SourceControlProvider | null = this.provider;
-    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
-    const target: string = this.realKey(path);
-    if (provider === null || root === null || !target.startsWith(`${root}/`)) {
-      return { success: false, error: 'That path is not in this workspace’s repository.' };
+  public addToVersionControl(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      'Adding to version control',
+      paths,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stage(relative),
+    );
+  }
+
+  /**
+   * Gets the files Revert would take back to `HEAD` for a path (#1042): the file itself when it is
+   * edited or deleted, or every such file beneath a folder. Never an added, renamed, untracked or
+   * conflicted file — reverting those would delete work rather than undo an edit.
+   * @param path The absolute file or folder path.
+   * @returns Returns the files' normalised absolute paths, empty when there is nothing to revert.
+   */
+  public revertableFiles(path: string): readonly string[] {
+    if (this.provider === null) {
+      return [];
     }
-    // Never empty: an empty list stages the whole working tree.
-    const relative: string = target.slice(root.length + 1);
-    this.log.info('workspace.git', 'Adding to version control', relative);
-    const result: MutationResult = await provider.stage([relative]);
-    await this.refresh();
-    return result;
+    const key: string = this.realKey(path);
+    const revertable: ReadonlySet<string> = this.revertable();
+    if (revertable.has(key)) {
+      return [key];
+    }
+    return [...revertable].filter((candidate: string): boolean => candidate.startsWith(`${key}/`));
+  }
+
+  /**
+   * Takes files back to `HEAD`, index and working tree, and reads the status again (#1042). The files
+   * are named one by one, never as a folder: a folder handed to the version-control system would also
+   * take its untracked files with it. Destructive; the caller confirms first.
+   * @param files The files' absolute paths, as {@link revertableFiles} gives them.
+   * @returns Returns the outcome.
+   */
+  public revert(files: readonly string[]): Promise<MutationResult> {
+    const revertable: ReadonlySet<string> = this.revertable();
+    if (files.length === 0 || files.some((file: string): boolean => !revertable.has(file))) {
+      return Promise.resolve({ success: false, error: 'Only edited files can be reverted.' });
+    }
+    return this.mutate(
+      'Reverting',
+      files,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.discard(relative),
+    );
+  }
+
+  /**
+   * Gets whether a path was added to version control and not yet committed, so the context menu offers
+   * to take that back (#1042).
+   * @param path The absolute file path.
+   * @returns Returns true when the context menu offers Undo Add.
+   */
+  public canUndoAdd(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'added';
+  }
+
+  /**
+   * Takes an added path back out of version control, the reverse of {@link addToVersionControl}: it
+   * is unstaged, and turns untracked again with its contents untouched (#1042).
+   * @param paths The absolute paths, files or folders, all inside the repository.
+   * @returns Returns the outcome.
+   */
+  public undoAdd(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      'Undoing add',
+      paths,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.unstage(relative),
+    );
+  }
+
+  /**
+   * Gets whether a path is conflicted, so the context menu offers to mark it resolved (#1042).
+   * @param path The absolute file path.
+   * @returns Returns true when the context menu offers Mark Resolved.
+   */
+  public isConflicted(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'conflicted';
+  }
+
+  /**
+   * Marks a conflicted file resolved, which is what staging it means: the version now on disk becomes
+   * the one it carries — exactly what the Repository panel's Mark Resolved does (#1042).
+   * @param paths The absolute paths, files or folders, all inside the repository.
+   * @returns Returns the outcome.
+   */
+  public markResolved(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      'Marking resolved',
+      paths,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stage(relative),
+    );
+  }
+
+  /**
+   * Gets whether an untracked path can be added to the ignore list: the plugin can, and the path is
+   * untracked (#1043).
+   * @param path The absolute file or folder path.
+   * @returns Returns true when the context menu offers Ignore.
+   */
+  public canIgnore(path: string): boolean {
+    return this.supports('ignore') && this.stateFor(path) === 'untracked';
+  }
+
+  /**
+   * Adds a path — or, given an extension, every file with it — to the ignore list, and reads the
+   * status again so the row turns ignored (#1043).
+   * @param paths The absolute paths, files or folders, all inside the repository.
+   * @param extension The extension, without the dot, to ignore everywhere; omitted for the path itself.
+   * @returns Returns the outcome.
+   */
+  public ignore(paths: readonly string[], extension?: string): Promise<MutationResult> {
+    return this.mutate(
+      'Ignoring',
+      paths,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> => {
+        const rules: readonly VcsIgnoreRule[] =
+          extension === undefined
+            ? relative.map((path: string): VcsIgnoreRule => ({ kind: 'path', path }))
+            : [{ kind: 'extension', extension }];
+        return provider.ignore(rules);
+      },
+    );
+  }
+
+  /**
+   * Gets whether a path can be taken out of version control: the plugin can, the path lies inside the
+   * repository (never the root itself), and it is tracked — unchanged, edited, or a folder holding
+   * changes. An untracked, added, ignored or conflicted path has nothing to stop (#1043).
+   * @param path The absolute file or folder path.
+   * @returns Returns true when the context menu offers Stop Tracking.
+   */
+  public canStopTracking(path: string): boolean {
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    if (!this.supports('stopTracking') || root === null) {
+      return false;
+    }
+    if (!this.realKey(path).startsWith(`${root}/`)) {
+      return false;
+    }
+    const state: ExplorerScmState | null = this.stateFor(path);
+    return state === null || state === 'modified' || state === 'contains';
+  }
+
+  /**
+   * Takes a path out of version control, leaving it on disk, and reads the status again so the row
+   * turns untracked — from where it can be ignored (#1043).
+   * @param paths The absolute paths, files or folders, all inside the repository.
+   * @returns Returns the outcome.
+   */
+  public stopTracking(paths: readonly string[]): Promise<MutationResult> {
+    return this.mutate(
+      'Stopping tracking',
+      paths,
+      (provider: SourceControlProvider, relative: readonly string[]): Promise<MutationResult> =>
+        provider.stopTracking(relative),
+    );
+  }
+
+  /**
+   * Gets the path the history narrows to for a row: repository-relative, with forward slashes — when
+   * the plugin can read one path's history and the path has any (#1044). An untracked, ignored or
+   * newly added path has no commits yet, and the root's history is the whole history.
+   * @param path The absolute file or folder path.
+   * @returns Returns the repository-relative path, or null when Show History does not apply.
+   */
+  public historyPathOf(path: string): string | null {
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    const key: string = this.realKey(path);
+    if (!this.supports('pathHistory') || root === null || !key.startsWith(`${root}/`)) {
+      return null;
+    }
+    const state: ExplorerScmState | null = this.stateFor(path);
+    return state === 'untracked' || state === 'ignored' || state === 'added'
+      ? null
+      : key.slice(root.length + 1);
   }
 
   /**
@@ -438,6 +623,7 @@ export class WorkspaceGit {
       this.provider = this.providers.create(info.root);
       this.boundSignal.set(true);
       this.log.debug('source-control', 'Bound workspace git repository', info.root);
+      void this.loadCapabilities(info.root);
       // Watch the repository so an on-disk branch switch or working-tree change (e.g. an agent
       // creating and working from a new branch) refreshes the status and branch live, without needing
       // the tab to be re-activated — which is what Mission Control's per-column branch reads.
@@ -528,7 +714,68 @@ export class WorkspaceGit {
     this.pathState.set(new Map<string, ExplorerScmState>());
     this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
+    this.revertable.set(new Set<string>());
+    this.capabilities.set(null);
     this.branchSignal.set(null);
+  }
+
+  /**
+   * Gets whether the bound repository's plugin confirmed a capability. False until it has answered.
+   * @param capability The capability.
+   * @returns Returns true when it is confirmed.
+   */
+  private supports(capability: VersionControlCapability): boolean {
+    return this.provider !== null && (this.capabilities()?.has(capability) ?? false);
+  }
+
+  /**
+   * Reads what the plugin serving the bound repository can do.
+   * @param root The repository root.
+   * @returns Returns a promise that settles once read.
+   */
+  private async loadCapabilities(root: string): Promise<void> {
+    const described: RepositoryCapabilities | null = (await this.api?.describe(root)) ?? null;
+    if (described !== null && this.boundRoot === root) {
+      this.capabilities.set(new Set<VersionControlCapability>(described.capabilities));
+    }
+  }
+
+  /**
+   * Runs a version-control write over paths in the bound repository, then reads the status again so
+   * the rows show what it did. Every path must lie inside the repository: a path outside it is refused
+   * rather than sent, and the list sent is never empty — to the provider an empty list means the whole
+   * working tree.
+   * @param action What the write is, for the log.
+   * @param paths The absolute paths it acts on.
+   * @param write The write, given the repository-relative paths.
+   * @returns Returns the outcome.
+   */
+  private async mutate(
+    action: string,
+    paths: readonly string[],
+    write: (
+      provider: SourceControlProvider,
+      relative: readonly string[],
+    ) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    const targets: string[] = paths.map((path: string): string => this.realKey(path));
+    if (
+      provider === null ||
+      root === null ||
+      targets.length === 0 ||
+      targets.some((target: string): boolean => !target.startsWith(`${root}/`))
+    ) {
+      return { success: false, error: 'That path is not in this workspace’s repository.' };
+    }
+    const relative: string[] = targets.map((target: string): string =>
+      target.slice(root.length + 1),
+    );
+    this.log.info('workspace.git', action, relative);
+    const result: MutationResult = await write(provider, relative);
+    await this.refresh();
+    return result;
   }
 
   /**
@@ -582,6 +829,35 @@ function scmStateOf(change: GitFileChange): ExplorerScmState {
 }
 
 /**
+ * Gets the files Revert can take back to `HEAD` (#1042): those with only edits or a deletion against
+ * it, staged or not, that still read as modified. A file with any added, renamed or conflicted change
+ * is left out, since restoring it from `HEAD` would delete it.
+ * @param root The normalised repository root.
+ * @param status The status just read.
+ * @param states Each path's state, as the status was recorded.
+ * @returns Returns the files' normalised absolute paths.
+ */
+function revertableKeys(
+  root: string,
+  status: ParsedStatus,
+  states: ReadonlyMap<string, ExplorerScmState>,
+): ReadonlySet<string> {
+  const edited: Set<string> = new Set<string>();
+  const excluded: Set<string> = new Set<string>();
+  for (const change of [...status.staged, ...status.unstaged, ...status.conflicted]) {
+    const key: string = normalize(`${root}/${change.path}`);
+    const editOnly: boolean =
+      change.untracked !== true && (change.status === 'modified' || change.status === 'deleted');
+    (editOnly ? edited : excluded).add(key);
+  }
+  return new Set<string>(
+    [...edited].filter(
+      (key: string): boolean => !excluded.has(key) && states.get(key) === 'modified',
+    ),
+  );
+}
+
+/**
  * How each state reads in a tree row (#860): its colour and, so colour is never the only signal, the
  * words its tooltip and accessible description say.
  */
@@ -594,6 +870,17 @@ const PRESENTATION: Readonly<Record<ExplorerScmState, Pick<TreeRow, 'tone' | 'st
     ignored: { tone: 'muted', hint: 'Ignored by version control' },
     contains: { tone: 'info', hint: 'Contains changes' },
   };
+
+/**
+ * Determines whether a state is one *Show Changed Files Only* keeps (#1053): a change — untracked,
+ * added, modified, conflicted — or a folder on the way to one. Ignored paths and unchanged ones are
+ * hidden.
+ * @param state The state, or null when unchanged.
+ * @returns Returns true when the row is shown under the filter.
+ */
+export function isChangedState(state: ExplorerScmState | null): boolean {
+  return state !== null && state !== 'ignored';
+}
 
 /**
  * Gets the tree-row fields that present a state: none for an unchanged path.

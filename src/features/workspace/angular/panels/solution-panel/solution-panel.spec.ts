@@ -21,6 +21,7 @@ import {
   ExplorerScmState,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -52,6 +53,12 @@ class FakeSolutionModel {
 
   public toggleGitStatus(): void {
     this.showsGitStatus.update((value: boolean): boolean => !value);
+  }
+
+  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+
+  public toggleChangesOnly(): void {
+    this.showsChangesOnly.update((value: boolean): boolean => !value);
   }
 
   public refreshFromDisk(): void {
@@ -286,17 +293,39 @@ describe('SolutionPanel', () => {
     expect(opener.opened).toEqual([]);
   });
 
-  it('onRowClick_aFileRow_opensIt', () => {
+  it('onRowClick_aFileRow_selectsItWithoutOpeningIt_andDoubleClickOpensIt', () => {
+    // #1047: a click only selects; a double click (or Enter) opens.
+    const file: SolutionRow = makeRow({
+      key: 'g',
+      label: 'g.cs',
+      kind: 'file',
+      expandable: false,
+      path: '/root/A/g.cs',
+    });
     solution.model.set(model);
-    solution.rows.set([
-      makeRow({ label: 'g.cs', kind: 'file', expandable: false, path: '/root/A/g.cs' }),
-    ]);
+    solution.rows.set([file]);
     fixture.detectChanges();
 
     rowButtons()[0].click();
+    expect(opener.opened).toEqual([]);
+    expect(solution.selectedKey()).toBe('g');
 
+    rowButtons()[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(opener.opened).toEqual(['/root/A/g.cs']);
     expect(solution.toggled).toEqual([]);
+  });
+
+  it('onRowOpen_anExpandableRow_opensNothing', () => {
+    const project: SolutionRow = makeRow({ label: 'A', kind: 'project', expandable: true });
+    component.onRowOpen({
+      id: project.key,
+      depth: 0,
+      expandable: true,
+      expanded: false,
+      data: project,
+    });
+
+    expect(opener.opened).toEqual([]);
   });
 
   /**
@@ -324,6 +353,89 @@ describe('SolutionPanel', () => {
   }
 
   describe('context menu', () => {
+    it('showChangedFilesOnly_keepsTheRootAndTheChanges_andOpensWhatLeadsToThem', async () => {
+      // #1053: project A holds the change and is opened for it; project B is hidden.
+      const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+      vi.spyOn(git, 'isRepository').mockReturnValue(true);
+      vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
+        path === '/root/A' ? 'contains' : path === '/root/A/g.cs' ? 'modified' : null,
+      );
+      const root: SolutionRow = makeRow({ key: 'root', kind: 'solution', path: null });
+      const a: SolutionRow = makeRow({
+        key: 'a',
+        kind: 'project',
+        expandable: true,
+        path: '/root/A/A.csproj',
+        scmPaths: ['/root/A'],
+      });
+      const b: SolutionRow = makeRow({
+        key: 'b',
+        kind: 'project',
+        expandable: true,
+        path: '/root/B/B.csproj',
+        scmPaths: ['/root/B'],
+      });
+      solution.model.set(model);
+      solution.rows.set([root, a, b]);
+      solution.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(solution.toggled).toEqual([a]);
+      expect(
+        rowButtons().map((button: HTMLButtonElement): string => button.textContent.trim()),
+      ).toHaveLength(2);
+    });
+
+    it('statusStrip_saysWhereTheSelectionIs_andWhatItIs', () => {
+      const g: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const h: SolutionRow = makeRow({
+        key: 'h',
+        label: 'h.cs',
+        kind: 'file',
+        path: '/root/A/h.cs',
+      });
+      solution.model.set(model);
+      solution.rows.set([g, h]);
+      const status: () => string[] = (): string[] => {
+        fixture.detectChanges();
+        return Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+            'app-panel-status .panel-status__item',
+          ),
+        ).map((item: HTMLElement): string => (item.textContent ?? '').trim());
+      };
+
+      expect(status()).toEqual(['root']);
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      expect(status()).toEqual(['root/A', 'g.cs']);
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+      expect(status()).toEqual(['root/A', '2 selections']);
+    });
+
+    it('contextMenuFor_aSelectionOfFiles_offersWhatActsOnThemAll', () => {
+      // #1048: two files selected; a solution folder (no path) in the selection leaves no menu.
+      const g: SolutionRow = makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' });
+      const h: SolutionRow = makeRow({ key: 'h', kind: 'file', path: '/root/A/h.cs' });
+      const group: SolutionRow = makeRow({ key: 'f', kind: 'folder', path: null });
+      solution.model.set(model);
+      solution.rows.set([g, h, group]);
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+
+      expect(menuIds(g)).toEqual(['open', 'copy-path', 'copy-relative-path']);
+      component.onContextAction({ itemId: 'copy-path', row: treeRow(h) });
+      expect(copied).toEqual(['/root/A/g.cs\n/root/A/h.cs']);
+
+      component.onRowSelect({ row: treeRow(group), mode: 'toggle' });
+      expect(menuIds(g)).toEqual([]);
+    });
+
     it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
       expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
@@ -350,6 +462,23 @@ describe('SolutionPanel', () => {
 
       component.onContextAction({ itemId: 'show-diff', row: treeRow(changed) });
       expect(open).toHaveBeenCalledWith('/root/A/g.cs');
+    });
+
+    it('contextMenuFor_aProject_actsOnItsProjectFile_namedByThatFile', () => {
+      // #1042: Revert on project "A" reverts A.csproj, and the confirmation must say so.
+      const itemsFor: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(ExplorerVcsMenu), 'itemsFor')
+        .mockReturnValue([]);
+
+      menuIds(makeRow({ kind: 'project', label: 'A', path: '/root/A/A.csproj' }));
+      menuIds(makeRow({ kind: 'item-folder', label: 'src', path: '/root/A/src' }));
+
+      expect(itemsFor).toHaveBeenNthCalledWith(1, [
+        { path: '/root/A/A.csproj', name: 'A.csproj', kind: 'file' },
+      ]);
+      expect(itemsFor).toHaveBeenNthCalledWith(2, [
+        { path: '/root/A/src', name: 'src', kind: 'directory' },
+      ]);
     });
 
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
@@ -796,16 +925,25 @@ describe('SolutionPanel', () => {
       expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'changes-only',
       ]);
     });
 
     it('moreItems_theSwitches_carryTheirLiveCheckedState', () => {
       // Recomputed from the model rather than fixed, so a box read on opening the menu is current.
-      expect(checkedById()).toEqual({ 'follow-active': true, 'git-status': true });
+      expect(checkedById()).toEqual({
+        'follow-active': true,
+        'git-status': true,
+        'changes-only': false,
+      });
 
       solution.followsActiveDocument.set(false);
 
-      expect(checkedById()).toEqual({ 'follow-active': false, 'git-status': true });
+      expect(checkedById()).toEqual({
+        'follow-active': false,
+        'git-status': true,
+        'changes-only': false,
+      });
     });
 
     it('moreItems_areAllPlainRows', () => {

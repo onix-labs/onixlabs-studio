@@ -567,7 +567,7 @@ export class AgentComposer {
         ...prompts.slice(0, MAX_SUGGESTIONS),
         {
           kind: 'manage',
-          label: 'Manage prompts…',
+          label: 'Manage prompts',
           hint: 'Add or remove reusable prompts',
           value: '',
         },

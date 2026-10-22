@@ -22,7 +22,11 @@
  */
 // 1.1 (#806) adds the `init` request and its capability, so a new project can start with a repository
 // of its own. An addition, so a 1.0 plugin is still understood: it simply does not offer `init`.
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.1';
+// 1.2 (#1043) adds `ignore` and `stopTracking`, each behind a capability of its own, so the explorers can
+// keep a path out of version control. An addition: a 1.1 plugin simply does not offer them.
+// 1.3 (#1044) adds `log`'s optional `path`, behind `pathHistory`, so a file's or folder's history can be
+// read on its own. An addition: a plugin without the capability is never sent a path.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.3';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -90,7 +94,23 @@ export type VersionControlCapability =
    * Reading the history of every branch at once, not just the checked-out one, so the history can
    * draw branches side by side (#882).
    */
-  | 'allBranchHistory';
+  | 'allBranchHistory'
+
+  /**
+   * Adding rules to the repository's ignore list, so untracked paths stop being offered (1.2, #1043).
+   */
+  | 'ignore'
+
+  /**
+   * Taking tracked paths out of version control while keeping them on disk (1.2, #1043).
+   */
+  | 'stopTracking'
+
+  /**
+   * Reading the history of one file or folder — only the commits that touched it, a file's followed
+   * across renames where the system can (1.3, #1044).
+   */
+  | 'pathHistory';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -109,6 +129,25 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'parallelCheckouts',
   'identity',
   'allBranchHistory',
+  'ignore',
+  'stopTracking',
+  'pathHistory',
+];
+
+/**
+ * Lists the capabilities a plugin's handshake confirms on its own, without its manifest declaring them
+ * (#1043).
+ *
+ * Every other capability must be declared and confirmed both: a manifest is a promise, the handshake
+ * the plugin answering. These two arrived after builds that refuse a manifest naming a capability they
+ * do not know — and the curated index is read by every installed build — so a manifest declaring them
+ * would make the plugin uninstallable on those builds. A plugin confirms them at start-up instead, and
+ * an older build, which drops capabilities it does not know from a handshake, never offers them.
+ */
+export const VCS_HANDSHAKE_CAPABILITIES: readonly VersionControlCapability[] = [
+  'ignore',
+  'stopTracking',
+  'pathHistory',
 ];
 
 /**
@@ -144,6 +183,17 @@ export interface VersionControlExecutableChoice {
    */
   readonly path: string;
 }
+
+/**
+ * Describes one rule added to a repository's ignore list, in terms every version-control system can
+ * honour; the plugin writes it in its own system's syntax (1.2, #1043).
+ *
+ * - `path`: one file or directory, relative to the repository root with forward slashes.
+ * - `extension`: every file with the extension, anywhere in the repository — without the dot.
+ */
+export type VcsIgnoreRule =
+  | { readonly kind: 'path'; readonly path: string }
+  | { readonly kind: 'extension'; readonly extension: string };
 
 /**
  * Describes how a change affects a file.
@@ -631,6 +681,13 @@ export interface VersionControlOperations {
        * plugin lists `allBranchHistory`. A plugin without it reads the checked-out branch's.
        */
       readonly all?: boolean;
+
+      /**
+       * Gets a repository-relative path to read the history of, only the commits that touched it —
+       * when the plugin lists `pathHistory` (1.3, #1044). The host never sends it to one that does
+       * not, which would answer with the whole history as though it were this path's.
+       */
+      readonly path?: string;
     };
     readonly result: readonly VcsCommit[];
   };
@@ -653,6 +710,21 @@ export interface VersionControlOperations {
   readonly stage: { readonly params: Paths; readonly result: Done };
   readonly unstage: { readonly params: Paths; readonly result: Done };
   readonly commit: { readonly params: { readonly message: string }; readonly result: Done };
+
+  /**
+   * Adds rules to the repository's ignore list, skipping any it already has (1.2, #1043). Gated by
+   * `ignore`.
+   */
+  readonly ignore: {
+    readonly params: { readonly rules: readonly VcsIgnoreRule[] };
+    readonly result: Done;
+  };
+
+  /**
+   * Takes paths — files, or directories and everything tracked in them — out of version control,
+   * leaving them on disk (1.2, #1043). Gated by `stopTracking`.
+   */
+  readonly stopTracking: { readonly params: Paths; readonly result: Done };
 
   readonly stash: { readonly params: Empty; readonly result: Done };
   readonly stashApply: { readonly params: StashIndex; readonly result: Done };
@@ -816,6 +888,8 @@ export const VCS_REPOSITORY_OPS: readonly VersionControlOp[] = [
   'stage',
   'unstage',
   'commit',
+  'ignore',
+  'stopTracking',
   'stash',
   'stashApply',
   'stashPop',
@@ -898,6 +972,8 @@ export const VCS_OP_CAPABILITY: Readonly<
 > = {
   stage: 'stagingArea',
   unstage: 'stagingArea',
+  ignore: 'ignore',
+  stopTracking: 'stopTracking',
   stash: 'stash',
   stashApply: 'stash',
   stashPop: 'stash',

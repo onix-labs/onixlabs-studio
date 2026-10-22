@@ -96,6 +96,14 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
  * A canned provider with two local branches, one remote, a tag, and a dirty working tree.
  */
 class FakeProvider implements SourceControlProvider {
+  public ignore(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public stopTracking(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public constructor(public readonly root: string) {}
 
   /**
@@ -804,7 +812,7 @@ describe('SourceControlSidebar', () => {
     expect(text).not.toContain('Stashes');
     expect(text).not.toContain('Tags');
     expect(more).not.toContain('Stash Changes');
-    expect(more).not.toContain('New Tag…');
+    expect(more).not.toContain('New Tag');
   });
 
   it('render_withNoHostingPluginServingTheRepository_leavesTheForgeSectionsOut', () => {
@@ -997,9 +1005,9 @@ describe('SourceControlSidebar', () => {
       'Sync',
       'Merge Into “main”',
       'Rebase “main” Onto This…',
-      'Rename…',
-      'Set Upstream…',
-      'Delete…',
+      'Rename',
+      'Set Upstream',
+      'Delete',
     ]);
 
     menu.onContextAction({ itemId: 'branch.checkout', row });
@@ -1093,8 +1101,8 @@ describe('SourceControlSidebar', () => {
       const labels: (row: TreeRow) => readonly string[] = (row: TreeRow): readonly string[] =>
         menu.contextMenuFor(row).map((item: MenuItem): string => item.label);
 
-      expect(labels(otherBranchRow())).toContain('Delete…');
-      expect(labels(currentBranchRow())).not.toContain('Delete…');
+      expect(labels(otherBranchRow())).toContain('Delete');
+      expect(labels(currentBranchRow())).not.toContain('Delete');
     });
 
     it('clearUpstreamIsOfferedOnlyToABranchThatHasOne', () => {
@@ -1398,7 +1406,7 @@ describe('SourceControlSidebar', () => {
           .contextMenuFor(remoteRow())
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
-      ).toEqual(['Fetch', 'Prune', 'Copy Remote URL', 'Open Remote URL', 'Remove…']);
+      ).toEqual(['Fetch', 'Prune', 'Copy Remote URL', 'Open Remote URL', 'Remove']);
     });
 
     it('fetchesAndPrunesOneRemote_ratherThanAllOfThem', async () => {
@@ -1502,7 +1510,7 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(currentBranchRow())
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Commit…', 'Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Clear Upstream']);
+    ).toEqual(['Commit', 'Push', 'Pull', 'Sync', 'Rename', 'Set Upstream', 'Clear Upstream']);
   });
 
   it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
@@ -1515,7 +1523,7 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(currentBranchRow())
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Clear Upstream']);
+    ).toEqual(['Push', 'Pull', 'Sync', 'Rename', 'Set Upstream', 'Clear Upstream']);
   });
 
   it('commit_selectsTheWorkingTreeAndBringsTheCommitPanelForward', () => {
@@ -1545,10 +1553,10 @@ describe('SourceControlSidebar', () => {
       'Sync',
       'Merge Into “main”',
       'Rebase “main” Onto This…',
-      'Rename…',
-      'Set Upstream…',
+      'Rename',
+      'Set Upstream',
       'Clear Upstream',
-      'Delete…',
+      'Delete',
     ]);
   });
 
@@ -2300,7 +2308,7 @@ describe('SourceControlSidebar', () => {
 
       expect(menu.contextMenuFor(tagRow()).map((item: MenuItem): string => item.label)).toEqual([
         'Push to origin',
-        'Delete…',
+        'Delete',
       ]);
     });
 
@@ -2740,9 +2748,9 @@ describe('SourceControlSidebar', () => {
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
       ).toEqual([
-        'Add Remote…',
-        'New Branch…',
-        'New Tag…',
+        'Add Remote',
+        'New Branch',
+        'New Tag',
         'Stash Changes',
         'Fetch',
         'Push All Tags to origin',
@@ -2851,7 +2859,7 @@ describe('SourceControlSidebar', () => {
       // buttons' tooltips used to explain and the muted trailing note now carries.
       const items: readonly MenuItem[] = menu().contextMenuFor(stashRow);
 
-      expect(items.map((item: MenuItem): string => item.label)).toEqual(['Apply', 'Pop', 'Drop…']);
+      expect(items.map((item: MenuItem): string => item.label)).toEqual(['Apply', 'Pop', 'Drop']);
       expect(items[0].status).toBe('keep the stash');
       expect(items[1].status).toBe('drop the stash');
     });
@@ -2987,10 +2995,10 @@ describe('SourceControlSidebar', () => {
       expect(
         items.map((item: MenuItem): string => (item.separator === true ? '|' : item.label)),
       ).toEqual([
-        'Add Remote…',
+        'Add Remote',
         '|',
-        'New Branch…',
-        'New Tag…',
+        'New Branch',
+        'New Tag',
         '|',
         'Stash Changes',
         '|',
@@ -3009,9 +3017,9 @@ describe('SourceControlSidebar', () => {
     });
 
     it('eachSection_offersWhatMakesSomethingInIt', () => {
-      expect(sectionLabels('local')).toEqual(['New Branch…']);
-      expect(sectionLabels('remote')).toEqual(['Add Remote…', 'Fetch All']);
-      expect(sectionLabels('tags')[0]).toBe('New Tag…');
+      expect(sectionLabels('local')).toEqual(['New Branch']);
+      expect(sectionLabels('remote')).toEqual(['Add Remote', 'Fetch All']);
+      expect(sectionLabels('tags')[0]).toBe('New Tag');
       expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
       expect(sectionLabels('pullRequests')).toEqual(['Refresh']);
       expect(sectionLabels('issues')).toEqual(['Refresh']);
@@ -3116,8 +3124,8 @@ describe('SourceControlSidebar', () => {
       expect(
         (mounted.nativeElement as HTMLElement).querySelector('[data-tree-id^="worktree:"]'),
       ).toBeNull();
-      expect(more).toContain('Convert to Worktrees…');
-      expect(more).not.toContain('New Worktree…');
+      expect(more).toContain('Convert to Worktrees');
+      expect(more).not.toContain('New Worktree');
     });
 
     it('flat_whileTheAgentWorks_offersConvertDisabled_withTheReason', () => {
@@ -3130,7 +3138,7 @@ describe('SourceControlSidebar', () => {
         mounted.componentInstance as unknown as { moreItems(): readonly MenuItem[] }
       )
         .moreItems()
-        .find((item: MenuItem): boolean => item.label === 'Convert to Worktrees…');
+        .find((item: MenuItem): boolean => item.label === 'Convert to Worktrees');
 
       expect(convert?.disabled).toBe(true);
       expect(convert?.status).toBe('agent is working');
@@ -3199,22 +3207,22 @@ describe('SourceControlSidebar', () => {
 
       expect(menuLabels(mounted, 'worktree:w2')).toEqual([
         'Switch to Worktree',
-        'New Branch…',
-        'Rename…',
+        'New Branch',
+        'Rename',
         'Open in File System',
         'Copy Path',
-        'Remove Worktree…',
+        'Remove Worktree',
       ]);
       expect(menuLabels(mounted, 'worktree:w1')).toEqual([
-        'New Branch…',
-        'Rename…',
+        'New Branch',
+        'Rename',
         'Open in File System',
         'Copy Path',
-        'Remove Worktree…',
+        'Remove Worktree',
       ]);
       expect(menuLabels(mounted, 'worktree:w2:branch:old')).toEqual([
         'Switch to Worktree',
-        'Delete…',
+        'Delete',
       ]);
 
       (
@@ -3224,7 +3232,7 @@ describe('SourceControlSidebar', () => {
 
       worktrees.worktrees.set([current]);
       mounted.detectChanges();
-      expect(menuLabels(mounted, 'worktree:w1')).not.toContain('Remove Worktree…');
+      expect(menuLabels(mounted, 'worktree:w1')).not.toContain('Remove Worktree');
     });
 
     it('rename_opensTheNameFieldOnTheWorktree_andRenamesItOnCommit', () => {
@@ -3262,7 +3270,7 @@ describe('SourceControlSidebar', () => {
       const mounted: ComponentFixture<SourceControlSidebar> = mount();
 
       // A branch is made in a worktree, from its own menu: Local makes worktrees (#939).
-      expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree…']);
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Worktree']);
       (
         mounted.componentInstance as unknown as { onContextAction(c: TreeMenuSelection): void }
       ).onContextAction({ itemId: 'repo.newWorktree', row: row(mounted, 'section:local') });
@@ -3271,7 +3279,7 @@ describe('SourceControlSidebar', () => {
       // A flat repository's Local is only branches: a new branch is all it makes.
       worktrees.worktrees.set(null);
       mounted.detectChanges();
-      expect(menuLabels(mounted, 'section:local')).toEqual(['New Branch…']);
+      expect(menuLabels(mounted, 'section:local')).toEqual(['New Branch']);
     });
 
     it('newBranch_onAnotherWorktree_isMadeInThatWorktree_checkedAgainstItsOwnBranches', () => {
@@ -3345,7 +3353,7 @@ describe('SourceControlSidebar', () => {
         row(mounted, 'worktree:w2:branch:feat/x'),
       );
       const remove: MenuItem | undefined = items.find(
-        (item: MenuItem): boolean => item.label === 'Delete…',
+        (item: MenuItem): boolean => item.label === 'Delete',
       );
 
       expect(remove?.disabled).toBe(true);

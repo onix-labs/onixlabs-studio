@@ -215,18 +215,18 @@ export class CodeRibbon {
         },
         {
           id: 'code.saveAs',
-          label: 'Save As…',
+          label: 'Save As',
           accelerator: 'CmdOrCtrl+Shift+S',
           run: (): void => this.onSaveVariant(VARIANT_SAVE_AS),
         },
         MENU_SEPARATOR,
         {
           id: 'code.print',
-          label: 'Print…',
+          label: 'Print',
           accelerator: 'CmdOrCtrl+P',
           run: (): void => this.onPrint(),
         },
-        { id: 'code.exportPdf', label: 'Export to PDF…', run: (): void => this.onExportPdf() },
+        { id: 'code.exportPdf', label: 'Export to PDF', run: (): void => this.onExportPdf() },
       ],
     },
     {
@@ -241,14 +241,14 @@ export class CodeRibbon {
         // an explicit instruction to act on the editor.
         {
           id: 'code.find',
-          label: 'Find…',
+          label: 'Find',
           accelerator: 'CmdOrCtrl+F',
           run: (): void => this.onFind(),
         },
         // No accelerators: ⌘⇧O and ⌃G are bound inside the editor (#1009), and a menu accelerator
         // would take Ctrl+G from a terminal or composer docked beside it.
-        { id: 'code.goToSymbol', label: 'Go to Symbol…', run: (): void => this.onGoToSymbol() },
-        { id: 'code.goToLine', label: 'Go to Line…', run: (): void => this.onGoToLine() },
+        { id: 'code.goToSymbol', label: 'Go to Symbol', run: (): void => this.onGoToSymbol() },
+        { id: 'code.goToLine', label: 'Go to Line', run: (): void => this.onGoToLine() },
         {
           id: 'code.format',
           label: 'Format Document',

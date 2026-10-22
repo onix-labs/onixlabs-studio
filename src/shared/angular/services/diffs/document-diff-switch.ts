@@ -14,7 +14,7 @@ import { DiffOpener } from './diff-opener';
 import { Diffs } from './diffs';
 
 /**
- * Switches a document well's tab between a file and its diff — the Show Diff and Show File buttons on
+ * Switches a document well's tab between a file and its diff — the Show Differences and Show File buttons on
  * the file's and the diff's tool strips. Whether the tab being left stays open beside the other view or is replaced
  * by it is the user's choice (the `workspaces.documentDiffSwitch` setting).
  *
@@ -67,7 +67,7 @@ export class DocumentDiffSwitch {
     return computed((): DockPanelSwitch => {
       const path: string | null = this.documents.get(panelId)?.filePath() ?? null;
       return {
-        label: 'Show Diff',
+        label: 'Show Differences',
         icon: Icon.GIT_DIFF,
         unavailable: this.diffUnavailable(path),
         run: (): Promise<boolean> => this.toDiff(panelId),

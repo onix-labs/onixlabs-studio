@@ -9,40 +9,71 @@
     (collapseAll)="collapseAll()"
   />
 
-  <app-tree-view
-    [rows]="rows()"
-    [selectedId]="workspace.selectedPath()"
-    [virtual]="true"
-    [contextMenuFor]="contextMenuFor"
-    [editingId]="editing()?.rowId ?? null"
-    [editValue]="editing()?.initial ?? ''"
-    [editSelection]="editing()?.selection ?? 'all'"
-    (rowClick)="onRowClick($event)"
-    (backgroundClick)="workspace.clearSelection()"
-    (contextMenuSelect)="onContextAction($event)"
-    (editCommit)="onEditCommit($event)"
-    (editCancel)="onEditCancel()"
-  >
-    <!-- While a row is being named, the tree's field takes the place of its name and decorations; the
-         icon stays, so a placeholder already reads as the kind of entry it is about to become. -->
-    <ng-template let-row let-editing="editing">
-      @let node = nodeOf(row);
-      <app-icon
-        class="tree-icon"
-        [class.tree-icon--folder]="node.type === 'directory'"
-        [icon]="iconFor(node)"
-      />
-      @if (!editing) {
-        <span class="tree-name">
-          <app-highlighted-text [text]="node.name" [query]="query()" />
-        </span>
+  @if (noChanges()) {
+    <!-- Show Changed Files Only, with nothing changed (#1053): said, with the way back. -->
+    <div class="tree-empty">
+      <p>No changes.</p>
+      <app-button label="Show All Files" (click)="workspace.toggleChangesOnly()" />
+    </div>
+  } @else {
+    <app-tree-view
+      [rows]="rows()"
+      [selectedId]="workspace.selectedPath()"
+      [selectedIds]="selection.ids()"
+      [multiSelect]="true"
+      [virtual]="true"
+      [contextMenuFor]="contextMenuFor"
+      [editingId]="editing()?.rowId ?? null"
+      [editValue]="editing()?.initial ?? ''"
+      [editSelection]="editing()?.selection ?? 'all'"
+      (rowClick)="onRowClick($event)"
+      (rowDoubleClick)="onRowOpen($event)"
+      (rowActivate)="onRowOpen($event)"
+      (rowSelect)="onRowSelect($event)"
+      (selectAll)="onSelectAll()"
+      (backgroundClick)="workspace.clearSelection()"
+      (contextMenuSelect)="onContextAction($event)"
+      (editCommit)="onEditCommit($event)"
+      (editCancel)="onEditCancel()"
+    >
+      <!-- While a row is being named, the tree's field takes the place of its name and decorations; the
+           icon stays, so a placeholder already reads as the kind of entry it is about to become. -->
+      <ng-template let-row let-editing="editing">
+        @let node = nodeOf(row);
+        <app-icon
+          class="tree-icon"
+          [class.tree-icon--folder]="node.type === 'directory'"
+          [icon]="iconFor(node)"
+        />
+        @if (!editing) {
+          <span class="tree-name">
+            <app-highlighted-text [text]="node.name" [query]="query()" />
+          </span>
 
-        @if (node.loading) {
-          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+          @if (node.loading) {
+            <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+          }
         }
-      }
-    </ng-template>
-  </app-tree-view>
+      </ng-template>
+    </app-tree-view>
+  }
+
+  <!-- Where the selection is, and what it is: the folder on the left, cut from
+       its start so the end stays visible; the selected item, or how many, on the right — never cut. -->
+  <app-panel-status>
+    <span class="panel-status__item panel-status__item--shrink" [title]="statusLocation()">
+      <app-icon [icon]="Icon.DIRECTORY" />
+      <span class="panel-status__text panel-status__text--path"
+        ><bdi>{{ statusLocation() }}</bdi></span
+      >
+    </span>
+    @if (statusSelection(); as selected) {
+      <span class="panel-status__item panel-status__item--push panel-status__item--whole">
+        <app-icon [icon]="selected.icon" />
+        {{ selected.text }}
+      </span>
+    }
+  </app-panel-status>
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>
@@ -54,15 +85,19 @@
      the Trash because that is what the main process reaches for; the rare location with no Trash is
      reported afterwards rather than hedged about here. -->
 <app-modal
-  [open]="deleteTarget() !== null"
+  [open]="deleteTargets() !== null"
   [width]="26"
   ariaLabel="Delete"
   (dismiss)="cancelDelete()"
 >
   <ng-template appModalContent>
-    <h2 class="tree-panel__dialog-title">Delete “{{ deleteLabel() }}”?</h2>
+    <h2 class="tree-panel__dialog-title">{{ deleteTitle() }}</h2>
     <p class="tree-panel__dialog-message">
-      It moves to the Trash, so you can put it back from there if you need it.
+      @if ((deleteTargets()?.length ?? 0) > 1) {
+        They move to the Trash, so you can put them back from there if you need them.
+      } @else {
+        It moves to the Trash, so you can put it back from there if you need it.
+      }
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />

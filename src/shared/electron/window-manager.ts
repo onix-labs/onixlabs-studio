@@ -643,6 +643,55 @@ export class WindowManager {
   }
 
   /**
+   * Holds each window's own minimum size as it was before any dock layout raised it, so a layout that
+   * needs less hands the window back its floor rather than leaving it raised.
+   */
+  private readonly baseMinimums: WeakMap<BrowserWindow, readonly [number, number]> = new WeakMap<
+    BrowserWindow,
+    readonly [number, number]
+  >();
+
+  /**
+   * Sets a window's minimum size to what its dock layout needs (#1064): the layout's combined
+   * minimum, as content, plus the window's frame. Never below the window's own floor, so the shell
+   * keeps room for its chrome; never above the work area of the display it is on, so a crowded
+   * layout can still be opened there.
+   * @param window The window.
+   * @param contentWidth The least content width the layout needs, in pixels.
+   * @param contentHeight The least content height the layout needs, in pixels.
+   */
+  public setLayoutMinimumSize(
+    window: BrowserWindow,
+    contentWidth: number,
+    contentHeight: number,
+  ): void {
+    if (window.isDestroyed()) {
+      return;
+    }
+    let base: readonly [number, number] | undefined = this.baseMinimums.get(window);
+    if (base === undefined) {
+      const [width, height]: number[] = window.getMinimumSize();
+      base = [width, height];
+      this.baseMinimums.set(window, base);
+    }
+    const [outerWidth, outerHeight]: number[] = window.getSize();
+    const [innerWidth, innerHeight]: number[] = window.getContentSize();
+    const display: Display = screen.getDisplayMatching(window.getBounds());
+    const width: number = Math.min(
+      display.workAreaSize.width,
+      Math.max(base[0], Math.ceil(contentWidth + (outerWidth - innerWidth))),
+    );
+    const height: number = Math.min(
+      display.workAreaSize.height,
+      Math.max(base[1], Math.ceil(contentHeight + (outerHeight - innerHeight))),
+    );
+    const [currentWidth, currentHeight]: number[] = window.getMinimumSize();
+    if (currentWidth !== width || currentHeight !== height) {
+      window.setMinimumSize(width, height);
+    }
+  }
+
+  /**
    * Recolours the Windows caption buttons of every window, and of every window opened after, to suit
    * the application's theme. Does nothing on other platforms, which draw no overlay.
    * @param symbolColor The CSS colour of the button glyphs.

@@ -1,0 +1,70 @@
+<!-- The head: where in the diff this is, the change in words, and the controls. The live region
+     carries the announcement, so each change is read out on arrival without moving focus. -->
+<div class="diff-change-reader__head">
+  <span class="diff-change-reader__position">
+    @if (view().total === 0) {
+      No changes
+    } @else {
+      Change {{ view().index }} of {{ view().total }}
+    }
+  </span>
+  <span class="diff-change-reader__label" role="status" aria-live="polite" aria-atomic="true">
+    @if (view().total === 0) {
+      There are no changes to read.
+    } @else {
+      Change {{ view().index }} of {{ view().total }}: {{ view().label }}
+    }
+  </span>
+  <span class="diff-change-reader__actions">
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.ARROW_UP"
+      ariaLabel="Previous Change (Shift+F7)"
+      tooltip="Previous Change (⇧F7)"
+      [disabled]="view().total === 0"
+      (click)="previous.emit()"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.ARROW_DOWN"
+      ariaLabel="Next Change (F7)"
+      tooltip="Next Change (F7)"
+      [disabled]="view().total === 0"
+      (click)="next.emit()"
+    />
+    <app-button
+      variant="none"
+      size="small"
+      [icon]="Icon.CLOSE"
+      ariaLabel="Close (Escape)"
+      tooltip="Close (Esc)"
+      (click)="closed.emit()"
+    />
+  </span>
+</div>
+
+@if (view().lines.length > 0) {
+  <!-- The change's lines, removed then added, each with its number on its own side and a sign that
+       says the same in text, so colour is never the only signal. -->
+  <ol class="diff-change-reader__lines" aria-label="Changed lines">
+    @for (line of view().lines; track $index) {
+      <li class="diff-change-reader__line diff-change-reader__line--{{ line.kind }}">
+        <span class="diff-change-reader__number" aria-hidden="true">{{ line.number }}</span>
+        <span class="diff-change-reader__sign" aria-hidden="true">{{
+          line.kind === 'removed' ? '−' : '+'
+        }}</span>
+        <span class="visually-hidden"
+          >{{ line.kind === 'removed' ? 'Removed' : 'Added' }} line {{ line.number }}:</span
+        >
+        <code class="diff-change-reader__text">{{ line.text }}</code>
+      </li>
+    }
+  </ol>
+  @if (view().hidden > 0) {
+    <p class="diff-change-reader__more">
+      …and {{ view().hidden }} more {{ view().hidden === 1 ? 'line' : 'lines' }}
+    </p>
+  }
+}

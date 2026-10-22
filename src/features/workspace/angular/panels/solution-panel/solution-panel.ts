@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import {
@@ -16,14 +18,18 @@ import {
   ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import {
   ExplorerScmState,
+  isChangedState,
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  ExplorerVcsMenu,
+  ExplorerVcsTarget,
+} from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
@@ -31,14 +37,18 @@ import { HighlightedText } from '@shared/angular/components/highlighted-text/hig
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
+import {
+  TreeSelectGesture,
+  TreeSelection,
+} from '@shared/angular/components/tree-view/tree-selection';
 import {
   TreeEdit,
   TreeMenuSelection,
@@ -54,19 +64,10 @@ const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
-
-/**
- * Identifies the context-menu command that adds an untracked path to version control (#860).
- */
-const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
-
-/**
- * Identifies the context-menu command that opens a modified file's diff.
- */
-const ACTION_SHOW_DIFF: string = 'show-diff';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
@@ -137,6 +138,7 @@ interface PendingProjectAction {
     ModalContent,
     Button,
     ButtonRow,
+    PanelStatus,
   ],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
@@ -170,9 +172,9 @@ export class SolutionPanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
-   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   * Holds the version-control commands a row offers, shared with the File Explorer (#1041).
    */
-  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+  private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
 
   /**
    * Holds the structured logger for solution explorer actions.
@@ -239,6 +241,13 @@ export class SolutionPanel {
           label: 'Show Git Status',
           checked: this.solution.showsGitStatus(),
         },
+        {
+          id: ACTION_CHANGES_ONLY,
+          label: 'Show Changed Files Only',
+          checked: this.changesOnly(),
+          disabled: !this.git.isRepository(),
+          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
+        },
       ],
     },
     { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
@@ -256,6 +265,10 @@ export class SolutionPanel {
   public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
+    const targets: readonly SolutionRow[] = this.targetsOf(treeRow);
+    if (targets.length > 1) {
+      return this.selectionItems(targets);
+    }
     const row: SolutionRow = this.rowOf(treeRow);
     const path: string | null = this.pathFor(row);
     const items: MenuItem[] = [];
@@ -271,7 +284,7 @@ export class SolutionPanel {
     // solution file names it, and providers that can rewrite that name say so through their
     // capabilities. One that cannot leaves the row menu-less, exactly as before.
     if (row.kind === 'folder' && this.model()?.capabilities.renamesSolutionFolders === true) {
-      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename…', icon: Icon.PENCIL });
+      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename', icon: Icon.PENCIL });
     }
     if (path !== null) {
       items.push(
@@ -279,20 +292,8 @@ export class SolutionPanel {
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
         { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       );
-      // A path is untracked or modified, never both, so at most one of these is offered — under one
-      // separator, pushed only when there is something for it to divide.
-      const vcs: MenuItem[] = [];
-      // Offered only on a path version control does not track yet: nothing is added unasked (#860).
-      if (this.git.canAddToVersionControl(path)) {
-        vcs.push({
-          id: ACTION_ADD_TO_VCS,
-          label: 'Add to Version Control',
-          icon: Icon.PLUS_CIRCLE,
-        });
-      }
-      if (row.kind === 'file' && this.git.canShowDiff(path)) {
-        vcs.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
-      }
+      // Under one separator, pushed only when there is something for it to divide.
+      const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor([this.vcsTarget(row, path)]);
       if (vcs.length > 0) {
         items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
@@ -447,10 +448,29 @@ export class SolutionPanel {
   protected readonly selectedKey: Signal<string | null> = this.solution.selectedKey;
 
   /**
+   * Holds which rows are selected (#1048). The solution model's selected key is the row last acted
+   * on; this holds the rest of a multi-row selection around it.
+   */
+  protected readonly selection: TreeSelection = new TreeSelection();
+
+  /**
+   * Keeps the selection in step when the selected row is moved from outside — following the focused
+   * document, a click on empty space — by making that row the selection.
+   */
+  private readonly followSelectedKey: unknown = effect((): void => {
+    const key: string | null = this.solution.selectedKey();
+    untracked((): void => {
+      if (key !== this.selection.focused()) {
+        this.selection.replace(key);
+      }
+    });
+  });
+
+  /**
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.solution.rows().map((row: SolutionRow): TreeRow => ({
+    this.shownRows().map((row: SolutionRow): TreeRow => ({
       id: row.key,
       depth: row.depth,
       expandable: row.expandable,
@@ -464,6 +484,130 @@ export class SolutionPanel {
       data: row,
     })),
   );
+
+  /**
+   * Gets where the selection is, for the status strip: the folder holding what the selected row stands
+   * for, from the solution's folder down (`studio/src/App`) — or the solution's folder alone when
+   * nothing is selected, or the row stands for no file of its own (a solution folder).
+   */
+  protected readonly statusLocation: Signal<string> = computed((): string => {
+    const root: string = this.model()?.root ?? '';
+    const rootName: string =
+      root
+        .split(/[\\/]/)
+        .filter((part: string): boolean => part !== '')
+        .pop() ?? '';
+    const key: string | null = this.solution.selectedKey();
+    const row: SolutionRow | undefined =
+      key === null
+        ? undefined
+        : this.solution.rows().find((candidate: SolutionRow): boolean => candidate.key === key);
+    if (row?.path === null || row?.path === undefined) {
+      return rootName;
+    }
+    const relative: string = this.relativePath(row.path);
+    const cut: number = Math.max(relative.lastIndexOf('/'), relative.lastIndexOf('\\'));
+    return cut < 0 ? rootName : `${rootName}/${relative.slice(0, cut).replaceAll('\\', '/')}`;
+  });
+
+  /**
+   * Gets what is selected, for the status strip: the row's label and icon, how many rows when several
+   * are, or null when nothing is.
+   */
+  protected readonly statusSelection: Signal<{
+    readonly text: string;
+    readonly icon: Icon;
+  } | null> = computed((): { readonly text: string; readonly icon: Icon } | null => {
+    const count: number = this.selection.ids().length;
+    if (count > 1) {
+      return { text: `${count} selections`, icon: Icon.LIST_ALL };
+    }
+    const key: string | null = this.solution.selectedKey();
+    const row: SolutionRow | undefined =
+      key === null
+        ? undefined
+        : this.solution.rows().find((candidate: SolutionRow): boolean => candidate.key === key);
+    return row === undefined ? null : { text: row.label, icon: this.iconFor(row) };
+  });
+
+  /**
+   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
+   * repository, without which nothing is changed and the switch stands for nothing.
+   */
+  protected readonly changesOnly: Signal<boolean> = computed(
+    (): boolean => this.solution.showsChangesOnly() && this.git.isRepository(),
+  );
+
+  /**
+   * Gets the solution's rows the tree shows: all of them, or only the changes and the projects and
+   * folders on the way to them (#1053). The root row stays, since it heads the tree.
+   */
+  private readonly shownRows: Signal<readonly SolutionRow[]> = computed(
+    (): readonly SolutionRow[] => {
+      const rows: readonly SolutionRow[] = this.solution.rows();
+      return this.changesOnly()
+        ? rows.filter(
+            (row: SolutionRow): boolean =>
+              row.kind === 'solution' || isChangedState(this.scmStateFor(row)),
+          )
+        : rows;
+    },
+  );
+
+  /**
+   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
+   * empty.
+   */
+  protected readonly noChanges: Signal<boolean> = computed(
+    (): boolean =>
+      this.changesOnly() &&
+      this.shownRows().every((row: SolutionRow): boolean => row.kind === 'solution'),
+  );
+
+  /**
+   * Holds the rows the filter opened to lead to changes, so turning it off closes exactly those, and a
+   * row the user closes is not opened again behind their back.
+   */
+  private readonly openedForChanges: Set<string> = new Set<string>();
+
+  /**
+   * Opens the projects and folders that lead to changes while the filter is on — level by level, as
+   * each one's contents arrive — and closes them again when it is turned off.
+   */
+  private readonly followChanges: unknown = effect((): void => {
+    const on: boolean = this.changesOnly();
+    const rows: readonly SolutionRow[] = this.solution.rows();
+    untracked((): void => {
+      if (!on) {
+        for (const row of rows) {
+          if (this.openedForChanges.has(row.key) && row.expanded) {
+            this.solution.toggle(row);
+          }
+        }
+        this.openedForChanges.clear();
+        return;
+      }
+      for (const row of rows) {
+        if (
+          row.expandable &&
+          !row.expanded &&
+          !row.loading &&
+          !this.openedForChanges.has(row.key) &&
+          isChangedState(this.scmStateFor(row))
+        ) {
+          this.openedForChanges.add(row.key);
+          this.solution.toggle(row);
+        }
+      }
+    });
+  });
+
+  /**
+   * Turns *Show Changed Files Only* off again, from the empty state's button.
+   */
+  protected solutionToggleChangesOnly(): void {
+    this.solution.toggleChangesOnly();
+  }
 
   /**
    * Resolves how version control sees what a row stands for. A solution folder has no directory of
@@ -531,6 +675,9 @@ export class SolutionPanel {
       case ACTION_GIT_STATUS:
         this.solution.toggleGitStatus();
         return;
+      case ACTION_CHANGES_ONLY:
+        this.solution.toggleChangesOnly();
+        return;
       case ACTION_OPEN_ROOT: {
         const root: string | undefined = this.model()?.root;
         if (root !== undefined) {
@@ -551,6 +698,11 @@ export class SolutionPanel {
    * @param selection The chosen item and the row it was chosen for.
    */
   public onContextAction(selection: TreeMenuSelection): void {
+    const targets: readonly SolutionRow[] = this.targetsOf(selection.row);
+    if (targets.length > 1) {
+      this.runOnSelection(selection.itemId, targets);
+      return;
+    }
     const row: SolutionRow = this.rowOf(selection.row);
     if (selection.itemId.startsWith(PROJECT_ACTION_PREFIX)) {
       this.requestProjectAction(selection.itemId.slice(PROJECT_ACTION_PREFIX.length), row);
@@ -565,6 +717,9 @@ export class SolutionPanel {
       return;
     }
     this.log.info('workspace.solution', 'Context action', selection.itemId, path);
+    if (this.vcsMenu.run(selection.itemId, [this.vcsTarget(row, path)])) {
+      return;
+    }
 
     switch (selection.itemId) {
       case ACTION_OPEN:
@@ -581,31 +736,127 @@ export class SolutionPanel {
       case ACTION_REVEAL:
         void this.shell.revealPath(path);
         return;
-      case ACTION_ADD_TO_VCS:
-        void this.git.addToVersionControl(path).then((result: MutationResult): void => {
-          if (!result.success) {
-            this.notifications.notify({
-              severity: 'error',
-              title: `Could not add “${row.label}” to version control`,
-              detail: result.error ?? 'Version control refused it.',
-            });
-          }
-        });
+      default:
         return;
-      case ACTION_SHOW_DIFF:
-        void this.diffOpener.openPath(path).then((refusal: string | null): void => {
-          if (refusal !== null) {
-            this.notifications.notify({
-              severity: 'warning',
-              title: `No diff for “${row.label}”`,
-              detail: refusal,
-            });
-          }
-        });
+    }
+  }
+
+  /**
+   * Gets the rows a command chosen on a row acts on: the selection, when the row is part of it,
+   * otherwise the row alone.
+   * @param treeRow The row the command was chosen on.
+   * @returns Returns the rows, in the order the tree shows them.
+   */
+  private targetsOf(treeRow: TreeRow): readonly SolutionRow[] {
+    const byKey: ReadonlyMap<string, SolutionRow> = new Map<string, SolutionRow>(
+      this.solution.rows().map((row: SolutionRow): [string, SolutionRow] => [row.key, row]),
+    );
+    const targets: readonly SolutionRow[] = this.selection
+      .targetsFor(treeRow.id, this.visibleOrder())
+      .map((key: string): SolutionRow | undefined => byKey.get(key))
+      .filter((row: SolutionRow | undefined): row is SolutionRow => row !== undefined);
+    return targets.length === 0 ? [this.rowOf(treeRow)] : targets;
+  }
+
+  /**
+   * Gets every visible row's key, in order — the order a selection is kept and acted on in.
+   * @returns Returns the keys.
+   */
+  private visibleOrder(): readonly string[] {
+    return this.rows().map((row: TreeRow): string => row.id);
+  }
+
+  /**
+   * Builds the menu for several selected rows (#1048): only what acts on every one of them — Open when
+   * they are all files, the path copies (one path per line) and the version-control commands they all
+   * take. A row standing for nothing on disk (a solution folder) leaves a selection holding it with no
+   * menu, as it has none of its own; project actions, Rename and Edit Project File need one row.
+   * @param targets The selected rows.
+   * @returns Returns the items.
+   */
+  private selectionItems(targets: readonly SolutionRow[]): readonly MenuItem[] {
+    const paths: readonly (string | null)[] = targets.map((row: SolutionRow): string | null =>
+      this.pathFor(row),
+    );
+    if (paths.some((path: string | null): boolean => path === null)) {
+      return [];
+    }
+    const items: MenuItem[] = [];
+    if (targets.every((row: SolutionRow): boolean => row.kind === 'file')) {
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+    }
+    items.push(
+      { id: ACTION_COPY_PATH, label: 'Copy Paths', icon: Icon.COPY },
+      { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Paths', icon: Icon.COPY },
+    );
+    const vcs: readonly MenuItem[] = this.vcsMenu.itemsFor(this.vcsTargets(targets));
+    if (vcs.length > 0) {
+      items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
+    }
+    return items;
+  }
+
+  /**
+   * Runs a command chosen for several selected rows (#1048).
+   * @param itemId The chosen item.
+   * @param targets The selected rows.
+   */
+  private runOnSelection(itemId: string, targets: readonly SolutionRow[]): void {
+    const paths: readonly string[] = targets
+      .map((row: SolutionRow): string | null => this.pathFor(row))
+      .filter((path: string | null): path is string => path !== null);
+    if (paths.length !== targets.length) {
+      return;
+    }
+    if (this.vcsMenu.run(itemId, this.vcsTargets(targets))) {
+      return;
+    }
+    switch (itemId) {
+      case ACTION_OPEN:
+        for (const path of paths) {
+          void this.fileOpener.openPath(path);
+        }
+        return;
+      case ACTION_COPY_PATH:
+        void navigator.clipboard.writeText(paths.join('\n')).catch((): void => undefined);
+        return;
+      case ACTION_COPY_RELATIVE:
+        void navigator.clipboard
+          .writeText(paths.map((path: string): string => this.relativePath(path)).join('\n'))
+          .catch((): void => undefined);
         return;
       default:
         return;
     }
+  }
+
+  /**
+   * Describes rows with paths to the version-control commands.
+   * @param rows The rows; each must stand for a path.
+   * @returns Returns the targets.
+   */
+  private vcsTargets(rows: readonly SolutionRow[]): readonly ExplorerVcsTarget[] {
+    return rows.flatMap((row: SolutionRow): readonly ExplorerVcsTarget[] => {
+      const path: string | null = this.pathFor(row);
+      return path === null ? [] : [this.vcsTarget(row, path)];
+    });
+  }
+
+  /**
+   * Describes a row to the version-control commands. A folder row, and the root row (which stands for
+   * the root directory), act as folders. A project row — and a solution row backed by its `.sln` —
+   * acts on the file it is read from, so it is named by that file rather than by its label: Revert
+   * on project "A" reverts `A.csproj`, and the confirmation should say so.
+   * @param row The row.
+   * @param path The row's path.
+   * @returns Returns the target.
+   */
+  private vcsTarget(row: SolutionRow, path: string): ExplorerVcsTarget {
+    if (row.kind === 'item-folder' || row.path === null) {
+      return { path, name: row.label, kind: 'directory' };
+    }
+    const name: string = row.kind === 'file' ? row.label : (path.split(/[/\\]/).pop() ?? row.label);
+    return { path, name, kind: 'file' };
   }
 
   /**
@@ -717,8 +968,9 @@ export class SolutionPanel {
   }
 
   /**
-   * Handles a click on a row: toggles an expandable row, or opens a file. A still-loading project is
-   * inert until its contents arrive.
+   * Handles a plain click on a row: toggles an expandable row. Selecting is {@link onRowSelect}'s, and a
+   * file is only selected — double click or Enter opens it (#1047). A still-loading project is inert
+   * until its contents arrive.
    * @param treeRow The tree row that was clicked.
    */
   public onRowClick(treeRow: TreeRow): void {
@@ -729,11 +981,51 @@ export class SolutionPanel {
     if (row.expandable) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
-    } else if (row.path !== null) {
-      this.log.info('workspace.solution', 'Open file from solution', row.path);
-      this.solution.select(row.key);
-      void this.fileOpener.openPath(row.path);
     }
+  }
+
+  /**
+   * Applies a selection gesture — a click, ⌘- or Shift-click, an arrow key — and makes the row it
+   * landed on the selected row (#1048).
+   * @param gesture The gesture.
+   */
+  public onRowSelect(gesture: TreeSelectGesture): void {
+    this.selection.apply(gesture.row.id, gesture.mode, this.visibleOrder());
+    this.syncSelectedKey();
+  }
+
+  /**
+   * Selects every visible row, for ⌘A in the tree (#1048).
+   */
+  public onSelectAll(): void {
+    this.selection.selectAll(this.visibleOrder());
+    this.syncSelectedKey();
+  }
+
+  /**
+   * Makes the row last acted on the solution model's selected row, or clears it.
+   */
+  private syncSelectedKey(): void {
+    const focused: string | null = this.selection.focused();
+    if (focused === null) {
+      this.solution.clearSelection();
+    } else {
+      this.solution.select(focused);
+    }
+  }
+
+  /**
+   * Opens a file row — on a double click, or Enter (#1047). Rows that expand open nothing: their clicks
+   * already toggled them, and a project's file has its own Edit Project File.
+   * @param treeRow The row to open.
+   */
+  public onRowOpen(treeRow: TreeRow): void {
+    const row: SolutionRow = this.rowOf(treeRow);
+    if (row.loading || row.expandable || row.path === null) {
+      return;
+    }
+    this.log.info('workspace.solution', 'Open file from solution', row.path);
+    void this.fileOpener.openPath(row.path);
   }
 
   /**

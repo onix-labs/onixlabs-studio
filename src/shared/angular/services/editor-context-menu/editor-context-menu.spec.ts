@@ -319,7 +319,7 @@ describe('EditorContextMenu (#1012)', () => {
         'selectAll',
       ]);
       expect(items.every((item: MenuItem): boolean => item.disabled !== true)).toBe(true);
-      expect(rowOf(items, 'symbol')).toMatchObject({ label: 'Go to Symbol…', shortcut: '⌘⇧O' });
+      expect(rowOf(items, 'symbol')).toMatchObject({ label: 'Go to Symbol', shortcut: '⌘⇧O' });
       expect(rowOf(items, 'line')?.shortcut).toBe('⌃G');
       expect(rowOf(items, 'copy')?.shortcut).toBe('⌘C');
     });
@@ -452,7 +452,7 @@ describe('EditorContextMenu (#1012)', () => {
           'paste',
           'selectAll',
         ]);
-        expect(rowOf(items, 'rename')).toMatchObject({ label: 'Rename Symbol…', shortcut: 'F2' });
+        expect(rowOf(items, 'rename')).toMatchObject({ label: 'Rename Symbol', shortcut: 'F2' });
       }
     });
 
@@ -497,7 +497,7 @@ describe('EditorContextMenu (#1012)', () => {
         'paste',
         'selectAll',
       ]);
-      expect(rowOf(items, 'quickFix')).toMatchObject({ label: 'Quick Fix…', shortcut: '⌘.' });
+      expect(rowOf(items, 'quickFix')).toMatchObject({ label: 'Quick Fix', shortcut: '⌘.' });
       expect(
         rowOf(menu.itemsFor(fakeEditor({ readOnly: true }).editor), 'quickFix'),
       ).toBeUndefined();

@@ -115,7 +115,7 @@ export class ApiEnvironmentPanel {
     return [
       { id: DUPLICATE, label: 'Duplicate', icon: Icon.COPY, disabled: none },
       { id: 'environment.sep', label: '', separator: true },
-      { id: DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger', disabled: none },
+      { id: DELETE, label: 'Delete', icon: Icon.TRASH, disabled: none },
     ];
   });
 

@@ -8,12 +8,18 @@ import {
   InputSignal,
 } from '@angular/core';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
-import { SplitDirection } from '../../../services/dock-layout/dock-node';
+import { DockMinimum, DockMinimums } from '../../../services/dock-layout/dock-minimums';
+import {
+  DockNode as DockTreeNode,
+  isStackNode,
+  SplitDirection,
+} from '../../../services/dock-layout/dock-node';
+import { findNode } from '../../../services/dock-layout/dock-tree';
 import { DockState } from '../../../services/dock-layout/dock-state';
 
 /**
- * The minimum pixel size either pane on a splitter may be dragged down to, so a pane is never
- * collapsed to nothing.
+ * The least pixel size either pane on a splitter may be dragged down to, whatever its content — the
+ * floor under each side's computed minimum (#1064), so a pane is never collapsed to nothing.
  */
 const MINIMUM_PANE_SIZE: number = 36;
 
@@ -60,6 +66,11 @@ export class DockSplitter {
   private readonly geometry: DockGeometry = inject(DockGeometry);
 
   /**
+   * Holds the dock's minimum sizes, which bound each side of a drag (#1064).
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
+
+  /**
    * Gets the identifier of the split this handle resizes.
    */
   public readonly splitId: InputSignal<string> = input.required<string>();
@@ -89,6 +100,22 @@ export class DockSplitter {
    * Begins a splitter drag, redistributing flex-grow between the two adjacent panes until release.
    * @param event The originating mouse event.
    */
+  /**
+   * Gets the minimum, along the drag's axis, of one of the split's children: a group's, or a nested
+   * split's and everything in it. A collapsed child keeps its strip's size and is not dragged.
+   * @param childIndex The child's index in the split.
+   * @param horizontal Whether the drag resizes widths.
+   * @returns Returns the minimum, in pixels.
+   */
+  private minimumAlong(childIndex: number, horizontal: boolean): number {
+    const split: DockTreeNode | null = findNode(this.dockState.layout(), this.splitId());
+    if (split === null || isStackNode(split)) {
+      return 0;
+    }
+    const minimum: DockMinimum = this.minimums.minimumOf(split.children[childIndex]);
+    return horizontal ? minimum.inline : minimum.block;
+  }
+
   protected onPress(event: MouseEvent): void {
     if (this.disabled()) {
       return;
@@ -117,12 +144,17 @@ export class DockSplitter {
     let beforeGrow: number = sizes[index];
     let afterGrow: number = sizes[index + 1];
 
+    // Each side stops at its content's minimum (#1064). When the pair is already too small for both
+    // — a window made smaller before the minimums held — the bounds cross, and the drag holds the
+    // split where it is rather than lurching to either end.
+    const minBefore: number = Math.max(MINIMUM_PANE_SIZE, this.minimumAlong(index, horizontal));
+    const minAfter: number = Math.max(MINIMUM_PANE_SIZE, this.minimumAlong(index + 1, horizontal));
+    const low: number = Math.min(minBefore, startBeforePx);
+    const high: number = Math.max(pairPx - minAfter, startBeforePx);
+
     const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
       const delta: number = (horizontal ? move.clientX : move.clientY) - start;
-      const beforePx: number = Math.max(
-        MINIMUM_PANE_SIZE,
-        Math.min(startBeforePx + delta, pairPx - MINIMUM_PANE_SIZE),
-      );
+      const beforePx: number = Math.max(low, Math.min(startBeforePx + delta, high));
       beforeGrow = (beforePx / pairPx) * pairGrow;
       afterGrow = pairGrow - beforeGrow;
       before.style.flex = `${beforeGrow} 1 0`;

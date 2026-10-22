@@ -2,14 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
-import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import {
@@ -19,12 +20,16 @@ import {
 } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
 import {
+  isChangedState,
   scmRowFields,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  ExplorerVcsMenu,
+  ExplorerVcsTarget,
+} from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
-import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -42,7 +47,12 @@ import {
   TreeRow,
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
+import {
+  TreeSelectGesture,
+  TreeSelection,
+} from '@shared/angular/components/tree-view/tree-selection';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 
 /**
@@ -58,22 +68,13 @@ const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
 
 /**
- * Identifies the context-menu command that adds an untracked path to version control (#860).
- */
-const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
-
-/**
- * Identifies the context-menu command that opens a modified file's diff.
- */
-const ACTION_SHOW_DIFF: string = 'show-diff';
-
-/**
  * Identifies the toolbar "…" menu's commands: the options submenu and its two switches, and the
  * commands that act on the whole tree or its root.
  */
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -144,6 +145,7 @@ export interface NameEdit {
     HighlightedText,
     Modal,
     ModalContent,
+    PanelStatus,
   ],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
@@ -177,9 +179,9 @@ export class TreePanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
-   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   * Holds the version-control commands a row offers, shared with the Solution Explorer (#1041).
    */
-  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+  private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
 
   /**
    * Holds the structured logger for workspace tree actions.
@@ -202,17 +204,38 @@ export class TreePanel {
   public readonly editing: WritableSignal<NameEdit | null> = signal<NameEdit | null>(null);
 
   /**
-   * Holds the entry awaiting a delete confirmation, or null when none is pending.
+   * Holds the entries awaiting a delete confirmation — one, or a selection — or null when none is
+   * pending.
    */
-  public readonly deleteTarget: WritableSignal<WorkspaceTreeNode | null> =
-    signal<WorkspaceTreeNode | null>(null);
+  public readonly deleteTargets: WritableSignal<readonly WorkspaceTreeNode[] | null> = signal<
+    readonly WorkspaceTreeNode[] | null
+  >(null);
+
+  /**
+   * Holds which rows are selected (#1048). The workspace's selected path is the row last acted on, the
+   * one single-row surfaces follow; this holds the rest of a multi-row selection around it.
+   */
+  protected readonly selection: TreeSelection = new TreeSelection();
+
+  /**
+   * Keeps the selection in step when the selected path is moved from outside — following the focused
+   * document, an agent revealing a file, a click on empty space — by making that row the selection.
+   */
+  private readonly followSelectedPath: unknown = effect((): void => {
+    const path: string | null = this.workspace.selectedPath();
+    untracked((): void => {
+      if (path !== this.selection.focused()) {
+        this.selection.replace(path);
+      }
+    });
+  });
 
   /**
    * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}, with a create's
    * placeholder row spliced in while one is being named.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const rows: TreeRow[] = this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
+    const rows: TreeRow[] = this.shownRows().map((row: WorkspaceTreeRow): TreeRow => ({
       id: row.node.path,
       depth: row.depth,
       expandable: row.node.type === 'directory',
@@ -226,6 +249,120 @@ export class TreePanel {
       return rows;
     }
     return this.withPlaceholder(rows, edit);
+  });
+
+  /**
+   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
+   * repository, without which nothing is changed and the switch stands for nothing.
+   */
+  protected readonly changesOnly: Signal<boolean> = computed(
+    (): boolean => this.workspace.showsChangesOnly() && this.git.isRepository(),
+  );
+
+  /**
+   * Gets the workspace's rows the tree shows: all of them, or only the changes and the folders on the
+   * way to them (#1053).
+   */
+  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
+    (): readonly WorkspaceTreeRow[] => {
+      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+      return this.changesOnly()
+        ? rows.filter((row: WorkspaceTreeRow): boolean =>
+            isChangedState(this.git.stateFor(row.node.path)),
+          )
+        : rows;
+    },
+  );
+
+  /**
+   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
+   * empty.
+   */
+  protected readonly noChanges: Signal<boolean> = computed(
+    (): boolean => this.changesOnly() && this.shownRows().length === 0,
+  );
+
+  /**
+   * Holds the folders the filter opened to lead to changes, so turning it off closes exactly those and
+   * leaves the tree as it was — and so a folder the user closes is not opened again behind their back.
+   */
+  private readonly openedForChanges: Set<string> = new Set<string>();
+
+  /**
+   * Opens the folders that lead to changes while the filter is on — level by level, as each opened
+   * folder's entries arrive — and closes them again when it is turned off.
+   */
+  private readonly followChanges: unknown = effect((): void => {
+    const on: boolean = this.changesOnly();
+    const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+    untracked((): void => {
+      if (!on) {
+        for (const path of this.openedForChanges) {
+          const row: WorkspaceTreeRow | undefined = rows.find(
+            (candidate: WorkspaceTreeRow): boolean => candidate.node.path === path,
+          );
+          if (row?.expanded === true) {
+            void this.workspace.toggleDirectory(path);
+          }
+        }
+        this.openedForChanges.clear();
+        return;
+      }
+      for (const row of rows) {
+        const path: string = row.node.path;
+        if (
+          row.node.type === 'directory' &&
+          !row.expanded &&
+          !this.openedForChanges.has(path) &&
+          this.git.stateFor(path) === 'contains'
+        ) {
+          this.openedForChanges.add(path);
+          void this.workspace.toggleDirectory(path);
+        }
+      }
+    });
+  });
+
+  /**
+   * Gets where the selection is, for the status strip: the folder holding the selected row, from the
+   * workspace folder down (`studio/src/app`) — or the workspace folder alone when nothing is selected
+   * or the row sits at its top.
+   */
+  protected readonly statusLocation: Signal<string> = computed((): string => {
+    const root: string = this.workspace.root()?.name ?? '';
+    const selected: string | null = this.workspace.selectedPath();
+    if (selected === null) {
+      return root;
+    }
+    const relative: string = this.relativePath(selected);
+    const cut: number = Math.max(relative.lastIndexOf('/'), relative.lastIndexOf('\\'));
+    return cut < 0 ? root : `${root}/${relative.slice(0, cut).replaceAll('\\', '/')}`;
+  });
+
+  /**
+   * Gets what is selected, for the status strip: the row's name and icon, how many rows when several
+   * are, or null when nothing is.
+   */
+  protected readonly statusSelection: Signal<{
+    readonly text: string;
+    readonly icon: Icon;
+  } | null> = computed((): { readonly text: string; readonly icon: Icon } | null => {
+    const count: number = this.selection.ids().length;
+    if (count > 1) {
+      return { text: `${count} selections`, icon: Icon.LIST_ALL };
+    }
+    const selected: string | null = this.workspace.selectedPath();
+    if (selected === null) {
+      return null;
+    }
+    const node: WorkspaceTreeNode | undefined = this.workspace
+      .rows()
+      .find((row: WorkspaceTreeRow): boolean => row.node.path === selected)?.node;
+    const name: string = node?.name ?? selected.split(/[\\/]/).pop() ?? selected;
+    return {
+      text: name,
+      icon: node?.type === 'directory' ? Icon.DIRECTORY : fileIconFor(name),
+    };
   });
 
   /**
@@ -253,11 +390,18 @@ export class TreePanel {
           label: 'Show Git Status',
           checked: this.workspace.showsGitStatus(),
         },
+        {
+          id: ACTION_CHANGES_ONLY,
+          label: 'Show Changed Files Only',
+          checked: this.changesOnly(),
+          disabled: !this.git.isRepository(),
+          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
+        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
-    { id: ACTION_NEW_FILE, label: 'New File…', icon: Icon.FILE },
-    { id: ACTION_NEW_FOLDER, label: 'New Folder…', icon: Icon.DIRECTORY },
+    { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
+    { id: ACTION_NEW_FOLDER, label: 'New Folder', icon: Icon.DIRECTORY },
     { id: 'tree-more.sep-root', label: '', separator: true },
     { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_COPY_ROOT, label: 'Copy Workspace Path', icon: Icon.COPY },
@@ -276,6 +420,9 @@ export class TreePanel {
         return;
       case ACTION_GIT_STATUS:
         this.workspace.toggleGitStatus();
+        return;
+      case ACTION_CHANGES_ONLY:
+        this.workspace.toggleChangesOnly();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:
@@ -341,17 +488,88 @@ export class TreePanel {
   }
 
   /**
-   * Handles a click on a tree row: selects the entry, toggles directories, and opens files into the
-   * right editor tab (reusing an existing tab when the file is already open).
+   * Handles a plain click on a tree row: toggles a directory. Selecting is {@link onRowSelect}'s, and a
+   * file is only selected — clicking around the tree to look opens nothing (#1047).
    * @param row The tree row that was clicked.
    */
   public onRowClick(row: TreeRow): void {
     const node: WorkspaceTreeNode = this.nodeOf(row);
-    this.workspace.select(node.path);
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
+    }
+  }
+
+  /**
+   * Applies a selection gesture — a click, ⌘- or Shift-click, an arrow key — and makes the row it
+   * landed on the workspace's selected path (#1048).
+   * @param gesture The gesture.
+   */
+  public onRowSelect(gesture: TreeSelectGesture): void {
+    this.selection.apply(gesture.row.id, gesture.mode, this.visibleOrder());
+    this.syncSelectedPath();
+  }
+
+  /**
+   * Selects every visible row, for ⌘A in the tree (#1048).
+   */
+  public onSelectAll(): void {
+    this.selection.selectAll(this.visibleOrder());
+    this.syncSelectedPath();
+  }
+
+  /**
+   * Makes the row last acted on the workspace's selected path, or clears it.
+   */
+  private syncSelectedPath(): void {
+    const focused: string | null = this.selection.focused();
+    if (focused === null) {
+      this.workspace.clearSelection();
     } else {
+      this.workspace.select(focused);
+    }
+  }
+
+  /**
+   * Gets every visible row's id, in order — the order a selection is kept and acted on in.
+   * @returns Returns the ids.
+   */
+  private visibleOrder(): readonly string[] {
+    return this.rows().map((row: TreeRow): string => row.id);
+  }
+
+  /**
+   * Gets the entries a command chosen on a row acts on: the selection, when the row is part of it,
+   * otherwise the row alone.
+   * @param row The row the command was chosen on.
+   * @returns Returns the entries, in the order the tree shows them.
+   */
+  private targetsOf(row: TreeRow): readonly WorkspaceTreeNode[] {
+    const byPath: ReadonlyMap<string, WorkspaceTreeNode> = new Map<string, WorkspaceTreeNode>(
+      this.workspace
+        .rows()
+        .map((candidate: WorkspaceTreeRow): [string, WorkspaceTreeNode] => [
+          candidate.node.path,
+          candidate.node,
+        ]),
+    );
+    const targets: readonly WorkspaceTreeNode[] = this.selection
+      .targetsFor(row.id, this.visibleOrder())
+      .map((id: string): WorkspaceTreeNode | undefined => byPath.get(id))
+      .filter(
+        (node: WorkspaceTreeNode | undefined): node is WorkspaceTreeNode => node !== undefined,
+      );
+    return targets.length === 0 ? [this.nodeOf(row)] : targets;
+  }
+
+  /**
+   * Opens a file row — on a double click, or Enter — into the right editor tab, reusing an existing tab
+   * when the file is already open (#1047). A directory opens nothing: its clicks already toggled it.
+   * @param row The tree row to open.
+   */
+  public onRowOpen(row: TreeRow): void {
+    const node: WorkspaceTreeNode = this.nodeOf(row);
+    if (node.type === 'file') {
       this.log.info('workspace.tree', 'Open file from tree', node.path);
       void this.fileOpener.openPath(node.path);
     }
@@ -369,10 +587,17 @@ export class TreePanel {
    * create inside it; on a file they create alongside it, which is both what other editors do and the
    * only way to reach the workspace root — the root is not itself a row, so a tree whose creates only
    * worked on directories could never add a top-level file.
+   *
+   * Opened on a row of a multi-row selection (#1048), it offers what acts on all of it instead — see
+   * {@link selectionItems}.
    */
   public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
+    const targets: readonly WorkspaceTreeNode[] = this.targetsOf(treeRow);
+    if (targets.length > 1) {
+      return this.selectionItems(targets);
+    }
     const node: WorkspaceTreeNode = this.nodeOf(treeRow);
     const items: MenuItem[] = [];
 
@@ -380,81 +605,74 @@ export class TreePanel {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
     }
     items.push(
-      { id: ACTION_NEW_FILE, label: 'New File…', icon: Icon.FILE },
-      { id: ACTION_NEW_FOLDER, label: 'New Folder…', icon: Icon.DIRECTORY },
+      { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
+      { id: ACTION_NEW_FOLDER, label: 'New Folder', icon: Icon.DIRECTORY },
       // A separator is a rule in its own right rather than a flag on the row below it, so it is only
       // pushed where there is genuinely something to divide.
       { id: 'tree-menu.sep-paths', label: '', separator: true },
       { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
       { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
       { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
-      ...this.versionControlItems(node),
+      ...this.versionControlItems([node]),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
-      { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
-      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
+      { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
     );
     return items;
   };
 
   /**
-   * Builds a row's version-control commands, under a separator, or nothing when none applies. A path
-   * is untracked or modified, never both, so at most one of the two is offered.
-   * @param node The row's node.
+   * Builds the menu for several selected rows (#1048): only what acts on every one of them. Open when
+   * they are all files, the two path copies (one path per line), the version-control commands they all
+   * take, and Delete. What needs one row of its own — New, Rename, Open in File System — is left out.
+   * @param targets The selected entries.
    * @returns Returns the items.
    */
-  private versionControlItems(node: WorkspaceTreeNode): readonly MenuItem[] {
+  private selectionItems(targets: readonly WorkspaceTreeNode[]): readonly MenuItem[] {
     const items: MenuItem[] = [];
-    // Offered only on a path version control does not track yet: nothing is added unasked (#860).
-    if (this.git.canAddToVersionControl(node.path)) {
-      items.push({
-        id: ACTION_ADD_TO_VCS,
-        label: 'Add to Version Control',
-        icon: Icon.PLUS_CIRCLE,
-      });
+    if (targets.every((node: WorkspaceTreeNode): boolean => node.type === 'file')) {
+      items.push(
+        { id: ACTION_OPEN, label: 'Open', icon: Icon.FILE },
+        { id: 'tree-menu.sep-paths', label: '', separator: true },
+      );
     }
-    if (node.type === 'file' && this.git.canShowDiff(node.path)) {
-      items.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
-    }
+    items.push(
+      { id: ACTION_COPY_PATH, label: 'Copy Paths', icon: Icon.COPY },
+      { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Paths', icon: Icon.COPY },
+      ...this.versionControlItems(targets),
+      { id: 'tree-menu.sep-writes', label: '', separator: true },
+      { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+    );
+    return items;
+  }
+
+  /**
+   * Builds the version-control commands for a row or a selection, under a separator, or nothing when
+   * none applies.
+   * @param nodes The row's node, or the selected nodes.
+   * @returns Returns the items.
+   */
+  private versionControlItems(nodes: readonly WorkspaceTreeNode[]): readonly MenuItem[] {
+    const items: readonly MenuItem[] = this.vcsMenu.itemsFor(nodes.map(vcsTargetOf));
     return items.length === 0
       ? []
       : [{ id: 'tree-menu.sep-vcs', label: '', separator: true }, ...items];
   }
 
   /**
-   * Opens a modified file's diff, saying so when there is none to show.
-   * @param node The row's node.
-   */
-  private async showDiff(node: WorkspaceTreeNode): Promise<void> {
-    const refusal: string | null = await this.diffOpener.openPath(node.path);
-    if (refusal !== null) {
-      this.notifications.notify({
-        severity: 'warning',
-        title: `No diff for “${node.name}”`,
-        detail: refusal,
-      });
-    }
-  }
-
-  /**
-   * Adds a row's untracked path to version control, saying so when it cannot be added.
-   * @param node The row's node.
-   */
-  private async addToVersionControl(node: WorkspaceTreeNode): Promise<void> {
-    const result: MutationResult = await this.git.addToVersionControl(node.path);
-    if (!result.success) {
-      this.notifications.notify({
-        severity: 'error',
-        title: `Could not add “${node.name}” to version control`,
-        detail: result.error ?? 'Version control refused it.',
-      });
-    }
-  }
-
-  /**
-   * Runs the command chosen from a row's context menu.
+   * Runs the command chosen from a row's context menu — on the row, or on the whole selection when it
+   * was opened on a row of one (#1048).
    * @param selection The chosen item and the row it was chosen for.
    */
   public onContextAction(selection: TreeMenuSelection): void {
+    const targets: readonly WorkspaceTreeNode[] = this.targetsOf(selection.row);
+    if (this.vcsMenu.run(selection.itemId, targets.map(vcsTargetOf))) {
+      return;
+    }
+    if (targets.length > 1) {
+      this.runOnSelection(selection.itemId, targets);
+      return;
+    }
     const node: WorkspaceTreeNode = this.nodeOf(selection.row);
     switch (selection.itemId) {
       case ACTION_OPEN:
@@ -488,13 +706,41 @@ export class TreePanel {
         });
         return;
       case ACTION_DELETE:
-        this.deleteTarget.set(node);
+        this.deleteTargets.set([node]);
         return;
-      case ACTION_ADD_TO_VCS:
-        void this.addToVersionControl(node);
+      default:
         return;
-      case ACTION_SHOW_DIFF:
-        void this.showDiff(node);
+    }
+  }
+
+  /**
+   * Runs a command chosen for several selected rows (#1048).
+   * @param itemId The chosen item.
+   * @param targets The selected entries.
+   */
+  private runOnSelection(itemId: string, targets: readonly WorkspaceTreeNode[]): void {
+    switch (itemId) {
+      case ACTION_OPEN:
+        for (const node of targets) {
+          void this.fileOpener.openPath(node.path);
+        }
+        return;
+      case ACTION_COPY_PATH:
+        void navigator.clipboard
+          .writeText(targets.map((node: WorkspaceTreeNode): string => node.path).join('\n'))
+          .catch((): void => undefined);
+        return;
+      case ACTION_COPY_RELATIVE:
+        void navigator.clipboard
+          .writeText(
+            targets
+              .map((node: WorkspaceTreeNode): string => this.relativePath(node.path))
+              .join('\n'),
+          )
+          .catch((): void => undefined);
+        return;
+      case ACTION_DELETE:
+        this.deleteTargets.set(targets);
         return;
       default:
         return;
@@ -625,44 +871,61 @@ export class TreePanel {
   }
 
   /**
-   * Gets the name of the entry awaiting deletion, for the confirmation's heading.
+   * Gets the delete confirmation's heading: the entry by name, or how many there are.
    */
-  protected readonly deleteLabel: Signal<string> = computed(
-    (): string => this.deleteTarget()?.name ?? '',
-  );
+  protected readonly deleteTitle: Signal<string> = computed((): string => {
+    const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
+    return targets.length === 1
+      ? `Delete “${targets[0].name}”?`
+      : `Delete ${targets.length} items?`;
+  });
 
   /**
    * Closes the delete confirmation without deleting anything.
    */
   public cancelDelete(): void {
-    this.deleteTarget.set(null);
+    this.deleteTargets.set(null);
   }
 
   /**
-   * Deletes the confirmed entry.
-   *
-   * The confirmation promises the Trash, because that is what the main process reaches for first. Where
-   * no trash exists the entry is still removed — the user asked for a delete — but that outcome is
-   * reported rather than passed over in silence, since it is the one case where what happened is worse
-   * than what was agreed to.
-   * @returns Returns a promise that resolves once the delete has been attempted.
+   * Deletes the confirmed entries, one after another, saying afterwards what did not go to the Trash
+   * and what could not be deleted — once for them all, rather than a notification per entry.
+   * @returns Returns a promise that settles once every entry has been tried.
    */
   public async confirmDelete(): Promise<void> {
-    const node: WorkspaceTreeNode | null = this.deleteTarget();
-    if (node === null) {
+    const targets: readonly WorkspaceTreeNode[] | null = this.deleteTargets();
+    if (targets === null || targets.length === 0) {
       return;
     }
-    this.deleteTarget.set(null);
-    this.log.info('workspace.tree', 'Delete requested', node.path);
-    const result: FileOperationResult = await this.workspace.delete(node.path);
-    if (!result.success) {
-      this.report('Could not delete', result.error);
-      return;
+    this.deleteTargets.set(null);
+    const failed: { node: WorkspaceTreeNode; error: string | undefined }[] = [];
+    const permanent: WorkspaceTreeNode[] = [];
+    for (const node of targets) {
+      this.log.info('workspace.tree', 'Delete requested', node.path);
+      const result: FileOperationResult = await this.workspace.delete(node.path);
+      if (!result.success) {
+        failed.push({ node, error: result.error });
+      } else if (result.trashed === false) {
+        permanent.push(node);
+      }
     }
-    if (result.trashed === false) {
+    if (failed.length > 0) {
+      this.report(
+        failed.length === 1 && targets.length === 1
+          ? 'Could not delete'
+          : `Could not delete ${failed.length} of ${targets.length} items`,
+        failed.length === 1
+          ? failed[0].error
+          : failed.map(({ node }: { node: WorkspaceTreeNode }): string => node.name).join(', '),
+      );
+    }
+    if (permanent.length > 0) {
       this.notifications.notify({
         severity: 'warning',
-        title: `Deleted “${node.name}” permanently`,
+        title:
+          permanent.length === 1
+            ? `Deleted “${permanent[0].name}” permanently`
+            : `Deleted ${permanent.length} items permanently`,
         detail: 'This location has no Trash, so it could not be recovered from there.',
       });
     }
@@ -716,4 +979,13 @@ export class TreePanel {
     }
     return fileIconFor(node.name);
   }
+}
+
+/**
+ * Describes an entry to the version-control commands.
+ * @param node The entry.
+ * @returns Returns the target.
+ */
+function vcsTargetOf(node: WorkspaceTreeNode): ExplorerVcsTarget {
+  return { path: node.path, name: node.name, kind: node.type };
 }

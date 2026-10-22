@@ -117,7 +117,7 @@ export class CoreMenu {
           },
           {
             id: 'core.file.open',
-            label: 'Open File…',
+            label: 'Open File',
             accelerator: 'CmdOrCtrl+O',
             run: (): void => void this.documents.openFile(),
           },
@@ -171,7 +171,7 @@ export class CoreMenu {
             MENU_SEPARATOR,
             {
               id: 'core.file.settings',
-              label: 'Settings…',
+              label: 'Settings',
               accelerator: 'CmdOrCtrl+,',
               run: (): void => void this.tabs.open('settings'),
             },
@@ -227,7 +227,7 @@ export class CoreMenu {
             MENU_SEPARATOR,
             {
               id: 'core.help.issue',
-              label: 'Report an Issue…',
+              label: 'Report an Issue',
               run: (): void => this.help.openIssueReport(),
             },
             {

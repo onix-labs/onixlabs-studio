@@ -40,6 +40,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
+import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { IssueActions } from '@shared/angular/services/issues/issue-actions';
@@ -51,6 +52,7 @@ import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
+import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -246,6 +248,8 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     PackageExplorer,
     FileOpener,
     WorkspaceGit,
+    // The explorers' version-control commands (#1041), beside the status they read.
+    ExplorerVcsMenu,
     Repository,
     // The Repository panel's worktrees, per view beside its Repository: "the current worktree" is
     // the checkout this view shows, which a container keeps one view alive for each of.
@@ -273,6 +277,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     DockTabContext,
     DockState,
     DockGeometry,
+    DockMinimums,
     DockFocus,
     DockPanelRegistry,
     // Which of this tab's panels have something behind them, which the dock filters its stacks
@@ -1667,7 +1672,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @returns Returns null when the diff was opened, or the reason it could not be.
    */
   private openDiffForAgent(path: string): Promise<string | null> {
-    // The same lookup the explorers' Show Diff uses, so an agent and a person get the same answer.
+    // The same lookup the explorers' Show Differences uses, so an agent and a person get the same answer.
     return this.diffOpener.openPath(path);
   }
 

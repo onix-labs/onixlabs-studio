@@ -1,3 +1,4 @@
+import type { VcsIgnoreRule } from '@shared/api/version-control-protocol';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import {
   GitBranch,
@@ -161,9 +162,11 @@ export interface SourceControlProvider {
    * Reads the commit history (newest first) with parents and ref decorations.
    * @param limit The maximum number of commits to read.
    * @param all Whether to read every branch's history rather than only the checked-out branch's.
+   * @param path A repository-relative path to read only the history of (#1044); the plugin must
+   * support `pathHistory`.
    * @returns Returns the commits.
    */
-  getCommits(limit: number, all?: boolean): Promise<GitCommit[]>;
+  getCommits(limit: number, all?: boolean, path?: string): Promise<GitCommit[]>;
 
   /**
    * Reads the branches, remotes, and tags.
@@ -212,6 +215,21 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   unstage(paths: readonly string[]): Promise<MutationResult>;
+
+  /**
+   * Adds rules to the repository's ignore list (#1043). Refused by a plugin without `ignore`.
+   * @param rules The rules to add.
+   * @returns Returns the outcome.
+   */
+  ignore(rules: readonly VcsIgnoreRule[]): Promise<MutationResult>;
+
+  /**
+   * Takes paths out of version control, leaving them on disk (#1043). Refused by a plugin without
+   * `stopTracking`.
+   * @param paths The repository-relative paths; must not be empty.
+   * @returns Returns the outcome.
+   */
+  stopTracking(paths: readonly string[]): Promise<MutationResult>;
 
   /**
    * Commits the staged changes with a message.

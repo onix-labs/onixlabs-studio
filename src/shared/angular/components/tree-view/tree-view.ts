@@ -27,6 +27,7 @@ import {
   RowEditField,
   RowEditSelection,
 } from '@shared/angular/components/row-edit-field/row-edit-field';
+import type { TreeSelectGesture, TreeSelectMode } from './tree-selection';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.
@@ -56,6 +57,12 @@ const FALLBACK_ROOT_FONT_PX: number = 16;
  */
 const HEADLESS_DOM: boolean =
   typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
+
+/**
+ * Whether the platform is macOS, where ⌘ adds a row to a selection and selects every row; elsewhere
+ * it is Ctrl. On a Mac Ctrl-click is a right click, so it must not toggle.
+ */
+const MAC: boolean = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
 
 /**
  * Names a semantic colour a row's text and highlight take (#860) — the theme's own tokens, so light,
@@ -226,6 +233,19 @@ export class TreeView {
   });
 
   /**
+   * Gets whether several rows can be selected at once (#1048). Off by default, and every tree that
+   * leaves it off behaves exactly as before.
+   *
+   * On, the tree reports selection gestures through {@link rowSelect} — ⌘-click (Ctrl-click off macOS)
+   * toggles a row, Shift-click extends from the anchor, ↑/↓ move and Shift+↑/↓ extend, Esc narrows to
+   * the row, ⌘A ({@link selectAll}) takes every row, and right-clicking outside the selection selects
+   * that row first. A plain click still emits {@link rowClick} too; a modified one does not, since it
+   * only selects. The consumer keeps the selection (a {@link import('./tree-selection').TreeSelection})
+   * and draws it back through {@link selectedId} and {@link selectedIds}.
+   */
+  public readonly multiSelect: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets whether rows render through a virtual scroller (only the scrollport's rows get DOM).
    * Requires the host to give the tree a bounded height; size-to-content hosts must leave this off.
    */
@@ -252,6 +272,26 @@ export class TreeView {
    * properly. A tree with nothing to open simply does not listen.
    */
   public readonly rowDoubleClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Emits the row Enter was pressed on — the keyboard's double click (#1047).
+   *
+   * Enter still emits {@link rowClick} first, so a tree that treats a click as everything behaves as
+   * it always has; a tree where a click only selects listens here too, to open what Enter asks for.
+   * Space emits only {@link rowClick}.
+   */
+  public readonly rowActivate: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Emits a selection gesture, when {@link multiSelect} is on (#1048).
+   */
+  public readonly rowSelect: OutputEmitterRef<TreeSelectGesture> = output<TreeSelectGesture>();
+
+  /**
+   * Emits when ⌘A (Ctrl+A off macOS) is pressed on a row, when {@link multiSelect} is on. Never while a
+   * row is being named: the field's own ⌘A selects its text.
+   */
+  public readonly selectAll: OutputEmitterRef<void> = output<void>();
 
   /**
    * Emits when a click lands on the tree's own area but on no row — the empty space below the last
@@ -445,13 +485,116 @@ export class TreeView {
   }
 
   /**
-   * Activates a row from the keyboard (Enter or Space), suppressing the default scroll on Space.
+   * Activates a row from the keyboard, suppressing the default scroll on Space: both keys click it,
+   * and Enter also asks for it to be opened.
    * @param event The keyboard event.
    * @param row The row to activate.
+   * @param open Whether the key was Enter, which opens as well as clicks.
    */
-  protected activate(event: Event, row: TreeRow): void {
+  protected activate(event: Event, row: TreeRow, open: boolean = false): void {
     event.preventDefault();
+    if (this.multiSelect()) {
+      this.rowSelect.emit({ row, mode: 'replace' });
+    }
     this.rowClick.emit(row);
+    if (open) {
+      this.rowActivate.emit(row);
+    }
+  }
+
+  /**
+   * Handles a click on a row. A plain click is a click (and, with {@link multiSelect}, selects the row
+   * alone); a ⌘- or Shift-click on a multi-select tree only changes the selection.
+   * @param event The click.
+   * @param row The row clicked.
+   */
+  protected onRowClick(event: MouseEvent, row: TreeRow): void {
+    if (!this.multiSelect()) {
+      this.rowClick.emit(row);
+      return;
+    }
+    const mode: TreeSelectMode = (MAC ? event.metaKey : event.ctrlKey)
+      ? 'toggle'
+      : event.shiftKey
+        ? 'extend'
+        : 'replace';
+    this.rowSelect.emit({ row, mode });
+    if (mode === 'replace') {
+      this.rowClick.emit(row);
+    } else {
+      // A Shift-click would otherwise select the text between the two rows.
+      event.preventDefault();
+    }
+  }
+
+  /**
+   * Selects a row right-clicked outside the selection, so the menu and the highlight agree on what it
+   * acts on. A row already in the selection keeps the selection: that is how a menu acts on several.
+   * @param row The row right-clicked.
+   */
+  protected onRowContextMenu(row: TreeRow): void {
+    if (this.multiSelect() && !this.selection().has(row.id)) {
+      this.rowSelect.emit({ row, mode: 'replace' });
+    }
+  }
+
+  /**
+   * Handles the selection keys on a row of a multi-select tree: ↑/↓ move to the next row (Shift
+   * extends), Esc narrows to this row, ⌘A selects every row. Keys pressed in a field inside the row —
+   * a rename — are the field's.
+   * @param event The key press.
+   * @param row The row it was pressed on.
+   */
+  protected onRowKeydown(event: KeyboardEvent, row: TreeRow): void {
+    if (!this.multiSelect() || event.target !== event.currentTarget) {
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      const rows: readonly TreeRow[] = this.rows();
+      const index: number = rows.findIndex(
+        (candidate: TreeRow): boolean => candidate.id === row.id,
+      );
+      const next: TreeRow | undefined = rows[index + (event.key === 'ArrowDown' ? 1 : -1)];
+      event.preventDefault();
+      if (index >= 0 && next !== undefined) {
+        this.rowSelect.emit({ row: next, mode: event.shiftKey ? 'extend' : 'replace' });
+        this.focusRow(next.id);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      this.rowSelect.emit({ row, mode: 'replace' });
+      return;
+    }
+    if (
+      event.key.toLowerCase() === 'a' &&
+      (MAC ? event.metaKey : event.ctrlKey) &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      event.preventDefault();
+      this.selectAll.emit();
+    }
+  }
+
+  /**
+   * Moves keyboard focus to a row once it is drawn — on a virtual tree it may first need scrolling
+   * into the viewport, which the selection effect does, so a few frames are allowed for it to appear.
+   * @param id The row's id.
+   * @param attempts How many more frames to wait for it.
+   */
+  private focusRow(id: string, attempts: number = 4): void {
+    const escaped: string = id.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+    const element: HTMLElement | null = this.host.nativeElement.querySelector<HTMLElement>(
+      `[data-tree-id="${escaped}"]`,
+    );
+    if (element !== null) {
+      element.focus();
+      return;
+    }
+    if (attempts > 0 && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame((): void => this.focusRow(id, attempts - 1));
+    }
   }
 
   /**

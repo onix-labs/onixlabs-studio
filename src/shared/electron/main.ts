@@ -879,6 +879,23 @@ class Program {
     });
 
     ipcMain.on(
+      WindowChannel.SetMinimumSize,
+      (event: IpcMainEvent, width: unknown, height: unknown): void => {
+        const window: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
+        if (
+          window === null ||
+          typeof width !== 'number' ||
+          typeof height !== 'number' ||
+          !Number.isFinite(width) ||
+          !Number.isFinite(height)
+        ) {
+          return;
+        }
+        this.windows.setLayoutMinimumSize(window, width, height);
+      },
+    );
+
+    ipcMain.on(
       WindowChannel.SetCaptionSymbolColor,
       (_event: IpcMainEvent, color: unknown): void => {
         // A plain hex colour only: it goes straight to the native overlay, which has no use for the

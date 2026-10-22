@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   VERSION_CONTROL_CAPABILITIES,
@@ -198,6 +198,73 @@ export function confinedPaths(root: string, paths: unknown): string[] | null {
 }
 
 /**
+ * Matches an extension an ignore rule may name: one segment, no dot, nothing a pattern would read as a
+ * wildcard.
+ */
+const IGNORE_EXTENSION_PATTERN: RegExp = /^[A-Za-z0-9_+-]+$/;
+
+/**
+ * Writes one ignore rule as a `.gitignore` line, or refuses it.
+ *
+ * A path is anchored to the root (a leading `/`), so ignoring `build` ignores that one directory rather
+ * than every `build` in the tree, and a directory gets a trailing `/`. The characters `.gitignore`
+ * reads as pattern syntax are escaped, so a file named `[draft].md` is ignored as itself; a line break
+ * is refused outright, since it would write a second rule nobody asked for.
+ * @param root The repository root.
+ * @param rule The candidate rule.
+ * @returns Returns the line, or null when the rule is invalid.
+ */
+export async function ignoreLine(root: string, rule: unknown): Promise<string | null> {
+  if (typeof rule !== 'object' || rule === null) {
+    return null;
+  }
+  const candidate: { kind?: unknown; path?: unknown; extension?: unknown } = rule;
+  if (candidate.kind === 'extension') {
+    return typeof candidate.extension === 'string' &&
+      IGNORE_EXTENSION_PATTERN.test(candidate.extension)
+      ? `*.${candidate.extension}`
+      : null;
+  }
+  if (candidate.kind !== 'path' || typeof candidate.path !== 'string') {
+    return null;
+  }
+  const relative: string = trimEnd(candidate.path.replace(/^\.\//, ''), '/');
+  if (/[\r\n]/.test(relative) || confinedPaths(root, [relative]) === null) {
+    return null;
+  }
+  const absolute: string = path.resolve(root, relative);
+  if (absolute === root) {
+    return null;
+  }
+  let directory: boolean = false;
+  try {
+    directory = (await stat(absolute)).isDirectory();
+  } catch {
+    // Gone already, or never there: ignored as a file.
+  }
+  // Trailing spaces are dropped by git unless escaped, so each is written as `\ `.
+  const body: string = trimEnd(relative, ' ');
+  const escaped: string =
+    body.replace(/[\\*?[\]]/g, '\\$&') + '\\ '.repeat(relative.length - body.length);
+  return `/${escaped}${directory ? '/' : ''}`;
+}
+
+/**
+ * Removes every trailing occurrence of one character. A loop rather than an anchored `+$` pattern,
+ * which backtracks polynomially on a long run of the character followed by anything else.
+ * @param value The string.
+ * @param character The character to trim.
+ * @returns Returns the string without it at the end.
+ */
+function trimEnd(value: string, character: string): string {
+  let end: number = value.length;
+  while (end > 0 && value[end - 1] === character) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+/**
  * Rewrites a failed network operation's message into an actionable one when it is an authentication
  * failure. Network git runs are non-interactive, so missing credentials fail fast — but the raw error
  * explains neither why nor what to do about it.
@@ -359,18 +426,7 @@ export class GitVersionControl {
       case 'operationState':
         return this.operationState(root).then(ok);
       case 'log':
-        return this.read(
-          root,
-          [
-            'log',
-            `--max-count=${logLimit(params['limit'])}`,
-            `--format=${LOG_FORMAT}`,
-            // Every branch, remote branch and tag — but not the stash, whose commits are not history.
-            // Date order keeps each commit above its parents however the branches interleave.
-            ...(params['all'] === true ? ['--date-order', '--exclude=refs/stash', '--all'] : []),
-          ],
-          parseLog,
-        );
+        return this.log(root, params['limit'], params['all'] === true, params['path']);
       case 'refs':
         return this.refs(root);
       case 'stashes':
@@ -387,6 +443,10 @@ export class GitVersionControl {
         return this.readFile(root, params['path'], params['version']);
       case 'discard':
         return this.discard(root, params['paths']);
+      case 'ignore':
+        return this.ignore(root, params['rules']);
+      case 'stopTracking':
+        return this.stopTracking(root, params['paths']);
       case 'stage':
         return this.pathCommand(root, params['paths'], ['add', '-A'], ['add', '--']);
       case 'unstage':
@@ -664,6 +724,108 @@ export class GitVersionControl {
     return toRestore.length > 0
       ? this.mutate(root, ['restore', '--staged', '--worktree', '--', ...toRestore])
       : ok(DONE);
+  }
+
+  /**
+   * Reads the history, newest first: the checked-out branch's or every branch's, and — given a path —
+   * only the commits that touched it (1.3, #1044). A single file's history follows it across renames;
+   * `--follow` takes exactly one file, so a directory's history does not.
+   * @param root The repository root.
+   * @param limit The most commits to read.
+   * @param all Whether to read every branch.
+   * @param target The repository-relative path to narrow to, or undefined for the whole history.
+   * @returns Returns the outcome.
+   */
+  private async log(root: string, limit: unknown, all: boolean, target: unknown): Promise<Outcome> {
+    const args: string[] = [
+      'log',
+      `--max-count=${logLimit(limit)}`,
+      `--format=${LOG_FORMAT}`,
+      // Every branch, remote branch and tag — but not the stash, whose commits are not history.
+      // Date order keeps each commit above its parents however the branches interleave.
+      ...(all ? ['--date-order', '--exclude=refs/stash', '--all'] : []),
+    ];
+    if (target !== undefined) {
+      const confined: string[] | null = confinedPaths(root, [target]);
+      if (confined === null) {
+        return fail('Invalid path');
+      }
+      let file: boolean = false;
+      try {
+        file = (await stat(path.resolve(root, confined[0]))).isFile();
+      } catch {
+        // Gone from the working tree: its history is still there, read without following renames.
+      }
+      args.push(...(file ? ['--follow'] : []), '--', confined[0]);
+    }
+    return this.read(root, args, parseLog);
+  }
+
+  /**
+   * Adds rules to the repository's root `.gitignore`, creating it when there is none, and skipping
+   * any rule it already holds. Every rule is checked before anything is written, so a bad one leaves
+   * the file untouched.
+   * @param root The repository root.
+   * @param rules The rules to add.
+   * @returns Returns the outcome.
+   */
+  private async ignore(root: string, rules: unknown): Promise<Outcome> {
+    if (!Array.isArray(rules) || rules.length === 0) {
+      return fail('Invalid ignore rules');
+    }
+    const lines: string[] = [];
+    for (const rule of rules) {
+      const line: string | null = await ignoreLine(root, rule);
+      if (line === null) {
+        return fail('Invalid ignore rule');
+      }
+      lines.push(line);
+    }
+    const file: string = path.join(root, '.gitignore');
+    let existing: string = '';
+    try {
+      existing = await readFile(file, 'utf8');
+    } catch {
+      // No .gitignore yet: this creates one.
+    }
+    const held: Set<string> = new Set<string>(
+      existing.split(/\r?\n/).map((entry: string): string => entry.trim()),
+    );
+    const added: string[] = [...new Set<string>(lines)].filter(
+      (line: string): boolean => !held.has(line),
+    );
+    if (added.length === 0) {
+      return ok(DONE);
+    }
+    const separator: string = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+    try {
+      await writeFile(file, `${existing}${separator}${added.join('\n')}\n`, 'utf8');
+    } catch (error: unknown) {
+      note('GitVersionControl', 'Failed to write .gitignore', error);
+      return fail(`Failed to write .gitignore: ${String(error)}`);
+    }
+    return ok(DONE);
+  }
+
+  /**
+   * Takes paths out of the index, leaving them on disk; a directory takes everything tracked in it.
+   * Git refuses a file whose staged content differs from both the last commit and the working tree,
+   * and that refusal is passed on rather than forced: forcing it would lose the staged version.
+   * @param root The repository root.
+   * @param paths The repository-relative paths; must not be empty.
+   * @returns Returns the outcome.
+   */
+  private stopTracking(root: string, paths: unknown): Promise<Outcome> {
+    const confined: string[] | null = confinedPaths(root, paths);
+    // Never the root itself: that would take the whole repository out of version control.
+    if (
+      confined === null ||
+      confined.length === 0 ||
+      confined.some((candidate: string): boolean => path.resolve(root, candidate) === root)
+    ) {
+      return Promise.resolve(fail('Invalid path'));
+    }
+    return this.mutate(root, ['rm', '--cached', '-r', '--quiet', '--', ...confined]);
   }
 
   /**

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   VCS_GLOBAL_OPS,
+  VCS_HANDSHAKE_CAPABILITIES,
   VCS_NETWORK_OPS,
   VCS_OP_CAPABILITY,
   VCS_READ_OPS,
@@ -634,7 +635,12 @@ export class VersionControlHost {
     if (typeof plugin === 'string') {
       return { id: 0, ok: false, error: plugin };
     }
-    const needed: VersionControlCapability | undefined = VCS_OP_CAPABILITY[op];
+    // A path-narrowed history is a capability of its own on an operation that needs none: a plugin
+    // without it would ignore the path and answer with the whole history as though it were the path's.
+    const needed: VersionControlCapability | undefined =
+      op === 'log' && (params as VcsParams<'log'>).path !== undefined
+        ? 'pathHistory'
+        : VCS_OP_CAPABILITY[op];
     if (needed !== undefined && !plugin.capabilities.includes(needed)) {
       return {
         id: 0,
@@ -743,9 +749,12 @@ export class VersionControlHost {
     const plugin: RunningPlugin = {
       client,
       description,
-      capabilities: descriptor.capabilities.filter(
+      // Declared and confirmed — or, for the few a manifest cannot declare without older builds
+      // refusing it, confirmed alone (#1043).
+      capabilities: description.capabilities.filter(
         (capability: VersionControlCapability): boolean =>
-          description.capabilities.includes(capability),
+          descriptor.capabilities.includes(capability) ||
+          VCS_HANDSHAKE_CAPABILITIES.includes(capability),
       ),
     };
     this.running.set(descriptor.id, plugin);

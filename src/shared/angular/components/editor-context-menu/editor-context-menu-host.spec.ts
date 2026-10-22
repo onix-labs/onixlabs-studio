@@ -176,12 +176,12 @@ describe('EditorContextMenuHost (#1012)', () => {
       .host()
       .open(new MouseEvent('contextmenu', { clientX: 1, clientY: 1, cancelable: true }), {
         editor,
-        items: [{ id: 'find', label: 'Find…', shortcut: '⌘F' }],
+        items: [{ id: 'find', label: 'Find', shortcut: '⌘F' }],
       });
     await fixture.whenStable();
 
     expect(rows().map((row: HTMLElement): string => row.textContent?.trim() ?? '')).toEqual([
-      'Find…⌘F',
+      'Find⌘F',
     ]);
   });
 });

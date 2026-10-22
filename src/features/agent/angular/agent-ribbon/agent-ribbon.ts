@@ -173,10 +173,10 @@ export class AgentRibbon {
           id: 'agent.attach',
           label: 'Attach',
           items: [
-            { id: 'agent.attachFile', label: 'Files…', run: (): void => void this.attachFile() },
+            { id: 'agent.attachFile', label: 'Files', run: (): void => void this.attachFile() },
             {
               id: 'agent.attachFolder',
-              label: 'Folder…',
+              label: 'Folder',
               run: (): void => void this.attachFolder(),
             },
             {

@@ -1,7 +1,9 @@
 import {
+  afterNextRender,
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -10,7 +12,10 @@ import {
   InputSignal,
   OnDestroy,
   Signal,
+  signal,
+  untracked,
   viewChild,
+  WritableSignal,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -24,6 +29,11 @@ import { EditorContextMenuHost } from '@shared/angular/components/editor-context
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
+import {
+  DiffChangeReader,
+  DiffReaderView,
+  readerViewOf,
+} from './diff-change-reader/diff-change-reader';
 
 /**
  * Summarises a computed comparison for whatever chrome reports it.
@@ -63,7 +73,7 @@ export interface DiffSummary {
  */
 @Component({
   selector: 'app-diff-editor',
-  imports: [EditorContextMenuHost],
+  imports: [EditorContextMenuHost, DiffChangeReader],
   templateUrl: './diff-editor.html',
   styleUrl: './diff-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -186,6 +196,48 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   private ready: boolean = false;
 
   /**
+   * Holds the computed changes, in document order — Monaco's, refreshed each time it diffs again.
+   */
+  private readonly lineChanges: WritableSignal<readonly MonacoApi.editor.ILineChange[]> = signal<
+    readonly MonacoApi.editor.ILineChange[]
+  >([]);
+
+  /**
+   * Holds which change the accessible reader is showing (zero-based), or null while it is closed
+   * (#1026).
+   */
+  private readonly readerIndex: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets what the accessible change reader shows, or null while it is closed (#1026).
+   */
+  protected readonly readerView: Signal<DiffReaderView | null> = computed(
+    (): DiffReaderView | null => {
+      const index: number | null = this.readerIndex();
+      if (index === null) {
+        return null;
+      }
+      const changes: readonly MonacoApi.editor.ILineChange[] = this.lineChanges();
+      const change: MonacoApi.editor.ILineChange | undefined = changes[index];
+      if (change === undefined) {
+        return { index: 0, total: 0, label: '', lines: [], hidden: 0 };
+      }
+      return readerViewOf(
+        change,
+        index + 1,
+        changes.length,
+        (line: number): string => lineOf(this.originalModel, line),
+        (line: number): string => lineOf(this.modifiedModel, line),
+      );
+    },
+  );
+
+  /**
+   * Holds the reader while it is open, focused when it opens.
+   */
+  private readonly reader: Signal<DiffChangeReader | undefined> = viewChild(DiffChangeReader);
+
+  /**
    * Holds the listeners told when the computed diff or the caret moves.
    */
   private readonly summaryListeners: Set<() => void> = new Set<() => void>();
@@ -214,14 +266,16 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       if (!this.ready) {
         return;
       }
-      this.setModels(original, modified, language);
+      // Untracked: attaching the models notifies the diff's listeners synchronously, and what they
+      // read (the reader's position among them) must not become a reason to rebuild the models.
+      untracked((): void => this.setModels(original, modified, language));
     });
 
     // Flip between side-by-side and inline rendering.
     effect((): void => {
       const inline: boolean = this.inline();
       if (this.ready) {
-        this.editor?.updateOptions({ renderSideBySide: !inline });
+        untracked((): void => this.editor?.updateOptions({ renderSideBySide: !inline }));
       }
     });
 
@@ -366,11 +420,15 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     // The diff is computed asynchronously and recomputed whenever the models or the options change;
     // the caret moves without the diff changing at all. Both alter what the chrome should be saying.
     this.subscriptions.push(
-      this.editor.onDidUpdateDiff((): void => this.notifySummary()),
+      this.editor.onDidUpdateDiff((): void => {
+        this.refreshChanges();
+        this.notifySummary();
+      }),
       this.editor.getModifiedEditor().onDidChangeCursorPosition((): void => this.notifySummary()),
     );
     this.attachFind(this.editor);
     this.attachGoTo(this.editor);
+    this.attachReader(this.editor, monaco);
     this.attachContextMenu(this.editor);
     // Studio's hover card over either side, drawn in this pane's window (#1020).
     this.findDetachers.push(
@@ -430,6 +488,115 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Binds F7 / ⇧F7 on both sides to Studio's accessible change reader (#1026), which steps through the
+   * changes one at a time — in place of Monaco's accessible diff viewer, whose chords #1024 removed.
+   * Bound per editor, so the keys belong to this diff alone and only while one of its sides has focus.
+   * @param editor The diff editor.
+   * @param monaco The loaded Monaco API.
+   */
+  private attachReader(
+    editor: MonacoApi.editor.IStandaloneDiffEditor,
+    monaco: typeof MonacoApi,
+  ): void {
+    for (const side of [editor.getOriginalEditor(), editor.getModifiedEditor()]) {
+      side.addCommand(monaco.KeyCode.F7, (): void => this.stepReader(1));
+      side.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F7, (): void => this.stepReader(-1));
+    }
+  }
+
+  /**
+   * Opens the reader, or steps it a change forward or back, wrapping at either end, and moves both
+   * sides of the diff to the change shown. Opening forward starts at the change the caret is in, or
+   * the next one after it; opening backward at the one before it. With no changes, the reader opens to
+   * say so.
+   * @param direction One to step forward, minus one to step back.
+   */
+  protected stepReader(direction: 1 | -1): void {
+    const changes: readonly MonacoApi.editor.ILineChange[] = this.lineChanges();
+    const current: number | null = this.readerIndex();
+    const opening: boolean = current === null;
+    let index: number = 0;
+    if (changes.length > 0) {
+      index =
+        current === null
+          ? this.openingIndex(changes, direction)
+          : (current + direction + changes.length) % changes.length;
+      this.reveal(changes[index]);
+    }
+    this.readerIndex.set(index);
+    if (opening) {
+      afterNextRender((): void => this.reader()?.focus(), { injector: this.injector });
+    }
+  }
+
+  /**
+   * Closes the reader and hands focus back to the editor, at the change it was showing.
+   */
+  protected closeReader(): void {
+    this.readerIndex.set(null);
+    this.editor?.getModifiedEditor().focus();
+  }
+
+  /**
+   * Picks the change the reader opens at, from where the caret is.
+   * @param changes The computed changes, in document order; never empty.
+   * @param direction One when opened forward (F7), minus one backward (⇧F7).
+   * @returns Returns the zero-based index.
+   */
+  private openingIndex(
+    changes: readonly MonacoApi.editor.ILineChange[],
+    direction: 1 | -1,
+  ): number {
+    const line: number = this.editor?.getModifiedEditor().getPosition()?.lineNumber ?? 0;
+    const atOrBefore: number = changes.reduce(
+      (found: number, change: MonacoApi.editor.ILineChange, at: number): number =>
+        change.modifiedStartLineNumber <= line ? at : found,
+      -1,
+    );
+    if (direction === -1) {
+      return atOrBefore <= 0 ? changes.length - 1 : atOrBefore - 1;
+    }
+    if (atOrBefore >= 0) {
+      const change: MonacoApi.editor.ILineChange = changes[atOrBefore];
+      const end: number = Math.max(change.modifiedEndLineNumber, change.modifiedStartLineNumber);
+      if (line <= end) {
+        return atOrBefore;
+      }
+    }
+    return (atOrBefore + 1) % changes.length;
+  }
+
+  /**
+   * Moves both sides of the diff to a change: the caret to its first line on the modified side, and
+   * each side scrolled to centre it.
+   * @param change The change.
+   */
+  private reveal(change: MonacoApi.editor.ILineChange): void {
+    const editor: MonacoApi.editor.IStandaloneDiffEditor | null = this.editor;
+    if (editor === null) {
+      return;
+    }
+    const modifiedLine: number = Math.max(1, change.modifiedStartLineNumber);
+    const originalLine: number = Math.max(1, change.originalStartLineNumber);
+    editor.getModifiedEditor().setPosition({ lineNumber: modifiedLine, column: 1 });
+    editor.getModifiedEditor().revealLineInCenter(modifiedLine);
+    editor.getOriginalEditor().revealLineInCenter(originalLine);
+  }
+
+  /**
+   * Reads the computed changes again after Monaco diffs, keeping an open reader on a change that still
+   * exists.
+   */
+  private refreshChanges(): void {
+    const changes: readonly MonacoApi.editor.ILineChange[] = this.editor?.getLineChanges() ?? [];
+    this.lineChanges.set(changes);
+    const index: number | null = this.readerIndex();
+    if (index !== null && index >= changes.length) {
+      this.readerIndex.set(Math.max(0, changes.length - 1));
+    }
+  }
+
+  /**
    * Tells every listener the summary may have changed.
    */
   private notifySummary(): void {
@@ -463,4 +630,17 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     previousOriginal?.dispose();
     previousModified?.dispose();
   }
+}
+
+/**
+ * Reads one line of a model, or nothing when the model or the line is gone.
+ * @param model The model.
+ * @param line The one-based line number.
+ * @returns Returns the line's text.
+ */
+function lineOf(model: MonacoApi.editor.ITextModel | null, line: number): string {
+  if (model === null || model.isDisposed() || line < 1 || line > model.getLineCount()) {
+    return '';
+  }
+  return model.getLineContent(line);
 }

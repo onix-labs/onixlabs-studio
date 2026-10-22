@@ -110,7 +110,7 @@ describe('AppMenu', () => {
     );
     menu.contribute(
       'feature',
-      [{ id: 'edit', label: 'Edit', items: [{ id: 'code.find', label: 'Find…' }] }],
+      [{ id: 'edit', label: 'Edit', items: [{ id: 'code.find', label: 'Find' }] }],
       FEATURE_PRIORITY,
     );
 

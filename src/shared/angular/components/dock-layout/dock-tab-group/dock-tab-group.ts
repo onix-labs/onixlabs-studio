@@ -29,6 +29,7 @@ import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockState } from '../../../services/dock-layout/dock-state';
+import { DockMinimums } from '../../../services/dock-layout/dock-minimums';
 import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -55,6 +56,12 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
  * itself docks the **whole group**, every tab travelling together, for tool stacks and document
  * wells alike. Both run through {@link DockDrag}.
  */
+/**
+ * Holds how close, in pixels, the content-sized tabs must come to the strip's end edge before they
+ * fill it (~1rem).
+ */
+const FILL_THRESHOLD_PX: number = 16;
+
 @Component({
   selector: 'app-dock-tab-group',
   imports: [
@@ -150,6 +157,11 @@ export class DockTabGroup {
    */
   private readonly tabstrip: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('tabstrip');
+
+  /**
+   * Holds the dock's minimum sizes, which this group reports its own chrome to (#1064).
+   */
+  private readonly minimums: DockMinimums = inject(DockMinimums);
 
   /**
    * Holds whether the tabs should fill the strip (their natural width is within the fill threshold of
@@ -274,6 +286,14 @@ export class DockTabGroup {
   private measureDeferred: boolean = false;
 
   /**
+   * Holds how far the tabs reach along the strip at their content size — the last tab's end edge,
+   * measured from the strip's start — as of the last full measurement, or null before one. Lets a
+   * splitter drag decide the fill from the strip's new width alone, which its resize observer reports
+   * without a layout read: the tabs themselves do not change mid-drag, only the room they have.
+   */
+  private naturalTabsExtent: number | null = null;
+
+  /**
    * Registers and unregisters this group with the geometry registry across its lifetime.
    */
   public constructor() {
@@ -293,8 +313,8 @@ export class DockTabGroup {
       // measurement is a forced layout (see measureTabsFill).
       const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
       if (strip !== undefined && typeof ResizeObserver !== 'undefined') {
-        const observer: ResizeObserver = new ResizeObserver((): void =>
-          this.scheduleMeasureTabsFill(),
+        const observer: ResizeObserver = new ResizeObserver(
+          (entries: readonly ResizeObserverEntry[]): void => this.onStripResized(entries),
         );
         observer.observe(strip);
         destroyRef.onDestroy((): void => observer.disconnect());
@@ -302,7 +322,10 @@ export class DockTabGroup {
       this.measureTabsFill();
     });
 
-    destroyRef.onDestroy((): void => this.geometry.unregisterGroup(this.stack().id));
+    destroyRef.onDestroy((): void => {
+      this.geometry.unregisterGroup(this.stack().id);
+      this.minimums.forget(this.stack().id);
+    });
 
     // Re-measure after the tab set changes (open/close/reorder/rename), once the DOM has settled.
     effect((): void => {
@@ -321,6 +344,36 @@ export class DockTabGroup {
         untracked((): void => this.measureTabsFill());
       }
     });
+  }
+
+  /**
+   * Follows the strip's width as it changes. Mid-drag the fill is decided from the width the observer
+   * reports against the tabs' remembered reach — no layout read, so the tab still snaps to the end edge
+   * as the panel narrows past the threshold, rather than only once the drag is let go — and the full
+   * measurement settles on release. Otherwise one full measurement is scheduled for the next frame.
+   * @param entries The observer's entries; the last is the strip's newest size.
+   */
+  private onStripResized(entries: readonly ResizeObserverEntry[]): void {
+    const entry: ResizeObserverEntry | undefined = entries.at(-1);
+    if (this.geometry.resizing() && entry !== undefined && this.naturalTabsExtent !== null) {
+      const width: number = entry.borderBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+      this.applyTabsFill(width);
+      this.measureDeferred = true;
+      return;
+    }
+    this.scheduleMeasureTabsFill();
+  }
+
+  /**
+   * Sets the fill for a strip of a given width against the tabs' remembered reach: fill once the
+   * content-sized tabs come within the threshold of the end edge, or overflow it.
+   * @param stripWidth The strip's width, in pixels.
+   */
+  private applyTabsFill(stripWidth: number): void {
+    if (this.naturalTabsExtent === null || this.isDocuments()) {
+      return;
+    }
+    this.tabsFillSignal.set(stripWidth - this.naturalTabsExtent <= FILL_THRESHOLD_PX);
   }
 
   /**
@@ -365,26 +418,82 @@ export class DockTabGroup {
   private measureTabsFill(): void {
     const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
     if (strip === undefined || this.isDocuments()) {
+      this.naturalTabsExtent = null;
       this.tabsFillSignal.set(false);
+      this.reportMinimum(0);
       return;
     }
 
     const tabs: NodeListOf<HTMLElement> = strip.querySelectorAll<HTMLElement>('.dock-tab');
     const last: HTMLElement | null = tabs.item(tabs.length - 1);
     if (last === null) {
+      this.naturalTabsExtent = null;
       this.tabsFillSignal.set(false);
+      this.reportMinimum(0);
       return;
     }
 
     strip.setAttribute('data-measuring', '');
-    const stripRight: number = strip.getBoundingClientRect().right;
+    const stripBox: DOMRect = strip.getBoundingClientRect();
     const lastTabRight: number = last.getBoundingClientRect().right;
     strip.removeAttribute('data-measuring');
 
     // Fill once the content-sized tabs come within the threshold of the strip's end edge (or already
-    // overflow it, in which case they shrink to fit and reach the end anyway).
-    const FILL_THRESHOLD_PX: number = 16; // ~1rem
-    this.tabsFillSignal.set(stripRight - lastTabRight <= FILL_THRESHOLD_PX);
+    // overflow it, in which case they shrink to fit and reach the end anyway). The reach is kept, so a
+    // drag can decide the fill without measuring again.
+    this.naturalTabsExtent = lastTabRight - stripBox.left;
+    this.applyTabsFill(stripBox.width);
+    this.reportMinimum(this.naturalTabsExtent);
+  }
+
+  /**
+   * Reports this group's own chrome to the dock's minimums (#1064): how wide its tabs and its title
+   * bar are at their natural size — the full title, not the ellipsis a narrow group shows — and how
+   * tall everything is but the panel's content. Read during the measurement pass, so it adds no layout
+   * of its own beyond the few reads here.
+   * @param tabs The tabs' natural width, or zero for a document well (its tabs scroll).
+   */
+  private reportMinimum(tabs: number): void {
+    const host: HTMLElement = this.hostElement.nativeElement;
+    const body: HTMLElement | null = host.querySelector<HTMLElement>('.dock-tab-group__body');
+    const title: HTMLElement | null = host.querySelector<HTMLElement>('.dock-tab-group__title');
+    let titleWidth: number = 0;
+    if (title !== null) {
+      const text: HTMLElement | null = title.querySelector<HTMLElement>(
+        '.dock-tab-group__title-text',
+      );
+      const buttons: HTMLElement | null = title.querySelector<HTMLElement>(
+        '.dock-tab-group__title-buttons',
+      );
+      const style: CSSStyleDeclaration = getComputedStyle(title);
+      // The title text stretches to fill the bar, so its own box says nothing about the title: the
+      // width of the glyphs themselves, read through a range, is what the bar must keep room for.
+      let textWidth: number = 0;
+      if (text !== null) {
+        const range: Range = document.createRange();
+        range.selectNodeContents(text);
+        // jsdom's ranges measure nothing; a real one always can.
+        textWidth =
+          typeof range.getBoundingClientRect === 'function'
+            ? range.getBoundingClientRect().width
+            : 0;
+      }
+      titleWidth =
+        textWidth +
+        (buttons?.getBoundingClientRect().width ?? 0) +
+        pixels(style.paddingInlineStart) +
+        pixels(style.paddingInlineEnd) +
+        pixels(style.borderInlineStartWidth) +
+        pixels(style.borderInlineEndWidth) +
+        pixels(style.columnGap);
+    }
+    const chrome: number =
+      body === null ? 0 : host.getBoundingClientRect().height - body.clientHeight;
+    this.minimums.report(this.stack().id, {
+      tabs: Math.ceil(tabs),
+      title: Math.ceil(titleWidth),
+      chrome: Math.max(0, Math.ceil(chrome)),
+    });
   }
 
   /**
@@ -522,4 +631,14 @@ export class DockTabGroup {
     }
     this.dockDrag.beginGroup(this.stack().id, event);
   }
+}
+
+/**
+ * Reads a computed CSS length as pixels, zero when it is not one.
+ * @param value The computed value.
+ * @returns Returns the pixels.
+ */
+function pixels(value: string): number {
+  const parsed: number = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

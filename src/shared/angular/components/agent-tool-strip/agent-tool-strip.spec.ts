@@ -272,12 +272,12 @@ describe('AgentToolStrip', () => {
       menus()
         .attachItems()
         .map((entry: MenuItem): string => entry.label),
-    ).toEqual(['Attach File…', 'Attach Folder…', 'Attach Selection']);
+    ).toEqual(['Attach File', 'Attach Folder', 'Attach Selection']);
   });
 
   it('attachMenu_eachItem_asksTheConversationToAttachThatKind', () => {
-    chooseAttach('Attach File…');
-    chooseAttach('Attach Folder…');
+    chooseAttach('Attach File');
+    chooseAttach('Attach Folder');
     chooseAttach('Attach Selection');
 
     expect(fileAttaches).toBe(1);
@@ -289,8 +289,8 @@ describe('AgentToolStrip', () => {
     hasSelection.set(false);
 
     expect(item(menus().attachItems(), 'Attach Selection').disabled).toBe(true);
-    expect(item(menus().attachItems(), 'Attach File…').disabled).toBe(false);
-    expect(item(menus().attachItems(), 'Attach Folder…').disabled).toBe(false);
+    expect(item(menus().attachItems(), 'Attach File').disabled).toBe(false);
+    expect(item(menus().attachItems(), 'Attach Folder').disabled).toBe(false);
   });
 
   it('moreActions_isOneMenuButton_holdingHistoryThenTheScrollJumps', () => {

@@ -2,6 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DetectedRepository,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
@@ -78,6 +79,11 @@ describe('WorkspaceGit', () => {
   let closed: string[];
   let status: ParsedStatus;
   let staged: string[][];
+  let unstaged: string[][];
+  let discarded: string[][];
+  let ignored: unknown[][];
+  let untracked: string[][];
+  let capabilities: string[];
   let watched: string[];
   let fireWatch: () => void;
   let trustAnswer: boolean;
@@ -123,7 +129,16 @@ describe('WorkspaceGit', () => {
     };
 
     offers = [];
-    const client: Pick<SourceControlClient, 'resolveRepository' | 'closeRepository' | 'detect'> = {
+    const client: Pick<
+      SourceControlClient,
+      'resolveRepository' | 'closeRepository' | 'detect' | 'describe'
+    > = {
+      describe: (): Promise<RepositoryCapabilities | null> =>
+        Promise.resolve({
+          pluginId: 'onixlabs.git',
+          displayName: 'Git',
+          capabilities: capabilities as RepositoryCapabilities['capabilities'],
+        }),
       detect: (): Promise<DetectedRepository | null> => Promise.resolve(detected),
       resolveRepository: (): Promise<RepositoryInfo | null> => Promise.resolve(resolved),
       closeRepository: (repositoryRoot: string): Promise<void> => {
@@ -132,10 +147,34 @@ describe('WorkspaceGit', () => {
       },
     };
     staged = [];
-    const provider: Pick<SourceControlProvider, 'getStatus' | 'stage'> = {
+    unstaged = [];
+    discarded = [];
+    ignored = [];
+    untracked = [];
+    capabilities = ['stagingArea', 'ignore', 'stopTracking'];
+    const provider: Pick<
+      SourceControlProvider,
+      'getStatus' | 'stage' | 'unstage' | 'discard' | 'ignore' | 'stopTracking'
+    > = {
+      ignore: (rules: readonly unknown[]): Promise<MutationResult> => {
+        ignored.push([...rules]);
+        return Promise.resolve({ success: true });
+      },
+      stopTracking: (paths: readonly string[]): Promise<MutationResult> => {
+        untracked.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
       getStatus: (): Promise<ParsedStatus> => Promise.resolve(status),
       stage: (paths: readonly string[]): Promise<MutationResult> => {
         staged.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
+      unstage: (paths: readonly string[]): Promise<MutationResult> => {
+        unstaged.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
+      discard: (paths: readonly string[]): Promise<MutationResult> => {
+        discarded.push([...paths]);
         return Promise.resolve({ success: true });
       },
     };
@@ -266,7 +305,7 @@ describe('WorkspaceGit', () => {
     expect(git.canAddToVersionControl('/repo/src/app/main.ts')).toBe(false);
 
     status = { ...status, staged: [change('README.md', 'added')], unstaged: [] };
-    const result: MutationResult = await git.addToVersionControl('/repo/README.md');
+    const result: MutationResult = await git.addToVersionControl(['/repo/README.md']);
 
     expect(result.success).toBe(true);
     expect(staged).toEqual([['README.md']]);
@@ -288,9 +327,155 @@ describe('WorkspaceGit', () => {
     root.set(listing('/repo'));
     await bind();
 
-    expect((await git.addToVersionControl('/elsewhere/a.ts')).success).toBe(false);
-    expect((await git.addToVersionControl('/repo')).success).toBe(false);
+    expect((await git.addToVersionControl(['/elsewhere/a.ts'])).success).toBe(false);
+    expect((await git.addToVersionControl(['/repo'])).success).toBe(false);
     expect(staged).toEqual([]);
+  });
+
+  it('revertableFiles_offersOnlyEditedOrDeletedFiles_neverOnesRevertWouldDelete', async () => {
+    // #1042: restoring an added or renamed file from HEAD deletes it, so Revert never reaches one.
+    status = {
+      ...status,
+      staged: [
+        change('src/app/main.ts', 'modified'),
+        change('src/app/new.ts', 'added'),
+        change('src/app/moved.ts', 'renamed'),
+      ],
+      unstaged: [
+        change('src/app/gone.ts', 'deleted'),
+        change('src/app/new.ts', 'modified'),
+        change('src/app/scratch.ts', 'added', true),
+      ],
+      conflicted: [change('src/both.ts', 'conflicted')],
+    };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.revertableFiles('/repo/src/app/main.ts')).toEqual(['/repo/src/app/main.ts']);
+    expect(git.revertableFiles('/repo/src/app/gone.ts')).toEqual(['/repo/src/app/gone.ts']);
+    expect(git.revertableFiles('/repo/src/app/new.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/app/moved.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/app/scratch.ts')).toEqual([]);
+    expect(git.revertableFiles('/repo/src/both.ts')).toEqual([]);
+    // A folder offers every edited file beneath it, and nothing else.
+    expect([...git.revertableFiles('/repo/src')].sort()).toEqual([
+      '/repo/src/app/gone.ts',
+      '/repo/src/app/main.ts',
+    ]);
+    expect(git.revertableFiles('/repo/docs')).toEqual([]);
+  });
+
+  it('revert_discardsEachFileByName_neverTheFolder_andReadsTheStatusAgain', async () => {
+    status = { ...status, unstaged: [change('src/app/other.ts', 'modified')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    status = { ...status, staged: [], unstaged: [] };
+    const result: MutationResult = await git.revert(git.revertableFiles('/repo/src'));
+
+    expect(result.success).toBe(true);
+    expect(discarded).toHaveLength(1);
+    expect([...discarded[0]].sort()).toEqual(['src/app/main.ts', 'src/app/other.ts']);
+    expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
+  });
+
+  it('revert_refusesAFileItCannotRevert_withoutDiscardingAnything', async () => {
+    root.set(listing('/repo'));
+    await bind();
+
+    // README.md is untracked: discarding it would delete it.
+    expect((await git.revert(['/repo/README.md'])).success).toBe(false);
+    expect((await git.revert([])).success).toBe(false);
+    expect(discarded).toEqual([]);
+  });
+
+  it('undoAdd_unstagesAnAddedFile_soItIsUntrackedAgain', async () => {
+    status = { ...status, staged: [change('src/new.ts', 'added')], unstaged: [] };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.canUndoAdd('/repo/src/new.ts')).toBe(true);
+    expect(git.canUndoAdd('/repo/README.md')).toBe(false);
+
+    status = { ...status, staged: [], unstaged: [change('src/new.ts', 'added', true)] };
+    await git.undoAdd(['/repo/src/new.ts']);
+
+    expect(unstaged).toEqual([['src/new.ts']]);
+    expect(git.stateFor('/repo/src/new.ts')).toBe('untracked');
+  });
+
+  it('markResolved_stagesAConflictedFile', async () => {
+    status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.isConflicted('/repo/src/both.ts')).toBe(true);
+    expect(git.isConflicted('/repo/src/app/main.ts')).toBe(false);
+
+    await git.markResolved(['/repo/src/both.ts']);
+
+    expect(staged).toEqual([['src/both.ts']]);
+  });
+
+  it('ignore_offeredOnAnUntrackedPath_writesAPathOrAnExtensionRule', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.canIgnore('/repo/README.md')).toBe(true);
+    expect(git.canIgnore('/repo/src/app/main.ts')).toBe(false);
+
+    await git.ignore(['/repo/README.md']);
+    await git.ignore(['/repo/README.md'], 'md');
+
+    expect(ignored).toEqual([
+      [{ kind: 'path', path: 'README.md' }],
+      [{ kind: 'extension', extension: 'md' }],
+    ]);
+  });
+
+  it('stopTracking_offeredOnTrackedPaths_neverTheRootOrAnUntrackedOne', async () => {
+    status = { ...status, staged: [...status.staged, change('src/new.ts', 'added')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.canStopTracking('/repo/src/app/main.ts')).toBe(true); // modified
+    expect(git.canStopTracking('/repo/src')).toBe(true); // holds changes
+    expect(git.canStopTracking('/repo/docs/guide.md')).toBe(true); // unchanged
+    expect(git.canStopTracking('/repo/README.md')).toBe(false); // untracked
+    expect(git.canStopTracking('/repo/src/new.ts')).toBe(false); // added: Undo Add instead
+    expect(git.canStopTracking('/repo')).toBe(false); // the whole repository
+
+    await git.stopTracking(['/repo/src/app/main.ts']);
+    expect(untracked).toEqual([['src/app/main.ts']]);
+  });
+
+  it('historyPathOf_isTheRepositoryRelativePath_ofAPathWithHistory', async () => {
+    capabilities = [...capabilities, 'pathHistory'];
+    status = { ...status, staged: [...status.staged, change('src/new.ts', 'added')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.historyPathOf('/repo/src/app/main.ts')).toBe('src/app/main.ts');
+    expect(git.historyPathOf('/repo/src')).toBe('src');
+    expect(git.historyPathOf('/repo/docs/guide.md')).toBe('docs/guide.md');
+    // No commits yet, or the whole history rather than a path's.
+    expect(git.historyPathOf('/repo/README.md')).toBeNull();
+    expect(git.historyPathOf('/repo/src/new.ts')).toBeNull();
+    expect(git.historyPathOf('/repo')).toBeNull();
+  });
+
+  it('historyPathOf_isNull_whenThePluginCannotReadAPathsHistory', async () => {
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.historyPathOf('/repo/src/app/main.ts')).toBeNull();
+  });
+
+  it('ignoreAndStopTracking_areNotOffered_whenThePluginCannotDoThem', async () => {
+    // A plugin built before #1043 confirms neither; one not yet described offers neither either.
+    capabilities = ['stagingArea'];
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.canIgnore('/repo/README.md')).toBe(false);
+    expect(git.canStopTracking('/repo/src/app/main.ts')).toBe(false);
   });
 
   it('stateFor_findsTheState_whenTheWorkspaceWasOpenedThroughASymlink', async () => {
@@ -309,7 +494,7 @@ describe('WorkspaceGit', () => {
     expect(git.stateFor('/repo/src')).toBe('contains');
     expect(git.stateFor('/repo/README.md')).toBe('untracked');
 
-    await git.addToVersionControl('/repo/README.md');
+    await git.addToVersionControl(['/repo/README.md']);
     expect(staged).toEqual([['README.md']]);
   });
 

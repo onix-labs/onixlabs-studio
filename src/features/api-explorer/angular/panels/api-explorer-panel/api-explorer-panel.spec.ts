@@ -302,14 +302,15 @@ describe('ApiExplorerPanel', () => {
       expect(itemIds(rowFor('Production'))).toContain('activate');
     });
 
-    it('contextMenuFor_delete_wearsTheDangerTone', () => {
+    it('contextMenuFor_delete_isNotColoured', () => {
       const collection: ApiFolder = workspace.addCollection('Orders');
       fixture.detectChanges();
 
       const remove: MenuItem | undefined = component
         .contextMenuFor(rowFor(collection.name))
         .find((item: MenuItem): boolean => item.id === 'delete');
-      expect(remove?.tone).toBe('danger');
+      // Context-menu items are never coloured; the confirmation is what guards a delete.
+      expect(remove?.tone).toBeUndefined();
     });
 
     it('onContextAction_newRequest_addsItToTheRightClickedCollection', () => {

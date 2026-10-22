@@ -17,10 +17,12 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { HistoryScope, Repository } from '@shared/angular/services/repository/repository';
 import {
   GitCommit,
+  GitFileChange,
   GitRef,
   GitRefKind,
   GraphNode,
@@ -137,6 +139,11 @@ interface EdgeViewModel {
  * without lanes: a graph with rows missing would draw lines between commits that are not related.
  *
  * The history is read a page at a time; when it stopped at its limit the list ends in a Load More row.
+ *
+ * Narrowed to one file or folder (#1044) — from an explorer's Show History — a bar under the strip
+ * names the path and widens the history again, and the commits are listed without lanes, as a filter's
+ * are: their parents are not all in the list. Choosing a commit in a file's history opens that file's
+ * diff in it.
  */
 @Component({
   selector: 'app-commit-graph',
@@ -166,6 +173,12 @@ export class CommitGraph {
    * Holds the repository model the graph renders.
    */
   protected readonly repository: Repository = inject(Repository);
+
+  /**
+   * Holds the opener a file's diff in a chosen commit opens through, when the history is a file's.
+   * Optional: a surface showing the history without a document well has nowhere to open one.
+   */
+  private readonly diffOpener: DiffOpener | null = inject(DiffOpener, { optional: true });
 
   /**
    * Holds the scroll container the rows sit in, used when revealing the selected row.
@@ -220,10 +233,18 @@ export class CommitGraph {
   protected readonly nodes: Signal<readonly GraphNode[]> = this.repository.graph;
 
   /**
-   * Gets whether a filter is applied, during which the matches are listed without lanes.
+   * Gets whether a text filter is applied.
+   */
+  protected readonly textFiltered: Signal<boolean> = computed(
+    (): boolean => this.appliedFilter().length > 0,
+  );
+
+  /**
+   * Gets whether the commits are listed without lanes: under a text filter, or while the history is
+   * narrowed to a path. Either way rows are missing, and lanes would join commits that are not related.
    */
   protected readonly filtered: Signal<boolean> = computed(
-    (): boolean => this.appliedFilter().length > 0,
+    (): boolean => this.textFiltered() || this.repository.historyPath() !== null,
   );
 
   /**
@@ -247,7 +268,7 @@ export class CommitGraph {
    * Gets the filter form's summary: how many of the loaded commits match, or empty with no filter.
    */
   protected readonly filterSummary: Signal<string> = computed((): string => {
-    if (!this.filtered()) {
+    if (!this.textFiltered()) {
       return '';
     }
     const count: number = this.rows().length;
@@ -269,7 +290,7 @@ export class CommitGraph {
    */
   protected readonly loadedNote: Signal<string> = computed(
     (): string =>
-      `${this.filtered() ? 'Filtering' : 'Showing'} the latest ${this.nodes().length} commits`,
+      `${this.textFiltered() ? 'Filtering' : 'Showing'} the latest ${this.nodes().length} commits`,
   );
 
   /**
@@ -352,6 +373,43 @@ export class CommitGraph {
    */
   protected select(node: GraphNode): void {
     this.repository.selectNode(node.id);
+    const path: string | null = this.repository.historyPath();
+    if (path !== null) {
+      void this.openPathDiff(node.id, path);
+    }
+  }
+
+  /**
+   * Widens a path's history back to the whole repository.
+   */
+  protected clearHistoryPath(): void {
+    void this.repository.clearHistoryPath();
+  }
+
+  /**
+   * Opens the narrowed-to file's diff in a chosen commit — when the commit changed a file by that name.
+   * A folder's history matches no single file, and an older commit from before a rename holds the
+   * file under its earlier name; either way the commit stays selected and its files listed.
+   * @param hash The chosen commit.
+   * @param path The repository-relative path the history is narrowed to.
+   * @returns Returns a promise that settles once the diff is open, or found not to apply.
+   */
+  private async openPathDiff(hash: string, path: string): Promise<void> {
+    const files: readonly GitFileChange[] = await this.repository.filesOf(hash);
+    const file: GitFileChange | undefined = files.find(
+      (candidate: GitFileChange): boolean =>
+        candidate.path === path || candidate.previousPath === path,
+    );
+    // The user may have moved on while the files were read.
+    if (
+      file === undefined ||
+      this.repository.selectedNodeId() !== hash ||
+      this.repository.historyPath() !== path
+    ) {
+      return;
+    }
+    this.repository.selectFile(file.path);
+    this.diffOpener?.open(file);
   }
 
   /**

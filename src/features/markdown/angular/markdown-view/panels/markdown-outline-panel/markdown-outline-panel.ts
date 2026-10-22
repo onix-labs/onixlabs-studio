@@ -181,7 +181,7 @@ export class MarkdownOutlinePanel {
       this.activeIndex();
       this.host.nativeElement
         .querySelector<HTMLElement>('.outline__item--active')
-        ?.scrollIntoView({ block: 'nearest' });
+        ?.scrollIntoView?.({ block: 'nearest' });
     });
   }
 

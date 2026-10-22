@@ -8,6 +8,7 @@ import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest
 import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import {
   isCompatibleVersionControlProtocol,
+  VCS_HANDSHAKE_CAPABILITIES,
   VersionControlDescription,
   VersionControlResponse,
 } from '@shared/api/version-control-protocol';
@@ -81,8 +82,16 @@ describe('Git plugin contract', () => {
 
     expect(parsed.manifest).not.toBeNull();
     expect(description?.toolVersion).toMatch(/^git version/);
-    // A capability declared but not confirmed is one the host would refuse: the two must agree.
-    expect([...(description?.capabilities ?? [])].sort()).toEqual([...declared].sort());
+    // A capability declared but not confirmed is one the host would refuse: the two must agree —
+    // except those the handshake confirms alone (#1043), which the manifest must NOT declare: older
+    // builds reading the same index refuse a manifest naming a capability they do not know.
+    const handshakeOnly: readonly string[] = VCS_HANDSHAKE_CAPABILITIES;
+    expect(
+      declared.filter((capability: string): boolean => handshakeOnly.includes(capability)),
+    ).toEqual([]);
+    expect([...(description?.capabilities ?? [])].sort()).toEqual(
+      [...declared, ...handshakeOnly].sort(),
+    );
   });
 
   it('answersTypedResultsOverTheWire', TIMEOUT, async () => {

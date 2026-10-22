@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import {
   FileDiff,
@@ -63,6 +64,14 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
  * A canned provider serving a dirty working tree over a two-commit history.
  */
 class FakeProvider implements SourceControlProvider {
+  public ignore(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public stopTracking(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public constructor(public readonly root: string) {}
 
   public getStatus(): Promise<ParsedStatus> {
@@ -450,6 +459,83 @@ describe('CommitGraph', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     // Two commits of a 500-commit page: this is the whole history.
     expect(element.querySelector('.commit-graph__more')).toBeNull();
+  });
+});
+
+describe('CommitGraph narrowed to a path (#1044)', () => {
+  let fixture: ComponentFixture<CommitGraph>;
+  let repository: Repository;
+  let opened: GitFileChange[];
+
+  beforeEach(async () => {
+    opened = [];
+    await TestBed.configureTestingModule({
+      imports: [CommitGraph],
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new FakeProvider(root) },
+        },
+        {
+          provide: DiffOpener,
+          useValue: { open: (file: GitFileChange): number => opened.push(file) },
+        },
+      ],
+    }).compileComponents();
+
+    repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+    await repository.refresh();
+    await repository.showHistoryOf('c2.ts');
+
+    fixture = TestBed.createComponent(CommitGraph);
+    fixture.componentRef.setInput('panel', {
+      id: 'graph',
+      title: 'Commits',
+      icon: Icon.SOURCE_CONTROL,
+      role: 'document',
+      component: CommitGraph,
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+  });
+
+  it('render_namesThePath_andListsTheCommitsWithoutLanes', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelector('.commit-graph__path')?.textContent).toContain('History of');
+    expect(element.querySelector('.commit-graph__path-name')?.textContent).toBe('c2.ts');
+    expect(element.querySelector('.graph__lanes')).toBeNull();
+    expect(element.querySelectorAll('.graph__row').length).toBe(2);
+  });
+
+  it('select_aCommitThatChangedTheFile_opensItsDiffThere', async () => {
+    const rows: NodeListOf<HTMLButtonElement> = (
+      fixture.nativeElement as HTMLElement
+    ).querySelectorAll('.graph__row');
+
+    rows[0].click(); // c2 changed c2.ts
+    await fixture.whenStable();
+    rows[1].click(); // c1 did not
+    await fixture.whenStable();
+
+    expect(opened.map((file: GitFileChange): string => file.path)).toEqual(['c2.ts']);
+  });
+
+  it('showAllHistory_widensItAgain', async () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const widen: HTMLButtonElement | undefined = Array.from(
+      element.querySelectorAll<HTMLButtonElement>('.commit-graph__path button'),
+    ).find((button: HTMLButtonElement): boolean => button.textContent.includes('Show All History'));
+
+    widen?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(repository.historyPath()).toBeNull();
+    expect(element.querySelector('.commit-graph__path')).toBeNull();
+    expect(element.querySelector('.graph__lanes')).not.toBeNull();
   });
 });
 
