@@ -25,6 +25,7 @@ import {
   setCollapsed,
   setSizes,
   splitStack,
+  splitPanelOut,
   splitStackBeside,
   splitWellBeside,
   tabInto,
@@ -147,6 +148,20 @@ export class DockState {
    */
   public tabInto(stackId: string, panelId: string): void {
     this.commit(tabInto(this.tree(), stackId, panelId));
+  }
+
+  /**
+   * Splits a tab out of its group into a new group beside it, as one undoable step. Ignored for a
+   * group's only tab.
+   * @param panelId The identifier of the panel to split out.
+   * @param side The side of its group the new group docks against.
+   */
+  public splitPanelOut(panelId: string, side: DockSide): void {
+    const next: DockNode = splitPanelOut(this.tree(), panelId, side);
+    if (next !== this.tree()) {
+      this.log.info('DockState', `Split panel '${panelId}' out to the ${side}`);
+      this.commit(next);
+    }
   }
 
   /**

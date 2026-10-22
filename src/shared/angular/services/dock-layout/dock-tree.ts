@@ -610,6 +610,24 @@ export function splitStack(
 }
 
 /**
+ * Splits a tab out of its group into a new group of the same role beside it, on the given side — the
+ * move a tab's Split to Top, Bottom, Left and Right commands make, and the one dragging the tab onto
+ * its own group's split guide commits. The call is ignored when the panel is not in the layout, or is
+ * its group's only tab: splitting that out would leave nothing behind to split beside.
+ * @param tree The root of the tree to transform.
+ * @param panelId The identifier of the panel to split out.
+ * @param side The side of its group the new group docks against.
+ * @returns Returns the transformed tree.
+ */
+export function splitPanelOut(tree: DockNode, panelId: string, side: DockSide): DockNode {
+  const stack: StackNode | null = findStackOfPanel(tree, panelId);
+  if (stack === null || stack.panels.length <= 1) {
+    return tree;
+  }
+  return splitStack(removeFromLayout(tree, panelId), stack.id, panelId, side, stack.role);
+}
+
+/**
  * Places an already-built node beside the target node on the given side, wrapping the whole tree
  * when the target is the root. Shared by the single-panel split and the whole-group split, so both
  * land in exactly the same place for a given side.
