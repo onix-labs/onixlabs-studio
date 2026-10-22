@@ -1,5 +1,10 @@
 import type { AiConnection, ClaudeExecutableChoice } from '@shared/api/ai-types';
-import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
+import {
+  isConnection,
+  sanitizeClaudeExecutable,
+  sanitizeCodexExecutable,
+  sanitizeConnections,
+} from './connection-guard';
 
 /**
  * A well-formed connection used as the baseline for the guard tests.
@@ -56,6 +61,24 @@ describe('connection-guard', () => {
         'openai-1',
         'ollama-1',
       ]);
+    });
+  });
+
+  describe('sanitizeCodexExecutable (#1079)', () => {
+    it('sanitizeCodexExecutable_followsTheSameRulesAsClaude', () => {
+      expect(sanitizeCodexExecutable(undefined)).toEqual({ mode: 'bundled', path: '' });
+      expect(sanitizeCodexExecutable({ mode: 'system', path: '' })).toEqual({
+        mode: 'system',
+        path: '',
+      });
+      expect(sanitizeCodexExecutable({ mode: 'custom', path: '/opt/codex' })).toEqual({
+        mode: 'custom',
+        path: '/opt/codex',
+      });
+      expect(sanitizeCodexExecutable({ mode: 'nope', path: 7 })).toEqual({
+        mode: 'bundled',
+        path: '',
+      });
     });
   });
 

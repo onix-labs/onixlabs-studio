@@ -16,8 +16,8 @@ export type AiProviderId = string;
 export type AiEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
- * Which Claude Code CLI the agent harness spawns. `bundled` uses the CLI shipped with Studio (tested
- * against the bundled Agent SDK); `system` uses the `claude` on the user's PATH (which may be newer
+ * Which Claude Code CLI the agent harness spawns. `bundled` uses the CLI installed with the Claude
+ * plugin (tested against its Agent SDK); `system` uses the `claude` on the user's PATH (which may be newer
  * and self-updating, but is not version-matched to the SDK); `custom` uses an explicit path. Only the
  * Claude local-login harness reads this — API-based connections do not spawn a CLI.
  */
@@ -44,6 +44,35 @@ export interface ClaudeExecutableChoice {
  * setting).
  */
 export const DEFAULT_CLAUDE_EXECUTABLE: ClaudeExecutableChoice = { mode: 'bundled', path: '' };
+
+/**
+ * Which Codex binary the Codex harness starts. `bundled` uses the copy installed with the Codex plugin;
+ * `system` uses the `codex` on the user's PATH (which may be newer, but is not version-matched to the
+ * plugin); `custom` uses an explicit path. Only the Codex harness reads this.
+ */
+export type CodexExecutableMode = 'bundled' | 'system' | 'custom';
+
+/**
+ * The user's Codex binary choice: the mode and, for `custom`, the absolute path to the binary (ignored
+ * for other modes).
+ */
+export interface CodexExecutableChoice {
+  /**
+   * Gets which binary to start.
+   */
+  readonly mode: CodexExecutableMode;
+
+  /**
+   * Gets the absolute path used when the mode is `custom` (empty otherwise).
+   */
+  readonly path: string;
+}
+
+/**
+ * The default Codex binary choice: the copy installed with the Codex plugin (what every build before
+ * the setting used).
+ */
+export const DEFAULT_CODEX_EXECUTABLE: CodexExecutableChoice = { mode: 'bundled', path: '' };
 
 /**
  * The reasoning-effort levels in ascending order, for clamping and UI ordering.

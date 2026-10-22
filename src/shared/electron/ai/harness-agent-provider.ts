@@ -978,11 +978,15 @@ export function toTurnRequest(
     remoteControl: context.remoteControl,
     agentShell: context.agentShell,
     owningTabId: context.owningTabId,
-    // ⛔ The one vendor-specific field, carried as an opaque setting rather than as a named one. A wire
-    // field called `claudeExecutable` would be the seam naming a vendor; a plugin that understands the
-    // key reads it, and every other plugin ignores a bag it did not put anything in.
+    // ⛔ The vendor-specific fields, carried as opaque settings rather than as named ones. A wire field
+    // called `claudeExecutable` would be the seam naming a vendor; a plugin that understands a key reads
+    // it, and every other plugin ignores a bag it did not put anything in.
     // The harness's own settings first, so a connection-level fact cannot be shadowed by a turn-level
     // one that happens to share a key.
-    providerSettings: { ...settings, claudeExecutable: context.claudeExecutable },
+    providerSettings: {
+      ...settings,
+      claudeExecutable: context.claudeExecutable,
+      codexExecutable: context.codexExecutable,
+    },
   };
 }

@@ -14,6 +14,7 @@ import type {
   AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
+  CodexExecutableMode,
 } from '@shared/api/ai-types';
 import {
   AiConnectionModels,
@@ -792,6 +793,16 @@ export class Settings {
    * Gets the absolute path to the Claude CLI used when {@link aiClaudeExecutable} is `custom`.
    */
   public readonly aiClaudeExecutablePath: Signal<string> = this.value('ai.claudeExecutablePath');
+
+  /**
+   * Gets which Codex binary the Codex agent starts (bundled, system, or a custom path).
+   */
+  public readonly aiCodexExecutable: Signal<CodexExecutableMode> = this.value('ai.codexExecutable');
+
+  /**
+   * Gets the absolute path to the Codex binary used when {@link aiCodexExecutable} is `custom`.
+   */
+  public readonly aiCodexExecutablePath: Signal<string> = this.value('ai.codexExecutablePath');
 
   /**
    * Gets how the Mission Control agent rail scrolls a clicked agent's column into view.

@@ -263,6 +263,7 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     agentShell: '/bin/zsh',
     owningTabId: 'tab-2',
     claudeExecutable: { mode: 'bundled' },
+    codexExecutable: { mode: 'custom', path: '/opt/codex' },
     bridge: { request: (): Promise<unknown> => Promise.resolve('bridged') },
     emit: (event: unknown): void => void events.push(event),
     recordAudit: (): void => undefined,
@@ -574,6 +575,7 @@ describe('HarnessAgentProvider', () => {
       connectionKind: 'ollama',
       baseUrl: 'http://localhost:11434/v1',
       claudeExecutable: { mode: 'bundled' },
+      codexExecutable: { mode: 'custom', path: '/opt/codex' },
     });
   });
 
@@ -866,7 +868,11 @@ describe('toTurnRequest', () => {
     >;
 
     expect(turn['claudeExecutable']).toBeUndefined();
-    expect(turn['providerSettings']).toEqual({ claudeExecutable: { mode: 'bundled' } });
+    expect(turn['codexExecutable']).toBeUndefined();
+    expect(turn['providerSettings']).toEqual({
+      claudeExecutable: { mode: 'bundled' },
+      codexExecutable: { mode: 'custom', path: '/opt/codex' },
+    });
   });
 
   it('omitsAnOptionalFieldRatherThanSendingItUndefined', () => {

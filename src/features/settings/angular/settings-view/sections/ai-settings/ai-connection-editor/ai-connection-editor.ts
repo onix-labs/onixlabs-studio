@@ -142,6 +142,13 @@ export class AiConnectionEditor {
   );
 
   /**
+   * Gets a value indicating whether the configuration runs through the Codex harness (local login).
+   */
+  protected readonly usesCodexLogin: Signal<boolean> = computed(
+    (): boolean => this.connection().auth === 'codex-login',
+  );
+
+  /**
    * Gets a short hint describing the configuration's credential, shown above the fields.
    */
   protected readonly credentialHint: Signal<string> = computed((): string => {
@@ -171,6 +178,13 @@ export class AiConnectionEditor {
    */
   protected readonly showClaudePath: Signal<boolean> = computed(
     (): boolean => this.settings.aiClaudeExecutable() === 'custom',
+  );
+
+  /**
+   * Gets a value indicating whether the Codex CLI path row applies (only when the CLI choice is Custom).
+   */
+  protected readonly showCodexPath: Signal<boolean> = computed(
+    (): boolean => this.settings.aiCodexExecutable() === 'custom',
   );
 
   /**

@@ -9,6 +9,7 @@ import type { StudioMcpServer, StudioToolBridge } from './studio-mcp';
  * One fake app-server process: what it was started with, what it was asked, and whether it stopped.
  */
 interface FakeProcess extends AppServerProcess {
+  readonly executable: string;
   readonly env: Readonly<Record<string, string>>;
   readonly handlers: AppServerHandlers;
   readonly requests: { method: string; params: Record<string, unknown> }[];
@@ -59,6 +60,7 @@ describe('the Codex client, when Studio changes its instructions between turns (
   let lost: (Error | null)[];
   let resumeFails: boolean;
   let started: number;
+  let initializeFails: boolean;
 
   /**
    * Builds a client whose app-servers and tool servers are fakes that record what they are asked.
@@ -70,13 +72,20 @@ describe('the Codex client, when Studio changes its instructions between turns (
       invoke: () => Promise.resolve({ result: null, error: null }),
     };
     return new CodexClient({
-      findExecutable: () => ({ path: '/bin/codex' }),
+      // A choice naming a path is the user's own Codex; anything else is the bundled copy.
+      findExecutable: (choice: unknown): { path: string; own: boolean } => {
+        const own: unknown = (choice as { path?: unknown } | undefined)?.path;
+        return typeof own === 'string'
+          ? { path: own, own: true }
+          : { path: '/bin/codex', own: false };
+      },
       spawn: (
-        _executable: string,
+        executable: string,
         env: Readonly<Record<string, string>>,
         handlers: AppServerHandlers,
       ): AppServerProcess => {
         const fake: FakeProcess = {
+          executable,
           env,
           handlers,
           requests: [],
@@ -85,6 +94,9 @@ describe('the Codex client, when Studio changes its instructions between turns (
             request: (method: string, params: unknown): Promise<unknown> => {
               const body: Record<string, unknown> = params as Record<string, unknown>;
               fake.requests.push({ method, params: body });
+              if (method === 'initialize' && initializeFails) {
+                return Promise.reject(new Error('unknown subcommand app-server'));
+              }
               if (method === 'thread/resume' && resumeFails) {
                 return Promise.reject(new Error('no rollout found'));
               }
@@ -147,8 +159,9 @@ describe('the Codex client, when Studio changes its instructions between turns (
     codex: CodexClient,
     instructions: string,
     completes: boolean = true,
+    choice?: unknown,
   ): Promise<string> {
-    await codex.ensureServer('run-1');
+    await codex.ensureServer('run-1', choice);
     const id: string = await codex.ensureThread(turn(), policy, instructions);
     if (completes) {
       codex.turnCompleted();
@@ -174,6 +187,67 @@ describe('the Codex client, when Studio changes its instructions between turns (
     lost = [];
     resumeFails = false;
     started = 0;
+    initializeFails = false;
+  });
+
+  it('aChangedCodexCli_restartsCodexOnTheChosenBinary_andResumesTheThreadOnce (#1079)', async () => {
+    const codex: CodexClient = client();
+    await startOfTurn(codex, 'Be brief.');
+    const id: string = await startOfTurn(codex, 'Be brief.', true, {
+      mode: 'custom',
+      path: '/opt/codex',
+    });
+
+    // One restart, on the chosen binary, and the conversation carries on there.
+    expect(id).toBe('thread-1');
+    expect(processes.map((fake: FakeProcess) => fake.executable)).toEqual([
+      '/bin/codex',
+      '/opt/codex',
+    ]);
+    expect(processes[0].stopped).toBe(true);
+    expect(threadRequests().map((request) => request.method)).toEqual([
+      'thread/start',
+      'thread/resume',
+    ]);
+    expect(threadRequests()[1].params['threadId']).toBe('thread-1');
+    expect(lost).toEqual([]);
+  });
+
+  it('theSameCodexCli_keepsTheRunningServer (#1079)', async () => {
+    const codex: CodexClient = client();
+    const choice: unknown = { mode: 'custom', path: '/opt/codex' };
+    await startOfTurn(codex, 'Be brief.', true, choice);
+    await startOfTurn(codex, 'Be brief.', true, choice);
+
+    expect(processes).toHaveLength(1);
+    expect(processes[0].executable).toBe('/opt/codex');
+  });
+
+  it('aReloadForNewInstructions_keepsTheChosenCodex (#1079)', async () => {
+    const codex: CodexClient = client();
+    const choice: unknown = { mode: 'custom', path: '/opt/codex' };
+    await startOfTurn(codex, 'Be brief.', true, choice);
+    await startOfTurn(codex, 'Be brief. Use the house style.', true, choice);
+
+    // The reload restarts within the turn; it must not fall back to the bundled copy.
+    expect(processes.map((fake: FakeProcess) => fake.executable)).toEqual([
+      '/opt/codex',
+      '/opt/codex',
+    ]);
+  });
+
+  it('theUsersOwnCodexThatCannotStart_saysWhichCodexFailedAndWhatToDo (#1079)', async () => {
+    initializeFails = true;
+    const codex: CodexClient = client();
+
+    const started: AppServerProcess | string = await codex.ensureServer('run-1', {
+      mode: 'custom',
+      path: '/opt/old-codex',
+    });
+
+    expect(typeof started).toBe('string');
+    expect(started).toContain('/opt/old-codex');
+    expect(started).toContain('Bundled');
   });
 
   it('unchangedInstructions_keepTheSameServerAndThread', async () => {

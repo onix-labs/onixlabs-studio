@@ -83,7 +83,7 @@
   @if (usesClaudeLogin()) {
     <app-setting-row
       label="Claude CLI"
-      description="Which Claude Code CLI this configuration uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
+      description="Which Claude Code CLI this configuration uses, for running turns and discovering models. Bundled comes with the Claude plugin and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to the plugin (advanced). Custom uses a specific path."
     >
       <app-setting-control key="ai.claudeExecutable" />
     </app-setting-row>
@@ -94,6 +94,25 @@
         description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
       >
         <app-setting-control key="ai.claudeExecutablePath" />
+      </app-setting-row>
+    }
+  }
+
+  <!-- Codex CLI: which Codex runs this configuration's turns. -->
+  @if (usesCodexLogin()) {
+    <app-setting-row
+      label="Codex CLI"
+      description="Which Codex this configuration runs. Bundled comes with the Codex plugin and is tested against it. System uses the codex on your PATH — it may be newer, but is not version-matched to the plugin (advanced). Custom uses a specific path. Either falls back to Bundled when the Codex it names is not found. Takes effect from the next message; a Codex plugin older than 0.9.0 always uses Bundled."
+    >
+      <app-setting-control key="ai.codexExecutable" />
+    </app-setting-row>
+
+    @if (showCodexPath()) {
+      <app-setting-row
+        label="Codex CLI path"
+        description="Absolute path to the codex executable, used when Codex CLI is set to Custom."
+      >
+        <app-setting-control key="ai.codexExecutablePath" />
       </app-setting-row>
     }
   }

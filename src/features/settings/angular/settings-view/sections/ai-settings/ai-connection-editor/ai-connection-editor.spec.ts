@@ -91,6 +91,16 @@ describe('AiConnectionEditor', () => {
     return (fixture.nativeElement as HTMLElement).querySelector('.conn-editor__harness button');
   }
 
+  /**
+   * Reads the labels of the setting rows shown.
+   * @returns Returns them, trimmed.
+   */
+  function rowLabels(): string[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.setting-row__label'),
+    ).map((label: Element): string => label.textContent?.trim() ?? '');
+  }
+
   beforeEach(() => {
     plugins = signal<readonly PluginSummary[]>([]);
     update = vi.fn();
@@ -192,5 +202,19 @@ describe('AiConnectionEditor', () => {
     mount(connection());
 
     expect(repairButton()).toBeNull();
+  });
+
+  it('aCodexConfiguration_offersTheCodexCli_andNotClaudes (#1079)', () => {
+    mount(connection({ kind: 'openai', auth: 'codex-login' }));
+
+    expect(rowLabels()).toContain('Codex CLI');
+    expect(rowLabels()).not.toContain('Claude CLI');
+  });
+
+  it('aClaudeConfiguration_offersTheClaudeCli_andNotCodexs (#1079)', () => {
+    mount(connection());
+
+    expect(rowLabels()).toContain('Claude CLI');
+    expect(rowLabels()).not.toContain('Codex CLI');
   });
 });
