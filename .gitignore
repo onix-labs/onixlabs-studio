@@ -154,11 +154,8 @@ vite.config.ts.timestamp-*
 # macOS
 .DS_Store
 
-# Understand-Anything knowledge graph — track the graph, ignore scratch
-.understand-anything/.trash-*/
-.understand-anything/tmp/
-.understand-anything/intermediate/*
-!.understand-anything/intermediate/scan-result.json
+# Understand-Anything knowledge graph — local only if the plugin is run; never committed
+.understand-anything/
 
 # Playwright E2E output
 /test-results
