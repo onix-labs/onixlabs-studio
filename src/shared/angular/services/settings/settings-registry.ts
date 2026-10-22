@@ -4,6 +4,7 @@ import type {
   AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
+  CodexExecutableMode,
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type { LogLevelSetting } from '@shared/api/log-channels';
@@ -132,6 +133,8 @@ export interface SettingsValues {
   readonly 'ai.agentShell': string;
   readonly 'ai.claudeExecutable': ClaudeExecutableMode;
   readonly 'ai.claudeExecutablePath': string;
+  readonly 'ai.codexExecutable': CodexExecutableMode;
+  readonly 'ai.codexExecutablePath': string;
 
   readonly 'missionControl.tileScrollMode': TileScrollMode;
 
@@ -1072,9 +1075,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Claude CLI',
         description:
           'Which Claude Code CLI the Claude (local login) agent uses, for both running turns and ' +
-          'discovering models. Bundled ships with Studio and is tested against it. System uses the ' +
-          'claude on your PATH — it may be newer and self-updates, but is not version-matched to ' +
-          'Studio (advanced). Custom uses a specific path.',
+          'discovering models. Bundled comes with the Claude plugin and is tested against it. ' +
+          'System uses the claude on your PATH — it may be newer and self-updates, but is not ' +
+          'version-matched to the plugin (advanced). Custom uses a specific path.',
         control: {
           kind: 'select',
           options: [
@@ -1091,6 +1094,31 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
         control: { kind: 'text', placeholder: '/usr/local/bin/claude' },
+        default: '',
+      },
+      {
+        key: 'ai.codexExecutable',
+        title: 'Codex CLI',
+        description:
+          'Which Codex the Codex agent runs. Bundled comes with the Codex plugin and is tested ' +
+          'against it. System uses the codex on your PATH — it may be newer, but is not ' +
+          'version-matched to the plugin (advanced). Custom uses a specific path. Either falls back ' +
+          'to Bundled when the Codex it names is not found.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'bundled', label: 'Bundled (recommended)' },
+            { value: 'system', label: 'System (codex on PATH)' },
+            { value: 'custom', label: 'Custom path' },
+          ],
+        },
+        default: 'bundled',
+      },
+      {
+        key: 'ai.codexExecutablePath',
+        title: 'Codex CLI path',
+        description: 'Absolute path to the codex executable, used when Codex CLI is set to Custom.',
+        control: { kind: 'text', placeholder: '/usr/local/bin/codex' },
         default: '',
       },
     ],

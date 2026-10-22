@@ -115,12 +115,15 @@ export type {
   AiRemoteControlPosture,
   ClaudeExecutableChoice,
   ClaudeExecutableMode,
+  CodexExecutableChoice,
+  CodexExecutableMode,
 } from './ai/ai-provider-types';
 export {
   AI_EFFORT_LEVELS,
   AI_REMOTE_CONTROL_MODES,
   AI_REMOTE_CONTROL_POSTURES,
   DEFAULT_CLAUDE_EXECUTABLE,
+  DEFAULT_CODEX_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type {
   AiProviderKind,

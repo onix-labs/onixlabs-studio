@@ -1480,6 +1480,10 @@ export class Agent {
         mode: this.settings.aiClaudeExecutable(),
         path: this.settings.aiClaudeExecutablePath(),
       },
+      codexExecutable: {
+        mode: this.settings.aiCodexExecutable(),
+        path: this.settings.aiCodexExecutablePath(),
+      },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
       owningTabId: this.runOwnerResolver?.() ?? owningTabId,

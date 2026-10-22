@@ -18,6 +18,7 @@ import type {
   AiRemoteControlMode,
   AiToolPolicy,
   ClaudeExecutableChoice,
+  CodexExecutableChoice,
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 import { UNSCOPED_BRIDGE_REQUEST } from '@shared/api/ai-types';
@@ -109,6 +110,11 @@ export interface AiRunOptions {
    * Gets which Claude Code CLI the Claude agent spawns (bundled by default).
    */
   readonly claudeExecutable?: ClaudeExecutableChoice;
+
+  /**
+   * Gets which Codex binary the Codex agent starts (bundled by default).
+   */
+  readonly codexExecutable?: CodexExecutableChoice;
 
   /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0/omitted for none.
@@ -288,6 +294,9 @@ export class AiRuntime {
       ...(options.claudeExecutable === undefined
         ? {}
         : { claudeExecutable: options.claudeExecutable }),
+      ...(options.codexExecutable === undefined
+        ? {}
+        : { codexExecutable: options.codexExecutable }),
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
       ...(options.effort === undefined ? {} : { effort: options.effort }),

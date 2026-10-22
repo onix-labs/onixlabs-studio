@@ -13,6 +13,7 @@ import type {
   AiRemoteControlMode,
   AiToolPolicy,
   ClaudeExecutableChoice,
+  CodexExecutableChoice,
 } from '@shared/api/ai-types';
 import type { AuditGrantSource } from './agent-audit-log';
 import type { HostingOp, HostingParams, HostingResponse } from '@shared/api/hosting-protocol';
@@ -211,6 +212,11 @@ export interface AgentRunContext {
    * reads it; other providers do not spawn a CLI.
    */
   readonly claudeExecutable: ClaudeExecutableChoice;
+
+  /**
+   * Gets which Codex binary the harness starts for this run. Only the Codex harness reads it.
+   */
+  readonly codexExecutable: CodexExecutableChoice;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the in-app editor tools act on that

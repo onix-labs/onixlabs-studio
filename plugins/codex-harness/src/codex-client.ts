@@ -19,6 +19,7 @@
 
 import { homedir } from 'node:os';
 import type { AppServerHandlers, AppServerProcess } from './app-server';
+import type { ResolvedCodexExecutable } from './codex-executable';
 import type { TurnPolicy } from './policy';
 import { PROTOCOL_VERSION, type TurnRequest } from './protocol';
 import type { StudioMcpServer, StudioToolBridge } from './studio-mcp';
@@ -49,10 +50,11 @@ const ORIGINATOR: string = 'onixlabs_studio';
  */
 export interface CodexClientOptions {
   /**
-   * Finds the Codex binary.
-   * @returns Returns the binary's path, or the reason none was found.
+   * Finds the Codex binary the user chose; `resolveCodexExecutable` outside tests.
+   * @param choice The `codexExecutable` setting, as Studio sent it with the turn.
+   * @returns Returns the binary, or the reason none was found.
    */
-  findExecutable(): { readonly path: string } | { readonly error: string };
+  findExecutable(choice: unknown): ResolvedCodexExecutable | { readonly error: string };
 
   /**
    * Starts an app-server; `spawnAppServer` outside tests.
@@ -180,6 +182,23 @@ export class CodexClient {
   private persisted: boolean = false;
 
   /**
+   * The user's Codex choice from the latest turn, so a restart within a turn (a reload for new
+   * instructions) starts the same binary rather than falling back to the default.
+   */
+  private choice: unknown = undefined;
+
+  /**
+   * The binary the running app-server was started from, or null when none is running.
+   */
+  private executable: string | null = null;
+
+  /**
+   * Whether the open thread lives on an app-server that has since been replaced (the user chose a
+   * different Codex), so the next turn must pick it up on the new one before it runs.
+   */
+  private stranded: boolean = false;
+
+  /**
    * Initializes a new instance of the {@link CodexClient} class.
    * @param options How to start each part, and who hears from Codex.
    */
@@ -202,18 +221,35 @@ export class CodexClient {
   }
 
   /**
-   * Starts the app-server and Studio's tool server, unless they are running.
+   * Starts the app-server and Studio's tool server, unless they are running from the binary the user
+   * chose. A running server started from a different binary — the user changed Codex CLI since — is
+   * replaced, and the open thread is picked up on the new one at the start of the turn (#1079).
    * @param requestId The run that needs them.
+   * @param choice The `codexExecutable` setting the turn carried; the latest one when omitted.
    * @returns Returns the server, or the reason it could not start.
    */
-  public async ensureServer(requestId: string): Promise<AppServerProcess | string> {
-    if (this.process !== null) {
-      return this.process;
-    }
-    const executable: { readonly path: string } | { readonly error: string } =
-      this.options.findExecutable();
+  public async ensureServer(
+    requestId: string,
+    choice: unknown = this.choice,
+  ): Promise<AppServerProcess | string> {
+    this.choice = choice;
+    const executable: ResolvedCodexExecutable | { readonly error: string } =
+      this.options.findExecutable(choice);
     if ('error' in executable) {
-      return executable.error;
+      return this.process ?? executable.error;
+    }
+    if (this.process !== null) {
+      if (executable.path === this.executable) {
+        return this.process;
+      }
+      this.options.note(
+        `Codex CLI changed from ${String(this.executable)} to ${executable.path}; restarting Codex.`,
+      );
+      this.retire();
+      this.stranded = this.thread !== null;
+    }
+    if (executable.fallback !== undefined) {
+      this.options.note(executable.fallback);
     }
     this.tools ??= await this.options.startTools(this.options.bridge);
     const env: Record<string, string> = {};
@@ -253,6 +289,7 @@ export class CodexClient {
       (line: string): void => this.options.note(`codex: ${line}`),
     );
     this.process = started;
+    this.executable = executable.path;
     try {
       await started.connection.request('initialize', {
         clientInfo: {
@@ -264,7 +301,12 @@ export class CodexClient {
       });
     } catch (error: unknown) {
       this.retire();
-      return `Codex could not start: ${messageOf(error)}`;
+      // The user's own Codex may simply predate the app-server this harness drives; say which Codex
+      // failed and what to do, rather than leave them to guess why a working install does not start.
+      return executable.own
+        ? `The Codex at ${executable.path} could not start: ${messageOf(error)}. It may be too old to ` +
+            "run Studio's app-server — update it, or set Codex CLI to Bundled in Settings › AI."
+        : `Codex could not start: ${messageOf(error)}`;
     }
     return started;
   }
@@ -284,6 +326,14 @@ export class CodexClient {
     policy: TurnPolicy,
     instructions: string,
   ): Promise<string> {
+    if (this.thread !== null && this.stranded) {
+      // The server was replaced for a different Codex. A thread with a completed turn is resumed on the
+      // new one; one with nothing on disk yet has nothing to resume, so a fresh one replaces it.
+      this.stranded = false;
+      return this.persisted
+        ? this.reload(this.thread, turn, policy, instructions, false)
+        : this.open(turn, policy, instructions, 'thread/start');
+    }
     if (this.thread !== null) {
       if (this.instructions === instructions) {
         return this.thread;
@@ -371,6 +421,8 @@ export class CodexClient {
    * @param turn The turn envelope.
    * @param policy The turn's confinement.
    * @param instructions The new instructions.
+   * @param restart Whether to restart the app-server first (new instructions), or resume on the one
+   * already running (it was just started from a different Codex).
    * @returns Returns the thread id, unchanged.
    */
   private async reload(
@@ -378,12 +430,15 @@ export class CodexClient {
     turn: TurnRequest,
     policy: TurnPolicy,
     instructions: string,
+    restart: boolean = true,
   ): Promise<string> {
-    this.options.note(
-      `Studio's instructions changed since thread ${id} was opened; restarting Codex and resuming ` +
-        'the thread with them.',
-    );
-    this.retire();
+    if (restart) {
+      this.options.note(
+        `Studio's instructions changed since thread ${id} was opened; restarting Codex and resuming ` +
+          'the thread with them.',
+      );
+      this.retire();
+    }
     const server: AppServerProcess = await this.serverFor(turn.requestId);
     let resumed: unknown;
     try {
@@ -429,6 +484,7 @@ export class CodexClient {
   private retire(): void {
     const stopping: AppServerProcess | null = this.process;
     this.process = null;
+    this.executable = null;
     stopping?.stop();
   }
 

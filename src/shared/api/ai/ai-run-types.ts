@@ -7,6 +7,7 @@ import {
   AiProviderId,
   AiRemoteControlMode,
   ClaudeExecutableChoice,
+  CodexExecutableChoice,
 } from './ai-provider-types';
 
 /**
@@ -183,6 +184,12 @@ export interface AiRunRequest {
    * bundled CLI.
    */
   readonly claudeExecutable?: ClaudeExecutableChoice;
+
+  /**
+   * Gets which Codex binary the harness starts (Codex harness only); absent means the copy installed
+   * with the Codex plugin.
+   */
+  readonly codexExecutable?: CodexExecutableChoice;
 
   /**
    * Gets the wall-clock budget the run is aborted after, in milliseconds, or 0 for no limit. The

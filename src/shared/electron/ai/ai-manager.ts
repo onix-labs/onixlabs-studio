@@ -30,6 +30,7 @@ import type {
   AiRunState,
   AiSteerRequest,
   ClaudeExecutableChoice,
+  CodexExecutableChoice,
   ClaudeAuthStatus,
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
@@ -61,7 +62,12 @@ import { contributedAgentHarnesses } from '../contributions/plugins/contributed'
 import type { NodeRuntimeSpec } from '../contributions/plugins/plugin-loader';
 import type { HarnessTransport } from './harness-host';
 import { HarnessProcess, type HarnessSpawnSpec } from './harness-process';
-import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
+import {
+  isConnection,
+  sanitizeClaudeExecutable,
+  sanitizeCodexExecutable,
+  sanitizeConnections,
+} from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
 // ⚠️ The Claude *login* stays in core while the Claude *provider* does not, and the two are genuinely
@@ -1000,6 +1006,7 @@ export class AiManager {
     const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(
       request.claudeExecutable,
     );
+    const codexExecutable: CodexExecutableChoice = sanitizeCodexExecutable(request.codexExecutable);
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );
@@ -1065,6 +1072,7 @@ export class AiManager {
       tokenCap,
       agentShell,
       claudeExecutable,
+      codexExecutable,
       owningTabId: request.owningTabId ?? null,
       surface,
       mode,
