@@ -55,10 +55,10 @@ describe('the Claude harness plugin', () => {
     const sdk: string = '@anthropic-ai/claude-agent-sdk';
     const root: { devDependencies: Record<string, string> } = JSON.parse(
       readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
-    );
+    ) as { devDependencies: Record<string, string> };
     const plugin: { dependencies: Record<string, string> } = JSON.parse(
       readFileSync(path.join(process.cwd(), 'plugins', 'claude-harness', 'package.json'), 'utf8'),
-    );
+    ) as { dependencies: Record<string, string> };
     const lockfile: { packages: Record<string, { version?: string }> } = JSON.parse(
       readFileSync(
         path.join(
@@ -67,7 +67,7 @@ describe('the Claude harness plugin', () => {
         ),
         'utf8',
       ),
-    );
+    ) as { packages: Record<string, { version?: string }> };
     const shipped: string | undefined = lockfile.packages[`node_modules/${sdk}`]?.version;
 
     expect(shipped).toBeDefined();
