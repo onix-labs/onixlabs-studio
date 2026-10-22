@@ -64,6 +64,15 @@ export interface LayoutSession {
    * Re-seeds the dock from the active layout's saved definition.
    */
   apply(): void;
+
+  /**
+   * Asks the session whether it may switch to a layout, before anything changes: a session showing
+   * documents the incoming layout has no well for resolves their unsaved changes here. Absent when the
+   * session holds nothing a switch could lose.
+   * @param next The layout tree about to be applied, or null when none resolves.
+   * @returns Returns a promise resolving true to switch, or false to keep the current layout.
+   */
+  confirmApply?(next: DockNode | null): Promise<boolean>;
 }
 
 /**
@@ -398,26 +407,21 @@ export class Layouts {
    * @returns Returns the layout tree, or null when not even a template is registered.
    */
   public layoutForRoot(root: string | null): DockNode | null {
-    const active: string | null = this.transient()?.id ?? this.activeFor(root);
-    if (active !== null) {
-      const layout: DockNode | null = this.layoutOf(active);
-      if (layout !== null) {
-        return layout;
-      }
-    }
-    return this.fallbackTemplate()?.createLayout() ?? null;
+    return this.treeFor(this.transient()?.id ?? this.activeFor(root));
   }
 
   /**
-   * Makes a layout the active one for the registered session's root and re-seeds its dock. Ignored
-   * while no session is registered or for an unknown layout.
+   * Makes a layout the active one for the registered session's root and re-seeds its dock, once the
+   * session has agreed to the switch. Ignored while no session is registered or for an unknown layout.
    * @param id The layout identifier.
+   * @returns Returns a promise that resolves once the layout is applied or the switch was declined.
    */
-  public select(id: string): void {
+  public async select(id: string): Promise<void> {
     const session: LayoutSession | null = this.session();
     if (
       session === null ||
-      !this.saved().some((layout: StoredLayout): boolean => layout.id === id)
+      !this.saved().some((layout: StoredLayout): boolean => layout.id === id) ||
+      !(await this.confirm(session, this.treeFor(id)))
     ) {
       return;
     }
@@ -432,11 +436,16 @@ export class Layouts {
    * writing it, remembering what it left. A second transient switch keeps the original return target.
    * Ignored while no session is registered, for an unknown id, or when it is already showing.
    * @param id The layout or template identifier.
-   * @returns Returns true when the switch happened (so callers can arm their return trigger).
+   * @returns Returns a promise resolving true when the switch happened (so callers can arm their
+   * return trigger), or false when it was ignored or declined.
    */
-  public switchTransient(id: string): boolean {
+  public async switchTransient(id: string): Promise<boolean> {
     const session: LayoutSession | null = this.session();
-    if (session === null || this.layoutOf(id) === null || this.activeId() === id) {
+    if (session === null || this.activeId() === id) {
+      return false;
+    }
+    const next: DockNode | null = this.layoutOf(id);
+    if (next === null || !(await this.confirm(session, next))) {
       return false;
     }
     const returnTo: string | null = this.transient()?.returnTo ?? this.activeId();
@@ -465,31 +474,41 @@ export class Layouts {
    * template itself when they do not — so a contextual stage-set honours the arrangement the user
    * made of it, and still has somewhere to go when they never made one.
    * @param templateId The template identifier.
-   * @returns Returns true when the switch happened.
+   * @returns Returns a promise resolving true when the switch happened.
    */
-  public switchTransientForTemplate(templateId: string): boolean {
+  public switchTransientForTemplate(templateId: string): Promise<boolean> {
     return this.switchTransient(this.layoutForTemplate(templateId)?.id ?? templateId);
   }
 
   /**
-   * Returns from a transient switch to what it left, re-seeding the dock. A no-op when no transient
-   * switch is active.
+   * Returns from a transient switch to what it left, re-seeding the dock once the session has agreed.
+   * A no-op when no transient switch is active.
+   * @returns Returns a promise that resolves once the dock is re-seeded or the return was declined.
    */
-  public returnFromTransient(): void {
-    if (this.transient() === null) {
+  public async returnFromTransient(): Promise<void> {
+    const session: LayoutSession | null = this.session();
+    if (
+      session === null ||
+      this.transient() === null ||
+      !(await this.confirm(session, this.treeFor(this.activeFor(session.root()))))
+    ) {
       return;
     }
     this.transient.set(null);
-    this.session()?.apply();
+    session.apply();
     this.log.debug('Layouts', 'Returned from transient layout');
   }
 
   /**
    * Re-seeds the registered session's dock from the showing layout's saved definition, discarding the
-   * session's own rearrangements.
+   * session's own rearrangements, once the session has agreed.
+   * @returns Returns a promise that resolves once the dock is re-seeded or the reset was declined.
    */
-  public reset(): void {
-    this.session()?.apply();
+  public async reset(): Promise<void> {
+    const session: LayoutSession | null = this.session();
+    if (session !== null && (await this.confirm(session, this.layoutForRoot(session.root())))) {
+      session.apply();
+    }
   }
 
   /**
@@ -611,10 +630,12 @@ export class Layouts {
    * Deletes a layout. Roots whose pick named it fall back to the default on their next resolution;
    * when the registered session was showing it, its dock re-seeds from the fallback immediately.
    * Deleting the default drops the choice too, so the default falls back to the first layout rather
-   * than hanging on an id nothing resolves.
+   * than hanging on an id nothing resolves. When the session declines the re-seed, the layout is still
+   * deleted and the dock keeps its current arrangement.
    * @param id The layout identifier.
+   * @returns Returns a promise that resolves once the layout is deleted and any re-seed has settled.
    */
-  public remove(id: string): void {
+  public async remove(id: string): Promise<void> {
     if (!this.saved().some((layout: StoredLayout): boolean => layout.id === id)) {
       return;
     }
@@ -627,10 +648,40 @@ export class Layouts {
       this.chosenDefault.set(null);
       this.store.set(DEFAULT_KEY, null);
     }
-    if (wasActive) {
-      this.session()?.apply();
-    }
     this.log.info('Layouts', `Removed layout`, id);
+    const session: LayoutSession | null = this.session();
+    if (
+      wasActive &&
+      session !== null &&
+      (await this.confirm(session, this.layoutForRoot(session.root())))
+    ) {
+      session.apply();
+    }
+  }
+
+  /**
+   * Builds a fresh copy of the tree a layout identifier resolves to, falling back to the first
+   * registered template when it names nothing (or nothing is active).
+   * @param id The layout or template identifier, or null when none is active.
+   * @returns Returns the layout tree, or null when not even a template is registered.
+   */
+  private treeFor(id: string | null): DockNode | null {
+    const layout: DockNode | null = id === null ? null : this.layoutOf(id);
+    return layout ?? this.fallbackTemplate()?.createLayout() ?? null;
+  }
+
+  /**
+   * Asks a session whether it may switch to a layout. A session with no guard always may.
+   * @param session The session about to be re-seeded.
+   * @param next The layout tree about to be applied, or null when none resolves.
+   * @returns Returns a promise resolving true to switch, or false to keep the current layout.
+   */
+  private async confirm(session: LayoutSession, next: DockNode | null): Promise<boolean> {
+    if (session.confirmApply === undefined || (await session.confirmApply(next))) {
+      return true;
+    }
+    this.log.info('Layouts', 'Layout switch declined by the session');
+    return false;
   }
 
   /**

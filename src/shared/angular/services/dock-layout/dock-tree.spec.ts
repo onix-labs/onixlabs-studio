@@ -8,12 +8,14 @@ import {
   StackNode,
 } from './dock-node';
 import {
+  carryIntoWell,
   collectPanelIds,
   countStacks,
   defaultLayout,
   dockEdge,
   dockNodeEdge,
   dockStackEdge,
+  findDocumentWell,
   findNode,
   findPrimaryStack,
   findStackOfPanel,
@@ -948,6 +950,61 @@ describe('dock-tree', () => {
 
     it('defaultLayout_whenBuiltTwice_mintsFreshNodeIds', () => {
       expect(defaultLayout().id).not.toBe(defaultLayout().id);
+    });
+  });
+
+  describe('findDocumentWell', () => {
+    it('findDocumentWell_prefersThePrimaryWell', () => {
+      const side: StackNode = mkStack('document', []);
+      const primary: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [side, primary]);
+
+      expect(findDocumentWell(tree)).toBe(primary);
+    });
+
+    it('findDocumentWell_whenAToolHoldsTheCentre_findsAnotherWell', () => {
+      const well: StackNode = mkStack('document', []);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['agent'], true), well]);
+
+      expect(findDocumentWell(tree)).toBe(well);
+    });
+
+    it('findDocumentWell_withNoWell_returnsNull', () => {
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkStack('tool', ['agent'], true),
+      ]);
+
+      expect(findDocumentWell(tree)).toBeNull();
+    });
+  });
+
+  describe('carryIntoWell', () => {
+    it('carryIntoWell_seatsTheDocumentsAfterTheWellsOwn_andActivatesTheGivenOne', () => {
+      const well: StackNode = mkStack('document', ['readme'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), well]);
+
+      const next: StackNode = asStack(
+        findDocumentWell(carryIntoWell(tree, ['a', 'readme', 'b'], 'b')),
+      );
+
+      expect(next.id).toBe(well.id);
+      expect(next.panels).toEqual(['readme', 'a', 'b']);
+      expect(next.active).toBe('b');
+    });
+
+    it('carryIntoWell_intoAnEmptyWellWithNoActiveGiven_activatesTheFirstCarried', () => {
+      const tree: DockNode = mkStack('document', [], true);
+
+      expect(asStack(carryIntoWell(tree, ['a', 'b'], null)).active).toBe('a');
+    });
+
+    it('carryIntoWell_withNoWellOrNothingToCarry_returnsTheSameTree', () => {
+      const noWell: DockNode = mkStack('tool', ['agent'], true);
+      const well: DockNode = mkStack('document', [], true);
+
+      expect(carryIntoWell(noWell, ['a'], 'a')).toBe(noWell);
+      expect(carryIntoWell(well, [], null)).toBe(well);
     });
   });
 });

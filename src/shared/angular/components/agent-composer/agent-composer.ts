@@ -1276,6 +1276,16 @@ export class AgentComposer {
   }
 
   /**
+   * Moves keyboard focus into the prompt, so a conversation that has just been shown can be typed
+   * into at once.
+   */
+  public focus(): void {
+    // preventScroll: the composer sits at the foot of the conversation, and focusing it must not
+    // drag a transcript the user scrolled back through down to the bottom.
+    this.inputRef()?.nativeElement.focus({ preventScroll: true });
+  }
+
+  /**
    * Loads a queued message back into the composer for editing, removing it from the queue.
    * @param entry The queued entry.
    */

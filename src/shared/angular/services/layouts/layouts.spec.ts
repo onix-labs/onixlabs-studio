@@ -242,14 +242,14 @@ describe('Layouts', () => {
     expect(layouts.layouts()[0]?.name).toBe('Mine');
   });
 
-  it('remove_dropsTheDefaultChoice_andReSeedsWhenItWasShowing', (): void => {
+  it('remove_dropsTheDefaultChoice_andReSeedsWhenItWasShowing', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
     const id: string = idOf(layouts, 'Default');
     layouts.setDefault(id);
     applied = 0;
 
-    layouts.remove(id);
+    await layouts.remove(id);
 
     expect(layouts.layouts().length).toBe(1);
     expect(store.values.get('layout.default-preset')).toBeNull();
@@ -267,78 +267,120 @@ describe('Layouts', () => {
     expect(layouts.activeFor(null)).toBe(fallback);
   });
 
-  it('select_ignoresATemplateId_sinceATemplateIsNotALayout', (): void => {
+  it('select_ignoresATemplateId_sinceATemplateIsNotALayout', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
     applied = 0;
 
-    layouts.select('default');
+    await layouts.select('default');
 
     expect(applied).toBe(0);
   });
 
-  it('switchTransient_shadowsThePickWithoutPersistingIt_andReturnRestores', (): void => {
+  it('switchTransient_shadowsThePickWithoutPersistingIt_andReturnRestores', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
     const chosen: string = idOf(layouts, 'Version Control');
 
-    expect(layouts.switchTransient(chosen)).toBe(true);
+    expect(await layouts.switchTransient(chosen)).toBe(true);
     expect(layouts.activeId()).toBe(chosen);
     expect(layouts.transientActive()).toBe(true);
     // The persisted pick is untouched.
     expect(layouts.activeFor('/repo')).toBe(idOf(layouts, 'Default'));
     expect(applied).toBe(1);
 
-    layouts.returnFromTransient();
+    await layouts.returnFromTransient();
     expect(layouts.activeId()).toBe(idOf(layouts, 'Default'));
     expect(layouts.transientActive()).toBe(false);
     expect(applied).toBe(2);
   });
 
-  it('switchTransientForTemplate_prefersTheUsersOwnLayoutForIt', (): void => {
+  it('switchTransientForTemplate_prefersTheUsersOwnLayoutForIt', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
     const own: string = idOf(layouts, 'Version Control');
     // The link is the template it came from, so renaming does not break it.
     layouts.rename(own, 'Committing');
 
-    expect(layouts.switchTransientForTemplate('source-control')).toBe(true);
+    expect(await layouts.switchTransientForTemplate('source-control')).toBe(true);
     expect(layouts.activeId()).toBe(own);
     expect(layouts.activeName()).toBe('Committing');
   });
 
-  it('switchTransientForTemplate_withNoLayoutOfTheirOwn_stagesTheTemplate', (): void => {
+  it('switchTransientForTemplate_withNoLayoutOfTheirOwn_stagesTheTemplate', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
-    layouts.remove(idOf(layouts, 'Version Control'));
+    await layouts.remove(idOf(layouts, 'Version Control'));
 
-    expect(layouts.switchTransientForTemplate('source-control')).toBe(true);
+    expect(await layouts.switchTransientForTemplate('source-control')).toBe(true);
     expect(layouts.activeId()).toBe('source-control');
     expect(layouts.activeName()).toBe('Version Control');
   });
 
-  it('switchTransient_whenAlreadyShowingOrUnknown_declines', (): void => {
+  it('switchTransient_whenAlreadyShowingOrUnknown_declines', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
 
-    expect(layouts.switchTransient(idOf(layouts, 'Default'))).toBe(false);
-    expect(layouts.switchTransient('missing')).toBe(false);
+    expect(await layouts.switchTransient(idOf(layouts, 'Default'))).toBe(false);
+    expect(await layouts.switchTransient('missing')).toBe(false);
     expect(applied).toBe(0);
   });
 
-  it('select_whileTransient_takesOverAndDisarmsIt', (): void => {
+  it('select_whileTransient_takesOverAndDisarmsIt', async (): Promise<void> => {
     const layouts: Layouts = build();
     layouts.register(session);
     const chosen: string = idOf(layouts, 'Version Control');
-    layouts.switchTransient(chosen);
+    await layouts.switchTransient(chosen);
 
-    layouts.select(chosen);
+    await layouts.select(chosen);
 
     expect(layouts.transientActive()).toBe(false);
     expect(layouts.activeFor('/repo')).toBe(chosen);
 
-    layouts.returnFromTransient();
+    await layouts.returnFromTransient();
     expect(layouts.activeId()).toBe(chosen);
+  });
+
+  it('select_whenTheSessionDeclines_keepsThePickAndTheDock', async (): Promise<void> => {
+    const layouts: Layouts = build();
+    const offered: (DockNode | null)[] = [];
+    layouts.register({
+      ...session,
+      confirmApply: (next: DockNode | null): Promise<boolean> => {
+        offered.push(next);
+        return Promise.resolve(false);
+      },
+    });
+    const before: string | null = layouts.activeId();
+
+    await layouts.select(idOf(layouts, 'Version Control'));
+
+    // The session was shown the incoming tree, and declining it changed nothing.
+    expect(offered).toHaveLength(1);
+    expect(offered[0]).toMatchObject({ kind: 'stack', panels: ['branches'] });
+    expect(layouts.activeId()).toBe(before);
+    expect(applied).toBe(0);
+  });
+
+  it('switchesAndResets_whenTheSessionDeclines_doNothing', async (): Promise<void> => {
+    const layouts: Layouts = build();
+    layouts.register({ ...session, confirmApply: (): Promise<boolean> => Promise.resolve(false) });
+
+    expect(await layouts.switchTransient(idOf(layouts, 'Version Control'))).toBe(false);
+    await layouts.reset();
+
+    expect(layouts.transientActive()).toBe(false);
+    expect(applied).toBe(0);
+  });
+
+  it('switches_whenTheSessionAgrees_apply', async (): Promise<void> => {
+    const layouts: Layouts = build();
+    layouts.register({ ...session, confirmApply: (): Promise<boolean> => Promise.resolve(true) });
+
+    await layouts.select(idOf(layouts, 'Version Control'));
+    await layouts.reset();
+
+    expect(applied).toBe(2);
   });
 
   it('activeName_withoutASession_isNull_andFallsBackToTheTemplateWithNoLayouts', (): void => {

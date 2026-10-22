@@ -96,6 +96,7 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   collectPanelIds,
+  findDocumentWell,
   findNode,
   findStackOfPanel,
   firstStackOfRole,
@@ -988,16 +989,53 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Holds the layout session: the layout commands capture this dock's current tree for Save As
    * through it, and re-seed the dock when a layout is selected or reset. Applying first returns any
-   * popped-out panels — the incoming layout defines which panels exist.
+   * popped-out panels — the incoming layout defines which panels exist — and carries the open
+   * documents into the incoming layout's well, so switching layout never closes them. Only a layout
+   * with no well leaves them behind, and before switching to one each document with unsaved changes
+   * asks to save, discard or cancel, exactly as closing its tab does; a cancel keeps the layout.
    */
   private readonly layoutSession: LayoutSession = {
     root: this.dockTabContext.presetRoot,
     capture: (): DockNode => this.dockState.layout(),
     apply: (): void => {
       this.panelPopout.returnAll();
-      this.dockState.reset();
+      const documents: readonly string[] = this.openDocumentPanels();
+      const well: StackNode | null = findDocumentWell(this.dockState.layout());
+      const active: string | null =
+        well?.active ?? this.documents.activeDocumentId() ?? documents[0] ?? null;
+      this.dockState.reset(documents, active);
+    },
+    confirmApply: async (next: DockNode | null): Promise<boolean> => {
+      if (next === null || findDocumentWell(next) !== null) {
+        return true;
+      }
+      for (const id of this.openDocumentPanels()) {
+        const panel: DockPanel | undefined = this.registry.get(id);
+        if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
+          return false;
+        }
+      }
+      return true;
     },
   };
+
+  /**
+   * Lists the document panels open in this tab, docked or popped out, in tab order.
+   * @returns Returns the identifiers of the open document panels.
+   */
+  private openDocumentPanels(): readonly string[] {
+    const docked: readonly string[] = collectPanelIds(this.dockState.layout());
+    const popped: readonly string[] = this.registry
+      .list()
+      .filter(
+        (panel: DockPanel): boolean =>
+          !docked.includes(panel.id) && this.popoutPanels.isPopped(panel.id),
+      )
+      .map((panel: DockPanel): string => panel.id);
+    return [...docked, ...popped].filter(
+      (id: string): boolean => this.registry.get(id)?.role === 'document',
+    );
+  }
 
   /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
@@ -1257,7 +1295,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.repository.changeCount() === 0
       ) {
         this.returnWhenCommitted = false;
-        untracked((): void => this.layoutStore.returnFromTransient());
+        untracked((): void => void this.layoutStore.returnFromTransient());
       }
     });
 
@@ -2042,10 +2080,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.log.debug('source-control', 'Switching to the source-control layout');
     const own: LayoutInfo | null = this.layoutStore.layoutForTemplate(SOURCE_CONTROL_TEMPLATE_ID);
     if (own !== null) {
-      this.layoutStore.select(own.id);
+      void this.layoutStore.select(own.id);
       return;
     }
-    this.layoutStore.switchTransient(SOURCE_CONTROL_TEMPLATE_ID);
+    void this.layoutStore.switchTransient(SOURCE_CONTROL_TEMPLATE_ID);
   }
 
   /**
@@ -2063,7 +2101,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // once the changes it staged for reach zero (the commit landed). It prefers the user's own layout
     // for the template and falls back to the template itself, so it works whatever they have made of
     // their layouts. The panel-injection path below remains for the odd case where neither exists.
-    if (this.layoutStore.switchTransientForTemplate(SOURCE_CONTROL_TEMPLATE_ID)) {
+    if (await this.layoutStore.switchTransientForTemplate(SOURCE_CONTROL_TEMPLATE_ID)) {
       if (this.repository.changeCount() > 0) {
         this.returnWhenCommitted = true;
       }

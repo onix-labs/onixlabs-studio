@@ -22,6 +22,7 @@ import {
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Search } from '@shared/angular/services/search/search';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FakeIntersectionObserver } from '@shared/angular/testing/fake-intersection-observer';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentChat } from './agent-chat';
@@ -225,6 +226,20 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('textScale_followsTheConversationTextSizeSetting', () => {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const settings: Settings = TestBed.inject(Settings);
+    expect(host.style.getPropertyValue('--agent-text-scale')).toBe('1');
+
+    settings.set('ai.conversationTextSize', 'large');
+    fixture.detectChanges();
+    expect(host.style.getPropertyValue('--agent-text-scale')).toBe('1.15');
+
+    settings.set('ai.conversationTextSize', 'small');
+    fixture.detectChanges();
+    expect(host.style.getPropertyValue('--agent-text-scale')).toBe('0.875');
   });
 
   it('emptyState_whenAProviderIsInstalled_invitesTheUserToAsk', () => {
