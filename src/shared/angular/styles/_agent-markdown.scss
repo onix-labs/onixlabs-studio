@@ -1,0 +1,430 @@
+// =============================================================================
+// Agent conversation markdown
+// =============================================================================
+// A reply's markdown is drawn as the Markdown editor draws it (see _milkdown.scss): the same headings,
+// callouts, tables, rules, lists, inline code, GitHub alerts and collapsible sections, so a note reads
+// the same whether an agent wrote it into the conversation or into a file.
+//
+// Global rather than in the chat's component stylesheet for the reason the editor's are: the replies
+// are [innerHTML] content no encapsulated rule can reach, and the set is too large for the chat's
+// component style budget. Scoped to `app-agent-chat .agent__markdown`, so the other surfaces that
+// render markdown (hover cards, completion docs, issues) keep their own compact look.
+//
+// Translated rather than pasted: sizes are in `em` of the reply's text, so the Conversation text size
+// setting scales them, where the editor works from its own font-size setting; and the colours come
+// from the `--agent-markdown-*` theme tokens, a shade off the reply bubble, where the editor's sit a
+// shade off its page.
+
+app-agent-chat .agent__markdown {
+  // A run with no break in it — a path, a URL, a long identifier in inline code — wraps rather than
+  // bleeding out of the bubble. Only as a last resort: text still wraps between words where it can,
+  // and a code block keeps its own lines and scrolls.
+  overflow-wrap: anywhere;
+
+  // A reply holding a table takes the whole width an entry may have, rather than shrinking to its
+  // longest line, so the table has the room to spread out.
+  &:has(table) {
+    inline-size: 100%;
+  }
+
+  p {
+    margin: 0 0 0.6rem;
+    line-height: 1.6;
+  }
+
+  // Trim the trailing margin only at the bubble's true end. Prose renders one wrapper per markdown
+  // block (that granularity is what lets a settled block's DOM survive a streaming flush), so a bare
+  // `p:last-child` would match the last paragraph of EVERY wrapper and cram all paragraphs together.
+  .markdown-renderer__prose:last-child > :last-child,
+  .markdown-renderer__prose:last-child p:last-child {
+    margin-block-end: 0;
+  }
+
+  // Likewise a heading or callout opening a reply sits flush with the bubble's top.
+  .markdown-renderer__prose:first-child > :first-child {
+    margin-block-start: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 1rem 0 0.5rem;
+    font-weight: 600;
+  }
+
+  h1 {
+    font-size: 2.5em;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 2em;
+    line-height: 1.25;
+  }
+
+  h3 {
+    font-size: 1.75em;
+    line-height: 1.3;
+  }
+
+  h4 {
+    font-size: 1.5em;
+    line-height: 1.35;
+  }
+
+  h5 {
+    font-size: 1.25em;
+    line-height: 1.4;
+  }
+
+  h6 {
+    font-size: 1.1em;
+    line-height: 1.45;
+  }
+
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  a {
+    color: var(--accent-color);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  // Lists: the editor's markers, level by level — ● ○ ■ for bullets, 1. i. a. for numbers — in the
+  // body colour.
+  ul,
+  ol {
+    margin: 0.75em 0;
+    padding-inline-start: 1.5em;
+  }
+
+  li {
+    margin: 0.25em 0;
+    line-height: 1.6;
+
+    &::marker {
+      color: var(--body-foreground-color);
+    }
+  }
+
+  // A nested list, or a loose list's paragraphs, would otherwise stack their own margins.
+  li > ul,
+  li > ol,
+  li > p {
+    margin-block: 0;
+  }
+
+  ul {
+    list-style-type: disc;
+  }
+
+  ul ul {
+    list-style-type: circle;
+  }
+
+  ul ul ul {
+    list-style-type: square;
+  }
+
+  ol {
+    list-style-type: decimal;
+  }
+
+  ol ol {
+    list-style-type: lower-roman;
+  }
+
+  ol ol ol {
+    list-style-type: lower-alpha;
+  }
+
+  // A task list's items carry their box in place of a bullet: an outline box to do, the accent when
+  // done, as the editor's checkboxes are. The box is a marker span (see markdown-blocks.ts), since the
+  // transcript never renders an <input>.
+  li:has(> .markdown-task) {
+    list-style: none;
+  }
+
+  .markdown-task {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 0.9em;
+    block-size: 0.9em;
+    margin-inline: -1.5em 0.6em;
+    // Aligned by its middle, not its baseline: the tick inside a done box would otherwise give it a
+    // baseline of its own and drop it below an empty one.
+    vertical-align: middle;
+    border: 1px solid var(--body-foreground-color);
+    border-radius: calc(0.2rem * var(--border-radius-multiplier));
+  }
+
+  .markdown-task--done {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+
+    &::after {
+      content: '';
+      inline-size: 0.25em;
+      block-size: 0.5em;
+      margin-block-start: -0.1em;
+      border: solid var(--body-background-color);
+      border-width: 0 0.12em 0.12em 0;
+      transform: rotate(45deg);
+    }
+  }
+
+  // Rendered as a boxed callout (like the GitHub alerts below), with a thicker leading edge.
+  blockquote {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--agent-markdown-surface-color);
+    border: 1px solid var(--agent-markdown-outline-color);
+    border-inline-start-width: 0.25rem;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+
+    > :first-child {
+      margin-block-start: 0;
+    }
+
+    > :last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  // Collapsible sections (<details>/<summary>): the blockquote's callout box, with the toggle chevron
+  // on the right edge of the summary row. The chevron is drawn as two borders of a rotated box, so no
+  // icon font is needed, and points down while open.
+  details {
+    position: relative;
+    margin: 1rem 0;
+    padding: 1rem;
+    padding-inline-end: 2.5rem;
+    background: var(--agent-markdown-surface-color);
+    border: 1px solid var(--agent-markdown-outline-color);
+    border-inline-start-width: 0.25rem;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+
+    > :last-child {
+      margin-block-end: 0;
+    }
+  }
+
+  summary {
+    font-weight: 600;
+    list-style: none;
+    cursor: default;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset-block-start: calc(1.15rem + 0.3em);
+      inset-inline-end: calc(1rem + 0.4em);
+      inline-size: 0.45em;
+      block-size: 0.45em;
+      border-inline-end: 0.125em solid currentColor;
+      border-block-end: 0.125em solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 120ms ease-in-out;
+    }
+  }
+
+  details[open] > summary {
+    margin-block-end: 0.6rem;
+
+    &::after {
+      transform: rotate(45deg);
+    }
+  }
+
+  // A table spans the reply's width, its cells wrapping to fit. Separate borders so the corners can
+  // round.
+  table {
+    inline-size: 100%;
+    margin: 1em 0;
+    overflow: hidden;
+    border: 1px solid var(--agent-markdown-outline-color);
+    border-spacing: 0;
+    border-collapse: separate;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  th,
+  td {
+    padding: 0.5em 1em;
+    border-block-end: 1px solid var(--agent-markdown-outline-color);
+    border-inline-end: 1px solid var(--agent-markdown-outline-color);
+
+    // A column aligned in the markdown keeps its own `align`, which a rule here would override.
+    &:not([align]) {
+      text-align: start;
+    }
+
+    &:last-child {
+      border-inline-end: none;
+    }
+  }
+
+  tr:last-child td {
+    border-block-end: none;
+  }
+
+  th {
+    font-weight: 600;
+    background: var(--agent-markdown-surface-color);
+  }
+
+  hr {
+    block-size: 4px;
+    margin: 2em 0;
+    padding: 0;
+    background: var(--agent-markdown-rule-color);
+    border: none;
+    border-radius: 9999px;
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  img {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  // Raw <pre> in prose; fenced code renders through the code-block component instead.
+  pre {
+    padding: 0.6rem 0.8rem;
+    overflow: auto;
+    background: var(--body-background-color);
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+
+  // Inline code (`like this`): a little breathing room and a light border around it.
+  .markdown-renderer__prose :not(pre) > code {
+    padding-block: 0;
+    padding-inline: 0.25rem;
+    border: 1px solid var(--agent-markdown-outline-color);
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  // GitHub alerts (`> [!NOTE]` and friends; see markdown-blocks.ts): a tinted callout with its icon
+  // pinned to the first line.
+  .github-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    padding: 1rem;
+    border-width: 1px;
+    border-inline-start-width: 0.25rem;
+    border-style: solid;
+    border-radius: calc(1rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+
+    .alert-icon {
+      flex-shrink: 0;
+      // Geometrically centre the glyph within one text line's height: the box is made one line tall
+      // and the glyph flex-centred inside it, so it stays on the first line when the content wraps.
+      display: inline-flex;
+      align-items: center;
+      // One line of the text (1.6 of its size), measured in the icon's own 1.5x em.
+      block-size: calc(1.6em / 1.5);
+      font-size: 1.5em;
+      line-height: 1;
+      // Optical correction: the Phosphor glyph sits high within its own em box.
+      transform: translateY(0.1em);
+    }
+
+    .alert-content {
+      flex: 1;
+      min-inline-size: 0;
+
+      > :first-child {
+        margin-block-start: 0;
+      }
+
+      > :last-child {
+        margin-block-end: 0;
+      }
+    }
+  }
+
+  .github-alert-note {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+
+  .github-alert-tip {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.4);
+  }
+
+  .github-alert-important {
+    color: #a855f7;
+    background: rgba(168, 85, 247, 0.1);
+    border-color: rgba(168, 85, 247, 0.4);
+  }
+
+  .github-alert-warning {
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.1);
+    border-color: rgba(234, 179, 8, 0.4);
+  }
+
+  .github-alert-caution {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+}
+
+[data-theme-mode='dark'] app-agent-chat .agent__markdown {
+  .github-alert-note {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.5);
+  }
+
+  .github-alert-tip {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.5);
+  }
+
+  .github-alert-important {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.5);
+  }
+
+  .github-alert-warning {
+    background: rgba(234, 179, 8, 0.15);
+    border-color: rgba(234, 179, 8, 0.5);
+  }
+
+  .github-alert-caution {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+  }
+}

@@ -29,7 +29,9 @@
     border-end-start-radius: 0 !important;
     border-end-end-radius: 0 !important;
     corner-shape: var(--app-corner-shape, squircle);
-    font-size: 0.8rem;
+    // Inside an agent reply the code follows the Conversation text size setting; elsewhere the scale
+    // is unset and reads as 1.
+    font-size: calc(0.8rem * var(--agent-text-scale, 1));
     line-height: 1.45;
 
     code {
@@ -64,7 +66,7 @@
   // actions remain the footer's focus.
   &__lang {
     font-family: var(--monospace-font-family, monospace);
-    font-size: 0.72rem;
+    font-size: calc(0.72rem * var(--agent-text-scale, 1));
     line-height: 1;
     opacity: 0.6;
     user-select: none;

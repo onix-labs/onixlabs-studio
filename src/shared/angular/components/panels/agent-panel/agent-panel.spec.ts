@@ -3,7 +3,11 @@ import { By } from '@angular/platform-browser';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { Icon } from '@shared/angular/icons/icon';
 
 import { AgentPanel } from './agent-panel';
@@ -69,5 +73,32 @@ describe('AgentPanel', () => {
     );
 
     expect(message?.textContent).toContain('Hello');
+  });
+
+  /**
+   * Reads the composer's prompt from the rendered panel.
+   * @returns Returns the prompt text area, or null when it is not rendered.
+   */
+  function prompt(): HTMLTextAreaElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector('textarea.agent__input');
+  }
+
+  it('promptFocus_whenItsGroupIsFocused_putsTheCaretInThePrompt', async () => {
+    const stack: StackNode | null = findStackOfPanel(TestBed.inject(DockState).layout(), 'agent');
+    expect(stack?.active).toBe('agent');
+
+    TestBed.inject(DockFocus).focus(stack?.id ?? '');
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(prompt());
+  });
+
+  it('promptFocus_whileAnotherGroupIsFocused_leavesFocusAlone', async () => {
+    // The workspace opening with the panel docked must not pull focus out of the well.
+    TestBed.inject(DockFocus).focus('some-other-stack');
+    await fixture.whenStable();
+
+    expect(prompt()).not.toBeNull();
+    expect(document.activeElement).not.toBe(prompt());
   });
 });

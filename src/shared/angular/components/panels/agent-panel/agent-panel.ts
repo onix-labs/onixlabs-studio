@@ -1,5 +1,18 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
+import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
+import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 
 /**
@@ -25,4 +38,39 @@ export class AgentPanel {
    * every projected panel component; unused here because the dock chrome renders the title.
    */
   public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
+
+  /**
+   * Holds the dock state, read to find the group this panel sits in.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the dock's focus tracker, which names the group the user last opened, revealed or pressed.
+   */
+  private readonly dockFocus: DockFocus = inject(DockFocus);
+
+  /**
+   * Holds the auto-hide controller, which names the collapsed group currently peeking out.
+   */
+  private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
+   * Gets whether the prompt should have focus: this panel is its group's showing tab and the group is
+   * the focused one (opened, revealed or pressed), or its collapsed group is peeking out. A panel in no
+   * group is floating or popped out, alone in its own window, so it always is. Merely being docked
+   * somewhere when the workspace opens is not enough — that would take focus from the well.
+   */
+  protected readonly promptFocus: Signal<boolean> = computed((): boolean => {
+    const id: string = this.panel().id;
+    const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
+    if (stack === null) {
+      return true;
+    }
+    if (stack.active !== id) {
+      return false;
+    }
+    return stack.collapsed === true
+      ? this.autoHide.flyoutStackId() === stack.id
+      : this.dockFocus.focusedStackId() === stack.id;
+  });
 }

@@ -17,6 +17,7 @@ import type {
 } from '@shared/api/ai-types';
 import {
   AiConnectionModels,
+  ConversationTextSize,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -683,6 +684,12 @@ export class Settings {
    * agent view).
    */
   public readonly aiAutoScroll: Signal<boolean> = this.value('ai.autoScroll');
+
+  /**
+   * Gets how large agent conversations render — transcript and prompt (applies to every agent view).
+   */
+  public readonly aiConversationTextSize: Signal<ConversationTextSize> =
+    this.value('ai.conversationTextSize');
 
   /**
    * Gets whether a settled background task lets the agent resume the conversation to report on it.

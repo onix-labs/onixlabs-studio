@@ -47,6 +47,11 @@ export type AiConnectionModels = Readonly<Record<string, string>>;
 export type TileScrollMode = 'into-view' | 'absolute-left';
 
 /**
+ * Defines how large an agent conversation's text renders: its transcript and its prompt.
+ */
+export type ConversationTextSize = 'small' | 'medium' | 'large';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -111,6 +116,7 @@ export interface SettingsValues {
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.connectionsFormat': number;
   readonly 'ai.autoScroll': boolean;
+  readonly 'ai.conversationTextSize': ConversationTextSize;
   readonly 'ai.reportBackgroundTasks': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
@@ -881,6 +887,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'ai.conversationTextSize',
+        title: 'Conversation text size',
+        description:
+          'How large agent conversations render: the transcript, and the prompt you type into. ' +
+          'Applies to every agent view.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'small', label: 'Small' },
+            { value: 'medium', label: 'Medium' },
+            { value: 'large', label: 'Large' },
+          ],
+        },
+        default: 'medium',
       },
       {
         key: 'ai.reportBackgroundTasks',

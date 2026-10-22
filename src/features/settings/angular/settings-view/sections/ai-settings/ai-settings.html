@@ -9,6 +9,13 @@
     </app-setting-row>
 
     <app-setting-row
+      label="Conversation text size"
+      description="How large agent conversations render: the transcript, and the prompt you type into. Applies to every agent view."
+    >
+      <app-setting-control key="ai.conversationTextSize" />
+    </app-setting-row>
+
+    <app-setting-row
       label="Report background tasks back"
       description="When a task the agent backgrounded finishes, let the agent pick the conversation back up and tell you what it found, rather than only noting that it finished. The agent resumes on its own and spends tokens to do it, so turn this off to keep an idle conversation idle."
     >

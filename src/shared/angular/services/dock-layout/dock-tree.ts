@@ -367,6 +367,48 @@ export function splitWellBeside(tree: DockNode, stackId: string, panelId: string
 }
 
 /**
+ * Finds the document well a layout opens documents in: the primary (centre) slot when it is a well,
+ * otherwise the first well in depth-first order.
+ * @param tree The root of the tree to search.
+ * @returns Returns the well, or null when the layout has none (a tool holds the centre).
+ */
+export function findDocumentWell(tree: DockNode): StackNode | null {
+  const primary: StackNode | null = findPrimaryStack(tree);
+  return primary?.role === 'document' ? primary : firstStackOfRole(tree, 'document');
+}
+
+/**
+ * Seats documents carried over from another layout as tabs in this layout's well, after any it
+ * already holds, so switching layout moves the open documents rather than closing them. A panel the
+ * well already holds is not added twice.
+ * @param tree The root of the tree to transform.
+ * @param panelIds The identifiers of the document panels to carry, in tab order.
+ * @param active The carried panel to make the well's active tab, or null to keep the well's own.
+ * @returns Returns the transformed tree, or the original tree when there is nothing to carry or the
+ * layout has no well.
+ */
+export function carryIntoWell(
+  tree: DockNode,
+  panelIds: readonly string[],
+  active: string | null,
+): DockNode {
+  const well: StackNode | null = findDocumentWell(tree);
+  if (well === null) {
+    return tree;
+  }
+  const carried: readonly string[] = panelIds.filter(
+    (panelId: string): boolean => !well.panels.includes(panelId),
+  );
+  if (carried.length === 0) {
+    return tree;
+  }
+  const panels: readonly string[] = [...well.panels, ...carried];
+  const nextActive: string | null =
+    active !== null && panels.includes(active) ? active : (well.active ?? carried[0]);
+  return replaceNode(tree, well.id, { ...well, panels, active: nextActive });
+}
+
+/**
  * Adds a panel as a tab in the given stack and makes it active.
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to tab into.

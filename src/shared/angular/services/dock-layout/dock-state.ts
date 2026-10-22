@@ -8,6 +8,7 @@ import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
 import {
+  carryIntoWell,
   defaultLayout,
   dockEdge,
   dockNodeEdge,
@@ -349,11 +350,16 @@ export class DockState {
   }
 
   /**
-   * Restores the seeded default layout, discarding the current arrangement.
+   * Restores the seeded default layout, discarding the current arrangement. Documents named to carry
+   * are seated in the new layout's well in the same commit, so one undo restores the whole switch;
+   * when the new layout has no well they are left out, and the caller is expected to have resolved
+   * their unsaved changes first.
+   * @param carry The identifiers of the document panels to carry into the new layout's well.
+   * @param active The carried panel to make the well's active tab, or null to keep the well's own.
    */
-  public reset(): void {
-    this.log.info('DockState', `Reset layout to seeded default`, this.persistKey);
-    this.commit(this.createLayout());
+  public reset(carry: readonly string[] = [], active: string | null = null): void {
+    this.log.info('DockState', `Reset layout to seeded default`, this.persistKey, carry.length);
+    this.commit(carryIntoWell(this.createLayout(), carry, active));
   }
 
   /**

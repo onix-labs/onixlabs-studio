@@ -64,6 +64,52 @@ describe('markdown-blocks', () => {
     expect(html).toContain('<img src="x">');
   });
 
+  it('renderMarkdownBlocks_whenABlockquoteOpensWithAnAlertMarker_rendersTheEditorsAlertBox', () => {
+    const html: string = renderMarkdownBlocks('> [!WARNING]\n> Mind the **gap**.')
+      .map((block: MarkdownBlock): string => (block.kind === 'html' ? block.html : ''))
+      .join('');
+
+    expect(html).toContain('<div class="github-alert github-alert-warning">');
+    expect(html).toContain('<span class="alert-icon ph-duotone ph-warning" aria-hidden="true">');
+    expect(html).toContain('<div class="alert-content"><p>Mind the <strong>gap</strong>.</p>');
+    expect(html).not.toContain('[!WARNING]');
+    expect(html).not.toContain('<blockquote');
+  });
+
+  it('renderMarkdownBlocks_whenABlockquoteHasNoMarker_staysABlockquote', () => {
+    const html: string = renderMarkdownBlocks('> Just a quote [!NOTE] in passing.')
+      .map((block: MarkdownBlock): string => (block.kind === 'html' ? block.html : ''))
+      .join('');
+
+    expect(html).toContain('<blockquote>');
+    expect(html).not.toContain('github-alert');
+  });
+
+  it('renderMarkdownBlocks_whenACollapsibleSectionWrapsMarkdown_keepsDetailsAndSummary', () => {
+    const html: string = renderMarkdownBlocks(
+      '<details>\n<summary>More</summary>\n\nHidden **text**.\n\n</details>',
+    )
+      .map((block: MarkdownBlock): string => (block.kind === 'html' ? block.html : ''))
+      .join('');
+
+    expect(html).toMatch(
+      /<details>\s*<summary>More<\/summary>[\s\S]*<strong>text<\/strong>[\s\S]*<\/details>/,
+    );
+  });
+
+  it('renderMarkdownBlocks_whenATaskListIsPresent_keepsItsTicksAsInertMarkers', () => {
+    const html: string = renderMarkdownBlocks('- [ ] to do\n- [x] done')
+      .map((block: MarkdownBlock): string => (block.kind === 'html' ? block.html : ''))
+      .join('');
+
+    // The checkbox is an input, which the transcript never renders; the marker stands in for it.
+    expect(html).not.toContain('<input');
+    expect(html).toContain('<span class="markdown-task" role="img" aria-label="Not done"></span>');
+    expect(html).toContain(
+      '<span class="markdown-task markdown-task--done" role="img" aria-label="Done"></span>',
+    );
+  });
+
   it('renderMarkdownBlocks_whenProseSurroundsAFence_splitsThemIntoOrderedBlocks', () => {
     const blocks: MarkdownBlock[] = renderMarkdownBlocks(
       'Before\n\n```js\nconst a = 1;\n```\n\nAfter',

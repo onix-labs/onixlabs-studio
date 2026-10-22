@@ -123,9 +123,18 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenGeneralView_rendersARowPerGlobalControl', () => {
-    // Auto-scroll, report-background-tasks, remote-control notifications, token cap, run timeout,
-    // session lifetime, agent shell.
-    expect(host.querySelectorAll('app-setting-row').length).toBe(7);
+    // Auto-scroll, conversation text size, report-background-tasks, remote-control notifications,
+    // token cap, run timeout, session lifetime, agent shell.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(8);
+  });
+
+  it('render_whenGeneralView_offersTheConversationTextSizes', () => {
+    const select: HTMLSelectElement = rowSelect('Conversation text size');
+
+    expect(
+      Array.from(select.options).map((option: HTMLOptionElement): string => option.text.trim()),
+    ).toEqual(['Small', 'Medium', 'Large']);
+    expect(TestBed.inject(Settings).aiConversationTextSize()).toBe('medium');
   });
 
   it('render_whenSecurityView_rendersThePermissionPostureRow', () => {

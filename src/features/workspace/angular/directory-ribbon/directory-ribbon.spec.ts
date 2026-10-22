@@ -1105,6 +1105,17 @@ describe('DirectoryRibbon', () => {
       );
     }
 
+    /**
+     * Lets a layout switch settle: the store asks the workspace before it switches, so a switch lands
+     * a few microtasks after the command that starts it.
+     * @returns Returns a promise that resolves once pending microtasks have run.
+     */
+    function settle(): Promise<void> {
+      return new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve);
+      });
+    }
+
     it('seedsALayoutPerTemplate_soAFirstRunHasNoBuiltInsToExplain', () => {
       expect(
         internals()
@@ -1114,7 +1125,7 @@ describe('DirectoryRibbon', () => {
       expect(internals().defaultLayoutId()).toBe(idOf('Default'));
     });
 
-    it('theBigButtonAppliesTheDefaultLayout_whateverIsShowing', () => {
+    it('theBigButtonAppliesTheDefaultLayout_whateverIsShowing', async (): Promise<void> => {
       const customId: string = saveAs('Custom', false);
       // Saving made the new layout this root's pick, so applying the default moves off it.
       expect(
@@ -1124,6 +1135,7 @@ describe('DirectoryRibbon', () => {
       ).toBe(customId);
 
       internals().onApplyDefaultLayout();
+      await settle();
 
       expect(
         internals()
@@ -1146,10 +1158,11 @@ describe('DirectoryRibbon', () => {
       );
     });
 
-    it('theStatusNameFollowsTheShowingLayout_whileTheButtonFaceStaysDefault', () => {
+    it('theStatusNameFollowsTheShowingLayout_whileTheButtonFaceStaysDefault', async (): Promise<void> => {
       expect(internals().activeLayoutName()).toBe('Default');
 
       internals().onSelectLayout(idOf('Version Control'));
+      await settle();
 
       expect(internals().activeLayoutName()).toBe('Version Control');
       // The default is unmoved: switching to a layout is not choosing it as the default.
@@ -1178,8 +1191,9 @@ describe('DirectoryRibbon', () => {
       ]);
     });
 
-    it('saveAs_offersTheShowingLayoutsName_soSavingOverItIsTheDefaultGesture', () => {
+    it('saveAs_offersTheShowingLayoutsName_soSavingOverItIsTheDefaultGesture', async (): Promise<void> => {
       internals().onSelectLayout(idOf('Version Control'));
+      await settle();
 
       internals().onSaveLayoutAs();
 
@@ -1332,8 +1346,9 @@ describe('DirectoryRibbon', () => {
       expect(internals().manageOpen()).toBe(false);
     });
 
-    it('manage_settingTheDefault_leavesAWorkspaceThatHasChosenForItselfAlone', () => {
+    it('manage_settingTheDefault_leavesAWorkspaceThatHasChosenForItselfAlone', async (): Promise<void> => {
       internals().onSelectLayout(idOf('Default'));
+      await settle();
 
       internals().onSetDefaultLayout(idOf('Version Control'));
 
