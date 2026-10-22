@@ -11,7 +11,8 @@ import { homedir } from 'node:os';
 import * as pty from 'node-pty';
 import type { ClaudeAuthStatus, ClaudeLoginStatus } from '@shared/api/ai-types';
 import { logger } from '../logger';
-import { resolveBundledClaudeExecutable, resolveExecutableOnPath } from './claude-executable';
+import { pluginStore } from '../contributions/plugins/contributed';
+import { resolveExecutableOnPath, resolvePluginClaudeExecutable } from './claude-executable';
 import { extractLoginUrl, parseLoggedIn } from './claude-login-parse';
 
 /**
@@ -22,14 +23,23 @@ import { extractLoginUrl, parseLoggedIn } from './claude-login-parse';
 const MAX_OUTPUT_CHARS: number = 16_384;
 
 /**
+ * Identifies the Claude plugin, whose own copy of the CLI sign-in borrows.
+ */
+const CLAUDE_PLUGIN_ID: string = 'onixlabs.claude-harness';
+
+/**
  * Resolves the `claude` executable used for login and the status check. The system CLI on the PATH is
- * preferred (it is the full CLI with the `auth` subcommand and self-updates), falling back to the CLI
- * bundled with a packaged build, and finally to the bare name for the OS to resolve. Any of them writes
+ * preferred (it is the full CLI with the `auth` subcommand and self-updates), falling back to the copy
+ * the Claude plugin installed, and finally to the bare name for the OS to resolve. Any of them writes
  * to the same shared credential store, so which one performs the login does not matter.
  * @returns Returns the executable path or name.
  */
 function resolveLoginExecutable(): string {
-  return resolveExecutableOnPath('claude') ?? resolveBundledClaudeExecutable() ?? 'claude';
+  return (
+    resolveExecutableOnPath('claude') ??
+    resolvePluginClaudeExecutable(pluginStore().get(CLAUDE_PLUGIN_ID)?.installedPath ?? null) ??
+    'claude'
+  );
 }
 
 /**
