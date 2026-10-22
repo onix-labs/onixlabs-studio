@@ -1,50 +1,14 @@
-// Resolves the bundled Claude Code native CLI binary for the Agent SDK in a packaged build.
+// Finds a `claude` CLI for Studio's own Claude sign-in (claude-login.ts).
 //
-// The SDK ships the CLI as a per-platform native binary (@anthropic-ai/claude-agent-sdk-<plat>-<arch>)
-// and, left to its own devices, resolves it relative to its own module location. In a packaged build
-// that location is inside `app.asar`, and a native binary cannot be executed from inside the archive
-// (the OS sees `app.asar` as a file, so spawning a path *through* it fails with ENOTDIR). The
-// electron-builder config `asarUnpack`s the binary so a runnable copy lives under `app.asar.unpacked`;
-// this resolver returns that path for the agent provider to pass as `pathToClaudeCodeExecutable`.
-//
-// In development (unpackaged) it returns undefined so the SDK uses its own resolution, which works
-// because the binary is a real file in node_modules.
-//
-// Validated in issue #141 (packaged macOS x64); see docs/spikes/packaging-cli-spawn.md. The consuming
-// agent provider lands with the AI agent epic (#106).
+// Studio ships no Claude CLI of its own: running Claude is the Claude plugin's job, and the plugin
+// installs the Agent SDK — and with it the native `claude` binary — into its own directory. Sign-in
+// uses the CLI on the PATH when there is one, and otherwise borrows the plugin's copy, so someone
+// without Claude Code installed can still sign in once the plugin is installed. A Claude login only
+// exists once the plugin is, so its copy is there whenever sign-in needs it.
 
 import { accessSync, constants, existsSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
-import { app } from 'electron';
-import type { ClaudeExecutableChoice } from '@shared/api/ai-types';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { logger } from '../logger';
-
-/**
- * Resolves the absolute path to the unpacked Claude Code CLI binary in a packaged build.
- * @returns Returns the unpacked binary path when packaged and present, or undefined to let the Agent
- * SDK resolve the binary itself (the correct behaviour in development).
- */
-export function resolveBundledClaudeExecutable(): string | undefined {
-  if (app?.isPackaged !== true) {
-    return undefined;
-  }
-  const binaryPackage: string = `claude-agent-sdk-${process.platform}-${process.arch}`;
-  const unpacked: string = join(
-    process.resourcesPath,
-    'app.asar.unpacked',
-    'node_modules',
-    '@anthropic-ai',
-    binaryPackage,
-    'claude',
-  );
-  const present: boolean = existsSync(unpacked);
-  if (present) {
-    logger.debug('claude-executable', `Resolved unpacked Claude CLI: ${unpacked}`);
-  } else {
-    logger.warn('claude-executable', `Unpacked Claude CLI not found at ${unpacked}`);
-  }
-  return present ? unpacked : undefined;
-}
 
 /**
  * Finds an executable of the given name on the PATH, returning the first runnable match or undefined.
@@ -74,40 +38,42 @@ export function resolveExecutableOnPath(name: string): string | undefined {
 }
 
 /**
- * Resolves the Claude Code CLI the agent harness should spawn from the user's choice, for the SDK's
- * `pathToClaudeCodeExecutable` option. Falls back to the bundled resolution (undefined in development,
- * the unpacked path when packaged) when `system` finds nothing on the PATH or `custom` names a path
- * that does not exist — so a misconfiguration degrades gracefully rather than failing the run.
- * @param choice The user's CLI choice, or undefined for the bundled default.
- * @returns Returns the absolute executable path, or undefined to let the SDK use its bundled CLI.
+ * Finds the `claude` binary inside the Claude plugin's installation: the Agent SDK's per-platform
+ * package (`@anthropic-ai/claude-agent-sdk-<platform>-<arch>`) beside the plugin's own package, in the
+ * same `node_modules`.
+ * @param installedPath The plugin's installed entry point, as its install record holds it, or null when
+ * the plugin is not installed.
+ * @param platform The platform to resolve for.
+ * @param arch The architecture to resolve for.
+ * @returns Returns the binary's path, or undefined when the plugin or its binary is not there.
  */
-export function resolveClaudeExecutable(
-  choice: ClaudeExecutableChoice | undefined,
+export function resolvePluginClaudeExecutable(
+  installedPath: string | null,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
 ): string | undefined {
-  if (choice === undefined || choice.mode === 'bundled') {
-    logger.trace('claude-executable', 'Resolving bundled Claude CLI');
-    return resolveBundledClaudeExecutable();
+  if (installedPath === null) {
+    return undefined;
   }
-  if (choice.mode === 'system') {
-    const onPath: string | undefined = resolveExecutableOnPath('claude');
-    if (onPath !== undefined) {
-      logger.debug('claude-executable', `Resolved system Claude CLI on PATH: ${onPath}`);
-      return onPath;
+  // The entry point sits at `<install>/node_modules/@onixlabs/claude-harness/main.js`; walk up to the
+  // `node_modules` that holds it.
+  let directory: string = dirname(installedPath);
+  while (basename(directory) !== 'node_modules') {
+    const parent: string = dirname(directory);
+    if (parent === directory) {
+      return undefined;
     }
-    logger.warn(
-      'claude-executable',
-      'System Claude CLI not found on PATH; falling back to bundled',
-    );
-    return resolveBundledClaudeExecutable();
+    directory = parent;
   }
-  const custom: string = choice.path.trim();
-  if (custom.length > 0 && existsSync(custom)) {
-    logger.debug('claude-executable', `Resolved custom Claude CLI: ${custom}`);
-    return custom;
-  }
-  logger.warn(
-    'claude-executable',
-    `Custom Claude CLI '${custom}' not found; falling back to bundled`,
+  const binary: string = join(
+    directory,
+    '@anthropic-ai',
+    `claude-agent-sdk-${platform}-${arch}`,
+    platform === 'win32' ? 'claude.exe' : 'claude',
   );
-  return resolveBundledClaudeExecutable();
+  if (!existsSync(binary)) {
+    logger.warn('claude-executable', `Claude plugin's CLI not found at ${binary}`);
+    return undefined;
+  }
+  return binary;
 }

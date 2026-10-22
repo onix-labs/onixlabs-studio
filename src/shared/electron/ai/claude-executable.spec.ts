@@ -1,8 +1,8 @@
 import { afterEach } from 'vitest';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveClaudeExecutable, resolveExecutableOnPath } from './claude-executable';
+import { resolveExecutableOnPath, resolvePluginClaudeExecutable } from './claude-executable';
 
 /**
  * Creates a temporary directory holding an executable `claude` stub, returning both paths.
@@ -49,31 +49,57 @@ describe('claude-executable', () => {
     });
   });
 
-  describe('resolveClaudeExecutable', () => {
-    it('resolveClaudeExecutable_whenBundledOrUndefined_returnsUndefinedUnderTestRunner', () => {
-      // Under the test runner Electron's `app` is unavailable, so the bundled resolution yields
-      // undefined (letting the SDK resolve its own CLI).
-      expect(resolveClaudeExecutable(undefined)).toBeUndefined();
-      expect(resolveClaudeExecutable({ mode: 'bundled', path: '' })).toBeUndefined();
-    });
+  describe('resolvePluginClaudeExecutable', () => {
+    /**
+     * Lays out a Claude plugin install the way the Plugin Manager provisions one: the harness's entry
+     * point and the Agent SDK's per-platform package side by side in one `node_modules`.
+     * @param platformPackage The SDK platform package to create, or null for none.
+     * @param binary The binary's file name.
+     * @returns Returns the install root, the entry point, and the binary's expected path.
+     */
+    function makeInstall(
+      platformPackage: string | null,
+      binary: string = 'claude',
+    ): { root: string; entry: string; bin: string } {
+      const root: string = mkdtempSync(join(tmpdir(), 'claude-plugin-'));
+      const modules: string = join(root, '0.15.0', 'darwin-arm64', 'node_modules');
+      const entry: string = join(modules, '@onixlabs', 'claude-harness', 'main.js');
+      mkdirSync(join(modules, '@onixlabs', 'claude-harness'), { recursive: true });
+      writeFileSync(entry, '');
+      const bin: string = join(modules, '@anthropic-ai', platformPackage ?? 'none', binary);
+      if (platformPackage !== null) {
+        mkdirSync(join(modules, '@anthropic-ai', platformPackage), { recursive: true });
+        writeFileSync(bin, '');
+      }
+      return { root, entry, bin };
+    }
 
-    it('resolveClaudeExecutable_whenCustomPathExists_usesIt', () => {
-      expect(resolveClaudeExecutable({ mode: 'custom', path: process.execPath })).toBe(
-        process.execPath,
-      );
-    });
-
-    it('resolveClaudeExecutable_whenCustomPathMissing_fallsBackToBundled', () => {
-      expect(resolveClaudeExecutable({ mode: 'custom', path: '/no/such/claude' })).toBeUndefined();
-    });
-
-    it('resolveClaudeExecutable_whenSystem_findsClaudeOnThePath', () => {
-      const { dir, bin } = makeClaudeDir();
-      process.env['PATH'] = dir;
+    it('resolvePluginClaudeExecutable_findsThePluginsOwnCopyBesideItsEntryPoint', () => {
+      const { root, entry, bin } = makeInstall('claude-agent-sdk-darwin-arm64');
       try {
-        expect(resolveClaudeExecutable({ mode: 'system', path: '' })).toBe(bin);
+        expect(resolvePluginClaudeExecutable(entry, 'darwin', 'arm64')).toBe(bin);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('resolvePluginClaudeExecutable_onWindows_findsClaudeExe', () => {
+      const { root, entry, bin } = makeInstall('claude-agent-sdk-win32-x64', 'claude.exe');
+      try {
+        expect(resolvePluginClaudeExecutable(entry, 'win32', 'x64')).toBe(bin);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('resolvePluginClaudeExecutable_withoutThePluginOrItsBinary_findsNothing', () => {
+      const { root, entry } = makeInstall(null);
+      try {
+        expect(resolvePluginClaudeExecutable(null)).toBeUndefined();
+        expect(resolvePluginClaudeExecutable(entry, 'darwin', 'arm64')).toBeUndefined();
+        expect(resolvePluginClaudeExecutable('/not/in/a/node_modules/main.js')).toBeUndefined();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
       }
     });
   });
