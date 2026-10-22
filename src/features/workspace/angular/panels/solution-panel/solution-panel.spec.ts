@@ -925,7 +925,6 @@ describe('SolutionPanel', () => {
       expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
-        'changes-only',
       ]);
     });
 
@@ -934,7 +933,6 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': true,
         'git-status': true,
-        'changes-only': false,
       });
 
       solution.followsActiveDocument.set(false);
@@ -942,7 +940,6 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': false,
         'git-status': true,
-        'changes-only': false,
       });
     });
 

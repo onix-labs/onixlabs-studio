@@ -28,9 +28,10 @@ export class MissionControl {
   >(new Map<string, number>());
 
   /**
-   * Holds whether empty agent tiles (no conversation, not running) are hidden.
+   * Holds whether empty agent tiles (no conversation, not running) are hidden. On by default: an empty
+   * column has nothing to watch, so Mission Control opens on the agents that do.
    */
-  private readonly hideEmptyState: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly hideEmptyState: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
    * Holds whether idle agent tiles (a settled conversation awaiting the next prompt) are hidden.

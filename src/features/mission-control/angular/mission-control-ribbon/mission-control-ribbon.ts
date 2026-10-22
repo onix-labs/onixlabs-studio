@@ -12,8 +12,6 @@ import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
@@ -67,14 +65,7 @@ const POSTURES: readonly PostureChoice[] = [
  */
 @Component({
   selector: 'app-mission-control-ribbon',
-  imports: [
-    RibbonStripOverflow,
-    RibbonStripGroup,
-    RibbonStripColumn,
-    RibbonStripButton,
-    RibbonStripButtonSmall,
-    AgentRemoteModal,
-  ],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, AgentRemoteModal],
   templateUrl: './mission-control-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,

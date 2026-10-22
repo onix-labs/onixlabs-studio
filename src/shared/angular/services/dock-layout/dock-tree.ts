@@ -247,6 +247,37 @@ export function findPrimaryStack(tree: DockNode): StackNode | null {
 }
 
 /**
+ * Finds the stack that collapsed to give a document well its space (see {@link StackNode.yielded}).
+ * @param tree The root of the tree to search.
+ * @returns Returns the yielded stack, or null when none has.
+ */
+function findYieldedStack(tree: DockNode): StackNode | null {
+  if (isStackNode(tree)) {
+    return tree.yielded === true ? tree : null;
+  }
+  for (const child of tree.children) {
+    const found: StackNode | null = findYieldedStack(child);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Expands a stack in place, forgetting the edge it hugged while collapsed and that it collapsed to
+ * make way for documents.
+ * @param stack The stack to expand.
+ * @returns Returns the expanded copy.
+ */
+function expanded(stack: StackNode): StackNode {
+  const next: StackNode = { ...stack, collapsed: false };
+  delete (next as { side?: DockSide }).side;
+  delete (next as { yielded?: boolean }).yielded;
+  return next;
+}
+
+/**
  * Finds the first document well other than the one with the given id, used to hand the centre anchor
  * to a survivor when the primary slot is pruned.
  * @param tree The root of the tree to search.
@@ -286,6 +317,24 @@ export function pruneStack(tree: DockNode, stack: StackNode): DockNode {
   if (stack.panels.length > 0) {
     return tree;
   }
+  // The last well emptying gives the space back to a panel that collapsed to make way for it: the
+  // panel expands, and so becomes the home the well can prune in favour of.
+  let working: DockNode = tree;
+  const yielded: StackNode | null = findYieldedStack(tree);
+  if (stack.role === 'document' && yielded !== null && countStacks(tree, 'document') === 1) {
+    working = replaceNode(tree, yielded.id, expanded(yielded));
+  }
+  return pruneEmptyStack(working, stack);
+}
+
+/**
+ * Removes an empty stack from the tree, or keeps it as the last documents-home (see
+ * {@link pruneStack}).
+ * @param tree The root of the tree to transform.
+ * @param stack The empty stack to consider pruning.
+ * @returns Returns the transformed tree.
+ */
+function pruneEmptyStack(tree: DockNode, stack: StackNode): DockNode {
   // Does a documents-home survive removing this empty stack? Either another document well, or another
   // primary (centre) slot that can host a document. A collapsed primary is discounted: it is a gutter
   // strip, so it can neither host a document nor take over the space this stack would give up.
@@ -343,27 +392,48 @@ export function occupyWell(tree: DockNode, stackId: string, panelId: string): Do
 }
 
 /**
- * Splits a fresh document well off a tool-occupied centre: wraps the occupied stack in a new row
- * split with the well (holding the given document) on the left at an even 50/50 share. The centre
- * anchor stays on the tool, so the well is an ordinary (non-primary) well — closing its last document
- * prunes it and lets the tool refill the centre, mirroring how two split document wells collapse. This
- * runs when a document is opened while a tool holds the centre and no well exists. The call is ignored
- * when the target is not a stack.
+ * Identifies where a document well split off a tool-occupied centre goes: `row` beside the tool (on
+ * its left), `col` above it, or `collapse` beside it with the tool collapsed to a strip on the right,
+ * so the well takes the whole space and the tool can still be peeked at.
+ */
+export type WellSplit = 'row' | 'col' | 'collapse';
+
+/**
+ * Splits a fresh document well off a tool-occupied centre: wraps the occupied stack in a new split
+ * with the well (holding the given document) first, at an even 50/50 share — side by side, stacked,
+ * or with the tool collapsed out of the way, as the placement says. The centre anchor stays on the
+ * tool, so the well is an ordinary (non-primary) well — closing its last document prunes it and lets
+ * the tool refill the centre (expanding it again, when it collapsed for the well), mirroring how two
+ * split document wells collapse. This runs when a document is opened while a tool holds the centre and
+ * no well exists. The call is ignored when the target is not a stack.
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the tool-occupied centre to split against.
  * @param panelId The identifier of the document panel to seat in the new well.
+ * @param placement Where the well goes relative to the tool.
  * @returns Returns the transformed tree.
  */
-export function splitWellBeside(tree: DockNode, stackId: string, panelId: string): DockNode {
+export function splitWellBeside(
+  tree: DockNode,
+  stackId: string,
+  panelId: string,
+  placement: WellSplit = 'row',
+): DockNode {
   const target: DockNode | null = findNode(tree, stackId);
   if (target === null || !isStackNode(target)) {
     return tree;
   }
   const well: StackNode = mkStack('document', [panelId], false);
-  // Wrap the (still primary) tool stack in a fresh row split, well on the left, both at weight one
-  // (50/50), regardless of the parent's orientation — so the ratio is exactly the documented default.
-  const split: DockNode = wrap(target, well, 'row', true);
-  return replaceNode(tree, stackId, split);
+  // Wrap the (still primary) tool stack in a fresh split, well first, both at weight one (50/50),
+  // regardless of the parent's orientation — so the ratio is exactly the documented default.
+  if (placement === 'collapse') {
+    // A tool already collapsed keeps its own edge, and is not the one to hand the space back to.
+    const tool: StackNode =
+      target.collapsed === true
+        ? target
+        : { ...target, collapsed: true, side: 'right', yielded: true };
+    return replaceNode(tree, stackId, wrap(tool, well, 'row', true));
+  }
+  return replaceNode(tree, stackId, wrap(target, well, placement, true));
 }
 
 /**
@@ -415,6 +485,7 @@ export function carryIntoWell(
  * @param tree The root of the tree to transform.
  * @param panelIds The identifiers of the document panels to seat, in tab order.
  * @param active The panel to make the well's active tab, or null to keep the well's own.
+ * @param placement Where a fresh well goes relative to the centre (see {@link splitWellBeside}).
  * @returns Returns the transformed tree, or the original tree when there is nothing to seat or no
  * stack to seat it beside.
  */
@@ -422,6 +493,7 @@ export function seatDocuments(
   tree: DockNode,
   panelIds: readonly string[],
   active: string | null,
+  placement: WellSplit = 'row',
 ): DockNode {
   if (panelIds.length === 0) {
     return tree;
@@ -434,7 +506,7 @@ export function seatDocuments(
     return tree;
   }
   const [first, ...rest] = panelIds;
-  return carryIntoWell(splitWellBeside(tree, centre.id, first), rest, active);
+  return carryIntoWell(splitWellBeside(tree, centre.id, first, placement), rest, active);
 }
 
 /**
@@ -496,6 +568,8 @@ export function setCollapsed(
   // Drop any previously remembered edge before re-adding it, so expanding leaves no stale side behind.
   const next: StackNode = { ...target, collapsed };
   delete (next as { side?: DockSide }).side;
+  // Collapsed or expanded by hand, the stack is no longer one waiting for the documents to leave.
+  delete (next as { yielded?: boolean }).yielded;
   return replaceNode(tree, stackId, collapsed && side !== undefined ? { ...next, side } : next);
 }
 

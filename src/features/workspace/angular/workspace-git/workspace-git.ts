@@ -216,6 +216,26 @@ export class WorkspaceGit {
   public readonly isRepository: Signal<boolean> = this.boundSignal.asReadonly();
 
   /**
+   * Holds whether the bound repository's status has been read yet, so a repository that has only just
+   * been bound is not mistaken for one with nothing changed.
+   */
+  private readonly statusReadSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the bound repository's status has been read, so
+   * {@link hasChanges} speaks for it.
+   */
+  public readonly statusRead: Signal<boolean> = this.statusReadSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether anything in the working tree is changed — untracked, added,
+   * modified or conflicted; ignored paths are not changes (#1053).
+   */
+  public readonly hasChanges: Signal<boolean> = computed((): boolean =>
+    Array.from(this.pathState().values()).some(isChangedState),
+  );
+
+  /**
    * Gets a value indicating whether the open folder is a repository the user has not trusted, so
    * version control is kept out of it and the panels say so.
    */
@@ -325,6 +345,7 @@ export class WorkspaceGit {
     this.changedDirs.set(dirs);
     this.revertable.set(revertableKeys(root, status, states));
     this.branchSignal.set(status.branch);
+    this.statusReadSignal.set(true);
   }
 
   /**
@@ -710,6 +731,7 @@ export class WorkspaceGit {
     this.provider = null;
     this.pathAlias = null;
     this.boundSignal.set(false);
+    this.statusReadSignal.set(false);
     this.restrictedRoot.set(null);
     this.pathState.set(new Map<string, ExplorerScmState>());
     this.wholeDirs.set(new Map<string, ExplorerScmState>());

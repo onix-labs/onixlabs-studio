@@ -59,7 +59,8 @@ function isPersistedNode(value: unknown): value is DockNode {
       (node['active'] === null || typeof node['active'] === 'string') &&
       (node['collapsed'] === undefined || typeof node['collapsed'] === 'boolean') &&
       (node['side'] === undefined || DOCK_SIDES.includes(node['side'] as DockSide)) &&
-      (node['primary'] === undefined || typeof node['primary'] === 'boolean')
+      (node['primary'] === undefined || typeof node['primary'] === 'boolean') &&
+      (node['yielded'] === undefined || typeof node['yielded'] === 'boolean')
     );
   }
   if (node['kind'] === 'split') {

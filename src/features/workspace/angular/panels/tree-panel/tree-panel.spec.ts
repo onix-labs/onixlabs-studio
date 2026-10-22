@@ -320,6 +320,8 @@ describe('TreePanel row context menu', () => {
     beforeEach(() => {
       git = TestBed.inject(WorkspaceGit);
       vi.spyOn(git, 'isRepository').mockReturnValue(true);
+      vi.spyOn(git, 'statusRead').mockReturnValue(true);
+      vi.spyOn(git, 'hasChanges').mockReturnValue(true);
       vi.spyOn(git, 'stateFor').mockImplementation((path: string): ExplorerScmState | null =>
         path === '/ws/src/app/main.ts'
           ? 'modified'
@@ -375,33 +377,72 @@ describe('TreePanel row context menu', () => {
       expect(workspace.toggled).toEqual(['/ws/src', '/ws/src/app', '/ws/src', '/ws/src/app']);
     });
 
-    it('withNothingChanged_saysSo_andOffersTheWayBack', () => {
-      vi.spyOn(git, 'stateFor').mockReturnValue(null);
+    it('whenNothingIsChanged_theFilterTurnsItselfOff_andTheTreeShowsEverything', () => {
+      // After a commit, say: rather than an empty tree, the whole tree again.
+      vi.spyOn(git, 'hasChanges').mockReturnValue(false);
       workspace.showsChangesOnly.set(true);
       fixture.detectChanges();
+      TestBed.tick();
 
-      const element: HTMLElement = fixture.nativeElement as HTMLElement;
-      expect(element.textContent).toContain('No changes.');
-      Array.from(element.querySelectorAll('button'))
-        .find((button: HTMLButtonElement): boolean => button.textContent.includes('Show All Files'))
-        ?.click();
       expect(workspace.showsChangesOnly()).toBe(false);
+      expect(shown()).toEqual(['/ws/docs', '/ws/src']);
     });
 
-    it('theSwitch_isOfferedInOptions_andDisabledOutsideARepository', () => {
-      const option: () => MenuItem | undefined = (): MenuItem | undefined =>
+    it('beforeTheStatusIsRead_theFilterStaysOn', () => {
+      // A repository just opened has no status yet; it is not taken for a clean one.
+      vi.spyOn(git, 'statusRead').mockReturnValue(false);
+      vi.spyOn(git, 'hasChanges').mockReturnValue(false);
+      workspace.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(workspace.showsChangesOnly()).toBe(true);
+    });
+
+    it('theSwitch_isAToolStripToggle_notAnOption', () => {
+      // Turned on through the model first: the spied repository check is not reactive, so the strip
+      // reads it again only once a real signal it depends on changes.
+      workspace.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      const toggle: () => HTMLButtonElement | null = (): HTMLButtonElement | null =>
+        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+          'button[aria-label="Show Changed Files Only"]',
+        );
+      expect(toggle()?.getAttribute('aria-pressed')).toBe('true');
+
+      toggle()?.click();
+      fixture.detectChanges();
+      expect(workspace.showsChangesOnly()).toBe(false);
+      expect(toggle()?.getAttribute('aria-pressed')).toBe('false');
+
+      const options: readonly MenuItem[] =
         (component as unknown as { moreItems: () => readonly MenuItem[] })
           .moreItems()
-          .find((item: MenuItem): boolean => item.id === 'options')
-          ?.children?.find((item: MenuItem): boolean => item.id === 'changes-only');
+          .find((item: MenuItem): boolean => item.id === 'options')?.children ?? [];
+      expect(options.map((item: MenuItem): string => item.id)).not.toContain('changes-only');
+    });
 
-      // Mocked before the menu is first read: a mocked signal is not reactive.
+    it('theSwitch_isDisabledWithNothingChanged', () => {
+      vi.spyOn(git, 'hasChanges').mockReturnValue(false);
+      vi.spyOn(git, 'statusRead').mockReturnValue(false);
+      workspace.showsChangesOnly.set(true);
+      workspace.showsChangesOnly.set(false);
+      fixture.detectChanges();
+      const toggle: HTMLButtonElement | null = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLButtonElement>('button[aria-label="Show Changed Files Only"]');
+      expect(toggle?.disabled).toBe(true);
+    });
+
+    it('theSwitch_isDisabledOutsideARepository', () => {
       vi.spyOn(git, 'isRepository').mockReturnValue(false);
-      expect(option()).toMatchObject({
-        label: 'Show Changed Files Only',
-        disabled: true,
-        status: 'not a repository',
-      });
+      workspace.showsChangesOnly.set(true);
+      fixture.detectChanges();
+      const toggle: HTMLButtonElement | null = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLButtonElement>('button[aria-label="Show Changed Files Only"]');
+      expect(toggle?.disabled).toBe(true);
+      expect(toggle?.getAttribute('aria-pressed')).toBe('false');
     });
   });
 
@@ -610,7 +651,6 @@ describe('TreePanel row context menu', () => {
       expect(moreItems()[0].children?.map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
-        'changes-only',
       ]);
     });
 
@@ -643,7 +683,7 @@ describe('TreePanel row context menu', () => {
       expect(workspace.showsGitStatus()).toBe(false);
       expect(
         moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
-      ).toEqual([false, false, false]);
+      ).toEqual([false, false]);
     });
 
     it('showGitStatus_off_dropsTheRowColours', async () => {
