@@ -155,6 +155,8 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
 import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
+import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -257,6 +259,10 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     // the checkout this view shows, which a container keeps one view alive for each of.
     WorktreeRepository,
     { provide: REPOSITORY_WORKTREES, useExisting: WorktreeRepository },
+    // The file paths this tab's terminals print, linked to this tab's files and opened in its well
+    // (#1061). Per view, beside the FileOpener and Workspace it reads through.
+    WorkspaceTerminalPathLinks,
+    { provide: TERMINAL_PATH_LINKS, useExisting: WorkspaceTerminalPathLinks },
     // The forge's view of this tab's repository (pull requests, issues, CI runs). Per view, beside
     // Repository: a dock panel is destroyed when another tool in its stack activates, so state owned
     // by the panel would be re-fetched on every tool switch against a rate-limited API.

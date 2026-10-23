@@ -1,1 +1,15 @@
-<div #container class="terminal"></div>
+<div #container class="terminal" (contextmenu)="onContextMenu($event)"></div>
+<!--
+  A link is drawn on xterm's canvas, not as an element, so its hover hint needs something to stand
+  on: this anchor is moved over the link under the pointer, and its tooltip opened from code.
+-->
+<span #linkAnchor class="terminal__link-anchor" [appTooltip]="linkTooltip()"></span>
+<!--
+  A link's right-click menu, opened at the pointer from code like the editor's: the trigger never
+  gets a right-click of its own.
+-->
+<app-menu #linkMenu [itemsFor]="linkMenuItemsFor" (chosen)="onLinkMenuChosen($event)" />
+<span
+  class="terminal__link-menu-trigger"
+  [cdkContextMenuTriggerFor]="linkMenu.panel() ?? null"
+></span>

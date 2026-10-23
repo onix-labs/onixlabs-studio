@@ -1,6 +1,8 @@
+import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   effect,
   ElementRef,
@@ -18,11 +20,20 @@ import {
 import { FitAddon } from '@xterm/addon-fit';
 import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
+import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Log } from '@shared/angular/services/log/log';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import {
+  TERMINAL_PATH_LINKS,
+  TerminalPathLinks,
+} from '@shared/angular/services/terminal-path-links/terminal-path-links';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
+import { TerminalLinkDecorator } from './terminal-link-decorator';
+import { TerminalLinkProvider, TerminalLinkTarget } from './terminal-link-provider';
 
 /**
  * The interrupt character (Ctrl+C). The single keystroke a read-only `task` pane forwards to its
@@ -64,6 +75,25 @@ const MIN_FIT_HEIGHT_PX: number = 20;
 const RESIZE_DEBOUNCE_MS: number = 100;
 
 /**
+ * Holds how long the shell's working directory is trusted once read, in milliseconds. Hovering along
+ * a compiler's output resolves path after path against it; reading it is a process lookup on macOS.
+ */
+const CWD_TTL_MS: number = 2000;
+
+/**
+ * Holds the colour links are drawn in when the info colour cannot be read as `#RRGGBB` — its value
+ * in the stylesheet as written.
+ */
+const LINK_COLOUR_FALLBACK: string = '#0dcaec';
+
+/**
+ * The shape of the context the link menu is opened with: the link right-clicked rides as `$implicit`.
+ */
+interface LinkMenuContext {
+  $implicit: TerminalLinkTarget | undefined;
+}
+
+/**
  * Represents the shared terminal pane: an xterm.js instance wired to a main-process node-pty session
  * through the {@link TerminalBridge}. It is the reusable capability wrapper consumed by the terminal
  * feature view and by docked terminal panels; it renders and drives a single terminal and nothing
@@ -75,6 +105,7 @@ const RESIZE_DEBOUNCE_MS: number = 100;
  */
 @Component({
   selector: 'app-terminal',
+  imports: [TooltipTrigger, Menu, CdkContextMenuTrigger],
   templateUrl: './terminal.html',
   styleUrl: './terminal.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -100,6 +131,30 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the shell service, through which a link's address opens in the browser: the main process
+   * opens only web addresses, so the terminal never launches anything itself.
+   */
+  private readonly shellService: Shell = inject(Shell);
+
+  /**
+   * Holds what links the file paths this terminal prints, or null outside a view that has somewhere
+   * to open a file — such a terminal links web addresses only.
+   */
+  private readonly pathLinks: TerminalPathLinks | null = inject(TERMINAL_PATH_LINKS, {
+    optional: true,
+  });
+
+  /**
+   * Holds the change detector, run before a link's hint opens so the hint reads the link's text.
+   */
+  private readonly changeDetector: ChangeDetectorRef = inject(ChangeDetectorRef);
+
+  /**
+   * Holds the pane's own element, against which a link's hint anchor is positioned.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -174,6 +229,70 @@ export class Terminal implements AfterViewInit, OnDestroy {
     viewChild.required<ElementRef<HTMLDivElement>>('container');
 
   /**
+   * Holds the box a link's hover hint is placed against, moved over the link under the pointer.
+   */
+  private readonly linkAnchor: Signal<ElementRef<HTMLSpanElement>> =
+    viewChild.required<ElementRef<HTMLSpanElement>>('linkAnchor');
+
+  /**
+   * Holds the tooltip on {@link linkAnchor}, opened from code.
+   */
+  private readonly linkAnchorTooltip: Signal<TooltipTrigger> =
+    viewChild.required<TooltipTrigger>(TooltipTrigger);
+
+  /**
+   * Holds the trigger that opens a link's right-click menu at the pointer.
+   */
+  private readonly linkMenuTrigger: Signal<CdkContextMenuTrigger> =
+    viewChild.required<CdkContextMenuTrigger>(CdkContextMenuTrigger);
+
+  /**
+   * Holds the text of the hint for the link under the pointer.
+   */
+  protected readonly linkTooltip: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the one context object the link menu's trigger is given; CDK reuses the portal it builds on
+   * the first open, so each right-click's link is moved into this object (see `MenuSubject`).
+   */
+  private readonly linkMenuContext: LinkMenuContext = { $implicit: undefined };
+
+  /**
+   * Holds the link under the pointer, or null when the pointer is on none. A right-click here opens
+   * the link's menu; anywhere else it does what it always did.
+   */
+  private hoveredLink: TerminalLinkTarget | null = null;
+
+  /**
+   * Holds the shell's working directory as last read, and when, so a run of hovers reads it once.
+   */
+  private cwdCache: { readonly at: number; readonly cwd: Promise<string | null> } | null = null;
+
+  /**
+   * Resolves the rows of a link's right-click menu: open, and copy what it points at. Choosing a
+   * browser for a link waits on #1060.
+   * @param data The trigger's data: the link right-clicked.
+   * @returns Returns the rows.
+   */
+  protected readonly linkMenuItemsFor: (data: unknown) => readonly MenuItem[] = (
+    data: unknown,
+  ): readonly MenuItem[] => {
+    const target: TerminalLinkTarget | undefined = data as TerminalLinkTarget | undefined;
+    if (target === undefined) {
+      return [];
+    }
+    return target.kind === 'url'
+      ? [
+          { id: 'open', label: 'Open Link' },
+          { id: 'copy', label: 'Copy Link Address' },
+        ]
+      : [
+          { id: 'open', label: 'Open File' },
+          { id: 'copy', label: 'Copy Path' },
+        ];
+  };
+
+  /**
    * Holds a value indicating whether the xterm instance and PTY session are initialised.
    */
   private readonly terminalReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -200,6 +319,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * (including scrollback), or null before initialisation.
    */
   private searchAddon: SearchAddon | null = null;
+
+  /**
+   * Holds what draws the links in the output in their colour, or null before initialisation.
+   */
+  private linkDecorator: TerminalLinkDecorator | null = null;
 
   /**
    * Holds the listener notified whenever the search results change, or null when no find panel is
@@ -301,6 +425,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
     if (!this.persistent()) {
       void this.bridge.dispose(this.terminalId());
     }
+    this.linkDecorator?.dispose();
+    this.linkDecorator = null;
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -581,7 +707,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // scrollback, so the fresh session starts from a clean record rather than replaying the old one.
     await this.bridge.dispose(id);
     this.hasExited = false;
+    this.leaveLink();
+    this.cwdCache = null;
 
+    this.linkDecorator?.dispose();
+    this.linkDecorator = null;
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -610,7 +740,41 @@ export class Terminal implements AfterViewInit, OnDestroy {
       cursorBlink: this.kind() !== 'task',
       allowProposedApi: true,
       scrollback: 5000,
+      // Hyperlinks a program marks up itself (OSC 8) behave as the links found in its text do; left to
+      // xterm, a click would ask with a confirm() and then window.open the address.
+      linkHandler: {
+        activate: (event: MouseEvent, url: string): void =>
+          this.activateLink(event, { kind: 'url', url }),
+        hover: (event: MouseEvent, url: string): void =>
+          this.enterLink(event, { kind: 'url', url }),
+        leave: (): void => this.leaveLink(),
+      },
     });
+
+    // Addresses and file paths in the output become links (#1061). Paths only where this terminal's
+    // view has somewhere to open a file.
+    const pathLinks: TerminalPathLinks | null = this.pathLinks;
+    const resolvePath: ((path: string) => Promise<string | null>) | null =
+      pathLinks === null
+        ? null
+        : async (path: string): Promise<string | null> =>
+            pathLinks.resolve(path, await this.currentCwd());
+    xterm.registerLinkProvider(
+      new TerminalLinkProvider((): Xterm['buffer']['active'] => xterm.buffer.active, {
+        resolvePath,
+        activate: (event: MouseEvent, target: TerminalLinkTarget): void =>
+          this.activateLink(event, target),
+        hover: (event: MouseEvent, target: TerminalLinkTarget): void =>
+          this.enterLink(event, target),
+        leave: (): void => this.leaveLink(),
+      }),
+    );
+    // Output scrolling under a still pointer moves the link out from under its hint.
+    xterm.onScroll((): void => this.leaveLink());
+    // And they are drawn in the info colour as they are printed, so they read as links unhovered.
+    this.linkDecorator = new TerminalLinkDecorator(xterm, resolvePath, (): string =>
+      this.linkColour(),
+    );
 
     const fitAddon: FitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);
@@ -756,6 +920,148 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Reads the shell's working directory, against which a relative path it printed resolves: where
+   * the shell is now, which a `cd` moves, falling back to where it started.
+   * @returns Returns the directory, or null when neither is known.
+   */
+  private currentCwd(): Promise<string | null> {
+    const now: number = Date.now();
+    if (this.cwdCache === null || now - this.cwdCache.at >= CWD_TTL_MS) {
+      const started: string | null = this.cwd() ?? null;
+      this.cwdCache = {
+        at: now,
+        cwd: this.bridge
+          .getCwd(this.terminalId())
+          .then((cwd: string | null): string | null => cwd ?? started)
+          .catch((): string | null => started),
+      };
+    }
+    return this.cwdCache.cwd;
+  }
+
+  /**
+   * Determines whether a click was made with the key that opens a link: ⌘ on macOS, Ctrl elsewhere.
+   * A plain click opens nothing, so selecting text works as it always did.
+   * @param event The click.
+   * @returns Returns true when the click opens the link.
+   */
+  private isLinkGesture(event: MouseEvent): boolean {
+    return window.host?.platform === 'darwin' ? event.metaKey : event.ctrlKey;
+  }
+
+  /**
+   * Opens a link when it was clicked with the link gesture.
+   * @param event The click.
+   * @param target What the link points at.
+   */
+  private activateLink(event: MouseEvent, target: TerminalLinkTarget): void {
+    if (event.button !== 0 || !this.isLinkGesture(event)) {
+      return;
+    }
+    // Only the hint goes: the pointer is still on the link, and xterm will not say so again until it
+    // leaves, so the link stays noted for a right-click straight after.
+    this.linkAnchorTooltip().hide();
+    this.openLink(target);
+  }
+
+  /**
+   * Notes the link the pointer arrived on, for a right-click, and names it and the gesture that opens
+   * it in a hint beneath it.
+   * @param event The pointer's arrival.
+   * @param target What the link points at.
+   */
+  private enterLink(event: MouseEvent, target: TerminalLinkTarget): void {
+    this.hoveredLink = target;
+    const xterm: Xterm | null = this.xterm;
+    const screen: Element | null | undefined = xterm?.element?.querySelector('.xterm-screen');
+    if (xterm === null || screen === null || screen === undefined) {
+      return;
+    }
+    // Stand the anchor on the row the pointer is in, at the pointer's column, so the hint opens just
+    // beneath the line rather than over it.
+    const hostRect: DOMRect = this.host.nativeElement.getBoundingClientRect();
+    const screenRect: DOMRect = screen.getBoundingClientRect();
+    const rowHeight: number = screenRect.height / xterm.rows;
+    const row: number = Math.floor((event.clientY - screenRect.top) / rowHeight);
+    const anchor: HTMLSpanElement = this.linkAnchor().nativeElement;
+    anchor.style.transform = `translate(${event.clientX - hostRect.left}px, ${
+      screenRect.top + row * rowHeight - hostRect.top
+    }px)`;
+    anchor.style.blockSize = `${rowHeight}px`;
+
+    const gesture: string = window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
+    const shown: string =
+      target.kind === 'url'
+        ? target.url
+        : `${target.path}${target.line === null ? '' : `:${target.line}`}${
+            target.column === null ? '' : `:${target.column}`
+          }`;
+    this.linkTooltip.set(`${shown} (${gesture} to open)`);
+    this.changeDetector.detectChanges();
+    const tooltip: TooltipTrigger = this.linkAnchorTooltip();
+    tooltip.hide();
+    tooltip.show();
+  }
+
+  /**
+   * Forgets the link the pointer was on, and takes its hint down.
+   */
+  private leaveLink(): void {
+    this.hoveredLink = null;
+    this.linkAnchorTooltip().hide();
+  }
+
+  /**
+   * Opens what a link points at: an address in the browser, a file in the workspace's well.
+   * @param target What the link points at.
+   */
+  private openLink(target: TerminalLinkTarget): void {
+    if (target.kind === 'url') {
+      void this.shellService.openExternal(target.url);
+    } else {
+      void this.pathLinks?.open(target.path, target.line, target.column);
+    }
+  }
+
+  /**
+   * Opens a link's menu for a right-click on a link. A right-click anywhere else is left alone.
+   * @param event The right-click, which places the menu; the trigger consumes it.
+   */
+  protected onContextMenu(event: MouseEvent): void {
+    const target: TerminalLinkTarget | null = this.hoveredLink;
+    if (target === null) {
+      return;
+    }
+    this.linkAnchorTooltip().hide();
+    this.linkMenuContext.$implicit = target;
+    const trigger: CdkContextMenuTrigger = this.linkMenuTrigger();
+    trigger.menuData = this.linkMenuContext;
+    trigger._openOnContextMenu(event);
+    event.stopPropagation();
+    this.changeDetector.markForCheck();
+  }
+
+  /**
+   * Runs the chosen row of a link's menu once the menu has closed, then gives the terminal its focus
+   * back.
+   * @param choice The chosen row and the link the menu was opened for.
+   */
+  protected onLinkMenuChosen(choice: MenuChoice): void {
+    const target: TerminalLinkTarget | undefined = choice.data as TerminalLinkTarget | undefined;
+    if (target === undefined) {
+      return;
+    }
+    queueMicrotask((): void => {
+      if (choice.id === 'open') {
+        this.openLink(target);
+        return;
+      }
+      void navigator.clipboard.writeText(target.kind === 'url' ? target.url : target.path);
+      this.xterm?.focus();
+    });
+  }
+
+  /**
    * Builds the end-of-process banner. A signal-terminated process often reports exit code 0, so the
    * signal is named when present — a stopped run must not read as a success.
    * @param exitCode The process exit code.
@@ -802,6 +1108,21 @@ export class Terminal implements AfterViewInit, OnDestroy {
       lines.push(buffer.getLine(index)?.translateToString(true) ?? '');
     }
     return lines.join('\n').replace(/\n+$/, '');
+  }
+
+  /**
+   * Reads the colour links are drawn in: the app's info colour, in the `#RRGGBB` form xterm draws.
+   * @returns Returns the colour.
+   */
+  private linkColour(): string {
+    const value: string = getComputedStyle(document.documentElement)
+      .getPropertyValue('--info-color')
+      .trim();
+    const short: RegExpExecArray | null = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(value);
+    if (short !== null) {
+      return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
+    }
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : LINK_COLOUR_FALLBACK;
   }
 
   /**
