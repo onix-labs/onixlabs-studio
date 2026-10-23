@@ -112,6 +112,82 @@ describe('DockTabGroup', () => {
       expect(filling()).toBe(before);
       geometry.endInteractiveResize();
     });
+
+    it('resizedToNothingMidDrag_keepsTheFill', () => {
+      render(mkStack('tool', ['output', 'errors']));
+      const geometry: DockGeometry = TestBed.inject(DockGeometry);
+      internals().naturalTabsExtent = 200;
+      geometry.beginInteractiveResize();
+
+      internals().onStripResized(resized(240));
+      internals().onStripResized(resized(0));
+
+      expect(filling()).toBe(false);
+      geometry.endInteractiveResize();
+    });
+  });
+
+  describe('tab fill while the view is hidden', () => {
+    /**
+     * Lays the strip out at a width with its last tab ending at a position, as a real layout would.
+     * @param stripWidth The strip's width; zero for a strip in a hidden view.
+     * @param lastTabRight Where the last tab ends, measured from the strip's start.
+     */
+    function layOut(stripWidth: number, lastTabRight: number): void {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement,
+      ): DOMRect {
+        return (
+          this.classList.contains('dock-tab')
+            ? { left: 0, right: lastTabRight, width: lastTabRight }
+            : { left: 0, right: stripWidth, width: stripWidth }
+        ) as DOMRect;
+      });
+    }
+
+    /**
+     * Runs the group's fill measurement, as its resize observer does.
+     */
+    function measure(): void {
+      (component as unknown as { measureTabsFill: () => void }).measureTabsFill();
+    }
+
+    /**
+     * Gets whether the group shows its tabs filling the strip.
+     * @returns Returns true when filling.
+     */
+    function filling(): boolean {
+      fixture.detectChanges();
+      return (fixture.nativeElement as HTMLElement).classList.contains('dock-tab-group--tabs-fill');
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('measure_whenTheViewIsHidden_keepsTheContentSizedTabs', () => {
+      // Switching workspace tabs hid this view with display: none, which measured as "the tabs reach
+      // the end": the strip flipped to fill and painted stretched as the tab came back.
+      render(mkStack('tool', ['output', 'errors']));
+      layOut(600, 180);
+      measure();
+      expect(filling()).toBe(false);
+
+      layOut(0, 0);
+      measure();
+      expect(filling()).toBe(false);
+    });
+
+    it('measure_whenTheViewIsHidden_keepsTheFilledTabs', () => {
+      render(mkStack('tool', ['output', 'errors']));
+      layOut(190, 180);
+      measure();
+      expect(filling()).toBe(true);
+
+      layOut(0, 0);
+      measure();
+      expect(filling()).toBe(true);
+    });
   });
 
   it('should create', () => {
