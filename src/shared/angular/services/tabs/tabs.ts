@@ -1,6 +1,13 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { AttentionReason, Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
+import {
+  AttentionReason,
+  OpenOptions,
+  Tab,
+  TabType,
+  TabTypeMetadata,
+  TAB_TYPE_METADATA,
+} from './tab';
 
 /**
  * Specifies the tab types that are singletons: opening one when an instance is already open activates
@@ -98,25 +105,29 @@ export class Tabs {
    * Opens a new tab of the given type and activates it. A tab may be tied to a resource (a directory,
    * repository, or file): opening a resource that already has a tab of the same type activates the
    * existing tab instead of creating a duplicate. The settings tab is a singleton on the same basis.
+   *
+   * Opened in the background, nothing is activated — neither the new tab nor an existing one — unless
+   * no tab is active at all, when there is nothing for the user to be looking at instead.
    * @param type The type of tab to open.
    * @param resourceKey The identity of the resource the tab represents, when it is backed by one.
+   * @param options How to open it; in the background, the active tab stays active.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public open(type: TabType, resourceKey?: string): Tab {
+  public open(type: TabType, resourceKey?: string, options?: OpenOptions): Tab {
     if (SINGLETON_TAB_TYPES.has(type)) {
       const existing: Tab | undefined = this.tabList().find(
         (tab: Tab): boolean => tab.type === type,
       );
       if (existing !== undefined) {
         this.log.debug('Tabs', `Activating existing singleton tab '${type}'`, existing.id);
-        this.activeId.set(existing.id);
+        this.bringForward(existing.id, options);
         return existing;
       }
     } else if (resourceKey !== undefined) {
       const existing: Tab | undefined = this.findByResource(type, resourceKey);
       if (existing !== undefined) {
         this.log.debug('Tabs', `Activating existing tab for resource`, type, resourceKey);
-        this.activeId.set(existing.id);
+        this.bringForward(existing.id, options);
         return existing;
       }
     }
@@ -132,9 +143,26 @@ export class Tabs {
       (existing: Tab): boolean => this.pinRank(existing.type) <= rank,
     ).length;
     this.tabList.set([...current.slice(0, index), tab, ...current.slice(index)]);
-    this.activeId.set(tab.id);
-    this.log.info('Tabs', `Opened tab '${type}'`, tab.id, resourceKey);
+    this.bringForward(tab.id, options);
+    this.log.info(
+      'Tabs',
+      `Opened tab '${type}'${options?.background === true ? ' in the background' : ''}`,
+      tab.id,
+      resourceKey,
+    );
     return tab;
+  }
+
+  /**
+   * Makes a tab that was just opened the active one — unless it was opened in the background and the
+   * user already has a tab in front of them.
+   * @param id The tab's identifier.
+   * @param options How it was opened.
+   */
+  private bringForward(id: string, options: OpenOptions | undefined): void {
+    if (options?.background !== true || this.activeId() === undefined) {
+      this.activeId.set(id);
+    }
   }
 
   /**

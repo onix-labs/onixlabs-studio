@@ -30,7 +30,7 @@ import {
 import { DockNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
-import { Tab, TabType } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
@@ -169,29 +169,36 @@ export class FileOpener {
    * Opens a file from a workspace's directory tree into that workspace's document well, reusing the
    * panel when the file is already open. The editor is chosen by file type (Milkdown for markdown,
    * Monaco otherwise).
+   *
+   * Opened in the background — on an agent's account — the file is added behind the document the
+   * user is reading, and a file that needs its own tab (a binary, an API document) gets one without
+   * it being brought forward.
    * @param path The absolute path of the file to open; must be inside the workspace.
+   * @param options How to open it; in the background, nothing is brought forward.
    * @returns Returns true when the file was opened, or false when unreadable or binary.
    */
-  public async openPath(path: string): Promise<boolean> {
+  public async openPath(path: string, options?: OpenOptions): Promise<boolean> {
     const selection: OpenSelection | null = await this.workspace.readFile(path);
     if (selection === null || selection.kind === 'directory') {
       return false;
     }
     if (selection.kind === 'binary') {
-      return this.openBinary(selection.path);
+      return this.openBinary(selection.path, options);
     }
     // An image is document-shaped, unlike a binary: it sits in the well beside the code that
     // references it, falling back to its own tab only when this dock has no document home.
     if (selection.kind === 'image') {
-      return this.openImageInWell(selection.path) || this.openImage(selection.path);
+      return (
+        this.openImageInWell(selection.path, options) || this.openImage(selection.path, options)
+      );
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
     // as its own tab — as a binary file does — instead of being edited as text beside the code.
-    if (this.openApiDocument(selection.file)) {
+    if (this.openApiDocument(selection.file, options)) {
       return true;
     }
     this.log.debug('FileOpener', 'Opening file in well', path);
-    return this.openInWell(selection.file);
+    return this.openInWell(selection.file, options);
   }
 
   /**
@@ -307,23 +314,25 @@ export class FileOpener {
    * not one — so a malformed or foreign file falls through to the text editor rather than being
    * loaded as a workspace.
    * @param fileInfo The file to open.
+   * @param options How to open it.
    * @returns Returns true when the file was opened as an API document; otherwise, false.
    */
-  private openApiDocument(fileInfo: FileInfo): boolean {
-    return isApiDocumentName(fileInfo.name) && this.apiFiles.open(fileInfo);
+  private openApiDocument(fileInfo: FileInfo, options?: OpenOptions): boolean {
+    return isApiDocumentName(fileInfo.name) && this.apiFiles.open(fileInfo, options);
   }
 
   /**
    * Opens a binary file (one no text editor can open) in a binary/hex tab and records it as a recent
    * item. The document reads its bytes lazily, so opening is cheap however large the file.
    * @param path The absolute path of the binary file to open.
+   * @param options How to open it.
    * @returns Returns true; the binary editor always accepts the file.
    */
-  private openBinary(path: string): boolean {
+  private openBinary(path: string, options?: OpenOptions): boolean {
     if (this.binaryOpener === null) {
       return false;
     }
-    const tab: Tab = this.binaryOpener.open(path);
+    const tab: Tab = this.binaryOpener.open(path, options);
     this.recentItems.record(path, tab.title, 'binary');
     this.log.info('FileOpener', `Opened binary file '${tab.title}'`, path);
     return true;
@@ -333,13 +342,14 @@ export class FileOpener {
    * Opens an image in its own top-level image tab and records it as a recent item. Without the image
    * feature, the image opens in the binary editor instead.
    * @param path The absolute path of the image to open.
+   * @param options How to open it.
    * @returns Returns true when the image was opened.
    */
-  private openImage(path: string): boolean {
+  private openImage(path: string, options?: OpenOptions): boolean {
     if (this.imageOpener === null) {
-      return this.openBinary(path);
+      return this.openBinary(path, options);
     }
-    const tab: Tab = this.imageOpener.open(path);
+    const tab: Tab = this.imageOpener.open(path, options);
     this.recentItems.record(path, tab.title, 'image');
     this.log.info('FileOpener', `Opened image '${tab.title}'`, path);
     return true;
@@ -349,15 +359,16 @@ export class FileOpener {
    * Opens an image into this workspace's document well, reusing its panel when the image is already
    * open there. Like any file opened into a well, it is not recorded as a recent item.
    * @param path The absolute path of the image to open.
+   * @param options How to open it.
    * @returns Returns true when the image was placed in the well; false when this opener serves no
    * workspace, the image feature is absent, or the dock has no document home.
    */
-  private openImageInWell(path: string): boolean {
+  private openImageInWell(path: string, options?: OpenOptions): boolean {
     if (this.imageOpener === null || !this.isWorkspace()) {
       return false;
     }
     const panel: DockPanel = this.imageOpener.wellPanel(path, this.tabContext.tabId());
-    if (!this.placeInWell(panel)) {
+    if (!this.placeInWell(panel, options)) {
       this.imageOpener.releaseWellPanel(panel.id);
       return false;
     }
@@ -407,34 +418,38 @@ export class FileOpener {
    * Opens a file into the workspace's document well, reusing the panel when it is already open and
    * registering a new document panel otherwise.
    * @param fileInfo The file to open.
+   * @param options How to open it.
    * @returns Returns true when the document well is available and the file was opened.
    */
-  private openInWell(fileInfo: FileInfo): boolean {
+  private openInWell(fileInfo: FileInfo, options?: OpenOptions): boolean {
     if (!this.hasDocumentHome()) {
       return false;
     }
     // A file opened into a workspace's document well is not itself a recent item — only the workspace
     // (recorded by openDirectory) is. Recording the file here would surface it on the welcome screen.
     const existing: string | undefined = this.documents.findIdByPath(fileInfo.path);
-    if (existing !== undefined && this.activateInWell(existing)) {
+    if (existing !== undefined && this.activateInWell(existing, options)) {
       return true;
     }
     const id: string = this.documents.createWellDocument(fileInfo);
     const document: CodeDocument | undefined = this.documents.get(id);
-    return this.placeInWell({
-      id,
-      title: fileInfo.name,
-      icon: this.dockIconFor(fileInfo.extension),
-      role: 'document',
-      component: DocumentPanel,
-      // Surface the well document's unsaved state to the dock tab (a dirty marker) and guard its close
-      // so an edited-but-unsaved file prompts to save before the tab is removed.
-      ...(document === undefined ? {} : { dirty: document.dirty }),
-      confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
-      // The well's switch to the file's diff. Resolved here rather than injected: the switch reaches
-      // back to this opener.
-      switch: this.injector.get(DocumentDiffSwitch).forFile(id),
-    });
+    return this.placeInWell(
+      {
+        id,
+        title: fileInfo.name,
+        icon: this.dockIconFor(fileInfo.extension),
+        role: 'document',
+        component: DocumentPanel,
+        // Surface the well document's unsaved state to the dock tab (a dirty marker) and guard its close
+        // so an edited-but-unsaved file prompts to save before the tab is removed.
+        ...(document === undefined ? {} : { dirty: document.dirty }),
+        confirmClose: (): Promise<boolean> => this.confirmCloseWellDocument(id),
+        // The well's switch to the file's diff. Resolved here rather than injected: the switch reaches
+        // back to this opener.
+        switch: this.injector.get(DocumentDiffSwitch).forFile(id),
+      },
+      options,
+    );
   }
 
   /**
@@ -448,14 +463,20 @@ export class FileOpener {
   }
 
   /**
-   * Activates a panel that is already in the document well.
+   * Activates a panel that is already in the document well. In the background it is left where it
+   * is: it is open already, which is all that was asked.
    * @param id The panel's identifier.
-   * @returns Returns true when the panel was found in a well and activated.
+   * @param options How it is being opened.
+   * @returns Returns true when the panel was found in a well (and, unless in the background,
+   * activated).
    */
-  private activateInWell(id: string): boolean {
+  private activateInWell(id: string, options?: OpenOptions): boolean {
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), id);
     if (stack?.role !== 'document') {
       return false;
+    }
+    if (options?.background === true) {
+      return true;
     }
     this.dockState.setActive(stack.id, id);
     this.dockFocus.focus(stack.id);
@@ -466,12 +487,15 @@ export class FileOpener {
    * Places a document panel in the well — re-activating it when it is already there — registering
    * it with the dock first. With no well, a fresh one is split off the tool-occupied centre (50/50,
    * well on the left).
+   * In the background the panel goes in behind the well's active document, and the well is not
+   * focused. A well that has to be made for it still is — there is nowhere else for it to go.
    * @param panel The document panel to place.
+   * @param options How to open it.
    * @returns Returns true when the panel was placed; false when this dock has no document home, in
    * which case the caller falls back to opening a full tab.
    */
-  private placeInWell(panel: DockPanel): boolean {
-    if (this.activateInWell(panel.id)) {
+  private placeInWell(panel: DockPanel, options?: OpenOptions): boolean {
+    if (this.activateInWell(panel.id, options)) {
       return true;
     }
     const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
@@ -481,14 +505,17 @@ export class FileOpener {
       return false;
     }
     this.registry.register(panel);
+    const background: boolean = options?.background === true;
     if (well !== null) {
-      this.dockState.tabInto(well.id, panel.id);
-      this.dockFocus.focus(well.id);
+      this.dockState.tabInto(well.id, panel.id, options);
+      if (!background) {
+        this.dockFocus.focus(well.id);
+      }
     } else {
       // primary is non-null here (guarded above): split a fresh well off the tool-occupied centre.
       this.dockState.openWellBeside(primary!.id, panel.id);
       const created: StackNode | null = findStackOfPanel(this.dockState.layout(), panel.id);
-      if (created !== null) {
+      if (created !== null && !background) {
         this.dockFocus.focus(created.id);
       }
     }

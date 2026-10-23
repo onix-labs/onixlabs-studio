@@ -68,6 +68,13 @@ export interface TerminalSession {
    * Gets the shell executable the session actually spawned, or undefined until it reports one.
    */
   readonly shell?: string;
+
+  /**
+   * Gets whether the session was opened for an agent rather than by the user, so its pane starts
+   * without taking the keyboard: the user may be typing somewhere else in the tab, and an agent's
+   * terminal must not catch what they type. It takes focus as any other does once the user goes to it.
+   */
+  readonly quiet?: boolean;
 }
 
 /**
@@ -317,9 +324,11 @@ export class TerminalSessions implements OnDestroy {
 
   /**
    * Creates a new interactive shell session rooted at the current folder and makes it active.
+   * @param options Whether the session is opened for an agent, and so starts without taking the
+   * keyboard (see {@link TerminalSession.quiet}).
    * @returns Returns the created session.
    */
-  public create(): TerminalSession {
+  public create(options?: { readonly quiet?: boolean }): TerminalSession {
     const session: TerminalSession = {
       id: `term-${crypto.randomUUID()}`,
       name: `Terminal ${++this.sequence}`,
@@ -327,6 +336,7 @@ export class TerminalSessions implements OnDestroy {
       generation: 0,
       exitCode: null,
       cwd: this.root ?? undefined,
+      ...(options?.quiet === true ? { quiet: true } : {}),
     };
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] => [
       ...sessions,
@@ -552,6 +562,27 @@ export class TerminalSessions implements OnDestroy {
     }
     this.active.set(id);
     this.dockReveal.reveal(TERMINAL_PANEL_ID);
+  }
+
+  /**
+   * Marks a quiet session as started: its pane has come up without taking the keyboard, which is all
+   * the quiet was for. A pane mounted for it later — the panel re-created when the user goes back to
+   * it — takes focus as any other does.
+   * @param id The session identifier.
+   */
+  public settleQuiet(id: string): void {
+    this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+      sessions.map((session: TerminalSession): TerminalSession => {
+        if (session.id !== id || session.quiet !== true) {
+          return session;
+        }
+        const settled: { -readonly [K in keyof TerminalSession]: TerminalSession[K] } = {
+          ...session,
+        };
+        delete settled.quiet;
+        return settled;
+      }),
+    );
   }
 
   /**

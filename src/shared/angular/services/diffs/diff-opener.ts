@@ -2,6 +2,7 @@ import { inject, Injector, Service } from '@angular/core';
 import { DiffDocumentPanel } from '@shared/angular/components/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockNode, isStackNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -69,8 +70,10 @@ export class DiffOpener {
    * @param file The file to compare.
    * @param wellId The document well to open it in — the one a switch from the file's tab came from —
    * or omitted for the layout's first.
+   * @param options How to open it; in the background, it goes in behind the well's active document
+   * and the well is not focused.
    */
-  public open(file: GitFileChange, wellId?: string): void {
+  public open(file: GitFileChange, wellId?: string, options?: OpenOptions): void {
     const id: string = this.diffs.idForPath(file.path);
     // The content is stored and the panel registered before the layout is touched, because a well
     // that has to be made is made holding this panel — by then it must resolve to something.
@@ -100,12 +103,17 @@ export class DiffOpener {
       return;
     }
     this.log.info('DiffOpener', `Opened diff for '${file.path}'`);
+    const background: boolean = options?.background === true;
     if (well.panels.includes(id)) {
-      this.dockState.setActive(well.id, id);
+      if (!background) {
+        this.dockState.setActive(well.id, id);
+      }
     } else {
-      this.dockState.tabInto(well.id, id);
+      this.dockState.tabInto(well.id, id, options);
     }
-    this.dockFocus.focus(well.id);
+    if (!background) {
+      this.dockFocus.focus(well.id);
+    }
     void this.repository.loadDiff(file).then((diff: FileDiff): void => {
       this.diffs.put(id, { ...file, original: diff.original, modified: diff.modified });
     });
@@ -121,9 +129,14 @@ export class DiffOpener {
    * offered a diff the lists here do not hold yet.
    * @param path The absolute path of the file.
    * @param wellId The document well to open it in, or omitted for the layout's first.
+   * @param options How to open it.
    * @returns Returns null when the diff was opened, or the reason it could not be.
    */
-  public async openPath(path: string, wellId?: string): Promise<string | null> {
+  public async openPath(
+    path: string,
+    wellId?: string,
+    options?: OpenOptions,
+  ): Promise<string | null> {
     if (!this.repository.isBound()) {
       return 'This workspace is not a git repository, so there is no diff to show.';
     }
@@ -136,7 +149,7 @@ export class DiffOpener {
     if (change === undefined) {
       return `"${relative}" has no changes against HEAD, so there is no diff to show.`;
     }
-    this.open(change, wellId);
+    this.open(change, wellId, options);
     return null;
   }
 

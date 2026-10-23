@@ -21,6 +21,31 @@ describe('Tabs', () => {
     expect(service.activeTabId()).toBe(tab.id);
   });
 
+  it('open_inTheBackground_addsTheTabWithoutActivatingIt', () => {
+    // An agent's open: the user stays on the tab they are working in.
+    const working: Tab = service.open('code');
+
+    const opened: Tab = service.open('markdown', undefined, { background: true });
+
+    expect(service.tabs().map((tab: Tab): string => tab.id)).toContain(opened.id);
+    expect(service.activeTabId()).toBe(working.id);
+  });
+
+  it('open_inTheBackgroundWithNoActiveTab_activatesIt', () => {
+    const opened: Tab = service.open('markdown', undefined, { background: true });
+
+    expect(service.activeTabId()).toBe(opened.id);
+  });
+
+  it('open_inTheBackgroundForAnOpenResource_leavesTheActiveTabAlone', () => {
+    service.open('binary', '/ws/a.bin');
+    const working: Tab = service.open('code');
+
+    service.open('binary', '/ws/a.bin', { background: true });
+
+    expect(service.activeTabId()).toBe(working.id);
+  });
+
   it('open_whenCalledRepeatedly_appendsTabsInOrder', () => {
     service.open('code');
     service.open('terminal');

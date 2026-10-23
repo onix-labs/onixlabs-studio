@@ -117,6 +117,27 @@ describe('DiffOpener', () => {
     expect(dockFocus.focusedStackId()).toBe(well().id);
   });
 
+  it('open_inTheBackground_addsTheDiffBehindTheActiveDocument', () => {
+    // An agent's open: the user keeps reading what they were reading, and the well is not focused.
+    opener.open(change('src/app.ts'));
+    dockFocus.focus('somewhere-else');
+
+    opener.open(change('src/other.ts'), undefined, { background: true });
+
+    expect(well().panels).toContain(diffs.idForPath('src/other.ts'));
+    expect(well().active).toBe(diffs.idForPath('src/app.ts'));
+    expect(dockFocus.focusedStackId()).toBe('somewhere-else');
+  });
+
+  it('open_inTheBackgroundWhenAlreadyOpen_leavesTheWellAsItIs', () => {
+    opener.open(change('src/app.ts'));
+    opener.open(change('src/other.ts'));
+
+    opener.open(change('src/app.ts'), undefined, { background: true });
+
+    expect(well().active).toBe(diffs.idForPath('src/other.ts'));
+  });
+
   it('open_whenTheSameFileIsOpenedAgain_reusesTheExistingTab', () => {
     opener.open(change('src/app.ts'));
     opener.open(change('src/other.ts'));

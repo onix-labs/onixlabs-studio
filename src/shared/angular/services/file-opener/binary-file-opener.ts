@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 
 /**
  * Describes the editor that accepts files no text editor can open — the `kind: 'binary'`
@@ -13,9 +13,10 @@ export interface BinaryFileOpener {
   /**
    * Opens a file in a binary tab, reusing an existing tab for the same path.
    * @param path The absolute path of the file to open.
+   * @param options How to open it; in the background, the tab is not brought forward.
    * @returns Returns the opened, or re-activated, tab.
    */
-  open(path: string): Tab;
+  open(path: string, options?: OpenOptions): Tab;
 }
 
 /**

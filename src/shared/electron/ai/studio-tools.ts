@@ -356,7 +356,8 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   '  which are unsaved.',
   `- "${READ_ACTIVE_DOCUMENT}" reads the document currently focused in the well, so you can see what`,
   '  the user is looking at. It is the one document tool here; to change a file, edit it on disk.',
-  `- "${OPEN_FILE}" opens one of the workspace's files in the well, to put it in front of the user.`,
+  `- "${OPEN_FILE}" opens one of the workspace's files in the well, as a tab behind what the user is`,
+  '  reading.',
   `- "${OPEN_DIFF}" opens a changed file's diff against HEAD in the well. Use it to show the user`,
   '  what you changed, rather than pasting a diff into the conversation.',
   `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
@@ -370,6 +371,9 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   `  and returns its id; "${LIST_TERMINALS}" lists the ones already there. Drive a terminal by id with`,
   `  "${WRITE_TERMINAL_INPUT}" and read what it shows with "${READ_TERMINAL_OUTPUT}". The user is`,
   '  watching that terminal live: prefer it to a hidden shell when they should see the command run.',
+  'Nothing you open is brought forward: files, diffs and documents are added as tabs the user can',
+  'switch to, and what they are looking at stays in front of them. Say what you opened, so they know',
+  'it is there.',
 ].join('\n');
 
 /**
@@ -1301,7 +1305,7 @@ export async function sendApiRequest(context: AgentRunContext, id: string): Prom
  * can hand over rather than paste into the conversation.
  */
 export const WORKBENCH_PROMPT_APPENDIX: string = [
-  'Whatever else you are docked to, you can put a document in front of the user as its own tab:',
+  'Whatever else you are docked to, you can hand the user a document as its own tab:',
   `- "${OPEN_DOCUMENT}" opens a new markdown or code tab and fills it with your content.`,
   `- "${READ_DOCUMENT}", "${EDIT_DOCUMENT}" and "${REPLACE_DOCUMENT}" read and revise a document you`,
   '  opened, by the id it returned — including any edits the user has made to it since.',
@@ -1313,7 +1317,8 @@ export const WORKBENCH_PROMPT_APPENDIX: string = [
   'read, impossible to edit and gone when the conversation is; the same document in a tab is none of',
   'those. Keep answering in the conversation for anything short, and for explanation.',
   'A document opens UNSAVED, so opening one costs the user nothing and touches nothing on disk: they',
-  'read it in the editor and decide.',
+  'read it in the editor and decide. It opens without being switched to — the user stays on what they',
+  'were doing — so say that it is there, and where.',
   'Whether to open one or to offer turns on whether they asked. When the user has asked for a',
   'document, OPEN it — do not ask permission for the thing they just requested. When they have not',
   'asked, but what you are about to write has outgrown the conversation, OFFER a tab in a sentence and',
@@ -1324,7 +1329,7 @@ export const WORKBENCH_PROMPT_APPENDIX: string = [
   'operating-system dialog in front of them, so calling it uninvited interrupts them.',
   `Reach for "${OPEN_FILE}" when you are talking about a specific file: opening it beside the`,
   'conversation beats quoting it, and beats naming a path the user then has to go and find. Say what',
-  'to look at once it is open — the place in it, and what is worth noticing.',
+  'to look at when they open it — the place in it, and what is worth noticing.',
   'Say what you opened and why, briefly, rather than repeating the content you just put in the tab.',
   'When the user asks for changes to a document you already opened, revise THAT document — do not',
   `open a second tab with the new version. Read it first with "${READ_DOCUMENT}" (the user may have`,
@@ -1362,7 +1367,8 @@ export async function openDocument(
   }
   logger.info('StudioTools', `Opened ${format} document ${opened.id ?? ''}`);
   return (
-    `Opened "${opened.title ?? title}" in a new ${format} tab (id ${opened.id ?? ''}). ` +
+    `Opened "${opened.title ?? title}" in a new ${format} tab (id ${opened.id ?? ''}), without ` +
+    'switching the user to it. ' +
     'It is unsaved — the user can read it in the editor and decide whether to keep it. ' +
     `To revise it, pass that id to ${EDIT_DOCUMENT} or ${REPLACE_DOCUMENT} rather than opening ` +
     `another tab; pass it to ${SAVE_DOCUMENT} if they ask you to save it.`
@@ -1476,7 +1482,7 @@ export async function openFile(context: AgentRunContext, path: string): Promise<
     return opened.error ?? 'The file could not be opened.';
   }
   logger.info('StudioTools', `Opened file in the well: ${opened.path ?? path}`);
-  return `Opened ${opened.path ?? path} in the user's editor.`;
+  return `Opened ${opened.path ?? path} as a tab in the document well, behind what the user is reading.`;
 }
 
 /**
@@ -1562,7 +1568,10 @@ export async function openDiff(context: AgentRunContext, path: string): Promise<
     return opened.error ?? 'The diff could not be opened.';
   }
   logger.info('StudioTools', `Opened diff in the well: ${opened.path ?? path}`);
-  return `Opened the diff of ${opened.path ?? path} against HEAD in the user's editor.`;
+  return (
+    `Opened the diff of ${opened.path ?? path} against HEAD as a tab in the document well, behind ` +
+    'what the user is reading.'
+  );
 }
 
 /**
@@ -1680,7 +1689,8 @@ export async function createFile(
     context,
     CREATE_FILE,
     { path, ...(content === undefined ? {} : { content }) },
-    (created: string): string => `Created ${created} and opened it in the user's editor.`,
+    (created: string): string =>
+      `Created ${created} and opened it as a tab in the document well, behind what the user is reading.`,
   );
 }
 
@@ -1785,7 +1795,8 @@ export async function openTerminal(
   return opened.where === 'workspace'
     ? `Opened a new terminal in the workspace's terminal panel (id ${opened.id ?? ''}), rooted at the ` +
         `workspace. Pass this id to "${READ_TERMINAL_OUTPUT}" and "${WRITE_TERMINAL_INPUT}" to drive it.`
-    : `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
+    : `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell, without ` +
+        'switching the user to it.';
 }
 
 /**

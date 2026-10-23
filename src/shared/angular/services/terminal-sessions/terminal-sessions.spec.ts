@@ -50,6 +50,23 @@ describe('TerminalSessions', () => {
     expect(sessions.activeId()).toBeNull();
   });
 
+  it('create_quietForAnAgent_marksTheSessionUntilItsPaneSettlesIt', () => {
+    // An agent's terminal starts without taking the keyboard, once; a pane mounted for it later — the
+    // user going back to it — takes focus as usual.
+    const plain: TerminalSession = sessions.create();
+    const quiet: TerminalSession = sessions.create({ quiet: true });
+    expect(plain.quiet).toBeUndefined();
+    expect(quiet.quiet).toBe(true);
+
+    sessions.settleQuiet(quiet.id);
+
+    const settled: TerminalSession | undefined = sessions
+      .sessions()
+      .find((session: TerminalSession): boolean => session.id === quiet.id);
+    expect(settled?.quiet).toBeUndefined();
+    expect(settled?.name).toBe(quiet.name);
+  });
+
   it('create_addsASessionWithADistinctNameAndMakesItActive', () => {
     const first: TerminalSession = sessions.create();
     const second: TerminalSession = sessions.create();

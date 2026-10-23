@@ -21,7 +21,7 @@ import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conf
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
 import { Log } from '@shared/angular/services/log/log';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   UnsavedDocument,
@@ -603,10 +603,11 @@ export class ImageDocuments implements UnsavedWorkSource {
   /**
    * Opens an image in a top-level image tab, reusing an existing tab for the same path.
    * @param path The absolute path of the image.
+   * @param options How to open it; in the background, the tab is not brought forward.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public openTab(path: string): Tab {
-    const tab: Tab = this.tabs.open('image', path);
+  public openTab(path: string, options?: OpenOptions): Tab {
+    const tab: Tab = this.tabs.open('image', path, options);
     if (!this.holders.has(tab.id)) {
       const document: ImageDocument = this.hold(tab.id, tab.id, path);
       this.tabs.rename(tab.id, document.fileName);
@@ -618,7 +619,9 @@ export class ImageDocuments implements UnsavedWorkSource {
         }),
       );
     }
-    this.tabs.activate(tab.id);
+    if (options?.background !== true) {
+      this.tabs.activate(tab.id);
+    }
     return this.tabs.get(tab.id) ?? tab;
   }
 

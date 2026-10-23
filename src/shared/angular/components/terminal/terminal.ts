@@ -14,6 +14,7 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -195,6 +196,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly kind: InputSignal<TerminalKind> = input<TerminalKind>('shell');
 
   /**
+   * Gets whether the pane starts without taking the keyboard — a terminal an agent opened, which the
+   * user may be watching but is not typing into. It takes focus as usual once the user goes to it:
+   * clicks into it, or comes back to it after it was hidden.
+   */
+  public readonly quietStart: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Emits once the PTY session is created and its I/O is wired up.
    */
   public readonly ready: OutputEmitterRef<void> = output<void>();
@@ -347,6 +355,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private cleanupOnExit: (() => void) | null = null;
 
   /**
+   * Holds whether the pane is still holding back from taking focus, from a {@link quietStart} until
+   * the user first goes to it.
+   */
+  private holdingFocus: boolean = false;
+
+  /**
+   * Holds whether the pane has been shown since it started, so being hidden afterwards can be told
+   * apart from the hidden state it may mount in.
+   */
+  private shownSinceStart: boolean = false;
+
+  /**
    * Holds a value indicating whether the PTY process has exited.
    */
   private hasExited: boolean = false;
@@ -381,9 +401,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
     effect((): void => {
       const active: boolean = this.isActive();
       const ready: boolean = this.terminalReady();
+      if (active && ready) {
+        this.shownSinceStart = true;
+      } else if (this.shownSinceStart) {
+        // Shown, then hidden: the next time it shows, the user went to it. (Not the hidden state a
+        // pane can mount in before its panel first shows it — that is still the agent's opening.)
+        this.holdingFocus = false;
+      }
       if (active && ready && this.xterm !== null && this.fitAddon !== null) {
         this.handleResize();
-        this.xterm.focus();
+        if (!this.holdingFocus) {
+          this.xterm.focus();
+        }
       }
     });
 
@@ -399,6 +428,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Initialises the terminal once the view is ready.
    */
   public ngAfterViewInit(): void {
+    this.holdingFocus = untracked((): boolean => this.quietStart());
     void this.initialize();
   }
 
@@ -709,6 +739,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.hasExited = false;
     this.leaveLink();
     this.cwdCache = null;
+    // A restart is the user's own doing: the fresh session takes focus as usual.
+    this.holdingFocus = false;
 
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
@@ -913,7 +945,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // Register this terminal's output handle so a terminal agent can read its on-screen text by id.
     this.terminals.register(id, { readText: (): string => this.getBufferText() });
 
-    setTimeout((): void => xterm.focus(), FOCUS_DELAY_MS);
+    setTimeout((): void => {
+      if (!this.holdingFocus) {
+        xterm.focus();
+      }
+    }, FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.log.info('Terminal', `Session '${id}' ready`, `kind=${this.kind()}`);
     this.ready.emit();

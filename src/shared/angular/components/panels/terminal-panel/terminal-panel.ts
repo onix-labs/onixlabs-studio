@@ -191,6 +191,14 @@ export class TerminalPanel {
   }
 
   /**
+   * Settles a terminal that started quietly once its pane is up (see `TerminalSessions.settleQuiet`).
+   * @param id The session identifier.
+   */
+  protected onReady(id: string): void {
+    this.terminals.settleQuiet(id);
+  }
+
+  /**
    * Records the shell a terminal spawned, so the status strip can show it.
    * @param id The session identifier.
    * @param shell The spawned shell executable path.
