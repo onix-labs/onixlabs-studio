@@ -450,7 +450,8 @@ export class DockTabGroup {
    * @param stripWidth The strip's width, in pixels.
    */
   private applyTabsFill(stripWidth: number): void {
-    if (this.naturalTabsExtent === null || this.isDocuments()) {
+    // A hidden strip reports no width; it says nothing about the fill (see measureTabsFill).
+    if (this.naturalTabsExtent === null || this.isDocuments() || stripWidth === 0) {
       return;
     }
     this.tabsFillSignal.set(stripWidth - this.naturalTabsExtent <= FILL_THRESHOLD_PX);
@@ -517,6 +518,15 @@ export class DockTabGroup {
     const stripBox: DOMRect = strip.getBoundingClientRect();
     const lastTabRight: number = last.getBoundingClientRect().right;
     strip.removeAttribute('data-measuring');
+
+    // 🔥 A strip with no width has no layout — its view is a background tab, hidden with
+    // `display: none` — and measures nothing: no space left against no width reads as "the tabs
+    // reach the end", so the strip flipped to fill, and that is what painted, stretched, for the
+    // frame before the re-measure when the tab came back. Keep what was measured while it was shown;
+    // the strip's resize observer measures again once it has a width.
+    if (stripBox.width === 0) {
+      return;
+    }
 
     // Fill once the content-sized tabs come within the threshold of the strip's end edge (or already
     // overflow it, in which case they shrink to fit and reach the end anyway). The reach is kept, so a
