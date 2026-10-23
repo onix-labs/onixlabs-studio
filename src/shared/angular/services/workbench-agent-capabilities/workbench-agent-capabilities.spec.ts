@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
-import { Tab, TabType } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
@@ -191,7 +191,7 @@ class FakeActiveWorkspace {
  * A stand-in tab registry recording what was opened.
  */
 class FakeTabs {
-  public readonly opened: { type: TabType; resourceKey?: string }[] = [];
+  public readonly opened: { type: TabType; resourceKey?: string; background?: boolean }[] = [];
   public readonly activated: string[] = [];
   private sequence: number = 0;
 
@@ -207,11 +207,12 @@ class FakeTabs {
    * Opens a tab and records it.
    * @param type The tab type.
    * @param resourceKey The resource key, when the tab is backed by one.
+   * @param options How it is opened.
    * @returns Returns the opened tab.
    */
-  public open(type: TabType, resourceKey?: string): Tab {
+  public open(type: TabType, resourceKey?: string, options?: OpenOptions): Tab {
     this.sequence += 1;
-    this.opened.push({ type, resourceKey });
+    this.opened.push({ type, resourceKey, background: options?.background });
     return { id: `tab-${this.sequence}`, type, title: type, resourceKey } as Tab;
   }
 }
@@ -349,7 +350,8 @@ describe('WorkbenchAgentCapabilities', () => {
       });
 
       expect(result['ok']).toBe(true);
-      expect(tabs.opened).toEqual([{ type: 'markdown', resourceKey: undefined }]);
+      // In the background: the user stays on whatever they were doing.
+      expect(tabs.opened).toEqual([{ type: 'markdown', resourceKey: undefined, background: true }]);
       expect(documents.ensured).toEqual([{ id: 'tab-1', name: 'Release notes' }]);
       expect(documents.contents.get('tab-1')).toBe('# Done\n');
       expect(documents.languages.get('tab-1')).toBe('markdown');
@@ -441,7 +443,7 @@ describe('WorkbenchAgentCapabilities', () => {
   });
 
   describe(OPEN_FILE, () => {
-    it('opensAnAbsolutePathIntoTheWellAndBringsTheTabForward', async () => {
+    it('opensAnAbsolutePathIntoTheWell_withoutBringingTheTabForward', async () => {
       workspace.publish('/repo');
 
       const result: Record<string, unknown> = await invoke(OPEN_FILE, { path: '/repo/src/a.ts' });
@@ -450,7 +452,8 @@ describe('WorkbenchAgentCapabilities', () => {
       expect(workspace.requested).toEqual(['/repo/src/a.ts']);
       // Opening into a well the user cannot see is indistinguishable from doing nothing, and the well
       // may belong to a workspace that is not the active tab.
-      expect(tabs.activated).toEqual(['workspace-tab']);
+      // ⛔ An agent never takes the user to its tab; they may be working in another.
+      expect(tabs.activated).toEqual([]);
     });
 
     it('resolvesAWorkspaceRelativePathAgainstTheRoot', async () => {
@@ -523,14 +526,15 @@ describe('WorkbenchAgentCapabilities', () => {
   });
 
   describe(OPEN_DIFF, () => {
-    it('resolvesTheRelativePathOpensTheDiffAndBringsTheTabForward', async () => {
+    it('resolvesTheRelativePathOpensTheDiff_withoutBringingTheTabForward', async () => {
       workspace.publish('/ws');
 
       const result: Record<string, unknown> = await invoke(OPEN_DIFF, { path: 'src/a.ts' });
 
       expect(result['ok']).toBe(true);
       expect(workspace.diffed).toEqual(['/ws/src/a.ts']);
-      expect(tabs.activated).toEqual(['workspace-tab']);
+      // ⛔ An agent never takes the user to its tab; they may be working in another.
+      expect(tabs.activated).toEqual([]);
     });
 
     it('whenTheWellRefuses_reportsItsReasonAndLeavesTheTabAlone', async () => {
@@ -586,7 +590,7 @@ describe('WorkbenchAgentCapabilities', () => {
   });
 
   describe('tree operations', () => {
-    it('createFile_resolvesTheRelativePathPassesTheContentAndBringsTheTabForward', async () => {
+    it('createFile_resolvesTheRelativePathPassesTheContent_withoutBringingTheTabForward', async () => {
       workspace.publish('/ws');
 
       const result: Record<string, unknown> = await invoke(CREATE_FILE, {
@@ -598,7 +602,8 @@ describe('WorkbenchAgentCapabilities', () => {
       expect(workspace.tree).toEqual([
         { op: 'createFile', path: '/ws/src/new.ts', extra: 'export {};' },
       ]);
-      expect(tabs.activated).toEqual(['workspace-tab']);
+      // ⛔ An agent never takes the user to its tab; they may be working in another.
+      expect(tabs.activated).toEqual([]);
     });
 
     it('createFile_withoutContent_asksForAnEmptyFile', async () => {
@@ -673,10 +678,10 @@ describe('WorkbenchAgentCapabilities', () => {
 
       expect(result['ok']).toBe(true);
       expect(result['where']).toBe('tab');
-      expect(tabs.opened).toEqual([{ type: 'terminal', resourceKey: undefined }]);
+      expect(tabs.opened).toEqual([{ type: 'terminal', resourceKey: undefined, background: true }]);
     });
 
-    it('whenAskedForAWorkspaceTerminal_opensItInTheWellAndBringsTheTabForward', async () => {
+    it('whenAskedForAWorkspaceTerminal_opensItInTheWell_withoutBringingTheTabForward', async () => {
       // #713. The conversation and the terminal it drives share a tab; the id returned is the one the
       // terminal tools address.
       workspace.publish('/ws');
@@ -685,7 +690,8 @@ describe('WorkbenchAgentCapabilities', () => {
 
       expect(result).toEqual({ ok: true, id: 'term-1', where: 'workspace' });
       expect(tabs.opened).toEqual([]);
-      expect(tabs.activated).toEqual(['workspace-tab']);
+      // ⛔ An agent never takes the user to its tab; they may be working in another.
+      expect(tabs.activated).toEqual([]);
     });
 
     it('whenAskedForAWorkspaceTerminalWithNoWorkspace_fallsBackToATab', async () => {

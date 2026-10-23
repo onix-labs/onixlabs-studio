@@ -128,6 +128,25 @@ describe('DockState', () => {
     expect(well.active).toBe('doc-b');
   });
 
+  it('tabInto_inTheBackground_addsTheTabBehindTheActiveOne', () => {
+    // An agent's open: the user keeps reading what they were reading.
+    const id: string = wellId();
+    state.tabInto(id, 'doc-a');
+
+    state.tabInto(id, 'doc-b', { background: true });
+
+    const well: StackNode = stackOf(state.layout(), 'doc-b');
+    expect(well.panels).toEqual(expect.arrayContaining(['doc-a', 'doc-b']));
+    expect(well.active).toBe('doc-a');
+  });
+
+  it('tabInto_inTheBackgroundOfAnEmptyStack_showsTheTab', () => {
+    // Nothing was in front to keep, so the new tab is what the well shows.
+    state.tabInto(wellId(), 'doc-a', { background: true });
+
+    expect(stackOf(state.layout(), 'doc-a').active).toBe('doc-a');
+  });
+
   it('setActive_whenCalled_updatesTheActivePanel', () => {
     const id: string = wellId();
     state.tabInto(id, 'doc-a');

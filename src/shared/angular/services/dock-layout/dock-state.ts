@@ -3,7 +3,8 @@ import { Log } from '@shared/angular/services/log/log';
 import { DocumentWellPlacement, Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
-import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
+import { DockNode, DockSide, isStackNode, mkStack, StackNode, StackRole } from './dock-node';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
@@ -14,6 +15,7 @@ import {
   dockEdge,
   dockNodeEdge,
   dockStackEdge,
+  findNode,
   movePanel,
   occupyWell,
   occupyWellWithStack,
@@ -142,12 +144,20 @@ export class DockState {
   }
 
   /**
-   * Adds a panel as a tab in the given stack and makes it active.
+   * Adds a panel as a tab in the given stack and makes it active — or, opened in the background,
+   * leaves the stack's active tab in front, so what the user was looking at stays put. A stack with no
+   * active tab shows the new one either way: there was nothing in front to keep.
    * @param stackId The identifier of the stack to tab into.
    * @param panelId The identifier of the panel to add.
+   * @param options How to open it; in the background, the stack's active tab stays active.
    */
-  public tabInto(stackId: string, panelId: string): void {
+  public tabInto(stackId: string, panelId: string, options?: OpenOptions): void {
+    const stack: DockNode | null = findNode(this.tree(), stackId);
+    const before: string | null = stack !== null && isStackNode(stack) ? stack.active : null;
     this.commit(tabInto(this.tree(), stackId, panelId));
+    if (options?.background === true && before !== null && before !== panelId) {
+      this.setActive(stackId, before);
+    }
   }
 
   /**

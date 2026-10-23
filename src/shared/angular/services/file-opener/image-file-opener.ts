@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 
 /**
  * Describes the viewer that accepts the `kind: 'image'` classification the main process assigns by
@@ -17,9 +17,10 @@ export interface ImageFileOpener {
   /**
    * Opens an image in a top-level image tab, reusing an existing tab for the same path.
    * @param path The absolute path of the image to open.
+   * @param options How to open it; in the background, the tab is not brought forward.
    * @returns Returns the opened, or re-activated, tab.
    */
-  open(path: string): Tab;
+  open(path: string, options?: OpenOptions): Tab;
 
   /**
    * Describes the document-well panel that shows an image inside a workspace, holding the image's

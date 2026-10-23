@@ -2,7 +2,7 @@ import { inject, Service } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ImageFileOpener } from '@shared/angular/services/file-opener/image-file-opener';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 import { ImageDocument, ImageDocuments } from '../image-document/image-document';
 import { ImageWellPanel } from '../image-well-panel/image-well-panel';
 
@@ -21,10 +21,11 @@ export class ImageOpener implements ImageFileOpener {
   /**
    * Opens an image in a top-level image tab, reusing an existing tab for the same path.
    * @param path The absolute path of the image.
+   * @param options How to open it; in the background, the tab is not brought forward.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public open(path: string): Tab {
-    return this.documents.openTab(path);
+  public open(path: string, options?: OpenOptions): Tab {
+    return this.documents.openTab(path, options);
   }
 
   /**

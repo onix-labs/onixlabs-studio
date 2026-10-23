@@ -6,6 +6,7 @@ import { FileChannel, FileInfo } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
@@ -295,6 +296,65 @@ describe('FileOpener', () => {
     expect(await opener.openPath('/ws/main.ts')).toBe(true);
     expect(wellPanels()).toHaveLength(1);
     expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('openPath_inTheBackground_addsTheDocumentBehindTheOneBeingRead', async () => {
+    // An agent's open: the user keeps reading main.ts, and the well is not focused.
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+    await opener.openPath('/ws/main.ts');
+    const reading: string | null = firstStackOfRole(dockState.layout(), 'document')!.active;
+    const focus: DockFocus = TestBed.inject(DockFocus);
+    focus.focus('somewhere-else');
+
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/other.ts', name: 'other.ts', extension: '.ts', content: 'export {};' },
+    };
+    expect(await opener.openPath('/ws/other.ts', { background: true })).toBe(true);
+
+    expect(wellPanels()).toHaveLength(2);
+    expect(firstStackOfRole(dockState.layout(), 'document')!.active).toBe(reading);
+    expect(focus.focusedStackId()).toBe('somewhere-else');
+  });
+
+  it('openPath_inTheBackgroundWhenAlreadyOpen_leavesTheWellAsItIs', async () => {
+    for (const name of ['main.ts', 'other.ts']) {
+      nextSelection = {
+        kind: 'file',
+        file: { path: `/ws/${name}`, name, extension: '.ts', content: 'export {};' },
+      };
+      await opener.openPath(`/ws/${name}`);
+    }
+    const reading: string | null = firstStackOfRole(dockState.layout(), 'document')!.active;
+
+    nextSelection = {
+      kind: 'file',
+      file: { path: '/ws/main.ts', name: 'main.ts', extension: '.ts', content: 'export {};' },
+    };
+    await opener.openPath('/ws/main.ts', { background: true });
+
+    expect(firstStackOfRole(dockState.layout(), 'document')!.active).toBe(reading);
+  });
+
+  it('openPath_inTheBackgroundForAnApiDocument_opensItsTabWithoutSwitching', async () => {
+    const working: string = tabs.open('code').id;
+    nextSelection = {
+      kind: 'file',
+      file: {
+        path: '/ws/orders.api.json',
+        name: 'orders.api.json',
+        extension: '.json',
+        content: API_DOCUMENT_TEXT,
+      },
+    };
+
+    expect(await opener.openPath('/ws/orders.api.json', { background: true })).toBe(true);
+
+    expect(tabs.tabs().some((tab: Tab): boolean => tab.type === 'api-explorer')).toBe(true);
+    expect(tabs.activeTabId()).toBe(working);
   });
 
   it('openPath_whenCentreIsToolOccupied_splitsAFreshWellForTheDocument', async () => {
