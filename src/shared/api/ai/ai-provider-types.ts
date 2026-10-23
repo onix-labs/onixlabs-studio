@@ -224,4 +224,11 @@ export interface AiProviderInfo {
    * the remote-control control for the provider then.
    */
   readonly supportsRemoteControl?: boolean;
+
+  /**
+   * Gets a value indicating whether the user can sign in to this connection's provider from Studio
+   * (#1080): its plugin signs users in, and the connection uses a sign-in rather than a key. Gates the
+   * sign-in window and the `/login` and `/logout` commands. Absent reads as false.
+   */
+  readonly supportsSignIn?: boolean;
 }

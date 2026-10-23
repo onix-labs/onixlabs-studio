@@ -725,6 +725,10 @@ export function buildOptions(
     // Sub-agent text and thinking arrive with `parent_tool_use_id` set, so the renderer can show
     // nested activity as live progress instead of an opaque "Working…" stall.
     forwardSubagentText: true,
+    // Replies and thinking stream as they are written (#1070). Without it the harness has only whole
+    // messages to forward, so a model that thinks for a minute is a minute of silence, and Studio cannot
+    // tell an agent working from one that never started. `events.ts` shows each streamed message once.
+    includePartialMessages: true,
     // A branch resumes only up to its anchor and forks to a new session id, so the discarded turns
     // never reach the model and the original session stays resumable.
     ...(open.resumeSessionId !== null ? { resume: open.resumeSessionId } : {}),

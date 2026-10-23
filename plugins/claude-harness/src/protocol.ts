@@ -9,6 +9,8 @@
 // This is the same rule `plugins/protocol/listing.ts` follows for decoders, and the in-repo stand-in
 // for what would eventually be a published protocol package.
 
+import type { AuthAction, AuthState } from './auth';
+
 /**
  * The protocol version this harness speaks. Studio refuses a harness whose major differs, or whose
  * minor is newer than the build's.
@@ -19,6 +21,39 @@
  * tool instead of being handed Studio's as well.
  */
 export const PROTOCOL_VERSION: string = '1.10.0';
+
+/**
+ * The Studio protocol version that knows the `turn-started` event (1.17.0, #1070).
+ *
+ * ⚠️ Why the version above stays where it is. Studio refuses a harness declaring a newer minor than its
+ * own, and a plugin release reaches every Studio already installed — so declaring 1.17.0 would have
+ * this harness refused by every build before it. What 1.17.0 added is offered in ways an older Studio
+ * never notices: `auth` through `answers`, which it never sends, and `turn-started` only to a Studio
+ * whose `initialize` says it knows the kind.
+ */
+export const TURN_STARTED_PROTOCOL: string = '1.17.0';
+
+/**
+ * Determines whether a declared protocol version is at least a given one, by major, minor and patch.
+ * @param declared The version declared, such as Studio's at the handshake.
+ * @param floor The version required.
+ * @returns Returns true when the declared version is the floor or later; false when either is unreadable.
+ */
+export function speaksAtLeast(declared: string, floor: string): boolean {
+  const pattern: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
+  const left: RegExpExecArray | null = pattern.exec(declared);
+  const right: RegExpExecArray | null = pattern.exec(floor);
+  if (left === null || right === null) {
+    return false;
+  }
+  for (let part: number = 1; part <= 3; part += 1) {
+    const difference: number = Number(left[part]) - Number(right[part]);
+    if (difference !== 0) {
+      return difference > 0;
+    }
+  }
+  return true;
+}
 
 /**
  * What a harness declares it can do, once, at the handshake.
@@ -117,6 +152,9 @@ export type HostMessage =
   | { readonly type: 'discover'; readonly discoveryId: string }
   | { readonly type: 'task.stop'; readonly taskId: string }
   | { readonly type: 'panic' }
+  // Sign in, check, or sign out (Studio 1.17.0, #1080). Answered with `auth` messages under the same
+  // id; the last one, `signed-in` or `signed-out`, settles it.
+  | { readonly type: 'auth'; readonly authId: string; readonly action: AuthAction }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: Answer };
 
 /**
@@ -265,4 +303,5 @@ export type HarnessMessage =
       readonly discoveryId: string;
       readonly models: readonly HarnessModel[];
       readonly detail?: string;
-    };
+    }
+  | { readonly type: 'auth'; readonly authId: string; readonly state: AuthState };

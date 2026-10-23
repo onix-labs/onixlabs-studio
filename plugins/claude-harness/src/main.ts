@@ -36,6 +36,7 @@
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import type { ModelInfo, Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { type AuthState, authExecutable, runAuth } from './auth';
 import { hasLocalLogin, resolveExecutable } from './environment';
 import { note } from './log';
 import { labelFor } from './models';
@@ -46,6 +47,8 @@ import {
   type HostMessage,
   PROTOCOL_VERSION,
   type Request,
+  speaksAtLeast,
+  TURN_STARTED_PROTOCOL,
 } from './protocol';
 import { Session, type Host } from './session';
 
@@ -56,7 +59,14 @@ import { Session, type Host } from './session';
  * message an immediate "cannot" rather than a turn that hangs waiting for a reply. Adding a message
  * to the loop below without adding it here means Studio never delivers it.
  */
-const ANSWERS: readonly string[] = ['steer', 'remote-control', 'discover', 'task.stop', 'panic'];
+const ANSWERS: readonly string[] = [
+  'steer',
+  'remote-control',
+  'discover',
+  'task.stop',
+  'panic',
+  'auth',
+];
 
 /**
  * The reasoning-effort levels the Agent SDK offers, ascending. `minimal` is deliberately absent — it
@@ -80,9 +90,20 @@ let calls: number = 0;
 let settings: Readonly<Record<string, unknown>> = {};
 
 /**
+ * Holds the protocol version Studio declared at the handshake, which says what it can be sent.
+ */
+let hostProtocol: string = '0.0.0';
+
+/**
  * Holds the conversation, opened lazily on the first turn.
  */
 let session: Session | null = null;
+
+/**
+ * Stops the sign-in in flight, if there is one. Called when Studio closes the pipe, which is how it
+ * cancels a sign-in: the CLI's login must not outlive the window that started it.
+ */
+let stopAuth: () => void = (): void => undefined;
 
 /**
  * Writes one protocol message to Studio.
@@ -158,7 +179,14 @@ function ask(
 /**
  * How the session reaches Studio.
  */
-const host: Host = { send, ask };
+const host: Host = {
+  send,
+  ask,
+  // Read when asked rather than at start-up: the handshake that says it comes after this is built.
+  get announcesTurns(): boolean {
+    return speaksAtLeast(hostProtocol, TURN_STARTED_PROTOCOL);
+  },
+};
 
 /**
  * Lists the models the SDK reports for the current login.
@@ -232,6 +260,8 @@ function receive(message: HostMessage): void {
   switch (message.type) {
     case 'initialize':
       settings = message.settings ?? {};
+      hostProtocol =
+        typeof message.protocolVersion === 'string' ? message.protocolVersion : '0.0.0';
       send({
         type: 'ready',
         capabilities: {
@@ -279,6 +309,15 @@ function receive(message: HostMessage): void {
     case 'discover':
       void discover(message.discoveryId);
       break;
+    case 'auth': {
+      const authId: string = message.authId;
+      stopAuth = runAuth(
+        message.action,
+        authExecutable(settings['claudeExecutable'], __dirname),
+        (state: AuthState): void => send({ type: 'auth', authId, state }),
+      );
+      break;
+    }
   }
 }
 
@@ -298,6 +337,7 @@ lines.on('line', (line: string): void => {
 // closed first so the CLI subprocess and any claude.ai bridge go down with it rather than being
 // orphaned for the process-tree kill to catch.
 lines.on('close', (): void => {
+  stopAuth();
   void (session === null ? Promise.resolve() : session.close()).finally((): never =>
     process.exit(0),
   );

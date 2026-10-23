@@ -79,6 +79,14 @@ class FakeQuery {
   }
 
   /**
+   * Queues any frame, for a test that plays the CLI's side of a turn by hand.
+   * @param frame The frame.
+   */
+  public send(frame: Record<string, unknown>): void {
+    this.push({ session_id: this.sessionId, ...frame } as unknown as SDKMessage);
+  }
+
+  /**
    * Gets the slash commands, of which there are none.
    * @returns Returns no commands.
    */
@@ -208,6 +216,7 @@ interface FakeStudio {
   readonly sent: HarnessMessage[];
   readonly asked: Request[];
   instructions: string;
+  announcesTurns: boolean;
 }
 
 /**
@@ -219,7 +228,11 @@ function fakeStudio(): FakeStudio {
     sent: [],
     asked: [],
     instructions: 'Profile: be terse.',
+    announcesTurns: true,
     host: {
+      get announcesTurns(): boolean {
+        return studio.announcesTurns;
+      },
       send: (message: HarnessMessage): void => {
         studio.sent.push(message);
       },
@@ -419,6 +432,164 @@ describe('Session instructions (#955)', () => {
       requestId: 'r3',
       error: 'The Claude session has ended.',
     });
+    await session.close();
+  });
+});
+
+describe('Session turn start (#1070)', () => {
+  beforeEach((): void => {
+    sdk.queries = [];
+    sdk.autoComplete = true;
+    sdk.resumeAs = null;
+    sdk.sequence = 0;
+  });
+
+  /**
+   * Reads the turn-started events a fake Studio was sent.
+   * @param studio The fake.
+   * @returns Returns the events.
+   */
+  function turnsStarted(studio: FakeStudio): readonly Record<string, unknown>[] {
+    return studio.sent
+      .filter((message: HarnessMessage): boolean => message.type === 'event')
+      .map((message: HarnessMessage): Record<string, unknown> =>
+        message.type === 'event' ? message.event : {},
+      )
+      .filter((event: Record<string, unknown>): boolean => event['kind'] === 'turn-started');
+  }
+
+  it('announcesTheReportBackTurnOnce_asTheCliResumes', async () => {
+    const studio: FakeStudio = fakeStudio();
+    const session: Session = new Session(studio.host, turn('r1'));
+    await session.run(turn('r1'));
+    const query: FakeQuery = sdk.queries[0];
+    query.startTask('task-1');
+    await flush();
+
+    query.send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      summary: 'Built',
+      output_file: '/tmp/out',
+    });
+    query.send({ type: 'system', subtype: 'init' });
+    query.send({
+      type: 'assistant',
+      uuid: 'u-1',
+      parent_tool_use_id: null,
+      message: { id: 'm-1', content: [{ type: 'text', text: 'The build passed.' }] },
+    });
+    await flush();
+
+    expect(turnsStarted(studio)).toEqual([
+      {
+        requestId: 'r1',
+        kind: 'turn-started',
+        agentSessionId: 'conversation-1',
+        reason: 'report-back',
+      },
+    ]);
+    await session.close();
+  });
+
+  it('saysNothingToAStudioThatPredatesTheEvent', async () => {
+    // An older Studio has never heard of the kind; the timer it already has stands.
+    const studio: FakeStudio = fakeStudio();
+    studio.announcesTurns = false;
+    const session: Session = new Session(studio.host, turn('r1'));
+    await session.run(turn('r1'));
+    const query: FakeQuery = sdk.queries[0];
+    query.startTask('task-1');
+    await flush();
+
+    query.send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+    });
+    query.send({ type: 'system', subtype: 'init' });
+    await flush();
+
+    expect(turnsStarted(studio)).toEqual([]);
+    await session.close();
+  });
+
+  it('announcesNothingForAReplayedNotification', async () => {
+    // A task this session never saw start is history from a previous process (#709), not a turn.
+    const studio: FakeStudio = fakeStudio();
+    const session: Session = new Session(studio.host, turn('r1'));
+    await session.run(turn('r1'));
+    const query: FakeQuery = sdk.queries[0];
+
+    query.send({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'gone',
+      status: 'stopped',
+    });
+    query.send({ type: 'system', subtype: 'init' });
+    await flush();
+
+    expect(turnsStarted(studio)).toEqual([]);
+    await session.close();
+  });
+
+  it('streamsAReplyAndShowsItOnce', async () => {
+    sdk.autoComplete = false;
+    const studio: FakeStudio = fakeStudio();
+    const session: Session = new Session(studio.host, turn('r1'));
+    const running: Promise<void> = session.run(turn('r1'));
+    await flush();
+    const query: FakeQuery = sdk.queries[0];
+
+    query.send({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'message_start', message: { id: 'm-1' } },
+    });
+    query.send({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Hello, ' },
+      },
+    });
+    query.send({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'world.' },
+      },
+    });
+    query.send({
+      type: 'assistant',
+      uuid: 'u-1',
+      parent_tool_use_id: null,
+      message: { id: 'm-1', content: [{ type: 'text', text: 'Hello, world.' }] },
+    });
+    query.complete();
+    await running;
+
+    const text: string[] = studio.sent
+      .filter((message: HarnessMessage): boolean => message.type === 'event')
+      .map((message: HarnessMessage): Record<string, unknown> =>
+        message.type === 'event' ? message.event : {},
+      )
+      .filter((event: Record<string, unknown>): boolean => event['kind'] === 'text')
+      .map(
+        (event: Record<string, unknown>): string =>
+          `${String(event['delta'])}|${String(event['messageUuid'])}`,
+      );
+    // The whole message adds no text, only its uuid: the transcript's anchor for a rewind.
+    expect(text).toEqual(['Hello, |undefined', 'world.|undefined', '|u-1']);
+    expect(query.options.includePartialMessages).toBe(true);
     await session.close();
   });
 });

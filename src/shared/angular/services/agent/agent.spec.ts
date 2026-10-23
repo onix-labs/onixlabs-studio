@@ -11,6 +11,7 @@ import type {
   AiPermissionPosture,
   AiProviderId,
   AiProviderInfo,
+  AiSignInStatus,
 } from '@shared/api/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
@@ -42,6 +43,11 @@ const PROVIDERS: readonly AiProviderInfo[] = [
     defaultModelId: 'claude-opus-4-8',
   },
 ];
+
+/**
+ * Holds the providers the stubbed runtime lists, which a test may replace before reloading them.
+ */
+let providers: readonly AiProviderInfo[] = PROVIDERS;
 
 describe('Agent', () => {
   let agent: Agent;
@@ -129,11 +135,12 @@ describe('Agent', () => {
       | 'respondPermission'
       | 'respondInput'
       | 'respondEditDecision'
-      | 'checkClaudeAuth'
+      | 'checkSignIn'
     > = {
       // A failed run consults the authoritative sign-in status before offering to sign in. These tests
       // exercise error handling, not the login prompt, so the user is reported as signed in.
-      checkClaudeAuth: (): Promise<boolean> => Promise.resolve(true),
+      checkSignIn: (): Promise<AiSignInStatus> =>
+        Promise.resolve({ supported: true, signedIn: true }),
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
@@ -173,7 +180,7 @@ describe('Agent', () => {
         steerCalls.push({ requestId, text });
         return Promise.resolve(steerResult);
       },
-      listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(PROVIDERS),
+      listProviders: (): Promise<readonly AiProviderInfo[]> => Promise.resolve(providers),
       respondPermission: (permissionId: string, granted: boolean, remember?: string): void => {
         permissionReplies.push(
           remember === undefined ? { permissionId, granted } : { permissionId, granted, remember },
@@ -204,6 +211,38 @@ describe('Agent', () => {
     // `listProviders`, so the selection is made explicit rather than raced for.
     TestBed.inject(Settings).setActiveConnection('claude');
     agent = TestBed.inject(Agent);
+    providers = PROVIDERS;
+  });
+
+  it('signIn_isNotOfferedForAProviderThatCannotSignIn', () => {
+    // ⛔ A 401 from a key-based connection, or a plugin with no sign-in, used to open Claude's window.
+    agent.send('go');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    expect(agent.needsLogin()).toBe(false);
+  });
+
+  it('signIn_isOfferedWhenThePluginCanSignTheUserIn', async () => {
+    providers = PROVIDERS.map((info: AiProviderInfo): AiProviderInfo => ({
+      ...info,
+      supportsSignIn: true,
+    }));
+    await TestBed.inject(AgentEngine).loadProviders();
+    agent.send('go');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    expect(agent.supportsSignIn()).toBe(true);
+    expect(agent.needsLogin()).toBe(true);
   });
 
   it('send_carriesTheAgentSessionId', () => {
@@ -980,6 +1019,70 @@ describe('Agent', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('turnStarted_makesTheAdoptedTurnAFactThatNoDeadlineReleases', () => {
+    // 🔑 #1070: a model can think for longer than the deadline before saying anything. Once the agent
+    // says it began, the turn is real and ends on its status, however long the silence.
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'turn-started',
+        agentSessionId: sessionId ?? null,
+        reason: 'report-back',
+      });
+
+      vi.advanceTimersByTime(ADOPTION_DEADLINE_MS * 2);
+
+      expect(agent.isRunning()).toBe(true);
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('turnStarted_adoptsATurnTheConversationHadNotAdopted', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.isRunning()).toBe(false);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'turn-started',
+      agentSessionId: sessionId ?? null,
+      reason: 'report-back',
+    });
+
+    expect(agent.isRunning()).toBe(true);
+  });
+
+  it('turnStarted_isIgnoredForAnotherConversation', () => {
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'turn-started',
+      agentSessionId: 'someone-else',
+      reason: 'report-back',
+    });
+
+    expect(agent.isRunning()).toBe(false);
   });
 
   it('backgroundTask_whenTheReportBackBegins_theAdoptionOutlivesItsDeadline', () => {

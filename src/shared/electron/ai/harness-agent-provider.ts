@@ -11,6 +11,8 @@ import type {
 } from '@shared/api/ai-types';
 import type {
   HarnessAnswer,
+  HarnessAuthAction,
+  HarnessAuthState,
   HarnessCapabilities,
   HarnessModel,
   HarnessTool,
@@ -27,6 +29,7 @@ import type {
   AgentRunContext,
   AgentSession,
   AgentSessionModel,
+  AgentSignIn,
   ProviderAvailability,
 } from './agent-provider';
 import { HarnessHost, HarnessModelReport, HarnessTransport, refusalFor } from './harness-host';
@@ -192,6 +195,15 @@ export class HarnessAgentProvider implements AgentProvider {
   }
 
   /**
+   * Gets whether the harness signs its user in, as declared (#1080). Assumed so before the first
+   * handshake, because nothing short of starting it can say: a harness that turns out not to answer
+   * `auth` settles a sign-in null, and the window says the plugin cannot sign in.
+   */
+  public get offersSignIn(): boolean {
+    return this.declared === null || (this.declared.answers ?? []).includes('auth');
+  }
+
+  /**
    * Gets how the harness maintains a conversation, as its manifest declares.
    */
   public get sessionModel(): AgentSessionModel {
@@ -287,6 +299,40 @@ export class HarnessAgentProvider implements AgentProvider {
     } finally {
       host.close();
     }
+  }
+
+  /**
+   * Signs the harness's user in, checks, or signs them out (#1080).
+   *
+   * Spawns the harness for the exchange alone and closes it once the exchange settles, as discovery
+   * does. Cancelling closes it early, and closing is what stops a sign-in: the harness ends the CLI's
+   * login process when its input closes.
+   * @param action What to do.
+   * @param settings Settings for this exchange beyond the harness's own, merged over them.
+   * @param onProgress Receives the states a sign-in passes through before it settles.
+   * @returns Returns the settling state, and a way to cancel.
+   */
+  public signIn(
+    action: HarnessAuthAction,
+    settings: Readonly<Record<string, unknown>>,
+    onProgress: (state: HarnessAuthState) => void,
+  ): AgentSignIn {
+    const host: HarnessHost = new HarnessHost(this.definition.connect(), (): void => undefined);
+    const result: Promise<HarnessAuthState | null> =
+      (async (): Promise<HarnessAuthState | null> => {
+        try {
+          const capabilities: HarnessCapabilities | null = await host.initialize({
+            ...this.definition.settings,
+            ...settings,
+          });
+          // ⛔ The host answers null, unsent, for a harness that did not list `auth`: one published
+          // before 1.17.0 cannot leave the sign-in window waiting on a reply that never comes.
+          return capabilities === null ? null : await host.auth('auth-1', action, onProgress);
+        } finally {
+          host.close();
+        }
+      })();
+    return { result, cancel: (): void => host.close() };
   }
 
   /**

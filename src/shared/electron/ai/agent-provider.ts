@@ -15,6 +15,7 @@ import type {
   ClaudeExecutableChoice,
   CodexExecutableChoice,
 } from '@shared/api/ai-types';
+import type { HarnessAuthAction, HarnessAuthState } from '@shared/api/agent-protocol';
 import type { AuditGrantSource } from './agent-audit-log';
 import type { HostingOp, HostingParams, HostingResponse } from '@shared/api/hosting-protocol';
 import type { RunHosting } from '../hosting/hosting-agent-access';
@@ -519,6 +520,13 @@ export interface AgentProvider {
   readonly supportsRemoteControl: boolean;
 
   /**
+   * Gets a value indicating whether the provider can sign its user in (#1080), so far as is known: a
+   * harness that has not yet been asked is assumed able, and one that answered without `auth` is not.
+   * Absent means it cannot.
+   */
+  readonly offersSignIn?: boolean;
+
+  /**
    * Gets how the provider maintains a conversation — whether it can hold a live session (#324).
    * `live-harness` providers will open an {@link AgentSession}; `stateless` providers run per-turn. This
    * is a classification only in P2 (#326); the live-session runtime lands in P3 (#327).
@@ -564,6 +572,38 @@ export interface AgentProvider {
     auth: AgentAuth,
     settings?: Readonly<Record<string, unknown>>,
   ): Promise<AgentModelReport | null>;
+
+  /**
+   * Signs the provider's user in, reports whether they are signed in, or signs them out (#1080).
+   *
+   * Optional because only a provider that runs as a harness can, and only when its harness answers
+   * `auth`. The result settles null when it cannot, which the caller reads as "this plugin cannot sign
+   * anyone in" rather than as signed out.
+   * @param action What to do.
+   * @param settings Settings for this exchange beyond the provider's own, as for discovery.
+   * @param onProgress Receives the states a sign-in passes through before it settles.
+   * @returns Returns the settling state, and a way to cancel a sign-in in flight.
+   */
+  signIn?(
+    action: HarnessAuthAction,
+    settings: Readonly<Record<string, unknown>>,
+    onProgress: (state: HarnessAuthState) => void,
+  ): AgentSignIn;
+}
+
+/**
+ * A sign-in exchange in flight (#1080).
+ */
+export interface AgentSignIn {
+  /**
+   * Gets the state that settles the exchange, or null when the provider could not answer.
+   */
+  readonly result: Promise<HarnessAuthState | null>;
+
+  /**
+   * Cancels the exchange. Does nothing once it has settled.
+   */
+  readonly cancel: () => void;
 }
 
 /**

@@ -234,8 +234,16 @@ import { AiEvent } from './ai/ai-event-types';
  * tools alone: a terminal's agent through its terminal, a tool view's agent through its view. Optional,
  * so every published harness is unaffected; one written before it keeps its tools, which the
  * permission prompt still stands in front of.
+ *
+ * `1.17.0` adds two things (#1080, #1070). The `auth` exchange lets a harness sign its user in, report
+ * whether they are signed in, and sign them out, so core keeps the sign-in window and none of the vendor
+ * behind it. A harness offers it by listing `auth` in `answers`, so one written before it is never sent
+ * the message. The `turn-started` event lets a harness say that it began a turn nobody prompted, such as
+ * a background task's report-back, instead of leaving Studio to infer one from silence. A harness sends
+ * it only to a Studio whose `initialize` declared 1.17.0 or later, so an older build never sees a kind it
+ * does not know.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.16.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.17.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -563,7 +571,29 @@ export type HostMessage =
   // ⚠️ A request, not a guarantee. The host gives the harness a grace period to settle and then closes
   // the transport regardless, because a wedged harness is precisely what a panic stop is for.
   | { readonly type: 'panic' }
+  // Answered with one or more `auth` messages under the same id (1.17.0), the last of them settled.
+  // A sign-in reports its progress on the way; a status check or a sign-out answers once. Cancelling a
+  // sign-in is closing the harness, which takes the vendor's login process down with it.
+  | { readonly type: 'auth'; readonly authId: string; readonly action: HarnessAuthAction }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: HarnessAnswer };
+
+/**
+ * What an `auth` message asks a harness to do (1.17.0).
+ */
+export type HarnessAuthAction = 'status' | 'login' | 'logout';
+
+/**
+ * Where an `auth` exchange stands, as a harness reports it (1.17.0).
+ *
+ * `starting` and `browser` are progress on a sign-in; `signed-in` and `signed-out` settle the exchange.
+ * A sign-in that failed settles `signed-out`, with the reason in `detail`.
+ */
+export type HarnessAuthState =
+  | { readonly phase: 'starting' }
+  // The sign-in page is open, or should be. `url` is the page, for when the browser did not open.
+  | { readonly phase: 'browser'; readonly url?: string }
+  | { readonly phase: 'signed-in'; readonly account?: string }
+  | { readonly phase: 'signed-out'; readonly detail?: string };
 
 /**
  * The answer to a blocking request, carried back under the request's `callId`.
@@ -658,7 +688,8 @@ export type HarnessMessage =
       // Why the list is empty, when the harness knows (1.8.0). Read only when `models` is empty: a
       // harness that reported models is reporting models, and core phrases the success.
       readonly detail?: string;
-    };
+    }
+  | { readonly type: 'auth'; readonly authId: string; readonly state: HarnessAuthState };
 
 /**
  * A model a harness reports it can run.
@@ -824,6 +855,7 @@ const HARNESS_MESSAGE_TYPES: readonly string[] = [
   'turn.completed',
   'turn.failed',
   'models',
+  'auth',
 ];
 
 /**
@@ -865,5 +897,35 @@ export function parseHarnessMessage(value: unknown): HarnessMessage | null {
   if (needsRequestId.includes(candidate.type) && typeof candidate.requestId !== 'string') {
     return null;
   }
+  if (candidate.type === 'auth' && !isAuthMessage(value)) {
+    return null;
+  }
   return value as HarnessMessage;
+}
+
+/**
+ * The phases an `auth` message may report.
+ */
+const AUTH_PHASES: readonly string[] = ['starting', 'browser', 'signed-in', 'signed-out'];
+
+/**
+ * Determines whether an `auth` message names its exchange and reports a phase this protocol describes.
+ *
+ * Checked more closely than most messages because what it carries reaches the sign-in window: a `url`
+ * there becomes a link the user is invited to open, so anything but an `https` address is refused.
+ * @param value The message.
+ * @returns Returns true when it is a well-formed `auth` message.
+ */
+function isAuthMessage(value: object): boolean {
+  const message: { authId?: unknown; state?: unknown } = value;
+  if (typeof message.authId !== 'string' || typeof message.state !== 'object') {
+    return false;
+  }
+  const state: { phase?: unknown; url?: unknown } | null = message.state;
+  if (state === null || typeof state.phase !== 'string' || !AUTH_PHASES.includes(state.phase)) {
+    return false;
+  }
+  return (
+    state.url === undefined || (typeof state.url === 'string' && state.url.startsWith('https://'))
+  );
 }
