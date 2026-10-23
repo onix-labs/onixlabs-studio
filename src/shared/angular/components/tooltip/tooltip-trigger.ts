@@ -183,6 +183,22 @@ export class TooltipTrigger {
   }
 
   /**
+   * Opens the bubble on behalf of something the pointer is over that is not an element of its own —
+   * a link drawn on a terminal's canvas, which places the trigger over it first. The same rules apply
+   * as on hover: nothing shows when tooltips are off or there is nothing to say.
+   */
+  public show(): void {
+    this.onShow();
+  }
+
+  /**
+   * Closes the bubble opened by {@link show}.
+   */
+  public hide(): void {
+    this.onLeave();
+  }
+
+  /**
    * Opens the bubble when focus reaches the control from the keyboard.
    *
    * 🔥 Only from the keyboard. A pressed button keeps focus, and a window given focus back — when a
