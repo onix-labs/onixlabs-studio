@@ -331,10 +331,12 @@
   </ng-template>
 </app-modal>
 
-<!-- Shown when a run through the Claude local login fails because that login has expired or is absent:
-     offers to sign back in via the browser, in-app, without dropping to a terminal. -->
+<!-- Shown when a run fails because its provider's sign-in has expired or is absent: offers to sign
+     back in via the browser, in-app, without dropping to a terminal. -->
 <app-agent-login-modal
   [open]="needsLogin()"
+  [providerName]="signInName()"
+  [request]="signInRequest()"
   (dismiss)="dismissLogin()"
   (succeeded)="onLoginSucceeded()"
 />

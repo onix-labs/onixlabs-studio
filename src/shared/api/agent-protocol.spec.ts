@@ -74,6 +74,38 @@ describe('parseHarnessMessage', () => {
     expect(parseHarnessMessage({ type: 'request', callId: 'c1', request: {} })).toBeNull();
   });
 
+  it('acceptsAnAuthMessageThatNamesItsExchangeAndAPhase', () => {
+    expect(
+      parseHarnessMessage({ type: 'auth', authId: 'a1', state: { phase: 'starting' } }),
+    ).not.toBeNull();
+    expect(
+      parseHarnessMessage({
+        type: 'auth',
+        authId: 'a1',
+        state: { phase: 'browser', url: 'https://claude.com/cai/oauth/authorize?code=true' },
+      }),
+    ).not.toBeNull();
+    expect(
+      parseHarnessMessage({ type: 'auth', authId: 'a1', state: { phase: 'signed-out' } }),
+    ).not.toBeNull();
+  });
+
+  it('refusesAnAuthMessageItCannotTrust', () => {
+    // The address becomes a link in the sign-in window, so it must be a web page and nothing else.
+    expect(
+      parseHarnessMessage({
+        type: 'auth',
+        authId: 'a1',
+        state: { phase: 'browser', url: 'file:///Users/someone/.ssh/id_rsa' },
+      }),
+    ).toBeNull();
+    expect(
+      parseHarnessMessage({ type: 'auth', authId: 'a1', state: { phase: 'done' } }),
+    ).toBeNull();
+    expect(parseHarnessMessage({ type: 'auth', authId: 'a1', state: null })).toBeNull();
+    expect(parseHarnessMessage({ type: 'auth', state: { phase: 'starting' } })).toBeNull();
+  });
+
   it('refusesAnythingThatIsNotAMessageObject', () => {
     expect(parseHarnessMessage(null)).toBeNull();
     expect(parseHarnessMessage('ready')).toBeNull();

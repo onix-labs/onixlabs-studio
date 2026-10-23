@@ -1,6 +1,8 @@
 import {
   AGENT_PROTOCOL_VERSION,
   HarnessAnswer,
+  HarnessAuthAction,
+  HarnessAuthState,
   HarnessCapabilities,
   HarnessMessage,
   HarnessModel,
@@ -173,6 +175,11 @@ export class HarnessHost {
   >();
 
   /**
+   * Holds the `auth` exchanges in flight, by exchange id: the progress sink and the settler.
+   */
+  private readonly authExchanges: Map<string, AuthExchange> = new Map<string, AuthExchange>();
+
+  /**
    * Holds the resolver for the handshake, cleared once the harness is ready or has failed to be.
    */
   private readyResolver: ((capabilities: HarnessCapabilities | null) => void) | null = null;
@@ -318,6 +325,37 @@ export class HarnessHost {
         resolve(report);
       });
       this.post({ type: 'discover', discoveryId });
+    });
+  }
+
+  /**
+   * Asks the harness to sign its user in, report whether they are signed in, or sign them out (1.17.0).
+   *
+   * Resolves on the state that settles the exchange, `signed-in` or `signed-out`, and passes every
+   * state before it to `onProgress`. Resolves null when the harness does not answer `auth`, which is how
+   * a caller tells "this plugin cannot sign anyone in" apart from "signed out", or when it ends first.
+   * @param authId The id to correlate the answer under.
+   * @param action What to do.
+   * @param onProgress Receives the states reported before the exchange settles.
+   * @returns Returns the settling state, or null when the harness could not answer.
+   */
+  public auth(
+    authId: string,
+    action: HarnessAuthAction,
+    onProgress: (state: HarnessAuthState) => void = (): void => undefined,
+  ): Promise<HarnessAuthState | null> {
+    if (!this.alive || !this.answers('auth')) {
+      return Promise.resolve(null);
+    }
+    return new Promise<HarnessAuthState | null>((resolve): void => {
+      this.authExchanges.set(authId, {
+        onProgress,
+        settle: (state: HarnessAuthState | null): void => {
+          this.authExchanges.delete(authId);
+          resolve(state);
+        },
+      });
+      this.post({ type: 'auth', authId, action });
     });
   }
 
@@ -515,6 +553,15 @@ export class HarnessHost {
             typeof message.detail === 'string' && message.detail.length > 0 ? message.detail : null,
         });
         break;
+      case 'auth': {
+        const exchange: AuthExchange | undefined = this.authExchanges.get(message.authId);
+        if (message.state.phase === 'signed-in' || message.state.phase === 'signed-out') {
+          exchange?.settle(message.state);
+        } else {
+          exchange?.onProgress(message.state);
+        }
+        break;
+      }
     }
   }
 
@@ -663,6 +710,10 @@ export class HarnessHost {
     for (const resolve of [...this.discoveries.values()]) {
       resolve(null);
     }
+    // The same for a sign-in: a window left spinning on a harness that has gone is a hang.
+    for (const exchange of [...this.authExchanges.values()]) {
+      exchange.settle(null);
+    }
     for (const listener of this.closeListeners.splice(0)) {
       listener(reason);
     }
@@ -721,4 +772,19 @@ export function refusalFor(request: unknown): HarnessAnswer {
     return { kind: 'credential', apiKey: null };
   }
   return { kind: 'permission', granted: false };
+}
+
+/**
+ * An `auth` exchange in flight: where its progress goes, and how it settles.
+ */
+interface AuthExchange {
+  /**
+   * Receives a state reported before the exchange settles.
+   */
+  readonly onProgress: (state: HarnessAuthState) => void;
+
+  /**
+   * Settles the exchange with its final state, or null when the harness could not answer.
+   */
+  readonly settle: (state: HarnessAuthState | null) => void;
 }

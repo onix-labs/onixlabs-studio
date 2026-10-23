@@ -27,11 +27,14 @@ import type {
   AiProposedChange,
   AiProviderId,
   AiProviderInfo,
+  AiSignInRequest,
+  AiSignInStatus,
   AiRemoteControlMode,
   AiRunState,
   AiTaskProgressEvent,
   AiTaskStartedEvent,
   AiTaskUpdatedEvent,
+  AiTurnStartedEvent,
 } from '@shared/api/ai-types';
 import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
@@ -85,10 +88,14 @@ export const TASK_STOP_DEADLINE_MS: number = STOP_SETTLE_DEADLINE_MS;
 /**
  * How long an adopted report-back turn may go without a single event before the conversation stops
  * showing "Working" for it, in milliseconds. The CLI starts its report within a second of a task
- * settling, but the harness forwards whole messages, so a model that thinks first is silent until its
+ * settling, but a harness that forwards whole messages is silent while the model thinks, until its
  * first message is complete. 15 seconds proved far too short (it released real reports mid-thought).
  * Releasing is no longer destructive either: a late event re-attaches the turn (`admitsSessionEvent`),
  * so this only bounds the spinner for a report that genuinely never comes.
+ *
+ * ⚠️ A fallback since #1070. A harness that says when it begins a turn (`turn-started`) retires the
+ * deadline for that turn, which then ends on its status however long the model thinks; this now covers
+ * an older harness, and a CLI that never resumed at all.
  */
 export const ADOPTION_DEADLINE_MS: number = 60_000;
 
@@ -735,17 +742,34 @@ export class Agent {
   private readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds whether the "not signed in to Claude" prompt is pending. Raised when a run through the Claude
-   * local-login connection fails and an authoritative check ({@link AiRuntime.checkClaudeAuth}) finds the
-   * login expired or absent; the host shows the login modal, and dismissing it or a successful sign-in
-   * clears it.
+   * Holds whether the "not signed in" prompt is pending. Raised when a run through a connection that
+   * signs in fails and its provider ({@link AiRuntime.checkSignIn}) finds the sign-in expired or absent;
+   * the host shows the sign-in window, and dismissing it or a successful sign-in clears it.
    */
   private readonly needsLoginState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Gets whether the "not signed in to Claude" prompt is pending.
+   * Gets whether the "not signed in" prompt is pending.
    */
   public readonly needsLogin: Signal<boolean> = this.needsLoginState.asReadonly();
+
+  /**
+   * Gets whether the user can sign in to this conversation's provider from Studio (#1080): its plugin
+   * signs users in and its connection uses a sign-in. Gates the sign-in window and `/login`, `/logout`.
+   */
+  public readonly supportsSignIn: Signal<boolean> = computed(
+    (): boolean =>
+      this.engine.providers().find((info: AiProviderInfo): boolean => info.id === this.provider())
+        ?.supportsSignIn === true,
+  );
+
+  /**
+   * Gets the name the sign-in window and its commands use for this conversation's provider: the
+   * connection's own label, such as "Claude".
+   */
+  public readonly signInName: Signal<string> = computed(
+    (): string => this.engine.connection(this.provider())?.label ?? 'this provider',
+  );
 
   /**
    * Holds how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
@@ -1998,6 +2022,14 @@ export class Agent {
       }
       return;
     }
+    // The agent saying it began a turn nobody here prompted (#1070) is session-level for the same reason:
+    // it arrives while the conversation is idle, under the last turn's run id.
+    if (event.kind === 'turn-started') {
+      if (event.agentSessionId === this.agentSessionId) {
+        this.onTurnStarted(event);
+      }
+      return;
+    }
     // A message a peer typed while remote-controlling the session (#331) is session-level: it can arrive
     // when no Studio-initiated turn is active (activeRequestId null), so the per-turn filter below would
     // drop it and everything the turn then streams. Echo it as the user's message and adopt the turn so
@@ -2195,8 +2227,8 @@ export class Agent {
       // rather than a hard error, so the reply is checked here too — otherwise the prompt would only
       // ever appear for failures that reach the error state. The strict match (the reply *is* that
       // message, not one that merely mentions login) guards the removal below.
-      if (isNotLoggedInReply(this.lastReplyText())) {
-        this.logger.warn('Agent', 'Turn returned a sign-in message; prompting Claude login');
+      if (this.supportsSignIn() && isNotLoggedInReply(this.lastReplyText())) {
+        this.logger.warn('Agent', 'Turn returned a sign-in message; prompting sign-in');
         // Drop the sign-in reply so it neither lingers in the transcript nor merges with — and cannot
         // re-trigger this check on — the fresh reply the post-login re-run streams in.
         this.removeLastReply();
@@ -2215,29 +2247,33 @@ export class Agent {
   }
 
   /**
-   * Raises the "not signed in to Claude" prompt when a failed run looks like an expired or absent Claude
-   * login. The common case is recognised straight from the error text ({@link looksLikeAuthFailure}) so
-   * the modal appears immediately with no dependence on a main-process round-trip; for a run through the
-   * Claude local-login connection whose wording is unfamiliar, an authoritative `claude auth status`
-   * check backs it up. An ordinary failure (a network blip, a tool error) matches neither, so it never
-   * surfaces a sign-in modal.
+   * Raises the "not signed in" prompt when a failed run looks like an expired or absent sign-in. The
+   * common case is recognised straight from the error text ({@link looksLikeAuthFailure}) so the window
+   * appears at once; for wording that is unfamiliar, the provider's own status check backs it up. An
+   * ordinary failure (a network blip, a tool error) matches neither, so it never surfaces the window.
    * @param detail The failure detail carried by the error status event.
    */
   private maybePromptLogin(detail: string): void {
+    // ⛔ Only where Studio can sign the user in. A 401 from a key-based connection, or from a provider
+    // whose plugin has no sign-in, used to open Claude's window regardless.
+    if (!this.supportsSignIn()) {
+      return;
+    }
     if (looksLikeAuthFailure(detail)) {
-      this.logger.warn('Agent', 'Run failed with a sign-in error; prompting Claude login');
+      this.logger.warn('Agent', 'Run failed with a sign-in error; prompting sign-in');
       this.retryAfterLogin = true;
       this.needsLoginState.set(true);
       return;
     }
-    if (this.engine.connection(this.provider())?.auth !== 'claude-login') {
+    const request: AiSignInRequest | null = this.signInRequest();
+    if (request === null) {
       return;
     }
     void this.runtime
-      .checkClaudeAuth()
-      .then((loggedIn: boolean): void => {
-        if (!loggedIn) {
-          this.logger.warn('Agent', 'Claude login expired or absent; prompting sign-in');
+      .checkSignIn(request)
+      .then((status: AiSignInStatus): void => {
+        if (status.supported && !status.signedIn) {
+          this.logger.warn('Agent', 'Sign-in expired or absent; prompting sign-in');
           this.retryAfterLogin = true;
           this.needsLoginState.set(true);
         }
@@ -2251,7 +2287,7 @@ export class Agent {
   }
 
   /**
-   * Dismisses the "not signed in to Claude" prompt. Called when the user closes the login modal without
+   * Dismisses the "not signed in" prompt. Called when the user closes the login modal without
    * signing in.
    */
   public dismissLoginPrompt(): void {
@@ -2269,17 +2305,40 @@ export class Agent {
   }
 
   /**
-   * Signs the user out of Claude (the `/logout` command) and closes the live session, so the next turn
-   * runs signed out (and surfaces the sign-in prompt). Chiefly a way to exercise the sign-in flow from
-   * within the app.
+   * Builds the request that names this conversation's connection to the provider's sign-in, carrying the
+   * CLI choice its turns run with so sign-in uses the same one.
+   * @returns Returns the request, or null when the conversation's connection no longer exists.
+   */
+  public signInRequest(): AiSignInRequest | null {
+    const connection: AiConnection | undefined = this.engine.connection(this.provider());
+    if (connection === undefined) {
+      return null;
+    }
+    return {
+      connection,
+      claudeExecutable: {
+        mode: this.settings.aiClaudeExecutable(),
+        path: this.settings.aiClaudeExecutablePath(),
+      },
+    };
+  }
+
+  /**
+   * Signs the user out of this conversation's provider (the `/logout` command) and closes the live
+   * session, so the next turn runs signed out (and surfaces the sign-in prompt). Chiefly a way to
+   * exercise the sign-in flow from within the app.
    */
   public async logout(): Promise<void> {
-    this.logger.info('Agent', 'Signing out of Claude');
-    await this.runtime.logoutClaude();
+    const name: string = this.signInName();
+    this.logger.info('Agent', `Signing out of ${name}`);
+    const request: AiSignInRequest | null = this.signInRequest();
+    if (request !== null) {
+      await this.runtime.signOut(request);
+    }
     this.resetAgentSession();
     this.notifications.notify({
       severity: 'info',
-      title: 'Signed out of Claude',
+      title: `Signed out of ${name}`,
       actions: [],
       key: 'agent:logout',
       route: 'default',
@@ -2560,12 +2619,51 @@ export class Agent {
   }
 
   /**
+   * Adopts a turn the agent says it began on its own (#1070), on that fact rather than on a guess.
+   *
+   * 🔑 What retires the timer. A report-back used to be adopted when its task settled, with
+   * {@link ADOPTION_DEADLINE_MS} to release it if the agent never resumed — and a model that thought for
+   * longer than that before saying anything looked exactly like one that never resumed. Once the agent
+   * says it has started, the turn is real, and it ends the way every turn does: on its status. The
+   * deadline now covers only a harness that never says, an older one or an agent that did not resume.
+   *
+   * Declined as {@link adoptReportBackTurn} declines: with background-task reporting off, and while
+   * another turn is in flight.
+   * @param event The event.
+   */
+  private onTurnStarted(event: AiTurnStartedEvent): void {
+    if (this.activeRequestId === event.requestId) {
+      // Already adopted when its task settled; the fact replaces the watch.
+      this.logger.debug(
+        'Agent.task',
+        `turn ${event.requestId} began (${event.reason}); no deadline`,
+      );
+      this.clearAdoptionWatch();
+      return;
+    }
+    if (this.activeRequestId !== null) {
+      return;
+    }
+    if (event.reason === 'report-back' && !this.settings.aiReportBackgroundTasks()) {
+      return;
+    }
+    this.logger.info(
+      'Agent.task',
+      `adopted turn ${event.requestId}: the agent began it (${event.reason})`,
+    );
+    this.flushStream();
+    this.clearAdoptionWatch();
+    this.activeRequestId = event.requestId;
+    this.busy.set(true);
+  }
+
+  /**
    * Decides whether an event from outside the active turn is still this conversation's to show, and
    * re-attaches the turn it belongs to when the conversation is idle.
    *
    * 🔥🔥 The per-turn filter used to drop every such event, and two real failures came out of it. A
    * report-back turn that spent longer thinking than {@link ADOPTION_DEADLINE_MS} was released and its
-   * whole answer silently discarded — the harness forwards whole messages, so a model thinking for 20
+   * whole answer silently discarded — the harness forwarded whole messages, so a model thinking for 20
    * seconds is 20 seconds of nothing. And a question or permission that turn then raised was discarded
    * too, leaving the CLI blocked on an answer nobody could give: the conversation stuck "Working" on the
    * next message until Stop. So:

@@ -50,10 +50,13 @@ import {
   emitTaskProgress,
   emitTaskStarted,
   emitTaskUpdated,
+  emitTurnStarted,
+  newStreamState,
   newUsageState,
   sessionIdOf,
   translate,
   type EventSink,
+  type StreamState,
   type UsageState,
 } from './events';
 import { hasLocalLogin } from './environment';
@@ -99,6 +102,12 @@ export interface Host {
     requestId: string,
     request: Request,
   ): { readonly answer: Promise<Answer>; readonly withdraw: () => void };
+
+  /**
+   * Gets whether Studio understands `turn-started` (protocol 1.17.0, #1070). An older Studio has never
+   * heard of the kind, so it is not sent one.
+   */
+  readonly announcesTurns: boolean;
 }
 
 /**
@@ -201,6 +210,11 @@ export class Session {
   private readonly usage: UsageState = newUsageState();
 
   /**
+   * Holds what has streamed of each model message, so its whole form adds only what did not (#1070).
+   */
+  private readonly stream: StreamState = newStreamState();
+
+  /**
    * Holds the tasks seen to start and not yet seen to settle.
    */
   private readonly liveTasks: Map<string, LiveTask> = new Map<string, LiveTask>();
@@ -270,6 +284,12 @@ export class Session {
    * terminal status.
    */
   private adopted: boolean = false;
+
+  /**
+   * Holds why the adopted turn began, until Studio has been told it has (#1070), or null when there is
+   * nothing to tell.
+   */
+  private unannounced: 'report-back' | 'remote' | null = null;
 
   /**
    * Nudges the CLI to re-list Studio's tools, because the offer is per-turn.
@@ -376,6 +396,7 @@ export class Session {
     // A Studio run is awaiting this turn, so it owns the terminal status from here: whatever the
     // renderer had adopted before is no longer what its spinner is waiting on.
     this.adopted = false;
+    this.unannounced = null;
     if (this.inputClosed) {
       this.host.send({
         type: 'turn.failed',
@@ -851,6 +872,7 @@ export class Session {
         // response — and any prompts it raises — render in Studio too, not only on the remote device.
         emitRemoteMessage(this.sink, text);
         this.adopted = true;
+        this.unannounced = 'remote';
         this.pending.push(userMessage(text));
         this.wake?.();
       },
@@ -923,6 +945,7 @@ export class Session {
         // The CLI answers a settled task with a report-back turn of its own, which the renderer
         // adopts; nothing in Studio awaits it, so the pump owes it a terminal status.
         this.adopted = true;
+        this.unannounced = 'report-back';
         break;
       }
       default:
@@ -972,6 +995,7 @@ export class Session {
           this.sink.emit({ requestId: this.current.requestId, kind: 'session', sessionId });
         }
         const system: { type?: string; subtype?: string; commands?: SlashCommand[] } = message;
+        this.announceTurn(message);
         if (system.type === 'system') {
           // A mid-session command-list change — skills discovered as the agent works.
           // `supportedCommands()` is captured once at init and never reflects these, so the push is
@@ -983,9 +1007,12 @@ export class Session {
             this.handleTaskMessage(message, system.subtype);
           }
         }
-        translate(this.sink, message, this.usage);
-        // Mirror to claude.ai when bridged. Best-effort.
-        this.bridge?.forward(message);
+        translate(this.sink, message, this.usage, this.stream);
+        // Mirror to claude.ai when bridged. Best-effort. The partial messages stay here: the bridge
+        // mirrored whole messages before Studio asked for partials, and still does.
+        if (message.type !== 'stream_event') {
+          this.bridge?.forward(message);
+        }
         if (
           message.type === 'assistant' &&
           this.awaitedUuid !== null &&
@@ -1011,6 +1038,7 @@ export class Session {
           const unawaited: boolean = this.settle === null;
           this.settleTurn();
           this.adopted = false;
+          this.unannounced = null;
           if (unawaited) {
             emitStatus(this.sink, 'completed');
           }
@@ -1049,6 +1077,32 @@ export class Session {
         }
       }
     }
+  }
+
+  /**
+   * Tells Studio that the CLI has begun the turn it adopted (#1070), once, as the CLI resumes.
+   *
+   * 🔑 The `init` that opens the turn is the moment: the CLI answers a settled task, or a peer's message,
+   * with an `init` and then whatever the model says, which may be nothing for a long while. Any other
+   * frame of the turn — the model's first output, a tool — counts too, so a CLI that skipped the `init`
+   * is still announced. Only for a turn nothing in Studio awaits: one Studio started, it already knows.
+   * @param message The SDK message.
+   */
+  private announceTurn(message: SDKMessage): void {
+    if (this.unannounced === null || this.settle !== null || !this.host.announcesTurns) {
+      return;
+    }
+    const frame: { type?: string; subtype?: string } = message;
+    const begins: boolean =
+      (frame.type === 'system' && frame.subtype === 'init') ||
+      frame.type === 'assistant' ||
+      frame.type === 'stream_event';
+    if (!begins) {
+      return;
+    }
+    note(`session: announced a ${this.unannounced} turn`);
+    emitTurnStarted(this.sink, this.unannounced);
+    this.unannounced = null;
   }
 
   /**

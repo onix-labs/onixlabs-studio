@@ -140,7 +140,12 @@ export {
   providerPageForKind,
   providerDisplayLabel,
 } from './ai/ai-provider-catalog';
-export type { ClaudeAuthStatus, ClaudeLoginPhase, ClaudeLoginStatus } from './ai/ai-login-types';
+export type {
+  AiSignInPhase,
+  AiSignInProgress,
+  AiSignInRequest,
+  AiSignInStatus,
+} from './ai/ai-login-types';
 export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {
   SEED_CONNECTIONS,
@@ -179,6 +184,7 @@ export type {
   AiTaskProgressEvent,
   AiTaskUpdatedEvent,
   AiBackgroundTaskEvent,
+  AiTurnStartedEvent,
   AiEvent,
 } from './ai/ai-event-types';
 export { UNSCOPED_BRIDGE_REQUEST } from './ai/ai-bridge-types';

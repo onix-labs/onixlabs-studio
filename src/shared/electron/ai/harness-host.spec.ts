@@ -489,6 +489,77 @@ describe('HarnessHost', () => {
     expect(await discovering).toEqual({ models: [], detail: null });
   });
 
+  it('auth_answersNullUnsentForAHarnessThatDidNotListIt', async () => {
+    // ⛔ A plugin published before 1.17.0 has never heard of `auth`. Sent anyway, the sign-in window
+    // would spin forever; unsent, it says the plugin cannot sign anyone in.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready());
+    await pending;
+
+    await expect(host.auth('a1', 'status')).resolves.toBeNull();
+    expect(
+      transport.sent.some((message: Record<string, unknown>) => message['type'] === 'auth'),
+    ).toBe(false);
+  });
+
+  it('auth_reportsProgressAndSettlesOnSignedIn', async () => {
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: ['auth'] }));
+    await pending;
+
+    const progress: unknown[] = [];
+    const signingIn: Promise<unknown> = host.auth('a1', 'login', (state: unknown): void => {
+      progress.push(state);
+    });
+    expect(transport.sent.at(-1)).toEqual({ type: 'auth', authId: 'a1', action: 'login' });
+    transport.emit({ type: 'auth', authId: 'a1', state: { phase: 'starting' } });
+    transport.emit({
+      type: 'auth',
+      authId: 'a1',
+      state: { phase: 'browser', url: 'https://example.com/sign-in' },
+    });
+    transport.emit({
+      type: 'auth',
+      authId: 'a1',
+      state: { phase: 'signed-in', account: 'someone@example.com' },
+    });
+
+    expect(await signingIn).toEqual({ phase: 'signed-in', account: 'someone@example.com' });
+    expect(progress).toEqual([
+      { phase: 'starting' },
+      { phase: 'browser', url: 'https://example.com/sign-in' },
+    ]);
+  });
+
+  it('auth_refusesASignInPageThatIsNotHttps', async () => {
+    // ⚠️ The address becomes a link the user is invited to open, so only an https page is believed.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: ['auth'] }));
+    await pending;
+
+    const progress: unknown[] = [];
+    void host.auth('a1', 'login', (state: unknown): void => void progress.push(state));
+    transport.emit({
+      type: 'auth',
+      authId: 'a1',
+      state: { phase: 'browser', url: 'file:///etc/passwd' },
+    });
+    transport.emit({ type: 'auth', authId: 'a1', state: { phase: 'unheard-of' } });
+
+    expect(progress).toEqual([]);
+  });
+
+  it('auth_settlesNullWhenTheHarnessEnds', async () => {
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: ['auth'] }));
+    await pending;
+
+    const signingIn: Promise<unknown> = host.auth('a1', 'login');
+    transport.end('exited');
+
+    await expect(signingIn).resolves.toBeNull();
+  });
+
   it('treatsAHarnessThatSendsNoListAsAnsweringOnlyTheMandatoryFour', async () => {
     // ⚠️ What keeps an already-published plugin working. A harness on an older minor has never heard of
     // `answers`, so it sends none — and is simply not offered the optional messages.

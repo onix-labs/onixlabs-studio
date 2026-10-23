@@ -741,6 +741,30 @@ export interface AiRemoteMessageEvent extends AiEventBase {
 }
 
 /**
+ * Reports that the agent began a turn nobody in Studio prompted (protocol 1.17.0, #1070): the
+ * report-back the CLI writes when a background task settles, or the reply to a peer's message under
+ * remote control. Session-level like {@link AiBackgroundTaskEvent}, and for the same reason: it arrives
+ * when no Studio turn is active. The renderer adopts the turn under {@link AiEventBase.requestId} on
+ * this fact, rather than inferring from silence that one may have started.
+ */
+export interface AiTurnStartedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'turn-started';
+
+  /**
+   * Gets the conversation (agent session) the turn belongs to. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets why the agent began the turn.
+   */
+  readonly reason: 'report-back' | 'remote';
+}
+
+/**
  * A streamed event from a running agent turn. Both providers parse their model output into this
  * provider-agnostic protocol.
  */
@@ -764,4 +788,5 @@ export type AiEvent =
   | AiTaskUpdatedEvent
   | AiBackgroundTaskEvent
   | AiRemoteMessageEvent
+  | AiTurnStartedEvent
   | AiWorkspaceProposalEvent;
