@@ -128,6 +128,25 @@ describe('DockState', () => {
     expect(well.active).toBe('doc-b');
   });
 
+  it('tabInto_inTheBackground_addsTheTabBehindTheActiveOne', () => {
+    // An agent's open: the user keeps reading what they were reading.
+    const id: string = wellId();
+    state.tabInto(id, 'doc-a');
+
+    state.tabInto(id, 'doc-b', { background: true });
+
+    const well: StackNode = stackOf(state.layout(), 'doc-b');
+    expect(well.panels).toEqual(expect.arrayContaining(['doc-a', 'doc-b']));
+    expect(well.active).toBe('doc-a');
+  });
+
+  it('tabInto_inTheBackgroundOfAnEmptyStack_showsTheTab', () => {
+    // Nothing was in front to keep, so the new tab is what the well shows.
+    state.tabInto(wellId(), 'doc-a', { background: true });
+
+    expect(stackOf(state.layout(), 'doc-a').active).toBe('doc-a');
+  });
+
   it('setActive_whenCalled_updatesTheActivePanel', () => {
     const id: string = wellId();
     state.tabInto(id, 'doc-a');
@@ -411,6 +430,44 @@ describe('DockState close guard', () => {
 
     expect(confirmCalls).toBe(1);
     expect(findStackOfPanel(dock.layout(), 'doc-1')).toBeNull();
+  });
+
+  it('requestClose_whenTheGuardAllows_recordsThePanelAsClosedOnPurpose', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+
+    await dock.requestClose('doc-1');
+
+    // The host lets go of what a chosen close held; an undo that drops a document records nothing.
+    expect(dock.isReleased('doc-1')).toBe(true);
+    expect(dock.isReleased('doc-2')).toBe(false);
+  });
+
+  it('isReleased_whenThePanelComesBack_isForgotten', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+    await dock.requestClose('doc-1');
+
+    dock.undo();
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).not.toBeNull();
+    expect(dock.isReleased('doc-1')).toBe(false);
+  });
+
+  it('restore_putsDocumentsBackWithoutAnUndoStep_soUndoKeepsItsHistory', () => {
+    const dock: DockState = create();
+    dock.removeFromLayout('doc-1');
+    dock.removeFromLayout('doc-2');
+    dock.undo();
+    const canUndo: boolean = dock.canUndo();
+    const canRedo: boolean = dock.canRedo();
+
+    dock.restore(['doc-2']);
+
+    expect(findStackOfPanel(dock.layout(), 'doc-2')?.role).toBe('document');
+    expect(dock.canUndo()).toBe(canUndo);
+    expect(dock.canRedo()).toBe(canRedo);
   });
 
   it('requestClose_whenTheGuardCancels_keepsThePanel', async () => {

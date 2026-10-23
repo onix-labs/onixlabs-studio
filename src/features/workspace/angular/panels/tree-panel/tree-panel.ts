@@ -34,7 +34,10 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
-import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
+import {
+  ExplorerChangesOnly,
+  ExplorerToolbar,
+} from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
@@ -74,7 +77,6 @@ const ACTION_DELETE: string = 'delete';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
-const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -260,6 +262,32 @@ export class TreePanel {
   );
 
   /**
+   * Gets the state of the tool strip's Show Changed Files Only toggle: on while the tree is narrowed,
+   * and pressable only when there is something to narrow it to — a repository with changes in it.
+   */
+  protected readonly changesOnlyToggle: Signal<ExplorerChangesOnly> = computed(
+    (): ExplorerChangesOnly => ({
+      on: this.changesOnly(),
+      unavailable: !this.git.isRepository()
+        ? 'not a repository'
+        : !this.git.hasChanges()
+          ? 'no changes'
+          : null,
+    }),
+  );
+
+  /**
+   * Turns the filter off once nothing is changed — after a commit, say — so the tree goes back to
+   * showing everything rather than standing empty. Waits for the repository's status to be read, so a
+   * repository that has only just opened is not taken for a clean one.
+   */
+  private readonly leaveWhenClean: unknown = effect((): void => {
+    if (this.changesOnly() && this.git.statusRead() && !this.git.hasChanges()) {
+      untracked((): void => this.workspace.toggleChangesOnly());
+    }
+  });
+
+  /**
    * Gets the workspace's rows the tree shows: all of them, or only the changes and the folders on the
    * way to them (#1053).
    */
@@ -272,14 +300,6 @@ export class TreePanel {
           )
         : rows;
     },
-  );
-
-  /**
-   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
-   * empty.
-   */
-  protected readonly noChanges: Signal<boolean> = computed(
-    (): boolean => this.changesOnly() && this.shownRows().length === 0,
   );
 
   /**
@@ -390,13 +410,6 @@ export class TreePanel {
           label: 'Show Git Status',
           checked: this.workspace.showsGitStatus(),
         },
-        {
-          id: ACTION_CHANGES_ONLY,
-          label: 'Show Changed Files Only',
-          checked: this.changesOnly(),
-          disabled: !this.git.isRepository(),
-          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
-        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
@@ -420,9 +433,6 @@ export class TreePanel {
         return;
       case ACTION_GIT_STATUS:
         this.workspace.toggleGitStatus();
-        return;
-      case ACTION_CHANGES_ONLY:
-        this.workspace.toggleChangesOnly();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:

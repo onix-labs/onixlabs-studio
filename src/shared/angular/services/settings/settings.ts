@@ -14,9 +14,11 @@ import type {
   AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
+  CodexExecutableMode,
 } from '@shared/api/ai-types';
 import {
   AiConnectionModels,
+  ConversationTextSize,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -152,6 +154,14 @@ export type FileExplorerExpandAll = 'loaded-only' | 'entire-tree';
  * with it.
  */
 export type DocumentDiffSwitch = 'tab' | 'swap';
+
+/**
+ * Identifies what happens when a document opens while a panel (an agent, say) fills the space the
+ * documents would: `split-horizontal` puts the document well beside the panel; `split-vertical` puts
+ * it above the panel; `collapse` collapses the panel into its tab strip, to be peeked at when wanted,
+ * and gives the well the space. Closing the last document gives the panel the space back in every case.
+ */
+export type DocumentWellPlacement = 'split-horizontal' | 'split-vertical' | 'collapse';
 
 /**
  * Identifies how an editor's Go to Symbol and Go to Line ask where to go (#1009): `quick-open`, a light
@@ -401,6 +411,11 @@ export interface WorkspacesSettings {
    * Gets how a document well's switch between a file and its diff behaves.
    */
   readonly documentDiffSwitch: DocumentDiffSwitch;
+
+  /**
+   * Gets what happens when a document opens while a panel fills the documents' space.
+   */
+  readonly documentWellPlacement: DocumentWellPlacement;
 }
 
 /**
@@ -634,6 +649,7 @@ export class Settings {
   public readonly workspaces: Signal<WorkspacesSettings> = computed((): WorkspacesSettings => ({
     fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
     documentDiffSwitch: this.read('workspaces.documentDiffSwitch'),
+    documentWellPlacement: this.read('workspaces.documentWellPlacement'),
   }));
 
   /**
@@ -648,6 +664,13 @@ export class Settings {
    */
   public readonly documentDiffSwitch: Signal<DocumentDiffSwitch> = this.value(
     'workspaces.documentDiffSwitch',
+  );
+
+  /**
+   * Gets what happens when a document opens while a panel fills the documents' space.
+   */
+  public readonly documentWellPlacement: Signal<DocumentWellPlacement> = this.value(
+    'workspaces.documentWellPlacement',
   );
 
   /**
@@ -683,6 +706,12 @@ export class Settings {
    * agent view).
    */
   public readonly aiAutoScroll: Signal<boolean> = this.value('ai.autoScroll');
+
+  /**
+   * Gets how large agent conversations render — transcript and prompt (applies to every agent view).
+   */
+  public readonly aiConversationTextSize: Signal<ConversationTextSize> =
+    this.value('ai.conversationTextSize');
 
   /**
    * Gets whether a settled background task lets the agent resume the conversation to report on it.
@@ -785,6 +814,16 @@ export class Settings {
    * Gets the absolute path to the Claude CLI used when {@link aiClaudeExecutable} is `custom`.
    */
   public readonly aiClaudeExecutablePath: Signal<string> = this.value('ai.claudeExecutablePath');
+
+  /**
+   * Gets which Codex binary the Codex agent starts (bundled, system, or a custom path).
+   */
+  public readonly aiCodexExecutable: Signal<CodexExecutableMode> = this.value('ai.codexExecutable');
+
+  /**
+   * Gets the absolute path to the Codex binary used when {@link aiCodexExecutable} is `custom`.
+   */
+  public readonly aiCodexExecutablePath: Signal<string> = this.value('ai.codexExecutablePath');
 
   /**
    * Gets how the Mission Control agent rail scrolls a clicked agent's column into view.
@@ -1012,6 +1051,14 @@ export class Settings {
    */
   public setDocumentDiffSwitch(behavior: DocumentDiffSwitch): void {
     this.set('workspaces.documentDiffSwitch', behavior);
+  }
+
+  /**
+   * Sets what happens when a document opens while a panel fills the documents' space.
+   * @param placement The placement to apply.
+   */
+  public setDocumentWellPlacement(placement: DocumentWellPlacement): void {
+    this.set('workspaces.documentWellPlacement', placement);
   }
 
   /**

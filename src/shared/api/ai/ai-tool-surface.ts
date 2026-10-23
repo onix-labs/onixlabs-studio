@@ -224,10 +224,11 @@ export const OPEN_TERMINAL: string = 'open_terminal';
 
 /**
  * The in-app capability that opens an existing file from the open workspace into that workspace's
- * document well, and brings its tab to the front.
+ * document well, as a tab behind the document the user is reading — an agent never brings anything
+ * forward (see `OpenOptions`).
  *
  * The counterpart to {@link OPEN_DOCUMENT}: that one hands the user something the agent wrote, this
- * one puts the user's own code in front of them. It opens rather than edits — a way to say "look at
+ * one hands them their own code. It opens rather than edits — a way to say "look at
  * this file" that leaves the user reading it in their editor rather than in a transcript.
  */
 export const OPEN_FILE: string = 'open_file';
@@ -260,7 +261,7 @@ export const LIST_TERMINALS: string = 'list_terminals';
 
 /**
  * The workspace-surface capability that creates a file in the workspace, optionally with content,
- * and puts it in front of the user (#713). The tree's own New File, with the Explorer reflecting it —
+ * and opens it in the well behind what the user is reading (#713). The tree's own New File, with the Explorer reflecting it —
  * and, for a harness with no file tools of its own, the one way to write a file at all.
  */
 export const CREATE_FILE: string = 'create_file';

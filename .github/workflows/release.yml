@@ -64,10 +64,9 @@ jobs:
     strategy:
       fail-fast: true
       # One entry per target, and every entry runs on a runner of that target's own architecture.
-      # Three runtime dependencies ship their executables as per-platform optional dependencies
-      # (@vscode/ripgrep, @anthropic-ai/claude-agent-sdk, @openai/codex): `npm ci` installs only the
-      # variant matching the *host*, so a cross-arch package silently omits it and the built app
-      # dies at startup on `import { rgPath }`. Building macOS x64 on `macos-latest` (arm64) is how
+      # A runtime dependency that ships its executable as a per-platform optional dependency
+      # (@vscode/ripgrep) is installed by `npm ci` only in the variant matching the *host*, so a
+      # cross-arch package silently omits it and the built app dies at startup on `import { rgPath }`. Building macOS x64 on `macos-latest` (arm64) is how
       # 2026.1.0-beta.1 shipped a broken Intel dmg. Never merge two arches into one entry again.
       matrix:
         include:
@@ -120,7 +119,7 @@ jobs:
           SUFFIX: ${{ matrix.platform }}-${{ matrix.arch }}
         run: |
           missing=0
-          for pkg in "@vscode/ripgrep-$SUFFIX" "@anthropic-ai/claude-agent-sdk-$SUFFIX" "@openai/codex-$SUFFIX"; do
+          for pkg in "@vscode/ripgrep-$SUFFIX"; do
             if [ -d "node_modules/$pkg" ]; then
               echo "ok       $pkg"
             else

@@ -23,6 +23,7 @@ import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-ty
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { ConversationTextSize } from '@shared/angular/services/settings/settings-registry';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
@@ -300,6 +301,16 @@ interface LaneInfo {
 }
 
 /**
+ * Maps each Conversation text size to the factor its text is scaled by. Medium is the size the
+ * conversation was designed at.
+ */
+const CONVERSATION_TEXT_SCALES: Readonly<Record<ConversationTextSize, number>> = {
+  small: 0.875,
+  medium: 1,
+  large: 1.15,
+};
+
+/**
  * Renders one agent conversation as a structured, provider-agnostic transcript above an
  * {@link AgentComposer}: user/assistant turns (assistant text rendered as markdown), dim reasoning,
  * tool-activity chips, and inline permission prompts. It is a thin capability wrapper around the
@@ -326,6 +337,7 @@ interface LaneInfo {
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[style.--agent-text-scale]': 'textScale()' },
 })
 export class AgentChat implements OnInit {
   /**
@@ -452,6 +464,33 @@ export class AgentChat implements OnInit {
    * pending requests again, or light the tab's attention dot — the origin already does.
    */
   public readonly mirror: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the prompt should take keyboard focus: each time it turns true
+   * (the hosting tab or panel was opened, shown or focused) focus moves into the composer. Opt-in, so
+   * a conversation docked beside an editor or terminal never takes focus from the tool it sits in.
+   */
+  public readonly promptFocus: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * References the composer, so the prompt can be focused when this conversation is shown.
+   */
+  private readonly composerRef: Signal<AgentComposer | undefined> = viewChild(AgentComposer);
+
+  /**
+   * Holds whether a pointer is pressed inside this chat. A press that focuses the hosting panel is
+   * aimed at something in particular (a transcript selection, a button), so it is left to land rather
+   * than having focus pulled into the prompt from under it.
+   */
+  private pressing: boolean = false;
+
+  /**
+   * Gets the factor the transcript and prompt text is scaled by, from the Conversation text size
+   * setting; the styles read it as `--agent-text-scale`.
+   */
+  protected readonly textScale: Signal<number> = computed(
+    (): number => CONVERSATION_TEXT_SCALES[this.settings.aiConversationTextSize()] ?? 1,
+  );
 
   /**
    * References the scrolling message list, whose scroll position is followed as content streams in.
@@ -938,6 +977,15 @@ export class AgentChat implements OnInit {
     // rendered — unlike the host element, which is there from construction.
     afterNextRender((): void => this.watchTail());
 
+    // Put the caret in the prompt whenever the host shows this conversation, so it can be typed into
+    // straight away. A mirror never takes focus: its origin is the conversation's home.
+    effect((): void => {
+      const composer: AgentComposer | undefined = this.composerRef();
+      if (composer !== undefined && this.promptFocus() && !this.mirror() && !this.pressing) {
+        untracked((): void => composer.focus());
+      }
+    });
+
     // The hosting tab's attention dot is not lit from here. It is driven centrally by
     // `AgentTabAttention` off the requests registry, which knows the owning tab for every live
     // conversation — including the surfaces whose dock panel never passed one down to this chat.
@@ -1408,6 +1456,23 @@ export class AgentChat implements OnInit {
    */
   public decide(item: AgentItem, choice: AiEditDecision): void {
     this.agent.respondEditDecision(item, choice);
+  }
+
+  /**
+   * Records a press inside this chat, so showing the conversation leaves focus where it lands.
+   */
+  @HostListener('pointerdown')
+  public onPointerDown(): void {
+    this.pressing = true;
+  }
+
+  /**
+   * Clears the press record once the pointer is released anywhere.
+   */
+  @HostListener('document:pointerup')
+  @HostListener('document:pointercancel')
+  public onPointerUp(): void {
+    this.pressing = false;
   }
 
   /**

@@ -4,6 +4,7 @@ import type {
   AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
+  CodexExecutableMode,
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type { LogLevelSetting } from '@shared/api/log-channels';
@@ -15,6 +16,7 @@ import type {
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
   DocumentDiffSwitch,
+  DocumentWellPlacement,
   FileExplorerExpandAll,
   GoToStyle,
   ImageAlignment,
@@ -47,6 +49,11 @@ export type AiConnectionModels = Readonly<Record<string, string>>;
 export type TileScrollMode = 'into-view' | 'absolute-left';
 
 /**
+ * Defines how large an agent conversation's text renders: its transcript and its prompt.
+ */
+export type ConversationTextSize = 'small' | 'medium' | 'large';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -75,6 +82,7 @@ export interface SettingsValues {
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
   readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
+  readonly 'workspaces.documentWellPlacement': DocumentWellPlacement;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
@@ -111,6 +119,7 @@ export interface SettingsValues {
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.connectionsFormat': number;
   readonly 'ai.autoScroll': boolean;
+  readonly 'ai.conversationTextSize': ConversationTextSize;
   readonly 'ai.reportBackgroundTasks': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
@@ -126,6 +135,8 @@ export interface SettingsValues {
   readonly 'ai.agentShell': string;
   readonly 'ai.claudeExecutable': ClaudeExecutableMode;
   readonly 'ai.claudeExecutablePath': string;
+  readonly 'ai.codexExecutable': CodexExecutableMode;
+  readonly 'ai.codexExecutablePath': string;
 
   readonly 'missionControl.tileScrollMode': TileScrollMode;
 
@@ -484,6 +495,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'tab',
+      },
+      {
+        key: 'workspaces.documentWellPlacement',
+        title: 'Opening a document beside a filling panel',
+        description:
+          'What happens when you open a document while a panel, such as an agent, fills the space documents open in. Split Horizontally puts the documents beside the panel; Split Vertically puts them above it; Collapse folds the panel into its tab strip, where it can still be opened over the documents, and gives the documents the whole space. Closing the last document gives the panel its space back.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'split-horizontal', label: 'Split Horizontally' },
+            { value: 'split-vertical', label: 'Split Vertically' },
+            { value: 'collapse', label: 'Collapse' },
+          ],
+        },
+        default: 'split-horizontal',
       },
     ],
   },
@@ -883,6 +909,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
+        key: 'ai.conversationTextSize',
+        title: 'Conversation text size',
+        description:
+          'How large agent conversations render: the transcript, and the prompt you type into. ' +
+          'Applies to every agent view.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'small', label: 'Small' },
+            { value: 'medium', label: 'Medium' },
+            { value: 'large', label: 'Large' },
+          ],
+        },
+        default: 'medium',
+      },
+      {
         key: 'ai.reportBackgroundTasks',
         title: 'Report background tasks back',
         description:
@@ -1050,9 +1092,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Claude CLI',
         description:
           'Which Claude Code CLI the Claude (local login) agent uses, for both running turns and ' +
-          'discovering models. Bundled ships with Studio and is tested against it. System uses the ' +
-          'claude on your PATH — it may be newer and self-updates, but is not version-matched to ' +
-          'Studio (advanced). Custom uses a specific path.',
+          'discovering models. Bundled comes with the Claude plugin and is tested against it. ' +
+          'System uses the claude on your PATH — it may be newer and self-updates, but is not ' +
+          'version-matched to the plugin (advanced). Custom uses a specific path.',
         control: {
           kind: 'select',
           options: [
@@ -1069,6 +1111,31 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
         control: { kind: 'text', placeholder: '/usr/local/bin/claude' },
+        default: '',
+      },
+      {
+        key: 'ai.codexExecutable',
+        title: 'Codex CLI',
+        description:
+          'Which Codex the Codex agent runs. Bundled comes with the Codex plugin and is tested ' +
+          'against it. System uses the codex on your PATH — it may be newer, but is not ' +
+          'version-matched to the plugin (advanced). Custom uses a specific path. Either falls back ' +
+          'to Bundled when the Codex it names is not found.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'bundled', label: 'Bundled (recommended)' },
+            { value: 'system', label: 'System (codex on PATH)' },
+            { value: 'custom', label: 'Custom path' },
+          ],
+        },
+        default: 'bundled',
+      },
+      {
+        key: 'ai.codexExecutablePath',
+        title: 'Codex CLI path',
+        description: 'Absolute path to the codex executable, used when Codex CLI is set to Custom.',
+        control: { kind: 'text', placeholder: '/usr/local/bin/codex' },
         default: '',
       },
     ],

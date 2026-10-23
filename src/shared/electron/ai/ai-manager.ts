@@ -30,8 +30,10 @@ import type {
   AiRunState,
   AiSteerRequest,
   ClaudeExecutableChoice,
-  ClaudeAuthStatus,
-  ClaudeLoginStatus,
+  CodexExecutableChoice,
+  AiSignInProgress,
+  AiSignInRequest,
+  AiSignInStatus,
 } from '@shared/api/ai-types';
 import { isAgentSurface, SEED_CONNECTIONS } from '@shared/api/ai-types';
 
@@ -61,14 +63,17 @@ import { contributedAgentHarnesses } from '../contributions/plugins/contributed'
 import type { NodeRuntimeSpec } from '../contributions/plugins/plugin-loader';
 import type { HarnessTransport } from './harness-host';
 import { HarnessProcess, type HarnessSpawnSpec } from './harness-process';
-import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
+import {
+  isConnection,
+  sanitizeClaudeExecutable,
+  sanitizeCodexExecutable,
+  sanitizeConnections,
+} from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
-// ⚠️ The Claude *login* stays in core while the Claude *provider* does not, and the two are genuinely
-// different things. Whether `~/.claude` holds a login is a fact about the machine, and signing in is
-// a flow with its own UI; running a turn against it is the harness's job. A plugin that had to
-// re-implement the login modal would be a plugin duplicating Studio's chrome (#653).
-import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
+// The sign-in window is core's and the sign-in is the plugin's (#1080): the window asks, through the
+// connection's provider, and the plugin drives its vendor's own login.
+import { SignInDriver } from './agent-sign-in';
 import { sanitizeToolPolicies } from './tool-policy';
 import type { HostingAgentAccess, RunHosting } from '../hosting/hosting-agent-access';
 import { bindAgentHosting } from './agent-hosting';
@@ -339,14 +344,12 @@ export class AiManager {
   private readonly openRoots: OpenRoots;
 
   /**
-   * Holds the in-app Claude login driver, which runs the CLI's own OAuth flow and streams its progress
-   * to the renderer's "not signed in" modal.
+   * Holds the sign-in driver, which asks a connection's provider to sign its user in and streams the
+   * progress to the renderer's sign-in window (#1080).
    */
-  private readonly login: ClaudeLoginDriver = new ClaudeLoginDriver(
-    (status: ClaudeLoginStatus): void => {
-      this.windowGetter()?.webContents.send(AiChannel.ClaudeLoginStatus, status);
-    },
-  );
+  private readonly signIn: SignInDriver = new SignInDriver((progress: AiSignInProgress): void => {
+    this.windowGetter()?.webContents.send(AiChannel.SignInProgress, progress);
+  });
 
   /**
    * Holds the pending permission prompts, keyed by permission id.
@@ -649,22 +652,42 @@ export class AiManager {
       (_event: IpcMainInvokeEvent, enabled: unknown): void =>
         writeRemoteNotificationsEnabled(enabled === true),
     );
-    ipcMain.handle(AiChannel.CheckClaudeAuth, (): Promise<ClaudeAuthStatus> => {
-      logger.trace('AiManager.register', 'CheckClaudeAuth invoked');
-      return readClaudeAuthStatus();
+    ipcMain.handle(
+      AiChannel.CheckSignIn,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiSignInStatus> => {
+        logger.trace('AiManager.register', 'CheckSignIn invoked');
+        const target: SignInTarget | null = this.signInTarget(request);
+        return target === null
+          ? Promise.resolve({ supported: false, signedIn: false })
+          : this.signIn.check(target.provider, target.settings);
+      },
+    );
+    ipcMain.handle(AiChannel.StartSignIn, (_event: IpcMainInvokeEvent, request: unknown): void => {
+      logger.trace('AiManager.register', 'StartSignIn invoked');
+      const target: SignInTarget | null = this.signInTarget(request);
+      if (target === null) {
+        this.windowGetter()?.webContents.send(AiChannel.SignInProgress, {
+          phase: 'error',
+          message: 'No agent plugin runs this configuration.',
+        } satisfies AiSignInProgress);
+        return;
+      }
+      this.signIn.start(target.provider, target.settings);
     });
-    ipcMain.handle(AiChannel.StartClaudeLogin, (): void => {
-      logger.trace('AiManager.register', 'StartClaudeLogin invoked');
-      this.login.start();
+    ipcMain.handle(AiChannel.CancelSignIn, (): void => {
+      logger.trace('AiManager.register', 'CancelSignIn invoked');
+      this.signIn.cancel();
     });
-    ipcMain.handle(AiChannel.CancelClaudeLogin, (): void => {
-      logger.trace('AiManager.register', 'CancelClaudeLogin invoked');
-      this.login.cancel();
-    });
-    ipcMain.handle(AiChannel.LogoutClaude, (): Promise<void> => {
-      logger.trace('AiManager.register', 'LogoutClaude invoked');
-      return runClaudeLogout().then((): void => undefined);
-    });
+    ipcMain.handle(
+      AiChannel.SignOut,
+      async (_event: IpcMainInvokeEvent, request: unknown): Promise<void> => {
+        logger.trace('AiManager.register', 'SignOut invoked');
+        const target: SignInTarget | null = this.signInTarget(request);
+        if (target !== null) {
+          await this.signIn.signOut(target.provider, target.settings);
+        }
+      },
+    );
   }
 
   /**
@@ -726,7 +749,7 @@ export class AiManager {
     for (const requestId of [...this.clocks.keys()]) {
       this.dropClock(requestId);
     }
-    this.login.dispose();
+    this.signIn.dispose();
   }
 
   /**
@@ -768,6 +791,11 @@ export class AiManager {
         supportsImages: provider.supportsImages,
         supportedEfforts: provider.supportedEfforts,
         supportsRemoteControl: provider.supportsRemoteControl,
+        // ⚠️ A key-based connection has nothing to sign in to, whatever its plugin can do.
+        supportsSignIn:
+          provider.offersSignIn === true &&
+          connection.auth !== 'api-key' &&
+          connection.auth !== 'none',
       });
     }
     return infos;
@@ -888,6 +916,30 @@ export class AiManager {
   }
 
   /**
+   * Resolves the provider a renderer sign-in request reaches, validating the untrusted payload.
+   * @param value The payload.
+   * @returns Returns the provider and settings, or null when no provider runs the connection.
+   */
+  private signInTarget(value: unknown): SignInTarget | null {
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+    const request: Partial<AiSignInRequest> = value;
+    // ⛔ Routed on the connection that arrived, never on the cached map, for discovery's reason (#697):
+    // the map is rebuilt only by `listProviders`. And on the provider that runs it, naming no vendor.
+    const provider: AgentProvider | null = isConnection(request.connection)
+      ? this.harnesses.providerFor(request.connection)
+      : null;
+    if (provider === null) {
+      return null;
+    }
+    return {
+      provider,
+      settings: { claudeExecutable: sanitizeClaudeExecutable(request.claudeExecutable) },
+    };
+  }
+
+  /**
    * Determines whether a value is a well-formed discover-models request (its connection carries the
    * fields discovery reads).
    * @param value The value to test.
@@ -1000,6 +1052,7 @@ export class AiManager {
     const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(
       request.claudeExecutable,
     );
+    const codexExecutable: CodexExecutableChoice = sanitizeCodexExecutable(request.codexExecutable);
     const contextPaths: readonly AgentContextRef[] = this.sanitizeContextPaths(
       request.contextPaths,
     );
@@ -1065,6 +1118,7 @@ export class AiManager {
       tokenCap,
       agentShell,
       claudeExecutable,
+      codexExecutable,
       owningTabId: request.owningTabId ?? null,
       surface,
       mode,
@@ -1766,8 +1820,8 @@ export class AiManager {
    * then buffered onto its own 33ms flush anyway. Delta events (text and thinking) now ride a
    * matching window in main: the first sends immediately (first-token latency stays zero), the
    * flood behind it merges into one event per window, and any non-delta event flushes the merged
-   * delta first so ordering is exactly what the provider emitted. The Claude provider emits whole
-   * messages, not tokens, and is unaffected.
+   * delta first so ordering is exactly what the provider emitted. The Claude harness streams too since
+   * #1070; the whole message that follows its deltas carries only its uuid, as an empty delta.
    * @param event The event to send.
    */
   private emit(event: AiEvent): void {
@@ -2290,4 +2344,19 @@ function harnessNodeRuntime(entryPoint: string): NodeRuntimeSpec {
     args: [entryPoint],
     env: { ELECTRON_RUN_AS_NODE: '1' },
   };
+}
+
+/**
+ * The provider a sign-in request reaches, and the settings it carries.
+ */
+interface SignInTarget {
+  /**
+   * Gets the provider that runs the connection.
+   */
+  readonly provider: AgentProvider;
+
+  /**
+   * Gets the settings for the exchange beyond the provider's own.
+   */
+  readonly settings: Readonly<Record<string, unknown>>;
 }

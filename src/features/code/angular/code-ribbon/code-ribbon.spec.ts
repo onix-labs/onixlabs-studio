@@ -165,6 +165,10 @@ describe('CodeRibbon', () => {
   it('goTo_fromTheRibbonOrTheMenu_routesToTheEditorCommands_withoutClaimingAChord', () => {
     // #1009: ⌘⇧O and ⌃G live in the editor; a menu accelerator would take Ctrl+G from a docked
     // terminal or composer.
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    documents.setLanguage(tab.id, 'typescript');
+    fixture.detectChanges();
     button('Go to Symbol').click();
     button('Go to Line').click();
     menu.dispatch('code.goToSymbol');
@@ -178,6 +182,18 @@ describe('CodeRibbon', () => {
       undefined,
       undefined,
     ]);
+  });
+
+  it('goToSymbol_forPlainText_isNotOffered_whileGoToLineIs', () => {
+    const tab: Tab = tabs.open('code');
+    documents.ensure(tab.id);
+    fixture.detectChanges();
+
+    const labels: string[] = Array.from(host.querySelectorAll('button')).map(
+      (element: HTMLButtonElement): string => element.textContent.trim(),
+    );
+    expect(labels).toContain('Go to Line');
+    expect(labels).not.toContain('Go to Symbol');
   });
 
   it('menu_whenPrintOrExportIsChosen_reachesPrinting', () => {

@@ -105,6 +105,12 @@
   // Entries nested inside a container (a sub-agent's own activity): a shade off the container they
   // sit in, so a nested chip or reply does not vanish into it.
   --agent-view-nested-surface-color: var(--gray-200);
+  // A reply's markdown, drawn as the Markdown editor draws it (see _agent-markdown.scss): callout and
+  // header-cell fill, borders, and the horizontal rule. The fill is a shade off the reply bubble, which
+  // the editor's own callout colour would vanish into in the dark theme.
+  --agent-markdown-surface-color: var(--gray-200);
+  --agent-markdown-outline-color: var(--gray-400);
+  --agent-markdown-rule-color: var(--gray-500);
   // The inner ring of an attached image: the surface's own tone, inside its accent outer ring.
   --agent-image-inner-border-color: #fff;
   // Prompt card titles: the accent, a shade darker on light surfaces (#856).

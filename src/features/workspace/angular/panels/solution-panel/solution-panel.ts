@@ -32,7 +32,10 @@ import {
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
-import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
+import {
+  ExplorerChangesOnly,
+  ExplorerToolbar,
+} from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -67,7 +70,6 @@ const ACTION_REVEAL: string = 'reveal';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
-const ACTION_CHANGES_ONLY: string = 'changes-only';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
@@ -240,13 +242,6 @@ export class SolutionPanel {
           id: ACTION_GIT_STATUS,
           label: 'Show Git Status',
           checked: this.solution.showsGitStatus(),
-        },
-        {
-          id: ACTION_CHANGES_ONLY,
-          label: 'Show Changed Files Only',
-          checked: this.changesOnly(),
-          disabled: !this.git.isRepository(),
-          ...(this.git.isRepository() ? {} : { status: 'not a repository' }),
         },
       ],
     },
@@ -539,6 +534,39 @@ export class SolutionPanel {
   );
 
   /**
+   * Gets the state of the tool strip's Show Changed Files Only toggle: on while the tree is narrowed,
+   * and pressable only when there is something to narrow it to — a repository with changes in it.
+   */
+  protected readonly changesOnlyToggle: Signal<ExplorerChangesOnly> = computed(
+    (): ExplorerChangesOnly => ({
+      on: this.changesOnly(),
+      unavailable: !this.git.isRepository()
+        ? 'not a repository'
+        : !this.git.hasChanges()
+          ? 'no changes'
+          : null,
+    }),
+  );
+
+  /**
+   * Turns *Show Changed Files Only* on or off, from the tool strip's toggle.
+   */
+  protected toggleChangesOnly(): void {
+    this.solution.toggleChangesOnly();
+  }
+
+  /**
+   * Turns the filter off once nothing is changed — after a commit, say — so the tree goes back to
+   * showing everything rather than standing empty. Waits for the repository's status to be read, so a
+   * repository that has only just opened is not taken for a clean one.
+   */
+  private readonly leaveWhenClean: unknown = effect((): void => {
+    if (this.changesOnly() && this.git.statusRead() && !this.git.hasChanges()) {
+      untracked((): void => this.solution.toggleChangesOnly());
+    }
+  });
+
+  /**
    * Gets the solution's rows the tree shows: all of them, or only the changes and the projects and
    * folders on the way to them (#1053). The root row stays, since it heads the tree.
    */
@@ -552,16 +580,6 @@ export class SolutionPanel {
           )
         : rows;
     },
-  );
-
-  /**
-   * Gets whether the filter is on and nothing is changed, so the tree says so rather than standing
-   * empty.
-   */
-  protected readonly noChanges: Signal<boolean> = computed(
-    (): boolean =>
-      this.changesOnly() &&
-      this.shownRows().every((row: SolutionRow): boolean => row.kind === 'solution'),
   );
 
   /**
@@ -601,13 +619,6 @@ export class SolutionPanel {
       }
     });
   });
-
-  /**
-   * Turns *Show Changed Files Only* off again, from the empty state's button.
-   */
-  protected solutionToggleChangesOnly(): void {
-    this.solution.toggleChangesOnly();
-  }
 
   /**
    * Resolves how version control sees what a row stands for. A solution folder has no directory of
@@ -674,9 +685,6 @@ export class SolutionPanel {
         return;
       case ACTION_GIT_STATUS:
         this.solution.toggleGitStatus();
-        return;
-      case ACTION_CHANGES_ONLY:
-        this.solution.toggleChangesOnly();
         return;
       case ACTION_OPEN_ROOT: {
         const root: string | undefined = this.model()?.root;

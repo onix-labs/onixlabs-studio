@@ -4,6 +4,7 @@
 :host {
   --terminal-surface: var(--gray-100);
 
+  position: relative;
   display: flex;
   flex-direction: column;
   inline-size: 100%;
@@ -33,4 +34,21 @@
   ::ng-deep .xterm-viewport {
     background-color: transparent !important;
   }
+}
+
+// What a link's hover hint is placed against: an empty box laid over the link under the pointer (see
+// showLinkTooltip). It must have a box for the tooltip to measure, but nothing to see or to hit — the
+// pointer stays on the canvas beneath, which is what tells xterm it is still on the link.
+.terminal__link-anchor {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 1px;
+  block-size: 1px;
+  pointer-events: none;
+}
+
+// Opened from code at the pointer's coordinates, never by its own box.
+.terminal__link-menu-trigger {
+  display: none;
 }

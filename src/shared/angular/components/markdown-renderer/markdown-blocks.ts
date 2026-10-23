@@ -1,6 +1,15 @@
 import DOMPurify from 'dompurify';
 import katex from 'katex';
-import { marked, Token, Tokens, TokenizerAndRendererExtension, TokensList } from 'marked';
+import {
+  marked,
+  RendererExtension,
+  RendererThis,
+  Token,
+  Tokens,
+  TokenizerAndRendererExtension,
+  TokensList,
+} from 'marked';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Renders markdown into an ordered list of blocks: prose (as a sanitised HTML string) and fenced code
@@ -115,17 +124,61 @@ const inlineMath: TokenizerAndRendererExtension = {
 };
 
 /**
- * Holds whether the KaTeX extensions have been registered on the shared marked instance, so they are
+ * The kinds of GitHub alert (`> [!NOTE]` and friends).
+ */
+type AlertType = 'note' | 'tip' | 'important' | 'warning' | 'caution';
+
+/**
+ * Matches a GitHub alert's marker, alone on a blockquote's first line, capturing its kind.
+ */
+const ALERT_MARKER: RegExp = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i;
+
+/**
+ * The icon each kind of alert carries, the same as the Markdown editor's.
+ */
+const ALERT_ICONS: Readonly<Record<AlertType, Icon>> = {
+  note: Icon.ALERT_NOTE,
+  tip: Icon.ALERT_TIP,
+  important: Icon.ALERT_IMPORTANT,
+  warning: Icon.ALERT_WARNING,
+  caution: Icon.ALERT_CAUTION,
+};
+
+/**
+ * Renders a blockquote opening with a GitHub alert marker as the alert box the Markdown editor draws
+ * (the same classes, icon and content wrapper), so a reply's alerts read as they do in the editor. Any
+ * other blockquote falls through to marked's own rendering.
+ */
+const githubAlert: RendererExtension = {
+  name: 'blockquote',
+  renderer(this: RendererThis, token: Tokens.Generic): string | false {
+    const text: string = typeof token['text'] === 'string' ? token['text'] : '';
+    const match: RegExpExecArray | null = ALERT_MARKER.exec(text);
+    if (match === null) {
+      return false;
+    }
+    const type: AlertType = match[1].toLowerCase() as AlertType;
+    const body: string = this.parser.parse(marked.lexer(text.slice(match[0].length)));
+    return (
+      `<div class="github-alert github-alert-${type}">` +
+      `<span class="alert-icon ${ALERT_ICONS[type].classList}" aria-hidden="true"></span>` +
+      `<div class="alert-content">${body}</div></div>\n`
+    );
+  },
+};
+
+/**
+ * Holds whether the extensions have been registered on the shared marked instance, so they are
  * installed exactly once.
  */
 let extensionsRegistered: boolean = false;
 
 /**
- * Registers the KaTeX math extensions on the shared marked instance, once.
+ * Registers the KaTeX math and GitHub alert extensions on the shared marked instance, once.
  */
 function ensureExtensions(): void {
   if (!extensionsRegistered) {
-    marked.use({ extensions: [blockMath, inlineMath] });
+    marked.use({ extensions: [blockMath, inlineMath, githubAlert] });
     extensionsRegistered = true;
   }
 }
@@ -147,12 +200,27 @@ const TRANSCRIPT_FORBIDDEN_TAGS: readonly string[] = [
 ];
 
 /**
- * Sanitises rendered prose for the transcript.
+ * Matches the checkbox marked renders at the head of a task-list item (`- [ ]` / `- [x]`), capturing
+ * whether it is ticked.
+ */
+const TASK_CHECKBOX: RegExp = /<input (checked="" )?disabled="" type="checkbox">/g;
+
+/**
+ * Sanitises rendered prose for the transcript. A task-list checkbox is an `<input>`, which the
+ * sanitiser removes, so it is first swapped for an inert marker the styles draw as a box — otherwise
+ * `- [x] done` would lose the only thing that says it is done.
  * @param html The HTML marked produced.
  * @returns Returns the HTML with scripts, handlers and the forbidden tags removed.
  */
 function sanitize(html: string): string {
-  return DOMPurify.sanitize(html, { FORBID_TAGS: [...TRANSCRIPT_FORBIDDEN_TAGS] });
+  const tasks: string = html.replace(
+    TASK_CHECKBOX,
+    (_match: string, checked: string | undefined): string =>
+      checked === undefined
+        ? '<span class="markdown-task" role="img" aria-label="Not done"></span>'
+        : '<span class="markdown-task markdown-task--done" role="img" aria-label="Done"></span>',
+  );
+  return DOMPurify.sanitize(tasks, { FORBID_TAGS: [...TRANSCRIPT_FORBIDDEN_TAGS] });
 }
 
 /**

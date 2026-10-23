@@ -57,8 +57,10 @@
             [kind]="session.kind"
             [cwd]="session.cwd"
             [persistent]="true"
+            [quietStart]="session.quiet === true"
             [isActive]="isActive() && session.id === activeId()"
             (shellChange)="onShell(session.id, $event)"
+            (ready)="onReady(session.id)"
           />
         </div>
       }

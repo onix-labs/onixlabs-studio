@@ -10,7 +10,7 @@ import {
 import { FileInfo } from '@shared/api/file-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -72,9 +72,10 @@ export class ApiFiles {
    * Opens an API document as a tab, activating the tab that already holds the file rather than opening
    * a second one. A file that does not parse as an API document is declined.
    * @param fileInfo The file to open, already read.
+   * @param options How to open it; in the background, no tab is brought forward.
    * @returns Returns true when the document was opened or re-activated; otherwise, false.
    */
-  public open(fileInfo: FileInfo): boolean {
+  public open(fileInfo: FileInfo, options?: OpenOptions): boolean {
     const document: ApiDocument | null = this.parse(fileInfo.content);
     if (document === null) {
       this.log.warn(
@@ -88,12 +89,14 @@ export class ApiFiles {
 
     const existing: Tab | undefined = this.tabs.findByResource('api-explorer', fileInfo.path);
     if (existing !== undefined) {
-      this.tabs.activate(existing.id);
+      if (options?.background !== true) {
+        this.tabs.activate(existing.id);
+      }
       this.log.debug('ApiFiles', `Reused API tab for '${fileInfo.name}'`, existing.id);
       return true;
     }
 
-    const tab: Tab = this.tabs.open('api-explorer', fileInfo.path);
+    const tab: Tab = this.tabs.open('api-explorer', fileInfo.path, options);
     this.tabs.rename(tab.id, fileInfo.name);
     this.pending.set(tab.id, { path: fileInfo.path, fileName: fileInfo.name, document });
     this.log.info('ApiFiles', `Opened API document '${fileInfo.name}'`, tab.id, fileInfo.path);

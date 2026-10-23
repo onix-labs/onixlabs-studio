@@ -112,6 +112,82 @@ describe('DockTabGroup', () => {
       expect(filling()).toBe(before);
       geometry.endInteractiveResize();
     });
+
+    it('resizedToNothingMidDrag_keepsTheFill', () => {
+      render(mkStack('tool', ['output', 'errors']));
+      const geometry: DockGeometry = TestBed.inject(DockGeometry);
+      internals().naturalTabsExtent = 200;
+      geometry.beginInteractiveResize();
+
+      internals().onStripResized(resized(240));
+      internals().onStripResized(resized(0));
+
+      expect(filling()).toBe(false);
+      geometry.endInteractiveResize();
+    });
+  });
+
+  describe('tab fill while the view is hidden', () => {
+    /**
+     * Lays the strip out at a width with its last tab ending at a position, as a real layout would.
+     * @param stripWidth The strip's width; zero for a strip in a hidden view.
+     * @param lastTabRight Where the last tab ends, measured from the strip's start.
+     */
+    function layOut(stripWidth: number, lastTabRight: number): void {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement,
+      ): DOMRect {
+        return (
+          this.classList.contains('dock-tab')
+            ? { left: 0, right: lastTabRight, width: lastTabRight }
+            : { left: 0, right: stripWidth, width: stripWidth }
+        ) as DOMRect;
+      });
+    }
+
+    /**
+     * Runs the group's fill measurement, as its resize observer does.
+     */
+    function measure(): void {
+      (component as unknown as { measureTabsFill: () => void }).measureTabsFill();
+    }
+
+    /**
+     * Gets whether the group shows its tabs filling the strip.
+     * @returns Returns true when filling.
+     */
+    function filling(): boolean {
+      fixture.detectChanges();
+      return (fixture.nativeElement as HTMLElement).classList.contains('dock-tab-group--tabs-fill');
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('measure_whenTheViewIsHidden_keepsTheContentSizedTabs', () => {
+      // Switching workspace tabs hid this view with display: none, which measured as "the tabs reach
+      // the end": the strip flipped to fill and painted stretched as the tab came back.
+      render(mkStack('tool', ['output', 'errors']));
+      layOut(600, 180);
+      measure();
+      expect(filling()).toBe(false);
+
+      layOut(0, 0);
+      measure();
+      expect(filling()).toBe(false);
+    });
+
+    it('measure_whenTheViewIsHidden_keepsTheFilledTabs', () => {
+      render(mkStack('tool', ['output', 'errors']));
+      layOut(190, 180);
+      measure();
+      expect(filling()).toBe(true);
+
+      layOut(0, 0);
+      measure();
+      expect(filling()).toBe(true);
+    });
   });
 
   it('should create', () => {
@@ -320,6 +396,119 @@ describe('DockTabGroup', () => {
     document.querySelector<HTMLButtonElement>('button[aria-label="Close doc-b"]')?.click();
 
     expect(close).toHaveBeenCalledWith('doc-b');
+  });
+
+  describe('a document tab’s context menu', () => {
+    let state: DockState;
+
+    beforeEach(() => {
+      const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+      for (const id of ['doc-a', 'doc-b', 'doc-c']) {
+        registry.register({
+          id,
+          title: id,
+          icon: Icon.CODE,
+          role: 'document',
+          component: DockPanelPlaceholder,
+        });
+      }
+      state = TestBed.inject(DockState);
+    });
+
+    afterEach(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    /**
+     * Right-clicks a tab and returns the menu's rows.
+     * @param label The tab's label.
+     * @returns Returns the rows' buttons.
+     */
+    function openMenuOn(label: string): HTMLElement[] {
+      const tab: HTMLElement | undefined = Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.dock-tab'),
+      ).find((element: HTMLElement): boolean => element.textContent.includes(label));
+      tab?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 10,
+          clientY: 10,
+        }),
+      );
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    }
+
+    /**
+     * Chooses a row of the open menu by its label.
+     * @param rows The menu's rows.
+     * @param label The row's label.
+     */
+    function choose(rows: HTMLElement[], label: string): void {
+      rows.find((row: HTMLElement): boolean => row.textContent.trim() === label)?.click();
+    }
+
+    it('offersTheCloseAndSplitCommands_inOrder', () => {
+      render(mkStack('document', ['doc-a', 'doc-b']));
+
+      const labels: string[] = openMenuOn('doc-a').map((row: HTMLElement): string =>
+        row.textContent.trim(),
+      );
+
+      expect(labels).toEqual([
+        'Close',
+        'Close All',
+        'Close All But This',
+        'Split to Top',
+        'Split to Bottom',
+        'Split to Left',
+        'Split to Right',
+      ]);
+    });
+
+    it('closeAllButThis_closesTheOtherTabs_inTabOrder', () => {
+      const closeAll: MockInstance = vi.spyOn(state, 'requestCloseAll').mockResolvedValue();
+      render(mkStack('document', ['doc-a', 'doc-b', 'doc-c']));
+
+      choose(openMenuOn('doc-b'), 'Close All But This');
+
+      expect(closeAll).toHaveBeenCalledWith(['doc-a', 'doc-c']);
+    });
+
+    it('close_closesTheTabItWasOpenedOn_notTheActiveOne', () => {
+      const close: MockInstance = vi.spyOn(state, 'requestClose').mockResolvedValue(true);
+      render(mkStack('document', ['doc-a', 'doc-b']));
+
+      choose(openMenuOn('doc-b'), 'Close');
+
+      expect(close).toHaveBeenCalledWith('doc-b');
+    });
+
+    it('splitToRight_splitsThatTabOutToTheRight', () => {
+      const split: MockInstance = vi.spyOn(state, 'splitPanelOut').mockReturnValue(undefined);
+      render(mkStack('document', ['doc-a', 'doc-b']));
+
+      choose(openMenuOn('doc-b'), 'Split to Right');
+
+      expect(split).toHaveBeenCalledWith('doc-b', 'right');
+    });
+
+    it('aWellsOnlyTab_cannotBeSplitOut_orHaveOthersClosed', () => {
+      render(mkStack('document', ['doc-a']));
+
+      const disabled: string[] = openMenuOn('doc-a')
+        .filter((row: HTMLElement): boolean => row.getAttribute('aria-disabled') === 'true')
+        .map((row: HTMLElement): string => row.textContent.trim());
+
+      expect(disabled).toEqual([
+        'Close All But This',
+        'Split to Top',
+        'Split to Bottom',
+        'Split to Left',
+        'Split to Right',
+      ]);
+    });
   });
 
   it('render_whenToolRole_omitsTheCloseAllButton', () => {

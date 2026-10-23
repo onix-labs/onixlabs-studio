@@ -94,8 +94,10 @@ import {
 } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { strandedDocuments } from '@shared/angular/services/dock-layout/stranded-documents';
 import {
   collectPanelIds,
+  findDocumentWell,
   findNode,
   findStackOfPanel,
   firstStackOfRole,
@@ -153,6 +155,9 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
 import { WorktreeRepository } from '@features/workspace/angular/worktree/worktree-repository';
 import { WorktreeDialogs } from '@features/workspace/angular/worktree/worktree-dialogs/worktree-dialogs';
 import { REPOSITORY_WORKTREES } from '@shared/angular/services/repository-worktrees/repository-worktrees';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
+import { TERMINAL_PATH_LINKS } from '@shared/angular/services/terminal-path-links/terminal-path-links';
+import { WorkspaceTerminalPathLinks } from '@shared/angular/services/terminal-path-links/workspace-terminal-path-links';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -216,6 +221,12 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * How the agent's tools open things in this workspace: in the background. The agent may fill its
+ * well, but never changes what the user is reading or where they are typing (see {@link OpenOptions}).
+ */
+const AGENT_OPEN: OpenOptions = { background: true };
+
+/**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
  * explorer, document well, and panels. The workspace's state services are provided here so each
  * directory tab is independent of the others; the dock and everything inside it resolve this tab's
@@ -255,6 +266,10 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     // the checkout this view shows, which a container keeps one view alive for each of.
     WorktreeRepository,
     { provide: REPOSITORY_WORKTREES, useExisting: WorktreeRepository },
+    // The file paths this tab's terminals print, linked to this tab's files and opened in its well
+    // (#1061). Per view, beside the FileOpener and Workspace it reads through.
+    WorkspaceTerminalPathLinks,
+    { provide: TERMINAL_PATH_LINKS, useExisting: WorkspaceTerminalPathLinks },
     // The forge's view of this tab's repository (pull requests, issues, CI runs). Per view, beside
     // Repository: a dock panel is destroyed when another tool in its stack activates, so state owned
     // by the panel would be re-fetched on every tool switch against a rate-limited API.
@@ -988,16 +1003,56 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Holds the layout session: the layout commands capture this dock's current tree for Save As
    * through it, and re-seed the dock when a layout is selected or reset. Applying first returns any
-   * popped-out panels — the incoming layout defines which panels exist.
+   * popped-out panels — the incoming layout defines which panels exist — and carries the open
+   * documents into the incoming layout's well, so switching layout never closes them. Only a layout
+   * with no well leaves them behind, and before switching to one each document with unsaved changes
+   * asks to save, discard or cancel, exactly as closing its tab does; a cancel keeps the layout.
    */
   private readonly layoutSession: LayoutSession = {
     root: this.dockTabContext.presetRoot,
     capture: (): DockNode => this.dockState.layout(),
     apply: (): void => {
       this.panelPopout.returnAll();
-      this.dockState.reset();
+      const documents: readonly string[] = this.openDocumentPanels();
+      const well: StackNode | null = findDocumentWell(this.dockState.layout());
+      const active: string | null =
+        well?.active ?? this.documents.activeDocumentId() ?? documents[0] ?? null;
+      this.dockState.reset(documents, active);
+    },
+    confirmApply: async (next: DockNode | null): Promise<boolean> => {
+      if (next === null || findDocumentWell(next) !== null) {
+        return true;
+      }
+      const documents: readonly string[] = this.openDocumentPanels();
+      for (const id of documents) {
+        const panel: DockPanel | undefined = this.registry.get(id);
+        if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
+          return false;
+        }
+      }
+      // Every unsaved change is saved or discarded, so the switch may let these documents go.
+      this.dockState.markReleased(documents);
+      return true;
     },
   };
+
+  /**
+   * Lists the document panels open in this tab, docked or popped out, in tab order.
+   * @returns Returns the identifiers of the open document panels.
+   */
+  private openDocumentPanels(): readonly string[] {
+    const docked: readonly string[] = collectPanelIds(this.dockState.layout());
+    const popped: readonly string[] = this.registry
+      .list()
+      .filter(
+        (panel: DockPanel): boolean =>
+          !docked.includes(panel.id) && this.popoutPanels.isPopped(panel.id),
+      )
+      .map((panel: DockPanel): string => panel.id);
+    return [...docked, ...popped].filter(
+      (id: string): boolean => this.registry.get(id)?.role === 'document',
+    );
+  }
 
   /**
    * Holds the git bridge, used to resolve and open this workspace's repository for the scoped
@@ -1179,16 +1234,41 @@ export class DirectoryView implements OnInit, OnDestroy {
    * run-terminal state is swept too, so it does not linger in the root store.
    */
   public constructor() {
+    // ⛔ A document with unsaved changes is never dropped. One that leaves the layout without having
+    // been closed by choice — undone or redone away, or lost to a rebuilt tree — is put back into the
+    // well before anything is released; only a document the user closed (saving or discarding first)
+    // is let go. Floating and popped-out documents are still open, just elsewhere.
     effect((): void => {
-      const present: ReadonlySet<string> = new Set<string>(
-        collectPanelIds(this.dockState.layout()),
-      );
-      for (const id of this.documents.removeMissing(present)) {
-        this.editorTerminals.remove(id);
-        // Tell the language server the document is gone (a re-parent keeps it; only a real removal
-        // reaches here), so its diagnostics are dropped and it is no longer analysed.
-        this.lspClient.closeDocument(id);
-      }
+      const docked: readonly string[] = collectPanelIds(this.dockState.layout());
+      const floating: readonly string[] = this.dockFloating
+        .floats()
+        .map((float: FloatWindow): string => float.panelId);
+      untracked((): void => {
+        const present: ReadonlySet<string> = new Set<string>([
+          ...docked,
+          ...floating,
+          ...this.registry
+            .list()
+            .filter((panel: DockPanel): boolean => this.popoutPanels.isPopped(panel.id))
+            .map((panel: DockPanel): string => panel.id),
+        ]);
+        const stranded: readonly string[] = strandedDocuments(
+          this.registry.list(),
+          present,
+          (panelId: string): boolean => this.dockState.isReleased(panelId),
+        );
+        if (stranded.length > 0) {
+          // Putting them back changes the layout, which runs this again to release the rest.
+          this.dockState.restore(stranded);
+          return;
+        }
+        for (const id of this.documents.removeMissing(present)) {
+          this.editorTerminals.remove(id);
+          // Tell the language server the document is gone (a re-parent keeps it; only a real removal
+          // reaches here), so its diagnostics are dropped and it is no longer analysed.
+          this.lspClient.closeDocument(id);
+        }
+      });
     });
 
     effect((): void => {
@@ -1257,7 +1337,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.repository.changeCount() === 0
       ) {
         this.returnWhenCommitted = false;
-        untracked((): void => this.layoutStore.returnFromTransient());
+        untracked((): void => void this.layoutStore.returnFromTransient());
       }
     });
 
@@ -1665,7 +1745,8 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Opens a changed file's diff into the well on an agent's behalf (#713). Only a file the repository
+   * Opens a changed file's diff into the well on an agent's behalf (#713), behind the document the
+   * user is reading. Only a file the repository
    * reports as changed has a diff to show; anything else is refused with the reason rather than
    * opened as an empty comparison.
    * @param path The absolute path of the file.
@@ -1673,7 +1754,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private openDiffForAgent(path: string): Promise<string | null> {
     // The same lookup the explorers' Show Differences uses, so an agent and a person get the same answer.
-    return this.diffOpener.openPath(path);
+    return this.diffOpener.openPath(path, undefined, AGENT_OPEN);
   }
 
   /**
@@ -1744,7 +1825,8 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @returns Returns the terminal.
    */
   private openTerminalForAgent(): WellTerminal {
-    const session: TerminalSession = this.terminalSessions.create();
+    // Quiet: shown in the panel, so the user can watch it run, but never handed the keyboard.
+    const session: TerminalSession = this.terminalSessions.create({ quiet: true });
     this.dockReveal.reveal('terminal');
     this.terminalSessions.activateAndReveal(session.id);
     return { id: session.id, name: session.name, active: true };
@@ -1765,8 +1847,8 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Creates a file on an agent's behalf (#713): the tree's own New File, then the content when there
-   * is any, then the file revealed in the Explorer and opened in the well — so the user sees what
-   * was made where it was made.
+   * is any, then the file revealed in the Explorer and opened in the well, behind what the user is
+   * reading — so it is there to look at where it was made, without being put in front of them.
    * @param path The absolute path of the file.
    * @param content The content to write, or null for an empty file.
    * @returns Returns null when the file was created, or the reason it could not be.
@@ -1786,7 +1868,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     }
     await this.workspace.revealPath(created.path ?? path);
-    await this.fileOpener.openPath(created.path ?? path);
+    await this.fileOpener.openPath(created.path ?? path, AGENT_OPEN);
     return null;
   }
 
@@ -1883,7 +1965,7 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly wellHandlers: WorkspaceWellHandlers = {
     rootPath: (): string | null => this.workspace.root()?.path ?? null,
     activeDocumentId: (): string | null => this.documents.activeDocumentId(),
-    open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    open: (path: string): Promise<boolean> => this.fileOpener.openPath(path, AGENT_OPEN),
     openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
     documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
     sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
@@ -2042,10 +2124,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.log.debug('source-control', 'Switching to the source-control layout');
     const own: LayoutInfo | null = this.layoutStore.layoutForTemplate(SOURCE_CONTROL_TEMPLATE_ID);
     if (own !== null) {
-      this.layoutStore.select(own.id);
+      void this.layoutStore.select(own.id);
       return;
     }
-    this.layoutStore.switchTransient(SOURCE_CONTROL_TEMPLATE_ID);
+    void this.layoutStore.switchTransient(SOURCE_CONTROL_TEMPLATE_ID);
   }
 
   /**
@@ -2063,7 +2145,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // once the changes it staged for reach zero (the commit landed). It prefers the user's own layout
     // for the template and falls back to the template itself, so it works whatever they have made of
     // their layouts. The panel-injection path below remains for the odd case where neither exists.
-    if (this.layoutStore.switchTransientForTemplate(SOURCE_CONTROL_TEMPLATE_ID)) {
+    if (await this.layoutStore.switchTransientForTemplate(SOURCE_CONTROL_TEMPLATE_ID)) {
       if (this.repository.changeCount() > 0) {
         this.returnWhenCommitted = true;
       }

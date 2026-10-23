@@ -979,7 +979,7 @@ export class DirectoryRibbon {
    * Returns from the transient layout switch to the layout it left.
    */
   protected onReturnLayout(): void {
-    this.layoutStore.returnFromTransient();
+    void this.layoutStore.returnFromTransient();
   }
 
   /**
@@ -1072,7 +1072,7 @@ export class DirectoryRibbon {
   protected onApplyDefaultLayout(): void {
     const id: string | null = this.defaultLayoutId();
     if (id !== null) {
-      this.layoutStore.select(id);
+      void this.layoutStore.select(id);
     }
   }
 
@@ -1082,7 +1082,7 @@ export class DirectoryRibbon {
    */
   protected onSelectLayout(id: string): void {
     this.log.debug('workspace.ribbon', 'Layout selected', id);
-    this.layoutStore.select(id);
+    void this.layoutStore.select(id);
   }
 
   /**
@@ -1091,7 +1091,7 @@ export class DirectoryRibbon {
    */
   protected onResetLayout(): void {
     this.log.debug('workspace.ribbon', 'Layout reset');
-    this.layoutStore.reset();
+    void this.layoutStore.reset();
   }
 
   /**
@@ -1213,7 +1213,7 @@ export class DirectoryRibbon {
     const layout: LayoutInfo | null = this.deletingLayout();
     if (layout !== null) {
       this.log.info('workspace.ribbon', 'Layout deleted', layout.id);
-      this.layoutStore.remove(layout.id);
+      void this.layoutStore.remove(layout.id);
     }
     this.deletingLayout.set(null);
   }

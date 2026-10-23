@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { type AppServerProcess, spawnAppServer } from './app-server';
 import { CodexClient } from './codex-client';
-import { findCodexExecutable } from './codex-executable';
+import { resolveCodexExecutable } from './codex-executable';
 import { CodexModels, readCodexModels } from './codex-models';
 import {
   auditSource,
@@ -211,7 +211,7 @@ function sandboxPolicy(policy: TurnPolicy): Record<string, unknown> {
  * across turns — this harness is a `live-harness`.
  */
 const codex: CodexClient = new CodexClient({
-  findExecutable: findCodexExecutable,
+  findExecutable: (choice: unknown) => resolveCodexExecutable(choice),
   spawn: spawnAppServer,
   startTools: startStudioMcpServer,
   bridge: {
@@ -278,7 +278,12 @@ async function runTurn(turn: TurnRequest): Promise<void> {
     done: (outcome: 'completed' | 'failed'): void => settle(outcome),
   };
   try {
-    const started: AppServerProcess | string = await codex.ensureServer(turn.requestId);
+    // The user's Codex CLI choice rides in the turn's provider settings, so a change applies from the
+    // next message (#1079).
+    const started: AppServerProcess | string = await codex.ensureServer(
+      turn.requestId,
+      turn.providerSettings['codexExecutable'],
+    );
     if (typeof started === 'string') {
       throw new Error(started);
     }

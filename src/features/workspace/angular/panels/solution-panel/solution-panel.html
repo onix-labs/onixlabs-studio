@@ -3,59 +3,53 @@
     [query]="query()"
     searchPlaceholder="Search solution"
     [moreItems]="moreItems()"
+    [changesOnly]="changesOnlyToggle()"
+    (changesOnlyToggle)="toggleChangesOnly()"
     (queryChange)="onSearch($event)"
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
     (moreSelected)="onMoreAction($event)"
   />
 
-  @if (noChanges()) {
-    <!-- Show Changed Files Only, with nothing changed (#1053): said, with the way back. -->
-    <div class="tree-empty">
-      <p>No changes.</p>
-      <app-button label="Show All Files" (click)="solutionToggleChangesOnly()" />
-    </div>
-  } @else {
-    <app-tree-view
-      [rows]="rows()"
-      [selectedId]="selectedKey()"
-      [selectedIds]="selection.ids()"
-      [multiSelect]="true"
-      [virtual]="true"
-      [contextMenuFor]="contextMenuFor"
-      [editingId]="renameTarget()?.key ?? null"
-      [editValue]="renameTarget()?.label ?? ''"
-      (rowClick)="onRowClick($event)"
-      (rowDoubleClick)="onRowOpen($event)"
-      (rowActivate)="onRowOpen($event)"
-      (rowSelect)="onRowSelect($event)"
-      (selectAll)="onSelectAll()"
-      (backgroundClick)="clearSelection()"
-      (contextMenuSelect)="onContextAction($event)"
-      (editCommit)="commitRename($event)"
-      (editCancel)="cancelRename()"
-    >
-      <!-- A solution folder being renamed keeps its icon; the tree's field takes the place of the rest. -->
-      <ng-template let-row let-editing="editing">
-        @let r = rowOf(row);
-        <app-icon
-          class="tree-icon"
-          [class.tree-icon--folder]="r.kind === 'folder' || r.kind === 'item-folder'"
-          [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
-          [icon]="iconFor(r)"
-        />
-        @if (!editing) {
-          <span class="tree-name" [class.bold]="r.kind === 'solution'">
-            <app-highlighted-text [text]="r.label" [query]="query()" />
-          </span>
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="selectedKey()"
+    [selectedIds]="selection.ids()"
+    [multiSelect]="true"
+    [virtual]="true"
+    [contextMenuFor]="contextMenuFor"
+    [editingId]="renameTarget()?.key ?? null"
+    [editValue]="renameTarget()?.label ?? ''"
+    (rowClick)="onRowClick($event)"
+    (rowDoubleClick)="onRowOpen($event)"
+    (rowActivate)="onRowOpen($event)"
+    (rowSelect)="onRowSelect($event)"
+    (selectAll)="onSelectAll()"
+    (backgroundClick)="clearSelection()"
+    (contextMenuSelect)="onContextAction($event)"
+    (editCommit)="commitRename($event)"
+    (editCancel)="cancelRename()"
+  >
+    <!-- A solution folder being renamed keeps its icon; the tree's field takes the place of the rest. -->
+    <ng-template let-row let-editing="editing">
+      @let r = rowOf(row);
+      <app-icon
+        class="tree-icon"
+        [class.tree-icon--folder]="r.kind === 'folder' || r.kind === 'item-folder'"
+        [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
+        [icon]="iconFor(r)"
+      />
+      @if (!editing) {
+        <span class="tree-name" [class.bold]="r.kind === 'solution'">
+          <app-highlighted-text [text]="r.label" [query]="query()" />
+        </span>
 
-          @if (r.loading) {
-            <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
-          }
+        @if (r.loading) {
+          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
         }
-      </ng-template>
-    </app-tree-view>
-  }
+      }
+    </ng-template>
+  </app-tree-view>
 
   <!-- Where the selection is, and what it is: the folder on the left, cut from its start so the end
        stays visible; the selected item, or how many, on the right — never cut. -->

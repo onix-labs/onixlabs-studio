@@ -55,6 +55,11 @@ export class AgentConversationPanel {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the prompt should take keyboard focus, forwarded to the chat.
+   */
+  public readonly promptFocus: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets what this conversation's runs act on (the tool set the providers expose), forwarded to the
    * chat.
    */

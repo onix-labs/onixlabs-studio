@@ -23,6 +23,7 @@ import type {
   AiEffort,
   AiImageRef,
   AiProviderInfo,
+  AiSignInRequest,
   AiSlashCommand,
 } from '@shared/api/ai-types';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
@@ -217,10 +218,22 @@ export class AgentComposer {
   private readonly perf: AgentPerf = inject(AgentPerf);
 
   /**
-   * Gets whether the "not signed in to Claude" prompt is pending for this conversation, so the template
+   * Gets whether the "not signed in" prompt is pending for this conversation, so the template
    * shows the login modal.
    */
   protected readonly needsLogin: Signal<boolean> = this.agent.needsLogin;
+
+  /**
+   * Gets the name the sign-in window uses for the conversation's provider.
+   */
+  protected readonly signInName: Signal<string> = this.agent.signInName;
+
+  /**
+   * Gets the request naming the conversation's connection to the sign-in window.
+   */
+  protected readonly signInRequest: Signal<AiSignInRequest | null> = computed(
+    (): AiSignInRequest | null => this.agent.signInRequest(),
+  );
 
   /**
    * Holds the host-provided conversation, whose draft backs the composer text. Optional so the
@@ -547,7 +560,7 @@ export class AgentComposer {
         { kind: 'command', label: '/clear', hint: 'Start a new conversation', value: 'clear' },
         { kind: 'command', label: '/mode', hint: 'Toggle Agent / Chat mode', value: 'mode' },
         ...this.effortSuggestions(),
-        ...this.claudeAuthCommands(),
+        ...this.signInCommands(),
       ];
       const commands: ComposerSuggestion[] = builtins.filter(
         (entry: ComposerSuggestion): boolean => entry.value.startsWith(query) || query.length === 0,
@@ -1059,18 +1072,18 @@ export class AgentComposer {
   }
 
   /**
-   * Builds the `/login` and `/logout` command entries, offered only for the Claude local-login
-   * connection (they drive Studio's in-app sign-in, which is meaningless for an API-key or other
-   * provider). Empty for every other connection, so the commands are hidden there.
+   * Builds the `/login` and `/logout` command entries, offered only where Studio can sign the user in to
+   * the conversation's provider (#1080). Empty for every other connection, so the commands are hidden.
    * @returns Returns the sign-in command suggestions.
    */
-  private claudeAuthCommands(): readonly ComposerSuggestion[] {
-    if (this.agentEngine.connection(this.agent.provider())?.auth !== 'claude-login') {
+  private signInCommands(): readonly ComposerSuggestion[] {
+    if (!this.agent.supportsSignIn()) {
       return [];
     }
+    const name: string = this.agent.signInName();
     return [
-      { kind: 'command', label: '/login', hint: 'Sign in to Claude', value: 'login' },
-      { kind: 'command', label: '/logout', hint: 'Sign out of Claude', value: 'logout' },
+      { kind: 'command', label: '/login', hint: `Sign in to ${name}`, value: 'login' },
+      { kind: 'command', label: '/logout', hint: `Sign out of ${name}`, value: 'logout' },
     ];
   }
 
@@ -1276,6 +1289,16 @@ export class AgentComposer {
   }
 
   /**
+   * Moves keyboard focus into the prompt, so a conversation that has just been shown can be typed
+   * into at once.
+   */
+  public focus(): void {
+    // preventScroll: the composer sits at the foot of the conversation, and focusing it must not
+    // drag a transcript the user scrolled back through down to the bottom.
+    this.inputRef()?.nativeElement.focus({ preventScroll: true });
+  }
+
+  /**
    * Loads a queued message back into the composer for editing, removing it from the queue.
    * @param entry The queued entry.
    */
@@ -1459,7 +1482,7 @@ export class AgentComposer {
   }
 
   /**
-   * Dismisses the "not signed in to Claude" prompt when the user closes the login modal without signing
+   * Dismisses the "not signed in" prompt when the user closes the login modal without signing
    * in.
    */
   protected dismissLogin(): void {

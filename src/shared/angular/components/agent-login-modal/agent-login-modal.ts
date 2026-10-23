@@ -14,7 +14,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import type { ClaudeLoginStatus } from '@shared/api/ai-types';
+import type { AiSignInProgress, AiSignInRequest } from '@shared/api/ai-types';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Log } from '@shared/angular/services/log/log';
@@ -24,27 +24,34 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
- * A phase of the in-app Claude sign-in as the modal tracks it: `idle` before the user starts, then the
+ * A phase of the in-app sign-in as the modal tracks it: `idle` before the user starts, then the
  * driver's own phases (`starting`, `browser`, `success`, `error`).
  */
 type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
 
 /**
- * The "you're not signed in to Claude" dialog. Shown when an agent run through the Claude local-login
- * connection fails because the login has expired or is absent (raised by {@link Agent.needsLogin}); its
- * primary action drives the CLI's own OAuth flow — which opens the user's browser — entirely from here,
- * so signing back in never means dropping to a terminal. Progress streams in from the main-process login
- * driver; on success the modal closes and the failed turn's error card keeps its Retry.
+ * The "you're not signed in" dialog. Shown when an agent run fails because its provider's sign-in has
+ * expired or is absent (raised by {@link Agent.needsLogin}); its primary action asks the provider's
+ * plugin to sign the user in — which opens their browser — entirely from here, so signing back in never
+ * means dropping to a terminal (#1080). Progress streams in from the main process; on success the modal
+ * closes and the failed turn's error card keeps its Retry.
+ *
+ * ⛔ Names no provider of its own. Which provider, and what it is called, come from the host.
  */
 @Component({
   selector: 'app-agent-login-modal',
   imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Sign in to Claude" (dismiss)="close()">
+    <app-modal
+      [open]="open()"
+      [width]="30"
+      [ariaLabel]="'Sign in to ' + providerName()"
+      (dismiss)="close()"
+    >
       <ng-template appModalContent>
         <div class="login-modal">
-          <h2 class="login-modal__title">You're not signed in to Claude</h2>
+          <h2 class="login-modal__title">You're not signed in to {{ providerName() }}</h2>
           <p class="login-modal__body">
             @switch (phase()) {
               @case ('starting') {
@@ -60,8 +67,8 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
                 Sign-in didn't complete. {{ errorMessage() }}
               }
               @default {
-                Your Claude session has expired or you're signed out. Sign in to carry on using the
-                agent.
+                Your {{ providerName() }} session has expired or you're signed out. Sign in to carry
+                on using the agent.
               }
             }
           </p>
@@ -82,7 +89,7 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
               <app-button
                 variant="solid"
                 [loading]="busy()"
-                [label]="phase() === 'error' ? 'Try again' : 'Log in to Claude'"
+                [label]="phase() === 'error' ? 'Try again' : 'Log in to ' + providerName()"
                 (click)="startLogin()"
               />
             }
@@ -149,6 +156,17 @@ export class AgentLoginModal {
   public readonly open: InputSignal<boolean> = input.required<boolean>();
 
   /**
+   * Gets the name of the provider being signed in to, as the user knows it ("Claude").
+   */
+  public readonly providerName: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets the request naming the connection to sign in to.
+   */
+  public readonly request: InputSignal<AiSignInRequest | null> =
+    input.required<AiSignInRequest | null>();
+
+  /**
    * Emitted when the modal is dismissed without signing in — the user closed it. The host clears its
    * prompt in response.
    */
@@ -192,8 +210,8 @@ export class AgentLoginModal {
    */
   public constructor() {
     const destroyRef: DestroyRef = inject(DestroyRef);
-    const unsubscribe: () => void = this.runtime.onClaudeLoginStatus(
-      (status: ClaudeLoginStatus): void => this.onStatus(status),
+    const unsubscribe: () => void = this.runtime.onSignInProgress(
+      (progress: AiSignInProgress): void => this.onStatus(progress),
     );
     destroyRef.onDestroy(unsubscribe);
     effect((): void => {
@@ -204,14 +222,20 @@ export class AgentLoginModal {
   }
 
   /**
-   * Starts (or retries) the in-app Claude sign-in.
+   * Starts (or retries) the in-app sign-in.
    */
   protected startLogin(): void {
-    this.log.info('agent.login', 'Starting in-app Claude sign-in');
+    this.log.info('agent.login', `Starting in-app sign-in to ${this.providerName()}`);
     this.errorMessage.set('');
     this.url.set(undefined);
     this.phase.set('starting');
-    this.runtime.startClaudeLogin();
+    const request: AiSignInRequest | null = this.request();
+    if (request === null) {
+      this.errorMessage.set('This configuration no longer exists.');
+      this.phase.set('error');
+      return;
+    }
+    this.runtime.startSignIn(request);
   }
 
   /**
@@ -230,7 +254,7 @@ export class AgentLoginModal {
    */
   protected close(): void {
     if (this.busy()) {
-      this.runtime.cancelClaudeLogin();
+      this.runtime.cancelSignIn();
     }
     this.dismiss.emit();
   }
@@ -240,7 +264,7 @@ export class AgentLoginModal {
    * only the dialog that started a sign-in reacts to its progress.
    * @param status The progress update.
    */
-  private onStatus(status: ClaudeLoginStatus): void {
+  private onStatus(status: AiSignInProgress): void {
     if (!this.open()) {
       return;
     }
@@ -250,7 +274,7 @@ export class AgentLoginModal {
     } else if (status.phase === 'error') {
       this.errorMessage.set(status.message ?? '');
     } else if (status.phase === 'success') {
-      this.log.info('agent.login', 'In-app Claude sign-in succeeded');
+      this.log.info('agent.login', 'In-app sign-in succeeded');
       this.succeeded.emit();
     }
   }
@@ -261,7 +285,7 @@ export class AgentLoginModal {
    */
   private reset(): void {
     if (this.busy()) {
-      this.runtime.cancelClaudeLogin();
+      this.runtime.cancelSignIn();
     }
     this.phase.set('idle');
     this.url.set(undefined);

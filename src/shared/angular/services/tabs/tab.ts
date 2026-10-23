@@ -32,6 +32,19 @@ export type TabType =
 export type AttentionReason = 'agent' | 'conflict';
 
 /**
+ * Describes how something is opened: in front of the user, or behind what they are looking at.
+ */
+export interface OpenOptions {
+  /**
+   * Gets whether to open without bringing anything forward — for something an agent opens on its own
+   * account. The tab (or the document in a well) is added where it belongs, and whatever the user is
+   * looking at, and wherever they are typing, stays as it is: an agent never takes the user's
+   * attention without their say-so. Omitted, or false, for what the user opened themselves.
+   */
+  readonly background?: boolean;
+}
+
+/**
  * Defines a single top-level application tab.
  */
 export interface Tab {

@@ -184,7 +184,7 @@ export class DocumentDiffSwitch {
       return;
     }
     this.place(arrivingId, stack.id, stack.panels.indexOf(leavingId));
-    this.dockState.removeFromLayout(leavingId);
+    this.dockState.release(leavingId);
   }
 
   /**

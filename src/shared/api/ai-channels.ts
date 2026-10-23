@@ -22,8 +22,9 @@ import type {
   AiSetConnectionKeyRequest,
   AiSteerRequest,
   AiStopTaskRequest,
-  ClaudeAuthStatus,
-  ClaudeLoginStatus,
+  AiSignInProgress,
+  AiSignInRequest,
+  AiSignInStatus,
 } from '@shared/api/ai-types';
 
 /**
@@ -112,31 +113,30 @@ export enum AiChannel {
   SetRemoteNotifications = 'ai:set-remote-notifications',
 
   /**
-   * Reads the authoritative Claude sign-in status (via `claude auth status`), to tell an expired/absent
-   * login apart from any other run failure (invoke).
+   * Asks whether the user is signed in to a connection's provider, through its plugin (invoke).
    */
-  CheckClaudeAuth = 'ai:check-claude-auth',
+  CheckSignIn = 'ai:check-sign-in',
 
   /**
-   * Starts the in-app Claude login: drives the `claude` CLI's own OAuth flow (which opens the browser);
-   * progress streams back over {@link AiChannel.ClaudeLoginStatus} (invoke).
+   * Starts signing in to a connection's provider, through its plugin; progress streams back over
+   * {@link AiChannel.SignInProgress} (invoke).
    */
-  StartClaudeLogin = 'ai:start-claude-login',
+  StartSignIn = 'ai:start-sign-in',
 
   /**
-   * Cancels an in-flight in-app Claude login (invoke).
+   * Cancels the sign-in in flight (invoke).
    */
-  CancelClaudeLogin = 'ai:cancel-claude-login',
+  CancelSignIn = 'ai:cancel-sign-in',
 
   /**
-   * Signs the user out of Claude (`claude auth logout`), for testing the sign-in flow (invoke).
+   * Signs the user out of a connection's provider, through its plugin (invoke).
    */
-  LogoutClaude = 'ai:logout-claude',
+  SignOut = 'ai:sign-out',
 
   /**
-   * Streams progress of the in-app Claude login flow (main→renderer, on).
+   * Streams the progress of a sign-in (main→renderer, on).
    */
-  ClaudeLoginStatus = 'ai:claude-login-status',
+  SignInProgress = 'ai:sign-in-progress',
 
   /**
    * Streams events from running agent turns (main→renderer, on).
@@ -283,36 +283,36 @@ export interface AiClient {
   setRemoteNotifications(enabled: boolean): Promise<void>;
 
   /**
-   * Reads the authoritative Claude sign-in status (via `claude auth status`), so a failed run can tell
-   * an expired/absent login apart from any other failure.
-   * @returns Returns the sign-in status ({@link ClaudeAuthStatus.loggedIn} false outside Electron or when
-   * the CLI is unavailable).
+   * Asks whether the user is signed in to a connection's provider.
+   * @param request The connection to ask about.
+   * @returns Returns the status; unsupported outside Electron or for a plugin that cannot sign in.
    */
-  checkClaudeAuth(): Promise<ClaudeAuthStatus>;
+  checkSignIn(request: AiSignInRequest): Promise<AiSignInStatus>;
 
   /**
-   * Starts the in-app Claude login, driving the `claude` CLI's own OAuth flow (which opens the browser).
-   * Progress streams through {@link onClaudeLoginStatus}; the call resolves once the flow has been
-   * launched (not when it completes).
+   * Starts signing in to a connection's provider. Progress streams through {@link onSignInProgress};
+   * the call resolves once the sign-in has started, not when it completes.
+   * @param request The connection to sign in to.
    */
-  startClaudeLogin(): Promise<void>;
+  startSignIn(request: AiSignInRequest): Promise<void>;
 
   /**
-   * Cancels an in-flight in-app Claude login. No-op when none is running.
+   * Cancels the sign-in in flight. No-op when none is running.
    */
-  cancelClaudeLogin(): Promise<void>;
+  cancelSignIn(): Promise<void>;
 
   /**
-   * Signs the user out of Claude (`claude auth logout`), for testing the sign-in flow.
+   * Signs the user out of a connection's provider.
+   * @param request The connection to sign out of.
    */
-  logoutClaude(): Promise<void>;
+  signOut(request: AiSignInRequest): Promise<void>;
 
   /**
-   * Subscribes to progress of the in-app Claude login flow.
-   * @param listener Receives each {@link ClaudeLoginStatus}.
+   * Subscribes to the progress of a sign-in.
+   * @param listener Receives each {@link AiSignInProgress}.
    * @returns Returns a function that removes the listener.
    */
-  onClaudeLoginStatus(listener: (status: ClaudeLoginStatus) => void): () => void;
+  onSignInProgress(listener: (progress: AiSignInProgress) => void): () => void;
 
   /**
    * Subscribes to streamed events from running agent turns.

@@ -1,5 +1,5 @@
 import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
-import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { CdkContextMenuTrigger, CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -34,10 +34,28 @@ import { PopoutPanels } from '../../../services/dock-layout/popout-panels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+
+/**
+ * Identifies the tab menu's commands, and for the splits the side each docks the tab against.
+ */
+const TAB_CLOSE: string = 'tab.close';
+const TAB_CLOSE_ALL: string = 'tab.close-all';
+const TAB_CLOSE_OTHERS: string = 'tab.close-others';
+const TAB_SPLITS: readonly {
+  readonly id: string;
+  readonly label: string;
+  readonly side: DockSide;
+}[] = [
+  { id: 'tab.split-top', label: 'Split to Top', side: 'top' },
+  { id: 'tab.split-bottom', label: 'Split to Bottom', side: 'bottom' },
+  { id: 'tab.split-left', label: 'Split to Left', side: 'left' },
+  { id: 'tab.split-right', label: 'Split to Right', side: 'right' },
+];
 
 /**
  * The rectangle a panel floats into when its group cannot be measured.
@@ -70,6 +88,8 @@ const FILL_THRESHOLD_PX: number = 16;
     CdkDropList,
     CdkDrag,
     CdkMenuTrigger,
+    CdkContextMenuTrigger,
+    MenuSubject,
     Menu,
     AppIcon,
     Button,
@@ -215,6 +235,66 @@ export class DockTabGroup {
         action: { icon: Icon.CLOSE, label: 'Close' },
       })),
   );
+
+  /**
+   * Builds a document tab's context menu: closing it, every tab, or every tab but it; then splitting
+   * it out into a new well on any side. A well's only tab cannot be split out — there would be nothing
+   * left to split beside — so the splits are offered but disabled. Bound as a value, because the menu
+   * calls it as its item factory with the tab's panel id.
+   */
+  protected readonly tabItemsFor: (data: unknown) => readonly MenuItem[] = (
+    data: unknown,
+  ): readonly MenuItem[] => {
+    const count: number = this.panels().length;
+    if (typeof data !== 'string') {
+      return [];
+    }
+    return [
+      { id: TAB_CLOSE, label: 'Close' },
+      { id: TAB_CLOSE_ALL, label: 'Close All' },
+      { id: TAB_CLOSE_OTHERS, label: 'Close All But This', disabled: count <= 1 },
+      { id: 'tab.sep-split', label: '', separator: true },
+      ...TAB_SPLITS.map((split): MenuItem => ({
+        id: split.id,
+        label: split.label,
+        disabled: count <= 1,
+      })),
+    ];
+  };
+
+  /**
+   * Runs a command chosen from a document tab's context menu.
+   * @param choice The chosen command, with the panel id of the tab it was opened on.
+   */
+  protected onTabMenu(choice: MenuChoice): void {
+    const panelId: unknown = choice.data;
+    if (typeof panelId !== 'string') {
+      return;
+    }
+    switch (choice.id) {
+      case TAB_CLOSE:
+        this.close(panelId);
+        return;
+      case TAB_CLOSE_ALL:
+        this.closeAll();
+        return;
+      case TAB_CLOSE_OTHERS:
+        void this.dockState.requestCloseAll(
+          this.panels()
+            .map((panel: DockPanel): string => panel.id)
+            .filter((id: string): boolean => id !== panelId),
+        );
+        return;
+      default: {
+        const split: { readonly side: DockSide } | undefined = TAB_SPLITS.find(
+          (candidate): boolean => candidate.id === choice.id,
+        );
+        if (split !== undefined) {
+          this.dockState.splitPanelOut(panelId, split.side);
+        }
+      }
+    }
+  }
 
   /**
    * Gets a value indicating whether the stack is a document well.
@@ -370,7 +450,8 @@ export class DockTabGroup {
    * @param stripWidth The strip's width, in pixels.
    */
   private applyTabsFill(stripWidth: number): void {
-    if (this.naturalTabsExtent === null || this.isDocuments()) {
+    // A hidden strip reports no width; it says nothing about the fill (see measureTabsFill).
+    if (this.naturalTabsExtent === null || this.isDocuments() || stripWidth === 0) {
       return;
     }
     this.tabsFillSignal.set(stripWidth - this.naturalTabsExtent <= FILL_THRESHOLD_PX);
@@ -437,6 +518,15 @@ export class DockTabGroup {
     const stripBox: DOMRect = strip.getBoundingClientRect();
     const lastTabRight: number = last.getBoundingClientRect().right;
     strip.removeAttribute('data-measuring');
+
+    // 🔥 A strip with no width has no layout — its view is a background tab, hidden with
+    // `display: none` — and measures nothing: no space left against no width reads as "the tabs
+    // reach the end", so the strip flipped to fill, and that is what painted, stretched, for the
+    // frame before the re-measure when the tab came back. Keep what was measured while it was shown;
+    // the strip's resize observer measures again once it has a width.
+    if (stripBox.width === 0) {
+      return;
+    }
 
     // Fill once the content-sized tabs come within the threshold of the strip's end edge (or already
     // overflow it, in which case they shrink to fit and reach the end anyway). The reach is kept, so a

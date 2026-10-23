@@ -1,48 +1,73 @@
-// Shared contract for the in-app Claude login flow, platform-neutral (types only) so both the Electron
-// back-end (which drives the `claude` CLI's own OAuth login) and the Angular front-end (which shows the
-// "not signed in" modal) can import it. The app never reimplements Anthropic's OAuth: the CLI stays the
-// login engine and writes credentials where the Agent SDK later reads them; these types only carry the
-// authoritative auth-status answer and the login flow's progress across the bridge.
+// Shared contract for signing in to an agent provider from inside the app (#1080), platform-neutral
+// (types only) so both the Electron back-end and the Angular front-end can import it.
+//
+// ⛔ Names no provider. The sign-in itself belongs to the plugin that runs the connection, which drives
+// its vendor's own login and writes the credential where its runtime reads it. Core shows the window
+// and carries what the plugin reports; these types are that report.
+
+import type { AiConnection } from './ai-connection-types';
+import type { ClaudeExecutableChoice } from './ai-provider-types';
 
 /**
- * The authoritative answer to "is the user signed in to Claude?", read from `claude auth status`. Used
- * to decide whether a failed agent turn was an expired/absent login (and so should raise the login
- * modal) rather than string-matching a raw error.
+ * Asks about signing in to the provider that runs a connection.
  */
-export interface ClaudeAuthStatus {
+export interface AiSignInRequest {
   /**
-   * Gets a value indicating whether the user has a valid Claude login.
+   * Gets the connection whose provider is asked. The whole connection, as discovery sends it: the main
+   * process's own map of connections is rebuilt only when the providers are listed, and a sign-in must
+   * not depend on that having happened first (#697 was the same trap).
    */
-  readonly loggedIn: boolean;
+  readonly connection: AiConnection;
 
   /**
-   * Gets the signed-in account's email, when known.
+   * Gets which Claude Code CLI a Claude connection signs in with, so sign-in uses the CLI its turns run.
+   * Carried as discovery carries it: an application setting with nowhere else to ride.
    */
-  readonly email?: string;
+  readonly claudeExecutable?: ClaudeExecutableChoice;
 }
 
 /**
- * A phase of the in-app Claude login flow, streamed from the main-process driver to the modal.
- *
- * - `starting`: the login process is spawning.
- * - `browser`: the CLI has launched (the browser should open); `url` carries the sign-in link when the
- *   CLI printed one, for a manual "open sign-in page" fallback.
- * - `success`: the login completed and a valid session now exists.
- * - `error`: the login failed or was cancelled; `message` carries a short reason.
+ * Whether the user is signed in to a connection's provider.
  */
-export type ClaudeLoginPhase = 'starting' | 'browser' | 'success' | 'error';
+export interface AiSignInStatus {
+  /**
+   * Gets a value indicating whether the provider's plugin can sign anyone in from Studio. False for a
+   * plugin that predates it, or one whose vendor has no sign-in of its own.
+   */
+  readonly supported: boolean;
+
+  /**
+   * Gets a value indicating whether the user is signed in. False whenever {@link supported} is.
+   */
+  readonly signedIn: boolean;
+
+  /**
+   * Gets the signed-in account, when the provider says.
+   */
+  readonly account?: string;
+}
 
 /**
- * A progress update for the in-app Claude login flow (main→renderer).
+ * A phase of a sign-in, streamed from the main process to the sign-in window.
+ *
+ * - `starting`: the provider's sign-in is starting.
+ * - `browser`: the sign-in page is open, or should be; `url` is the page, for a manual open.
+ * - `success`: the user is signed in.
+ * - `error`: the sign-in failed, was cancelled, or the provider cannot sign in; `message` says why.
  */
-export interface ClaudeLoginStatus {
+export type AiSignInPhase = 'starting' | 'browser' | 'success' | 'error';
+
+/**
+ * A progress update for a sign-in (main→renderer).
+ */
+export interface AiSignInProgress {
   /**
-   * Gets the flow phase this update reports.
+   * Gets the phase this update reports.
    */
-  readonly phase: ClaudeLoginPhase;
+  readonly phase: AiSignInPhase;
 
   /**
-   * Gets the sign-in URL to open manually, when the CLI surfaced one (phase `browser`).
+   * Gets the sign-in page to open manually, when the provider surfaced one (phase `browser`).
    */
   readonly url?: string;
 

@@ -3,7 +3,7 @@ import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { resolveLanguageId } from '@shared/angular/services/monaco/monaco-languages';
-import { Tab, TabType } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
@@ -33,6 +33,11 @@ import {
  * The title a document opens under when the agent supplies none.
  */
 const DEFAULT_TITLE: string = 'Untitled';
+
+/**
+ * How the agent's tools open app tabs: in the background, so the user stays on what they are doing.
+ */
+const BACKGROUND: OpenOptions = { background: true };
 
 /**
  * The result of opening a document.
@@ -393,8 +398,9 @@ export class WorkbenchAgentCapabilities {
 
     const type: TabType = format === 'markdown' ? 'markdown' : 'code';
     // No resource key: an agent's document is not backed by a file, so nothing should ever dedup
-    // against it — two reports asked for in one conversation are two tabs.
-    const tab: Tab = this.tabs.open(type);
+    // against it — two reports asked for in one conversation are two tabs. In the background: the user
+    // may be in the middle of something else, and an agent never takes them away from it.
+    const tab: Tab = this.tabs.open(type, undefined, BACKGROUND);
     this.documents.ensure(tab.id, title);
     this.documents.setContent(tab.id, content);
     this.documents.setLanguage(tab.id, this.languageFor(format, args.language));
@@ -477,11 +483,12 @@ export class WorkbenchAgentCapabilities {
   }
 
   /**
-   * Opens an existing workspace file into that workspace's document well and brings its tab forward.
+   * Opens an existing workspace file into that workspace's document well, behind what the user is
+   * reading.
    *
-   * Activating the tab is part of the action rather than a courtesy: the well may belong to a
-   * workspace the user is not looking at (an agent docked to a terminal reaches the last active one),
-   * and opening a file into a tab nobody can see is indistinguishable from doing nothing.
+   * ⛔ Nothing is brought forward — not the workspace's tab, not the document in its well. The user
+   * may be working in another tab, or reading another file, and an agent never moves them off it
+   * without their say-so; the tool's result tells the agent to say what it opened instead.
    * @param input The tool input: the path to open.
    * @param scope The run the request comes from.
    * @returns Returns the {@link OpenFileResult}.
@@ -509,7 +516,6 @@ export class WorkbenchAgentCapabilities {
           'or may be a directory.',
       };
     }
-    this.tabs.activate(well.tabId);
     this.log.info('workbench.agent', 'Agent opened a file in the well', path);
     return { ok: true, path };
   }
@@ -530,7 +536,8 @@ export class WorkbenchAgentCapabilities {
   }
 
   /**
-   * Opens a changed file's diff into the active workspace's well and brings the tab forward (#713).
+   * Opens a changed file's diff into the active workspace's well, behind what the user is reading
+   * (#713). Nothing is brought forward (see {@link openFile}).
    * @param input The tool input: the path whose diff to open.
    * @param scope The run the request comes from.
    * @returns Returns the {@link OpenDiffResult}.
@@ -554,7 +561,6 @@ export class WorkbenchAgentCapabilities {
       this.log.debug('workbench.agent', `Agent diff refused: ${refusal}`);
       return { ok: false, error: refusal };
     }
-    this.tabs.activate(well.tabId);
     this.log.info('workbench.agent', 'Agent opened a diff in the well', path);
     return { ok: true, path };
   }
@@ -614,7 +620,6 @@ export class WorkbenchAgentCapabilities {
     if (refusal !== null) {
       return { ok: false, error: refusal };
     }
-    this.tabs.activate(target.well.tabId);
     this.log.info('workbench.agent', 'Agent created a file', target.path);
     return { ok: true, path: target.path };
   }
@@ -708,7 +713,7 @@ export class WorkbenchAgentCapabilities {
     if (!revealed) {
       return { ok: false, error: `"${target.path}" is not inside the open workspace.` };
     }
-    this.tabs.activate(target.well.tabId);
+    // Shown in the workspace's own Explorer; the workspace's tab is not brought forward.
     return { ok: true, path: target.path };
   }
 
@@ -742,11 +747,10 @@ export class WorkbenchAgentCapabilities {
       args.workspace === true ? this.workspace.wellForRun(scope, false) : null;
     if (well !== null) {
       const terminal: WellTerminal = well.openTerminal();
-      this.tabs.activate(well.tabId);
       this.log.info('workbench.agent', 'Agent opened a workspace terminal', terminal.id);
       return { ok: true, id: terminal.id, where: 'workspace' };
     }
-    const tab: Tab = this.tabs.open('terminal');
+    const tab: Tab = this.tabs.open('terminal', undefined, BACKGROUND);
     this.log.info('workbench.agent', 'Agent opened a terminal', tab.id);
     return { ok: true, id: tab.id, where: 'tab' };
   }

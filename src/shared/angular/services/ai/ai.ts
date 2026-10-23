@@ -19,8 +19,9 @@ import type {
   AiSetConnectionKeyRequest,
   AiSteerRequest,
   AiStopTaskRequest,
-  ClaudeAuthStatus,
-  ClaudeLoginStatus,
+  AiSignInProgress,
+  AiSignInRequest,
+  AiSignInStatus,
 } from '@shared/api/ai-types';
 
 /**
@@ -57,13 +58,15 @@ function createClient(bridge: Bridge): AiClient {
     getRemoteNotifications: (): Promise<boolean> => bridge.invoke(AiChannel.GetRemoteNotifications),
     setRemoteNotifications: (enabled: boolean): Promise<void> =>
       bridge.invoke(AiChannel.SetRemoteNotifications, enabled),
-    checkClaudeAuth: (): Promise<ClaudeAuthStatus> => bridge.invoke(AiChannel.CheckClaudeAuth),
-    startClaudeLogin: (): Promise<void> => bridge.invoke(AiChannel.StartClaudeLogin),
-    cancelClaudeLogin: (): Promise<void> => bridge.invoke(AiChannel.CancelClaudeLogin),
-    logoutClaude: (): Promise<void> => bridge.invoke(AiChannel.LogoutClaude),
-    onClaudeLoginStatus: (listener: (status: ClaudeLoginStatus) => void): (() => void) =>
-      bridge.on(AiChannel.ClaudeLoginStatus, (...args: unknown[]): void =>
-        listener(args[0] as ClaudeLoginStatus),
+    checkSignIn: (request: AiSignInRequest): Promise<AiSignInStatus> =>
+      bridge.invoke(AiChannel.CheckSignIn, request),
+    startSignIn: (request: AiSignInRequest): Promise<void> =>
+      bridge.invoke(AiChannel.StartSignIn, request),
+    cancelSignIn: (): Promise<void> => bridge.invoke(AiChannel.CancelSignIn),
+    signOut: (request: AiSignInRequest): Promise<void> => bridge.invoke(AiChannel.SignOut, request),
+    onSignInProgress: (listener: (progress: AiSignInProgress) => void): (() => void) =>
+      bridge.on(AiChannel.SignInProgress, (...args: unknown[]): void =>
+        listener(args[0] as AiSignInProgress),
       ),
     onEvent: (listener: (event: AiEvent) => void): (() => void) =>
       bridge.on(AiChannel.Event, (...args: unknown[]): void => listener(args[0] as AiEvent)),

@@ -1,31 +1,38 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { DocumentWellPlacement, Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
-import { DockNode, DockSide, mkStack, StackNode, StackRole } from './dock-node';
+import { OpenOptions } from '@shared/angular/services/tabs/tab';
+import { DockNode, DockSide, isStackNode, mkStack, StackNode, StackRole } from './dock-node';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
 import { restoreLayout } from './dock-persistence';
 import {
+  carryIntoWell,
+  collectPanelIds,
   defaultLayout,
   dockEdge,
   dockNodeEdge,
   dockStackEdge,
+  findNode,
   movePanel,
   occupyWell,
   occupyWellWithStack,
   removeFromLayout,
   removeNode,
   reorderTab,
+  seatDocuments,
   setActive,
   setCollapsed,
   setSizes,
   splitStack,
+  splitPanelOut,
   splitStackBeside,
   splitWellBeside,
   tabInto,
   tabStackInto,
+  WellSplit,
 } from './dock-tree';
 
 /**
@@ -100,6 +107,11 @@ export class DockState {
   private readonly future: WritableSignal<readonly DockNode[]> = signal<readonly DockNode[]>([]);
 
   /**
+   * Holds the panels closed by choice and not yet released by the host (see {@link release}).
+   */
+  private readonly released: Set<string> = new Set<string>();
+
+  /**
    * Gets a value indicating whether an earlier layout can be restored.
    */
   public readonly canUndo: Signal<boolean> = computed((): boolean => this.past().length > 0);
@@ -121,15 +133,45 @@ export class DockState {
         this.store.set<DockNode>(`dock.layout.${this.persistKey}`, this.tree());
       }
     });
+    // A released panel that comes back into the layout (undo, reopen) is no longer let go.
+    effect((): void => {
+      if (this.released.size > 0) {
+        for (const panelId of collectPanelIds(this.tree())) {
+          this.released.delete(panelId);
+        }
+      }
+    });
   }
 
   /**
-   * Adds a panel as a tab in the given stack and makes it active.
+   * Adds a panel as a tab in the given stack and makes it active — or, opened in the background,
+   * leaves the stack's active tab in front, so what the user was looking at stays put. A stack with no
+   * active tab shows the new one either way: there was nothing in front to keep.
    * @param stackId The identifier of the stack to tab into.
    * @param panelId The identifier of the panel to add.
+   * @param options How to open it; in the background, the stack's active tab stays active.
    */
-  public tabInto(stackId: string, panelId: string): void {
+  public tabInto(stackId: string, panelId: string, options?: OpenOptions): void {
+    const stack: DockNode | null = findNode(this.tree(), stackId);
+    const before: string | null = stack !== null && isStackNode(stack) ? stack.active : null;
     this.commit(tabInto(this.tree(), stackId, panelId));
+    if (options?.background === true && before !== null && before !== panelId) {
+      this.setActive(stackId, before);
+    }
+  }
+
+  /**
+   * Splits a tab out of its group into a new group beside it, as one undoable step. Ignored for a
+   * group's only tab.
+   * @param panelId The identifier of the panel to split out.
+   * @param side The side of its group the new group docks against.
+   */
+  public splitPanelOut(panelId: string, side: DockSide): void {
+    const next: DockNode = splitPanelOut(this.tree(), panelId, side);
+    if (next !== this.tree()) {
+      this.log.info('DockState', `Split panel '${panelId}' out to the ${side}`);
+      this.commit(next);
+    }
   }
 
   /**
@@ -164,14 +206,24 @@ export class DockState {
   }
 
   /**
-   * Splits a fresh document well (holding the given document) off a tool-occupied centre at an even
-   * 50/50 share, the well on the left. Used when a document is opened while a tool holds the centre
-   * and no well exists.
+   * Splits a fresh document well (holding the given document) off a tool-occupied centre where the
+   * user's `workspaces.documentWellPlacement` setting puts it: beside the tool, above it, or in its
+   * place with the tool collapsed to a strip. Used when a document is opened while a tool holds the
+   * centre and no well exists.
    * @param stackId The identifier of the tool-occupied centre to split against.
    * @param panelId The identifier of the document panel to seat in the new well.
    */
   public openWellBeside(stackId: string, panelId: string): void {
-    this.commit(splitWellBeside(this.tree(), stackId, panelId));
+    this.commit(splitWellBeside(this.tree(), stackId, panelId, this.wellSplit()));
+  }
+
+  /**
+   * Reads where a fresh document well goes beside a tool-occupied centre, from the user's setting.
+   * @returns Returns the well's placement.
+   */
+  private wellSplit(): WellSplit {
+    const placement: DocumentWellPlacement = this.settings.documentWellPlacement();
+    return placement === 'split-vertical' ? 'col' : placement === 'collapse' ? 'collapse' : 'row';
   }
 
   /**
@@ -199,8 +251,52 @@ export class DockState {
       return false;
     }
     this.log.info('DockState', `Closed panel '${panelId}'`);
-    this.removeFromLayout(panelId);
+    this.release(panelId);
     return true;
+  }
+
+  /**
+   * Removes a panel the user has chosen to close — its unsaved changes already saved or discarded —
+   * recording that it was let go on purpose, so the host may release what it holds. A panel that
+   * merely leaves the layout (undone away, or dropped by a rebuilt tree) is not released this way, and
+   * a host keeping unsaved work puts it back (see {@link restore}).
+   * @param panelId The identifier of the panel to close.
+   */
+  public release(panelId: string): void {
+    this.released.add(panelId);
+    this.removeFromLayout(panelId);
+  }
+
+  /**
+   * Records panels as let go on purpose without removing them here, for a caller about to replace the
+   * whole tree once their unsaved changes have been resolved (a layout switch).
+   * @param panelIds The identifiers of the panels to record.
+   */
+  public markReleased(panelIds: readonly string[]): void {
+    for (const panelId of panelIds) {
+      this.released.add(panelId);
+    }
+  }
+
+  /**
+   * Determines whether a panel was let go on purpose (see {@link release}). The record lasts until
+   * the panel is back in the layout, since some panels stay registered after closing.
+   * @param panelId The identifier of the panel.
+   * @returns Returns true when the panel was closed by choice.
+   */
+  public isReleased(panelId: string): boolean {
+    return this.released.has(panelId);
+  }
+
+  /**
+   * Puts documents back into the layout — its well, or a fresh well beside the centre — without
+   * recording an undo step: it repairs the tree the user is looking at rather than changing it, so
+   * undo and redo still step through their own history.
+   * @param panelIds The identifiers of the document panels to put back.
+   */
+  public restore(panelIds: readonly string[]): void {
+    this.log.warn('DockState', 'Putting back documents with unsaved changes', panelIds);
+    this.tree.set(seatDocuments(this.tree(), panelIds, panelIds[0] ?? null, this.wellSplit()));
   }
 
   /**
@@ -349,11 +445,16 @@ export class DockState {
   }
 
   /**
-   * Restores the seeded default layout, discarding the current arrangement.
+   * Restores the seeded default layout, discarding the current arrangement. Documents named to carry
+   * are seated in the new layout's well in the same commit, so one undo restores the whole switch;
+   * when the new layout has no well they are left out, and the caller is expected to have resolved
+   * their unsaved changes first.
+   * @param carry The identifiers of the document panels to carry into the new layout's well.
+   * @param active The carried panel to make the well's active tab, or null to keep the well's own.
    */
-  public reset(): void {
-    this.log.info('DockState', `Reset layout to seeded default`, this.persistKey);
-    this.commit(this.createLayout());
+  public reset(carry: readonly string[] = [], active: string | null = null): void {
+    this.log.info('DockState', `Reset layout to seeded default`, this.persistKey, carry.length);
+    this.commit(carryIntoWell(this.createLayout(), carry, active));
   }
 
   /**

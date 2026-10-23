@@ -99,6 +99,143 @@ export function newUsageState(): UsageState {
 }
 
 /**
+ * What has streamed of each model message so far (#1070), so the whole message that follows its
+ * deltas adds only what the stream did not already show.
+ *
+ * 🔑 Keyed by the API message id, which is the one thing a stream and the whole message share: the
+ * stream's `message_start` names it, and the SDK's whole `assistant` message carries it as
+ * `message.id`. Each kind keeps everything streamed and how much of it a whole block has accounted for,
+ * because the CLI may deliver one model message as several whole messages, a block at a time.
+ */
+export interface StreamState {
+  /**
+   * The message streaming now, by sub-agent (`''` for the top level).
+   */
+  readonly current: Map<string, string>;
+
+  /**
+   * What has streamed, by message id.
+   */
+  readonly streamed: Map<string, StreamedMessage>;
+}
+
+/**
+ * What has streamed of one model message.
+ */
+interface StreamedMessage {
+  text: string;
+  textShown: number;
+  thinking: string;
+  thinkingShown: number;
+}
+
+/**
+ * Creates the per-session stream state.
+ * @returns Returns a fresh stream state.
+ */
+export function newStreamState(): StreamState {
+  return { current: new Map<string, string>(), streamed: new Map<string, StreamedMessage>() };
+}
+
+/**
+ * The most model messages remembered at once. A message's whole form may arrive as several messages,
+ * a block at a time, so nothing says when it is done with; the oldest is forgotten instead.
+ */
+const MAX_STREAMED_MESSAGES: number = 32;
+
+/**
+ * Translates one of the SDK's partial messages (`includePartialMessages`) into text and thinking
+ * deltas, so a reply shows as it is written and a long thought shows as activity rather than silence.
+ *
+ * Only text and thinking stream. A tool's input streams too, but a tool card is drawn from the whole
+ * block, which is the first point its input is known to be complete.
+ * @param sink Where the events go.
+ * @param message The partial message.
+ * @param state The per-session stream state.
+ */
+export function translateStream(sink: EventSink, message: SDKMessage, state: StreamState): void {
+  if (message.type !== 'stream_event') {
+    return;
+  }
+  const parent: string | null = parentToolIdOf(message);
+  const key: string = parent ?? '';
+  const event: {
+    type?: string;
+    message?: { id?: unknown };
+    delta?: { type?: string; text?: unknown; thinking?: unknown };
+  } = (message as { event?: object }).event ?? {};
+  if (event.type === 'message_start') {
+    const id: unknown = event.message?.id;
+    if (typeof id === 'string' && id.length > 0) {
+      state.current.set(key, id);
+      if (state.streamed.size >= MAX_STREAMED_MESSAGES) {
+        const oldest: string | undefined = state.streamed.keys().next().value;
+        if (oldest !== undefined) {
+          state.streamed.delete(oldest);
+        }
+      }
+      state.streamed.set(id, { text: '', textShown: 0, thinking: '', thinkingShown: 0 });
+    }
+    return;
+  }
+  if (event.type !== 'content_block_delta') {
+    return;
+  }
+  const id: string | undefined = state.current.get(key);
+  const streamed: StreamedMessage | undefined =
+    id === undefined ? undefined : state.streamed.get(id);
+  if (streamed === undefined) {
+    // A delta for a message whose start was not seen cannot be reconciled with the whole message that
+    // follows, so it is left for that message to show.
+    return;
+  }
+  const attribution: { parentToolId?: string } = parent === null ? {} : { parentToolId: parent };
+  if (event.delta?.type === 'text_delta' && typeof event.delta.text === 'string') {
+    streamed.text += event.delta.text;
+    sink.emit({
+      requestId: sink.requestId(),
+      kind: 'text',
+      delta: event.delta.text,
+      ...attribution,
+    });
+  } else if (event.delta?.type === 'thinking_delta' && typeof event.delta.thinking === 'string') {
+    streamed.thinking += event.delta.thinking;
+    sink.emit({
+      requestId: sink.requestId(),
+      kind: 'thinking',
+      delta: event.delta.thinking,
+      ...attribution,
+    });
+  }
+}
+
+/**
+ * Works out what of a whole block the stream has not already shown, and records it as shown.
+ *
+ * The usual case is that the stream showed all of it, and nothing is left. A stream cut short leaves
+ * the block's tail; a block that does not continue what streamed at all is shown whole, because a
+ * repeated sentence is a smaller fault than a missing one.
+ * @param whole The block's text.
+ * @param streamed Everything that streamed of its kind.
+ * @param shown How much of that whole blocks have already accounted for.
+ * @returns Returns the text still to show, and the new count of what has been accounted for.
+ */
+function unstreamedPart(
+  whole: string,
+  streamed: string,
+  shown: number,
+): { readonly rest: string; readonly shown: number } {
+  const pending: string = streamed.slice(shown);
+  if (pending.startsWith(whole)) {
+    return { rest: '', shown: shown + whole.length };
+  }
+  if (whole.startsWith(pending)) {
+    return { rest: whole.slice(pending.length), shown: streamed.length };
+  }
+  return { rest: whole, shown };
+}
+
+/**
  * Reads the session id an SDK message carries, or null when it has none.
  * @param message The SDK message.
  * @returns Returns the session id, or null.
@@ -185,26 +322,52 @@ function contextInputOf(usage: TokenUsage): number {
  * @param blocks The content blocks.
  * @param parent The sub-agent the message belongs to, or null for top-level.
  * @param uuid The SDK message uuid text chunks carry — the branch anchor — or null when absent.
+ * @param streamed What has already streamed of this model message, or undefined when none of it did.
  */
 function handleAssistantBlocks(
   sink: EventSink,
   blocks: readonly ContentBlock[],
   parent: string | null,
   uuid: string | null,
+  streamed?: StreamedMessage,
 ): void {
   const requestId: string = sink.requestId();
   const attribution: { parentToolId?: string } = parent === null ? {} : { parentToolId: parent };
   for (const block of blocks) {
     if (block.type === 'text' && typeof block.text === 'string') {
+      let delta: string = block.text;
+      if (streamed !== undefined) {
+        const part: { readonly rest: string; readonly shown: number } = unstreamedPart(
+          block.text,
+          streamed.text,
+          streamed.textShown,
+        );
+        streamed.textShown = part.shown;
+        delta = part.rest;
+      }
+      // ⚠️ Sent even when the stream showed all of it: the whole message is what carries the uuid,
+      // and the uuid is the transcript's branch anchor for a rewind. An empty delta adds no text.
       sink.emit({
         requestId,
         kind: 'text',
-        delta: block.text,
+        delta,
         ...(uuid === null ? {} : { messageUuid: uuid }),
         ...attribution,
       });
     } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
-      sink.emit({ requestId, kind: 'thinking', delta: block.thinking, ...attribution });
+      let delta: string = block.thinking;
+      if (streamed !== undefined) {
+        const part: { readonly rest: string; readonly shown: number } = unstreamedPart(
+          block.thinking,
+          streamed.thinking,
+          streamed.thinkingShown,
+        );
+        streamed.thinkingShown = part.shown;
+        delta = part.rest;
+      }
+      if (delta.length > 0) {
+        sink.emit({ requestId, kind: 'thinking', delta, ...attribution });
+      }
     } else if (block.type === 'tool_use' && typeof block.id === 'string') {
       const agentType: unknown = block.input?.['subagent_type'];
       const input: string | undefined = formatToolInput(block.input);
@@ -303,16 +466,26 @@ function handleResult(sink: EventSink, message: SDKMessage, usage: UsageState): 
  * @param sink Where the events go.
  * @param message The SDK message.
  * @param usage The per-session usage state.
+ * @param stream The per-session stream state, which holds what has already streamed of each message.
  */
-export function translate(sink: EventSink, message: SDKMessage, usage: UsageState): void {
+export function translate(
+  sink: EventSink,
+  message: SDKMessage,
+  usage: UsageState,
+  stream: StreamState = newStreamState(),
+): void {
   const parent: string | null = parentToolIdOf(message);
-  if (message.type === 'assistant') {
+  if (message.type === 'stream_event') {
+    translateStream(sink, message, stream);
+  } else if (message.type === 'assistant') {
     const uuid: unknown = (message as { uuid?: unknown }).uuid;
+    const id: unknown = (message.message as { id?: unknown }).id;
     handleAssistantBlocks(
       sink,
       message.message.content as readonly ContentBlock[],
       parent,
       typeof uuid === 'string' && uuid.length > 0 ? uuid : null,
+      typeof id === 'string' ? stream.streamed.get(id) : undefined,
     );
     // A sub-agent's tokens belong to its own lane, so they are reported separately and never folded
     // into the run's context meter — the sub-agent has a window of its own.
@@ -445,6 +618,21 @@ export function emitBackgroundTask(sink: EventSink, message: SDKTaskNotification
     outputFile: message.output_file,
     ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
     ...(message.skip_transcript === undefined ? {} : { skipTranscript: message.skip_transcript }),
+  });
+}
+
+/**
+ * Emits that the CLI began a turn nobody in Studio prompted (protocol 1.17.0, #1070), so Studio adopts
+ * it on that fact instead of inferring one from silence.
+ * @param sink Where the events go.
+ * @param reason Why the turn began: a background task's report-back, or a remote peer's message.
+ */
+export function emitTurnStarted(sink: EventSink, reason: 'report-back' | 'remote'): void {
+  sink.emit({
+    requestId: sink.requestId(),
+    kind: 'turn-started',
+    agentSessionId: sink.agentSessionId(),
+    reason,
   });
 }
 

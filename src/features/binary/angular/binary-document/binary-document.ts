@@ -16,7 +16,7 @@ import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
 import { Log } from '@shared/angular/services/log/log';
-import { Tab } from '@shared/angular/services/tabs/tab';
+import { OpenOptions, Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   UnsavedDocument,
@@ -1172,10 +1172,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
    * Opens a file in a binary tab, reusing an existing tab for the same path, and returns the tab. The
    * document reads its bytes lazily, so opening is cheap however large the file.
    * @param path The absolute path of the file to open.
+   * @param options How to open it; in the background, the tab is not brought forward.
    * @returns Returns the opened, or re-activated, tab.
    */
-  public open(path: string): Tab {
-    const tab: Tab = this.tabs.open('binary', path);
+  public open(path: string, options?: OpenOptions): Tab {
+    const tab: Tab = this.tabs.open('binary', path, options);
     if (!this.entries.has(tab.id)) {
       this.log.info('binary.document', 'Opening binary file', path);
       const fileName: string = this.basename(path);
@@ -1201,7 +1202,9 @@ export class BinaryDocuments implements UnsavedWorkSource {
       );
       entry.prime();
     }
-    this.tabs.activate(tab.id);
+    if (options?.background !== true) {
+      this.tabs.activate(tab.id);
+    }
     // Return the tab as it stands in the registry, so callers see the file-name title set above rather
     // than the default label the tab was created with (Tabs renames via an immutable replacement).
     return this.tabs.get(tab.id) ?? tab;

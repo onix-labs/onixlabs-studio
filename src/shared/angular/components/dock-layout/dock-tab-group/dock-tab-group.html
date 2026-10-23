@@ -71,6 +71,8 @@
         [cdkDragData]="panel.id"
         [class.dock-tab--active]="panel.id === activePanel()?.id"
         [attr.aria-selected]="panel.id === activePanel()?.id"
+        [cdkContextMenuTriggerFor]="isDocuments() ? (tabMenu.panel() ?? null) : null"
+        [appMenuSubject]="panel.id"
         (click)="activate(panel.id)"
         (keydown.enter)="activate(panel.id)"
         (keydown.space)="activate(panel.id)"
@@ -102,6 +104,11 @@
       <!-- Document wells have no title bar; these right-aligned controls are the compass drag
            handle, the document picker, and close-all. -->
       <div class="dock-tab-group__strip-controls">
+        <span class="dock-tab-group__strut" aria-hidden="true">
+          <app-icon class="dock-tab__icon" [icon]="Icon.CODE" />
+          <span class="dock-tab__label">&nbsp;</span>
+          <span class="dock-tab__close"></span>
+        </span>
         <div
           class="dock-tab-group__handle"
           [class.dock-tab-group__handle--disabled]="!canDetachActive()"
@@ -144,6 +151,9 @@
       />
     }
   </div>
+
+  <!-- A document tab's own menu, on right-click: close it or its neighbours, or split it out. -->
+  <app-menu #tabMenu [itemsFor]="tabItemsFor" (chosen)="onTabMenu($event)" />
 
   <div class="dock-tab-group__body">
     <!-- Document wells keep every open editor mounted (hiding the inactive ones) so switching tabs

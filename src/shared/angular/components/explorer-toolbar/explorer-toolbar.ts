@@ -13,6 +13,21 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
+ * The state of an explorer's Show Changed Files Only toggle.
+ */
+export interface ExplorerChangesOnly {
+  /**
+   * Gets a value indicating whether the tree shows only changed files.
+   */
+  readonly on: boolean;
+
+  /**
+   * Gets why the toggle cannot be pressed — `not a repository`, `no changes` — or null when it can.
+   */
+  readonly unavailable: string | null;
+}
+
+/**
  * The shared explorer tool strip rendered at the top of the Solution Explorer, File Explorer and API
  * Explorer panel bodies (those panels opt out of the dock's default strip). It pairs a search box on
  * the left with expand-all, collapse-all, and — when the panel has commands for it — a more-actions
@@ -58,6 +73,18 @@ export class ExplorerToolbar {
    * Emits when the collapse-all button is pressed.
    */
   public readonly collapseAll: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Gets the state of the Show Changed Files Only toggle, which sits between the search box and
+   * expand-all — or null, for an explorer that has no changes to narrow to and so shows no toggle.
+   */
+  public readonly changesOnly: InputSignal<ExplorerChangesOnly | null> =
+    input<ExplorerChangesOnly | null>(null);
+
+  /**
+   * Emits when the Show Changed Files Only toggle is pressed.
+   */
+  public readonly changesOnlyToggle: OutputEmitterRef<void> = output<void>();
 
   /**
    * Gets the items offered by the more-actions menu — the panel's own commands, since only the panel

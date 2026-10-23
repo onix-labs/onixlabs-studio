@@ -97,6 +97,13 @@ export interface StackNode {
   readonly side?: DockSide;
 
   /**
+   * Gets whether the stack collapsed to make way for a document well, as the Collapse placement does
+   * when a document opens beside a panel filling the centre. Such a stack expands again when the last
+   * document closes; collapsing or expanding it by hand forgets the flag. Absent otherwise.
+   */
+  readonly yielded?: boolean;
+
+  /**
    * Gets whether this stack is the layout's primary (centre) slot. Exactly one stack carries the
    * flag: the centre document well. The primary slot is special in two ways — it is never pruned
    * away (when emptied it reverts to an empty document well rather than vanishing, so the centre
