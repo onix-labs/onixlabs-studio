@@ -1,4 +1,4 @@
-import { inject, Injector, Service } from '@angular/core';
+import { effect, inject, Injector, Service, untracked } from '@angular/core';
 import { DiffDocumentPanel } from '@shared/angular/components/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
@@ -64,6 +64,36 @@ export class DiffOpener {
   private readonly injector: Injector = inject(Injector);
 
   /**
+   * Holds, by diff id, the latest content read started for an open working-tree diff, so a read that
+   * a later one overtook is dropped rather than painting older content over newer.
+   */
+  private readonly reads: Map<string, number> = new Map<string, number>();
+
+  /**
+   * Holds the number the next content read is given.
+   */
+  private nextRead: number = 0;
+
+  /**
+   * Follows the repository's change lists with the working-tree diffs open, so none goes on showing
+   * a change that has since been edited, staged or committed.
+   */
+  public constructor() {
+    let first: boolean = true;
+    effect((): void => {
+      this.repository.staged();
+      this.repository.unstaged();
+      this.repository.conflicted();
+      // The first run is the lists as they stood when this opener was made; only a change is news.
+      if (first) {
+        first = false;
+        return;
+      }
+      untracked((): void => this.followWorkingDiffs());
+    });
+  }
+
+  /**
    * Opens (or re-activates) the diff for a changed file in the document well, loading its before/after
    * contents lazily through the repository's provider. A diff already open in another well is gone
    * to there.
@@ -114,8 +144,76 @@ export class DiffOpener {
     if (!background) {
       this.dockFocus.focus(well.id);
     }
+    this.load(id, file);
+  }
+
+  /**
+   * Brings every open working-tree diff up to date with the repository's change lists: one whose file
+   * still has a change reads its contents afresh, and one whose file has none left — committed, or
+   * put back as it was — closes, since there is nothing left to compare. A commit's diff is history
+   * and stays as it is.
+   */
+  private followWorkingDiffs(): void {
+    if (!this.repository.isBound()) {
+      return;
+    }
+    for (const id of this.diffs.ids()) {
+      const shown: GitFileChange | null = this.diffs.get(id);
+      const target: GitFileChange['target'] = shown?.target;
+      if (shown === null || target?.kind !== 'working') {
+        continue;
+      }
+      const current: GitFileChange | undefined = this.workingChange(shown.path, target.staged);
+      if (current === undefined) {
+        this.log.info('DiffOpener', `'${shown.path}' has no changes left; closing its diff`);
+        this.reads.delete(id);
+        this.dockState.removeFromLayout(id);
+        continue;
+      }
+      // What is on screen stays there until the fresh contents land, rather than blanking meanwhile.
+      this.load(id, { ...current, original: shown.original, modified: shown.modified });
+    }
+  }
+
+  /**
+   * Finds a file's working-tree change, preferring the side — index or working tree — its diff
+   * already shows: a file partly staged has a change on both.
+   * @param path The path relative to the repository root.
+   * @param staged Whether the diff shows the staged side.
+   * @returns Returns the change, or undefined when the file has none.
+   */
+  private workingChange(path: string, staged: boolean): GitFileChange | undefined {
+    const preferred: readonly GitFileChange[] = staged
+      ? this.repository.staged()
+      : this.repository.unstaged();
+    const other: readonly GitFileChange[] = staged
+      ? this.repository.unstaged()
+      : this.repository.staged();
+    return [...preferred, ...this.repository.conflicted(), ...other].find(
+      (candidate: GitFileChange): boolean => candidate.path === path,
+    );
+  }
+
+  /**
+   * Shows a change in its diff and reads its before/after contents through the repository's provider,
+   * filling them in once they arrive — unless a later read for the same diff started meanwhile, or the
+   * diff was closed or moved to the file's other side.
+   * @param id The diff id.
+   * @param file The change to show.
+   */
+  private load(id: string, file: GitFileChange): void {
+    const read: number = ++this.nextRead;
+    this.reads.set(id, read);
+    this.diffs.put(id, file);
     void this.repository.loadDiff(file).then((diff: FileDiff): void => {
-      this.diffs.put(id, { ...file, original: diff.original, modified: diff.modified });
+      const shown: GitFileChange | null = this.diffs.get(id);
+      if (this.reads.get(id) !== read || shown === null || !sameSide(shown, file)) {
+        return;
+      }
+      if (shown.original === diff.original && shown.modified === diff.modified) {
+        return;
+      }
+      this.diffs.put(id, { ...shown, original: diff.original, modified: diff.modified });
     });
   }
 
@@ -227,4 +325,26 @@ export class DiffOpener {
     const segments: readonly string[] = path.split('/');
     return segments[segments.length - 1] ?? path;
   }
+}
+
+/**
+ * Determines whether two changes show the same file from the same side — the same commit, or the same
+ * one of the index and the working tree — so contents read for one belong to the other.
+ * @param left The one change.
+ * @param right The other change.
+ * @returns Returns true when both show the same file from the same side.
+ */
+function sameSide(left: GitFileChange, right: GitFileChange): boolean {
+  const a: GitFileChange['target'] = left.target;
+  const b: GitFileChange['target'] = right.target;
+  if (left.path !== right.path || a?.kind !== b?.kind) {
+    return false;
+  }
+  if (a?.kind === 'working' && b?.kind === 'working') {
+    return a.staged === b.staged;
+  }
+  if (a?.kind === 'commit' && b?.kind === 'commit') {
+    return a.hash === b.hash;
+  }
+  return true;
 }

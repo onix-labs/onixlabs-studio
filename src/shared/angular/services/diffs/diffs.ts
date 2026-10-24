@@ -100,6 +100,14 @@ export class Diffs {
   }
 
   /**
+   * Lists the panel ids of the diffs open now.
+   * @returns Returns the ids, in the order they were opened.
+   */
+  public ids(): readonly string[] {
+    return [...this.entries().keys()];
+  }
+
+  /**
    * Toggles inline versus side-by-side rendering for every open diff.
    */
   public toggleInline(): void {
