@@ -1549,6 +1549,11 @@ export class Icon {
   public static readonly DATABASE_DISCONNECT: Icon = new Icon('ph-duotone ph-link-break');
 
   /**
+   * Gets the icon of the Database Explorer ribbon's Connect.
+   */
+  public static readonly DATABASE_CONNECT: Icon = new Icon('ph-duotone ph-plugs-connected');
+
+  /**
    * Gets the icon of the Object Explorer panel.
    */
   public static readonly DATABASE_OBJECTS: Icon = new Icon('ph-duotone ph-tree-structure');
