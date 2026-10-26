@@ -5,7 +5,7 @@
  * @vitest-environment node
  */
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from 'vitest';
-import { DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
+import { CompletionName, DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
 import {
   encodePath,
   EngineExecution,
@@ -379,7 +379,7 @@ describe('PostgresEngine', (): void => {
       displayName: 'PostgreSQL',
       language: 'pgsql',
       queryExtension: 'sql',
-      capabilities: ['cancel', 'multipleDatabases', 'script'],
+      capabilities: ['cancel', 'multipleDatabases', 'script', 'completion'],
     });
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'host',
@@ -957,6 +957,105 @@ describe('PostgresEngine', (): void => {
     });
     const nothing: NodeActionOutcome = await session.action('garbage', 'select-top');
     expect(nothing).toEqual({ kind: 'failure', message: 'Nothing to act on.' });
+  });
+
+  it('names_runsTheThreeCatalogueQueriesOneAfterAnother_andMapsThemToNames', async (): Promise<void> => {
+    let running: number = 0;
+    let most: number = 0;
+    const order: string[] = [];
+    pgMock.respond = async (_: FakeClient, call: QueryCall): Promise<FakeResult> => {
+      running += 1;
+      most = Math.max(most, running);
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 0);
+      });
+      running -= 1;
+      expect(call.rowMode).toBe('array');
+      if (call.text.includes('from pg_namespace')) {
+        order.push('schemas');
+        expect(call.text).not.toContain('from pg_class');
+        return metadata([['public'], ['sales']]);
+      }
+      if (call.text.includes('from pg_class')) {
+        order.push('relations');
+        expect(call.text).toContain('current_schemas(false)');
+        return metadata([
+          ['orders', 'r', 'public'],
+          ['parts', 'p', 'public'],
+          ['totals', 'v', 'public'],
+          ['rollup', 'm', 'sales'],
+          ['remote', 'f', 'public'],
+        ]);
+      }
+      order.push('functions');
+      expect(call.text).toContain('from pg_proc');
+      return metadata([['count'], ['now']]);
+    };
+    const session: EngineSession = await open();
+
+    const names: readonly CompletionName[] = (await session.names?.({ kind: 'objects' })) ?? [];
+
+    expect(most).toBe(1);
+    expect(order).toEqual(['schemas', 'relations', 'functions']);
+    expect(names).toEqual([
+      { name: 'public', kind: 'schema' },
+      { name: 'sales', kind: 'schema' },
+      { name: 'orders', kind: 'table', detail: 'public' },
+      { name: 'parts', kind: 'table', detail: 'public' },
+      { name: 'totals', kind: 'view', detail: 'public' },
+      { name: 'rollup', kind: 'view', detail: 'sales' },
+      { name: 'remote', kind: 'table', detail: 'public' },
+      { name: 'count', kind: 'function' },
+      { name: 'now', kind: 'function' },
+    ]);
+  });
+
+  it('names_readsTheCatalogueOfTheQuerysDatabase_overAClientOfItsOwn', async (): Promise<void> => {
+    const databases: unknown[] = [];
+    pgMock.respond = (client: FakeClient): FakeResult => {
+      databases.push(client.config['database']);
+      return metadata([]);
+    };
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'objects' }, 'reports')).toEqual([]);
+
+    expect(databases).toEqual(['reports', 'reports', 'reports']);
+  });
+
+  it('names_listsAMembersColumns_resolvingTheNameByToRegclass_asAParameter', async (): Promise<void> => {
+    const calls: QueryCall[] = [];
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult => {
+      calls.push(call);
+      return metadata([
+        ['id', 'integer'],
+        ['placed', 'timestamp with time zone'],
+      ]);
+    };
+    const session: EngineSession = await open();
+
+    const names: readonly CompletionName[] | undefined = await session.names?.({
+      kind: 'members',
+      of: 'public."Order\'s"',
+    });
+
+    expect(names).toEqual([
+      { name: 'id', kind: 'column', detail: 'integer' },
+      { name: 'placed', kind: 'column', detail: 'timestamp with time zone' },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toContain('to_regclass($1)');
+    expect(calls[0].text).not.toContain('Order');
+    expect(calls[0].values).toEqual(['public."Order\'s"']);
+  });
+
+  it('names_listsNoMembers_whenTheColumnsQueryFails', async (): Promise<void> => {
+    pgMock.respond = (): FakeResult => {
+      throw new Error('invalid name syntax');
+    };
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: '"unclosed' })).toEqual([]);
   });
 
   it('close_endsEveryClientTheSessionOpened', async (): Promise<void> => {

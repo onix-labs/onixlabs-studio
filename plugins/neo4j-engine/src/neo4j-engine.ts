@@ -24,6 +24,7 @@ import neo4j, {
   Session,
 } from 'neo4j-driver';
 import {
+  CompletionName,
   ConnectionValues,
   DatabaseEngineInfo,
   DatabaseNode,
@@ -31,6 +32,7 @@ import {
   ExecuteRequest,
   GraphNodeValue,
   GraphRelationshipValue,
+  NamesScope,
   NodeActionOutcome,
   QueryMessage,
 } from '../../protocol/database/protocol';
@@ -44,6 +46,7 @@ import {
   EngineExecution,
   EngineResultSet,
   EngineSession,
+  splitQualifiedName,
   MAX_RESULT_ROWS,
 } from '../../protocol/database/engine';
 
@@ -73,7 +76,7 @@ export class Neo4jEngine implements DatabaseEngine {
     displayName: 'Neo4j',
     language: 'cypher',
     queryExtension: 'cypher',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'graph'],
+    capabilities: ['cancel', 'multipleDatabases', 'script', 'graph', 'completion'],
     connectionFields: [
       {
         id: 'uri',
@@ -298,6 +301,49 @@ class Neo4jSession implements EngineSession {
   }
 
   /**
+   * Lists names to complete with, in the database the query runs against: its labels, relationship
+   * types and property keys; or the property keys the nodes of one label (else the relationships of
+   * one type) carry, sampled rather than counted, so a large graph answers at once.
+   * @param scope Which names.
+   * @param database The database, or the connection's own.
+   * @returns Returns a promise resolving the names.
+   */
+  public async names(scope: NamesScope, database?: string): Promise<readonly CompletionName[]> {
+    const target: string = database ?? this.database;
+    if (scope.kind === 'members') {
+      const name: string = quoteName(splitQualifiedName(scope.of).join('.'));
+      const keys: readonly string[] = await this.column(
+        target,
+        `MATCH (n:${name}) WITH n LIMIT 200 UNWIND keys(n) AS key RETURN DISTINCT key ORDER BY key`,
+      ).catch((): readonly string[] => []);
+      const members: readonly string[] =
+        keys.length > 0
+          ? keys
+          : await this.column(
+              target,
+              `MATCH ()-[r:${name}]->() WITH r LIMIT 200 UNWIND keys(r) AS key RETURN DISTINCT key ORDER BY key`,
+            ).catch((): readonly string[] => []);
+      return members.map((key: string): CompletionName => ({ name: key, kind: 'property' }));
+    }
+    const [labels, types, keys]: (readonly string[])[] = await Promise.all([
+      this.column(target, 'CALL db.labels() YIELD label RETURN label ORDER BY label'),
+      this.column(
+        target,
+        'CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType ORDER BY relationshipType',
+      ),
+      this.column(
+        target,
+        'CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey ORDER BY propertyKey',
+      ),
+    ]);
+    return [
+      ...labels.map((name: string): CompletionName => ({ name, kind: 'label' })),
+      ...types.map((name: string): CompletionName => ({ name, kind: 'relationship' })),
+      ...keys.map((name: string): CompletionName => ({ name, kind: 'property' })),
+    ];
+  }
+
+  /**
    * Runs a script statement by statement in one Bolt session, stopping at the first error.
    * @param request The execution.
    * @returns Returns a promise resolving what it produced.
@@ -400,7 +446,7 @@ class Neo4jSession implements EngineSession {
     if (database === undefined) {
       return Promise.resolve({ kind: 'failure', message: 'Nothing to act on.' });
     }
-    const quoted: string = `\`${(name ?? '').replace(/`/g, '``')}\``;
+    const quoted: string = quoteName(name ?? '');
     switch (action) {
       case 'schema':
         return Promise.resolve({
@@ -500,6 +546,15 @@ function mapValue(map: Readonly<Record<string, unknown>>): Readonly<Record<strin
       toValue(value),
     ]),
   );
+}
+
+/**
+ * Quotes a label, relationship type or property key for Cypher.
+ * @param name The name.
+ * @returns Returns it in backticks.
+ */
+function quoteName(name: string): string {
+  return `\`${name.replace(/`/g, '``')}\``;
 }
 
 /**

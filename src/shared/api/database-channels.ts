@@ -56,6 +56,12 @@ export enum DatabaseChannel {
   Action = 'database:action',
 
   /**
+   * Lists names to complete a query with (invoke): a session's objects, or one object's members. An
+   * engine without the `completion` capability answers with none.
+   */
+  Names = 'database:names',
+
+  /**
    * Reports whether this machine can seal secrets with its keychain (invoke). Without one, a secret is
    * remembered only in a document with a passphrase.
    */
