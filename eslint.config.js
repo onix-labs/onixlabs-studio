@@ -50,6 +50,7 @@ module.exports = tseslint.config(
     ignores: [
       'dist/**',
       'dist-electron/**',
+      'plugins/*/dist/**',
       'release/**',
       'coverage/**',
       '.angular/**',

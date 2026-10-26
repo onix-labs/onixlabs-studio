@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/neo4j-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Connect the Database Explorer to Neo4j graph databases.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

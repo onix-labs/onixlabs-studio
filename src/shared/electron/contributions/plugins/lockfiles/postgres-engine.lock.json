@@ -1,0 +1,20 @@
+{
+  "name": "postgres-engine",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "postgres-engine",
+      "version": "1.0.0",
+      "dependencies": {
+        "@onixlabs/postgres-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-postgres-engine-v1.0.0/onixlabs-postgres-engine-1.0.0.tgz"
+      }
+    },
+    "node_modules/@onixlabs/postgres-engine": {
+      "version": "1.0.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-postgres-engine-v1.0.0/onixlabs-postgres-engine-1.0.0.tgz",
+      "integrity": "sha512-cC4v1mBVN+QLXaJ60L8JrShVK9mdPapym9rH0CdnqkWj/hgp3WTNHXcM9OZmI8V31ECX5Q3kGj9c2jbEnQ/ruQ=="
+    }
+  }
+}
