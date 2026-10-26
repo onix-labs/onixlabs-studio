@@ -46,8 +46,18 @@
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
+  text-align: start;
   text-overflow: ellipsis;
   box-shadow: inset 0 -1px 0 var(--dock-container-background-color);
+}
+
+// A resizable table's column splitters: one 1px line on each heading's trailing edge, in the theme's
+// splitter colour (the lighter bevel colour in dark mode, the darker in light), running the header's
+// full height on exactly the pixel column the column gridlines below continue.
+.table--resizable .table-head th:not(.table-th--filler) {
+  box-shadow:
+    inset 0 -1px 0 var(--dock-container-background-color),
+    inset -1px 0 0 var(--table-splitter-color);
 }
 
 // A sortable header: the whole cell reads as clickable, and the label plus its sort caret sit in a
@@ -87,14 +97,11 @@
 }
 
 // Per-column alignment: the component sets `--table-col-<n>` on the table from each column's `align`,
-// and the header cell and the consumer's projected body cells of that column both read it — so the
-// columns stay aligned to their headers without the consumer aligning its own cells. Covers a generous
+// and the consumer's projected body cells of that column read it, so they need not align their own
+// cells. Headings do not follow it: a heading always reads from the start, however its column's data
+// is aligned. Covers a generous
 // column count; unused indices simply never have a variable set (falling back to `start`).
 @for $index from 1 through 24 {
-  .table-head th:nth-child(#{$index}) {
-    text-align: var(--table-col-#{$index}, start);
-  }
-
   .table-row ::ng-deep td:nth-child(#{$index}) {
     text-align: var(--table-col-#{$index}, start);
   }
@@ -188,4 +195,46 @@
   color: var(--dock-tab-foreground-color);
   opacity: 0.7;
   text-align: center;
+}
+
+// A resizable column's trailing edge: an invisible strip, wider than the groove drawn on the boundary,
+// so the edge is easy to catch.
+.table-th__grip {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: 0.5rem;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+// Gridlines, as the consumer asks: a rule under every row, and for a full grid one between columns
+// too. Light by default — a faint wash of the text colour — or dark, the status strip groove's
+// shadow, for a grid that reads at a glance.
+.table {
+  --table-gridline-color: color-mix(in srgb, var(--dock-tab-foreground-color) 9%, transparent);
+
+  &.table--dark-lines {
+    --table-gridline-color: color-mix(in srgb, var(--dock-tab-foreground-color) 42%, transparent);
+  }
+}
+
+.table--rows .table-row ::ng-deep td {
+  border-block-end: 0.0625rem solid var(--table-gridline-color);
+}
+
+// The column rule is an inset line on the cell's trailing edge rather than a border: a heading and the
+// cells beneath it share one box, so the rule lands on exactly the pixel column the heading's groove
+// is drawn on, where a collapsed border would sit half a pixel either side of it.
+.table--grid .table-row ::ng-deep td:not(:last-child) {
+  box-shadow: inset -1px 0 0 var(--table-gridline-color);
+}
+
+// The filler column of a resizable table: empty, and with nothing to grab.
+.table-th--filler {
+  padding: 0;
+}
+
+.table-row .table-filler {
+  padding: 0;
 }

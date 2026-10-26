@@ -1,6 +1,6 @@
 {
   "id": "onixlabs.codex-harness",
-  "name": "Codex (out of process)",
+  "name": "Codex",
   "description": "Runs OpenAI Codex as an app-server in its own process, over Studio's agent protocol.",
   "version": "0.9.0",
   "apiVersion": "1.12.0",
@@ -15,7 +15,7 @@
     "agentHarnesses": [
       {
         "id": "onixlabs.codex-harness",
-        "displayName": "Codex (out of process)",
+        "displayName": "Codex",
         "priority": 100,
         "connectionAuths": ["codex-login"],
         "command": {

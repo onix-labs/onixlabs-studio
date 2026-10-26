@@ -1,6 +1,6 @@
 {
   "id": "onixlabs.ai-sdk-harness",
-  "name": "AI SDK (out of process)",
+  "name": "AI SDK",
   "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
   "version": "0.4.0",
   "apiVersion": "1.12.0",
@@ -15,7 +15,7 @@
     "agentHarnesses": [
       {
         "id": "onixlabs.ai-sdk-harness",
-        "displayName": "AI SDK (out of process)",
+        "displayName": "AI SDK",
         "priority": 100,
         "connectionAuths": ["api-key", "none"],
         "command": {

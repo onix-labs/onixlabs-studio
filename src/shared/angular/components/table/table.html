@@ -2,11 +2,21 @@
   <table
     class="table"
     [class.table--comfortable]="rowSize() === 'comfortable'"
+    [class.table--resizable]="resizable()"
+    [class.table--rows]="gridlines() !== 'none'"
+    [class.table--grid]="gridlines() === 'full'"
+    [class.table--dark-lines]="gridlineTone() === 'dark'"
     [style]="alignStyles()"
+    [style.inline-size]="resizedTableWidth()"
   >
     <colgroup>
-      @for (column of columns(); track column.id) {
-        <col [style.width]="column.width ?? null" />
+      @for (column of columns(); track column.id; let index = $index) {
+        <col [style.width]="columnWidths()[index]" />
+      }
+      @if (resizable()) {
+        <!-- The filler: no width of its own, so it takes whatever the columns leave and the table
+             always reaches the scroll area's right edge, however the columns are resized. -->
+        <col />
       }
     </colgroup>
     <thead class="table-head">
@@ -41,7 +51,24 @@
             } @else {
               {{ column.header }}
             }
+            @if (resizable()) {
+              <!-- The column's trailing edge, drawn as the status strip's groove and dragged to
+                   resize the column. -->
+              <span
+                class="table-th__grip"
+                role="separator"
+                aria-orientation="vertical"
+                [attr.aria-label]="'Resize ' + (column.header || 'column')"
+                (pointerdown)="startResize($event, column)"
+                (pointermove)="moveResize($event)"
+                (pointerup)="endResize()"
+                (pointercancel)="endResize()"
+              ></span>
+            }
           </th>
+        }
+        @if (resizable()) {
+          <th class="table-th table-th--filler" aria-hidden="true"></th>
         }
       </tr>
     </thead>
@@ -50,7 +77,7 @@
            range and position are those of the whole list. -->
       @if (rowWindow().before > 0) {
         <tr class="table-spacer" aria-hidden="true">
-          <td [attr.colspan]="columns().length" [style.height.px]="rowWindow().before"></td>
+          <td [attr.colspan]="spanCount()" [style.height.px]="rowWindow().before"></td>
         </tr>
       }
       @for (row of renderedRows(); track row.id) {
@@ -60,7 +87,7 @@
             [class.table-group--collapsible]="collapsible()"
             (click)="rowClick.emit(row)"
           >
-            <td class="table-group__cell" [attr.colspan]="columns().length">
+            <td class="table-group__cell" [attr.colspan]="spanCount()">
               <div class="table-group__inner">
                 @if (collapsible()) {
                   <button
@@ -95,17 +122,20 @@
               [ngTemplateOutlet]="rowTemplate()?.template ?? null"
               [ngTemplateOutletContext]="{ $implicit: row }"
             />
+            @if (resizable()) {
+              <td class="table-filler" aria-hidden="true"></td>
+            }
           </tr>
         }
       }
       @if (rowWindow().after > 0) {
         <tr class="table-spacer" aria-hidden="true">
-          <td [attr.colspan]="columns().length" [style.height.px]="rowWindow().after"></td>
+          <td [attr.colspan]="spanCount()" [style.height.px]="rowWindow().after"></td>
         </tr>
       }
       @if (visibleRows().length === 0 && emptyText().length > 0) {
         <tr>
-          <td class="table-empty" [attr.colspan]="columns().length">{{ emptyText() }}</td>
+          <td class="table-empty" [attr.colspan]="spanCount()">{{ emptyText() }}</td>
         </tr>
       }
     </tbody>

@@ -94,7 +94,7 @@ describe('the Claude harness plugin', () => {
     const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
       {
         id,
-        displayName: 'Claude (out of process)',
+        displayName: 'Claude',
         priority: 100,
         connectionAuths: manifest.contributes.agentHarnesses?.[0]?.connectionAuths ?? [],
         sessionModel: 'stateless',
