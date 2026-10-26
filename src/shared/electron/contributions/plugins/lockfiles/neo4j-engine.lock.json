@@ -8,13 +8,13 @@
       "name": "neo4j-engine",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/neo4j-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-neo4j-engine-v1.0.0/onixlabs-neo4j-engine-1.0.0.tgz"
+        "@onixlabs/neo4j-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-neo4j-engine-v1.0.1/onixlabs-neo4j-engine-1.0.1.tgz"
       }
     },
     "node_modules/@onixlabs/neo4j-engine": {
-      "version": "1.0.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-neo4j-engine-v1.0.0/onixlabs-neo4j-engine-1.0.0.tgz",
-      "integrity": "sha512-u3zxvzNmU01mqONLI/04dmGvkN+trVUJKIxGMddn/tQlgrOnEIXQBu8HJtEnNJeP5EkPLVqndKULqUpbvpuOtA=="
+      "version": "1.0.1",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-neo4j-engine-v1.0.1/onixlabs-neo4j-engine-1.0.1.tgz",
+      "integrity": "sha512-Oxr1ZnGVkbKsHBH8w9oMO2DQekLGxymd7QZasUMnRm9nGUXMDZ9vxFtU9M66meKqCdCtQYXBrBvVnLfdJ/dfLA=="
     }
   }
 }

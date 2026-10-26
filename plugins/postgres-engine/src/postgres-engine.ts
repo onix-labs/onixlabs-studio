@@ -38,6 +38,25 @@ const TEMPORAL_OIDS: ReadonlySet<number> = new Set<number>([1082, 1083, 1266, 11
 const INT8_OID: number = 20;
 
 /**
+ * The type oid of `text[]`, whose parser reads an array's items as the server wrote them.
+ */
+const TEXT_ARRAY_OID: number = 1009;
+
+/**
+ * The element type of each array type whose items need the same care as a single value: `int8[]`,
+ * and the date and time arrays, which are read as text so no microsecond or zone is lost.
+ */
+const ARRAY_ELEMENT_OIDS: ReadonlyMap<number, number> = new Map<number, number>([
+  [1016, INT8_OID],
+  [1182, 1082],
+  [1183, 1083],
+  [1270, 1266],
+  [1115, 1114],
+  [1185, 1184],
+  [1187, 1186],
+]);
+
+/**
  * The parts of a server notice (`RAISE NOTICE`, a warning) the Messages tab shows.
  */
 interface NoticeLike {
@@ -236,7 +255,9 @@ class PostgresSession implements EngineSession {
         getTypeParser: ((oid: number, format?: string): unknown =>
           TEMPORAL_OIDS.has(oid)
             ? (raw: string): string => raw
-            : pg.types.getTypeParser(oid, format as 'text')) as never,
+            : TEMPORAL_OIDS.has(ARRAY_ELEMENT_OIDS.get(oid) ?? 0)
+              ? pg.types.getTypeParser(TEXT_ARRAY_OID, 'text')
+              : pg.types.getTypeParser(oid, format as 'text')) as never,
       },
     });
     client.on('error', (): void => {
@@ -886,7 +907,14 @@ export function toValue(value: unknown, oid: number): DatabaseValue {
     return { type: 'temporal', value: value.toISOString() };
   }
   if (Array.isArray(value)) {
-    return { type: 'list', items: value.map((item: unknown): DatabaseValue => toValue(item, 0)) };
+    // A multidimensional array nests arrays of the same type; the innermost items take its element's.
+    const element: number = ARRAY_ELEMENT_OIDS.get(oid) ?? 0;
+    return {
+      type: 'list',
+      items: value.map((item: unknown): DatabaseValue =>
+        toValue(item, Array.isArray(item) ? oid : element),
+      ),
+    };
   }
   return { type: 'json', value };
 }

@@ -208,6 +208,29 @@ describe('constraintKind', (): void => {
 });
 
 describe('toValue', (): void => {
+  it('typesTheItemsOfAnArray_byItsElementType', (): void => {
+    // int8[]: an item beyond a double's range stays exact.
+    expect(toValue(['1', '9007199254740993'], 1016)).toEqual({
+      type: 'list',
+      items: [1, { type: 'bigint', value: '9007199254740993' }],
+    });
+    // timestamptz[]: read as text, so each item keeps its microseconds and zone.
+    expect(toValue(['2026-01-01 21:34:05.123456+00'], 1185)).toEqual({
+      type: 'list',
+      items: [{ type: 'temporal', value: '2026-01-01 21:34:05.123456+00' }],
+    });
+    // A two-dimensional int8[] types its innermost items too.
+    expect(toValue([['1'], ['2']], 1016)).toEqual({
+      type: 'list',
+      items: [
+        { type: 'list', items: [1] },
+        { type: 'list', items: [2] },
+      ],
+    });
+    // An array of another type keeps what pg parsed.
+    expect(toValue([1, 2], 1007)).toEqual({ type: 'list', items: [1, 2] });
+  });
+
   it('readsNullAndUndefinedAsNull', (): void => {
     expect(toValue(null, 23)).toBeNull();
     expect(toValue(undefined, 23)).toBeNull();

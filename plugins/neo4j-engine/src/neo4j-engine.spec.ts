@@ -162,6 +162,28 @@ function relationship(
 }
 
 describe('toValue', (): void => {
+  it('turnsAVector_intoAListOfItsNumbers', (): void => {
+    expect(toValue(neo4j.vector(Float32Array.from([1, 2.5])))).toEqual({
+      type: 'list',
+      items: [1, 2.5],
+    });
+    expect(toValue(neo4j.vector(BigInt64Array.from([9007199254740993n])))).toEqual({
+      type: 'list',
+      items: [{ type: 'bigint', value: '9007199254740993' }],
+    });
+  });
+
+  it('turnsATypedArrayOtherThanBytes_intoAList', (): void => {
+    expect(toValue(Float64Array.from([0.5, 1.5]))).toEqual({ type: 'list', items: [0.5, 1.5] });
+    expect(toValue(Int32Array.from([-1, 7]))).toEqual({ type: 'list', items: [-1, 7] });
+  });
+
+  it('turnsAUuid_intoItsText', (): void => {
+    const id: string = '0b7f4c1e-5b2a-4a8e-9d3c-2f1e6a7b8c9d';
+
+    expect(toValue(neo4j.uuid(id))).toBe(id);
+  });
+
   it('readsNullAndUndefinedAsNull', (): void => {
     expect(toValue(null)).toBeNull();
     expect(toValue(undefined)).toBeNull();
