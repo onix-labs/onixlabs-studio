@@ -415,6 +415,7 @@ describe('SetupWizard', () => {
         'Container Engines',
         'Version Control',
         'Code Hosting',
+        'Database Engines',
         'Security',
         'Terminal',
         'Summary',
