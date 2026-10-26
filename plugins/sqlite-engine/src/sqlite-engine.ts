@@ -75,8 +75,15 @@ export class SqliteEngine implements DatabaseEngine {
         kind: 'file',
         required: true,
         placeholder: '/path/to/database.db',
+        section: 'server',
       },
-      { id: 'readOnly', label: 'Open read-only', kind: 'boolean', defaultValue: 'false' },
+      {
+        id: 'readOnly',
+        label: 'Open read-only',
+        kind: 'boolean',
+        defaultValue: 'false',
+        section: 'options',
+      },
     ],
   };
 

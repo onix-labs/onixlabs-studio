@@ -50,20 +50,12 @@
         }
 
         <!-- The request's sections, mirroring the tabs a person expects on a request. -->
-        <div class="request__sections" role="tablist">
-          @for (item of sections; track item.id) {
-            <button
-              type="button"
-              role="tab"
-              class="request__section"
-              [class.request__section--active]="section() === item.id"
-              [attr.aria-selected]="section() === item.id"
-              (click)="section.set(item.id)"
-            >
-              {{ item.label }}
-            </button>
-          }
-        </div>
+        <app-tab-list
+          ariaLabel="Request sections"
+          [tabs]="sectionTabs"
+          [value]="section()"
+          (valueChange)="section.set($any($event))"
+        />
 
         <div class="request__body">
           @switch (section()) {

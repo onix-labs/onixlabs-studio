@@ -18,7 +18,9 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { NgTemplateOutlet } from '@angular/common';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
+import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -89,7 +91,7 @@ import {
   DatabaseExplorerCommands,
   RibbonPanel,
 } from '../database-explorer-commands/database-explorer-commands';
-import { DatabasePrompts } from '../database-prompts/database-prompts';
+import { ConnectionDialogTab, DatabasePrompts } from '../database-prompts/database-prompts';
 import { DatabaseQueryOpener } from '../database-query-opener/database-query-opener';
 import { DatabaseCompletions } from '../database-completions/database-completions';
 import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/database-workspace';
@@ -114,8 +116,10 @@ import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/data
     Dropdown,
     Modal,
     ModalContent,
+    NgTemplateOutlet,
     PasswordField,
     SettingRow,
+    TabList,
     TextField,
   ],
   templateUrl: './database-explorer-view.html',
@@ -304,6 +308,30 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
    * Gets whether the document's passphrase is still to be given, for the ribbon.
    */
   public readonly locked: Signal<boolean> = computed((): boolean => this.workspace.locked());
+
+  /**
+   * Holds the connection dialog's tab panels, in order.
+   */
+  protected readonly dialogPanels: readonly ConnectionDialogTab[] = ['login', 'properties'];
+
+  /**
+   * Gets the connection dialog's tabs, a tab with a required field still empty marked so the gap can
+   * be found from the other one.
+   */
+  protected readonly dialogTabs: Signal<readonly TabListTab[]> = computed(
+    (): readonly TabListTab[] => {
+      const incomplete: ReadonlySet<ConnectionDialogTab> = this.prompts.incompleteTabs();
+      const tab: (value: ConnectionDialogTab, label: string) => TabListTab = (
+        value: ConnectionDialogTab,
+        label: string,
+      ): TabListTab => ({
+        value,
+        label,
+        ...(incomplete.has(value) && this.prompts.tab() !== value ? { icon: Icon.WARNING } : {}),
+      });
+      return [tab('login', 'Login'), tab('properties', 'Connection Properties')];
+    },
+  );
 
   /**
    * Gets whether the connection dialog's engine has secret fields, so it offers to remember them.

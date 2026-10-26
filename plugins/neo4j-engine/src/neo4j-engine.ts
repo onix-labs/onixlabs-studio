@@ -84,10 +84,30 @@ export class Neo4jEngine implements DatabaseEngine {
         kind: 'text',
         required: true,
         defaultValue: 'neo4j://localhost:7687',
+        section: 'server',
       },
-      { id: 'database', label: 'Database', kind: 'text', defaultValue: 'neo4j' },
-      { id: 'user', label: 'User', kind: 'text', required: true, defaultValue: 'neo4j' },
-      { id: 'password', label: 'Password', kind: 'password', secret: true },
+      {
+        id: 'user',
+        label: 'User',
+        kind: 'text',
+        required: true,
+        defaultValue: 'neo4j',
+        section: 'authentication',
+      },
+      {
+        id: 'password',
+        label: 'Password',
+        kind: 'password',
+        secret: true,
+        section: 'authentication',
+      },
+      {
+        id: 'database',
+        label: 'Database',
+        kind: 'text',
+        defaultValue: 'neo4j',
+        section: 'database',
+      },
     ],
   };
 

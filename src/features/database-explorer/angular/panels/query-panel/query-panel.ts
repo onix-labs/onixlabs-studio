@@ -32,6 +32,7 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { TextEditor, TextEditorCursor } from '@shared/angular/components/text-editor/text-editor';
 import {
   DocumentStatus,
@@ -123,6 +124,7 @@ interface GridRow {
   selector: 'app-query-panel',
   imports: [
     AppIcon,
+    TabList,
     Button,
     Dropdown,
     GraphView,
@@ -180,6 +182,24 @@ export class QueryPanel {
    * Holds the panel's height, for the results pane's default share of it.
    */
   private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Gets the result area's tabs: Results with how many sets came back, Messages with how many errors.
+   */
+  protected readonly resultTabs: Signal<readonly TabListTab[]> = computed(
+    (): readonly TabListTab[] => {
+      const sets: number = this.outcome()?.resultSets.length ?? 0;
+      const errors: number = this.errorCount();
+      return [
+        { value: 'results', label: 'Results', ...(sets > 0 ? { badge: sets } : {}) },
+        {
+          value: 'messages',
+          label: 'Messages',
+          ...(errors > 0 ? { badge: errors, badgeTone: 'error' as const } : {}),
+        },
+      ];
+    },
+  );
 
   /**
    * Holds which tab of the results pane is showing.

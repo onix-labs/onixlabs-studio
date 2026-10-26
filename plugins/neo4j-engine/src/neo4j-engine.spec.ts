@@ -449,11 +449,16 @@ describe('Neo4jEngine', (): void => {
     ]);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'uri',
-      'database',
       'user',
       'password',
+      'database',
     ]);
-    expect(engine.info.connectionFields[3]).toMatchObject({ kind: 'password', secret: true });
+    expect(engine.info.connectionFields[2]).toMatchObject({ kind: 'password', secret: true });
+    expect(
+      engine.info.connectionFields.map(
+        (field: { section?: string }): string | undefined => field.section,
+      ),
+    ).toEqual(['server', 'authentication', 'authentication', 'database']);
   });
 
   it('connect_refusesAnEmptyAddress_withoutOpeningADriver', async (): Promise<void> => {

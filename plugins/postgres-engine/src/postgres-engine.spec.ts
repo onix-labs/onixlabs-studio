@@ -384,12 +384,19 @@ describe('PostgresEngine', (): void => {
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'host',
       'port',
-      'database',
       'user',
       'password',
+      'database',
       'ssl',
     ]);
-    expect(engine.info.connectionFields[4]).toMatchObject({ kind: 'password', secret: true });
+    expect(engine.info.connectionFields[1]).toMatchObject({ section: 'server', inline: true });
+    expect(engine.info.connectionFields[3]).toMatchObject({ kind: 'password', secret: true });
+    expect(
+      engine.info.connectionFields.map(
+        (field: { section?: string }): string | undefined => field.section,
+      ),
+    ).toEqual(['server', 'server', 'authentication', 'authentication', 'database', 'security']);
+    expect(engine.info.connectionFields[5]).toMatchObject({ id: 'ssl', label: 'Encryption' });
     expect(
       engine.info.connectionFields[5].options?.map(
         (option: { value: string }): string => option.value,

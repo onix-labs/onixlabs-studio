@@ -1,6 +1,7 @@
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import {
   ConnectionField,
+  ConnectionFieldSection,
   ConnectOutcome,
   DatabaseEngineInfo,
 } from '@shared/api/database-engine-protocol';
@@ -12,6 +13,71 @@ import { DatabaseWorkspace } from '../database-workspace/database-workspace';
  * saved one needs before it can connect.
  */
 export type ConnectionDialogMode = 'new' | 'edit' | 'secrets';
+
+/**
+ * The connection dialog's tabs (#1121): where and who to connect as, and everything else.
+ */
+export type ConnectionDialogTab = 'login' | 'properties';
+
+/**
+ * One line of the connection dialog: a field, and the one drawn beside it (a port beside its host).
+ */
+export interface ConnectionFieldRow {
+  readonly field: ConnectionField;
+  readonly beside?: ConnectionField;
+}
+
+/**
+ * One section of a tab: its fields, line by line.
+ */
+export interface ConnectionFieldGroup {
+  readonly section: ConnectionFieldSection;
+  readonly rows: readonly ConnectionFieldRow[];
+}
+
+/**
+ * The sections in the order the dialog draws them, and the tab each is on.
+ */
+const SECTIONS: readonly {
+  readonly section: ConnectionFieldSection;
+  readonly tab: ConnectionDialogTab;
+}[] = [
+  { section: 'server', tab: 'login' },
+  { section: 'authentication', tab: 'login' },
+  { section: 'database', tab: 'properties' },
+  { section: 'security', tab: 'properties' },
+  { section: 'options', tab: 'properties' },
+];
+
+/**
+ * Lays an engine's fields out on the dialog's tabs: each section's fields in the engine's order, the
+ * sections in a fixed order, a field without a section on Login, and an `inline` field beside the one
+ * before it in the same section.
+ * @param fields The engine's fields.
+ * @returns Returns each tab's sections, empty ones left out.
+ */
+export function layoutConnectionFields(
+  fields: readonly ConnectionField[],
+): Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> {
+  const groups: Record<ConnectionDialogTab, ConnectionFieldGroup[]> = { login: [], properties: [] };
+  for (const { section, tab } of SECTIONS) {
+    const rows: ConnectionFieldRow[] = [];
+    for (const field of fields.filter(
+      (candidate: ConnectionField): boolean => (candidate.section ?? 'server') === section,
+    )) {
+      const last: ConnectionFieldRow | undefined = rows[rows.length - 1];
+      if (field.inline === true && last !== undefined && last.beside === undefined) {
+        rows[rows.length - 1] = { field: last.field, beside: field };
+      } else {
+        rows.push({ field });
+      }
+    }
+    if (rows.length > 0) {
+      groups[tab].push({ section, rows });
+    }
+  }
+  return groups;
+}
 
 /**
  * What the passphrase prompt is asking for: the passphrase that unlocks an opened document, or a new
@@ -54,6 +120,11 @@ export class DatabasePrompts {
    * Holds whether the connection's secrets are to be remembered in the document. On by default.
    */
   public readonly remember: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds the dialog's tab, back on Login each time it opens.
+   */
+  public readonly tab: WritableSignal<ConnectionDialogTab> = signal<ConnectionDialogTab>('login');
 
   /**
    * Holds what the passphrase prompt is asking for, or null while it is closed.
@@ -119,6 +190,38 @@ export class DatabasePrompts {
   );
 
   /**
+   * Gets the engine's fields laid out on the dialog's tabs.
+   */
+  public readonly layout: Signal<
+    Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>>
+  > = computed((): Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =>
+    layoutConnectionFields(this.engine()?.connectionFields ?? []),
+  );
+
+  /**
+   * Gets the tabs whose required fields are not all filled in, so each can say so.
+   */
+  public readonly incompleteTabs: Signal<ReadonlySet<ConnectionDialogTab>> = computed(
+    (): ReadonlySet<ConnectionDialogTab> => {
+      const values: Readonly<Record<string, string>> = this.values();
+      const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+        this.layout();
+      return new Set<ConnectionDialogTab>(
+        (['login', 'properties'] as const).filter((tab: ConnectionDialogTab): boolean =>
+          layout[tab].some((group: ConnectionFieldGroup): boolean =>
+            group.rows.some((row: ConnectionFieldRow): boolean =>
+              [row.field, row.beside].some(
+                (field: ConnectionField | undefined): boolean =>
+                  field?.required === true && (values[field.id] ?? '').trim() === '',
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  /**
    * Gets whether every required field has a value.
    */
   public readonly complete: Signal<boolean> = computed((): boolean => {
@@ -147,6 +250,7 @@ export class DatabasePrompts {
     this.name.set('');
     this.remember.set(true);
     this.chooseEngine(first?.id ?? '');
+    this.tab.set('login');
     this.mode.set('new');
   }
 
@@ -165,6 +269,7 @@ export class DatabasePrompts {
     this.values.set({ ...this.defaults(connection.engine), ...this.workspace.valuesFor(id) });
     this.remember.set(this.workspace.remembers(id) || this.workspace.needsSecrets(id));
     this.test.set({ state: 'idle' });
+    this.tab.set('login');
     this.mode.set('edit');
   }
 
@@ -205,6 +310,9 @@ export class DatabasePrompts {
    * @param id The engine's id.
    */
   public chooseEngine(id: string): void {
+    // Back to Login: the engine chosen may have nothing on Connection Properties, which would leave
+    // the dialog showing a tab that is no longer there.
+    this.tab.set('login');
     this.engineId.set(id);
     this.values.set(this.defaults(id));
     this.test.set({ state: 'idle' });

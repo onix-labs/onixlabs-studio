@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { EditorSearch } from '@shared/angular/components/search-view/editor-search';
 import { EditorSearchPanel } from '@shared/angular/components/search-view/editor-search-panel';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
@@ -129,6 +130,7 @@ let panelSequence: number = 0;
   selector: 'app-api-request-panel',
   imports: [
     Button,
+    TabList,
     CodeField,
     DecimalPipe,
     Dropdown,
@@ -234,8 +236,12 @@ export class ApiRequestPanel implements FindHost {
   /**
    * Holds the sections offered by the tab strip.
    */
-  protected readonly sections: readonly { readonly id: RequestSection; readonly label: string }[] =
-    SECTIONS;
+  protected readonly sectionTabs: readonly TabListTab[] = SECTIONS.map(
+    (item: { readonly id: RequestSection; readonly label: string }): TabListTab => ({
+      value: item.id,
+      label: item.label,
+    }),
+  );
 
   /**
    * Holds the section currently shown.

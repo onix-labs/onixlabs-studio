@@ -1,0 +1,25 @@
+<div class="tab-list" role="tablist" [attr.aria-label]="ariaLabel()">
+  @for (tab of tabs(); track tab.value) {
+    <button
+      type="button"
+      role="tab"
+      class="tab-list__tab"
+      [class.tab-list__tab--selected]="tab.value === value()"
+      [attr.aria-selected]="tab.value === value()"
+      [attr.tabindex]="tab.value === value() ? 0 : -1"
+      (click)="select(tab.value)"
+      (keydown)="onKeydown($event)"
+    >
+      @if (tab.icon; as icon) {
+        <app-icon [icon]="icon" aria-hidden="true" />
+      }
+      {{ tab.label }}
+      @if (tab.badge !== undefined) {
+        <span class="tab-list__badge" [class.tab-list__badge--error]="tab.badgeTone === 'error'">{{
+          tab.badge
+        }}</span>
+      }
+    </button>
+  }
+  <span class="tab-list__trailing"><ng-content /></span>
+</div>
