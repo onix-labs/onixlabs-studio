@@ -36,8 +36,8 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
 /**
  * The contextual ribbon of a Database Explorer tab (#1102), grouped by what each command acts on:
  * File (Save, its passphrase items), Connection (New, Connect/Disconnect, Refresh, Edit — on the
- * selected connection, else the front query's), Query (New, Execute/Cancel), and Tools (a toggle per
- * tool panel, and Reset Layout). The app menu carries the same commands. Its actions drive the active
+ * selected connection, else the front query's), Query (New, Execute/Cancel), and Tools (the agent's
+ * toggle; the other panels and Reset Layout are in the View menu). The app menu carries the same commands. Its actions drive the active
  * view through the {@link DatabaseExplorerCommands} registry.
  */
 @Component({
@@ -69,20 +69,20 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
           label="New"
           (action)="commands.newConnection()"
         />
-        <app-ribbon-strip-button
-          [icon]="
-            commands.connectionTarget()?.state === 'open'
-              ? Icon.DATABASE_DISCONNECT
-              : Icon.DATABASE_CONNECT
-          "
-          [label]="commands.connectionTarget()?.state === 'open' ? 'Disconnect' : 'Connect'"
-          [disabled]="
-            commands.connectionTarget() === null ||
-            commands.connectionTarget()?.state === 'connecting'
-          "
-          (action)="commands.toggleConnection()"
-        />
         <app-ribbon-strip-column>
+          <app-ribbon-strip-button-small
+            [icon]="
+              commands.connectionTarget()?.state === 'open'
+                ? Icon.DATABASE_DISCONNECT
+                : Icon.DATABASE_CONNECT
+            "
+            [label]="commands.connectionTarget()?.state === 'open' ? 'Disconnect' : 'Connect'"
+            [disabled]="
+              commands.connectionTarget() === null ||
+              commands.connectionTarget()?.state === 'connecting'
+            "
+            (action)="commands.toggleConnection()"
+          />
           <app-ribbon-strip-button-small
             [icon]="Icon.REFRESH"
             label="Refresh"
@@ -110,24 +110,18 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
           (action)="commands.execute()"
         />
       </app-ribbon-strip-group>
-      <!-- Each tool panel as a toggle, lit while it is showing, so a closed one can always come back. -->
+      <!-- The agent's toggle, lit while its panel shows; the other panels, and Reset Layout, are in
+           the app's View menu. -->
       <app-ribbon-strip-group title="Tools">
-        @for (panel of commands.panels(); track panel.id) {
+        @if (agentPanel(); as agent) {
           <app-ribbon-strip-button
-            [icon]="panel.icon"
-            [label]="panel.title"
+            [icon]="agent.icon"
+            [label]="agent.title"
             [toggle]="true"
-            [pressed]="panel.open"
-            (action)="commands.togglePanel(panel.id)"
+            [pressed]="agent.open"
+            (action)="commands.togglePanel(agent.id)"
           />
         }
-        <app-ribbon-strip-column>
-          <app-ribbon-strip-button-small
-            [icon]="Icon.DATABASE_RESET_LAYOUT"
-            label="Reset Layout"
-            (action)="commands.resetLayout()"
-          />
-        </app-ribbon-strip-column>
       </app-ribbon-strip-group>
     </app-ribbon-overflow>
   `,
@@ -137,6 +131,14 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
 export class DatabaseExplorerRibbon {
   protected readonly Icon: typeof Icon = Icon;
   protected readonly commands: DatabaseExplorerCommands = inject(DatabaseExplorerCommands);
+
+  /**
+   * Gets the agent panel, the one tool panel the ribbon toggles.
+   */
+  protected readonly agentPanel: Signal<RibbonPanel | null> = computed(
+    (): RibbonPanel | null =>
+      this.commands.panels().find((panel: RibbonPanel): boolean => panel.id === 'agent') ?? null,
+  );
 
   /**
    * Gets the Save menu button's extra actions.

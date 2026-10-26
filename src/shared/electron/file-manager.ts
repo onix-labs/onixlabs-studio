@@ -93,6 +93,11 @@ export class FileManager {
       ): Promise<FileWriteResult> => this.write(filePath, content, hasBom === true),
     );
     ipcMain.handle(
+      FileChannel.WriteBytes,
+      (_event: IpcMainInvokeEvent, filePath: unknown, bytes: unknown): Promise<FileWriteResult> =>
+        this.writeBytes(filePath, bytes),
+    );
+    ipcMain.handle(
       FileChannel.OpenFileDialog,
       (event: IpcMainInvokeEvent): Promise<readonly FileInfo[]> => this.openDialog(event.sender),
     );
@@ -170,6 +175,32 @@ export class FileManager {
       return { success: true, path: filePath };
     } catch (error: unknown) {
       logger.error('FileManager', `Failed to save ${filePath}`, error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Writes bytes to a file, as {@link write} writes text: to the path the renderer names, which is one
+   * the user chose in a save dialog.
+   * @param filePath The path to write.
+   * @param bytes The bytes.
+   * @returns Returns a promise resolving whether it was written, and why not.
+   */
+  private async writeBytes(filePath: unknown, bytes: unknown): Promise<FileWriteResult> {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      logger.warn('FileManager.writeBytes', 'Rejected write for invalid path');
+      return { success: false, error: 'Invalid file path' };
+    }
+    if (!(bytes instanceof Uint8Array)) {
+      logger.warn('FileManager.writeBytes', `Rejected write for ${filePath}: invalid content`);
+      return { success: false, error: 'Invalid file content' };
+    }
+    try {
+      await fs.writeFile(filePath, bytes);
+      logger.info('FileManager', `Wrote ${bytes.byteLength} bytes to ${filePath}`);
+      return { success: true, path: filePath };
+    } catch (error: unknown) {
+      logger.error('FileManager', `Failed to write ${filePath}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

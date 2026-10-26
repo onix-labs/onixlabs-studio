@@ -28,7 +28,8 @@
 .graph__relationship {
   cursor: pointer;
 
-  line {
+  path {
+    fill: none;
     stroke: var(--form-muted-foreground-color);
     stroke-width: 1.5;
   }
@@ -38,7 +39,7 @@
     fill: var(--form-muted-foreground-color);
   }
 
-  &--picked line {
+  &--picked path {
     stroke: var(--accent-color);
     stroke-width: 2.5;
   }

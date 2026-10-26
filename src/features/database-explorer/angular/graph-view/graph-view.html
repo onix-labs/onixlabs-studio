@@ -27,22 +27,21 @@
     </defs>
     <g [attr.transform]="transform()">
       @for (relationship of graph().relationships; track relationship.value.id) {
-        @let start = at(relationship.value.start);
-        @let end = lineEnd(relationship);
-        @let centre = middle(relationship);
+        @let geometry = edge(relationship);
         <g
           class="graph__relationship"
           [class.graph__relationship--picked]="pickedId() === relationship.value.id"
           (click)="pickRelationship(relationship)"
         >
-          <line
-            [attr.x1]="start.x"
-            [attr.y1]="start.y"
-            [attr.x2]="end.x"
-            [attr.y2]="end.y"
-            marker-end="url(#graph-arrow)"
-          />
-          <text [attr.x]="centre.x" [attr.y]="centre.y" text-anchor="middle" dy="-4">
+          <!-- Relationships sharing two nodes are bowed into lanes, and one from a node to itself is
+               a loop on its rim, so none is drawn over another. -->
+          <path [attr.d]="geometry.path" marker-end="url(#graph-arrow)" />
+          <text
+            [attr.x]="geometry.label.x"
+            [attr.y]="geometry.label.y"
+            text-anchor="middle"
+            dy="-4"
+          >
             {{ relationship.value.relationshipType }}
           </text>
         </g>

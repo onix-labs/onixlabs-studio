@@ -10,6 +10,10 @@
 
 .connection__fields {
   display: flex;
+  // In the fixed-size dialog the fields take the room, so the buttons sit along its bottom.
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
   flex-direction: column;
   gap: 0.5rem;
   margin-block-end: 0.75rem;
@@ -90,10 +94,6 @@
   gap: 0.5rem;
 }
 
-.connection__section + .connection__section {
-  margin-block-start: 0.75rem;
-}
-
 // A line is as wide as a single control, so a host and its port together keep the column's edge.
 .connection__line {
   display: flex;
@@ -101,11 +101,16 @@
   gap: 0.5rem;
   inline-size: 50cqi;
 
-  > .connection__control,
-  > app-checkbox {
+  > .connection__control {
     flex: 1 1 auto;
     inline-size: auto;
     min-inline-size: 0;
+  }
+
+  // A yes/no field's toggle keeps the row's trailing edge, as Remember password's does.
+  > app-toggle {
+    flex: none;
+    margin-inline-start: auto;
   }
 }
 

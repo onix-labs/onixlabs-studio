@@ -152,8 +152,19 @@ export function decodePath(path: string): readonly string[] {
  * @returns Returns the message.
  */
 export function describeError(error: unknown): string {
+  if (error instanceof AggregateError) {
+    // Node reports a refused `localhost` as one error per address it tried (::1, 127.0.0.1), wrapped
+    // in an AggregateError whose own message is empty: the reasons are the inner errors'.
+    const reasons: readonly string[] = [
+      ...new Set<string>(error.errors.map((inner: unknown): string => describeError(inner))),
+    ].filter((reason: string): boolean => reason !== '');
+    if (reasons.length > 0) {
+      return reasons.join('; ');
+    }
+  }
   if (error instanceof Error) {
-    return error.message;
+    const code: unknown = (error as { code?: unknown }).code;
+    return error.message !== '' ? error.message : typeof code === 'string' ? code : error.name;
   }
   return String(error);
 }

@@ -17,6 +17,12 @@ export enum FileChannel {
   Write = 'file:write',
 
   /**
+   * Writes bytes to a path, replacing what was there (invoke) — a file Studio produces rather than a
+   * text document it edits, such as an exported spreadsheet.
+   */
+  WriteBytes = 'file:write-bytes',
+
+  /**
    * Starts watching a file for on-disk changes (renderer→main, invoke).
    */
   Watch = 'file:watch',

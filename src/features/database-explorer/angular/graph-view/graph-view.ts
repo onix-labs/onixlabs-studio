@@ -262,31 +262,26 @@ export class GraphView {
   }
 
   /**
-   * Gets the midpoint of a relationship, where its type is written.
-   * @param relationship The relationship.
-   * @returns Returns the midpoint.
+   * Holds each relationship's lane among those it shares its two nodes with, and each self-loop's
+   * place around its node, so no two are drawn over each other. Read by {@link edge}.
    */
-  protected middle(relationship: LaidRelationship): Point {
-    const start: Point = this.at(relationship.value.start);
-    const end: Point = this.at(relationship.value.end);
-    return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  }
+  private readonly lanes: Signal<ReadonlyMap<string, Lane>> = computed(
+    (): ReadonlyMap<string, Lane> => laneRelationships(this.graph().relationships),
+  );
 
   /**
-   * Gets the end of a relationship's line, stopped at the target circle's edge so the arrowhead shows.
+   * Gets how a relationship is drawn: its path, from the edge of one circle to the edge of the other
+   * (or, for a node related to itself, a loop on its rim), and where its type is written.
    * @param relationship The relationship.
-   * @returns Returns the end point.
+   * @returns Returns the path and the label's position.
    */
-  protected lineEnd(relationship: LaidRelationship): Point {
+  protected edge(relationship: LaidRelationship): EdgeGeometry {
+    const lane: Lane = this.lanes().get(relationship.value.id) ?? { kind: 'pair', offset: 0 };
     const start: Point = this.at(relationship.value.start);
-    const end: Point = this.at(relationship.value.end);
-    const dx: number = end.x - start.x;
-    const dy: number = end.y - start.y;
-    const length: number = Math.hypot(dx, dy) || 1;
-    return {
-      x: end.x - (dx / length) * (NODE_RADIUS + 3),
-      y: end.y - (dy / length) * (NODE_RADIUS + 3),
-    };
+    if (lane.kind === 'loop') {
+      return loopGeometry(start, lane.angle);
+    }
+    return curveGeometry(start, this.at(relationship.value.end), lane.offset);
   }
 
   /**
@@ -431,7 +426,8 @@ function fit(positions: ReadonlyMap<string, Point>): string {
   if (points.length === 0) {
     return '-400 -300 800 600';
   }
-  const margin: number = NODE_RADIUS * 3;
+  // Room for a circle, its caption, and a self-loop standing off its rim.
+  const margin: number = NODE_RADIUS * 4;
   const xs: readonly number[] = points.map((point: Point): number => point.x);
   const ys: readonly number[] = points.map((point: Point): number => point.y);
   const minX: number = Math.min(...xs) - margin;
@@ -546,4 +542,143 @@ function layout(
  */
 function shorten(caption: string): string {
   return caption.length > 11 ? `${caption.slice(0, 10)}…` : caption;
+}
+
+/**
+ * How far apart, in layout units, the curves between one pair of nodes bow.
+ */
+const LANE_SPREAD: number = 26;
+
+/**
+ * How far a self-loop stands off its node's rim.
+ */
+const LOOP_REACH: number = 48;
+
+/**
+ * The angle between self-loops on one node, in radians.
+ */
+const LOOP_STEP: number = Math.PI / 4;
+
+/**
+ * Where a relationship is drawn among those sharing its nodes: a lane to one side of the straight
+ * line between two nodes, or a place around the rim of the node it loops back to.
+ */
+type Lane =
+  | { readonly kind: 'pair'; readonly offset: number }
+  | { readonly kind: 'loop'; readonly angle: number };
+
+/**
+ * How one relationship is drawn.
+ */
+interface EdgeGeometry {
+  /**
+   * Gets the SVG path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets where its type is written.
+   */
+  readonly label: Point;
+}
+
+/**
+ * Assigns each relationship a lane: those between the same two nodes, whichever way they point,
+ * fanned evenly either side of the straight line (one alone stays straight), and each node's
+ * self-loops spaced around its rim from the top.
+ * @param relationships The relationships.
+ * @returns Returns each relationship's lane, by id.
+ */
+export function laneRelationships(
+  relationships: readonly { readonly value: GraphRelationshipValue }[],
+): ReadonlyMap<string, Lane> {
+  const groups: Map<string, GraphRelationshipValue[]> = new Map<string, GraphRelationshipValue[]>();
+  for (const { value } of relationships) {
+    const key: string =
+      value.start === value.end
+        ? `loop\u0000${value.start}`
+        : [value.start, value.end].sort().join('\u0000');
+    groups.set(key, [...(groups.get(key) ?? []), value]);
+  }
+  const lanes: Map<string, Lane> = new Map<string, Lane>();
+  for (const group of groups.values()) {
+    group.forEach((value: GraphRelationshipValue, index: number): void => {
+      if (value.start === value.end) {
+        lanes.set(value.id, { kind: 'loop', angle: -Math.PI / 2 + index * LOOP_STEP });
+        return;
+      }
+      // Offsets are measured against the pair's canonical direction, so a relationship pointing the
+      // other way is bowed to its own side rather than onto one going this way.
+      const canonical: boolean = value.start < value.end;
+      const offset: number = (index - (group.length - 1) / 2) * LANE_SPREAD;
+      lanes.set(value.id, { kind: 'pair', offset: canonical ? offset : -offset });
+    });
+  }
+  return lanes;
+}
+
+/**
+ * Draws a relationship between two nodes as a quadratic curve bowed by its lane's offset (straight
+ * when the offset is nothing), from one circle's edge to just short of the other's, where the
+ * arrowhead sits.
+ * @param start The start node's centre.
+ * @param end The end node's centre.
+ * @param offset How far the curve's middle stands off the straight line.
+ * @returns Returns the path and label position.
+ */
+export function curveGeometry(start: Point, end: Point, offset: number): EdgeGeometry {
+  const dx: number = end.x - start.x;
+  const dy: number = end.y - start.y;
+  const length: number = Math.hypot(dx, dy) || 1;
+  // The control point stands twice the offset off the line, so the curve's middle stands the offset.
+  const normal: Point = { x: -dy / length, y: dx / length };
+  const control: Point = {
+    x: (start.x + end.x) / 2 + normal.x * offset * 2,
+    y: (start.y + end.y) / 2 + normal.y * offset * 2,
+  };
+  const from: Point = towards(start, control, NODE_RADIUS);
+  const to: Point = towards(end, control, NODE_RADIUS + 3);
+  return {
+    path: `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`,
+    label: {
+      x: (from.x + 2 * control.x + to.x) / 4,
+      y: (from.y + 2 * control.y + to.y) / 4,
+    },
+  };
+}
+
+/**
+ * Draws a node's relationship to itself as a loop off its rim, centred on an angle.
+ * @param centre The node's centre.
+ * @param angle Where on the rim the loop stands, in radians.
+ * @returns Returns the path and label position.
+ */
+export function loopGeometry(centre: Point, angle: number): EdgeGeometry {
+  const spread: number = 0.45;
+  const rim: (at: number, distance: number) => Point = (at: number, distance: number): Point => ({
+    x: centre.x + Math.cos(at) * distance,
+    y: centre.y + Math.sin(at) * distance,
+  });
+  const from: Point = rim(angle - spread, NODE_RADIUS);
+  const to: Point = rim(angle + spread, NODE_RADIUS + 3);
+  const out: Point = rim(angle - spread * 1.6, NODE_RADIUS + LOOP_REACH);
+  const back: Point = rim(angle + spread * 1.6, NODE_RADIUS + LOOP_REACH);
+  return {
+    path: `M ${from.x} ${from.y} C ${out.x} ${out.y} ${back.x} ${back.y} ${to.x} ${to.y}`,
+    label: rim(angle, NODE_RADIUS + LOOP_REACH * 0.85),
+  };
+}
+
+/**
+ * Gets the point a distance from one point towards another.
+ * @param from The point moved from.
+ * @param to The point moved towards.
+ * @param distance How far.
+ * @returns Returns the point.
+ */
+function towards(from: Point, to: Point, distance: number): Point {
+  const dx: number = to.x - from.x;
+  const dy: number = to.y - from.y;
+  const length: number = Math.hypot(dx, dy) || 1;
+  return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance };
 }

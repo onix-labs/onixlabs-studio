@@ -8,13 +8,14 @@ import { PropertiesPanel } from './panels/properties-panel/properties-panel';
 
 /**
  * The blueprint specialising a dock instance as a Database Explorer — SSMS's arrangement: the Object
- * Explorer full-height on the left, the query well in the middle, and Properties and the agent tabbed
- * together on the right. Each query carries its own Results and Messages beneath its editor, as an
+ * Explorer full-height on the left, the query well in the middle with the terminal collapsed under it,
+ * and Properties and the agent tabbed together on the right. Each query carries its own Results and Messages beneath its editor, as an
  * SSMS query window does, so the well needs no shared results panel.
  *
  * The well holds `document`-role panels exactly as a workspace's does, so tabbing, splitting, floating,
- * popping out and layout persistence arrive for free. A terminal is catalogued but not docked: reaching
- * for `psql` or `cypher-shell` beside a query is natural, and it costs nothing until it is opened.
+ * popping out and layout persistence arrive for free. The terminal starts collapsed under the well:
+ * reaching for `psql` or `cypher-shell` beside a query is natural, and a strip costs nothing until it
+ * is opened.
  */
 export const DATABASE_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
   key: 'database-explorer',
@@ -23,7 +24,15 @@ export const DATABASE_EXPLORER_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['objects']),
-        mkStack('document', [], true),
+        // The well, and under it the terminal, collapsed to a strip until it is wanted.
+        mkSplit(
+          'col',
+          [
+            mkStack('document', [], true),
+            mkStack('tool', ['terminal'], false, { collapsed: true, side: 'bottom' }),
+          ],
+          [4, 1.5],
+        ),
         mkStack('tool', ['properties', 'agent']),
       ],
       [1.5, 4.2, 1.6],
