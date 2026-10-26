@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DatabaseNode, NodeActionOutcome } from './protocol';
-import { encodePath, EngineSession } from './engine';
+import { DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
+import { encodePath, EngineSession } from '../../protocol/database/engine';
 import { SqliteEngine } from './sqlite-engine';
 
 /**

@@ -1,5 +1,5 @@
 import { DatabaseSync, SQLOutputValue, StatementSync } from 'node:sqlite';
-import { DatabaseValue, QueryMessage, ResultColumn } from './protocol';
+import { DatabaseValue, QueryMessage, ResultColumn } from '../../protocol/database/protocol';
 import {
   bigintValue,
   bytesValue,
@@ -8,8 +8,8 @@ import {
   EngineResultSet,
   MAX_RESULT_ROWS,
   text,
-} from './engine';
-import { ScriptStatement, splitStatements } from './statements';
+} from '../../protocol/database/engine';
+import { ScriptStatement, splitStatements } from '../../protocol/database/statements';
 
 /**
  * Runs a script against a database statement by statement, stopping at the first error: each

@@ -221,7 +221,10 @@ describe('the SQLite engine plugin is installable', () => {
   });
 
   it('speaksAProtocolVersionThisBuildHonours', () => {
-    const source: string = fs.readFileSync(path.join(PLUGIN, 'src', 'protocol.ts'), 'utf8');
+    const source: string = fs.readFileSync(
+      path.resolve('plugins/protocol/database/protocol.ts'),
+      'utf8',
+    );
     const declared: string = /DATABASE_ENGINE_PROTOCOL: string = '([^']+)'/.exec(source)?.[1] ?? '';
 
     expect(isCompatibleDatabaseEngineProtocol(declared)).toBe(true);

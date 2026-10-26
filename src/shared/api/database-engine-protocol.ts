@@ -1,7 +1,7 @@
 // The database-engine protocol (#1095): what Studio says to a database-engine plugin, and what it
 // answers. Keep this module platform-neutral (types, constants and pure functions only) so both
-// compilation targets can import it; each engine plugin keeps its own copy, as the container-engine,
-// version-control and hosting plugins do.
+// compilation targets can import it. The engine plugins share one copy of it, in
+// `plugins/protocol/database/`, beside the host they all serve it through.
 //
 // One plugin per engine (SQLite, PostgreSQL, Neo4j…), each a separate process Studio starts on first
 // use. Framing is newline-delimited JSON over the plugin's standard streams: each request line carries

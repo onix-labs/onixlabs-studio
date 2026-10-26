@@ -1032,7 +1032,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json",
-        "sha256": "c7ffaf3386b54b32b2bfece104e66e936cee4bf6fac44c4fd840506a71c539ca",
+        "sha256": "03ff93067d9dddf21e18454bc6161f46eb10f900caafe1f931beaf8086f8eb0e",
         "executablePath": "node_modules/@onixlabs/sqlite-engine/main.js"
       },
       "contributes": {

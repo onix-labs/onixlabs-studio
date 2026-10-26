@@ -10,7 +10,7 @@ import {
 } from './protocol';
 
 /**
- * A database engine as this plugin implements it: the database-engine protocol's requests one for
+ * A database engine as an engine plugin implements it: the database-engine protocol's requests one for
  * one — `initialize` is {@link info}, `connect` is {@link connect}, and a session answers `expand`,
  * `execute`, `cancel` and `action`. The host (`host.ts`) serves it over the plugin's standard streams
  * and keeps the sessions and the rows of large results.

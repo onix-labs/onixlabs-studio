@@ -5,7 +5,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EngineExecution, MAX_RESULT_ROWS } from './engine';
+import { EngineExecution, MAX_RESULT_ROWS } from '../../protocol/database/engine';
 import { runScript, toValue } from './sqlite-run';
 
 describe('runScript', (): void => {

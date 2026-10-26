@@ -1,8 +1,8 @@
-/* TypeScript configuration for the Docker engine plugin (and, built from the same source, the Podman one).
+/* TypeScript configuration for the SQLite engine plugin.
    The plugin is a separate program from Studio: it runs as its own process and talks to it only over
-   the container-engine protocol. It shares no code with the app — the protocol types are declared locally in
-   `src/protocol.ts` — which is the point, and this config is what keeps that true rather than letting
-   it reach back into `src/`.
+   the database-engine protocol. It shares no code with the app — the protocol, and the host every engine
+   plugin serves it through, live in `plugins/protocol/database/` — which is the point, and this config is
+   what keeps that true rather than letting it reach back into `src/`.
    The build is done by esbuild (see build.mjs); this config is `tsc --noEmit` only. */
 {
   "extends": "../../tsconfig.json",
@@ -12,14 +12,14 @@
     "target": "ES2022",
     "lib": ["ES2022"],
     "types": ["node"],
-    "rootDir": ".",
+    "rootDir": "..",
     "outDir": "dist",
     "esModuleInterop": true,
     "importHelpers": false,
     "noEmit": true,
     "declaration": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "../protocol/database/*.ts"],
   /* The specs run in Studio's unit suite, which supplies their test runner's types. */
-  "exclude": ["src/**/*.spec.ts"]
+  "exclude": ["src/**/*.spec.ts", "../protocol/**/*.spec.ts"]
 }

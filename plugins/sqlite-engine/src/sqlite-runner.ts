@@ -1,7 +1,7 @@
 import { ChildProcess, fork } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { ExecuteRequest } from './protocol';
-import { describeError, EngineExecution } from './engine';
+import { ExecuteRequest } from '../../protocol/database/protocol';
+import { describeError, EngineExecution } from '../../protocol/database/engine';
 import { runScript } from './sqlite-run';
 
 /**

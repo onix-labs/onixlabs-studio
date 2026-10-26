@@ -6,7 +6,7 @@ import {
   DatabaseValue,
   ExecuteRequest,
   NodeActionOutcome,
-} from './protocol';
+} from '../../protocol/database/protocol';
 import { SqliteRunner } from './sqlite-runner';
 import { toValue } from './sqlite-run';
 import {
@@ -18,7 +18,7 @@ import {
   EngineSession,
   quoteIdentifier,
   text,
-} from './engine';
+} from '../../protocol/database/engine';
 
 /**
  * The folders a SQLite database's objects are filed under, keyed by their `sqlite_schema` type.
