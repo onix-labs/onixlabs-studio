@@ -209,9 +209,15 @@ describe('DatabaseContribution', () => {
         DatabaseChannel.Execute,
         DatabaseChannel.Fetch,
         DatabaseChannel.Action,
+        DatabaseChannel.SecretsMachineSealing,
+        DatabaseChannel.SecretsUnlock,
+        DatabaseChannel.SecretsSeal,
+        DatabaseChannel.SecretsOpen,
       ].sort(),
     );
-    expect([...fake.listeners.keys()]).toEqual([DatabaseChannel.Cancel]);
+    expect([...fake.listeners.keys()].sort()).toEqual(
+      [DatabaseChannel.Cancel, DatabaseChannel.SecretsForget].sort(),
+    );
   });
 
   it('connect_namesTheSessionByTheHostsOwnId_notTheEngines', async () => {
