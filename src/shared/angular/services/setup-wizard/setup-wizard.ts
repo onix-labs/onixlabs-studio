@@ -218,6 +218,13 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
       'Studio runs agents through provider plugins, so the stack is yours to choose. Each provider ' +
       'a plugin offers gets a step of its own below once it is installed.',
   },
+  'database-engine': {
+    icon: Icon.SETUP_DATABASE_ENGINES,
+    title: 'Database engines',
+    summary:
+      'The databases the Database Explorer can connect to, one engine each. Without one installed ' +
+      'there is nothing to connect with.',
+  },
 };
 
 /**

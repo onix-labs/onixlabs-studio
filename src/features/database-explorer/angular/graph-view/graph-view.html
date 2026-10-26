@@ -1,0 +1,68 @@
+@if (graph().nodes.length === 0) {
+  <p class="graph__empty">This result holds no nodes or relationships to draw.</p>
+} @else {
+  <svg
+    class="graph"
+    [attr.viewBox]="viewBox()"
+    preserveAspectRatio="xMidYMid meet"
+    role="img"
+    aria-label="Graph of the result"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp()"
+    (wheel)="onWheel($event)"
+  >
+    <defs>
+      <marker
+        id="graph-arrow"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" class="graph__arrow" />
+      </marker>
+    </defs>
+    <g [attr.transform]="transform()">
+      @for (relationship of graph().relationships; track relationship.value.id) {
+        @let start = at(relationship.value.start);
+        @let end = lineEnd(relationship);
+        @let centre = middle(relationship);
+        <g
+          class="graph__relationship"
+          [class.graph__relationship--picked]="pickedId() === relationship.value.id"
+          (click)="pickRelationship(relationship)"
+        >
+          <line
+            [attr.x1]="start.x"
+            [attr.y1]="start.y"
+            [attr.x2]="end.x"
+            [attr.y2]="end.y"
+            marker-end="url(#graph-arrow)"
+          />
+          <text [attr.x]="centre.x" [attr.y]="centre.y" text-anchor="middle" dy="-4">
+            {{ relationship.value.relationshipType }}
+          </text>
+        </g>
+      }
+      @for (node of graph().nodes; track node.value.id) {
+        @let point = at(node.value.id);
+        <g
+          class="graph__node"
+          [class.graph__node--picked]="pickedId() === node.value.id"
+          [attr.transform]="'translate(' + point.x + ' ' + point.y + ')'"
+          (pointerdown)="onPointerDown($event, node.value.id)"
+          (pointerup)="$event.stopPropagation(); onPointerUp(node)"
+        >
+          <circle r="22" [style.fill]="node.colour" />
+          <text text-anchor="middle" dy="4">{{ node.caption }}</text>
+        </g>
+      }
+    </g>
+  </svg>
+  @if (graph().truncated) {
+    <p class="graph__note">Showing the first 300 nodes. Narrow the query to see the rest.</p>
+  }
+}

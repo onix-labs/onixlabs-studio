@@ -1,0 +1,231 @@
+@if (query(); as query) {
+  <!-- The query's tool strip: what it runs against — the connection and, for an engine that reaches
+       several, the database — and Execute. The title is renamed from the Object Explorer. -->
+  <app-panel-toolbar role="group" aria-label="Query">
+    <app-dropdown
+      class="query__connection"
+      [options]="connectionOptions()"
+      [value]="query.connectionId ?? ''"
+      placeholder="Choose a connection"
+      ariaLabel="Connection"
+      (valueChange)="setConnection($event)"
+    />
+    @if (databaseOptions().length > 0) {
+      <app-dropdown
+        class="query__database"
+        [options]="databaseOptions()"
+        [value]="query.database ?? ''"
+        ariaLabel="Database"
+        (valueChange)="setDatabase($event)"
+      />
+    }
+    <span class="query__spacer"></span>
+    <app-button
+      variant="solid"
+      [icon]="running() ? Icon.STOP : Icon.PLAY"
+      [label]="running() ? 'Cancel' : 'Execute'"
+      [tooltip]="
+        running() ? 'Cancel the running query' : 'Run the selection, or the whole query (⌘↵)'
+      "
+      [disabled]="!canRun()"
+      (click)="execute()"
+    />
+  </app-panel-toolbar>
+
+  @if (resultsDefaultSize(); as resultsSize) {
+    <app-panel-layout class="query" layoutKey="database-query">
+      <div main class="query__editor">
+        <app-text-editor
+          [content]="query.text"
+          [language]="language()"
+          [isActive]="isActive()"
+          (contentChange)="onText($event)"
+          (cursorChange)="onCursor($event)"
+          (ready)="onEditorReady()"
+        />
+      </div>
+
+      <app-panel
+        panelId="results"
+        defaultEdge="bottom"
+        [allowedEdges]="resultsEdges"
+        [visible]="resultsVisible()"
+        [defaultSize]="resultsSize"
+        [minSize]="120"
+        [maxSize]="1400"
+      >
+        <div class="results" role="region" aria-label="Results">
+          <div class="results__tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              class="results__tab"
+              [class.results__tab--active]="tab() === 'results'"
+              [attr.aria-selected]="tab() === 'results'"
+              (click)="tab.set('results')"
+            >
+              Results
+              @if (outcome()?.resultSets?.length) {
+                <span class="results__count">{{ outcome()!.resultSets.length }}</span>
+              }
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="results__tab"
+              [class.results__tab--active]="tab() === 'messages'"
+              [attr.aria-selected]="tab() === 'messages'"
+              (click)="tab.set('messages')"
+            >
+              Messages
+              @if (errorCount() > 0) {
+                <span class="results__count results__count--error">{{ errorCount() }}</span>
+              }
+            </button>
+
+            @if (tab() === 'results' && resultSet()) {
+              <span class="results__spacer"></span>
+              <div class="results__views" role="group" aria-label="Show the result as">
+                @if (graphCapable()) {
+                  <button
+                    type="button"
+                    class="results__view"
+                    [class.results__view--active]="resultView() === 'graph'"
+                    title="Graph"
+                    (click)="chooseView('graph')"
+                  >
+                    <app-icon [icon]="Icon.DATABASE_GRAPH" /> Graph
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="results__view"
+                  [class.results__view--active]="resultView() === 'table'"
+                  title="Table"
+                  (click)="chooseView('table')"
+                >
+                  <app-icon [icon]="Icon.DATABASE_GRID" /> Table
+                </button>
+                <button
+                  type="button"
+                  class="results__view"
+                  [class.results__view--active]="resultView() === 'raw'"
+                  title="Raw"
+                  (click)="chooseView('raw')"
+                >
+                  <app-icon [icon]="Icon.DATABASE_RAW" /> Raw
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="results__body">
+            @if (running()) {
+              <p class="results__hint"><app-icon [icon]="Icon.SPINNER" /> Running…</p>
+            } @else if (tab() === 'messages') {
+              <ol class="results__messages">
+                @for (message of outcome()?.messages ?? []; track $index) {
+                  <li class="results__message" [attr.data-severity]="message.severity">
+                    <app-icon [icon]="messageIcon(message)" />
+                    @if (message.line !== undefined) {
+                      <button
+                        type="button"
+                        class="results__line"
+                        title="Go to the line"
+                        (click)="reveal(message)"
+                      >
+                        Line {{ message.line }}
+                      </button>
+                    }
+                    <span class="results__text">{{ message.text }}</span>
+                  </li>
+                }
+                @if (outcome(); as outcome) {
+                  <li class="results__message results__message--summary">
+                    {{
+                      outcome.cancelled
+                        ? 'Query cancelled'
+                        : outcome.failed
+                          ? 'Query completed with errors'
+                          : 'Query completed successfully'
+                    }}
+                    · {{ outcome.elapsedMs.toFixed(0) }} ms
+                  </li>
+                }
+              </ol>
+            } @else if (resultSet(); as set) {
+              @if ((outcome()?.resultSets?.length ?? 0) > 1) {
+                <div class="results__sets" role="tablist" aria-label="Result sets">
+                  @for (each of outcome()!.resultSets; track each.id; let index = $index) {
+                    <button
+                      type="button"
+                      class="results__set"
+                      [class.results__set--active]="set.id === each.id"
+                      (click)="chooseResult(index)"
+                    >
+                      {{ resultLabel(each, index) }}
+                    </button>
+                  }
+                </div>
+              }
+
+              @switch (resultView()) {
+                @case ('graph') {
+                  <app-graph-view
+                    class="results__fill"
+                    [rows]="set.rows"
+                    (picked)="onGraphPick($event)"
+                  />
+                }
+                @case ('raw') {
+                  <!-- A viewer, not a form field: the bare editor, with no frame of its own. -->
+                  <app-text-editor
+                    class="results__fill results__raw"
+                    [content]="rawJson()"
+                    language="json"
+                    [readOnly]="true"
+                  />
+                }
+                @default {
+                  <app-table
+                    class="results__fill results__grid"
+                    [columns]="columns()"
+                    [rows]="gridRows()"
+                    [virtual]="true"
+                    [resizable]="true"
+                    [gridlines]="gridlines()"
+                    [gridlineTone]="gridlineTone()"
+                    [selectedIds]="selectedRows()"
+                    emptyText="No rows"
+                    (rowClick)="onRowClick($event)"
+                  >
+                    <ng-template appTableRow let-row>
+                      <td class="results__index">{{ row.data.index }}</td>
+                      @for (cell of row.data.cells; track $index) {
+                        <td class="results__cell" [attr.data-kind]="cell.kind" [title]="cell.text">
+                          {{ cell.text }}
+                        </td>
+                      }
+                    </ng-template>
+                  </app-table>
+                }
+              }
+
+              @if (set.rows.length < set.totalRows) {
+                <div class="results__more">
+                  Showing {{ set.rows.length.toLocaleString() }} of
+                  {{ set.totalRows.toLocaleString() }} rows
+                  <app-button size="small" label="Load More" (click)="loadMore()" />
+                </div>
+              }
+            } @else {
+              <p class="results__hint">The query returned no rows. See Messages for what it did.</p>
+            }
+          </div>
+        </div>
+      </app-panel>
+    </app-panel-layout>
+  }
+} @else {
+  <p class="results__hint">This query has been deleted.</p>
+}

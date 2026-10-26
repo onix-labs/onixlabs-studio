@@ -11,6 +11,7 @@
     "src/features/**/*.d.ts",
     "src/shared/**/*.spec.ts",
     "src/features/**/*.spec.ts",
-    "plugins/*/src/**/*.spec.ts"
+    "plugins/*/src/**/*.spec.ts",
+    "plugins/protocol/**/*.spec.ts"
   ]
 }

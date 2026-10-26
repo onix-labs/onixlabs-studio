@@ -121,7 +121,11 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "include": ["**/*.spec.ts", "../plugins/*/src/**/*.spec.ts"],
+            "include": [
+              "**/*.spec.ts",
+              "../plugins/*/src/**/*.spec.ts",
+              "../plugins/protocol/**/*.spec.ts"
+            ],
             "runnerConfig": "vitest.config.mjs",
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],

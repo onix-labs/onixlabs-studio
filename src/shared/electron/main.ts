@@ -27,6 +27,7 @@ import { AiManager } from './ai/ai-manager';
 import { SkillHandlers } from './ai/skills/skill-handlers';
 import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
+import { databaseContribution } from '@shared/electron/contributions/database/database.contribution';
 import {
   ContributionContext,
   ContributionListener,
@@ -1094,6 +1095,8 @@ class Program {
         this.versionControlHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
+      } else if (contribution.slot === 'database-engine') {
+        databaseContribution.restartEngine(contribution.id);
       }
     }
     this.logger.info(

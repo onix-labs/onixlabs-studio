@@ -33,6 +33,7 @@ export const AGENT_SURFACE_LABELS: Readonly<Record<AgentSurface, string>> = {
   terminal: 'Terminal',
   binary: 'Binary editor',
   api: 'API Explorer',
+  database: 'Database Explorer',
   workspace: 'Workspaces',
   project: 'Agent tab',
   monitor: 'System Monitor',

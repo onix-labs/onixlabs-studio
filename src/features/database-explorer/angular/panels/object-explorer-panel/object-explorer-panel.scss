@@ -1,0 +1,73 @@
+@use '../../database-dialog';
+
+// The Object Explorer: the shared explorer tool strip above the shared tree view, styled by those.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  color: var(--dock-tab-foreground-color);
+}
+
+// A muted detail after a row's label: a column's type, a folder's count, a server's version.
+.objects__detail {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  margin-inline-start: 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.objects__status {
+  color: var(--form-muted-foreground-color);
+}
+
+// The dot on a connection with an open session.
+.objects__live {
+  flex: 0 0 auto;
+  inline-size: 0.4rem;
+  block-size: 0.4rem;
+  margin-inline: auto 0.4rem;
+  border-radius: 50%;
+  background: var(--success-color);
+}
+
+.objects__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 1rem;
+  text-align: center;
+  user-select: none;
+}
+
+// The empty agent's glyph and caption, so an empty document reads as the same kind of thing.
+.objects__empty-icon {
+  display: inline-grid;
+  font-size: 6rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.objects__empty-caption {
+  max-inline-size: 20rem;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+  opacity: 0.7;
+}
+
+.objects__empty-detail {
+  max-inline-size: 16rem;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}

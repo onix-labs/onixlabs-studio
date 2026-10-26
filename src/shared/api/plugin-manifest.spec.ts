@@ -8,6 +8,7 @@ import CURATED_PLUGINS from '@shared/electron/contributions/plugins/curated-plug
 import {
   isApiCompatible,
   ManifestContainerEngine,
+  ManifestDatabaseEngine,
   ManifestError,
   ManifestResult,
   PLUGIN_API_VERSION,
@@ -104,6 +105,21 @@ function containerEngine(): Record<string, unknown> {
       darwin: 'podman machine start',
       linux: 'systemctl --user start podman.socket',
     },
+  };
+}
+
+/**
+ * Builds a well-formed database-engine contribution, modelled on the SQLite engine (#1095), which tests
+ * then break in one place at a time.
+ * @returns Returns the contribution as untrusted JSON would arrive.
+ */
+function databaseEngine(): Record<string, unknown> {
+  return {
+    id: 'sqlite',
+    displayName: 'SQLite',
+    priority: 50,
+    entryPoint: 'dist/main.js',
+    command: { kind: 'node' },
   };
 }
 
@@ -260,6 +276,36 @@ describe('parsePluginManifest', () => {
 
       expect(result.errors).toEqual([]);
       expect(result.manifest?.contributes.containerEngines?.[0]?.startCommands).toBeUndefined();
+    });
+
+    it('aDatabaseEngineContribution', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [databaseEngine()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      const engine: ManifestDatabaseEngine | undefined =
+        result.manifest?.contributes.databaseEngines?.[0];
+      expect(engine).toEqual({
+        id: 'sqlite',
+        displayName: 'SQLite',
+        priority: 50,
+        entryPoint: 'dist/main.js',
+        command: { kind: 'node', args: undefined, env: undefined },
+      });
+    });
+
+    it('aDatabaseEngineWithoutAPriorityOrEntryPoint_defaultingThem', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      delete engine['priority'];
+      delete engine['entryPoint'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.databaseEngines?.[0]?.priority).toBe(100);
+      expect(result.manifest?.contributes.databaseEngines?.[0]?.entryPoint).toBeUndefined();
     });
 
     it('aContributionWithoutAPriority_defaultingIt', () => {
@@ -465,6 +511,65 @@ describe('parsePluginManifest', () => {
       expect(paths(result)).toContain(
         'contributes.containerEngines[0].discovery.sockets.darwin-arm64',
       );
+    });
+
+    it('aDatabaseEngineWithNoCommand', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      delete engine['command'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].command');
+    });
+
+    it('aDatabaseEngineWithAnUnknownCommandKind', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['command'] = { kind: 'ruby' };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].command.kind');
+    });
+
+    it('aDatabaseEngineWithABadIdOrNoDisplayName', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['id'] = 'Not An Id';
+      delete engine['displayName'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toEqual(
+        expect.arrayContaining([
+          'contributes.databaseEngines[0].id',
+          'contributes.databaseEngines[0].displayName',
+        ]),
+      );
+    });
+
+    it('aDatabaseEngineWhoseEntryPointEscapesThePayload', () => {
+      const engine: Record<string, unknown> = databaseEngine();
+      engine['entryPoint'] = '../../outside.js';
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines[0].entryPoint');
+    });
+
+    it('databaseEnginesThatAreNotAList', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { databaseEngines: databaseEngine() } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.databaseEngines');
     });
 
     it('aContainerEngineWhoseStartCommandIsNotAString', () => {

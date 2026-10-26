@@ -35,6 +35,7 @@ on:
         'plugin-github-v*',
         'plugin-docker-engine-v*',
         'plugin-podman-engine-v*',
+        'plugin-sqlite-engine-v*',
       ]
   # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
   # before it is tagged. There is no tag to read the plugin from, so it is named.

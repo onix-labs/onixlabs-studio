@@ -4,6 +4,7 @@ import {
   ManifestAgentHarness,
   ManifestCommand,
   ManifestContainerEngine,
+  ManifestDatabaseEngine,
   ManifestDebugAdapter,
   ManifestDecoder,
   ManifestDownload,
@@ -19,6 +20,10 @@ import {
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import type {
+  DatabaseEngineDescriptor,
+  DatabaseEngineResolution,
+} from '../database/database-engine-descriptor';
 import {
   DecoderDescriptor,
   DecoderResolution,
@@ -483,6 +488,14 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: engine.priority,
     }),
   );
+  const databaseEngines: readonly PluginContribution[] = (
+    manifest.contributes.databaseEngines ?? []
+  ).map((engine: ManifestDatabaseEngine): PluginContribution => ({
+    slot: 'database-engine',
+    id: engine.id,
+    displayName: engine.displayName,
+    priority: engine.priority,
+  }));
   const harnesses: readonly PluginContribution[] = (manifest.contributes.agentHarnesses ?? []).map(
     (harness: ManifestAgentHarness): PluginContribution => ({
       slot: 'agent-harness',
@@ -519,6 +532,7 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     ...versionControl,
     ...hosting,
     ...harnesses,
+    ...databaseEngines,
   ];
 }
 
@@ -999,6 +1013,56 @@ export function toContainerEngineDescriptors(
     });
   }
   return descriptors;
+}
+
+/**
+ * Converts a manifest's database-engine contributions into the descriptors the Database Explorer's
+ * host starts plugins from (#1095).
+ *
+ * Every contribution becomes a descriptor, installed or not; each resolves how to start it only when
+ * asked, so the answer is about what is on disk then.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the payload is located through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's own directory, when the plugin is sideloaded.
+ * @param installedVersion Gets the version installed on disk for a plugin, when there is one.
+ * @returns Returns the descriptors.
+ */
+export function toDatabaseEngineDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly DatabaseEngineDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.databaseEngines ?? []).map(
+    (engine: ManifestDatabaseEngine): DatabaseEngineDescriptor => ({
+      id: engine.id,
+      displayName: engine.displayName,
+      priority: engine.priority,
+      resolve: (): DatabaseEngineResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), engine.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${engine.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          engine.command,
+          entryPoint,
+          engine.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
 }
 
 /**

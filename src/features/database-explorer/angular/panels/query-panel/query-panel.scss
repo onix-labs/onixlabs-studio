@@ -1,0 +1,249 @@
+// One query in the well: its tool strip, then the editor over its results in the shared panel layout,
+// so the divider between them drags and is remembered.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.query {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.query__connection {
+  flex: 0 1 14rem;
+  min-inline-size: 8rem;
+}
+
+.query__database {
+  flex: 0 1 11rem;
+  min-inline-size: 7rem;
+}
+
+.query__spacer {
+  flex: 1 1 auto;
+}
+
+.query__editor {
+  block-size: 100%;
+  min-block-size: 0;
+
+  app-text-editor {
+    display: block;
+    block-size: 100%;
+  }
+}
+
+// The results pane: its tab strip at its natural height, the showing tab's content taking the rest.
+.results {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.results__tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-inline: 0.5rem;
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+}
+
+.results__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0;
+  border-block-end: 0.125rem solid transparent;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+
+  &--active {
+    color: var(--accent-color);
+    border-block-end-color: var(--accent-color);
+  }
+}
+
+.results__count {
+  padding: 0 0.35rem;
+  font-size: 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--accent-surface-background-color);
+  color: var(--accent-color);
+
+  &--error {
+    background: rgba(220, 53, 69, 0.15);
+    color: var(--error-color);
+  }
+}
+
+.results__spacer {
+  flex: 1 1 auto;
+}
+
+.results__views {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.results__view {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  cursor: pointer;
+
+  &--active {
+    color: var(--accent-color);
+    border-color: var(--accent-surface-border-color);
+    background: var(--accent-surface-background-color);
+  }
+}
+
+.results__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.results__fill {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.results__raw {
+  display: block;
+}
+
+.results__sets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.results__set {
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0.0625rem solid var(--dock-border-color);
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  cursor: pointer;
+
+  &--active {
+    color: var(--accent-color);
+    border-color: var(--accent-surface-border-color);
+  }
+}
+
+// The grid's cells: monospaced, one line each, NULL muted and numbers to the right.
+.results__grid {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.results__index {
+  color: var(--form-muted-foreground-color);
+}
+
+.results__cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &[data-kind='null'] {
+    font-style: italic;
+    color: var(--form-muted-foreground-color);
+  }
+
+  &[data-kind='graph'] {
+    color: var(--accent-color);
+  }
+}
+
+.results__more {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  border-block-start: 0.0625rem solid var(--dock-border-color);
+}
+
+.results__messages {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  overflow: auto;
+  list-style: none;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+.results__message {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-block: 0.15rem;
+
+  &[data-severity='error'] {
+    color: var(--error-color);
+  }
+
+  &[data-severity='warning'] {
+    color: var(--warning-color);
+  }
+
+  &--summary {
+    margin-block-start: 0.5rem;
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.results__line {
+  flex: 0 0 auto;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-color);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.results__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.results__hint {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}

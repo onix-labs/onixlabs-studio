@@ -1,5 +1,5 @@
-/* TypeScript configuration for the decoder protocol module.
-   Shared between the decoder plugins and bundled into each of them, so every plugin artefact stays
+/* TypeScript configuration for the plugin protocol modules: the decoders' `listing.ts`, and the
+   database engines' `database/`. Shared between the plugins of each kind and bundled into each of them, so every plugin artefact stays
    self-contained. Deliberately separate from the application's `src/`: a decoder's contract with
    Studio is the wire protocol, not shared TypeScript. */
 {
@@ -15,5 +15,7 @@
     "noEmit": true,
     "declaration": false
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "database/*.ts"],
+  /* The specs run in Studio's unit suite, which supplies their test runner's types. */
+  "exclude": ["**/*.spec.ts"]
 }

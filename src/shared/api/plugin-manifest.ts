@@ -137,8 +137,14 @@ import {
  * plugin talks to its engine and Studio talks to the plugin. `cli` names the engine's own command-line
  * tool, looked for on the machine's PATH for the operations that are a terminal session. An engine
  * without a `command` — one built for an older Studio — is listed but cannot be used until updated.
+ *
+ * `1.20.0` adds the `databaseEngines` contribution point (#1095), the slot the Database Explorer is
+ * built on: a plugin process per database engine — SQLite, PostgreSQL, Neo4j — speaking the
+ * database-engine protocol. Unkeyed, and unlike the container engine not a choose-one slot: every
+ * installed engine is live at once, and each saved connection names the engine that makes it. Adds
+ * only.
  */
-export const PLUGIN_API_VERSION: string = '1.19.0';
+export const PLUGIN_API_VERSION: string = '1.20.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -626,6 +632,45 @@ export interface ManifestContainerEngine {
 }
 
 /**
+ * Describes a database engine a plugin contributes (#1095).
+ *
+ * The payload is a plugin process speaking the database-engine protocol: it connects to the database
+ * itself, with the driver it bundles, and Studio talks to it. What the engine is — its query language,
+ * its capabilities, the fields a connection needs — the process says for itself at `initialize`, so
+ * the manifest carries only what Studio needs before it starts it.
+ *
+ * Unkeyed: every installed engine is live at once, and which one serves a query is a property of the
+ * connection the query runs against.
+ */
+export interface ManifestDatabaseEngine {
+  /**
+   * Gets the identifier the engine is registered under, which saved connections name.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `SQLite`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to order the engines offered for a new connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how the plugin process is run.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes an agent harness a plugin contributes (#653).
  *
  * The fifth contribution point, and the first whose payload is a **peer** rather than a tool: a language
@@ -945,6 +990,11 @@ export interface ManifestContributions {
    * Gets the code hosts contributed.
    */
   readonly hosting?: readonly ManifestHosting[];
+
+  /**
+   * Gets the database engines contributed (1.20.0).
+   */
+  readonly databaseEngines?: readonly ManifestDatabaseEngine[];
 }
 
 /**
@@ -1520,6 +1570,26 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const databaseEngines: ManifestDatabaseEngine[] = [];
+  readContributionList(
+    source['databaseEngines'],
+    'contributes.databaseEngines',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      databaseEngines.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   const versionControl: ManifestVersionControl[] = [];
   readContributionList(
     source['versionControl'],
@@ -1593,11 +1663,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     containerEngines.length === 0 &&
     agentHarnesses.length === 0 &&
     versionControl.length === 0 &&
-    hosting.length === 0
+    hosting.length === 0 &&
+    databaseEngines.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system or code host',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host or database engine',
     );
   }
   return {
@@ -1608,6 +1679,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     agentHarnesses,
     versionControl,
     hosting,
+    databaseEngines,
   };
 }
 

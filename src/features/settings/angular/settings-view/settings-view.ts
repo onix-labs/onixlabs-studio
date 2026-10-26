@@ -50,6 +50,7 @@ type SettingsSectionId =
   | 'ai-skills'
   | 'mission-control'
   | 'system-monitor'
+  | 'database-explorer'
   | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
@@ -301,6 +302,14 @@ export class SettingsView {
       label: 'System Monitor',
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
+    },
+    {
+      id: 'database-explorer',
+      label: 'Database Explorer',
+      icon: Icon.DATABASE,
+      children: [
+        { id: 'database-explorer-general', label: 'General', sectionId: 'database-explorer' },
+      ],
     },
     {
       id: 'plugins',

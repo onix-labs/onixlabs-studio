@@ -1,0 +1,121 @@
+<app-explorer-toolbar
+  [query]="query()"
+  searchPlaceholder="Search objects"
+  [moreItems]="moreItems"
+  (queryChange)="query.set($event)"
+  (expandAll)="expandAll()"
+  (collapseAll)="collapseAll()"
+  (moreSelected)="onMoreAction($event)"
+/>
+
+@if (
+  workspace.connections().length === 0 &&
+  workspace.enginesKnown() &&
+  workspace.engines().length === 0
+) {
+  <!-- Nothing installed is not the same as nothing added: no connection can be made until an engine
+       is, so this says so and offers one rather than a New Connection with no engine to choose. -->
+  <div class="objects__empty">
+    <app-icon class="objects__empty-icon" [icon]="Icon.DATABASE_EMPTY" aria-hidden="true" />
+    <p class="objects__empty-caption">No database engine is installed</p>
+    @if (engineCandidate(); as candidate) {
+      <p class="objects__empty-detail">
+        {{ candidate.name }} provides one. Others are under Plugins.
+      </p>
+      <app-button
+        variant="solid"
+        [icon]="Icon.DOWNLOAD"
+        [label]="'Install ' + candidate.name"
+        [disabled]="installing()"
+        (click)="installEngine(candidate)"
+      />
+    } @else {
+      <p class="objects__empty-detail">No database engine plugin is available to install.</p>
+    }
+  </div>
+} @else if (workspace.connections().length === 0) {
+  <!-- An empty document, in the shape an empty agent takes: a large glyph, what is missing, what to
+       do about it, and the one action — centred in the panel rather than a tree with nothing in it. -->
+  <div class="objects__empty">
+    <app-icon class="objects__empty-icon" [icon]="Icon.DATABASE_EMPTY" aria-hidden="true" />
+    <p class="objects__empty-caption">No connections yet</p>
+    <p class="objects__empty-detail">Add one to browse its databases and run queries against it.</p>
+    <app-button variant="solid" label="New Connection" (click)="prompts.newConnection()" />
+  </div>
+} @else {
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="selectedId()"
+    [virtual]="true"
+    [contextMenuFor]="contextMenuFor"
+    [editingId]="renameTarget()?.rowId ?? null"
+    [editValue]="renameTarget()?.title ?? ''"
+    (rowClick)="onRowClick($event)"
+    (contextMenuSelect)="onContextAction($event)"
+    (editCommit)="commitRename($event)"
+    (editCancel)="renameTarget.set(null)"
+  >
+    <ng-template let-row let-editing="editing">
+      @let data = row.data;
+
+      @switch (data.kind) {
+        @case ('connection') {
+          <app-icon
+            class="tree-icon"
+            [icon]="data.state === 'connecting' ? Icon.SPINNER : Icon.DATABASE_CONNECTION"
+          />
+          <span class="tree-name">{{ data.label }}</span>
+          <span class="objects__detail">{{ data.detail }}</span>
+          @if (data.state === 'open') {
+            <span class="objects__live" title="Connected"></span>
+          }
+        }
+        @case ('node') {
+          <app-icon class="tree-icon" [icon]="nodeIcon(data.node)" />
+          <span class="tree-name">{{ data.node.label }}</span>
+          @if (data.node.detail) {
+            <span class="objects__detail">{{ data.node.detail }}</span>
+          }
+        }
+        @case ('status') {
+          <app-icon class="tree-icon" [icon]="data.failed ? Icon.WARNING : Icon.SPINNER" />
+          <span class="tree-name objects__status">{{ data.label }}</span>
+        }
+        @case ('queries') {
+          <app-icon class="tree-icon tree-icon--folder" [icon]="Icon.API_COLLECTION" />
+          <span class="tree-name">Queries</span>
+          <span class="objects__detail">{{ data.count }}</span>
+        }
+        @case ('query') {
+          <app-icon class="tree-icon" [icon]="Icon.DATABASE_QUERY" />
+          @if (!editing) {
+            <span class="tree-name">{{ data.query.title }}</span>
+          }
+        }
+      }
+    </ng-template>
+  </app-tree-view>
+}
+
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  ariaLabel="Delete"
+  (dismiss)="deleteTarget.set(null)"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">Delete “{{ deleteTarget()?.label }}”?</h2>
+    <p class="database-dialog__message">
+      @if (deleteTarget()?.kind === 'connection') {
+        The connection and the queries written against it are removed from this document. Nothing on
+        the server is touched.
+      } @else {
+        The query is removed from this document. This cannot be undone.
+      }
+    </p>
+    <app-button-row class="database-dialog__actions">
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button label="Cancel" (click)="deleteTarget.set(null)" />
+    </app-button-row>
+  </ng-template>
+</app-modal>

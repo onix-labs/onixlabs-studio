@@ -13,6 +13,7 @@ export type TabType =
   | 'agent'
   | 'containers'
   | 'api-explorer'
+  | 'database-explorer'
   | 'model-manager'
   | 'plugin-manager'
   | 'system-monitor'
@@ -136,6 +137,11 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   agent: { label: 'Agent', kind: 'Agent', icon: Icon.AGENT },
   containers: { label: 'Containers', kind: 'Containers', icon: Icon.CONTAINERS },
   'api-explorer': { label: 'API Explorer', kind: 'API Explorer', icon: Icon.API_EXPLORER },
+  'database-explorer': {
+    label: 'Database Explorer',
+    kind: 'Database Explorer',
+    icon: Icon.DATABASE,
+  },
   'model-manager': { label: 'AI Manager', kind: 'AI Manager', icon: Icon.AI_MODELS },
   'plugin-manager': { label: 'Plugins', kind: 'Plugin Manager', icon: Icon.WELCOME_PLUGINS },
   'system-monitor': { label: 'System Monitor', kind: 'System Monitor', icon: Icon.SYSTEM_MONITOR },

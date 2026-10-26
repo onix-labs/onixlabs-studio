@@ -54,6 +54,22 @@ export type TileScrollMode = 'into-view' | 'absolute-left';
 export type ConversationTextSize = 'small' | 'medium' | 'large';
 
 /**
+ * What the Database Explorer does with a query a select action (Select Top 1000 Rows, Match 25
+ * Nodes) opens: leave it for the user to run, or run it straight away.
+ */
+export type DatabaseSelectAction = 'open' | 'open-and-run';
+
+/**
+ * Which rules the Database Explorer's results grid draws between its cells.
+ */
+export type DatabaseGridlines = 'none' | 'horizontal' | 'full';
+
+/**
+ * How strongly the Database Explorer's results grid draws its gridlines.
+ */
+export type DatabaseGridlineTone = 'light' | 'dark';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -141,6 +157,10 @@ export interface SettingsValues {
   readonly 'missionControl.tileScrollMode': TileScrollMode;
 
   readonly 'systemMonitor.refreshRate': number;
+
+  readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
+  readonly 'databaseExplorer.gridlines': DatabaseGridlines;
+  readonly 'databaseExplorer.gridlineTone': DatabaseGridlineTone;
 }
 
 /**
@@ -1182,6 +1202,61 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 1000,
+      },
+    ],
+  },
+  {
+    id: 'database-explorer',
+    label: 'Database Explorer',
+    settings: [
+      {
+        key: 'databaseExplorer.selectAction',
+        title: 'Select actions',
+        description:
+          'What happens when you choose an action that reads data from the Object Explorer, such as ' +
+          'Select Top 1000 Rows or Match 25 Nodes. Open the query leaves it for you to run; Open and ' +
+          'run the query runs it straight away. Actions that write a script, such as Script as ' +
+          'CREATE, only ever open it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'open', label: 'Open the query' },
+            { value: 'open-and-run', label: 'Open and run the query' },
+          ],
+        },
+        default: 'open',
+      },
+      {
+        key: 'databaseExplorer.gridlines',
+        title: 'Results gridlines',
+        description:
+          'The lines drawn between the cells of a results grid: none, a line under each row, or a ' +
+          'full grid between rows and columns.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'horizontal', label: 'Horizontal' },
+            { value: 'full', label: 'Horizontal and vertical' },
+          ],
+        },
+        default: 'horizontal',
+      },
+      {
+        key: 'databaseExplorer.gridlineTone',
+        title: 'Results gridline colour',
+        description:
+          'How strongly the gridlines of a results grid are drawn: Light is a faint rule that stays ' +
+          'out of the way of the data; Dark is a firm one that makes the grid easy to follow across a ' +
+          'wide row.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ],
+        },
+        default: 'light',
       },
     ],
   },
