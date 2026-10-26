@@ -4,6 +4,8 @@ import { By } from '@angular/platform-browser';
 import {
   Table,
   TableColumn,
+  TableGridlines,
+  TableGridlineTone,
   TableGroupDef,
   TableRow,
   TableRowDef,
@@ -21,6 +23,9 @@ import {
       [striped]="striped()"
       [rowSize]="rowSize()"
       [virtual]="virtual()"
+      [resizable]="resizable()"
+      [gridlines]="gridlines()"
+      [gridlineTone]="gridlineTone()"
       emptyText="Nothing here."
       (rowClick)="onRow($event)"
       (sortChange)="onSort($event)"
@@ -49,6 +54,10 @@ class TestHost {
   public readonly striped: WritableSignal<boolean> = signal<boolean>(false);
   public readonly rowSize: WritableSignal<TableRowSize> = signal<TableRowSize>('compact');
   public readonly virtual: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly resizable: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly gridlines: WritableSignal<TableGridlines> = signal<TableGridlines>('none');
+  public readonly gridlineTone: WritableSignal<TableGridlineTone> =
+    signal<TableGridlineTone>('light');
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
 
@@ -282,5 +291,97 @@ describe('Table', () => {
       expect(host.querySelector('.table-empty')?.textContent?.trim()).toBe('Nothing here.');
       expect(spacers()).toEqual([]);
     });
+  });
+
+  describe('resizable columns', () => {
+    /**
+     * Sends a pointer event of the given type to an element.
+     * @param target The element.
+     * @param type The event type.
+     * @param clientX The pointer's x position.
+     */
+    function pointer(target: Element, type: string, clientX: number): void {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }));
+    }
+
+    it('drawsNoGripsAndNoFiller_unlessAsked', () => {
+      expect(host.querySelectorAll('.table-th__grip')).toHaveLength(0);
+      expect(host.querySelector('.table-th--filler')).toBeNull();
+      expect(host.querySelectorAll('colgroup col')).toHaveLength(2);
+    });
+
+    it('givesEveryColumnAGrip_andEndsWithAFillerThatHasNone', () => {
+      component.resizable.set(true);
+      fixture.detectChanges();
+
+      // One grip per real column; the filler column takes what is left and cannot be resized.
+      expect(host.querySelectorAll('.table-th__grip')).toHaveLength(2);
+      expect(host.querySelector('.table-th--filler .table-th__grip')).toBeNull();
+      expect(host.querySelectorAll('colgroup col')).toHaveLength(3);
+      expect(host.querySelectorAll('.table-row .table-filler')).toHaveLength(2);
+      // A full-width row spans the filler too, so a group header reaches the right edge.
+      expect(host.querySelector('.table-group__cell')?.getAttribute('colspan')).toBe('3');
+    });
+
+    it('resizesTheColumnWhoseEdgeIsDragged_andNeverBelowTheFloor', () => {
+      component.resizable.set(true);
+      fixture.detectChanges();
+      const grip: Element = host.querySelectorAll('.table-th__grip')[0];
+
+      pointer(grip, 'pointerdown', 100);
+      pointer(grip, 'pointermove', 260);
+      pointer(grip, 'pointerup', 260);
+      fixture.detectChanges();
+
+      const cols: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('colgroup col'));
+      // The test DOM measures every heading at 0px, so the dragged column is the drag's 160px.
+      expect(cols[0].style.width).toBe('160px');
+      // The table is never narrower than its scroll area, however small the columns are dragged.
+      expect(host.querySelector<HTMLElement>('table.table')?.style.inlineSize).toContain(
+        'max(100%',
+      );
+
+      pointer(grip, 'pointerdown', 300);
+      pointer(grip, 'pointermove', 0);
+      pointer(grip, 'pointerup', 0);
+      fixture.detectChanges();
+      expect(cols[0].style.width).toBe('40px');
+    });
+
+    it('startsANewSetOfColumnsFromTheirStatedWidths', () => {
+      component.resizable.set(true);
+      fixture.detectChanges();
+      const grip: Element = host.querySelectorAll('.table-th__grip')[1];
+      pointer(grip, 'pointerdown', 0);
+      pointer(grip, 'pointermove', 200);
+      pointer(grip, 'pointerup', 200);
+      fixture.detectChanges();
+
+      component.columns.set([
+        { id: 'other', header: 'Other' },
+        { id: 'more', header: 'More', width: '9rem' },
+      ]);
+      fixture.detectChanges();
+
+      const cols: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('colgroup col'));
+      expect(cols[1].style.width).toBe('9rem');
+      expect(host.querySelector<HTMLElement>('table.table')?.style.inlineSize).toBe('');
+    });
+  });
+
+  it('gridlines_drawRowsThenAFullGrid_inEitherTone', () => {
+    const table: () => HTMLElement = (): HTMLElement => host.querySelector('table.table')!;
+    expect(table().classList.contains('table--rows')).toBe(false);
+
+    component.gridlines.set('horizontal');
+    fixture.detectChanges();
+    expect(table().classList.contains('table--rows')).toBe(true);
+    expect(table().classList.contains('table--grid')).toBe(false);
+
+    component.gridlines.set('full');
+    component.gridlineTone.set('dark');
+    fixture.detectChanges();
+    expect(table().classList.contains('table--grid')).toBe(true);
+    expect(table().classList.contains('table--dark-lines')).toBe(true);
   });
 });

@@ -141,6 +141,10 @@
     white
   );
 
+  // A resizable table's column splitter: one line, the lighter of the groove's two, so it reads
+  // against a dark header as the gridlines below it read against the rows.
+  --table-splitter-color: var(--status-strip-bevel-highlight-color);
+
   // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.

@@ -137,6 +137,10 @@
   );
   --status-strip-bevel-highlight-color: white;
 
+  // A resizable table's column splitter: one line, the darker of the groove's two — white would vanish
+  // against a light header.
+  --table-splitter-color: var(--status-strip-bevel-shadow-color);
+
   // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.

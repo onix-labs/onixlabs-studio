@@ -16,6 +16,7 @@ import {
   signal,
   Signal,
   TemplateRef,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -129,6 +130,21 @@ export type TableSortDirection = 'asc' | 'desc';
  * How tall a table's data rows are.
  */
 export type TableRowSize = 'compact' | 'comfortable';
+
+/**
+ * Which rules a table draws between its cells: none, a line under each row, or a full grid.
+ */
+export type TableGridlines = 'none' | 'horizontal' | 'full';
+
+/**
+ * How strongly a table's gridlines are drawn: a faint rule, or a firm one.
+ */
+export type TableGridlineTone = 'light' | 'dark';
+
+/**
+ * The narrowest a resized column can be dragged, in pixels.
+ */
+const MIN_COLUMN_PX: number = 40;
 
 /**
  * A sort selection: the column being sorted and its direction.
@@ -269,6 +285,83 @@ export class Table {
   public readonly virtual: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets whether the header's column edges can be dragged to resize their columns. Off by default.
+   * Once a column has been resized the table lays every column out at its measured width, so the
+   * table may grow wider than its scroll area and scroll sideways. A resizable table ends with an
+   * empty filler column that cannot be resized and takes whatever width the columns leave, so the
+   * table always reaches its scroll area's right edge. The widths
+   * last as long as the columns do: a new set of column ids starts from the stated widths again.
+   */
+  public readonly resizable: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets which rules the table draws between its cells. Defaults to none, the table's look elsewhere
+   * in the application.
+   */
+  public readonly gridlines: InputSignal<TableGridlines> = input<TableGridlines>('none');
+
+  /**
+   * Gets how strongly the gridlines are drawn. Defaults to light.
+   */
+  public readonly gridlineTone: InputSignal<TableGridlineTone> = input<TableGridlineTone>('light');
+
+  /**
+   * Gets how many cells a full-width row spans: every column, and the filler a resizable table ends
+   * with.
+   */
+  protected readonly spanCount: Signal<number> = computed(
+    (): number => this.columns().length + (this.resizable() ? 1 : 0),
+  );
+
+  /**
+   * Holds each column's width in pixels once the user has resized one, keyed by column id; empty until
+   * then, when the columns' stated widths apply.
+   */
+  private readonly resizedWidths: WritableSignal<ReadonlyMap<string, number>> = signal<
+    ReadonlyMap<string, number>
+  >(new Map<string, number>());
+
+  /**
+   * Gets each column's width as rendered: the resized width once there is one, otherwise the stated
+   * width.
+   */
+  protected readonly columnWidths: Signal<readonly (string | null)[]> = computed(
+    (): readonly (string | null)[] => {
+      const resized: ReadonlyMap<string, number> = this.resizedWidths();
+      return this.columns().map((column: TableColumn): string | null => {
+        const px: number | undefined = resized.get(column.id);
+        return px === undefined ? (column.width ?? null) : `${px}px`;
+      });
+    },
+  );
+
+  /**
+   * Gets the table's width once columns have been resized — the sum of their widths — or null while
+   * the table fills its scroll area as usual.
+   */
+  protected readonly resizedTableWidth: Signal<string | null> = computed((): string | null => {
+    const resized: ReadonlyMap<string, number> = this.resizedWidths();
+    if (resized.size === 0) {
+      return null;
+    }
+    let total: number = 0;
+    for (const column of this.columns()) {
+      total += resized.get(column.id) ?? MIN_COLUMN_PX;
+    }
+    // Never narrower than the scroll area: the filler column takes up whatever the columns leave.
+    return `max(100%, ${total}px)`;
+  });
+
+  /**
+   * Holds the column resize in progress, or null.
+   */
+  private columnDrag: {
+    readonly id: string;
+    readonly startX: number;
+    readonly startWidth: number;
+  } | null = null;
+
+  /**
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TableRow> = output<TableRow>();
@@ -353,6 +446,81 @@ export class Table {
    */
   private readonly scroller: Signal<ElementRef<HTMLElement> | undefined> =
     viewChild<ElementRef<HTMLElement>>('scroller');
+
+  /**
+   * Holds the identity of the column set the resized widths belong to, so a new set starts afresh.
+   */
+  private resizedFor: string = '';
+
+  /**
+   * Starts resizing a column from its header's trailing edge. Every column's rendered width is measured
+   * first and held from then on, so dragging one edge moves that edge alone rather than having the
+   * fixed layout share the difference out across the others.
+   * @param event The pointer event.
+   * @param column The column whose edge was pressed.
+   */
+  protected startResize(event: PointerEvent, column: TableColumn): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle: HTMLElement = event.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(event.pointerId);
+    const headers: readonly HTMLElement[] = Array.from(
+      this.scroller()?.nativeElement.querySelectorAll<HTMLElement>('.table-head th') ?? [],
+    );
+    const measured: Map<string, number> = new Map<string, number>(this.resizedWidths());
+    this.columns().forEach((each: TableColumn, index: number): void => {
+      if (!measured.has(each.id)) {
+        measured.set(each.id, Math.round(headers[index]?.getBoundingClientRect().width ?? 120));
+      }
+    });
+    this.resizedFor = this.columnKey();
+    this.resizedWidths.set(measured);
+    this.columnDrag = {
+      id: column.id,
+      startX: event.clientX,
+      startWidth: measured.get(column.id) ?? 120,
+    };
+  }
+
+  /**
+   * Follows the pointer while a column is being resized.
+   * @param event The pointer event.
+   */
+  protected moveResize(event: PointerEvent): void {
+    const drag: {
+      readonly id: string;
+      readonly startX: number;
+      readonly startWidth: number;
+    } | null = this.columnDrag;
+    if (drag === null) {
+      return;
+    }
+    const width: number = Math.max(
+      MIN_COLUMN_PX,
+      Math.round(drag.startWidth + event.clientX - drag.startX),
+    );
+    this.resizedWidths.update(
+      (widths: ReadonlyMap<string, number>): ReadonlyMap<string, number> =>
+        new Map<string, number>([...widths, [drag.id, width]]),
+    );
+  }
+
+  /**
+   * Ends a column resize.
+   */
+  protected endResize(): void {
+    this.columnDrag = null;
+  }
+
+  /**
+   * Identifies the current set of columns.
+   * @returns Returns their ids, joined.
+   */
+  private columnKey(): string {
+    return this.columns()
+      .map((column: TableColumn): string => column.id)
+      .join('\u0000');
+  }
 
   /**
    * Holds how far the scroll container is scrolled down, in pixels (read by a {@link virtual} table).
@@ -448,6 +616,15 @@ export class Table {
    * height, and measures a rendered row's height after each render.
    */
   public constructor() {
+    // A new set of columns — another query's result — starts from the stated widths again.
+    effect((): void => {
+      const key: string = this.columnKey();
+      untracked((): void => {
+        if (key !== this.resizedFor && this.resizedWidths().size > 0) {
+          this.resizedWidths.set(new Map<string, number>());
+        }
+      });
+    });
     // The scroll position and size feed the window. Listened to outside the template so a scroll
     // within a window step costs a signal write and nothing more.
     effect((onCleanup: (cleanup: () => void) => void): void => {
