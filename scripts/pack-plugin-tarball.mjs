@@ -18,7 +18,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +59,20 @@ const key = `node_modules/${pkg.name}`;
 const pinned = lockfile.packages[key]?.integrity;
 if (pinned === undefined) {
   stdout.write(`The lockfile has no entry for ${key}, so there is nothing to check against.\n`);
+  exit(1);
+}
+
+// 🔥 A symlinked `node_modules` (a worktree borrowing another checkout's tree) cannot reproduce CI's
+// bytes: esbuild follows the link and writes the dependencies' module paths into the bundle relative to
+// where the tree really is — `../../../../node_modules/pg/…` rather than `../../node_modules/pg/…`. The
+// pack would "match" a pin it made itself, and the release would refuse it, which is how
+// `plugin-postgres-engine-v1.0.0` and `plugin-neo4j-engine-v1.0.0` were spent.
+const modules = join(REPO, 'node_modules');
+if (existsSync(modules) && lstatSync(modules).isSymbolicLink()) {
+  stdout.write(
+    `\nnode_modules is a symbolic link, so a bundle built from it would not match CI's.\n` +
+      `Run \`npm ci\` (\`--ignore-scripts\` is enough to pack) in this checkout and pack again.\n`,
+  );
   exit(1);
 }
 
