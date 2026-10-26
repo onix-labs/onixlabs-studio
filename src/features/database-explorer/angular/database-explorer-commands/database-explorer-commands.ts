@@ -1,4 +1,51 @@
 import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Icon } from '@shared/angular/icons/icon';
+
+/**
+ * The connection the ribbon's Connection buttons act on (#1102): the one selected in the Object
+ * Explorer — or the one the selected tree item belongs to — else the connection of the query in front.
+ */
+export interface ConnectionTarget {
+  /**
+   * Gets the connection's id.
+   */
+  readonly id: string;
+
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets whether it is open, opening, or closed.
+   */
+  readonly state: 'open' | 'connecting' | 'closed';
+}
+
+/**
+ * One of the tab's tool panels, as the ribbon's Tools toggles show it.
+ */
+export interface RibbonPanel {
+  /**
+   * Gets the panel's id.
+   */
+  readonly id: string;
+
+  /**
+   * Gets its title.
+   */
+  readonly title: string;
+
+  /**
+   * Gets its icon.
+   */
+  readonly icon: Icon;
+
+  /**
+   * Gets whether it is showing — docked, floating, or popped out.
+   */
+  readonly open: boolean;
+}
 
 /**
  * The contract the active Database Explorer view implements so the ribbon can drive it — the same
@@ -15,6 +62,16 @@ export interface DatabaseExplorerCommandHandler {
    * Gets whether the query open in the well is running.
    */
   readonly executing: Signal<boolean>;
+
+  /**
+   * Gets the connection the Connection buttons act on, or null when there is none.
+   */
+  readonly connectionTarget: Signal<ConnectionTarget | null>;
+
+  /**
+   * Gets the tab's tool panels.
+   */
+  readonly panels: Signal<readonly RibbonPanel[]>;
 
   /**
    * Gets whether the document has a passphrase.
@@ -55,6 +112,28 @@ export interface DatabaseExplorerCommandHandler {
    * Restores the tab's default arrangement, keeping its open queries.
    */
   resetLayout(): void;
+
+  /**
+   * Connects the target connection when it is closed, and disconnects it when it is open.
+   */
+  toggleConnection(): void;
+
+  /**
+   * Re-reads the target connection's tree.
+   */
+  refreshConnection(): void;
+
+  /**
+   * Opens the target connection's edit dialog.
+   */
+  editConnection(): void;
+
+  /**
+   * Shows a tool panel that is hidden, and closes one that is showing.
+   * @param id The panel's id.
+   */
+  togglePanel(id: string): void;
+
   /**
    * Asks for a passphrase to give the document, or a new one.
    */
@@ -91,6 +170,20 @@ export class DatabaseExplorerCommands {
    */
   public readonly executing: Signal<boolean> = computed(
     (): boolean => this.handler()?.executing() ?? false,
+  );
+
+  /**
+   * Gets the connection the Connection buttons act on, or null.
+   */
+  public readonly connectionTarget: Signal<ConnectionTarget | null> = computed(
+    (): ConnectionTarget | null => this.handler()?.connectionTarget() ?? null,
+  );
+
+  /**
+   * Gets the active tab's tool panels.
+   */
+  public readonly panels: Signal<readonly RibbonPanel[]> = computed(
+    (): readonly RibbonPanel[] => this.handler()?.panels() ?? [],
   );
 
   /**
@@ -166,6 +259,36 @@ export class DatabaseExplorerCommands {
   public resetLayout(): void {
     this.handler()?.resetLayout();
   }
+
+  /**
+   * Connects or disconnects the target connection.
+   */
+  public toggleConnection(): void {
+    this.handler()?.toggleConnection();
+  }
+
+  /**
+   * Re-reads the target connection's tree.
+   */
+  public refreshConnection(): void {
+    this.handler()?.refreshConnection();
+  }
+
+  /**
+   * Opens the target connection's edit dialog.
+   */
+  public editConnection(): void {
+    this.handler()?.editConnection();
+  }
+
+  /**
+   * Shows or closes a tool panel.
+   * @param id The panel's id.
+   */
+  public togglePanel(id: string): void {
+    this.handler()?.togglePanel(id);
+  }
+
   /**
    * Asks for a passphrase to give the document, or a new one.
    */

@@ -12,7 +12,7 @@ import {
   untracked,
 } from '@angular/core';
 import { ConnectionField, DatabaseEngineInfo } from '@shared/api/database-engine-protocol';
-import { DatabaseQuery } from '@shared/api/database-document';
+import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -32,20 +32,32 @@ import {
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
-import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
 import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
-import { DockNode, isStackNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DockNode,
+  DockSide,
+  isStackNode,
+  StackNode,
+} from '@shared/angular/services/dock-layout/dock-node';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
-import { findDocumentWell, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  collectPanelIds,
+  findDocumentWell,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
+import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
+import { parentDir } from '@shared/angular/services/lsp/lsp-paths';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
@@ -72,13 +84,15 @@ import { DatabaseAgentCapabilities } from '../database-agent-capabilities/databa
 import { DatabaseClient } from '../database-client/database-client';
 import { DATABASE_EXPLORER_DOCK_BLUEPRINT } from '../database-explorer-dock-blueprint';
 import {
+  ConnectionTarget,
   DatabaseExplorerCommandHandler,
   DatabaseExplorerCommands,
+  RibbonPanel,
 } from '../database-explorer-commands/database-explorer-commands';
 import { DatabasePrompts } from '../database-prompts/database-prompts';
 import { DatabaseQueryOpener } from '../database-query-opener/database-query-opener';
 import { DatabaseCompletions } from '../database-completions/database-completions';
-import { DatabaseWorkspace } from '../database-workspace/database-workspace';
+import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/database-workspace';
 
 /**
  * The Database Explorer tab: a dock surface for browsing databases and running queries
@@ -166,6 +180,9 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   private readonly keybindings: Keybindings = inject(Keybindings);
   private readonly log: Log = inject(Log);
   private readonly panelPopout: PanelPopout = inject(PanelPopout);
+  private readonly popoutPanels: PopoutPanels = inject(PopoutPanels);
+  private readonly dockFloating: DockFloating = inject(DockFloating);
+  private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
    * Publishes this view's injector so the status strip mounts inside it.
@@ -230,6 +247,53 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   );
 
   /**
+   * Gets the connection the ribbon's Connection buttons act on (#1102): the one selected in the Object
+   * Explorer, or the one the selected tree item belongs to; else the connection of the query in front.
+   */
+  public readonly connectionTarget: Signal<ConnectionTarget | null> = computed(
+    (): ConnectionTarget | null => {
+      const selection: DatabaseSelection | null = this.workspace.selection();
+      const selected: string | null =
+        selection !== null && selection.kind !== 'graph' ? selection.connectionId : null;
+      const front: string | null = this.openQueryId();
+      const id: string | null =
+        selected ?? (front === null ? null : (this.workspace.query(front)?.connectionId ?? null));
+      const connection: DatabaseConnection | undefined = this.workspace.connection(id);
+      if (connection === undefined) {
+        return null;
+      }
+      return {
+        id: connection.id,
+        name: connection.name,
+        state: this.workspace.sessions().has(connection.id)
+          ? 'open'
+          : this.workspace.connecting().has(connection.id)
+            ? 'connecting'
+            : 'closed',
+      };
+    },
+  );
+
+  /**
+   * Gets the tab's tool panels and whether each is showing, for the ribbon's Tools toggles.
+   */
+  public readonly panels: Signal<readonly RibbonPanel[]> = computed((): readonly RibbonPanel[] => {
+    const present: ReadonlySet<string> = new Set<string>(collectPanelIds(this.dockState.layout()));
+    const floats: readonly FloatWindow[] = this.dockFloating.floats();
+    return DATABASE_EXPLORER_DOCK_BLUEPRINT.panels
+      .filter((panel: DockPanel): boolean => panel.role === 'tool')
+      .map((panel: DockPanel): RibbonPanel => ({
+        id: panel.id,
+        title: panel.title,
+        icon: panel.icon,
+        open:
+          present.has(panel.id) ||
+          this.popoutPanels.isPopped(panel.id) ||
+          floats.some((float: FloatWindow): boolean => float.panelId === panel.id),
+      }));
+  });
+
+  /**
    * Gets whether the document has a passphrase, for the ribbon.
    */
   public readonly hasPassphrase: Signal<boolean> = computed((): boolean =>
@@ -255,6 +319,12 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
    * active.
    */
   public constructor() {
+    // The terminal opens in the document's folder, so `psql` or `sqlite3` beside a query starts where
+    // the document is; an untitled document has no folder, and the terminal says so.
+    effect((): void => {
+      const path: string | null = this.workspace.filePath();
+      untracked((): void => this.tabContext.setRoot(path === null ? null : parentDir(path)));
+    });
     effect((): void => {
       const name: string = this.workspace.documentName();
       const dirty: boolean = this.workspace.dirty();
@@ -391,6 +461,73 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   }
 
   /**
+   * Connects the target connection when it is closed — asking for its password first when it needs
+   * one — and disconnects it when it is open.
+   */
+  public toggleConnection(): void {
+    const target: ConnectionTarget | null = this.connectionTarget();
+    if (target?.state === 'open') {
+      void this.workspace.disconnect(target.id);
+    } else if (target?.state === 'closed') {
+      this.prompts.connect(target.id);
+    }
+  }
+
+  /**
+   * Re-reads the target connection's tree.
+   */
+  public refreshConnection(): void {
+    const target: ConnectionTarget | null = this.connectionTarget();
+    if (target?.state === 'open') {
+      void this.workspace.refresh(target.id, null);
+    }
+  }
+
+  /**
+   * Opens the target connection's edit dialog.
+   */
+  public editConnection(): void {
+    const target: ConnectionTarget | null = this.connectionTarget();
+    if (target !== null) {
+      this.prompts.editConnection(target.id);
+    }
+  }
+
+  /**
+   * Shows a hidden tool panel beside the panel it usually shares a group with, or on its usual edge;
+   * closes one that is showing, wherever it lives. A popped-out panel is brought forward rather than
+   * closed, since its own window is what closes it.
+   * @param id The panel's id.
+   */
+  public togglePanel(id: string): void {
+    if (this.popoutPanels.isPopped(id)) {
+      this.dockReveal.reveal(id);
+      return;
+    }
+    if (this.dockFloating.floats().some((float: FloatWindow): boolean => float.panelId === id)) {
+      void this.dockFloating.requestClose(id);
+      return;
+    }
+    const layout: DockNode = this.dockState.layout();
+    if (collectPanelIds(layout).includes(id)) {
+      void this.dockState.requestClose(id);
+      return;
+    }
+    const home: PanelHome = PANEL_HOMES[id] ?? { beside: [], edge: 'right' };
+    const anchor: StackNode | null =
+      home.beside
+        .map((neighbour: string): StackNode | null => findStackOfPanel(layout, neighbour))
+        .find((stack: StackNode | null): stack is StackNode => stack !== null) ?? null;
+    if (anchor === null) {
+      this.dockState.dockEdge(id, home.edge);
+    } else {
+      this.dockState.tabInto(anchor.id, id);
+    }
+    this.dockReveal.reveal(id);
+    this.log.debug('database.view', 'Panel shown from the ribbon', id);
+  }
+
+  /**
    * Asks for a passphrase to give the document, or a new one for it.
    */
   public setPassphrase(): void {
@@ -467,3 +604,23 @@ function documentPanelIds(node: DockNode): readonly string[] {
   }
   return node.children.flatMap((child: DockNode): readonly string[] => documentPanelIds(child));
 }
+
+/**
+ * Where a hidden tool panel goes back to: the group of the first of its usual neighbours still
+ * showing, else an edge of its own.
+ */
+interface PanelHome {
+  readonly beside: readonly string[];
+  readonly edge: DockSide;
+}
+
+/**
+ * Each tool panel's home, matching the blueprint: the Object Explorer on the left, Properties and the
+ * agent together on the right, and the terminal under the well.
+ */
+const PANEL_HOMES: Readonly<Record<string, PanelHome>> = {
+  objects: { beside: [], edge: 'left' },
+  properties: { beside: ['agent'], edge: 'right' },
+  agent: { beside: ['properties'], edge: 'right' },
+  terminal: { beside: [], edge: 'bottom' },
+};
