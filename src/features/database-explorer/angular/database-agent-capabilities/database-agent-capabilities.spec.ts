@@ -123,6 +123,14 @@ class FakeClient {
   }
 
   /**
+   * Reports that this machine cannot seal secrets, so nothing is remembered.
+   * @returns Returns false.
+   */
+  public canSealWithMachine(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  /**
    * Records a connect.
    * @param engine The engine.
    * @param values The values.

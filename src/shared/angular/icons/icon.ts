@@ -1564,6 +1564,23 @@ export class Icon {
   public static readonly DATABASE_RESET_LAYOUT: Icon = new Icon('ph-duotone ph-layout');
 
   /**
+   * Gets the icon of the Database Explorer's Set / Change Passphrase.
+   */
+  public static readonly DATABASE_PASSPHRASE: Icon = new Icon('ph-duotone ph-key');
+
+  /**
+   * Gets the icon of the Database Explorer's Unlock Passwords.
+   */
+  public static readonly DATABASE_UNLOCK: Icon = new Icon('ph-duotone ph-lock-key-open');
+
+  /**
+   * Gets the icon of the Database Explorer's Remove Passphrase.
+   */
+  public static readonly DATABASE_REMOVE_PASSPHRASE: Icon = new Icon(
+    'ph-duotone ph-lock-simple-open',
+  );
+
+  /**
    * Gets the icon of a schema in the object tree.
    */
   public static readonly DATABASE_SCHEMA: Icon = new Icon('ph-duotone ph-tree-structure');

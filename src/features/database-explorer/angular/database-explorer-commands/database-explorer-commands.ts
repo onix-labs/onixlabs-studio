@@ -17,6 +17,16 @@ export interface DatabaseExplorerCommandHandler {
   readonly executing: Signal<boolean>;
 
   /**
+   * Gets whether the document has a passphrase.
+   */
+  readonly hasPassphrase: Signal<boolean>;
+
+  /**
+   * Gets whether the document's passphrase is still to be given this session.
+   */
+  readonly locked: Signal<boolean>;
+
+  /**
    * Runs the open query (its selection, or all of it), or cancels it when it is running.
    */
   execute(): void;
@@ -45,6 +55,20 @@ export interface DatabaseExplorerCommandHandler {
    * Restores the tab's default arrangement, keeping its open queries.
    */
   resetLayout(): void;
+  /**
+   * Asks for a passphrase to give the document, or a new one.
+   */
+  setPassphrase(): void;
+
+  /**
+   * Removes the document's passphrase.
+   */
+  removePassphrase(): void;
+
+  /**
+   * Asks for the passphrase of a document that is still locked.
+   */
+  unlockPassphrase(): void;
 }
 
 /**
@@ -67,6 +91,20 @@ export class DatabaseExplorerCommands {
    */
   public readonly executing: Signal<boolean> = computed(
     (): boolean => this.handler()?.executing() ?? false,
+  );
+
+  /**
+   * Gets whether the active document has a passphrase.
+   */
+  public readonly hasPassphrase: Signal<boolean> = computed(
+    (): boolean => this.handler()?.hasPassphrase() ?? false,
+  );
+
+  /**
+   * Gets whether the active document's passphrase is still to be given.
+   */
+  public readonly locked: Signal<boolean> = computed(
+    (): boolean => this.handler()?.locked() ?? false,
   );
 
   /**
@@ -127,5 +165,25 @@ export class DatabaseExplorerCommands {
    */
   public resetLayout(): void {
     this.handler()?.resetLayout();
+  }
+  /**
+   * Asks for a passphrase to give the document, or a new one.
+   */
+  public setPassphrase(): void {
+    this.handler()?.setPassphrase();
+  }
+
+  /**
+   * Removes the document's passphrase.
+   */
+  public removePassphrase(): void {
+    this.handler()?.removePassphrase();
+  }
+
+  /**
+   * Asks for the passphrase of a document that is still locked.
+   */
+  public unlockPassphrase(): void {
+    this.handler()?.unlockPassphrase();
   }
 }

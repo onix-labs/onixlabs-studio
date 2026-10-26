@@ -1,3 +1,5 @@
+import { PassphraseLock } from './database-document';
+
 /**
  * Names the Database Explorer's IPC channels: the renderer's client and the main-process
  * {@link import('../electron/contributions/database/database.contribution').DatabaseContribution}
@@ -52,4 +54,40 @@ export enum DatabaseChannel {
    * Runs a node action and resolves what it produced (invoke).
    */
   Action = 'database:action',
+
+  /**
+   * Reports whether this machine can seal secrets with its keychain (invoke). Without one, a secret is
+   * remembered only in a document with a passphrase.
+   */
+  SecretsMachineSealing = 'database:secrets-machine-sealing',
+
+  /**
+   * Unlocks a passphrase (invoke): checks it against a document's lock, or makes a new lock when there
+   * is none, and resolves a {@link PassphraseUnlock}. The key stays in main; the renderer holds only
+   * its handle.
+   */
+  SecretsUnlock = 'database:secrets-unlock',
+
+  /**
+   * Seals a connection's secrets (invoke), with the passphrase behind a handle or, with none, with the
+   * machine's keychain. Resolves the seal, or null when the machine cannot seal.
+   */
+  SecretsSeal = 'database:secrets-seal',
+
+  /**
+   * Opens a seal (invoke), resolving the secrets, or null when this machine or handle cannot.
+   */
+  SecretsOpen = 'database:secrets-open',
+
+  /**
+   * Forgets a passphrase handle's key (send), when its document closes or its passphrase changes.
+   */
+  SecretsForget = 'database:secrets-forget',
 }
+
+/**
+ * What unlocking a passphrase resolves.
+ */
+export type PassphraseUnlock =
+  | { readonly kind: 'unlocked'; readonly handle: string; readonly lock: PassphraseLock }
+  | { readonly kind: 'wrong' };

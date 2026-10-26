@@ -20,7 +20,10 @@ import {
   DatabaseDocument,
   DatabaseQuery,
   parseDatabaseDocument,
+  PassphraseLock,
+  SealedSecrets,
 } from '@shared/api/database-document';
+import { PassphraseUnlock } from '@shared/api/database-channels';
 import { FileWriteResult } from '@shared/api/file-channels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DatabaseEnginePrompt } from '@shared/angular/services/plugins/database-engine-prompt';
@@ -232,6 +235,129 @@ class FakeClient {
   public action(session: string, path: string, action: string): Promise<NodeActionOutcome> {
     this.actions.push({ session, path, action });
     return Promise.resolve(this.actionOutcome);
+  }
+
+  /**
+   * Holds whether this machine can seal with its keychain.
+   */
+  public machineSealing: boolean = true;
+
+  /**
+   * Holds every seal call's secrets and handle.
+   */
+  public readonly seals: { secrets: Readonly<Record<string, string>>; handle: string | null }[] =
+    [];
+
+  /**
+   * Holds whether a seal call makes a seal, or resolves null as a machine without a keychain does.
+   */
+  public sealSucceeds: boolean = true;
+
+  /**
+   * Holds every open call's seal and handle.
+   */
+  public readonly opens: { sealed: SealedSecrets; handle: string | null }[] = [];
+
+  /**
+   * Holds what each seal's data opens to. A seal absent from it does not open here.
+   */
+  public readonly openable: Map<string, Readonly<Record<string, string>>> = new Map<
+    string,
+    Readonly<Record<string, string>>
+  >();
+
+  /**
+   * Holds the passphrase an existing lock accepts.
+   */
+  public rightPassphrase: string = 'open sesame';
+
+  /**
+   * Holds every unlock call's passphrase and lock.
+   */
+  public readonly unlocks: { passphrase: string; lock: PassphraseLock | null }[] = [];
+
+  /**
+   * Holds the handles asked to be forgotten.
+   */
+  public readonly forgets: string[] = [];
+
+  /**
+   * Holds how many handles have been handed out.
+   */
+  private handles: number = 0;
+
+  /**
+   * Resolves whether this machine can seal with its keychain.
+   * @returns Returns the configured answer.
+   */
+  public canSealWithMachine(): Promise<boolean> {
+    return Promise.resolve(this.machineSealing);
+  }
+
+  /**
+   * Unlocks a passphrase: a new lock for none, else the right passphrase only.
+   * @param passphrase The passphrase.
+   * @param lock The lock, or null to make one.
+   * @returns Returns the outcome.
+   */
+  public unlock(passphrase: string, lock: PassphraseLock | null): Promise<PassphraseUnlock> {
+    this.unlocks.push({ passphrase, lock });
+    if (lock !== null && passphrase !== this.rightPassphrase) {
+      return Promise.resolve({ kind: 'wrong' });
+    }
+    this.handles += 1;
+    return Promise.resolve({
+      kind: 'unlocked',
+      handle: `handle-${this.handles}`,
+      lock: lock ?? { salt: `salt-${this.handles}`, check: `check-${this.handles}` },
+    });
+  }
+
+  /**
+   * Records a seal and makes an opaque one that opens back to the secrets.
+   * @param secrets The secrets.
+   * @param handle The handle, or null for the machine.
+   * @returns Returns the seal, or null when sealing is configured to fail.
+   */
+  public seal(
+    secrets: Readonly<Record<string, string>>,
+    handle: string | null,
+  ): Promise<SealedSecrets | null> {
+    this.seals.push({ secrets, handle });
+    if (!this.sealSucceeds) {
+      return Promise.resolve(null);
+    }
+    const sealed: SealedSecrets = {
+      scheme: handle === null ? 'machine' : 'passphrase',
+      data: `c2VhbGVk${this.seals.length}`,
+    };
+    this.openable.set(sealed.data, secrets);
+    return Promise.resolve(sealed);
+  }
+
+  /**
+   * Records an open.
+   * @param sealed The seal.
+   * @param handle The handle.
+   * @returns Returns the secrets it opens to, or null.
+   */
+  public open(
+    sealed: SealedSecrets,
+    handle: string | null,
+  ): Promise<Readonly<Record<string, string>> | null> {
+    this.opens.push({ sealed, handle });
+    if (sealed.scheme === 'passphrase' && handle === null) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(this.openable.get(sealed.data) ?? null);
+  }
+
+  /**
+   * Records a forget.
+   * @param handle The handle.
+   */
+  public forget(handle: string): void {
+    this.forgets.push(handle);
   }
 }
 
@@ -491,6 +617,332 @@ describe('DatabaseWorkspace', () => {
     });
 
     expect(workspace.needsSecrets(connection.id)).toBe(false);
+  });
+
+  // --- Remembered secrets (#1097) ---
+
+  /**
+   * The lock a passphrase-protected document is read with.
+   */
+  const LOCK: PassphraseLock = { salt: 'c2FsdA==', check: 'Y2hlY2s=' };
+
+  /**
+   * Builds a saved document holding one PostgreSQL connection.
+   * @param secrets The connection's seal, if any.
+   * @param passphrase The document's lock, if any.
+   * @returns Returns the document.
+   */
+  function sealedDocument(secrets?: SealedSecrets, passphrase?: PassphraseLock): DatabaseDocument {
+    return {
+      kind: DATABASE_DOCUMENT_KIND,
+      version: DATABASE_DOCUMENT_VERSION,
+      connections: [
+        {
+          id: 'c1',
+          name: 'Prod',
+          engine: 'postgres',
+          values: { host: 'h' },
+          ...(secrets === undefined ? {} : { secrets }),
+        },
+      ],
+      queries: [],
+      ...(passphrase === undefined ? {} : { passphrase }),
+    };
+  }
+
+  /**
+   * Saves the document to a chosen path and parses what was written.
+   * @returns Returns the written text and the document it parses to.
+   */
+  async function saveAndRead(): Promise<{ text: string; document: DatabaseDocument }> {
+    chosenPath = chosenPath ?? '/docs/prod.database.json';
+    expect(await workspace.save()).toBe(true);
+    const text: string = written[written.length - 1].content;
+    const document: DatabaseDocument | null = parseDatabaseDocument(text);
+    expect(document).not.toBeNull();
+    return { text, document: document! };
+  }
+
+  it('save_aRememberedConnection_writesASealAndNeverThePlaintextPassword', async () => {
+    // ⭐ The acceptance test: what reaches the disk is safe to commit.
+    const connection: DatabaseConnection = addPostgres();
+
+    const { text, document } = await saveAndRead();
+
+    expect(text).not.toContain('hunter2');
+    expect(client.seals).toEqual([{ secrets: { password: 'hunter2' }, handle: null }]);
+    expect(document.connections[0].secrets).toEqual({
+      scheme: 'machine',
+      data: client.openable.keys().next().value,
+    });
+    expect(document.connections[0].values).toEqual({ host: 'db.test', user: 'admin' });
+    expect(workspace.remembers(connection.id)).toBe(true);
+  });
+
+  it('save_anUnrememberedConnection_writesNoSecrets', async () => {
+    const connection: DatabaseConnection = workspace.addConnection(
+      'Production',
+      'postgres',
+      PG_VALUES,
+      false,
+    );
+
+    const { text, document } = await saveAndRead();
+
+    expect(text).not.toContain('hunter2');
+    expect(client.seals).toEqual([]);
+    expect('secrets' in document.connections[0]).toBe(false);
+    expect(workspace.remembers(connection.id)).toBe(false);
+  });
+
+  it('save_withAPassphrase_sealsWithItsHandleAndWritesTheLock', async () => {
+    await workspace.setPassphrase('open sesame');
+    addPostgres();
+
+    const { text, document } = await saveAndRead();
+
+    expect(text).not.toContain('hunter2');
+    expect(text).not.toContain('open sesame');
+    expect(client.seals).toEqual([{ secrets: { password: 'hunter2' }, handle: 'handle-1' }]);
+    expect(document.connections[0].secrets?.scheme).toBe('passphrase');
+    expect(document.passphrase).toEqual({ salt: 'salt-1', check: 'check-1' });
+  });
+
+  it('load_opensMachineSealsAndProvidesTheirSecrets', async () => {
+    const sealed: SealedSecrets = { scheme: 'machine', data: 'bWFjaGluZQ==' };
+    client.openable.set(sealed.data, { password: 'pw' });
+
+    workspace.load(sealedDocument(sealed), '/docs/prod.database.json');
+    await settle();
+
+    expect(client.opens).toEqual([{ sealed, handle: null }]);
+    expect(workspace.needsSecrets('c1')).toBe(false);
+    expect(workspace.valuesFor('c1')).toEqual({ host: 'h', password: 'pw' });
+    expect(workspace.remembers('c1')).toBe(true);
+    expect(workspace.dirty()).toBe(false);
+  });
+
+  it('load_neverPutsASealOnAConnection', async () => {
+    // The tree and the agent read connections(); neither must ever see a seal.
+    workspace.load(
+      sealedDocument({ scheme: 'machine', data: 'Zm9yZWlnbg==' }),
+      '/docs/prod.database.json',
+    );
+    await settle();
+
+    expect(
+      workspace
+        .connections()
+        .some((connection: DatabaseConnection): boolean => 'secrets' in connection),
+    ).toBe(false);
+    expect(JSON.stringify(workspace.toDocument())).not.toContain('Zm9yZWlnbg==');
+  });
+
+  it('save_aSealThatDoesNotOpen_isWrittenBackUnchanged', async () => {
+    // Sealed on another machine: this one cannot open it, but the one that made it still can.
+    const sealed: SealedSecrets = { scheme: 'machine', data: 'Zm9yZWlnbg==' };
+    workspace.load(sealedDocument(sealed), '/docs/prod.database.json');
+    await settle();
+    expect(workspace.needsSecrets('c1')).toBe(true);
+
+    workspace.addQuery('c1', undefined);
+    const { document } = await saveAndRead();
+
+    expect(document.connections[0].secrets).toEqual(sealed);
+    expect(client.seals).toEqual([]);
+  });
+
+  it('provideSecrets_rememberedReplacesAnUnopenedSealAndMarksDirty', async () => {
+    const sealed: SealedSecrets = { scheme: 'machine', data: 'Zm9yZWlnbg==' };
+    workspace.load(sealedDocument(sealed), '/docs/prod.database.json');
+    await settle();
+
+    workspace.provideSecrets('c1', { password: 'typed' }, true);
+    expect(workspace.dirty()).toBe(true);
+    const { text, document } = await saveAndRead();
+
+    expect(text).not.toContain('typed');
+    expect(client.seals).toEqual([{ secrets: { password: 'typed' }, handle: null }]);
+    expect(document.connections[0].secrets).not.toEqual(sealed);
+  });
+
+  it('load_aLockedDocument_keepsPassphraseSealsShutUntilTheRightPassphrase', async () => {
+    const sealed: SealedSecrets = { scheme: 'passphrase', data: 'cGFzcw==' };
+    client.openable.set(sealed.data, { password: 'pw' });
+
+    workspace.load(sealedDocument(sealed, LOCK), '/docs/prod.database.json');
+    await settle();
+
+    expect(workspace.hasPassphrase()).toBe(true);
+    expect(workspace.locked()).toBe(true);
+    expect(client.opens).toEqual([]);
+    expect(workspace.needsSecrets('c1')).toBe(true);
+
+    expect(await workspace.unlock('wrong')).toBe(false);
+    expect(workspace.locked()).toBe(true);
+    expect(workspace.needsSecrets('c1')).toBe(true);
+
+    expect(await workspace.unlock('open sesame')).toBe(true);
+    expect(client.unlocks.map((entry: { lock: PassphraseLock | null }) => entry.lock)).toEqual([
+      LOCK,
+      LOCK,
+    ]);
+    expect(workspace.locked()).toBe(false);
+    expect(client.opens).toEqual([{ sealed, handle: 'handle-1' }]);
+    expect(workspace.needsSecrets('c1')).toBe(false);
+    expect(workspace.valuesFor('c1')['password']).toBe('pw');
+  });
+
+  it('unlock_withoutAPassphrase_isTrueAndAsksNothing', async () => {
+    expect(await workspace.unlock('anything')).toBe(true);
+    expect(client.unlocks).toEqual([]);
+  });
+
+  it('save_whileLocked_writesThePassphraseSealBackUnchanged', async () => {
+    const sealed: SealedSecrets = { scheme: 'passphrase', data: 'cGFzcw==' };
+    workspace.load(sealedDocument(sealed, LOCK), '/docs/prod.database.json');
+    await settle();
+
+    workspace.addQuery('c1', undefined);
+    const { document } = await saveAndRead();
+
+    expect(document.connections[0].secrets).toEqual(sealed);
+    expect(document.passphrase).toEqual(LOCK);
+    expect(client.seals).toEqual([]);
+  });
+
+  it('setPassphrase_dropsUnopenedPassphraseSealsAndMarksDirty', async () => {
+    const sealed: SealedSecrets = { scheme: 'passphrase', data: 'cGFzcw==' };
+    workspace.load(sealedDocument(sealed, LOCK), '/docs/prod.database.json');
+    await settle();
+
+    await workspace.setPassphrase('new one');
+
+    expect(client.unlocks[client.unlocks.length - 1]).toEqual({
+      passphrase: 'new one',
+      lock: null,
+    });
+    expect(workspace.dirty()).toBe(true);
+    expect(workspace.locked()).toBe(false);
+    const { text, document } = await saveAndRead();
+    // The old seal cannot be opened with the new key, so it is not carried across.
+    expect(text).not.toContain(sealed.data);
+    expect('secrets' in document.connections[0]).toBe(false);
+    expect(document.passphrase).toEqual({ salt: 'salt-1', check: 'check-1' });
+  });
+
+  it('setPassphrase_keepsUnopenedMachineSeals', async () => {
+    const sealed: SealedSecrets = { scheme: 'machine', data: 'Zm9yZWlnbg==' };
+    workspace.load(sealedDocument(sealed), '/docs/prod.database.json');
+    await settle();
+
+    await workspace.setPassphrase('new one');
+    const { document } = await saveAndRead();
+
+    expect(document.connections[0].secrets).toEqual(sealed);
+  });
+
+  it('setPassphrase_again_forgetsTheOldHandle', async () => {
+    await workspace.setPassphrase('first');
+    await workspace.setPassphrase('second');
+
+    expect(client.forgets).toEqual(['handle-1']);
+    expect(workspace.locked()).toBe(false);
+  });
+
+  it('removePassphrase_whileLocked_dropsThePassphraseSealsAndTheLock', async () => {
+    const sealed: SealedSecrets = { scheme: 'passphrase', data: 'cGFzcw==' };
+    workspace.load(sealedDocument(sealed, LOCK), '/docs/prod.database.json');
+    await settle();
+
+    workspace.removePassphrase();
+
+    expect(workspace.dirty()).toBe(true);
+    expect(workspace.hasPassphrase()).toBe(false);
+    expect(workspace.locked()).toBe(false);
+    const { document } = await saveAndRead();
+    expect('passphrase' in document).toBe(false);
+    expect('secrets' in document.connections[0]).toBe(false);
+  });
+
+  it('removePassphrase_onceUnlocked_resealsWithTheMachine', async () => {
+    const sealed: SealedSecrets = { scheme: 'passphrase', data: 'cGFzcw==' };
+    client.openable.set(sealed.data, { password: 'pw' });
+    workspace.load(sealedDocument(sealed, LOCK), '/docs/prod.database.json');
+    await settle();
+    await workspace.unlock('open sesame');
+
+    workspace.removePassphrase();
+    const { text, document } = await saveAndRead();
+
+    expect(client.forgets).toEqual(['handle-1']);
+    expect(client.seals).toEqual([{ secrets: { password: 'pw' }, handle: null }]);
+    expect(document.connections[0].secrets?.scheme).toBe('machine');
+    expect('passphrase' in document).toBe(false);
+    expect(text).not.toContain('"pw"');
+  });
+
+  it('removePassphrase_withoutOne_changesNothing', () => {
+    workspace.removePassphrase();
+
+    expect(workspace.dirty()).toBe(false);
+  });
+
+  it('closeAll_forgetsThePassphraseHandle', async () => {
+    await workspace.setPassphrase('open sesame');
+
+    await workspace.closeAll();
+
+    expect(client.forgets).toEqual(['handle-1']);
+    expect(workspace.locked()).toBe(true);
+  });
+
+  it('canRemember_withoutAKeychainOrPassphrase_isFalseAndNothingIsSealed', async () => {
+    TestBed.resetTestingModule();
+    const keyless: FakeClient = new FakeClient();
+    keyless.machineSealing = false;
+    const keylessWritten: string[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        DatabaseWorkspace,
+        { provide: DatabaseClient, useValue: keyless },
+        {
+          provide: FileSystem,
+          useValue: {
+            write: (_path: string, content: string): Promise<FileWriteResult> => {
+              keylessWritten.push(content);
+              return Promise.resolve({ success: true });
+            },
+            saveDialog: (): Promise<string | null> => Promise.resolve('/docs/k.database.json'),
+          },
+        },
+        { provide: Settings, useValue: { databaseSelectAction: selectAction } },
+        { provide: DatabaseEnginePrompt, useValue: { installedKey } },
+      ],
+    });
+    const fresh: DatabaseWorkspace = TestBed.inject(DatabaseWorkspace);
+    TestBed.tick();
+    await settle();
+
+    expect(fresh.canRemember()).toBe(false);
+    fresh.addConnection('Production', 'postgres', PG_VALUES);
+    await fresh.save();
+    expect(keyless.seals).toEqual([]);
+    expect(keylessWritten[0]).not.toContain('hunter2');
+    expect(parseDatabaseDocument(keylessWritten[0])?.connections[0].secrets).toBeUndefined();
+
+    await fresh.setPassphrase('open sesame');
+    expect(fresh.canRemember()).toBe(true);
+  });
+
+  it('save_whenTheSealFails_writesNoSecrets', async () => {
+    client.sealSucceeds = false;
+    addPostgres();
+
+    const { text, document } = await saveAndRead();
+
+    expect(text).not.toContain('hunter2');
+    expect('secrets' in document.connections[0]).toBe(false);
   });
 
   // --- Connections and queries ---
