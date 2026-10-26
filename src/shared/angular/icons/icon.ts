@@ -1525,6 +1525,129 @@ export class Icon {
    */
   public static readonly API_HISTORY: Icon = new Icon('ph-duotone ph-clock-counter-clockwise');
 
+  // --- Database Explorer ---
+
+  /**
+   * Gets the icon of the Database Explorer tab, and of a database in its object tree.
+   */
+  public static readonly DATABASE: Icon = new Icon('ph-duotone ph-database');
+
+  /**
+   * Gets the thin database glyph shown large in the Object Explorer's empty state, as the agent panel
+   * shows its brain.
+   */
+  public static readonly DATABASE_EMPTY: Icon = new Icon('ph-thin ph-database');
+
+  /**
+   * Gets the icon of a saved connection in the object tree, and of the ribbon's Connect.
+   */
+  public static readonly DATABASE_CONNECTION: Icon = new Icon('ph-duotone ph-hard-drives');
+
+  /**
+   * Gets the icon of the ribbon's Disconnect.
+   */
+  public static readonly DATABASE_DISCONNECT: Icon = new Icon('ph-duotone ph-link-break');
+
+  /**
+   * Gets the icon of the Object Explorer panel.
+   */
+  public static readonly DATABASE_OBJECTS: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the icon of a query document in the well.
+   */
+  public static readonly DATABASE_QUERY: Icon = new Icon('ph-duotone ph-file-sql');
+
+  /**
+   * Gets the icon of the Database Explorer ribbon's Reset Layout.
+   */
+  public static readonly DATABASE_RESET_LAYOUT: Icon = new Icon('ph-duotone ph-layout');
+
+  /**
+   * Gets the icon of a schema in the object tree.
+   */
+  public static readonly DATABASE_SCHEMA: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
+   * Gets the icon of a table.
+   */
+  public static readonly DATABASE_TABLE: Icon = new Icon('ph-duotone ph-table');
+
+  /**
+   * Gets the icon of a view.
+   */
+  public static readonly DATABASE_VIEW: Icon = new Icon('ph-duotone ph-eye');
+
+  /**
+   * Gets the icon of a column.
+   */
+  public static readonly DATABASE_COLUMN: Icon = new Icon('ph-duotone ph-columns');
+
+  /**
+   * Gets the icon of a key: a primary-key column or a foreign key.
+   */
+  public static readonly DATABASE_KEY: Icon = new Icon('ph-duotone ph-key');
+
+  /**
+   * Gets the icon of an index.
+   */
+  public static readonly DATABASE_INDEX: Icon = new Icon('ph-duotone ph-magnifying-glass');
+
+  /**
+   * Gets the icon of a function or procedure.
+   */
+  public static readonly DATABASE_FUNCTION: Icon = new Icon('ph-duotone ph-function');
+
+  /**
+   * Gets the icon of a trigger.
+   */
+  public static readonly DATABASE_TRIGGER: Icon = new Icon('ph-duotone ph-lightning');
+
+  /**
+   * Gets the icon of a sequence.
+   */
+  public static readonly DATABASE_SEQUENCE: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the icon of a constraint.
+   */
+  public static readonly DATABASE_CONSTRAINT: Icon = new Icon('ph-duotone ph-shield-check');
+
+  /**
+   * Gets the icon of a graph node label.
+   */
+  public static readonly DATABASE_LABEL: Icon = new Icon('ph-duotone ph-tag');
+
+  /**
+   * Gets the icon of a graph relationship type.
+   */
+  public static readonly DATABASE_RELATIONSHIP: Icon = new Icon('ph-duotone ph-flow-arrow');
+
+  /**
+   * Gets the icon of a graph property key.
+   */
+  public static readonly DATABASE_PROPERTY: Icon = new Icon('ph-duotone ph-brackets-curly');
+
+  /**
+   * Gets the icon of the Properties panel.
+   */
+  public static readonly DATABASE_PROPERTIES: Icon = new Icon('ph-duotone ph-list-bullets');
+
+  /**
+   * Gets the icon of the Graph result view.
+   */
+  public static readonly DATABASE_GRAPH: Icon = new Icon('ph-duotone ph-graph');
+
+  /**
+   * Gets the icon of the Table result view.
+   */
+  public static readonly DATABASE_GRID: Icon = new Icon('ph-duotone ph-rows');
+
+  /**
+   * Gets the icon of the Raw result view.
+   */
+  public static readonly DATABASE_RAW: Icon = new Icon('ph-duotone ph-brackets-curly');
+
   /**
    * Gets the duotone Orchestration icon shown on the welcome screen.
    */
@@ -1999,6 +2122,11 @@ export class Icon {
    * Gets the icon of the setup wizard's container engines step.
    */
   public static readonly SETUP_CONTAINER_ENGINES: Icon = new Icon('ph ph-shipping-container');
+
+  /**
+   * Gets the icon of the setup wizard's database engines step.
+   */
+  public static readonly SETUP_DATABASE_ENGINES: Icon = new Icon('ph ph-database');
 
   /**
    * Gets the icon of the setup wizard's AI providers step.

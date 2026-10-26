@@ -183,6 +183,46 @@ export const SEND_API_REQUEST: string = 'send_api_request';
 export const SET_API_VARIABLE: string = 'set_api_variable';
 
 /**
+ * The in-app capability that lists the Database Explorer's connections — their engines, whether each
+ * is connected, and the server it reaches — so the agent knows what it can inspect.
+ */
+export const LIST_DATABASE_CONNECTIONS: string = 'list_database_connections';
+
+/**
+ * The in-app capability that lists what is under one node of a connection's object tree — databases,
+ * schemas, tables, columns, labels — connecting first if need be. Structure, never data.
+ */
+export const LIST_DATABASE_OBJECTS: string = 'list_database_objects';
+
+/**
+ * The in-app capability that produces the script a tree node's action writes — a table's CREATE, a
+ * view's definition — without running it. Structure, never data.
+ */
+export const SCRIPT_DATABASE_OBJECT: string = 'script_database_object';
+
+/**
+ * The in-app capability that lists the document's saved queries and their text.
+ */
+export const LIST_DATABASE_QUERIES: string = 'list_database_queries';
+
+/**
+ * The in-app capability that writes a new query into the document and opens it in the well, so the
+ * agent hands the user SQL or Cypher to run rather than pasting it into the conversation.
+ */
+export const CREATE_DATABASE_QUERY: string = 'create_database_query';
+
+/**
+ * The in-app capability that changes a saved query: its text, title, connection or database.
+ */
+export const UPDATE_DATABASE_QUERY: string = 'update_database_query';
+
+/**
+ * The in-app capability that runs a saved query and returns what it produced. It reads (and may change)
+ * the user's data, so it is gated by the permission posture: the user is asked first.
+ */
+export const RUN_DATABASE_QUERY: string = 'run_database_query';
+
+/**
  * The in-app capability that opens a new, unsaved top-level document tab — markdown or code — and
  * fills it with content for the user to review in the editor.
  *
@@ -476,6 +516,7 @@ export type AgentSurface =
   | 'terminal'
   | 'binary'
   | 'api'
+  | 'database'
   | 'workspace'
   | 'project'
   | 'monitor'
@@ -493,6 +534,7 @@ export const AGENT_SURFACES: readonly AgentSurface[] = [
   'terminal',
   'binary',
   'api',
+  'database',
   'workspace',
   'project',
   'monitor',

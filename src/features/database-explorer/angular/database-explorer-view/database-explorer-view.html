@@ -1,0 +1,147 @@
+<app-dock-container />
+
+<!-- The connection dialog. Its fields are the chosen engine's own, as the engine described them;
+     Studio draws each with the atom for its kind. -->
+<app-modal
+  [open]="prompts.mode() !== null"
+  [width]="30"
+  ariaLabel="Connection"
+  (dismiss)="prompts.cancel()"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">
+      @switch (prompts.mode()) {
+        @case ('edit') {
+          Edit Connection
+        }
+        @case ('secrets') {
+          Connect to “{{ prompts.name() }}”
+        }
+        @default {
+          New Connection
+        }
+      }
+    </h2>
+
+    @if (prompts.mode() === 'secrets') {
+      <p class="database-dialog__message">
+        Passwords are never saved in the document. Enter it once and it is kept for this session.
+      </p>
+    }
+
+    <div class="connection__fields">
+      @if (prompts.mode() !== 'secrets') {
+        <app-setting-row label="Name">
+          <app-text-field
+            class="connection__control"
+            [value]="prompts.name()"
+            placeholder="Connection name"
+            ariaLabel="Connection name"
+            (valueChange)="prompts.name.set($event)"
+          />
+        </app-setting-row>
+        <app-setting-row label="Engine">
+          <app-dropdown
+            class="connection__control"
+            [options]="engineOptions()"
+            [value]="prompts.engineId()"
+            [disabled]="prompts.mode() === 'edit'"
+            [fullWidth]="true"
+            ariaLabel="Engine"
+            (valueChange)="prompts.chooseEngine($event)"
+          />
+        </app-setting-row>
+      }
+
+      @for (field of prompts.fields(); track field.id) {
+        <app-setting-row [label]="field.label">
+          @switch (field.kind) {
+            @case ('password') {
+              <app-password-field
+                class="connection__control"
+                [value]="prompts.values()[field.id] ?? ''"
+                [placeholder]="field.placeholder ?? ''"
+                (valueChange)="prompts.setValue(field.id, $event)"
+              />
+            }
+            @case ('boolean') {
+              <app-checkbox
+                [checked]="prompts.values()[field.id] === 'true'"
+                (checkedChange)="prompts.setValue(field.id, $event ? 'true' : 'false')"
+              />
+            }
+            @case ('choice') {
+              <app-dropdown
+                class="connection__control"
+                [options]="choiceOptions(field)"
+                [value]="prompts.values()[field.id] ?? ''"
+                [fullWidth]="true"
+                [ariaLabel]="field.label"
+                (valueChange)="prompts.setValue(field.id, $event)"
+              />
+            }
+            @case ('file') {
+              <div class="connection__file connection__control">
+                <app-text-field
+                  class="connection__control"
+                  [value]="prompts.values()[field.id] ?? ''"
+                  [placeholder]="field.placeholder ?? ''"
+                  [ariaLabel]="field.label"
+                  (valueChange)="prompts.setValue(field.id, $event)"
+                />
+                <app-button label="Browse" (click)="browse(field)" />
+              </div>
+            }
+            @default {
+              <app-text-field
+                class="connection__control"
+                [value]="prompts.values()[field.id] ?? ''"
+                [placeholder]="field.placeholder ?? ''"
+                [ariaLabel]="field.label"
+                (valueChange)="prompts.setValue(field.id, $event)"
+                (enter)="prompts.complete() && confirmConnection()"
+              />
+            }
+          }
+        </app-setting-row>
+      }
+    </div>
+
+    @switch (prompts.test().state) {
+      @case ('testing') {
+        <p class="connection__test"><app-icon [icon]="Icon.SPINNER" /> Testing…</p>
+      }
+      @case ('passed') {
+        <p class="connection__test connection__test--passed">
+          <app-icon [icon]="Icon.PLAY" /> Connected to {{ $any(prompts.test()).serverVersion }}
+        </p>
+      }
+      @case ('failed') {
+        <p class="connection__test connection__test--failed">
+          <app-icon [icon]="Icon.WARNING" /> {{ $any(prompts.test()).message }}
+        </p>
+      }
+    }
+
+    <!-- Test checks the form and sits apart from it on the leading edge; Connect and Cancel finish
+         the dialog and keep to the trailing edge, where a dialog's answers always are. -->
+    <div class="connection__actions">
+      <app-button-row align="start">
+        <app-button
+          label="Test"
+          [disabled]="!prompts.complete() || prompts.test().state === 'testing'"
+          (click)="prompts.runTest()"
+        />
+      </app-button-row>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          [label]="prompts.mode() === 'edit' ? 'Save' : 'Connect'"
+          [disabled]="!prompts.complete()"
+          (click)="confirmConnection()"
+        />
+        <app-button label="Cancel" (click)="prompts.cancel()" />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>

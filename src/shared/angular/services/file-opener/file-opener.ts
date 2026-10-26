@@ -10,6 +10,8 @@ import {
 } from '@shared/angular/services/file-opener/image-file-opener';
 import { isApiDocumentName } from '@shared/api/api-client-types';
 import { ApiFiles } from '@shared/angular/services/api-files/api-files';
+import { DatabaseFiles } from '@shared/angular/services/database-files/database-files';
+import { isDatabaseDocumentName } from '@shared/api/database-document';
 import { FileInfo, SaveDialogChoice } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -130,6 +132,11 @@ export class FileOpener {
   private readonly apiFiles: ApiFiles = inject(ApiFiles);
 
   /**
+   * Holds the registry that hands a newly-opened database document to its Database Explorer tab.
+   */
+  private readonly databaseFiles: DatabaseFiles = inject(DatabaseFiles);
+
+  /**
    * Holds the recent-items registry, updated whenever a file or folder is opened.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -194,7 +201,7 @@ export class FileOpener {
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
     // as its own tab — as a binary file does — instead of being edited as text beside the code.
-    if (this.openApiDocument(selection.file, options)) {
+    if (this.openSurfaceDocument(selection.file, options)) {
       return true;
     }
     this.log.debug('FileOpener', 'Opening file in well', path);
@@ -262,7 +269,7 @@ export class FileOpener {
         this.openDirectory(selection.directory);
         return true;
       case 'file': {
-        if (this.openApiDocument(selection.file)) {
+        if (this.openSurfaceDocument(selection.file)) {
           return true;
         }
         const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
@@ -309,15 +316,19 @@ export class FileOpener {
   }
 
   /**
-   * Opens a file that claims to be an API document in an API Explorer tab. Only the name is consulted
-   * here; the document itself is verified by {@link ApiFiles}, which declines a `*.api.json` that is
-   * not one — so a malformed or foreign file falls through to the text editor rather than being
-   * loaded as a workspace.
+   * Opens a file that claims to be a surface's document — an API document in an API Explorer tab, a
+   * database document in a Database Explorer tab. Only the name is consulted here; the document itself
+   * is verified by {@link ApiFiles} or {@link DatabaseFiles}, which decline a file that is not one — so
+   * a malformed or foreign file falls through to the text editor rather than being loaded as a
+   * workspace.
    * @param fileInfo The file to open.
    * @param options How to open it.
-   * @returns Returns true when the file was opened as an API document; otherwise, false.
+   * @returns Returns true when the file was opened as a surface's document; otherwise, false.
    */
-  private openApiDocument(fileInfo: FileInfo, options?: OpenOptions): boolean {
+  private openSurfaceDocument(fileInfo: FileInfo, options?: OpenOptions): boolean {
+    if (isDatabaseDocumentName(fileInfo.name)) {
+      return this.databaseFiles.open(fileInfo, options);
+    }
     return isApiDocumentName(fileInfo.name) && this.apiFiles.open(fileInfo, options);
   }
 

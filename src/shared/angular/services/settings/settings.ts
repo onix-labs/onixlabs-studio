@@ -19,6 +19,9 @@ import type {
 import {
   AiConnectionModels,
   ConversationTextSize,
+  DatabaseGridlines,
+  DatabaseGridlineTone,
+  DatabaseSelectAction,
   SETTINGS_BY_KEY,
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -838,6 +841,27 @@ export class Settings {
    */
   public readonly systemMonitorRefreshRate: Signal<number> = this.value(
     'systemMonitor.refreshRate',
+  );
+
+  /**
+   * Gets what the Database Explorer does with a query a select action opens.
+   */
+  public readonly databaseSelectAction: Signal<DatabaseSelectAction> = this.value(
+    'databaseExplorer.selectAction',
+  );
+
+  /**
+   * Gets which rules the Database Explorer's results grid draws between its cells.
+   */
+  public readonly databaseGridlines: Signal<DatabaseGridlines> = this.value(
+    'databaseExplorer.gridlines',
+  );
+
+  /**
+   * Gets how strongly the Database Explorer's results grid draws its gridlines.
+   */
+  public readonly databaseGridlineTone: Signal<DatabaseGridlineTone> = this.value(
+    'databaseExplorer.gridlineTone',
   );
 
   /**

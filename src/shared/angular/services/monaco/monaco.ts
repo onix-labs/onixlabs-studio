@@ -23,6 +23,7 @@ import {
 import { defineThemes } from './monaco-themes';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
+import { registerCypherLanguage } from './monaco-cypher-language';
 import { registerBraceFolding } from './monaco-folding';
 import { installFindCommands } from './monaco-find-commands';
 import { installGoToCommands } from './monaco-goto-commands';
@@ -550,6 +551,7 @@ export class Monaco {
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
+    registerCypherLanguage(window.monaco);
     registerBraceFolding(window.monaco);
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
@@ -787,6 +789,7 @@ export class Monaco {
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
+      registerCypherLanguage(monaco, target);
       registerBraceFolding(monaco);
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);

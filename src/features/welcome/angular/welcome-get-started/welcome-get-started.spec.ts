@@ -90,13 +90,11 @@ describe('WelcomeGetStarted', () => {
     expect(host.textContent).not.toContain('New Project');
   });
 
-  it('anActionWithNothingBehindIt_doesNothing_andLooksIt', () => {
+  it('newDatabaseExplorer_asksForItsTab_andNoActionLooksUnavailable', () => {
     clickAction('New Database Explorer');
 
-    expect(opened).toEqual([]);
-    expect(host.querySelector('.welcome__action--unavailable')?.textContent).toContain(
-      'New Database Explorer',
-    );
+    expect(opened).toEqual(['database-explorer']);
+    expect(host.querySelector('.welcome__action--unavailable')).toBeNull();
   });
 
   it('recentItems_whenNone_showTheEmptyState', () => {

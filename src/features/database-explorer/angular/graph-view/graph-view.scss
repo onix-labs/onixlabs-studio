@@ -1,0 +1,80 @@
+// The Graph view: an SVG filling the results pane, drawn in the theme's colours.
+
+:host {
+  position: relative;
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.graph {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.graph__arrow {
+  fill: var(--form-muted-foreground-color);
+}
+
+.graph__relationship {
+  cursor: pointer;
+
+  line {
+    stroke: var(--form-muted-foreground-color);
+    stroke-width: 1.5;
+  }
+
+  text {
+    font-size: 9px;
+    fill: var(--form-muted-foreground-color);
+  }
+
+  &--picked line {
+    stroke: var(--accent-color);
+    stroke-width: 2.5;
+  }
+}
+
+.graph__node {
+  cursor: pointer;
+
+  circle {
+    stroke: var(--dock-container-background-color);
+    stroke-width: 2;
+  }
+
+  text {
+    font-size: 8px;
+    font-weight: 600;
+    fill: #fff;
+    pointer-events: none;
+  }
+
+  &--picked circle {
+    stroke: var(--body-foreground-color);
+    stroke-width: 3;
+  }
+}
+
+.graph__empty,
+.graph__note {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.graph__note {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: 0;
+}

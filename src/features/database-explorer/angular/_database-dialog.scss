@@ -1,0 +1,20 @@
+// The Database Explorer's dialogs in one shape — the connection dialog (the view's) and the tree's
+// delete confirmation. Layout only: how a field or button is drawn belongs to its atom.
+
+.database-dialog__title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.database-dialog__message {
+  margin: 0 0 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.database-dialog__actions {
+  margin-block-start: 0.4rem;
+}

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest';
+import { ManifestCommand, PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 import { LockfileProvision } from '../../provisioning/lockfile-provision';
@@ -24,6 +24,7 @@ import {
   toAgentHarnesses,
   ContributedHarness,
   toContainerEngineDescriptors,
+  toDatabaseEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toOrigin,
@@ -40,6 +41,7 @@ import {
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import { DatabaseEngineDescriptor } from '../database/database-engine-descriptor';
 import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
 
 /**
@@ -1188,6 +1190,133 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
 
     expect(descriptors).toEqual([]);
+  });
+
+  /**
+   * A sideloaded manifest contributing a database engine, whose payload is the engine's plugin
+   * process (#1095).
+   * @param command How the engine's process is run.
+   * @returns Returns the manifest.
+   */
+  function databaseManifest(
+    command: ManifestCommand = { kind: 'node', args: ['--flag'], env: { EXTRA: '1' } },
+  ): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.database',
+      contributes: {
+        databaseEngines: [
+          { id: 'local.sqlite', displayName: 'Local SQLite', priority: 20, command },
+        ],
+      },
+    };
+  }
+
+  it('toDatabaseEngineDescriptors_describesTheEngine_andResolvesItsProcessFromThePayload', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly DatabaseEngineDescriptor[] = toDatabaseEngineDescriptors(
+      databaseManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { RUNTIME: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0].id).toBe('local.sqlite');
+    expect(descriptors[0].displayName).toBe('Local SQLite');
+    expect(descriptors[0].priority).toBe(20);
+    // Runs under Studio's runtime, with the manifest's own arguments after the entry point and its
+    // environment over the runtime's.
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js'), '--flag'],
+        env: { RUNTIME: '1', EXTRA: '1' },
+      },
+    });
+  });
+
+  it('toDatabaseEngineDescriptors_keepsAnEngineWhosePayloadIsNotInstalled_resolvingUnavailable', () => {
+    // Unlike a container engine, which is dropped: the descriptor stays and says why it cannot start.
+    const descriptors: readonly DatabaseEngineDescriptor[] = toDatabaseEngineDescriptors(
+      databaseManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local SQLite is not installed — install it in Plugins.',
+    });
+  });
+
+  it('toDatabaseEngineDescriptors_resolvesWhenAsked_soAnInstallMadeLaterIsFound', () => {
+    // A downloaded plugin, not a sideloaded one: whether it is installed is asked of the provisioner
+    // each time the descriptor resolves.
+    let installed: boolean = false;
+    const provisioner: LspProvisioner = {
+      archiveTarget: (): string | null => (installed ? '/installed/main.js' : null),
+      isArchiveInstalled: (): boolean => installed,
+    } as unknown as LspProvisioner;
+    const descriptors: readonly DatabaseEngineDescriptor[] = toDatabaseEngineDescriptors(
+      databaseManifest(),
+      (): LspProvisioner => provisioner,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+    );
+    expect(descriptors[0].resolve().available).toBe(false);
+
+    installed = true;
+
+    expect(descriptors[0].resolve()).toMatchObject({
+      available: true,
+      spec: { command: '/runtime', args: ['/installed/main.js', '--flag'] },
+    });
+  });
+
+  it('toDatabaseEngineDescriptors_runsAnExecutableEngineDirectly', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly DatabaseEngineDescriptor[] = toDatabaseEngineDescriptors(
+      databaseManifest({ kind: 'executable', args: ['serve'] }),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: { command: path.join(root, 'payload', 'main.js'), args: ['serve'], env: undefined },
+    });
+  });
+
+  it('toDatabaseEngineDescriptors_describesNothingForAPluginContributingNoEngine', () => {
+    expect(
+      toDatabaseEngineDescriptors(
+        decoderManifest(),
+        (): LspProvisioner => nothingDownloaded,
+        (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+        root,
+      ),
+    ).toEqual([]);
+  });
+
+  it('toPluginDescriptor_listsADatabaseEngineInTheDatabaseEngineSlot', () => {
+    expect(toPluginDescriptor(databaseManifest()).contributions).toEqual([
+      {
+        slot: 'database-engine',
+        id: 'local.sqlite',
+        displayName: 'Local SQLite',
+        priority: 20,
+      },
+    ]);
   });
 });
 

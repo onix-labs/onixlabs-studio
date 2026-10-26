@@ -12,6 +12,7 @@ import {
   NodeRuntimeSpec,
   toAgentHarnesses,
   toContainerEngineDescriptors,
+  toDatabaseEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toLanguageServerDescriptors,
@@ -23,6 +24,7 @@ import {
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import type { DatabaseEngineDescriptor } from '../database/database-engine-descriptor';
 import { VersionControlDescriptor } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 
@@ -228,6 +230,27 @@ export function contributedContainerEngines(
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
     toContainerEngineDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the database engines the contributed plugins provide, for the Database Explorer's host (#1095).
+ * Every contributed engine is listed; each says when asked whether it is installed.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedDatabaseEngines(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly DatabaseEngineDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly DatabaseEngineDescriptor[] =>
+    toDatabaseEngineDescriptors(
       manifest,
       payloadProvisioner,
       nodeRuntime,

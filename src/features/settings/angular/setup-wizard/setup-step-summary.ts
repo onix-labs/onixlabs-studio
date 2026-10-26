@@ -119,6 +119,7 @@ const PLUGIN_GROUP_SLOTS: readonly PluginSlot[] = [
   'debug-adapter',
   'decoder',
   'container-engine',
+  'database-engine',
 ];
 
 /**

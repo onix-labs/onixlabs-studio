@@ -1,0 +1,64 @@
+@use '../database-dialog';
+
+// The Database Explorer tab is a dock surface and nothing else; the container fills the tab body.
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.connection__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-end: 0.75rem;
+  // The fields are sized against this list's width, not their own row's: a setting row's control
+  // slot shrinks to its content, so a percentage there would be a percentage of nothing.
+  container-type: inline-size;
+}
+
+// Every field in the dialog is the same width, whatever its kind — text, password, choice or file:
+// half the width the fields have, so the column of controls reads as one edge rather than a ragged
+// one, and the labels keep the other half.
+.connection__control {
+  inline-size: 50cqi;
+}
+
+// A file field's path and its Browse button share that width between them.
+.connection__file {
+  display: flex;
+  gap: 0.4rem;
+
+  app-text-field.connection__control {
+    flex: 1 1 auto;
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+}
+
+.connection__test {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+  overflow-wrap: anywhere;
+
+  &--passed {
+    color: var(--success-color);
+  }
+
+  &--failed {
+    color: var(--error-color);
+  }
+}
+
+.connection__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-start: 0.4rem;
+}

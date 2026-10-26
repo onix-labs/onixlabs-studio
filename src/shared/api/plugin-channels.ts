@@ -63,7 +63,8 @@ export type PluginSlot =
   | 'container-engine'
   | 'version-control'
   | 'hosting'
-  | 'agent-harness';
+  | 'agent-harness'
+  | 'database-engine';
 
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
@@ -77,6 +78,7 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'version-control',
   'hosting',
   'agent-harness',
+  'database-engine',
 ];
 
 /**
@@ -97,6 +99,7 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'version-control': 'Version Control',
   hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
+  'database-engine': 'Database Engines',
 };
 
 /**
@@ -144,7 +147,8 @@ export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness';
+  readonly slot:
+    'container-engine' | 'version-control' | 'hosting' | 'agent-harness' | 'database-engine';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -429,7 +433,7 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness',
+  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness' | 'database-engine',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
