@@ -81,6 +81,11 @@ describe('SqliteEngine', (): void => {
       'file',
       'readOnly',
     ]);
+    expect(
+      engine.info.connectionFields.map(
+        (field: { section?: string }): string | undefined => field.section,
+      ),
+    ).toEqual(['server', 'options']);
   });
 
   it('connect_refusesAnEmptyFile', async (): Promise<void> => {

@@ -55,36 +55,14 @@
         [maxSize]="1400"
       >
         <div class="results" role="region" aria-label="Results">
-          <div class="results__tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              class="results__tab"
-              [class.results__tab--active]="tab() === 'results'"
-              [attr.aria-selected]="tab() === 'results'"
-              (click)="tab.set('results')"
-            >
-              Results
-              @if (outcome()?.resultSets?.length) {
-                <span class="results__count">{{ outcome()!.resultSets.length }}</span>
-              }
-            </button>
-            <button
-              type="button"
-              role="tab"
-              class="results__tab"
-              [class.results__tab--active]="tab() === 'messages'"
-              [attr.aria-selected]="tab() === 'messages'"
-              (click)="tab.set('messages')"
-            >
-              Messages
-              @if (errorCount() > 0) {
-                <span class="results__count results__count--error">{{ errorCount() }}</span>
-              }
-            </button>
-
+          <app-tab-list
+            class="results__tabs"
+            ariaLabel="Results"
+            [tabs]="resultTabs()"
+            [value]="tab()"
+            (valueChange)="tab.set($any($event))"
+          >
             @if (tab() === 'results' && resultSet()) {
-              <span class="results__spacer"></span>
               <div class="results__views" role="group" aria-label="Show the result as">
                 @if (graphCapable()) {
                   <button
@@ -117,7 +95,7 @@
                 </button>
               </div>
             }
-          </div>
+          </app-tab-list>
 
           <div class="results__body">
             @if (running()) {

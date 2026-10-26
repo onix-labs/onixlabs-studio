@@ -1,8 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { signal, WritableSignal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { NO_ERRORS_SCHEMA, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DatabaseEngineInfo } from '@shared/api/database-engine-protocol';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
+import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { TabList } from '@shared/angular/components/forms/tab-list/tab-list';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
@@ -595,5 +609,184 @@ describe('DatabaseExplorerView', () => {
 
     const target: ConnectionTarget | null = commands.connectionTarget();
     expect(target).toBeNull();
+  });
+});
+
+/**
+ * An engine with a Login field and a required field on Connection Properties.
+ */
+const TABBED: DatabaseEngineInfo = {
+  id: 'tabbed',
+  displayName: 'Tabbed',
+  language: 'sql',
+  queryExtension: 'sql',
+  capabilities: [],
+  connectionFields: [
+    { id: 'host', label: 'Host', kind: 'text', defaultValue: 'localhost', section: 'server' },
+    { id: 'database', label: 'Database', kind: 'text', required: true, section: 'database' },
+  ],
+};
+
+/**
+ * An engine whose fields name no section, so all are on Login.
+ */
+const UNSECTIONED: DatabaseEngineInfo = {
+  id: 'unsectioned',
+  displayName: 'Unsectioned',
+  language: 'sql',
+  queryExtension: 'sql',
+  capabilities: [],
+  connectionFields: [{ id: 'file', label: 'File', kind: 'text' }],
+};
+
+describe('DatabaseExplorerView connection dialog', () => {
+  let fixture: ComponentFixture<DatabaseExplorerView>;
+  let workspace: FakeWorkspace;
+  let prompts: DatabasePrompts;
+  let windows: FakeModalWindows;
+
+  beforeEach(() => {
+    workspace = new FakeWorkspace();
+    windows = new FakeModalWindows();
+    TestBed.configureTestingModule({
+      imports: [DatabaseExplorerView],
+      providers: [{ provide: ModalWindows, useValue: windows }],
+    });
+    TestBed.overrideComponent(DatabaseExplorerView, {
+      set: {
+        // The real template, less the dock, which these tests do not look at.
+        imports: [
+          AppIcon,
+          Button,
+          ButtonRow,
+          Checkbox,
+          Dropdown,
+          Modal,
+          ModalContent,
+          NgTemplateOutlet,
+          PasswordField,
+          SettingRow,
+          TabList,
+          TextField,
+        ],
+        schemas: [NO_ERRORS_SCHEMA],
+        providers: [
+          { provide: DatabaseWorkspace, useValue: workspace },
+          DatabasePrompts,
+          {
+            provide: DatabaseQueryOpener,
+            useValue: { open: (): void => undefined, run: (): void => undefined },
+          },
+          { provide: DatabaseClient, useValue: {} },
+          { provide: DatabaseCompletions, useValue: {} },
+          { provide: DatabaseAgentCapabilities, useValue: {} },
+          { provide: Agent, useValue: {} },
+          { provide: AgentConversation, useValue: {} },
+          DockTabContext,
+          DockState,
+          DockGeometry,
+          DockMinimums,
+          DockFocus,
+          DockPanelRegistry,
+          DockFloating,
+          DockAutoHide,
+          DockDrag,
+          DockReveal,
+          PopoutPanels,
+          PanelPopout,
+          { provide: DOCK_BLUEPRINT, useValue: DATABASE_EXPLORER_DOCK_BLUEPRINT },
+        ],
+      },
+    });
+    fixture = TestBed.createComponent(DatabaseExplorerView);
+    fixture.componentRef.setInput('tabId', 'tab-1');
+    prompts = fixture.debugElement.injector.get(DatabasePrompts);
+    fixture.detectChanges();
+    TestBed.tick();
+  });
+
+  afterEach(() => {
+    fixture.destroy();
+  });
+
+  /**
+   * Opens the New Connection dialog with the given engine first.
+   * @param engine The engine.
+   * @returns Returns the dialog's content.
+   */
+  async function openDialog(engine: DatabaseEngineInfo): Promise<HTMLElement> {
+    workspace.engines.set([engine]);
+    prompts.newConnection();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    if (windows.contentHost === null) {
+      throw new Error('The dialog did not open');
+    }
+    return windows.contentHost;
+  }
+
+  /**
+   * Reads the dialog's tabs.
+   * @param content The dialog's content.
+   * @returns Returns its tab buttons.
+   */
+  function tabsOf(content: HTMLElement): HTMLButtonElement[] {
+    return Array.from(content.querySelectorAll<HTMLButtonElement>('app-tab-list [role="tab"]'));
+  }
+
+  it('withConnectionProperties_showsTheLoginAndPropertiesTabs', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+
+    expect(tabsOf(content).map((tab: HTMLButtonElement): string => tab.textContent.trim())).toEqual(
+      ['Login', 'Connection Properties'],
+    );
+    expect(content.querySelectorAll('[role="tabpanel"]').length).toBe(2);
+  });
+
+  it('withNothingOnConnectionProperties_showsNoTabs', async () => {
+    const content: HTMLElement = await openDialog(UNSECTIONED);
+
+    expect(content.querySelector('app-tab-list')).toBeNull();
+    expect(content.textContent).toContain('File');
+  });
+
+  it('theUnselectedPanel_isHiddenAndInert', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+
+    const panels: HTMLElement[] = Array.from(
+      content.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
+    );
+    expect(panels[0].hasAttribute('inert')).toBe(false);
+    expect(panels[1].hasAttribute('inert')).toBe(true);
+    expect(panels[1].classList).toContain('connection__panel--hidden');
+  });
+
+  it('anIncompleteUnselectedTab_isMarkedWithAWarning', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+
+    const tabs: HTMLButtonElement[] = tabsOf(content);
+    expect(tabs[0].querySelector('app-icon')).toBeNull();
+    expect(tabs[1].querySelector('app-icon')).not.toBeNull();
+  });
+
+  it('anIncompleteTab_onceSelected_dropsItsWarning', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+    prompts.tab.set('properties');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tabs: HTMLButtonElement[] = tabsOf(content);
+    expect(tabs[1].querySelector('app-icon')).toBeNull();
+  });
+
+  it('aCompletedTab_dropsItsWarning', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+    prompts.setValue('database', 'sales');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const tabs: HTMLButtonElement[] = tabsOf(content);
+    expect(tabs[1].querySelector('app-icon')).toBeNull();
   });
 });

@@ -62,3 +62,62 @@
   gap: 0.5rem;
   margin-block-start: 0.4rem;
 }
+
+// The connection dialog's tabs and sections (#1121): the tabs under Name and Engine, each section a
+// little apart from the next, and a field drawn beside another (a port beside its host) kept short.
+.connection__tabs {
+  margin-block: 0.25rem 0.5rem;
+}
+
+.connection__panels {
+  display: grid;
+}
+
+.connection__panel {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  &--hidden {
+    visibility: hidden;
+  }
+}
+
+.connection__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.connection__section + .connection__section {
+  margin-block-start: 0.75rem;
+}
+
+// A line is as wide as a single control, so a host and its port together keep the column's edge.
+.connection__line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 50cqi;
+
+  > .connection__control,
+  > app-checkbox {
+    flex: 1 1 auto;
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+}
+
+.connection__beside-label {
+  flex: none;
+  font-size: 0.8125rem;
+}
+
+.connection__beside {
+  flex: 0 0 5.5rem;
+
+  .connection__control {
+    inline-size: 100%;
+  }
+}

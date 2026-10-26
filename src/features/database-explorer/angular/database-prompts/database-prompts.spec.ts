@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
-import { ConnectionValues, DatabaseEngineInfo } from '@shared/api/database-engine-protocol';
+import {
+  ConnectionField,
+  ConnectionValues,
+  DatabaseEngineInfo,
+} from '@shared/api/database-engine-protocol';
 import { DatabaseConnection } from '@shared/api/database-document';
 import { DatabaseWorkspace } from '../database-workspace/database-workspace';
-import { DatabasePrompts } from './database-prompts';
+import {
+  ConnectionDialogTab,
+  ConnectionFieldGroup,
+  DatabasePrompts,
+  layoutConnectionFields,
+} from './database-prompts';
 
 /**
  * An engine with a secret password field.
@@ -20,6 +29,47 @@ const POSTGRES: DatabaseEngineInfo = {
     { id: 'password', label: 'Password', kind: 'password', secret: true },
   ],
 };
+
+/**
+ * An engine with required fields on both tabs.
+ */
+const TABBED: DatabaseEngineInfo = {
+  id: 'tabbed',
+  displayName: 'Tabbed',
+  language: 'sql',
+  queryExtension: 'sql',
+  capabilities: [],
+  connectionFields: [
+    { id: 'host', label: 'Host', kind: 'text', required: true, section: 'server' },
+    { id: 'port', label: 'Port', kind: 'number', required: true, section: 'server', inline: true },
+    { id: 'database', label: 'Database', kind: 'text', required: true, section: 'database' },
+    { id: 'ssl', label: 'Encryption', kind: 'choice', section: 'security' },
+  ],
+};
+
+/**
+ * Builds a field.
+ * @param id The field's id.
+ * @param extra The rest of it.
+ * @returns Returns the field.
+ */
+function field(id: string, extra: Partial<ConnectionField> = {}): ConnectionField {
+  return { id, label: id, kind: 'text', ...extra };
+}
+
+/**
+ * Reads a layout as ids: each tab's sections, each section's rows as `field` or `field+beside`.
+ * @param groups The tab's sections.
+ * @returns Returns the sections and their rows.
+ */
+function shape(groups: readonly ConnectionFieldGroup[]): readonly [string, readonly string[]][] {
+  return groups.map((group: ConnectionFieldGroup): [string, readonly string[]] => [
+    group.section,
+    group.rows.map((row: { field: ConnectionField; beside?: ConnectionField }): string =>
+      row.beside === undefined ? row.field.id : `${row.field.id}+${row.beside.id}`,
+    ),
+  ]);
+}
 
 /**
  * The saved connection the dialog edits.
@@ -266,6 +316,75 @@ describe('DatabasePrompts', () => {
     expect(carried).toEqual(['c1']);
   });
 
+  // --- Tabs ---
+
+  it('newConnection_returnsToLogin', () => {
+    prompts.tab.set('properties');
+
+    prompts.newConnection();
+
+    expect(prompts.tab()).toBe('login');
+  });
+
+  it('editConnection_returnsToLogin', () => {
+    prompts.tab.set('properties');
+
+    prompts.editConnection('c1');
+
+    expect(prompts.tab()).toBe('login');
+  });
+
+  it('chooseEngine_returnsToLogin_soATabTheNewEngineLacksIsNeverLeftShowing', () => {
+    prompts.newConnection();
+    prompts.tab.set('properties');
+
+    prompts.chooseEngine('sqlite');
+
+    expect(prompts.tab()).toBe('login');
+  });
+
+  it('layout_followsTheChosenEngine', () => {
+    workspace.engines.set([TABBED]);
+
+    prompts.newConnection();
+
+    expect(shape(prompts.layout().login)).toEqual([['server', ['host+port']]]);
+    expect(shape(prompts.layout().properties)).toEqual([
+      ['database', ['database']],
+      ['security', ['ssl']],
+    ]);
+  });
+
+  it('incompleteTabs_namesEachTabWithAnEmptyRequiredField', () => {
+    workspace.engines.set([TABBED]);
+    prompts.newConnection();
+
+    expect([...prompts.incompleteTabs()]).toEqual<ConnectionDialogTab[]>(['login', 'properties']);
+  });
+
+  it('incompleteTabs_countsAFieldBesideAnother', () => {
+    workspace.engines.set([TABBED]);
+    prompts.newConnection();
+    prompts.setValue('host', 'localhost');
+    prompts.setValue('database', 'sales');
+
+    expect([...prompts.incompleteTabs()]).toEqual<ConnectionDialogTab[]>(['login']);
+  });
+
+  it('incompleteTabs_treatsBlankAsEmpty_andIsEmptyOnceAllAreFilled', () => {
+    workspace.engines.set([TABBED]);
+    prompts.newConnection();
+    prompts.setValue('host', 'localhost');
+    prompts.setValue('port', '5432');
+    prompts.setValue('database', '   ');
+
+    expect([...prompts.incompleteTabs()]).toEqual<ConnectionDialogTab[]>(['properties']);
+
+    prompts.setValue('database', 'sales');
+
+    expect(prompts.incompleteTabs().size).toBe(0);
+  });
+
   // --- Passphrase ---
 
   it('askNewPassphrase_opensTheSetPromptEmpty', () => {
@@ -356,5 +475,120 @@ describe('DatabasePrompts', () => {
     expect(prompts.passphraseMode()).toBeNull();
     expect(prompts.passphrase()).toBe('');
     expect(prompts.passphraseConfirm()).toBe('');
+  });
+});
+
+describe('layoutConnectionFields', () => {
+  it('putsServerAndAuthenticationOnLogin_andTheRestOnProperties_inSectionOrder', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('mode', { section: 'options' }),
+        field('cert', { section: 'security' }),
+        field('db', { section: 'database' }),
+        field('user', { section: 'authentication' }),
+        field('host', { section: 'server' }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([
+      ['server', ['host']],
+      ['authentication', ['user']],
+    ]);
+    expect(shape(layout.properties)).toEqual([
+      ['database', ['db']],
+      ['security', ['cert']],
+      ['options', ['mode']],
+    ]);
+  });
+
+  it('keepsTheEnginesOrderWithinASection', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('password', { section: 'authentication' }),
+        field('user', { section: 'authentication' }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([['authentication', ['password', 'user']]]);
+  });
+
+  it('putsAnUntaggedField_inTheServerSectionOnLogin', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('user', { section: 'authentication' }),
+        field('file'),
+        field('host', { section: 'server' }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([
+      ['server', ['file', 'host']],
+      ['authentication', ['user']],
+    ]);
+    expect(layout.properties).toEqual([]);
+  });
+
+  it('putsAnInlineField_besideThePreviousOneInItsSection', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('host', { section: 'server' }),
+        field('port', { section: 'server', inline: true }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([['server', ['host+port']]]);
+    expect(layout.login[0].rows[0].field.id).toBe('host');
+    expect(layout.login[0].rows[0].beside?.id).toBe('port');
+  });
+
+  it('neverPutsAnInlineField_besideOneFromAnotherSection', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('host', { section: 'server' }),
+        field('user', { section: 'authentication', inline: true }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([
+      ['server', ['host']],
+      ['authentication', ['user']],
+    ]);
+  });
+
+  it('leavesAnInlineFieldAlone_afterARowThatAlreadyHasOneBeside', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('host', { section: 'server' }),
+        field('port', { section: 'server', inline: true }),
+        field('socket', { section: 'server', inline: true }),
+        field('timeout', { section: 'server', inline: true }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([['server', ['host+port', 'socket+timeout']]]);
+  });
+
+  it('pairsAcrossAFieldOfAnotherSection_whenBothAreInTheSameSection', () => {
+    // Sections gather their fields first, so an inline field pairs with the previous field of its
+    // own section even when the engine listed another section's field between them.
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([
+        field('host', { section: 'server' }),
+        field('user', { section: 'authentication' }),
+        field('port', { section: 'server', inline: true }),
+      ]);
+
+    expect(shape(layout.login)).toEqual([
+      ['server', ['host+port']],
+      ['authentication', ['user']],
+    ]);
+  });
+
+  it('leavesAnInlineFieldThatOpensItsSection_onItsOwnRow', () => {
+    const layout: Readonly<Record<ConnectionDialogTab, readonly ConnectionFieldGroup[]>> =
+      layoutConnectionFields([field('db', { section: 'database', inline: true })]);
+
+    expect(shape(layout.properties)).toEqual([['database', ['db']]]);
+  });
+
+  it('leavesOutEmptySections_andAnswersEmptyTabsForNoFields', () => {
+    expect(layoutConnectionFields([])).toEqual({ login: [], properties: [] });
+    expect(
+      shape(layoutConnectionFields([field('ssl', { section: 'security' })]).properties),
+    ).toEqual([['security', ['ssl']]]);
   });
 });

@@ -52,32 +52,6 @@
   overflow-wrap: anywhere;
 }
 
-.request__sections {
-  display: flex;
-  gap: 0.25rem;
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-}
-
-.request__section {
-  padding: 0.35rem 0.6rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
-  background: transparent;
-  border: 0;
-  border-block-end: 0.125rem solid transparent;
-  cursor: pointer;
-
-  &:hover {
-    color: var(--body-foreground-color);
-  }
-
-  &--active {
-    color: var(--accent-color);
-    border-block-end-color: var(--accent-color);
-  }
-}
-
 // The active section's content: fills the request half and scrolls when a grid outgrows it.
 .request__body {
   display: flex;

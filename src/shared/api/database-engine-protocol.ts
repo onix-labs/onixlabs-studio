@@ -21,7 +21,7 @@
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const DATABASE_ENGINE_PROTOCOL: string = '1.1';
+export const DATABASE_ENGINE_PROTOCOL: string = '1.2';
 
 /**
  * The capabilities an engine may declare. A closed list: Studio only offers what it knows how to
@@ -41,6 +41,20 @@ export type DatabaseEngineCapability =
  * atoms: an engine describes the field, it never draws it.
  */
 export type ConnectionFieldKind = 'text' | 'number' | 'password' | 'file' | 'boolean' | 'choice';
+
+/**
+ * Where a connection field belongs in the connection dialog (#1121). A closed list, so every engine's
+ * dialog reads alike: Studio draws `server` and `authentication` on its Login tab and the rest on its
+ * Connection Properties tab, each section in this order. A field that names none is on Login.
+ *
+ * - `server`: where to connect — a host and port, an address, a file.
+ * - `authentication`: who connects — a user, a password.
+ * - `database`: which database, for an engine that reaches several.
+ * - `security`: how the connection is protected — encryption, certificates.
+ * - `options`: anything else about how it is opened.
+ */
+export type ConnectionFieldSection =
+  'server' | 'authentication' | 'database' | 'security' | 'options';
 
 /**
  * One option of a `choice` connection field.
@@ -101,6 +115,17 @@ export interface ConnectionField {
    * was typed: it is held in memory for the session (and, with #1097, kept encrypted in the document).
    */
   readonly secret?: boolean;
+
+  /**
+   * Gets the dialog section the field belongs in (protocol 1.2); Login when absent.
+   */
+  readonly section?: ConnectionFieldSection;
+
+  /**
+   * Gets whether the field sits on the same line as the one before it, as a port does beside its host
+   * (protocol 1.2). It is drawn narrower, and only when the two are in the same section.
+   */
+  readonly inline?: boolean;
 }
 
 /**

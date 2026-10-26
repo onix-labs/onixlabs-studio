@@ -58,80 +58,141 @@
         </app-setting-row>
       }
 
-      @for (field of prompts.fields(); track field.id) {
-        <app-setting-row [label]="field.label">
-          @switch (field.kind) {
-            @case ('password') {
-              <app-password-field
-                class="connection__control"
-                [value]="prompts.values()[field.id] ?? ''"
-                [placeholder]="field.placeholder ?? ''"
-                (valueChange)="prompts.setValue(field.id, $event)"
-              />
-            }
-            @case ('boolean') {
-              <app-checkbox
-                [checked]="prompts.values()[field.id] === 'true'"
-                (checkedChange)="prompts.setValue(field.id, $event ? 'true' : 'false')"
-              />
-            }
-            @case ('choice') {
-              <app-dropdown
-                class="connection__control"
-                [options]="choiceOptions(field)"
-                [value]="prompts.values()[field.id] ?? ''"
-                [fullWidth]="true"
-                [ariaLabel]="field.label"
-                (valueChange)="prompts.setValue(field.id, $event)"
-              />
-            }
-            @case ('file') {
-              <div class="connection__file connection__control">
-                <app-text-field
-                  class="connection__control"
-                  [value]="prompts.values()[field.id] ?? ''"
-                  [placeholder]="field.placeholder ?? ''"
-                  [ariaLabel]="field.label"
-                  (valueChange)="prompts.setValue(field.id, $event)"
-                />
-                <app-button label="Browse" (click)="browse(field)" />
-              </div>
-            }
-            @default {
+      @if (prompts.mode() === 'secrets') {
+        <!-- Asking only for what is missing: the secrets, with no tabs to look behind. -->
+        @for (field of prompts.fields(); track field.id) {
+          <app-setting-row [label]="field.label">
+            <ng-container *ngTemplateOutlet="control; context: { $implicit: field }" />
+          </app-setting-row>
+        }
+        <ng-container *ngTemplateOutlet="remember" />
+      } @else {
+        <!-- Where and who on Login; everything else on Connection Properties, as SSMS has it (#1121).
+             Each engine says which section a field is in, so every engine's dialog reads alike. -->
+        @if (prompts.layout().properties.length > 0) {
+          <app-tab-list
+            class="connection__tabs"
+            ariaLabel="Connection settings"
+            [tabs]="dialogTabs()"
+            [value]="prompts.tab()"
+            (valueChange)="prompts.tab.set($any($event))"
+          />
+        }
+        <!-- Both tabs are drawn in one cell, the hidden one invisible, so the dialog keeps the
+             taller one's height and its buttons do not move as the tabs change. -->
+        <div class="connection__panels">
+          @for (panel of dialogPanels; track panel) {
+            <div
+              class="connection__panel"
+              role="tabpanel"
+              [class.connection__panel--hidden]="panel !== prompts.tab()"
+              [attr.aria-hidden]="panel !== prompts.tab()"
+              [attr.inert]="panel !== prompts.tab() ? '' : null"
+            >
+              @for (group of prompts.layout()[panel]; track group.section) {
+                <div class="connection__section">
+                  @for (row of group.rows; track row.field.id) {
+                    <app-setting-row [label]="row.field.label">
+                      <div class="connection__line">
+                        <ng-container
+                          *ngTemplateOutlet="control; context: { $implicit: row.field }"
+                        />
+                        @if (row.beside; as beside) {
+                          <span class="connection__beside-label">{{ beside.label }}</span>
+                          <div class="connection__beside">
+                            <ng-container
+                              *ngTemplateOutlet="control; context: { $implicit: beside }"
+                            />
+                          </div>
+                        }
+                      </div>
+                    </app-setting-row>
+                  }
+                  @if (group.section === 'authentication') {
+                    <ng-container *ngTemplateOutlet="remember" />
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- One field's control: the atom for its kind. -->
+      <ng-template #control let-field>
+        @switch (field.kind) {
+          @case ('password') {
+            <app-password-field
+              class="connection__control"
+              [value]="prompts.values()[field.id] ?? ''"
+              [placeholder]="field.placeholder ?? ''"
+              (valueChange)="prompts.setValue(field.id, $event)"
+            />
+          }
+          @case ('boolean') {
+            <app-checkbox
+              [checked]="prompts.values()[field.id] === 'true'"
+              (checkedChange)="prompts.setValue(field.id, $event ? 'true' : 'false')"
+            />
+          }
+          @case ('choice') {
+            <app-dropdown
+              class="connection__control"
+              [options]="choiceOptions(field)"
+              [value]="prompts.values()[field.id] ?? ''"
+              [fullWidth]="true"
+              [ariaLabel]="field.label"
+              (valueChange)="prompts.setValue(field.id, $event)"
+            />
+          }
+          @case ('file') {
+            <div class="connection__file connection__control">
               <app-text-field
                 class="connection__control"
                 [value]="prompts.values()[field.id] ?? ''"
                 [placeholder]="field.placeholder ?? ''"
                 [ariaLabel]="field.label"
                 (valueChange)="prompts.setValue(field.id, $event)"
-                (enter)="prompts.complete() && confirmConnection()"
               />
-            }
+              <app-button label="Browse" (click)="browse(field)" />
+            </div>
           }
-        </app-setting-row>
-      }
+          @default {
+            <app-text-field
+              class="connection__control"
+              [value]="prompts.values()[field.id] ?? ''"
+              [placeholder]="field.placeholder ?? ''"
+              [ariaLabel]="field.label"
+              (valueChange)="prompts.setValue(field.id, $event)"
+              (enter)="prompts.complete() && confirmConnection()"
+            />
+          }
+        }
+      </ng-template>
 
       <!-- Remembered passwords are sealed in the document — with the machine's keychain, or with the
            document's passphrase when it has one — and never written as typed. -->
-      @if (hasSecretFields()) {
-        <app-setting-row label="Remember password">
-          <app-checkbox
-            [checked]="prompts.remember()"
-            [disabled]="!workspace.canRemember()"
-            (checkedChange)="prompts.remember.set($event)"
-          />
-        </app-setting-row>
-        @if (!workspace.canRemember()) {
-          <p class="database-dialog__message">
-            @if (workspace.locked()) {
-              Unlock the document's passphrase to remember passwords in it.
-            } @else {
-              This computer has no keychain to keep passwords with. Give the document a passphrase
-              to remember them; until then they are kept for this session.
-            }
-          </p>
+      <ng-template #remember>
+        @if (hasSecretFields()) {
+          <app-setting-row label="Remember password">
+            <app-checkbox
+              [checked]="prompts.remember()"
+              [disabled]="!workspace.canRemember()"
+              (checkedChange)="prompts.remember.set($event)"
+            />
+          </app-setting-row>
+          @if (!workspace.canRemember()) {
+            <p class="database-dialog__message">
+              @if (workspace.locked()) {
+                Unlock the document's passphrase to remember passwords in it.
+              } @else {
+                This computer has no keychain to keep passwords with. Give the document a passphrase
+                to remember them; until then they are kept for this session.
+              }
+            </p>
+          }
         }
-      }
+      </ng-template>
     </div>
 
     @switch (prompts.test().state) {
