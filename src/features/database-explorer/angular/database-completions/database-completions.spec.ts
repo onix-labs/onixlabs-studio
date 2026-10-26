@@ -32,6 +32,15 @@ function want(text: string, language: string = 'sql'): ReturnType<typeof complet
 }
 
 describe('completionWant', () => {
+  it('answersAtOnce_forALongLineThatWouldBacktrack', () => {
+    const line: string = `(:${'\t:'.repeat(40_000)}x`;
+    const started: number = performance.now();
+
+    completionWant(line, line.length, 'cypher');
+
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   it('completesABareWord_withObjects', () => {
     expect(want('SELECT na')).toEqual({ kind: 'objects' });
     expect(want('')).toEqual({ kind: 'objects' });

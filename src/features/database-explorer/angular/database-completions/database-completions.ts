@@ -206,10 +206,14 @@ export function completionWant(
     return { kind: 'members', of: alias ?? written };
   }
   if (language === 'cypher') {
-    if (/\(\s*[\p{L}\p{N}_]*\s*(?::\s*[\p{L}\p{N}_`]*\s*)*:\s*$/u.test(head)) {
+    // Only the text since the last open bracket is read, and each repeated part must consume a name,
+    // so neither pattern can backtrack on a long line.
+    const opened: number = Math.max(head.lastIndexOf('('), head.lastIndexOf('['));
+    const inner: string = opened < 0 ? '' : head.slice(opened);
+    if (/^\(\s*[\p{L}\p{N}_]*\s*(?::\s*[\p{L}\p{N}_`]+\s*)*:\s*$/u.test(inner)) {
       return { kind: 'labels' };
     }
-    if (/\[\s*[\p{L}\p{N}_]*\s*:\s*(?:[\p{L}\p{N}_`]+\s*\|\s*)*$/u.test(head)) {
+    if (/^\[\s*[\p{L}\p{N}_]*\s*:\s*(?:[\p{L}\p{N}_`]+\s*\|\s*)*$/u.test(inner)) {
       return { kind: 'relationships' };
     }
   }
