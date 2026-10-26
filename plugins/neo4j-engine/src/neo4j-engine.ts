@@ -12,6 +12,8 @@ import neo4j, {
   isPoint,
   isRelationship,
   isTime,
+  isUUID,
+  isVector,
   Node,
   Path,
   PathSegment,
@@ -501,6 +503,20 @@ function mapValue(map: Readonly<Record<string, unknown>>): Readonly<Record<strin
 }
 
 /**
+ * Converts a typed array of numbers into a list, keeping a 64-bit integer as a big integer.
+ * @param numbers The numbers.
+ * @returns Returns the list.
+ */
+function numbersValue(numbers: ArrayLike<number | bigint>): DatabaseValue {
+  return {
+    type: 'list',
+    items: Array.from(numbers, (item: number | bigint): DatabaseValue =>
+      typeof item === 'bigint' ? { type: 'bigint', value: item.toString() } : item,
+    ),
+  };
+}
+
+/**
  * Converts a value the driver returned into a typed cell.
  * @param value The driver's value.
  * @returns Returns the typed cell.
@@ -551,8 +567,18 @@ export function toValue(value: unknown): DatabaseValue {
   ) {
     return { type: 'temporal', value: String(value) };
   }
+  if (isUUID(value)) {
+    return String(value);
+  }
+  if (isVector(value)) {
+    // A vector is a list of numbers, whatever typed array the driver keeps it in.
+    return numbersValue(value.asTypedArray());
+  }
   if (value instanceof Uint8Array || value instanceof Int8Array) {
     return bytesValue(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+  }
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    return numbersValue(value as unknown as ArrayLike<number | bigint>);
   }
   if (Array.isArray(value)) {
     return { type: 'list', items: value.map(toValue) };
