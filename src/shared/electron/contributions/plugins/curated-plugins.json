@@ -1,5 +1,5 @@
 {
-  "revision": 54,
+  "revision": 55,
   "plugins": [
     {
       "id": "pyright",
@@ -1045,6 +1045,62 @@
               "kind": "node"
             },
             "entryPoint": "node_modules/@onixlabs/sqlite-engine/main.js"
+          }
+        ]
+      },
+      "requires": []
+    },
+    {
+      "id": "postgres-engine",
+      "name": "PostgreSQL",
+      "description": "Connect the Database Explorer to PostgreSQL servers.",
+      "detail": "Connects to PostgreSQL servers over the network with `pg`, a pure-JavaScript client; it installs no database and no native code.",
+      "version": "1.0.0",
+      "apiVersion": "1.20.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
+        "sha256": "b1732efc7b153555dc79303e3fb078199daef33cb3991a7d42dffaea88897113",
+        "executablePath": "node_modules/@onixlabs/postgres-engine/main.js"
+      },
+      "contributes": {
+        "databaseEngines": [
+          {
+            "id": "postgres",
+            "displayName": "PostgreSQL",
+            "priority": 90,
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/postgres-engine/main.js"
+          }
+        ]
+      },
+      "requires": []
+    },
+    {
+      "id": "neo4j-engine",
+      "name": "Neo4j",
+      "description": "Connect the Database Explorer to Neo4j graph databases.",
+      "detail": "Connects to Neo4j over Bolt with the official JavaScript driver; it installs no database and no native code.",
+      "version": "1.0.0",
+      "apiVersion": "1.20.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
+        "sha256": "bfb81e4af635bd546a65c37a6dd912e706493ac2bae19bca01ff632886dcf6dc",
+        "executablePath": "node_modules/@onixlabs/neo4j-engine/main.js"
+      },
+      "contributes": {
+        "databaseEngines": [
+          {
+            "id": "neo4j",
+            "displayName": "Neo4j",
+            "priority": 80,
+            "command": {
+              "kind": "node"
+            },
+            "entryPoint": "node_modules/@onixlabs/neo4j-engine/main.js"
           }
         ]
       },
