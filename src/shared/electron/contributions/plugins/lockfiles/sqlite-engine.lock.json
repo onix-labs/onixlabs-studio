@@ -8,13 +8,13 @@
       "name": "sqlite-engine",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/sqlite-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.0.0/onixlabs-sqlite-engine-1.0.0.tgz"
+        "@onixlabs/sqlite-engine": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.1.0/onixlabs-sqlite-engine-1.1.0.tgz"
       }
     },
     "node_modules/@onixlabs/sqlite-engine": {
-      "version": "1.0.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.0.0/onixlabs-sqlite-engine-1.0.0.tgz",
-      "integrity": "sha512-67VWXMTcQcXBfbowJKwdN5FGM+iGdEkucnbvQXjT779xNc4o9R3ygZu0kM8RlXjXD/txeD7vPd1lfSP4VOc4xA=="
+      "version": "1.1.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-sqlite-engine-v1.1.0/onixlabs-sqlite-engine-1.1.0.tgz",
+      "integrity": "sha512-sAIYD9hyiZqhmtcac+vWUNLqjAZ8y/66OUOHxW9Ss4hJQwNeDDLrHlSzFmtVtY0GK34RWtCl0Pl4J/Fy1WjCnQ=="
     }
   }
 }

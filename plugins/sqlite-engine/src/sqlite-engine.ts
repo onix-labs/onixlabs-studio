@@ -1,10 +1,12 @@
 import { DatabaseSync, SQLOutputValue, StatementSync } from 'node:sqlite';
 import {
+  CompletionName,
   ConnectionValues,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
   ExecuteRequest,
+  NamesScope,
   NodeActionOutcome,
 } from '../../protocol/database/protocol';
 import { SqliteRunner } from './sqlite-runner';
@@ -17,6 +19,7 @@ import {
   EngineExecution,
   EngineSession,
   quoteIdentifier,
+  splitQualifiedName,
   text,
 } from '../../protocol/database/engine';
 
@@ -64,7 +67,7 @@ export class SqliteEngine implements DatabaseEngine {
     displayName: 'SQLite',
     language: 'sql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'script'],
+    capabilities: ['cancel', 'script', 'completion'],
     connectionFields: [
       {
         id: 'file',
@@ -401,6 +404,71 @@ class SqliteSession implements EngineSession {
     this.runner.close();
     this.database.close();
     return Promise.resolve();
+  }
+
+  /**
+   * Lists names to complete with: the schemas, and the tables and views of `main` and `temp` (which a
+   * query names unqualified) and the SQL functions; or a table's columns.
+   * @param scope Which names.
+   * @returns Returns a promise resolving the names.
+   */
+  public names(scope: NamesScope): Promise<readonly CompletionName[]> {
+    // node:sqlite is synchronous; a schema that does not exist throws, and that is answered as a
+    // rejection, which completes with nothing.
+    try {
+      return Promise.resolve(this.namesNow(scope));
+    } catch (error: unknown) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  /**
+   * Reads the names {@link names} answers with.
+   * @param scope Which names.
+   * @returns Returns the names.
+   */
+  private namesNow(scope: NamesScope): readonly CompletionName[] {
+    if (scope.kind === 'members') {
+      const parts: readonly string[] = splitQualifiedName(scope.of);
+      const name: string = parts[parts.length - 1] ?? '';
+      const schema: string = parts.length > 1 ? parts[parts.length - 2] : 'main';
+      return this.all(`pragma ${quoteIdentifier(schema)}.table_info(${quoteIdentifier(name)})`).map(
+        (row: readonly DatabaseValue[]): CompletionName => ({
+          name: text(row[1]),
+          kind: 'column',
+          detail: text(row[2] ?? '') || 'ANY',
+        }),
+      );
+    }
+    const schemas: readonly string[] = this.all('pragma database_list').map(
+      (row: readonly DatabaseValue[]): string => text(row[1]),
+    );
+    const objects: CompletionName[] = schemas.map((schema: string): CompletionName => ({
+      name: schema,
+      kind: 'schema',
+    }));
+    for (const schema of ['main', 'temp'].filter((candidate: string) =>
+      schemas.includes(candidate),
+    )) {
+      for (const row of this.all(
+        `select name, type from ${quoteIdentifier(schema)}.sqlite_schema where type in ('table', 'view') and name not like 'sqlite_%' order by name`,
+      )) {
+        objects.push({
+          name: text(row[0]),
+          kind: text(row[1]) === 'view' ? 'view' : 'table',
+          detail: schema,
+        });
+      }
+    }
+    const functions: Set<string> = new Set<string>(
+      this.all('select name from pragma_function_list where builtin = 1').map(
+        (row: readonly DatabaseValue[]): string => text(row[0]),
+      ),
+    );
+    for (const name of [...functions].sort()) {
+      objects.push({ name, kind: 'function' });
+    }
+    return objects;
   }
 
   /**

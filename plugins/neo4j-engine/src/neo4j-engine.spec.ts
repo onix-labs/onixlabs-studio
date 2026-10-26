@@ -440,7 +440,13 @@ describe('Neo4jEngine', (): void => {
       queryExtension: 'cypher',
     });
     expect(engine.info.capabilities).toContain('graph');
-    expect(engine.info.capabilities).toEqual(['cancel', 'multipleDatabases', 'script', 'graph']);
+    expect(engine.info.capabilities).toEqual([
+      'cancel',
+      'multipleDatabases',
+      'script',
+      'graph',
+      'completion',
+    ]);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'uri',
       'database',
@@ -874,6 +880,102 @@ describe('Neo4jEngine', (): void => {
       kind: 'failure',
       message: 'Nothing to act on.',
     });
+  });
+
+  it('names_listsLabelsTypesAndKeys_inTheConnectionsDatabase_orTheQuerys', async (): Promise<void> => {
+    driver.executeQuery.mockImplementation((query: string): Promise<QueryResult> =>
+      Promise.resolve(
+        query.includes('db.labels')
+          ? result(['label'], [['Movie'], ['Person']])
+          : query.includes('db.relationshipTypes')
+            ? result(['relationshipType'], [['ACTED_IN']])
+            : result(['propertyKey'], [['title']]),
+      ),
+    );
+    const session: EngineSession = await open({ database: 'films' });
+
+    expect(await session.names?.({ kind: 'objects' })).toEqual([
+      { name: 'Movie', kind: 'label' },
+      { name: 'Person', kind: 'label' },
+      { name: 'ACTED_IN', kind: 'relationship' },
+      { name: 'title', kind: 'property' },
+    ]);
+    expect(
+      driver.executeQuery.mock.calls.map(
+        (call: [string, object, { database?: string }]): string | undefined => call[2].database,
+      ),
+    ).toEqual(['films', 'films', 'films']);
+
+    await session.names?.({ kind: 'objects' }, 'movies');
+    expect(driver.executeQuery).toHaveBeenLastCalledWith(
+      expect.any(String),
+      {},
+      {
+        database: 'movies',
+      },
+    );
+  });
+
+  it('names_listsTheKeysTheNodesOfALabelCarry', async (): Promise<void> => {
+    driver.executeQuery.mockImplementation((query: string): Promise<QueryResult> =>
+      Promise.resolve(
+        query.startsWith('MATCH (n:`Movie`)')
+          ? result(['key'], [['released'], ['title']])
+          : result(['key'], []),
+      ),
+    );
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: 'Movie' })).toEqual([
+      { name: 'released', kind: 'property' },
+      { name: 'title', kind: 'property' },
+    ]);
+    expect(driver.executeQuery).toHaveBeenCalledTimes(1);
+    expect(driver.executeQuery.mock.calls[0][0]).toContain('LIMIT 200');
+    expect(driver.executeQuery.mock.calls[0][2]).toEqual({ database: 'neo4j' });
+  });
+
+  it('names_fallsBackToTheKeysOfARelationshipType_whenNoNodeHasTheLabel', async (): Promise<void> => {
+    driver.executeQuery.mockImplementation((query: string): Promise<QueryResult> =>
+      Promise.resolve(
+        query.startsWith('MATCH ()-[r:`ACTED_IN`]->()')
+          ? result(['key'], [['roles']])
+          : result(['key'], []),
+      ),
+    );
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: 'ACTED_IN' })).toEqual([
+      { name: 'roles', kind: 'property' },
+    ]);
+    expect(driver.executeQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('names_listsNoMembers_whenBothSamplesFail', async (): Promise<void> => {
+    driver.executeQuery.mockImplementation((): Promise<QueryResult> =>
+      Promise.reject(new Error('Syntax error')),
+    );
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: 'Movie' })).toEqual([]);
+  });
+
+  it('names_quotesTheLabel_unquotingAndRequotingWhatTheQueryWrote', async (): Promise<void> => {
+    driver.executeQuery.mockImplementation((): Promise<QueryResult> =>
+      Promise.resolve(result(['key'], [])),
+    );
+    const session: EngineSession = await open();
+
+    await session.names?.({ kind: 'members', of: '`Odd``Label`' });
+    await session.names?.({ kind: 'members', of: 'x`) DETACH DELETE n //' });
+
+    const queries: readonly string[] = driver.executeQuery.mock.calls.map(
+      (call: [string, object, { database?: string }]): string => call[0],
+    );
+    expect(queries[0]).toContain('MATCH (n:`Odd``Label`)');
+    expect(queries[1]).toContain('MATCH ()-[r:`Odd``Label`]->()');
+    // A stray backtick cannot close the name early: what follows it stays inside the quotes.
+    expect(queries[2]).toContain('MATCH (n:`x) DETACH DELETE n //`) WITH n LIMIT 200');
   });
 
   it('close_closesTheDriver', async (): Promise<void> => {

@@ -77,6 +77,7 @@ import {
 } from '../database-explorer-commands/database-explorer-commands';
 import { DatabasePrompts } from '../database-prompts/database-prompts';
 import { DatabaseQueryOpener } from '../database-query-opener/database-query-opener';
+import { DatabaseCompletions } from '../database-completions/database-completions';
 import { DatabaseWorkspace } from '../database-workspace/database-workspace';
 
 /**
@@ -111,6 +112,7 @@ import { DatabaseWorkspace } from '../database-workspace/database-workspace';
     DatabaseWorkspace,
     DatabasePrompts,
     DatabaseQueryOpener,
+    DatabaseCompletions,
     // The agent's in-app tools, answering for this tab for as long as it is open.
     DatabaseAgentCapabilities,
     DockTabContext,

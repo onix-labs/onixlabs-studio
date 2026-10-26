@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
+import { CompletionName, DatabaseNode, NodeActionOutcome } from '../../protocol/database/protocol';
 import { encodePath, EngineSession } from '../../protocol/database/engine';
 import { SqliteEngine } from './sqlite-engine';
 
@@ -72,11 +72,11 @@ describe('SqliteEngine', (): void => {
     return session.expand(encodePath(...segments));
   }
 
-  it('info_offersAFileAndReadOnlyField_andCancelAndScript', (): void => {
+  it('info_offersAFileAndReadOnlyField_andCancelScriptAndCompletion', (): void => {
     const engine: SqliteEngine = new SqliteEngine('/unused/main.js');
 
     expect(engine.info.id).toBe('sqlite');
-    expect(engine.info.capabilities).toEqual(['cancel', 'script']);
+    expect(engine.info.capabilities).toEqual(['cancel', 'script', 'completion']);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'file',
       'readOnly',
@@ -289,6 +289,64 @@ describe('SqliteEngine', (): void => {
       kind: 'failure',
       message: 'Nothing to act on.',
     });
+  });
+
+  it('names_listsSchemasTablesViewsAndFunctions', async (): Promise<void> => {
+    const session: EngineSession = await open();
+
+    const names: readonly CompletionName[] = (await session.names?.({ kind: 'objects' })) ?? [];
+
+    expect(names.filter((name: CompletionName): boolean => name.kind === 'schema')).toEqual([
+      { name: 'main', kind: 'schema' },
+    ]);
+    expect(
+      names.filter(
+        (name: CompletionName): boolean => name.kind === 'table' || name.kind === 'view',
+      ),
+    ).toEqual([
+      { name: 'authors', kind: 'table', detail: 'main' },
+      { name: 'books', kind: 'table', detail: 'main' },
+      { name: 'titles', kind: 'view', detail: 'main' },
+    ]);
+    const functions: readonly string[] = names
+      .filter((name: CompletionName): boolean => name.kind === 'function')
+      .map((name: CompletionName): string => name.name);
+    expect(functions).toEqual(expect.arrayContaining(['count', 'lower', 'substr']));
+    // Each once, though SQLite lists a function once per arity, and sorted.
+    expect(new Set<string>(functions).size).toBe(functions.length);
+    expect([...functions].sort()).toEqual(functions);
+  });
+
+  it('names_listsATablesColumns_withTheirTypes', async (): Promise<void> => {
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: 'books' })).toEqual([
+      { name: 'id', kind: 'column', detail: 'INTEGER' },
+      { name: 'title', kind: 'column', detail: 'TEXT' },
+      { name: 'author_id', kind: 'column', detail: 'INTEGER' },
+      { name: 'notes', kind: 'column', detail: 'ANY' },
+    ]);
+  });
+
+  it('names_listsTheColumnsOfASchemaQualifiedOrQuotedTable', async (): Promise<void> => {
+    const session: EngineSession = await open();
+
+    const columns: (names: readonly CompletionName[] | undefined) => readonly string[] = (
+      names: readonly CompletionName[] | undefined,
+    ): readonly string[] => (names ?? []).map((name: CompletionName): string => name.name);
+    expect(columns(await session.names?.({ kind: 'members', of: 'main.authors' }))).toEqual([
+      'id',
+      'name',
+    ]);
+    expect(columns(await session.names?.({ kind: 'members', of: '"main"."titles"' }))).toEqual([
+      'title',
+    ]);
+  });
+
+  it('names_listsNoMembers_forATableThatDoesNotExist', async (): Promise<void> => {
+    const session: EngineSession = await open();
+
+    expect(await session.names?.({ kind: 'members', of: 'missing' })).toEqual([]);
   });
 
   it('close_closesTheDatabase', async (): Promise<void> => {

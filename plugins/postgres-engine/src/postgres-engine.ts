@@ -1,11 +1,13 @@
 import pg from 'pg';
 import {
+  CompletionName,
   ConnectionValues,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseNodeAction,
   DatabaseValue,
   ExecuteRequest,
+  NamesScope,
   NodeActionOutcome,
   QueryMessage,
   ResultColumn,
@@ -116,7 +118,7 @@ export class PostgresEngine implements DatabaseEngine {
     displayName: 'PostgreSQL',
     language: 'pgsql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'multipleDatabases', 'script'],
+    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion'],
     connectionFields: [
       { id: 'host', label: 'Host', kind: 'text', required: true, defaultValue: 'localhost' },
       { id: 'port', label: 'Port', kind: 'number', required: true, defaultValue: '5432' },
@@ -814,6 +816,67 @@ class PostgresSession implements EngineSession {
     await Promise.allSettled(
       clients.map(async (opening: Promise<pg.Client>): Promise<void> => (await opening).end()),
     );
+  }
+
+  /**
+   * Lists names to complete with, in the database the query runs against: its schemas, the tables,
+   * views and functions a query reaches unqualified (those on the search path), or the columns of the
+   * table or view it names. The name is resolved by the server, search path and quoting included.
+   * @param scope Which names.
+   * @param database The database, or the connection's own.
+   * @returns Returns a promise resolving the names.
+   */
+  public async names(scope: NamesScope, database?: string): Promise<readonly CompletionName[]> {
+    const target: string = database ?? this.settings.database;
+    if (scope.kind === 'members') {
+      const columns: readonly unknown[][] = await this.rows(
+        target,
+        `select a.attname, format_type(a.atttypid, a.atttypmod)
+           from pg_attribute a
+          where a.attrelid = to_regclass($1) and a.attnum > 0 and not a.attisdropped
+          order by a.attnum`,
+        [scope.of],
+      ).catch((): readonly unknown[][] => []);
+      return columns.map((row: unknown[]): CompletionName => ({
+        name: text(row[0]),
+        kind: 'column',
+        detail: text(row[1]),
+      }));
+    }
+    // One after another: a client runs one query at a time, and pg no longer queues them for us.
+    const schemas: readonly unknown[][] = await this.rows(
+      target,
+      `select nspname from pg_namespace
+          where nspname not in ('information_schema', 'pg_toast') and nspname not like 'pg_temp_%'
+            and nspname not like 'pg_toast_temp_%'
+          order by nspname`,
+    );
+    const relations: readonly unknown[][] = await this.rows(
+      target,
+      `select c.relname, c.relkind, n.nspname
+           from pg_class c join pg_namespace n on n.oid = c.relnamespace
+          where c.relkind in ('r', 'p', 'v', 'm', 'f') and n.nspname = any (current_schemas(false))
+          order by c.relname`,
+    );
+    const functions: readonly unknown[][] = await this.rows(
+      target,
+      `select distinct p.proname
+           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+          where n.nspname = any (current_schemas(true)) and p.prokind in ('f', 'a', 'w')
+          order by p.proname`,
+    );
+    return [
+      ...schemas.map((row: unknown[]): CompletionName => ({ name: text(row[0]), kind: 'schema' })),
+      ...relations.map((row: unknown[]): CompletionName => ({
+        name: text(row[0]),
+        kind: text(row[1]) === 'v' || text(row[1]) === 'm' ? 'view' : 'table',
+        detail: text(row[2]),
+      })),
+      ...functions.map((row: unknown[]): CompletionName => ({
+        name: text(row[0]),
+        kind: 'function',
+      })),
+    ];
   }
 
   /**

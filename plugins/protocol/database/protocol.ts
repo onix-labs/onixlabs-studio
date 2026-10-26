@@ -21,7 +21,7 @@
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const DATABASE_ENGINE_PROTOCOL: string = '1.0';
+export const DATABASE_ENGINE_PROTOCOL: string = '1.1';
 
 /**
  * The capabilities an engine may declare. A closed list: Studio only offers what it knows how to
@@ -33,7 +33,8 @@ export const DATABASE_ENGINE_PROTOCOL: string = '1.0';
  * - `script` — node actions can produce a script (Select Top N, Script as CREATE) to open as a query.
  * - `graph` — results may carry nodes, relationships and paths, so the Graph view is offered.
  */
-export type DatabaseEngineCapability = 'cancel' | 'multipleDatabases' | 'script' | 'graph';
+export type DatabaseEngineCapability =
+  'cancel' | 'multipleDatabases' | 'script' | 'graph' | 'completion';
 
 /**
  * The kinds of connection field an engine may ask for. A closed list, rendered by Studio's own form
@@ -530,6 +531,66 @@ export type ConnectOutcome =
   | { readonly kind: 'failure'; readonly message: string };
 
 /**
+ * What a completion name is: what the list shows it as and sorts it by.
+ */
+export type CompletionNameKind =
+  'schema' | 'table' | 'view' | 'function' | 'column' | 'label' | 'relationship' | 'property';
+
+/**
+ * One name a query may use, as the engine knows it (#1098).
+ */
+export interface CompletionName {
+  /**
+   * Gets the name, as it is written in a query.
+   */
+  readonly name: string;
+
+  /**
+   * Gets what it is.
+   */
+  readonly kind: CompletionNameKind;
+
+  /**
+   * Gets a short note shown beside it — a column's type, a table's schema.
+   */
+  readonly detail?: string;
+}
+
+/**
+ * Which names a `names` request asks for: the objects a query reaches for first, or the members of one
+ * object it names.
+ */
+export type NamesScope =
+  | { readonly kind: 'objects' }
+  | {
+      readonly kind: 'members';
+      /**
+       * Gets the object, as the query names it — `orders`, `public.orders`, a label.
+       */
+      readonly of: string;
+    };
+
+/**
+ * Asks an engine for names to complete with, for an engine that declares `completion`.
+ */
+export interface NamesRequest {
+  /**
+   * Gets the session.
+   */
+  readonly session: string;
+
+  /**
+   * Gets the database the query runs against, for an engine that reaches several.
+   */
+  readonly database?: string;
+
+  /**
+   * Gets which names.
+   */
+  readonly scope: NamesScope;
+}
+
+/**
  * The answer to an expand: the node's children, or why they could not be read.
  */
 export type ExpandOutcome =
@@ -612,6 +673,12 @@ export interface DatabaseEngineOperations {
     readonly params: { readonly session: string; readonly path: string; readonly action: string };
     readonly result: NodeActionOutcome;
   };
+
+  /**
+   * Lists names to complete with (protocol 1.1, #1098), for an engine that declares `completion`. An
+   * object that does not exist answers with no members rather than an error.
+   */
+  readonly names: { readonly params: NamesRequest; readonly result: readonly CompletionName[] };
 }
 
 /**

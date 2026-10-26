@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type * as MonacoApi from 'monaco-editor';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -6,6 +7,8 @@ import { TableColumn, TableRow } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { isStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { DatabaseEnginePrompt } from '@shared/angular/services/plugins/database-engine-prompt';
 import {
   ConnectOutcome,
@@ -16,6 +19,10 @@ import {
 } from '@shared/api/database-engine-protocol';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DatabaseClient } from '../../database-client/database-client';
+import {
+  DatabaseCompletions,
+  QueryCompletion,
+} from '../../database-completions/database-completions';
 import { DatabaseQueryOpener } from '../../database-query-opener/database-query-opener';
 import { DatabaseWorkspace } from '../../database-workspace/database-workspace';
 import { QueryPanel } from './query-panel';
@@ -154,6 +161,97 @@ class FakeClient {
 }
 
 /**
+ * A stand-in for the completions service, recording what it is asked and answering {@link items}.
+ */
+class FakeCompletions {
+  /**
+   * Holds every completion asked for: the query, its text and the caret's offset.
+   */
+  public readonly asked: { queryId: string; text: string; offset: number }[] = [];
+
+  /**
+   * Holds what each completion answers.
+   */
+  public items: readonly QueryCompletion[] = [];
+
+  /**
+   * Records a completion.
+   * @param queryId The query's id.
+   * @param text The text.
+   * @param offset The caret's offset.
+   * @returns Returns {@link items}.
+   */
+  public complete(
+    queryId: string,
+    text: string,
+    offset: number,
+  ): Promise<readonly QueryCompletion[]> {
+    this.asked.push({ queryId, text, offset });
+    return Promise.resolve(this.items);
+  }
+}
+
+/**
+ * A completion provider registered with the fake Monaco, and whether it has been disposed.
+ */
+interface Registered {
+  readonly language: string;
+  readonly provider: MonacoApi.languages.CompletionItemProvider;
+  disposed: boolean;
+}
+
+/**
+ * A stand-in for the Monaco API, recording the completion providers registered with it.
+ */
+class FakeMonacoApi {
+  public readonly registered: Registered[] = [];
+  public readonly KeyMod: { CtrlCmd: number } = { CtrlCmd: 2048 };
+  public readonly KeyCode: { Enter: number } = { Enter: 3 };
+  public readonly MarkerSeverity: { Error: number } = { Error: 8 };
+  public readonly editor: { setModelMarkers: () => void } = {
+    setModelMarkers: (): void => undefined,
+  };
+  public readonly languages: {
+    CompletionItemKind: Record<string, number>;
+    registerCompletionItemProvider: (
+      language: string,
+      provider: MonacoApi.languages.CompletionItemProvider,
+    ) => { dispose(): void };
+  } = {
+    CompletionItemKind: { Module: 8, Struct: 6, Interface: 7, Function: 1, Field: 3, Class: 5 },
+    registerCompletionItemProvider: (
+      language: string,
+      provider: MonacoApi.languages.CompletionItemProvider,
+    ): { dispose(): void } => {
+      const entry: Registered = { language, provider, disposed: false };
+      this.registered.push(entry);
+      return {
+        dispose: (): void => {
+          entry.disposed = true;
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Builds a one-line text model.
+ * @param text The line.
+ * @returns Returns the model.
+ */
+function lineModel(text: string): MonacoApi.editor.ITextModel {
+  return {
+    getValue: (): string => text,
+    getOffsetAt: (position: MonacoApi.IPosition): number => position.column - 1,
+    getWordUntilPosition: (position: MonacoApi.IPosition): MonacoApi.editor.IWordAtPosition => {
+      const word: string = /[\w$]*$/.exec(text.slice(0, position.column - 1))?.[0] ?? '';
+      return { word, startColumn: position.column - word.length, endColumn: position.column };
+    },
+    getLineCount: (): number => 1,
+  } as unknown as MonacoApi.editor.ITextModel;
+}
+
+/**
  * Lets queued promise callbacks run.
  * @returns Returns a promise resolving after the task queue drains.
  */
@@ -169,6 +267,8 @@ describe('QueryPanel', () => {
   let workspace: DatabaseWorkspace;
   let client: FakeClient;
   let attached: string[];
+  let completions: FakeCompletions;
+  let monacoApi: FakeMonacoApi;
 
   /**
    * Reads the panel's protected members, which are what the template binds to.
@@ -221,12 +321,16 @@ describe('QueryPanel', () => {
   beforeEach(async () => {
     client = new FakeClient();
     attached = [];
+    completions = new FakeCompletions();
+    monacoApi = new FakeMonacoApi();
     TestBed.configureTestingModule({
       imports: [QueryPanel],
       providers: [
         DatabaseWorkspace,
         { provide: DatabaseClient, useValue: client },
         { provide: FileSystem, useValue: {} },
+        { provide: DatabaseCompletions, useValue: completions },
+        { provide: Monaco, useValue: { getMonaco: (): FakeMonacoApi => monacoApi } },
         { provide: DatabaseEnginePrompt, useValue: { installedKey: signal<string>('x') } },
         {
           provide: DatabaseQueryOpener,
@@ -433,5 +537,118 @@ describe('QueryPanel', () => {
         { name: 'name', value: 'Ada' },
       ],
     });
+  });
+  /**
+   * Stands in for the editor the template would render, over a model of the given line, and tells the
+   * panel it is ready.
+   * @param text The editor's line.
+   * @returns Returns the editor's model.
+   */
+  function ready(text: string): MonacoApi.editor.ITextModel {
+    const model: MonacoApi.editor.ITextModel = lineModel(text);
+    const editor: object = { addCommand: (): void => undefined, getModel: () => model };
+    (component as unknown as { editor: () => object }).editor = (): object => ({
+      getEditor: () => editor,
+      getModel: () => model,
+    });
+    (component as unknown as { onEditorReady(): void }).onEditorReady();
+    return model;
+  }
+
+  /**
+   * Asks a registered provider for completions at a column of a model.
+   * @param registered The provider.
+   * @param model The model.
+   * @param column The caret's column.
+   * @returns Returns the provider's answer.
+   */
+  async function provide(
+    registered: Registered,
+    model: MonacoApi.editor.ITextModel,
+    column: number,
+  ): Promise<MonacoApi.languages.CompletionList | null | undefined> {
+    return registered.provider.provideCompletionItems(
+      model,
+      { lineNumber: 1, column } as MonacoApi.Position,
+      {} as MonacoApi.languages.CompletionContext,
+      {} as MonacoApi.CancellationToken,
+    );
+  }
+
+  it('onEditorReady_registersAStudioCompletionProviderPerQueryLanguage_disposedWithThePanel', () => {
+    build(workspace.addQuery(postgres().id, undefined, 'select '));
+    ready('select ');
+    // Ready again (the editor rebuilt): nothing more is registered.
+    (component as unknown as { onEditorReady(): void }).onEditorReady();
+
+    expect(monacoApi.registered.map((entry: Registered): string => entry.language)).toEqual([
+      'sql',
+      'pgsql',
+      'cypher',
+    ]);
+    for (const entry of monacoApi.registered) {
+      expect(isStudioProvider(entry.provider)).toBe(true);
+      expect(entry.provider.triggerCharacters).toEqual(['.', ':']);
+    }
+    expect(monacoApi.registered.some((entry: Registered): boolean => entry.disposed)).toBe(false);
+
+    fixture.destroy();
+
+    expect(monacoApi.registered.every((entry: Registered): boolean => entry.disposed)).toBe(true);
+  });
+
+  it('completionProvider_answersForThisPanelsModel_inTheEnginesOrder', async () => {
+    const query: DatabaseQuery = workspace.addQuery(postgres().id, undefined, 'select o.pl');
+    build(query);
+    const model: MonacoApi.editor.ITextModel = ready('select o.pl');
+    completions.items = [
+      { label: 'placed', kind: 'column', detail: 'date', insertText: 'placed' },
+      { label: 'Plan', kind: 'table', insertText: '"Plan"' },
+    ];
+
+    const list: MonacoApi.languages.CompletionList | null | undefined = await provide(
+      monacoApi.registered[1],
+      model,
+      12,
+    );
+
+    expect(completions.asked).toEqual([{ queryId: query.id, text: 'select o.pl', offset: 11 }]);
+    const range: MonacoApi.IRange = {
+      startLineNumber: 1,
+      endLineNumber: 1,
+      startColumn: 10,
+      endColumn: 12,
+    };
+    expect(list?.suggestions).toEqual([
+      {
+        label: { label: 'placed', description: 'date' },
+        kind: 3,
+        insertText: 'placed',
+        filterText: 'placed',
+        sortText: '000000',
+        range,
+      },
+      {
+        label: { label: 'Plan' },
+        kind: 6,
+        insertText: '"Plan"',
+        filterText: 'Plan',
+        sortText: '000001',
+        range,
+      },
+    ]);
+  });
+
+  it('completionProvider_answersNothing_forAnotherPanelsModel_orWhenThereIsNothingToOffer', async () => {
+    build(workspace.addQuery(postgres().id, undefined, 'select '));
+    const model: MonacoApi.editor.ITextModel = ready('select ');
+    completions.items = [{ label: 'orders', kind: 'table', insertText: 'orders' }];
+
+    expect(await provide(monacoApi.registered[0], lineModel('select '), 8)).toBeUndefined();
+    expect(completions.asked).toEqual([]);
+
+    completions.items = [];
+    expect(await provide(monacoApi.registered[0], model, 8)).toBeUndefined();
+    expect(completions.asked).toHaveLength(1);
   });
 });

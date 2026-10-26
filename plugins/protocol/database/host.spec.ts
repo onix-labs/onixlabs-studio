@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, MockInstance, vi } from 'vitest';
 import {
+  CompletionName,
   ConnectionValues,
+  DATABASE_ENGINE_PROTOCOL,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
   ExecuteOutcome,
   ExecuteRequest,
+  NamesScope,
   NodeActionOutcome,
 } from './protocol';
 import { DatabaseEngine, EngineExecution, EngineSession } from './engine';
@@ -59,6 +62,7 @@ class FakeSession implements EngineSession {
   public readonly expanded: (string | null)[] = [];
   public readonly cancelled: string[] = [];
   public closed: number = 0;
+  public names?: (scope: NamesScope, database?: string) => Promise<readonly CompletionName[]>;
   public expandAnswer: () => Promise<readonly DatabaseNode[]> = (): Promise<
     readonly DatabaseNode[]
   > => Promise.resolve([{ path: 'p', label: 'Tables', icon: 'folder', leaf: false }]);
@@ -226,7 +230,7 @@ describe('serve', (): void => {
 
   it('initialize_answersTheProtocolAndTheEnginesInfo', async (): Promise<void> => {
     expect(await call('initialize', { protocol: '1.0' })).toEqual({
-      protocol: '1.0',
+      protocol: DATABASE_ENGINE_PROTOCOL,
       engine: engine.info,
     });
   });
@@ -495,6 +499,50 @@ describe('serve', (): void => {
       kind: 'failure',
       message: 'The connection is closed. Connect again.',
     });
+  });
+
+  it('names_reachesTheSession_withTheScopeNormalised_andTheDatabase', async (): Promise<void> => {
+    const session: string = await connect();
+    const asked: { scope: NamesScope; database: string | undefined }[] = [];
+    engine.sessions[0].names = (
+      scope: NamesScope,
+      database?: string,
+    ): Promise<readonly CompletionName[]> => {
+      asked.push({ scope, database });
+      return Promise.resolve([{ name: 'orders', kind: 'table', detail: 'main' }]);
+    };
+
+    expect(
+      await call('names', {
+        session,
+        database: 'shop',
+        scope: { kind: 'members', of: 'orders', extra: true },
+      }),
+    ).toEqual([{ name: 'orders', kind: 'table', detail: 'main' }]);
+    await call('names', { session, scope: { kind: 'members', of: 42 } });
+    await call('names', { session, database: 7, scope: { kind: 'bogus' } });
+    await call('names', { session });
+
+    expect(asked).toEqual([
+      { scope: { kind: 'members', of: 'orders' }, database: 'shop' },
+      { scope: { kind: 'objects' }, database: undefined },
+      { scope: { kind: 'objects' }, database: undefined },
+      { scope: { kind: 'objects' }, database: undefined },
+    ]);
+  });
+
+  it('names_answersNone_forASessionThatCannotName', async (): Promise<void> => {
+    const session: string = await connect();
+
+    expect(await call('names', { session, scope: { kind: 'objects' } })).toEqual([]);
+  });
+
+  it('names_answersNoneRatherThanAnError_whenTheSessionRejects', async (): Promise<void> => {
+    const session: string = await connect();
+    engine.sessions[0].names = (): Promise<readonly CompletionName[]> =>
+      Promise.reject(new Error('Catalogue unreadable.'));
+
+    expect(await call('names', { session, scope: { kind: 'objects' } })).toEqual([]);
   });
 
   it('answersAnUnknownOperationWithAnError', async (): Promise<void> => {

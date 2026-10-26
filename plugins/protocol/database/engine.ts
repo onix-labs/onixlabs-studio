@@ -1,9 +1,11 @@
 import {
+  CompletionName,
   ConnectionValues,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
   ExecuteRequest,
+  NamesScope,
   NodeActionOutcome,
   QueryMessage,
   ResultColumn,
@@ -95,6 +97,15 @@ export interface EngineSession {
    * @returns Returns a promise resolving what it produced.
    */
   action(path: string, action: string): Promise<NodeActionOutcome>;
+
+  /**
+   * Lists names to complete with, for an engine that declares `completion` (#1098). An object that
+   * does not exist answers with no members.
+   * @param scope Which names.
+   * @param database The database the query runs against, when the engine reaches several.
+   * @returns Returns a promise resolving the names.
+   */
+  names?(scope: NamesScope, database?: string): Promise<readonly CompletionName[]>;
 
   /**
    * Closes the connection.
@@ -198,4 +209,42 @@ export function text(value: unknown): string {
     return value.toString();
   }
   return JSON.stringify(value) ?? '';
+}
+
+/**
+ * Splits a qualified name as a query writes it — `orders`, `public.orders`, `"My Schema"."Order"`,
+ * `` `orders` ``, `[dbo].[orders]` — into its unquoted parts.
+ * @param name The name.
+ * @returns Returns the parts, outermost first.
+ */
+export function splitQualifiedName(name: string): readonly string[] {
+  const parts: string[] = [];
+  let current: string = '';
+  let closing: string | null = null;
+  for (let index: number = 0; index < name.length; index += 1) {
+    const char: string = name[index];
+    if (closing !== null) {
+      if (char === closing) {
+        if (name[index + 1] === closing) {
+          current += char;
+          index += 1;
+        } else {
+          closing = null;
+        }
+      } else {
+        current += char;
+      }
+    } else if (char === '"' || char === '`') {
+      closing = char;
+    } else if (char === '[') {
+      closing = ']';
+    } else if (char === '.') {
+      parts.push(current);
+      current = '';
+    } else if (!/\s/.test(char)) {
+      current += char;
+    }
+  }
+  parts.push(current);
+  return parts.filter((part: string): boolean => part !== '');
 }

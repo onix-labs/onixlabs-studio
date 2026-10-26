@@ -48,6 +48,12 @@ import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { CompletionNameKind } from '@shared/api/database-engine-protocol';
+import {
+  DatabaseCompletions,
+  QueryCompletion,
+} from '../../database-completions/database-completions';
 import { CellText, cellText, holdsGraph, plainValue } from '../../database-values';
 import { DatabaseQueryOpener } from '../../database-query-opener/database-query-opener';
 import {
@@ -443,6 +449,16 @@ export class QueryPanel {
   private commandAdded: boolean = false;
 
   /**
+   * Holds the completions the editor is offered from the connection's engine (#1098).
+   */
+  private readonly completions: DatabaseCompletions = inject(DatabaseCompletions);
+
+  /**
+   * Holds the editor's completion providers, one per query language, disposed with the panel.
+   */
+  private completionProviders: readonly MonacoApi.IDisposable[] = [];
+
+  /**
    * Wires the panel's height observer, and keeps the editor's error squiggles in step with the outcome.
    */
   public constructor() {
@@ -459,6 +475,11 @@ export class QueryPanel {
       untracked((): void => this.documentStatus.set(id, info));
     });
     destroyRef.onDestroy((): void => this.documentStatus.clear(this.panel().id));
+    destroyRef.onDestroy((): void => {
+      for (const provider of this.completionProviders) {
+        provider.dispose();
+      }
+    });
 
     // The ribbon's Execute runs this panel exactly as its own button does, selection and all.
     effect((onCleanup: (cleanup: () => void) => void): void => {
@@ -575,7 +596,66 @@ export class QueryPanel {
     }
     this.commandAdded = true;
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, (): void => this.execute());
+    this.completionProviders = QUERY_LANGUAGES.map((language: string): MonacoApi.IDisposable =>
+      monaco.languages.registerCompletionItemProvider(language, this.completionProvider(monaco)),
+    );
     this.markErrors(this.outcome());
+  }
+
+  /**
+   * Builds the provider that completes this panel's query from its connection's engine. It answers for
+   * this editor's model only — every query panel registers one — and is marked as Studio's, so its
+   * names replace the words Monaco would otherwise guess from the text.
+   * @param monaco The Monaco API.
+   * @returns Returns the provider.
+   */
+  private completionProvider(monaco: typeof MonacoApi): MonacoApi.languages.CompletionItemProvider {
+    const provider: MonacoApi.languages.CompletionItemProvider = {
+      triggerCharacters: ['.', ':'],
+      provideCompletionItems: async (
+        model: MonacoApi.editor.ITextModel,
+        position: MonacoApi.Position,
+      ): Promise<MonacoApi.languages.CompletionList | undefined> => {
+        // Read the editor afresh: the text editor can rebuild its Monaco editor, so one held from
+        // when the provider was made can be a model behind.
+        if (model !== this.editor()?.getEditor()?.getModel()) {
+          return undefined;
+        }
+        const items: readonly QueryCompletion[] = await this.completions.complete(
+          this.panel().id,
+          model.getValue(),
+          model.getOffsetAt(position),
+        );
+        if (items.length === 0) {
+          return undefined;
+        }
+        const word: MonacoApi.editor.IWordAtPosition = model.getWordUntilPosition(position);
+        const range: MonacoApi.IRange = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+        return {
+          suggestions: items.map(
+            (item: QueryCompletion, index: number): MonacoApi.languages.CompletionItem => ({
+              label: {
+                label: item.label,
+                ...(item.detail === undefined ? {} : { description: item.detail }),
+              },
+              kind: completionKind(monaco, item.kind),
+              insertText: item.insertText,
+              filterText: item.label,
+              // Kept in the engine's order — a referenced table's columns before everything else.
+              sortText: String(index).padStart(6, '0'),
+              range,
+            }),
+          ),
+        };
+      },
+    };
+    markStudioProvider(provider);
+    return provider;
   }
 
   /**
@@ -746,5 +826,41 @@ export class QueryPanel {
         };
       });
     monaco.editor.setModelMarkers(model, MARKER_OWNER, markers);
+  }
+}
+
+/**
+ * The languages a query is written in, each of which the panel completes.
+ */
+const QUERY_LANGUAGES: readonly string[] = ['sql', 'pgsql', 'cypher'];
+
+/**
+ * Maps a completion name's kind to the editor's, which decides the icon Studio's list draws.
+ * @param monaco The Monaco API.
+ * @param kind The name's kind.
+ * @returns Returns the editor's kind.
+ */
+function completionKind(
+  monaco: typeof MonacoApi,
+  kind: CompletionNameKind,
+): MonacoApi.languages.CompletionItemKind {
+  const kinds: typeof MonacoApi.languages.CompletionItemKind = monaco.languages.CompletionItemKind;
+  switch (kind) {
+    case 'schema':
+      return kinds.Module;
+    case 'table':
+      return kinds.Struct;
+    case 'view':
+      return kinds.Interface;
+    case 'function':
+      return kinds.Function;
+    case 'column':
+      return kinds.Field;
+    case 'label':
+      return kinds.Class;
+    case 'relationship':
+      return kinds.Event;
+    case 'property':
+      return kinds.Property;
   }
 }

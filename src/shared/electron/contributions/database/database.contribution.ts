@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseChannel, PassphraseUnlock } from '@shared/api/database-channels';
 import type { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
 import {
+  CompletionName,
   ConnectionValues,
   ConnectOutcome,
   DatabaseEngineInfo,
@@ -11,6 +12,7 @@ import {
   ExecuteRequest,
   ExpandOutcome,
   FetchRequest,
+  NamesRequest,
   NodeActionOutcome,
 } from '@shared/api/database-engine-protocol';
 import { pluginNodeRuntime } from '../../plugin-node-runtime';
@@ -134,6 +136,11 @@ export class DatabaseContribution implements MainContribution {
       DatabaseChannel.Action,
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<NodeActionOutcome> =>
         this.action(args[0] as string, args[1] as string, args[2] as string),
+    );
+    context.handle(
+      DatabaseChannel.Names,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<readonly CompletionName[]> =>
+        this.names(args[0] as NamesRequest),
     );
     context.handle(DatabaseChannel.SecretsMachineSealing, (): boolean =>
       this.secrets().canSealWithMachine(),
@@ -395,6 +402,30 @@ export class DatabaseContribution implements MainContribution {
       action,
     });
     return outcome.ok ? outcome.result : { kind: 'failure', message: outcome.error };
+  }
+
+  /**
+   * Lists names to complete with, for an engine that declares `completion`; none otherwise, and none
+   * for a session that has closed — a completion is never worth an error.
+   * @param request The request, naming this host's session.
+   * @returns Returns a promise resolving the names.
+   */
+  private async names(request: NamesRequest): Promise<readonly CompletionName[]> {
+    const target: { client: DatabaseEngineClient; open: OpenSession } | null = this.target(
+      request.session,
+    );
+    if (target === null) {
+      return [];
+    }
+    const info: DatabaseEngineInfo | null = await target.client.info();
+    if (info?.capabilities.includes('completion') !== true) {
+      return [];
+    }
+    const outcome: DatabaseEngineOutcome<readonly CompletionName[]> = await target.client.call(
+      'names',
+      { ...request, session: target.open.session },
+    );
+    return outcome.ok ? outcome.result : [];
   }
 
   /**

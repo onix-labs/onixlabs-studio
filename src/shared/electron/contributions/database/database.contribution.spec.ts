@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseChannel } from '@shared/api/database-channels';
 import type {
+  CompletionName,
   ConnectOutcome,
   DatabaseEngineInfo,
   ExecuteOutcome,
@@ -47,6 +48,7 @@ interface Call {
 class FakeClient {
   public readonly calls: Call[] = [];
   public disposed: number = 0;
+  public engineInfo: DatabaseEngineInfo | null = null;
   public answers: Record<string, (params: Record<string, unknown>) => Promise<unknown>> = {
     connect: (): Promise<unknown> =>
       Promise.resolve({
@@ -72,6 +74,8 @@ class FakeClient {
     cancel: (): Promise<unknown> => Promise.resolve({ ok: true, result: true }),
     action: (): Promise<unknown> =>
       Promise.resolve({ ok: true, result: { kind: 'script', title: 't', text: 'select 1' } }),
+    names: (): Promise<unknown> =>
+      Promise.resolve({ ok: true, result: [{ name: 'orders', kind: 'table' }] }),
   };
 
   public constructor(public readonly id: string) {}
@@ -82,7 +86,7 @@ class FakeClient {
   }
 
   public info(): Promise<DatabaseEngineInfo | null> {
-    return Promise.resolve(null);
+    return Promise.resolve(this.engineInfo);
   }
 
   public onExit(): () => void {
@@ -161,6 +165,22 @@ function clientsOf(contribution: Contribution): Map<string, { client: unknown; c
     .clients;
 }
 
+/**
+ * Describes an engine with the given capabilities.
+ * @param capabilities The capabilities.
+ * @returns Returns the engine's description.
+ */
+function engineInfo(capabilities: DatabaseEngineInfo['capabilities']): DatabaseEngineInfo {
+  return {
+    id: 'sqlite',
+    displayName: 'SQLite',
+    language: 'sql',
+    queryExtension: 'sql',
+    capabilities,
+    connectionFields: [],
+  };
+}
+
 afterAll((): void => {
   rmSync(userData, { recursive: true, force: true });
 });
@@ -209,6 +229,7 @@ describe('DatabaseContribution', () => {
         DatabaseChannel.Execute,
         DatabaseChannel.Fetch,
         DatabaseChannel.Action,
+        DatabaseChannel.Names,
         DatabaseChannel.SecretsMachineSealing,
         DatabaseChannel.SecretsUnlock,
         DatabaseChannel.SecretsSeal,
@@ -421,6 +442,63 @@ describe('DatabaseContribution', () => {
     // Disconnecting what is not open asks nothing of any engine.
     await fake.invoke(DatabaseChannel.Disconnect, session);
     expect(sqlite.ops().filter((op: string): boolean => op === 'disconnect')).toHaveLength(1);
+  });
+
+  it('names_asksTheEngineHoldingTheSession_underTheEnginesOwnId', async () => {
+    sqlite.engineInfo = engineInfo(['cancel', 'completion']);
+    const session: string = await connect();
+
+    expect(
+      await fake.invoke<readonly CompletionName[]>(DatabaseChannel.Names, {
+        session,
+        database: 'shop',
+        scope: { kind: 'members', of: 'orders' },
+      }),
+    ).toEqual([{ name: 'orders', kind: 'table' }]);
+    expect(sqlite.calls.at(-1)).toEqual({
+      op: 'names',
+      params: {
+        session: 'engine-session',
+        database: 'shop',
+        scope: { kind: 'members', of: 'orders' },
+      },
+    });
+    expect(other.calls).toEqual([]);
+  });
+
+  it('names_answersNone_forAnEngineThatDoesNotDeclareCompletion', async () => {
+    sqlite.engineInfo = engineInfo(['cancel', 'script']);
+    const session: string = await connect();
+
+    expect(
+      await fake.invoke(DatabaseChannel.Names, { session, scope: { kind: 'objects' } }),
+    ).toEqual([]);
+    sqlite.engineInfo = null;
+    expect(
+      await fake.invoke(DatabaseChannel.Names, { session, scope: { kind: 'objects' } }),
+    ).toEqual([]);
+    expect(sqlite.ops()).not.toContain('names');
+  });
+
+  it('names_answersNone_forASessionThatIsClosed_orAPluginThatCannotBeReached', async () => {
+    sqlite.engineInfo = engineInfo(['completion']);
+    const session: string = await connect();
+    sqlite.answers['names'] = (): Promise<unknown> =>
+      Promise.resolve({ ok: false, error: 'The sqlite engine stopped.' });
+
+    expect(
+      await fake.invoke(DatabaseChannel.Names, { session, scope: { kind: 'objects' } }),
+    ).toEqual([]);
+
+    await fake.invoke(DatabaseChannel.Disconnect, session);
+    const asked: number = sqlite.calls.length;
+    expect(
+      await fake.invoke(DatabaseChannel.Names, { session, scope: { kind: 'objects' } }),
+    ).toEqual([]);
+    expect(
+      await fake.invoke(DatabaseChannel.Names, { session: 'nope', scope: { kind: 'objects' } }),
+    ).toEqual([]);
+    expect(sqlite.calls).toHaveLength(asked);
   });
 
   it('test_connectsThenDisconnects_leavingNoSessionOpen', async () => {

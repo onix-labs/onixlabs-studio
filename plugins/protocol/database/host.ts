@@ -16,6 +16,8 @@ import {
   ExecuteOutcome,
   ExecuteRequest,
   FetchRequest,
+  NamesRequest,
+  NamesScope,
   ResultSet,
 } from './protocol';
 import {
@@ -201,6 +203,24 @@ export function serve(engine: DatabaseEngine): void {
         } catch (error: unknown) {
           return { kind: 'failure', message: describeError(error) };
         }
+      case 'names': {
+        const request: NamesRequest = params as unknown as NamesRequest;
+        const scope: NamesScope =
+          request.scope?.kind === 'members' && typeof request.scope.of === 'string'
+            ? { kind: 'members', of: request.scope.of }
+            : { kind: 'objects' };
+        // A completion that cannot be had is no completion, never an error in the query.
+        try {
+          return (
+            (await session(params).names?.(
+              scope,
+              typeof request.database === 'string' ? request.database : undefined,
+            )) ?? []
+          );
+        } catch {
+          return [];
+        }
+      }
       default:
         throw new Error(`Unknown operation '${op}'.`);
     }

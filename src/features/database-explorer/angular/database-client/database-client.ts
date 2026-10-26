@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import { DatabaseChannel, PassphraseUnlock } from '@shared/api/database-channels';
 import { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
 import {
+  CompletionName,
   ConnectionValues,
   ConnectOutcome,
   DatabaseEngineInfo,
@@ -11,6 +12,7 @@ import {
   ExecuteRequest,
   ExpandOutcome,
   FetchRequest,
+  NamesRequest,
   NodeActionOutcome,
 } from '@shared/api/database-engine-protocol';
 
@@ -140,6 +142,18 @@ export class DatabaseClient {
     return (
       this.bridge?.invoke<NodeActionOutcome>(DatabaseChannel.Action, session, path, action) ??
       Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Lists names to complete a query with.
+   * @param request The request.
+   * @returns Returns a promise resolving the names; none when there are none to be had.
+   */
+  public names(request: NamesRequest): Promise<readonly CompletionName[]> {
+    return (
+      this.bridge?.invoke<readonly CompletionName[]>(DatabaseChannel.Names, request) ??
+      Promise.resolve([])
     );
   }
 
