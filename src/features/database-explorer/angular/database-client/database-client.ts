@@ -1,6 +1,7 @@
 import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { DatabaseChannel } from '@shared/api/database-channels';
+import { DatabaseChannel, PassphraseUnlock } from '@shared/api/database-channels';
+import { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
 import {
   ConnectionValues,
   ConnectOutcome,
@@ -140,5 +141,71 @@ export class DatabaseClient {
       this.bridge?.invoke<NodeActionOutcome>(DatabaseChannel.Action, session, path, action) ??
       Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
     );
+  }
+
+  /**
+   * Asks whether this machine can seal secrets with its keychain.
+   * @returns Returns a promise resolving true when it can.
+   */
+  public canSealWithMachine(): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(DatabaseChannel.SecretsMachineSealing) ?? Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Unlocks a passphrase against a document's lock, or makes a new lock.
+   * @param passphrase The passphrase.
+   * @param lock The document's lock, or null to make one.
+   * @returns Returns a promise resolving the handle and lock, or that it is wrong.
+   */
+  public unlock(passphrase: string, lock: PassphraseLock | null): Promise<PassphraseUnlock> {
+    return (
+      this.bridge?.invoke<PassphraseUnlock>(DatabaseChannel.SecretsUnlock, passphrase, lock) ??
+      Promise.resolve({ kind: 'wrong' })
+    );
+  }
+
+  /**
+   * Seals a connection's secrets.
+   * @param secrets The secrets, by field id.
+   * @param handle The unlocked passphrase, or null for the machine's keychain.
+   * @returns Returns a promise resolving the seal, or null when none could be made.
+   */
+  public seal(
+    secrets: Readonly<Record<string, string>>,
+    handle: string | null,
+  ): Promise<SealedSecrets | null> {
+    return (
+      this.bridge?.invoke<SealedSecrets | null>(DatabaseChannel.SecretsSeal, secrets, handle) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Opens a seal.
+   * @param sealed The seal.
+   * @param handle The unlocked passphrase, for a passphrase seal.
+   * @returns Returns a promise resolving the secrets, or null when they cannot be opened here.
+   */
+  public open(
+    sealed: SealedSecrets,
+    handle: string | null,
+  ): Promise<Readonly<Record<string, string>> | null> {
+    return (
+      this.bridge?.invoke<Readonly<Record<string, string>> | null>(
+        DatabaseChannel.SecretsOpen,
+        sealed,
+        handle,
+      ) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Forgets an unlocked passphrase's key in main.
+   * @param handle The handle.
+   */
+  public forget(handle: string): void {
+    this.bridge?.send(DatabaseChannel.SecretsForget, handle);
   }
 }

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -17,6 +17,13 @@ import { DatabaseExplorerCommands } from '../database-explorer-commands/database
  * Identifies the Save-As item in the Save menu button's dropdown.
  */
 const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * Identifies the passphrase items in the Save menu button's dropdown.
+ */
+const VARIANT_SET_PASSPHRASE: string = 'set-passphrase';
+const VARIANT_UNLOCK: string = 'unlock-passphrase';
+const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
 
 /**
  * The contextual ribbon of a Database Explorer tab: save the document, add a connection or a query,
@@ -38,7 +45,7 @@ const VARIANT_SAVE_AS: string = 'save-as';
         <app-ribbon-strip-menu-button
           [icon]="Icon.SAVE"
           label="Save"
-          [items]="saveItems"
+          [items]="saveItems()"
           (action)="commands.saveDocument()"
           (selected)="onSaveVariant($event)"
         />
@@ -88,9 +95,28 @@ export class DatabaseExplorerRibbon {
   /**
    * Gets the Save menu button's extra actions.
    */
-  protected readonly saveItems: readonly RibbonMenuItem[] = [
-    { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
-  ];
+  protected readonly saveItems: Signal<readonly RibbonMenuItem[]> = computed(
+    (): readonly RibbonMenuItem[] => [
+      { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+      ...(this.commands.locked()
+        ? [{ id: VARIANT_UNLOCK, label: 'Unlock Passwords', icon: Icon.DATABASE_UNLOCK }]
+        : []),
+      {
+        id: VARIANT_SET_PASSPHRASE,
+        label: this.commands.hasPassphrase() ? 'Change Passphrase' : 'Set Passphrase',
+        icon: Icon.DATABASE_PASSPHRASE,
+      },
+      ...(this.commands.hasPassphrase()
+        ? [
+            {
+              id: VARIANT_REMOVE_PASSPHRASE,
+              label: 'Remove Passphrase',
+              icon: Icon.DATABASE_REMOVE_PASSPHRASE,
+            },
+          ]
+        : []),
+    ],
+  );
 
   /**
    * Contributes this tab's menu while the ribbon is mounted.
@@ -150,9 +176,19 @@ export class DatabaseExplorerRibbon {
    * @param id The chosen variant.
    */
   protected onSaveVariant(id: string): void {
-    if (id === VARIANT_SAVE_AS) {
-      this.commands.saveDocumentAs();
-      return;
+    switch (id) {
+      case VARIANT_SAVE_AS:
+        this.commands.saveDocumentAs();
+        return;
+      case VARIANT_SET_PASSPHRASE:
+        this.commands.setPassphrase();
+        return;
+      case VARIANT_UNLOCK:
+        this.commands.unlockPassphrase();
+        return;
+      case VARIANT_REMOVE_PASSPHRASE:
+        this.commands.removePassphrase();
+        return;
     }
     this.commands.saveDocument();
   }

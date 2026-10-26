@@ -25,7 +25,12 @@
 
     @if (prompts.mode() === 'secrets') {
       <p class="database-dialog__message">
-        Passwords are never saved in the document. Enter it once and it is kept for this session.
+        @if (workspace.locked()) {
+          This document's passwords are locked with a passphrase that was not given, so enter the
+          password for this connection.
+        } @else {
+          Enter the password for this connection.
+        }
       </p>
     }
 
@@ -105,6 +110,28 @@
           }
         </app-setting-row>
       }
+
+      <!-- Remembered passwords are sealed in the document — with the machine's keychain, or with the
+           document's passphrase when it has one — and never written as typed. -->
+      @if (hasSecretFields()) {
+        <app-setting-row label="Remember password">
+          <app-checkbox
+            [checked]="prompts.remember()"
+            [disabled]="!workspace.canRemember()"
+            (checkedChange)="prompts.remember.set($event)"
+          />
+        </app-setting-row>
+        @if (!workspace.canRemember()) {
+          <p class="database-dialog__message">
+            @if (workspace.locked()) {
+              Unlock the document's passphrase to remember passwords in it.
+            } @else {
+              This computer has no keychain to keep passwords with. Give the document a passphrase
+              to remember them; until then they are kept for this session.
+            }
+          </p>
+        }
+      }
     </div>
 
     @switch (prompts.test().state) {
@@ -141,6 +168,69 @@
           (click)="confirmConnection()"
         />
         <app-button label="Cancel" (click)="prompts.cancel()" />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- The passphrase prompt: unlocking a document whose passwords are sealed with one, or setting a new
+     one. A passphrase protects only the remembered passwords; the connections and queries stay
+     readable without it. -->
+<app-modal
+  [open]="prompts.passphraseMode() !== null"
+  [width]="26"
+  ariaLabel="Passphrase"
+  (dismiss)="prompts.closePassphrase()"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">
+      {{ prompts.passphraseMode() === 'unlock' ? 'Unlock Passwords' : 'Set Passphrase' }}
+    </h2>
+    <p class="database-dialog__message">
+      @if (prompts.passphraseMode() === 'unlock') {
+        This document's passwords are protected by a passphrase. Enter it to connect without being
+        asked for each one, or skip and enter them as you connect.
+      } @else {
+        Anyone with this file and the passphrase can open its remembered passwords, on any computer.
+        Without it, only the passwords are lost; the connections and queries stay readable.
+      }
+    </p>
+    <div class="connection__fields">
+      <app-setting-row label="Passphrase">
+        <app-password-field
+          class="connection__control"
+          [value]="prompts.passphrase()"
+          (valueChange)="prompts.passphrase.set($event); prompts.passphraseError.set(null)"
+        />
+      </app-setting-row>
+      @if (prompts.passphraseMode() === 'set') {
+        <app-setting-row label="Confirm">
+          <app-password-field
+            class="connection__control"
+            [value]="prompts.passphraseConfirm()"
+            (valueChange)="prompts.passphraseConfirm.set($event); prompts.passphraseError.set(null)"
+          />
+        </app-setting-row>
+      }
+    </div>
+    @if (prompts.passphraseError(); as error) {
+      <p class="connection__test connection__test--failed">
+        <app-icon [icon]="Icon.WARNING" /> {{ error }}
+      </p>
+    }
+    <div class="connection__actions">
+      <span></span>
+      <app-button-row>
+        <app-button
+          variant="solid"
+          [label]="prompts.passphraseMode() === 'unlock' ? 'Unlock' : 'Set Passphrase'"
+          [disabled]="prompts.passphrase() === ''"
+          (click)="prompts.confirmPassphrase()"
+        />
+        <app-button
+          [label]="prompts.passphraseMode() === 'unlock' ? 'Skip' : 'Cancel'"
+          (click)="prompts.closePassphrase()"
+        />
       </app-button-row>
     </div>
   </ng-template>

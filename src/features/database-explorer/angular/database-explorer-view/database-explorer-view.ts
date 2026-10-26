@@ -228,6 +228,27 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   );
 
   /**
+   * Gets whether the document has a passphrase, for the ribbon.
+   */
+  public readonly hasPassphrase: Signal<boolean> = computed((): boolean =>
+    this.workspace.hasPassphrase(),
+  );
+
+  /**
+   * Gets whether the document's passphrase is still to be given, for the ribbon.
+   */
+  public readonly locked: Signal<boolean> = computed((): boolean => this.workspace.locked());
+
+  /**
+   * Gets whether the connection dialog's engine has secret fields, so it offers to remember them.
+   */
+  protected readonly hasSecretFields: Signal<boolean> = computed((): boolean =>
+    (this.prompts.engine()?.connectionFields ?? []).some(
+      (field: ConnectionField): boolean => field.secret === true,
+    ),
+  );
+
+  /**
    * Keeps the tab titled after the document and marked while dirty, and binds the save chords while
    * active.
    */
@@ -270,6 +291,7 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     const opened: OpenDatabaseDocument | undefined = this.databaseFiles.takeInitial(this.tabId());
     if (opened !== undefined) {
       this.workspace.load(opened.document, opened.path);
+      this.prompts.askUnlock();
     }
     this.releaseUnsavedWork = this.unsavedWork.register(this);
     const first: DatabaseQuery | undefined = this.workspace.queries()[0];
@@ -364,6 +386,27 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
    */
   public saveDocumentAs(): void {
     void this.workspace.saveAs();
+  }
+
+  /**
+   * Asks for a passphrase to give the document, or a new one for it.
+   */
+  public setPassphrase(): void {
+    this.prompts.askNewPassphrase();
+  }
+
+  /**
+   * Removes the document's passphrase.
+   */
+  public removePassphrase(): void {
+    this.workspace.removePassphrase();
+  }
+
+  /**
+   * Asks for the passphrase of a document that is still locked.
+   */
+  public unlockPassphrase(): void {
+    this.prompts.askUnlock();
   }
 
   /**

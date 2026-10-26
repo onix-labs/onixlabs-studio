@@ -3,6 +3,7 @@ import {
   DATABASE_DOCUMENT_KIND,
   DATABASE_DOCUMENT_VERSION,
   DatabaseDocument,
+  DatabaseConnection,
   isDatabaseDocumentName,
   parseDatabaseDocument,
 } from './database-document';
@@ -32,6 +33,85 @@ describe('parseDatabaseDocument', (): void => {
     expect(
       parseDatabaseDocument(JSON.stringify({ ...valid, version: DATABASE_DOCUMENT_VERSION + 1 })),
     ).toBeNull();
+  });
+
+  it('writesVersionTwo', (): void => {
+    expect(DATABASE_DOCUMENT_VERSION).toBe(2);
+  });
+
+  it('readsVersionTwoSealedSecretsAndThePassphraseLock', (): void => {
+    const sealed: DatabaseDocument = {
+      ...valid,
+      connections: [
+        { ...valid.connections[0], secrets: { scheme: 'passphrase', data: 'c2VhbGVk' } },
+        {
+          id: 'c2',
+          name: 'Prod',
+          engine: 'postgres',
+          values: { host: 'h' },
+          secrets: { scheme: 'machine', data: 'bWFjaGluZQ==' },
+        },
+      ],
+      passphrase: { salt: 'c2FsdA==', check: 'Y2hlY2s=' },
+    };
+
+    expect(parseDatabaseDocument(JSON.stringify(sealed))).toEqual(sealed);
+  });
+
+  it('dropsAMalformedSeal', (): void => {
+    // A seal that is not well formed can never open, so it is not carried.
+    const malformed: unknown[] = [
+      'plaintext',
+      null,
+      { scheme: 'rot13', data: 'x' },
+      { scheme: 'machine' },
+      { scheme: 'machine', data: 42 },
+    ];
+    const text: string = JSON.stringify({
+      ...valid,
+      connections: malformed.map((secrets: unknown, index: number): Record<string, unknown> => ({
+        id: `c${index}`,
+        name: 'C',
+        engine: 'postgres',
+        values: {},
+        secrets,
+      })),
+    });
+
+    const parsed: DatabaseDocument | null = parseDatabaseDocument(text);
+
+    expect(parsed?.connections).toHaveLength(malformed.length);
+    expect(
+      parsed?.connections.some(
+        (connection: DatabaseConnection): boolean => 'secrets' in connection,
+      ),
+    ).toBe(false);
+  });
+
+  it('dropsAMalformedPassphraseLock', (): void => {
+    for (const passphrase of ['secret', null, { salt: 's' }, { salt: 's', check: 1 }]) {
+      const parsed: DatabaseDocument | null = parseDatabaseDocument(
+        JSON.stringify({ ...valid, passphrase }),
+      );
+
+      expect(parsed).not.toBeNull();
+      expect(parsed !== null && 'passphrase' in parsed).toBe(false);
+    }
+  });
+
+  it('stillOpensVersionOne', (): void => {
+    const versionOne: DatabaseDocument = { ...valid, version: 1 };
+
+    expect(parseDatabaseDocument(JSON.stringify(versionOne))).toEqual(versionOne);
+  });
+
+  it('refusesVersionThree', (): void => {
+    expect(parseDatabaseDocument(JSON.stringify({ ...valid, version: 3 }))).toBeNull();
+  });
+
+  it('refusesAConnectionThatIsNotAnObject_ratherThanThrowing', (): void => {
+    expect(parseDatabaseDocument(JSON.stringify({ ...valid, connections: [null] }))).toBeNull();
+    expect(parseDatabaseDocument(JSON.stringify({ ...valid, connections: ['x'] }))).toBeNull();
   });
 
   it('refusesADocumentMissingItsCollections', (): void => {

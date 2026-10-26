@@ -1,6 +1,7 @@
-import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
+import { safeStorage, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { DatabaseChannel } from '@shared/api/database-channels';
+import { DatabaseChannel, PassphraseUnlock } from '@shared/api/database-channels';
+import type { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
 import {
   ConnectionValues,
   ConnectOutcome,
@@ -16,6 +17,7 @@ import { pluginNodeRuntime } from '../../plugin-node-runtime';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { contributedDatabaseEngines } from '../plugins/contributed';
 import { DatabaseEngineClient, DatabaseEngineOutcome } from './database-engine-client';
+import { DatabaseSecrets } from './database-secrets';
 import type {
   DatabaseEngineDescriptor,
   DatabaseEngineResolution,
@@ -65,6 +67,11 @@ export class DatabaseContribution implements MainContribution {
    * The context, kept for logging.
    */
   private context: ContributionContext | null = null;
+
+  /**
+   * Holds the secret sealer, once a document has asked for it.
+   */
+  private sealer: DatabaseSecrets | null = null;
 
   /**
    * Wires the channels.
@@ -128,7 +135,41 @@ export class DatabaseContribution implements MainContribution {
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<NodeActionOutcome> =>
         this.action(args[0] as string, args[1] as string, args[2] as string),
     );
+    context.handle(DatabaseChannel.SecretsMachineSealing, (): boolean =>
+      this.secrets().canSealWithMachine(),
+    );
+    context.handle(
+      DatabaseChannel.SecretsUnlock,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<PassphraseUnlock> =>
+        this.secrets().unlock(String(args[0]), (args[1] as PassphraseLock | null) ?? null),
+    );
+    context.handle(
+      DatabaseChannel.SecretsSeal,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): SealedSecrets | null =>
+        this.secrets().seal(
+          args[0] as Readonly<Record<string, string>>,
+          (args[1] as string | null) ?? null,
+        ),
+    );
+    context.handle(
+      DatabaseChannel.SecretsOpen,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): Readonly<Record<string, string>> | null =>
+        this.secrets().open(args[0] as SealedSecrets, (args[1] as string | null) ?? null),
+    );
+    context.on(DatabaseChannel.SecretsForget, (_event: IpcMainEvent, ...args: unknown[]): void =>
+      this.secrets().forget(String(args[0])),
+    );
     context.log.info('Database engine host ready');
+  }
+
+  /**
+   * Gets the secret sealer, made on first use so nothing reaches for the keychain before a document
+   * asks it to.
+   * @returns Returns the sealer.
+   */
+  private secrets(): DatabaseSecrets {
+    this.sealer ??= new DatabaseSecrets(safeStorage);
+    return this.sealer;
   }
 
   /**
