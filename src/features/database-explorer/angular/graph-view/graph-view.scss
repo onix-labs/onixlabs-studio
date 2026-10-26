@@ -23,10 +23,21 @@
 
 .graph__arrow {
   fill: var(--form-muted-foreground-color);
+
+  &--picked {
+    fill: var(--accent-color);
+  }
 }
 
 .graph__relationship {
   cursor: pointer;
+
+  // The visible line is thin; this wider, invisible stroke along it is what the pointer hits.
+  .graph__relationship-hit {
+    stroke: transparent;
+    stroke-width: 12;
+    pointer-events: stroke;
+  }
 
   path {
     fill: none;
@@ -43,26 +54,50 @@
     stroke: var(--accent-color);
     stroke-width: 2.5;
   }
+
+  &--picked text {
+    fill: var(--accent-color);
+  }
 }
 
 .graph__node {
   cursor: pointer;
 
+  // Grey with a faint accent rim; picked, the rim flies out thicker in the full accent and the
+  // caption takes the accent too.
   circle {
-    stroke: var(--dock-container-background-color);
-    stroke-width: 2;
+    fill: var(--graph-node-background-color);
+    stroke: color-mix(in srgb, var(--accent-color) 45%, transparent);
+    stroke-width: 1.5;
+    transition:
+      stroke 160ms ease-out,
+      stroke-width 160ms ease-out,
+      transform 160ms ease-out;
   }
 
   text {
     font-size: 8px;
     font-weight: 600;
-    fill: #fff;
+    fill: var(--body-foreground-color);
     pointer-events: none;
+    transition:
+      fill 160ms ease-out,
+      transform 160ms ease-out;
+  }
+
+  // Both are drawn about the node's own origin — its centre — so they grow in place.
+  &--picked circle,
+  &--picked text {
+    transform: scale(1.25);
   }
 
   &--picked circle {
-    stroke: var(--body-foreground-color);
-    stroke-width: 3;
+    stroke: color-mix(in srgb, var(--accent-color) 75%, transparent);
+    stroke-width: 5.5;
+  }
+
+  &--picked text {
+    fill: var(--accent-color);
   }
 }
 

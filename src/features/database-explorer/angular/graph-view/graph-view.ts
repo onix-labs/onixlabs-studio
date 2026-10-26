@@ -20,22 +20,6 @@ import {
 import { cellText } from '../database-values';
 
 /**
- * The theme's accent hues, cycled through per label so every label keeps one colour across a result.
- */
-const LABEL_COLOURS: readonly string[] = [
-  'var(--accent-blue)',
-  'var(--accent-mint)',
-  'var(--accent-orange)',
-  'var(--accent-purple)',
-  'var(--accent-pink)',
-  'var(--accent-cyan)',
-  'var(--accent-yellow)',
-  'var(--accent-coral)',
-  'var(--accent-green)',
-  'var(--accent-violet)',
-];
-
-/**
  * The radius of a node's circle, in layout units.
  */
 const NODE_RADIUS: number = 22;
@@ -57,7 +41,6 @@ const MAX_NODES: number = 300;
 interface LaidNode {
   readonly value: GraphNodeValue;
   readonly caption: string;
-  readonly colour: string;
 }
 
 /**
@@ -156,24 +139,16 @@ export class GraphView {
         }
       }
     }
-    const labels: string[] = [];
     const all: GraphNodeValue[] = [...nodes.values()];
     const kept: GraphNodeValue[] = all.slice(0, MAX_NODES);
     const keptIds: ReadonlySet<string> = new Set<string>(
       kept.map((node: GraphNodeValue): string => node.id),
     );
     return {
-      nodes: kept.map((node: GraphNodeValue): LaidNode => {
-        const label: string = node.labels[0] ?? '';
-        if (!labels.includes(label)) {
-          labels.push(label);
-        }
-        return {
-          value: node,
-          caption: captionOf(node),
-          colour: LABEL_COLOURS[labels.indexOf(label) % LABEL_COLOURS.length],
-        };
-      }),
+      nodes: kept.map((node: GraphNodeValue): LaidNode => ({
+        value: node,
+        caption: captionOf(node),
+      })),
       relationships: [...relationships.values()]
         .filter(
           (relationship: GraphRelationshipValue): boolean =>
@@ -223,6 +198,7 @@ export class GraphView {
   private drag: {
     readonly kind: 'pan' | 'node';
     readonly id?: string;
+    readonly relationship?: LaidRelationship;
     x: number;
     y: number;
     moved: boolean;
@@ -289,12 +265,15 @@ export class GraphView {
    * @param event The pointer event.
    * @param id The node pressed on, or undefined for the background.
    */
-  protected onPointerDown(event: PointerEvent, id?: string): void {
+  protected onPointerDown(event: PointerEvent, id?: string, relationship?: LaidRelationship): void {
     event.stopPropagation();
+    // Captured by the canvas, so the drag follows the pointer anywhere — which also means the press
+    // never becomes a click on what was under it: picking is decided at the release instead.
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
     this.drag = {
       kind: id === undefined ? 'pan' : 'node',
       id,
+      relationship,
       x: event.clientX,
       y: event.clientY,
       moved: false,
@@ -344,10 +323,20 @@ export class GraphView {
    * @param node The node released over, if the drag was of one.
    */
   protected onPointerUp(node?: LaidNode): void {
-    const drag: { readonly kind: 'pan' | 'node'; moved: boolean } | null = this.drag;
+    const drag: {
+      readonly kind: 'pan' | 'node';
+      readonly relationship?: LaidRelationship;
+      moved: boolean;
+    } | null = this.drag;
     this.drag = null;
-    if (drag !== null && !drag.moved && node !== undefined) {
+    if (drag === null || drag.moved) {
+      return;
+    }
+    // A press on a relationship that did not move picks it; one that moved panned the canvas.
+    if (node !== undefined) {
       this.pickNode(node.value);
+    } else if (drag.relationship !== undefined) {
+      this.pickRelationship(drag.relationship);
     }
   }
 
