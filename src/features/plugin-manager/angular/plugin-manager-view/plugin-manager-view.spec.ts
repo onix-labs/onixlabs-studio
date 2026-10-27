@@ -212,8 +212,9 @@ describe('PluginManagerView', () => {
 
     choose('Installed');
     expect(actionButtons()).toEqual([
-      { label: 'Remove', disabled: false },
+      // A plugin with an update waiting is pinned to the top of the list.
       { label: 'Update', disabled: false },
+      { label: 'Remove', disabled: false },
     ]);
 
     choose('Available');
@@ -273,7 +274,7 @@ describe('PluginManagerView', () => {
     // #950. One flat filter list beside one table: no accordions.
     render([
       summary({ id: 'a', name: 'Alpha', state: 'available' }),
-      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '1.0.0' }),
+      summary({ id: 'b', name: 'Beta', state: 'installed', installedVersion: '0.15.0' }),
       // Mid-update: still installed, so it stays under Installed while the work runs.
       summary({ id: 'c', name: 'Gamma', state: 'busy', installedVersion: '1.0.0' }),
       summary({ id: 'd', name: 'Delta', state: 'unavailable' }),

@@ -4,6 +4,7 @@ import {
   type PluginContribution,
   type PluginSummary,
 } from '@shared/api/plugin-channels';
+import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import type { TableSort } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -263,12 +264,30 @@ function passesFilter(plugin: PluginSummary, filter: string): boolean {
 }
 
 /**
+ * Builds the comparer for the list: plugins with an update waiting first, then the column sort.
+ *
+ * ⚠️ The pin holds whatever the column and direction, so an update is never sorted out of sight — it is
+ * the one row that asks something of the user.
+ * @param sort The column sort, or null.
+ * @returns Returns the comparer.
+ */
+function comparerFor(
+  sort: TableSort | null,
+): (left: PluginSummary, right: PluginSummary) => number {
+  const pin: (plugin: PluginSummary) => number = (plugin: PluginSummary): number =>
+    canUpdate(plugin) ? 0 : 1;
+  const column: (left: PluginSummary, right: PluginSummary) => number = columnComparerFor(sort);
+  return (left: PluginSummary, right: PluginSummary): number =>
+    pin(left) - pin(right) || column(left, right);
+}
+
+/**
  * Builds the comparer for a column sort: by the plugin's name, its first category, or its state
  * (installed first), each falling back to the name; or by name alone when nothing is sorted.
  * @param sort The column sort, or null.
  * @returns Returns the comparer.
  */
-function comparerFor(
+function columnComparerFor(
   sort: TableSort | null,
 ): (left: PluginSummary, right: PluginSummary) => number {
   const byName: (left: PluginSummary, right: PluginSummary) => number = (

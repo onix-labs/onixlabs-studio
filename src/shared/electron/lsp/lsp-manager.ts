@@ -24,6 +24,7 @@ import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
 
@@ -99,6 +100,12 @@ interface LspSession {
    * sessions (a crash, a force-close) releases them rather than pinning the server forever.
    */
   readonly clients: Map<WebContents, number>;
+
+  /**
+   * Holds the last few things the server said about itself (stderr, logged errors and warnings), so
+   * an exit it chose can be explained in the log and to the user.
+   */
+  readonly tail: LspServerTail;
 
   /**
    * Holds the outcome of the session's initialize handshake, shared with every client that starts
@@ -320,16 +327,23 @@ export class LspManager {
     }
     pidJournal()?.register(child.pid, 'lsp', spec.command);
     logger.info('LspManager', `Started LSP server ${spec.command} (pid ${child.pid})`);
-    // Drain stderr so a chatty server cannot stall on a full pipe; its contents are diagnostic only.
-    child.stderr.resume();
+    // Reading stderr keeps the pipe drained so a chatty server cannot stall on it, and keeps its
+    // last lines for when the server exits: a server that dies over a protocol error says why there
+    // (or over `window/logMessage`) and nowhere else. Draining it to nowhere left every such exit a
+    // bare "code=0".
+    const tail: LspServerTail = new LspServerTail();
+    child.stderr.on('data', (chunk: Buffer | string): void => tail.stderr(chunk.toString()));
 
     const connection: MessageConnection = createMessageConnection(
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),
     );
-    connection.onNotification((method: string, params: unknown): void =>
-      this.forwardNotification(parsed.sessionId, method, params),
-    );
+    connection.onNotification((method: string, params: unknown): void => {
+      if (method === 'window/logMessage') {
+        tail.logMessage(params);
+      }
+      this.forwardNotification(parsed.sessionId, method, params);
+    });
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
       this.handleExit(parsed.sessionId, child, code, signal),
     );
@@ -358,6 +372,7 @@ export class LspManager {
       request: parsed,
       watcher,
       clients: new Map<WebContents, number>(),
+      tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
@@ -558,14 +573,29 @@ export class LspManager {
     code: number | null,
     signal: NodeJS.Signals | null,
   ): void {
-    if (this.sessions.get(id)?.child !== child) {
+    const session: LspSession | undefined = this.sessions.get(id);
+    if (session?.child !== child) {
       return;
     }
-    logger.info(
+    // An exit the manager did not ask for is a failure whatever the code: a server that hits a
+    // protocol error shuts itself down cleanly (Roslyn exits 0 after "Error occurred processing
+    // queue"). Its last words are the only evidence, so they go in the log with the exit.
+    const recent: readonly string[] = session.tail.recent();
+    const reason: string | null = session.tail.summary();
+    logger.warn(
       'LspManager',
-      `LSP server for session ${id} exited (code=${code}, signal=${signal})`,
+      `LSP server for session ${id} exited unexpectedly (code=${code}, signal=${signal})${
+        recent.length === 0
+          ? '; it said nothing on stderr or in its log'
+          : `; its last output:\n  ${recent.join('\n  ')}`
+      }`,
     );
-    const exit: LspExit = { sessionId: id, code, signal: signal ?? null };
+    const exit: LspExit = {
+      sessionId: id,
+      code,
+      signal: signal ?? null,
+      ...(reason === null ? {} : { reason }),
+    };
     this.send(id, LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
