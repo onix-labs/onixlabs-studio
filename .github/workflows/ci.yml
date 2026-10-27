@@ -17,8 +17,10 @@ permissions:
   contents: read
 
 jobs:
+  # The unit suite is most of the gate's time, so it has a job to itself: a format or lint failure
+  # reports in a couple of minutes instead of waiting behind it.
   checks:
-    name: Format · Lint · Test · Build
+    name: Format · Lint · Build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -44,6 +46,37 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Build renderer (Angular)
+        run: npm run build
+
+      - name: Build Electron main + preload (typecheck + bundle)
+        run: npm run build:electron
+
+      # esbuild strips a plugin's types without checking them, so nothing else in this gate would
+      # notice a plugin that does not compile — including a harness somebody's agent runs on.
+      - name: Typecheck the plugins
+        run: npm run typecheck:plugins
+
+  test:
+    name: Unit tests (with coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every core of the runner: vitest.config.mjs lifts its workstation cap under GITHUB_ACTIONS.
       - name: Test (with coverage thresholds)
         run: npm run test:coverage
 
@@ -55,16 +88,23 @@ jobs:
           path: coverage/onixlabs-studio
           retention-days: 14
 
-      - name: Build renderer (Angular)
-        run: npm run build
-
-      - name: Build Electron main + preload (typecheck + bundle)
-        run: npm run build:electron
-
-      # esbuild strips a plugin's types without checking them, so nothing else in this gate would
-      # notice a plugin that does not compile — including a harness somebody's agent runs on.
-      - name: Typecheck the plugins
-        run: npm run typecheck:plugins
+  # The check the main/release ruleset requires, by this name (.github/rulesets): it stands for the
+  # two jobs above, so splitting them did not need the ruleset changing. `always()` makes it report a
+  # failure rather than be skipped — a skipped required check would leave the PR waiting for ever.
+  gate:
+    name: Format · Lint · Test · Build
+    needs: [checks, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Both halves passed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          echo "Format · Lint · Build: $CHECKS · Unit tests: $TEST"
+          test "$CHECKS" = success && test "$TEST" = success
 
   e2e:
     name: E2E (Playwright + Electron)
