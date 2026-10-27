@@ -281,13 +281,13 @@ const RECOLOR_QUIET_MS: number = 750;
 const DIAGNOSTIC_QUIET_MS: number = 400;
 
 /**
- * The delays (in milliseconds) at which a pull-based server's open documents are re-pulled after it
- * signals initialization is complete. Roslyn only answers pull diagnostics for a document whose
- * `didOpen` arrived after the solution finished loading, and then only once it has analysed it; a few
- * spaced pulls catch that result whatever the analysis latency. Each full report replaces the
- * document's set, so redundant pulls (for example on a clean file) are harmless.
+ * The delays (in milliseconds) at which a pull-based server's open documents are pulled again after
+ * it signals initialization is complete. A document opened during the load was analysed as a loose
+ * file; once the solution is in, the server re-analyses it in its project, at a latency of its own —
+ * a few spaced pulls catch that result whenever it lands. Each full report replaces the document's
+ * set, so redundant pulls (for example on a clean file) are harmless.
  */
-const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
+const POST_LOAD_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
 
 /**
  * How many documents a recolour pass pulls diagnostics for concurrently. Each pull makes the server
@@ -297,10 +297,10 @@ const REASSOCIATE_PULL_DELAYS_MS: readonly number[] = [500, 1500, 3500];
 const RECOLOR_PULL_CONCURRENCY: number = 3;
 
 /**
- * How far apart, per document, the reassociation pulls are staggered, so re-associating many open
- * documents does not pull for all of them at the same instants.
+ * How far apart, per document, the post-load pulls are staggered, so many open documents do not all
+ * pull at the same instants against a server that has only just finished loading.
  */
-const REASSOCIATE_STAGGER_MS: number = 200;
+const POST_LOAD_PULL_STAGGER_MS: number = 200;
 
 /**
  * How long a standalone file's server session may sit with no documents before it is stopped. A
@@ -541,10 +541,10 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
-   * Holds the pending reassociation-pull timers per session, cancellable when the session exits or
-   * this client is destroyed.
+   * Holds the pending post-load pull timers per session, cancellable when the session exits or this
+   * client is destroyed.
    */
-  private readonly reassociateTimers: Map<string, Set<ReturnType<typeof setTimeout>>> = new Map<
+  private readonly postLoadPullTimers: Map<string, Set<ReturnType<typeof setTimeout>>> = new Map<
     string,
     Set<ReturnType<typeof setTimeout>>
   >();
@@ -765,18 +765,23 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Re-associates a pull-based server's open documents once it signals initialization is complete.
+   * Pulls a pull-based server's open documents again once it signals initialization is complete.
    *
-   * Roslyn only answers `textDocument/diagnostic` for a document whose `didOpen` arrived *after* the
-   * solution finished loading; the client's original open — sent while the user navigated in, before
-   * `workspace/projectInitializationComplete` — is never picked up, so the pull returns an empty report
-   * forever and no errors surface. Re-sending `didOpen` here (with the document's last-synced text, not
-   * a live-model read, so a backgrounded document still re-associates) makes Roslyn analyse it against
-   * the loaded solution; a few spaced pulls then collect the result. Gated to pull-capable sessions so
-   * push-based servers, which report through `publishDiagnostics`, are left untouched.
-   * @param sessionId The session whose open documents to re-associate.
+   * A document opened while the solution was still loading sat in the server's miscellaneous-files
+   * project; once the load completes the server moves it into its real project, and the diagnostics
+   * pulled before then are stale. A few spaced pulls collect the real ones as the server analyses.
+   * Gated to pull-capable sessions so push-based servers, which report through `publishDiagnostics`,
+   * are left untouched.
+   *
+   * ⛔ This must NOT re-send `textDocument/didOpen`. It used to (#306), on the belief that Roslyn would
+   * not otherwise pick the document up — which is no longer so, and the protocol forbids a second
+   * open without a close. Roslyn 5.4 treats it as a fatal error: it logs `didOpen received for … which
+   * is already open`, then `Error occurred processing queue`, and exits with code 0 — about twelve
+   * seconds after every start of a large solution, which was every "crash" in a week of logs. The
+   * probe that proved it is `.cache/roslyn-probe/probe.mjs`.
+   * @param sessionId The session whose open documents to pull again.
    */
-  private reassociateOnInit(sessionId: string): void {
+  private pullAfterLoad(sessionId: string): void {
     if (this.bridge === undefined || !this.pullCapable.has(sessionId)) {
       return;
     }
@@ -785,24 +790,13 @@ export class LspClient implements OnDestroy {
       if (`${tracked.rootPath}::${tracked.serverId}` !== sessionId || !tracked.opened) {
         continue;
       }
-      // Re-send didOpen with the document's last-synced text so the server associates it with the
-      // now-loaded solution, then pull a few times as it analyses. The pulls are staggered per
-      // document and cancellable (see {@link clearReassociateTimers}): a burst of open documents
-      // must not hit the just-loaded server at the same instants, and a document that closes or a
-      // server that exits meanwhile must not still be pulled for.
-      tracked.version += 1;
-      this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
-        textDocument: {
-          uri: tracked.uri,
-          languageId: tracked.languageId,
-          version: tracked.version,
-          text: tracked.text,
-        },
-      });
-      for (const delay of REASSOCIATE_PULL_DELAYS_MS) {
+      // The pulls are staggered per document and cancellable (see {@link clearPostLoadPulls}): a
+      // burst of open documents must not hit the just-loaded server at the same instants, and a
+      // document that closes or a server that exits meanwhile must not still be pulled for.
+      for (const delay of POST_LOAD_PULL_DELAYS_MS) {
         const timers: Set<ReturnType<typeof setTimeout>> =
-          this.reassociateTimers.get(sessionId) ?? new Set<ReturnType<typeof setTimeout>>();
-        this.reassociateTimers.set(sessionId, timers);
+          this.postLoadPullTimers.get(sessionId) ?? new Set<ReturnType<typeof setTimeout>>();
+        this.postLoadPullTimers.set(sessionId, timers);
         const timer: ReturnType<typeof setTimeout> = setTimeout(
           (): void => {
             timers.delete(timer);
@@ -810,7 +804,7 @@ export class LspClient implements OnDestroy {
               void this.pullDiagnostics(sessionId, tracked);
             }
           },
-          delay + index * REASSOCIATE_STAGGER_MS,
+          delay + index * POST_LOAD_PULL_STAGGER_MS,
         );
         timers.add(timer);
       }
@@ -819,17 +813,17 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Cancels a session's pending reassociation pulls: the server exited (or this client is being
+   * Cancels a session's pending post-load pulls: the server exited (or this client is being
    * destroyed), so the timers would only pull against a gone or restarted session.
    * @param sessionId The session whose pulls to cancel.
    */
-  private clearReassociateTimers(sessionId: string): void {
+  private clearPostLoadPulls(sessionId: string): void {
     const timers: Set<ReturnType<typeof setTimeout>> | undefined =
-      this.reassociateTimers.get(sessionId);
+      this.postLoadPullTimers.get(sessionId);
     if (timers === undefined) {
       return;
     }
-    this.reassociateTimers.delete(sessionId);
+    this.postLoadPullTimers.delete(sessionId);
     for (const timer of timers) {
       clearTimeout(timer);
     }
@@ -1064,7 +1058,7 @@ export class LspClient implements OnDestroy {
         this.legends.delete(sessionId);
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
-        this.clearReassociateTimers(sessionId);
+        this.clearPostLoadPulls(sessionId);
         this.sessions.delete(sessionId);
       }, STANDALONE_DOCUMENTLESS_REAP_MS),
     );
@@ -1211,7 +1205,7 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
-      this.clearReassociateTimers(sessionId);
+      this.clearPostLoadPulls(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
@@ -1245,7 +1239,7 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
-      this.clearReassociateTimers(sessionId);
+      this.clearPostLoadPulls(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -1316,8 +1310,8 @@ export class LspClient implements OnDestroy {
       clearTimeout(timer);
     }
     this.standaloneReapTimers.clear();
-    for (const sessionId of [...this.reassociateTimers.keys()]) {
-      this.clearReassociateTimers(sessionId);
+    for (const sessionId of [...this.postLoadPullTimers.keys()]) {
+      this.clearPostLoadPulls(sessionId);
     }
     for (const timer of this.recolorTimers.values()) {
       clearTimeout(timer);
@@ -1703,7 +1697,7 @@ export class LspClient implements OnDestroy {
     // semantic tokens. Diagnostics below remain the readiness signal for servers that do not send it.
     if (message.method === 'workspace/projectInitializationComplete') {
       this.markReady(message.sessionId);
-      this.reassociateOnInit(message.sessionId);
+      this.pullAfterLoad(message.sessionId);
       this.scheduleRecolor(message.sessionId);
       return;
     }
@@ -1849,7 +1843,7 @@ export class LspClient implements OnDestroy {
       this.legends.delete(exit.sessionId);
       this.pullCapable.delete(exit.sessionId);
       this.settledSessions.delete(exit.sessionId);
-      this.clearReassociateTimers(exit.sessionId);
+      this.clearPostLoadPulls(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -1875,14 +1869,18 @@ export class LspClient implements OnDestroy {
     // way to bring the server back until an incidental document sync happened to re-register it. A
     // later sync still auto-restarts it (startSession re-registers it in the starting state); until
     // then the row's Restart button lets the user recover it by hand.
+    // The server's own last words, when it left any, are the one thing that tells a protocol error
+    // from a deliberate stop — say them, rather than only that it stopped.
     this.status.setState(
       exit.sessionId,
       'unavailable',
-      'The server stopped unexpectedly. Restart it to try again.',
+      exit.reason === undefined
+        ? 'The server stopped unexpectedly. Restart it to try again.'
+        : `The server stopped unexpectedly: ${exit.reason} Restart it to try again.`,
     );
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
-    this.clearReassociateTimers(exit.sessionId);
+    this.clearPostLoadPulls(exit.sessionId);
     const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
       exit.sessionId,
     );

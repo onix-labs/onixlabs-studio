@@ -321,6 +321,14 @@ export interface LspExit {
    * a crash. Absent or false for a real exit.
    */
   readonly restarted?: boolean;
+
+  /**
+   * Gets the server's own account of why it stopped, when it gave one: the last error it logged or
+   * wrote to stderr before exiting, as one line. Absent when it exited silently or on request. A
+   * server that shuts itself down cleanly (exit code 0) over a protocol error looks identical to a
+   * deliberate stop without this.
+   */
+  readonly reason?: string;
 }
 
 /**
