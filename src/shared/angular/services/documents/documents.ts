@@ -80,6 +80,12 @@ export interface CodeDocument {
    * Gets a value indicating whether the file is, or will be saved, with a UTF-8 byte-order mark.
    */
   readonly hasBom: Signal<boolean>;
+
+  /**
+   * Gets a value indicating whether the document can only be read: its editor refuses changes, it is
+   * never dirty, and it is never saved — a language server's decompiled source (#1133).
+   */
+  readonly readOnly: Signal<boolean>;
 }
 
 /**
@@ -125,6 +131,11 @@ interface DocumentEntry {
    * Gets the writable byte-order-mark flag.
    */
   readonly hasBom: WritableSignal<boolean>;
+
+  /**
+   * Gets the writable read-only flag.
+   */
+  readonly readOnly: WritableSignal<boolean>;
 
   /**
    * Holds the disposer that stops watching this document's file on disk, or null when not watched.
@@ -469,8 +480,14 @@ export class Documents implements UnsavedWorkSource {
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
+    entry.readOnly.set(fileInfo.readOnly === true);
     this.watchEntry(id);
-    this.log.info('Documents', `Opened well document '${fileInfo.name}'`, id, fileInfo.path);
+    this.log.info(
+      'Documents',
+      `Opened well document '${fileInfo.name}'${fileInfo.readOnly === true ? ' (read-only)' : ''}`,
+      id,
+      fileInfo.path,
+    );
     return id;
   }
 
@@ -623,6 +640,10 @@ export class Documents implements UnsavedWorkSource {
     if (entry === undefined) {
       return false;
     }
+    if (entry.readOnly()) {
+      this.log.debug('Documents', `Not saving read-only '${entry.fileName()}'`, id);
+      return false;
+    }
     const filePath: string | null = entry.filePath();
     if (filePath === null) {
       return this.saveAs(id);
@@ -648,7 +669,7 @@ export class Documents implements UnsavedWorkSource {
    */
   public async saveAs(id: string): Promise<boolean> {
     const entry: DocumentEntry | undefined = this.entries.get(id);
-    if (entry === undefined) {
+    if (entry === undefined || entry.readOnly()) {
       return false;
     }
     const suggested: string = entry.filePath() ?? this.suggestedFileName(entry);
@@ -706,7 +727,9 @@ export class Documents implements UnsavedWorkSource {
     const original: WritableSignal<string> = signal<string>('');
     const encoding: WritableSignal<string> = signal<string>(DEFAULT_ENCODING);
     const hasBom: WritableSignal<boolean> = signal<boolean>(false);
-    const dirty: Signal<boolean> = computed((): boolean => content() !== original());
+    const readOnly: WritableSignal<boolean> = signal<boolean>(false);
+    // A read-only document is never dirty, so it never asks to be saved on close or by Save All.
+    const dirty: Signal<boolean> = computed((): boolean => !readOnly() && content() !== original());
     const document: CodeDocument = {
       id,
       filePath: filePath.asReadonly(),
@@ -717,6 +740,7 @@ export class Documents implements UnsavedWorkSource {
       dirty,
       encoding: encoding.asReadonly(),
       hasBom: hasBom.asReadonly(),
+      readOnly: readOnly.asReadonly(),
     };
     return {
       document,
@@ -727,6 +751,7 @@ export class Documents implements UnsavedWorkSource {
       original,
       encoding,
       hasBom,
+      readOnly,
       watchDisposer: null,
     };
   }

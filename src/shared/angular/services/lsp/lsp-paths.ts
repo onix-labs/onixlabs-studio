@@ -63,3 +63,15 @@ export function isWithin(target: string, root: string): boolean {
   const normalisedRoot: string = normalise(root);
   return normalisedTarget === normalisedRoot || normalisedTarget.startsWith(`${normalisedRoot}/`);
 }
+
+/**
+ * Determines whether a path is a language server's decompiled source — a file under a
+ * `MetadataAsSource` folder, where Roslyn writes the source it answers Go to Definition with for a
+ * framework or package symbol (#1133). A shape test only: the main process decides, on real paths,
+ * whether such a file may be opened at all.
+ * @param target The path to test.
+ * @returns Returns true when it has a `MetadataAsSource` folder in it.
+ */
+export function isMetadataAsSource(target: string): boolean {
+  return normalise(target).includes('/MetadataAsSource/');
+}

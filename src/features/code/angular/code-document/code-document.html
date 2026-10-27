@@ -2,6 +2,7 @@
   [content]="doc()?.content() ?? ''"
   [language]="doc()?.language() ?? 'plaintext'"
   [options]="editorOptions"
+  [readOnly]="doc()?.readOnly() ?? false"
   [isActive]="isActive()"
   (ready)="onReady()"
   (contentChange)="onContentChange($event)"

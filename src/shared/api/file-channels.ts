@@ -145,6 +145,14 @@ export interface FileInfo {
    * preserved when the file is written back. Absent (treated as false) on synthesised file infos.
    */
   readonly hasBom?: boolean;
+
+  /**
+   * Gets a value indicating whether the file may only be read: shown in an editor that cannot change
+   * it, and never saved. Set by the main process for a file it lets the editor open only to look at —
+   * a language server's decompiled source for a framework or package symbol (#1133). Absent means
+   * editable.
+   */
+  readonly readOnly?: boolean;
 }
 
 /**
