@@ -143,6 +143,25 @@ describe('Documents', () => {
     expect(documents.initialContentOf(tab.id)).toBe('# Findings\n');
   });
 
+  it('aReadOnlyWellDocument_isNeverDirty_andIsNeverSaved (#1133)', async () => {
+    // A language server's decompiled source: shown to read, never written back.
+    documents.setOwningTab('workspace-tab');
+    const id: string = documents.createWellDocument({ ...SAMPLE_FILE, readOnly: true });
+    documents.setContent(id, 'changed');
+
+    expect(documents.get(id)?.readOnly()).toBe(true);
+    expect(documents.get(id)?.dirty()).toBe(false);
+    expect(documents.dirtyDocuments()).toEqual([]);
+    expect(await documents.save(id)).toBe(false);
+    expect(await documents.saveAs(id)).toBe(false);
+  });
+
+  it('anOrdinaryWellDocument_isEditable', () => {
+    const id: string = documents.createWellDocument(SAMPLE_FILE);
+
+    expect(documents.get(id)?.readOnly()).toBe(false);
+  });
+
   it('removeMissing_whenPanelStillPresent_keepsTheDocument', () => {
     const id: string = documents.createWellDocument(SAMPLE_FILE);
 

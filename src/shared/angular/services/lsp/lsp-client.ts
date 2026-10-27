@@ -32,7 +32,14 @@ import {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
-import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
+import {
+  isMetadataAsSource,
+  isWithin,
+  normalise,
+  parentDir,
+  pathToUri,
+  uriToPath,
+} from './lsp-paths';
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
@@ -1983,7 +1990,14 @@ export class LspClient implements OnDestroy {
   private documentRoot(filePath: string): { root: string; standalone: boolean } | null {
     const listing: DirectoryListing | null = this.workspace.root();
     if (listing !== null) {
-      return isWithin(filePath, listing.path) ? { root: listing.path, standalone: false } : null;
+      // A language server's decompiled source (#1133) lives in the temporary directory, outside the
+      // workspace, but belongs to the workspace's session: the server generated it for a symbol the
+      // workspace references, and answers hover and Go to Definition inside it only when it is opened
+      // against that session. (The main process decides which such files may be opened at all.)
+      if (isWithin(filePath, listing.path) || isMetadataAsSource(filePath)) {
+        return { root: listing.path, standalone: false };
+      }
+      return null;
     }
     return { root: parentDir(filePath), standalone: true };
   }

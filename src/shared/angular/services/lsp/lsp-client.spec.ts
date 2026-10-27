@@ -568,6 +568,39 @@ describe('LspClient', () => {
     });
   });
 
+  it('syncDocument_aDecompiledSourceOutsideTheRoot_joinsTheWorkspaceSession (#1133)', async () => {
+    // Roslyn answers Go to Definition on a framework symbol with a file it decompiled into the
+    // temporary directory; hover and further navigation inside it work only against the session that
+    // asked for it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/x/MetadataAsSource/abc/DecompilationMetadataAsSourceFileProvider/def/IList.cs',
+      languageId: 'csharp',
+      content: 'public interface IList<T> { }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::csharp',
+    ]);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_anOrdinaryFileOutsideTheRoot_isStillIgnored', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/elsewhere/Program.cs',
+      languageId: 'csharp',
+      content: 'class A { }',
+    });
+    await flush();
+
+    expect(lsp.starts).toHaveLength(0);
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(0);
+  });
+
   it('syncDocument_afterServerStarts_suppressesBuiltInDiagnosticsForTheLanguage', async () => {
     const client: LspClient = build();
     client.syncDocument({
