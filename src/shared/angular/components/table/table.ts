@@ -113,6 +113,12 @@ export interface TableColumn {
   readonly headerTooltip?: string;
 
   /**
+   * Gets icons drawn before the header text — a results grid's key marks — overlapping one another
+   * when there are several, so a stack of them still takes little room.
+   */
+  readonly headerIcons?: readonly Icon[];
+
+  /**
    * Gets whether the column's header can be clicked to sort by it. A sortable header cycles through
    * ascending, descending, and unsorted; a non-sortable header is inert. The table only reports the
    * sort through {@link Table.sortChange} — the consumer owns its data and applies the ordering.
@@ -289,8 +295,9 @@ export class Table {
    * Once a column has been resized the table lays every column out at its measured width, so the
    * table may grow wider than its scroll area and scroll sideways. A resizable table ends with an
    * empty filler column that cannot be resized and takes whatever width the columns leave, so the
-   * table always reaches its scroll area's right edge. The widths
-   * last as long as the columns do: a new set of column ids starts from the stated widths again.
+   * table always reaches its scroll area's right edge — unless some column states no width, when those
+   * columns share the table and the filler takes nothing. The widths last as long as the columns do:
+   * a new set of column ids, or of stated widths, starts from the stated widths again.
    */
   public readonly resizable: InputSignal<boolean> = input<boolean>(false);
 
@@ -350,6 +357,44 @@ export class Table {
     }
     // Never narrower than the scroll area: the filler column takes up whatever the columns leave.
     return `max(100%, ${total}px)`;
+  });
+
+  /**
+   * Gets whether the columns without a stated width share the whole table between them: true for a
+   * resizable table that has such a column and has not been resized, whose filler then takes nothing.
+   * Each sharing column keeps at least {@link MIN_COLUMN_PX}, beyond which the table scrolls sideways.
+   */
+  private readonly sharesWidth: Signal<boolean> = computed(
+    (): boolean =>
+      this.resizable() &&
+      this.resizedWidths().size === 0 &&
+      this.columns().some((column: TableColumn): boolean => column.width === undefined),
+  );
+
+  /**
+   * Gets the filler column's width: none while the columns share the table, otherwise whatever they
+   * leave.
+   */
+  protected readonly fillerWidth: Signal<string | null> = computed((): string | null =>
+    this.sharesWidth() ? '0px' : null,
+  );
+
+  /**
+   * Gets the narrowest the table may be while its columns share it — the stated widths plus the
+   * minimum of each sharing column — or null otherwise.
+   */
+  protected readonly sharedMinWidth: Signal<string | null> = computed((): string | null => {
+    if (!this.sharesWidth()) {
+      return null;
+    }
+    const columns: readonly TableColumn[] = this.columns();
+    const sharing: number = columns.filter(
+      (column: TableColumn): boolean => column.width === undefined,
+    ).length;
+    const stated: readonly string[] = columns
+      .map((column: TableColumn): string | undefined => column.width)
+      .filter((width: string | undefined): width is string => width !== undefined);
+    return `calc(${[...stated, `${sharing * MIN_COLUMN_PX}px`].join(' + ')})`;
   });
 
   /**
@@ -513,12 +558,13 @@ export class Table {
   }
 
   /**
-   * Identifies the current set of columns.
-   * @returns Returns their ids, joined.
+   * Identifies the current set of columns and their stated widths, so a new set — or the same set
+   * sized afresh — starts from its stated widths again.
+   * @returns Returns their ids and widths, joined.
    */
   private columnKey(): string {
     return this.columns()
-      .map((column: TableColumn): string => column.id)
+      .map((column: TableColumn): string => `${column.id}\u0001${column.width ?? ''}`)
       .join('\u0000');
   }
 
@@ -616,7 +662,8 @@ export class Table {
    * height, and measures a rendered row's height after each render.
    */
   public constructor() {
-    // A new set of columns — another query's result — starts from the stated widths again.
+    // A new set of columns — another query's result, or the same columns sized afresh — starts from
+    // the stated widths again.
     effect((): void => {
       const key: string = this.columnKey();
       untracked((): void => {

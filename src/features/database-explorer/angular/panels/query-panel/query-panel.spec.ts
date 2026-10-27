@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as MonacoApi from 'monaco-editor';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TableColumn, TableRow } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
@@ -365,6 +365,8 @@ describe('QueryPanel', () => {
     readonly connectionOptions: () => readonly DropdownOption[];
     readonly databaseOptions: () => readonly DropdownOption[];
     readonly columns: () => readonly TableColumn[];
+    readonly columnFit: WritableSignal<'view' | 'data'>;
+    readonly gridWidth: WritableSignal<number>;
     readonly gridRows: () => readonly TableRow[];
     readonly rawJson: () => string;
     readonly errorCount: () => number;
@@ -644,6 +646,86 @@ describe('QueryPanel', () => {
     await settle();
     return query;
   }
+
+  /**
+   * Runs a query whose result has a short, keyed column and a long one.
+   * @returns Returns the result's columns, the row number's first.
+   */
+  async function ranKeyedQuery(): Promise<readonly TableColumn[]> {
+    client.outcome = {
+      ...client.outcome,
+      resultSets: [
+        {
+          id: 'rs',
+          columns: [
+            {
+              name: 'id',
+              type: 'int4',
+              keys: [
+                { kind: 'primary', name: 'lines_pkey' },
+                { kind: 'foreign', name: 'lines_order_fkey' },
+              ],
+            },
+            { name: 'description' },
+          ],
+          rows: [[1, 'x'.repeat(100)]],
+          totalRows: 1,
+          line: 1,
+        },
+      ],
+    };
+    await ranQuery();
+    return panel().columns();
+  }
+
+  it('columns_markEachKey_thePrimaryBold_andNameThemInTheTooltip', async () => {
+    const [, id, description] = await ranKeyedQuery();
+
+    expect(id.headerIcons).toEqual([Icon.DATABASE_PRIMARY_KEY, Icon.DATABASE_SECONDARY_KEY]);
+    expect(id.headerTooltip).toBe(
+      'id — int4 · Primary key lines_pkey · Foreign key lines_order_fkey',
+    );
+    expect(description.headerIcons).toEqual([]);
+  });
+
+  it('columns_fitToData_sizeEachToItsLongestValueOrItsHeaderWithItsKeys', async () => {
+    await ranKeyedQuery();
+    panel().columnFit.set('data');
+
+    const [, id, description] = panel().columns();
+    // "id" is two characters, but its two stacked keys make its header wider than its values.
+    expect(id.width).toBe('calc(6ch + 1.25rem + 1px)');
+    expect(description.width).toBe('calc(100ch + 1.25rem + 1px)');
+  });
+
+  it('columns_fitToView_keepAShortColumnsNaturalWidth_andShareTheRestOut', async () => {
+    await ranKeyedQuery();
+    panel().gridWidth.set(600);
+
+    const [index, id, description] = panel().columns();
+    expect(index.width).toBe('3.25rem');
+    // 6 characters of 0.48rem and the cell's inset, at 16px to the rem.
+    expect(id.width).toBe('68px');
+    // Wider than what is left, so it takes what is left.
+    expect(description.width).toBeUndefined();
+  });
+
+  it('columns_fitToView_growEveryColumnInProportion_whenAllFit', async () => {
+    await ranKeyedQuery();
+    panel().gridWidth.set(2000);
+
+    const [, id, description] = panel().columns();
+    expect(id.width).toBe('152px');
+    // The last takes the rounding, and the grid is filled edge to edge.
+    expect(description.width).toBeUndefined();
+  });
+
+  it('columns_fitToView_stateNoWidths_beforeTheGridIsMeasured', async () => {
+    const [, id, description] = await ranKeyedQuery();
+
+    expect(id.width).toBeUndefined();
+    expect(description.width).toBeUndefined();
+  });
 
   it('moreItems_withoutAResult_offerTheExportsDisabled', () => {
     build(workspace.addQuery(postgres().id, undefined, 'select 1'));

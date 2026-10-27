@@ -1,6 +1,7 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Icon } from '@shared/angular/icons/icon';
 import {
   Table,
   TableColumn,
@@ -367,6 +368,72 @@ describe('Table', () => {
       expect(cols[1].style.width).toBe('9rem');
       expect(host.querySelector<HTMLElement>('table.table')?.style.inlineSize).toBe('');
     });
+    it('letsColumnsWithoutAWidthShareTheTable_soTheFillerTakesNothing', () => {
+      component.resizable.set(true);
+      fixture.detectChanges();
+
+      const cols: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('colgroup col'));
+      // Name states no width, so it and any like it share the table; the filler collapses.
+      expect(cols[2].style.width).toBe('0px');
+      // Each sharing column keeps the floor, beyond which the table scrolls sideways.
+      const floor: string =
+        host.querySelector<HTMLElement>('table.table')?.style.minInlineSize ?? '';
+      // The DOM may reorder a calc's terms, so each is checked rather than the whole text.
+      expect(floor).toContain('6rem');
+      expect(floor).toContain('40px');
+    });
+
+    it('givesTheFillerWhatIsLeft_whenEveryColumnHasAWidth', () => {
+      component.resizable.set(true);
+      component.columns.set([
+        { id: 'name', header: 'Name', width: '8rem' },
+        { id: 'value', header: 'Value', width: '6rem' },
+      ]);
+      fixture.detectChanges();
+
+      const cols: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('colgroup col'));
+      expect(cols[2].style.width).toBe('');
+      expect(host.querySelector<HTMLElement>('table.table')?.style.minInlineSize).toBe('');
+    });
+
+    it('startsAfresh_whenTheSameColumnsAreGivenNewWidths', () => {
+      component.resizable.set(true);
+      fixture.detectChanges();
+      const grip: Element = host.querySelectorAll('.table-th__grip')[1];
+      pointer(grip, 'pointerdown', 0);
+      pointer(grip, 'pointermove', 200);
+      pointer(grip, 'pointerup', 200);
+      fixture.detectChanges();
+
+      component.columns.set([
+        { id: 'name', header: 'Name', width: '5rem' },
+        { id: 'value', header: 'Value', width: '7rem' },
+      ]);
+      fixture.detectChanges();
+
+      const cols: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('colgroup col'));
+      expect(cols[0].style.width).toBe('5rem');
+      expect(cols[1].style.width).toBe('7rem');
+    });
+  });
+
+  it('drawsAHeadersIcons_beforeItsText', () => {
+    component.columns.set([
+      {
+        id: 'name',
+        header: 'Name',
+        headerIcons: [Icon.DATABASE_PRIMARY_KEY, Icon.DATABASE_SECONDARY_KEY],
+      },
+      { id: 'value', header: 'Value' },
+    ]);
+    fixture.detectChanges();
+
+    const headers: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.table-head th'));
+    expect(headers[0].querySelectorAll('.table-th__icon')).toHaveLength(2);
+    expect(headers[0].querySelector('.table-th__content')?.textContent?.trim()).toBe('Name');
+    // A header without icons is its text alone.
+    expect(headers[1].querySelector('.table-th__icons')).toBeNull();
+    expect(headers[1].textContent?.trim()).toBe('Value');
   });
 
   it('gridlines_drawRowsThenAFullGrid_inEitherTone', () => {

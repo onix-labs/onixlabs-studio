@@ -21,7 +21,7 @@
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const DATABASE_ENGINE_PROTOCOL: string = '1.2';
+export const DATABASE_ENGINE_PROTOCOL: string = '1.3';
 
 /**
  * The capabilities an engine may declare. A closed list: Studio only offers what it knows how to
@@ -361,6 +361,29 @@ export type DatabaseValue =
   | GraphPathValue;
 
 /**
+ * The kind of key a result column belongs to (protocol 1.3): the table's primary key, a key the table
+ * also holds unique (a unique constraint, or a unique index with no constraint of its own), or a
+ * reference to another table's key.
+ */
+export type ResultColumnKeyKind = 'primary' | 'unique' | 'foreign';
+
+/**
+ * One key a result column belongs to (protocol 1.3). A key over several columns is reported on each of
+ * them.
+ */
+export interface ResultColumnKey {
+  /**
+   * Gets the kind of key.
+   */
+  readonly kind: ResultColumnKeyKind;
+
+  /**
+   * Gets the key's name: its constraint's, or its index's.
+   */
+  readonly name: string;
+}
+
+/**
  * One column of a result set.
  */
 export interface ResultColumn {
@@ -373,6 +396,12 @@ export interface ResultColumn {
    * Gets the engine's name for the column's type, when it knows one.
    */
   readonly type?: string;
+
+  /**
+   * Gets the keys the column belongs to, when it is a table's column the engine can trace (protocol
+   * 1.3): the primary key first. Absent, or empty, for a column that is in no key or is computed.
+   */
+  readonly keys?: readonly ResultColumnKey[];
 }
 
 /**

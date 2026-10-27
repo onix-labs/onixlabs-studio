@@ -11,6 +11,8 @@ import {
   NodeActionOutcome,
   QueryMessage,
   ResultColumn,
+  ResultColumnKey,
+  ResultColumnKeyKind,
 } from '../../protocol/database/protocol';
 import { countNewlines, splitStatements } from '../../protocol/database/statements';
 import {
@@ -652,11 +654,21 @@ class PostgresSession implements EngineSession {
                   toValue(value, result.fields[index]?.dataTypeID ?? 0),
                 ),
               );
+            const keys: ReadonlyMap<string, readonly ResultColumnKey[]> = await this.columnKeys(
+              client,
+              result.fields,
+            );
             resultSets.push({
-              columns: result.fields.map((field: pg.FieldDef): ResultColumn => ({
-                name: field.name,
-                type: names.get(field.dataTypeID),
-              })),
+              columns: result.fields.map((field: pg.FieldDef): ResultColumn => {
+                const own: readonly ResultColumnKey[] | undefined = keys.get(
+                  `${field.tableID}:${field.columnID}`,
+                );
+                return {
+                  name: field.name,
+                  type: names.get(field.dataTypeID),
+                  ...(own === undefined ? {} : { keys: own }),
+                };
+              }),
               rows,
               line: statement.line,
             });
@@ -938,6 +950,56 @@ class PostgresSession implements EngineSession {
   }
 
   /**
+   * Reads the keys of the tables a result's columns come from — primary, unique and foreign
+   * constraints, and unique indexes with no constraint of their own — so the grid can mark the key
+   * columns. A column the server cannot trace to a table (computed, or from a function) has no table
+   * id and is in no key. Best effort: a catalogue the role cannot read leaves the columns unmarked.
+   * @param client The client the statement ran on.
+   * @param fields The result's fields.
+   * @returns Returns a promise resolving each traced column's keys, by `tableID:columnID`.
+   */
+  private async columnKeys(
+    client: pg.Client,
+    fields: readonly pg.FieldDef[],
+  ): Promise<ReadonlyMap<string, readonly ResultColumnKey[]>> {
+    const tables: readonly number[] = [
+      ...new Set<number>(
+        fields.map((field: pg.FieldDef): number => field.tableID).filter((id: number) => id > 0),
+      ),
+    ];
+    const keys: Map<string, ResultColumnKey[]> = new Map<string, ResultColumnKey[]>();
+    if (tables.length === 0) {
+      return keys;
+    }
+    let rows: unknown[][];
+    try {
+      const result: pg.QueryArrayResult = await client.query({
+        text: COLUMN_KEYS_SQL,
+        values: [tables],
+        rowMode: 'array',
+      });
+      rows = result.rows;
+    } catch {
+      return keys;
+    }
+    for (const row of rows) {
+      const kind: ResultColumnKeyKind | null = columnKeyKind(text(row[2]));
+      if (kind === null) {
+        continue;
+      }
+      const at: string = `${Number(row[0])}:${Number(row[3])}`;
+      keys.set(at, [...(keys.get(at) ?? []), { kind, name: text(row[1]) }]);
+    }
+    for (const list of keys.values()) {
+      list.sort(
+        (a: ResultColumnKey, b: ResultColumnKey): number =>
+          KEY_ORDER.indexOf(a.kind) - KEY_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name),
+      );
+    }
+    return keys;
+  }
+
+  /**
    * Reads the type names by oid, once, for the grid's column headers.
    * @param client The client to read them through.
    * @returns Returns a promise resolving the names.
@@ -953,6 +1015,48 @@ class PostgresSession implements EngineSession {
       );
     }
     return this.typeNames;
+  }
+}
+
+/**
+ * Reads every key over the given tables, one row per key and column: the table, the key's name, its
+ * kind (`pg_constraint.contype`, or `i` for a unique index no constraint owns) and the column's number.
+ * An expression in an index has no column number, and is skipped.
+ */
+const COLUMN_KEYS_SQL: string = `
+  select c.conrelid::int, c.conname, c.contype::text, k.attnum::int
+    from pg_constraint c cross join unnest(c.conkey) as k(attnum)
+   where c.conrelid = any($1::oid[]) and c.contype in ('p', 'u', 'f')
+  union all
+  select i.indrelid::int, x.relname, 'i', k.attnum::int
+    from pg_index i
+    join pg_class x on x.oid = i.indexrelid
+    cross join unnest(i.indkey::int2[]) as k(attnum)
+   where i.indrelid = any($1::oid[]) and i.indisunique and not i.indisprimary and k.attnum > 0
+     and not exists (select 1 from pg_constraint c where c.conindid = i.indexrelid
+                     and c.contype in ('p', 'u'))`;
+
+/**
+ * The order a column's keys are listed in: the primary key first.
+ */
+const KEY_ORDER: readonly ResultColumnKeyKind[] = ['primary', 'unique', 'foreign'];
+
+/**
+ * Maps a key's catalogue code to its kind.
+ * @param code The `pg_constraint.contype`, or `i` for a unique index.
+ * @returns Returns the kind, or null for a code that is not a key.
+ */
+export function columnKeyKind(code: string): ResultColumnKeyKind | null {
+  switch (code) {
+    case 'p':
+      return 'primary';
+    case 'u':
+    case 'i':
+      return 'unique';
+    case 'f':
+      return 'foreign';
+    default:
+      return null;
   }
 }
 

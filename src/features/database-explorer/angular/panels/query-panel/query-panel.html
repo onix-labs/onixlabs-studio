@@ -109,6 +109,34 @@
                   <app-icon [icon]="Icon.DATABASE_RAW" /> Raw
                 </button>
               </div>
+              @if (resultView() === 'table') {
+                <div
+                  class="results__views results__views--sizing"
+                  role="group"
+                  aria-label="Size the columns"
+                >
+                  <button
+                    type="button"
+                    class="results__view"
+                    [class.results__view--active]="columnFit() === 'view'"
+                    [attr.aria-pressed]="columnFit() === 'view'"
+                    title="Fit the columns to the grid's width, so it never scrolls sideways"
+                    (click)="columnFit.set('view')"
+                  >
+                    <app-icon [icon]="Icon.DATABASE_FIT_VIEW" /> Fit to View
+                  </button>
+                  <button
+                    type="button"
+                    class="results__view"
+                    [class.results__view--active]="columnFit() === 'data'"
+                    [attr.aria-pressed]="columnFit() === 'data'"
+                    title="Fit each column to its values, so a wide result scrolls sideways"
+                    (click)="columnFit.set('data')"
+                  >
+                    <app-icon [icon]="Icon.DATABASE_FIT_DATA" /> Fit to Data
+                  </button>
+                </div>
+              }
             }
           </app-tab-list>
 

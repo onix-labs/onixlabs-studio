@@ -48,7 +48,8 @@
   overflow: hidden;
   text-align: start;
   text-overflow: ellipsis;
-  box-shadow: inset 0 -1px 0 var(--dock-container-background-color);
+  // The rule under the header; a consumer sets `--table-header-rule-color: transparent` to drop it.
+  box-shadow: inset 0 -1px 0 var(--table-header-rule-color, var(--dock-container-background-color));
 }
 
 // A resizable table's column splitters: one 1px line on each heading's trailing edge, in the theme's
@@ -56,7 +57,7 @@
 // full height on exactly the pixel column the column gridlines below continue.
 .table--resizable .table-head th:not(.table-th--filler) {
   box-shadow:
-    inset 0 -1px 0 var(--dock-container-background-color),
+    inset 0 -1px 0 var(--table-header-rule-color, var(--dock-container-background-color)),
     inset -1px 0 0 var(--table-splitter-color);
 }
 
@@ -86,6 +87,7 @@
 }
 
 .table-th__label {
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -94,6 +96,37 @@
 .table-th__sort {
   flex: 0 0 auto;
   opacity: 0.85;
+}
+
+// A header with icons: the icons and the text in one row, the text still ellipsed when it runs out.
+.table-th__content {
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  vertical-align: middle;
+}
+
+// A header's icons, before its text. Several overlap, each later one over the last with a rim of the
+// header's own colour, so they read as a stack rather than a smudge.
+.table-th__icons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-inline-end: 0.35rem;
+  vertical-align: middle;
+}
+
+// Within a sortable header's button, whose own gap already parts the icons from the text.
+.table-th__button .table-th__icons {
+  margin-inline-end: 0.1rem;
+}
+
+.table-th__icon + .table-th__icon {
+  margin-inline-start: -0.5rem;
+  text-shadow:
+    -1px 0 0 var(--dock-title-background-color),
+    0 1px 0 var(--dock-title-background-color),
+    0 -1px 0 var(--dock-title-background-color);
 }
 
 // Per-column alignment: the component sets `--table-col-<n>` on the table from each column's `align`,
