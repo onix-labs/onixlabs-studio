@@ -166,9 +166,14 @@ class FakeLsp implements Bridge {
     });
   }
 
-  public exit(sessionId: string): void {
+  public exit(sessionId: string, reason?: string): void {
     this.running.delete(sessionId);
-    this.exitListener?.({ sessionId, code: 1, signal: null });
+    this.exitListener?.({
+      sessionId,
+      code: 1,
+      signal: null,
+      ...(reason === undefined ? {} : { reason }),
+    });
   }
 
   public notificationsTo(method: string): { sessionId: string; params: unknown }[] {
@@ -1031,6 +1036,70 @@ describe('LspClient', () => {
       .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
     expect(server?.state).toBe('unavailable');
     expect(server?.detail).toContain('stopped unexpectedly');
+  });
+
+  it('serverExit_namesTheServersOwnReason_whenItGaveOne', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.exit('/root::typescript', 'didOpen received for file:///root/a.ts which is already open.');
+
+    const server: LspServer | undefined = status
+      .servers()
+      .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+    expect(server?.detail).toBe(
+      'The server stopped unexpectedly: didOpen received for file:///root/a.ts which is already open. Restart it to try again.',
+    );
+  });
+
+  it('projectInitializationComplete_pullsOpenDocumentsAgain_butNeverReopensThem', async () => {
+    // Roslyn 5.4 treats a second didOpen for an open document as fatal and exits (code 0) — which it
+    // did ~12 s after every start of a large solution. The post-load pass may only pull.
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    lsp.diagnosticReport = { kind: 'full', items: [] };
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: 'class A {}',
+    });
+    await flush();
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    const sent: number = lsp.notifications.length;
+    lsp.diagnosticReport = {
+      kind: 'full',
+      items: [
+        {
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+          severity: 1,
+          message: 'Only visible once the solution has loaded',
+        },
+      ],
+    };
+
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/projectInitializationComplete', {});
+      await vi.advanceTimersByTimeAsync(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    expect(lsp.notifications.length).toBe(sent);
+    expect(
+      diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+        diagnostic.message.includes('Only visible once the solution has loaded'),
+      ),
+    ).toBe(true);
   });
 
   it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
