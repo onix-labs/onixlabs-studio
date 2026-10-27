@@ -115,10 +115,10 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 16 scalar settings plus a custom "language overrides" entry, which is
-    // rendered by a bespoke host rather than this component.
+    // The Text Editor section has 17 scalar settings (Format on type, #1141, among them) plus a custom
+    // "language overrides" entry, which is rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(17);
   });
 
   it('render_whenTextEditorSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
