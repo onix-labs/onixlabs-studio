@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
@@ -56,20 +56,130 @@ const MINIMUM_JAVA_VERSION: number = 21;
 
 /**
  * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
- * the same engine the open-source vscode-csharp extension uses). The distribution is pinned so every
- * machine provisions the same server; bumping it downloads into a fresh, version-scoped directory.
- * This build is the newest published to the public feed below — newer vscode-csharp builds depend on
- * private feeds and are not publicly downloadable.
+ * the same engine the open-source vscode-csharp extension uses), as Microsoft publishes it on nuget.org
+ * in the `roslyn-language-server.<rid>` packages. The distribution is pinned so every machine
+ * provisions the same server; bumping it downloads into a fresh, version-scoped directory, and a
+ * machine that has an older version keeps using it until the user updates the plugin (#1135).
+ *
+ * ⛔ Bump it as a step of the release recipe, after `scripts/probe-roslyn.mjs` on a fixture solution,
+ * and update {@link ROSLYN_SHA512} from the nuget.org catalog in the same change. These are versions,
+ * not decimals: 5.13 is nine minor releases after 5.4.
  */
-export const ROSLYN_VERSION: string = '5.4.0-2.26179.14';
+export const ROSLYN_VERSION: string = '5.13.0-1.26514.10';
 
 /**
- * Holds the NuGet flat-container base URL of the public Azure DevOps feed the Roslyn server is
- * published to. A package is fetched from `<base>/<id>/<version>/<id>.<version>.nupkg`, where the id
- * is lower-cased; a `.nupkg` is a plain zip.
+ * Holds the NuGet flat-container base URL the Roslyn server is fetched from. A package is fetched from
+ * `<base>/<id>/<version>/<id>.<version>.nupkg`, where the id is lower-cased; a `.nupkg` is a plain zip.
+ *
+ * nuget.org, not the internal `vs-impl` Azure DevOps feed the server came from until 5.4: that feed is
+ * not a public contract and stopped publishing usable builds; nuget.org is where Microsoft ships the
+ * server for every editor that is not Visual Studio.
  */
-const ROSLYN_FEED: string =
-  'https://pkgs.dev.azure.com/azure-public/vside/_packaging/vs-impl/nuget/v3/flat2';
+const ROSLYN_FEED: string = 'https://api.nuget.org/v3-flatcontainer';
+
+/**
+ * Holds the SHA-512 (base64, as the nuget.org catalog publishes it) of each pinned platform package.
+ * A download is verified against this before it is extracted, so a corrupted or substituted package of
+ * executable code is never run.
+ */
+const ROSLYN_SHA512: Readonly<Record<string, string>> = {
+  'osx-x64':
+    'KtsZpvvq7t8KU0l+yFZaDhXx3MEnACjTan7I4e/QxC4HI165spiAVP3TO1dB/Eb7rfYTPQ89rbDnOiO08TAyyA==',
+  'osx-arm64':
+    '2Jb1K/zED//VPVrZQMk9TdYxKAPVpYFdQWyR5quBkwlDfOTfmmvOJUpvyknSn5gEvOhDxUaC8Jvw2mBhl2SOsw==',
+  'linux-x64':
+    'hiECk5jwtKqn8RvClv355qJL/wCiT5z1CjWza/99wgKJj0oZ/drlKD8LVYQ7zKM3gPVC4tFXbA+SfQ7PzQlzPw==',
+  'linux-arm64':
+    'kj87Xl6/ctaL70mM+q7X3FHuJ4fjrK0lr1H9usa2EAxF/asM8Sya3GmXiIcExCE/iqhNkcOvYKJhXc6ghdvtNw==',
+  'win-x64':
+    '+bE9gCtusnlR0SVlFdfc0remupBvkNf8y2NKNp7CrCDEfbZMgCfucEMyQ/c56BxxmVy8nKDxnYpL5KnziLWo1Q==',
+  'win-arm64':
+    'zZd+KlY+3TS8xXd9VNWZ0DRmutD/LaFyEODgHriBo7zLWEniyQVCUqFqCmJPoADzKkgLDxE3rLyWRaG60Mqqnw==',
+};
+
+/**
+ * Lists where a Roslyn package keeps its server apphost, relative to the version's install directory,
+ * newest layout first: nuget.org's `roslyn-language-server.<rid>` puts it under `tools/net10.0/<rid>`,
+ * the `vs-impl` packages Studio installed up to 5.4 under `content/LanguageServer/<rid>`. Both are
+ * read, so an install from before the move keeps working until it is updated.
+ * @param rid The .NET runtime identifier.
+ * @param windows Whether the apphost has an `.exe` suffix.
+ * @returns Returns the candidate relative paths.
+ */
+export function roslynBinaryCandidates(rid: string, windows: boolean): readonly string[] {
+  const executable: string = windows
+    ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
+    : 'Microsoft.CodeAnalysis.LanguageServer';
+  return [
+    path.join(rid, 'tools', 'net10.0', rid, executable),
+    path.join(rid, 'content', 'LanguageServer', rid, executable),
+  ];
+}
+
+/**
+ * Orders two Roslyn package versions (`5.13.0-1.26514.10`), oldest first. Each dot-separated part is
+ * compared as a whole number — 5.13 is newer than 5.4 — and a release sorts after its prereleases.
+ * @param left One version.
+ * @param right The other.
+ * @returns Returns a negative number, zero, or a positive number as `left` is older, the same, or newer.
+ */
+export function compareRoslynVersions(left: string, right: string): number {
+  const a: ParsedVersion = parseVersion(left);
+  const b: ParsedVersion = parseVersion(right);
+  const main: number = compareNumberParts(a.main, b.main);
+  if (main !== 0) {
+    return main;
+  }
+  if (a.pre === null || b.pre === null) {
+    return a.pre === b.pre ? 0 : a.pre === null ? 1 : -1;
+  }
+  return compareNumberParts(a.pre, b.pre);
+}
+
+/**
+ * A version split into its release numbers and, when it is a prerelease, its prerelease numbers.
+ */
+interface ParsedVersion {
+  /**
+   * Gets the release numbers (`5.13.0` → 5, 13, 0).
+   */
+  readonly main: readonly number[];
+
+  /**
+   * Gets the prerelease numbers (`1.26514.10`), or null for a release.
+   */
+  readonly pre: readonly number[] | null;
+}
+
+/**
+ * Splits a version into its numbers.
+ * @param version The version (`5.13.0-1.26514.10`).
+ * @returns Returns the parsed version.
+ */
+function parseVersion(version: string): ParsedVersion {
+  const dash: number = version.indexOf('-');
+  const numbers: (part: string) => number[] = (part: string): number[] =>
+    part.split('.').map((piece: string): number => Number.parseInt(piece, 10) || 0);
+  return dash === -1
+    ? { main: numbers(version), pre: null }
+    : { main: numbers(version.slice(0, dash)), pre: numbers(version.slice(dash + 1)) };
+}
+
+/**
+ * Compares two lists of version numbers part by part, a missing part counting as zero.
+ * @param left One list.
+ * @param right The other.
+ * @returns Returns the first non-zero difference, or zero when they are equal.
+ */
+function compareNumberParts(left: readonly number[], right: readonly number[]): number {
+  for (let index: number = 0; index < Math.max(left.length, right.length); index++) {
+    const difference: number = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
 
 /**
  * Holds the pinned version of the Kotlin language server (`fwcd/kotlin-language-server`). The
@@ -258,14 +368,69 @@ export class LspProvisioner {
   }
 
   /**
-   * Ensures the Roslyn C# language server is installed under the user-data directory, downloading and
-   * extracting its platform-specific package on first use and reusing the cached copy thereafter. The
-   * work is shared across concurrent callers.
+   * Ensures the **pinned** Roslyn C# language server is installed under the user-data directory,
+   * downloading, verifying and extracting its platform package when it is not, and reusing it when it
+   * is. This is the plugin's install and update action; nothing that merely *uses* the server calls it
+   * (see {@link installedRoslyn}), so a pin moving in a Studio release downloads nothing until the user
+   * chooses to update. The work is shared across concurrent callers; a failure is not remembered, so a
+   * retry after a network blip downloads again.
    * @returns Returns the absolute path of the server apphost, or null when it could not be provisioned.
    */
   public ensureRoslyn(): Promise<string | null> {
-    this.roslynProvision ??= this.provisionRoslyn();
+    this.roslynProvision ??= this.provisionRoslyn().then((binary: string | null): string | null => {
+      if (binary === null) {
+        this.roslynProvision = null;
+      }
+      return binary;
+    });
     return this.roslynProvision;
+  }
+
+  /**
+   * Finds the Roslyn server already installed on this machine, without downloading anything: the
+   * pinned version when it is there, otherwise the newest complete install of an older one. An older
+   * install is what a machine has between a Studio release moving the pin and the user updating the
+   * plugin — it keeps working, and the Plugin Manager offers the update (#1135).
+   * @returns Returns the absolute path of the server apphost, or null when none is installed.
+   */
+  public installedRoslyn(): string | null {
+    const rid: string | null = this.roslynRid();
+    if (rid === null) {
+      return null;
+    }
+    const root: string = path.join(this.serversRoot(), 'roslyn');
+    let versions: string[];
+    try {
+      versions = readdirSync(root);
+    } catch {
+      return null;
+    }
+    const ordered: string[] = versions
+      .filter((version: string): boolean => isComplete(path.join(root, version)))
+      .sort((left: string, right: string): number => {
+        if (left === ROSLYN_VERSION || right === ROSLYN_VERSION) {
+          return left === ROSLYN_VERSION ? -1 : 1;
+        }
+        return compareRoslynVersions(right, left);
+      });
+    for (const version of ordered) {
+      for (const candidate of roslynBinaryCandidates(rid, process.platform === 'win32')) {
+        const binary: string = path.join(root, version, candidate);
+        if (existsSync(binary)) {
+          return binary;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Removes every Roslyn install other than the pinned version, once the pinned version has installed
+   * and verified, so an update replaces rather than accumulates (~70 MB a version).
+   * @returns Returns a promise that resolves once older versions are gone.
+   */
+  public pruneRoslyn(): Promise<void> {
+    return pruneVersions(this.serversRoot(), 'roslyn', ROSLYN_VERSION, 'LspProvisioner');
   }
 
   /**
@@ -692,14 +857,18 @@ export class LspProvisioner {
       logger.warn('LspProvisioner', 'Cannot provision Roslyn: unsupported platform');
       return null;
     }
+    const expected: string | undefined = ROSLYN_SHA512[rid];
+    if (expected === undefined) {
+      logger.warn('LspProvisioner', `Cannot provision Roslyn: no pinned package for ${rid}`);
+      return null;
+    }
     // The marker goes on the version directory the probe and the uninstall use, not beside the binary.
     const versionDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION);
     const installDir: string = path.join(versionDir, rid);
-    const executable: string =
-      process.platform === 'win32'
-        ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
-        : 'Microsoft.CodeAnalysis.LanguageServer';
-    const binary: string = path.join(installDir, 'content', 'LanguageServer', rid, executable);
+    const binary: string = path.join(
+      versionDir,
+      roslynBinaryCandidates(rid, process.platform === 'win32')[0],
+    );
     try {
       if (existsSync(binary)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
@@ -710,10 +879,19 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading Roslyn server ${ROSLYN_VERSION} (${rid})`);
       await fs.mkdir(installDir, { recursive: true });
-      const id: string = `microsoft.codeanalysis.languageserver.${rid}`;
+      const id: string = `roslyn-language-server.${rid}`;
       const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
       const archive: string = path.join(installDir, 'server.nupkg');
       await this.download(url, archive);
+      const digest: string = await this.fileDigest(archive, 'sha512', 'base64');
+      if (digest !== expected) {
+        logger.error(
+          'LspProvisioner',
+          `Checksum mismatch for Roslyn ${ROSLYN_VERSION} (${rid}): expected ${expected}, got ${digest}`,
+        );
+        await fs.rm(versionDir, { recursive: true, force: true });
+        return null;
+      }
       await this.extractZip(archive, installDir);
       await fs.rm(archive, { force: true });
       if (!existsSync(binary)) {
@@ -962,10 +1140,26 @@ export class LspProvisioner {
    * @param file The file to hash.
    * @returns Returns the lower-case hex digest.
    */
-  private async sha256(file: string): Promise<string> {
-    const hash: ReturnType<typeof createHash> = createHash('sha256');
+  private sha256(file: string): Promise<string> {
+    return this.fileDigest(file, 'sha256', 'hex');
+  }
+
+  /**
+   * Computes a digest of a file, streaming it so a large archive is not held in memory.
+   * @param file The file to hash.
+   * @param algorithm The hash algorithm.
+   * @param encoding How the digest is written: hex (as most publishers do) or base64 (as nuget.org
+   * does).
+   * @returns Returns the encoded digest.
+   */
+  private async fileDigest(
+    file: string,
+    algorithm: 'sha256' | 'sha512',
+    encoding: 'hex' | 'base64',
+  ): Promise<string> {
+    const hash: ReturnType<typeof createHash> = createHash(algorithm);
     await pipeline(createReadStream(file), hash);
-    return hash.digest('hex');
+    return hash.digest(encoding);
   }
 
   /**

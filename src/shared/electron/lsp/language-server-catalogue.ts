@@ -218,9 +218,10 @@ const GO: LanguageServerDescriptor = {
 };
 
 /**
- * The Roslyn C# language server, detecting a .NET SDK and downloading the server on first use. Unlike
- * most servers, Roslyn does not load a workspace from `rootUri` alone, so the spec carries a
- * `solution/open` (or `project/open`) notification for the manager to send after the handshake.
+ * The Roslyn C# language server, detecting a .NET SDK and starting whichever server the plugin has
+ * installed. Unlike most servers, Roslyn does not load a workspace from `rootUri` alone, so the spec
+ * carries a `solution/open` (or `project/open`) notification for the manager to send after the
+ * handshake.
  */
 const CSHARP: LanguageServerDescriptor = {
   id: 'csharp',
@@ -236,9 +237,12 @@ const CSHARP: LanguageServerDescriptor = {
         '.NET SDK 10+ not found — set its path in Settings or install the .NET 10 SDK.',
       );
     }
-    const server: string | null = await context.provisioner.ensureRoslyn();
+    // The installed server, whichever version it is — never a download. Installing and updating are
+    // the Plugin Manager's, so a release that moves the pin does not fetch ~70 MB the next time a C#
+    // file opens (#1135).
+    const server: string | null = context.provisioner.installedRoslyn();
     if (server === null) {
-      return unavailable('The C# language server could not be downloaded.');
+      return unavailable('The C# language server is not installed — install it in Plugins.');
     }
     const logDir: string = await context.provisioner.dataDirectory('roslyn', context.rootPath);
     const model: ProjectModel | null =

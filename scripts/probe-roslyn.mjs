@@ -62,11 +62,29 @@ function installedServer() {
     platform === 'win32'
       ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
       : 'Microsoft.CodeAnalysis.LanguageServer';
-  for (const version of readdirSync(versions).sort().reverse()) {
+  // Newest first, comparing each dot-separated part as a number (5.13 is newer than 5.4); both the
+  // nuget.org layout (tools/net10.0/<rid>) and the older vs-impl one (content/LanguageServer/<rid>).
+  const numeric = (version) => version.split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  const newestFirst = readdirSync(versions).sort((left, right) => {
+    const a = numeric(left);
+    const b = numeric(right);
+    for (let index = 0; index < Math.max(a.length, b.length); index++) {
+      if ((a[index] ?? 0) !== (b[index] ?? 0)) {
+        return (b[index] ?? 0) - (a[index] ?? 0);
+      }
+    }
+    return 0;
+  });
+  for (const version of newestFirst) {
     for (const rid of readdirSync(path.join(versions, version))) {
-      const candidate = path.join(versions, version, rid, 'content', 'LanguageServer', rid, binary);
-      if (existsSync(candidate)) {
-        return candidate;
+      for (const layout of [
+        ['tools', 'net10.0'],
+        ['content', 'LanguageServer'],
+      ]) {
+        const candidate = path.join(versions, version, rid, ...layout, rid, binary);
+        if (existsSync(candidate)) {
+          return candidate;
+        }
       }
     }
   }
@@ -373,22 +391,31 @@ await new Promise((resolve) => setTimeout(resolve, 2000));
 // ---- The checks --------------------------------------------------------------------------------
 
 const lines = text.split('\n');
+// Finds the first line matching a pattern, outside `using` and `namespace` lines, and puts the caret
+// inside the pattern's named `name` group — on the identifier itself, not on the keyword before it
+// (a request made on `public` or on a namespace answers nothing, which reads like a missing feature).
 const find = (pattern) => {
   for (let line = 0; line < lines.length; line++) {
-    if (/^\s*using /.test(lines[line])) {
+    if (/^\s*(using|namespace) /.test(lines[line])) {
       continue;
     }
     const match = pattern.exec(lines[line]);
     if (match) {
-      return { line, character: match.index + 1, text: match[0] };
+      const name = match.groups?.name ?? match[0];
+      const start = match.index + match[0].indexOf(name);
+      return { line, character: start + 1, text: name };
     }
   }
   return null;
 };
-const typeName = find(/\b[A-Z][A-Za-z]{3,}\b/);
-const call = find(/\.\s*([A-Z][A-Za-z]+)\s*\(/) ?? typeName;
+const typeName =
+  find(/\b(?:class|interface|record|struct|enum)\s+(?<name>[A-Z]\w*)/) ??
+  find(/\b(?<name>[A-Z][A-Za-z]{3,})\b/);
+const call = find(/\.\s*(?<name>[A-Z][A-Za-z]+)\s*\(/) ?? typeName;
 const member =
-  find(/\b(public|private|internal|protected)\s+(async\s+)?[\w<>?,\s]+\s+(\w+)\s*\(/) ?? typeName;
+  find(
+    /\b(?:public|private|internal|protected)\s+(?:static\s+|async\s+|override\s+|virtual\s+)*[\w<>?,.[\]]+\s+(?<name>[A-Z]\w*)\s*\(/,
+  ) ?? typeName;
 if (typeName === null) {
   log(`${FILE} has no identifier to probe with; pass a different --file.`);
   exit(1);
