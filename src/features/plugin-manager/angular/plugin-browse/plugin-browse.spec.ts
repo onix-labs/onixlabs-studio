@@ -139,6 +139,42 @@ describe('PluginBrowse', () => {
     ]);
   });
 
+  it('visible_pinsPluginsWithAnUpdateToTheTop_underEveryFilterAndSort', () => {
+    catalogue.set([
+      plugin({ id: 'alpha', name: 'Alpha', state: 'installed', installedVersion: '1.0.0' }),
+      plugin({ id: 'beta', name: 'Beta', state: 'available' }),
+      plugin({
+        id: 'yak',
+        name: 'Yak',
+        state: 'installed',
+        version: '2.0.0',
+        installedVersion: '1.0.0',
+      }),
+      plugin({
+        id: 'zed',
+        name: 'Zed',
+        state: 'installed',
+        version: '2.0.0',
+        installedVersion: '1.0.0',
+      }),
+    ]);
+    const ids: () => readonly string[] = (): readonly string[] =>
+      browse.visible().map((p: PluginSummary): string => p.id);
+
+    expect(ids()).toEqual(['yak', 'zed', 'alpha', 'beta']);
+
+    browse.filter.set(INSTALLED_PLUGINS);
+    expect(ids()).toEqual(['yak', 'zed', 'alpha']);
+
+    browse.filter.set('Other');
+    expect(ids()).toEqual(['yak', 'zed', 'alpha', 'beta']);
+
+    // The column sort still orders the updates among themselves, and everything beneath them.
+    browse.filter.set(ALL_PLUGINS);
+    browse.sort.set({ columnId: 'plugin', direction: 'desc' });
+    expect(ids()).toEqual(['zed', 'yak', 'beta', 'alpha']);
+  });
+
   it('counts_areOfTheCatalogueRatherThanTheFilteredList', () => {
     browse.query.set('claude');
 
