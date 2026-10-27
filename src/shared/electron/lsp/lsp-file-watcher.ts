@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { shouldForwardTreeEvent } from '../directory-watch-filter';
 import { logger } from '../logger';
-import { matchesAny } from './lsp-watch-glob';
+import { matchesAny, WatchRegistrations } from './lsp-watch-glob';
 
 /**
  * How long changes are coalesced before a `workspace/didChangeWatchedFiles` goes out. A checkout or
@@ -44,8 +44,9 @@ export interface FileEvent {
  * Events are filtered through the same policy the explorers use (build outputs, dependency caches and
  * git's internal bookkeeping are dropped), coalesced, and deduplicated per path. When the server has
  * registered watch patterns (`client/registerCapability` for `workspace/didChangeWatchedFiles`), only
- * matching paths are reported; a server that registered nothing gets everything that survives the
- * filter, which is what a server relying on the client's default watching expects.
+ * paths matching one of its live registrations are reported; a server that registered nothing gets
+ * everything that survives the filter, which is what a server relying on the client's default
+ * watching expects.
  */
 export class LspFileWatcher {
   /**
@@ -64,9 +65,9 @@ export class LspFileWatcher {
   private watcher: FSWatcher | null = null;
 
   /**
-   * Holds the server's registered patterns, or null when it registered none (report everything).
+   * Holds the server's watch registrations, whose union filters what is reported.
    */
-  private patterns: readonly RegExp[] | null = null;
+  private readonly registrations: WatchRegistrations;
 
   /**
    * Holds the changes accumulated in the current coalescing window, keyed by root-relative path.
@@ -86,6 +87,7 @@ export class LspFileWatcher {
   public constructor(root: string, deliver: (events: readonly FileEvent[]) => void) {
     this.root = root;
     this.deliver = deliver;
+    this.registrations = new WatchRegistrations(root);
     try {
       this.watcher = watch(
         root,
@@ -104,12 +106,27 @@ export class LspFileWatcher {
   }
 
   /**
-   * Sets the patterns the server registered, replacing any previous set. Pass null to report every
-   * change again.
-   * @param patterns The compiled patterns, or null.
+   * Adds a server's watch registration; what is reported becomes the union of every live one.
+   * @param id The registration id.
+   * @param watchers The registration's `watchers`, untrusted.
    */
-  public setPatterns(patterns: readonly RegExp[] | null): void {
-    this.patterns = patterns;
+  public register(id: string, watchers: unknown): void {
+    this.registrations.register(id, watchers);
+  }
+
+  /**
+   * Removes a server's watch registration. With none left, every change is reported again.
+   * @param id The registration id.
+   */
+  public unregister(id: string): void {
+    this.registrations.unregister(id);
+  }
+
+  /**
+   * Gets how many watch registrations are live, for diagnostics.
+   */
+  public get registrationCount(): number {
+    return this.registrations.size;
   }
 
   /**
@@ -152,8 +169,9 @@ export class LspFileWatcher {
   private flush(): void {
     this.timer = null;
     const events: FileEvent[] = [];
+    const patterns: readonly RegExp[] | null = this.registrations.patterns();
     for (const [relative, eventType] of this.pending) {
-      if (this.patterns !== null && !matchesAny(relative, this.patterns)) {
+      if (patterns !== null && !matchesAny(relative, patterns)) {
         continue;
       }
       const absolute: string = path.join(this.root, relative);
