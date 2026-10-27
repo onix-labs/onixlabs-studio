@@ -8,6 +8,7 @@
     [class.table--dark-lines]="gridlineTone() === 'dark'"
     [style]="alignStyles()"
     [style.inline-size]="resizedTableWidth()"
+    [style.min-inline-size]="sharedMinWidth()"
   >
     <colgroup>
       @for (column of columns(); track column.id; let index = $index) {
@@ -15,8 +16,9 @@
       }
       @if (resizable()) {
         <!-- The filler: no width of its own, so it takes whatever the columns leave and the table
-             always reaches the scroll area's right edge, however the columns are resized. -->
-        <col />
+             always reaches the scroll area's right edge, however the columns are resized; none
+             while columns without a width share the table. -->
+        <col [style.width]="fillerWidth()" />
       }
     </colgroup>
     <thead class="table-head">
@@ -39,6 +41,7 @@
           >
             @if (column.sortable) {
               <button type="button" class="table-th__button" (click)="toggleSort(column)">
+                <ng-container *ngTemplateOutlet="headerIcons; context: { $implicit: column }" />
                 <span class="table-th__label">{{ column.header }}</span>
                 @if (sort()?.columnId === column.id) {
                   <app-icon
@@ -48,6 +51,12 @@
                   />
                 }
               </button>
+            } @else if (column.headerIcons?.length) {
+              <!-- A flex row, so no whitespace between the icons and the text takes room of its own. -->
+              <span class="table-th__content">
+                <ng-container *ngTemplateOutlet="headerIcons; context: { $implicit: column }" />
+                <span class="table-th__label">{{ column.header }}</span>
+              </span>
             } @else {
               {{ column.header }}
             }
@@ -141,3 +150,14 @@
     </tbody>
   </table>
 </div>
+
+<!-- A header's icons, overlapping when there are several. -->
+<ng-template #headerIcons let-column>
+  @if (column.headerIcons?.length) {
+    <span class="table-th__icons" aria-hidden="true">
+      @for (icon of column.headerIcons; track $index) {
+        <app-icon class="table-th__icon" [icon]="icon" [size]="0.875" />
+      }
+    </span>
+  }
+</ng-template>

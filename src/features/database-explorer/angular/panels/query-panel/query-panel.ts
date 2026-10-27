@@ -28,6 +28,9 @@ import {
   DatabaseValue,
   ExecuteOutcome,
   QueryMessage,
+  ResultColumn,
+  ResultColumnKey,
+  ResultColumnKeyKind,
   ResultSet,
 } from '@shared/api/database-engine-protocol';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
@@ -109,6 +112,54 @@ function formatElapsed(ms: number): string {
  * How a result is shown.
  */
 type ResultView = 'table' | 'graph' | 'raw';
+
+/**
+ * How the grid's columns are sized: sharing the grid's width (`view`), or each as wide as its values
+ * (`data`).
+ */
+type ColumnFit = 'view' | 'data';
+
+/**
+ * How many rows Fit to Data reads to size the columns: enough to be representative, few enough that a
+ * large result sizes at once.
+ */
+const FIT_SAMPLE_ROWS: number = 5000;
+
+/**
+ * The most characters Fit to Data widens a column to: room for any hash, key, timestamp or ordinary
+ * text in full, while a multi-kilobyte value (a JSON document) cannot make its column screens wide.
+ */
+const FIT_MAX_CHARS: number = 256;
+
+/**
+ * The grid's character width, its row-number column's width and a cell's horizontal padding, in rem:
+ * what Fit to View and Fit to Data reckon a column's width from.
+ */
+const GRID_CHAR_REM: number = 0.48;
+const INDEX_COLUMN_REM: number = 3.25;
+const CELL_INSET_REM: number = 1.25;
+
+/**
+ * A cell's padding and its splitter, added to its text's width.
+ */
+const CELL_INSET: string = `${CELL_INSET_REM}rem + 1px`;
+
+/**
+ * How many of the grid's characters a header's key marks take, for Fit to Data: the first icon, each
+ * one stacked over it, and the gap before the name. The grid's characters are 0.48rem wide.
+ */
+const KEY_ICON_CHARS: number = 0.875 / GRID_CHAR_REM;
+const KEY_STACK_CHARS: number = 0.375 / GRID_CHAR_REM;
+const KEY_GAP_CHARS: number = 0.35 / GRID_CHAR_REM;
+
+/**
+ * How each kind of key is named in a column header's tooltip.
+ */
+const KEY_LABELS: Readonly<Record<ResultColumnKeyKind, string>> = {
+  primary: 'Primary key',
+  unique: 'Unique key',
+  foreign: 'Foreign key',
+};
 
 /**
  * One grid row, its cells already formatted.
@@ -228,6 +279,12 @@ export class QueryPanel {
    * Holds how the result is shown; null until chosen, when a graph result opens as a graph.
    */
   private readonly chosenView: WritableSignal<ResultView | null> = signal<ResultView | null>(null);
+
+  /**
+   * Holds how the grid's columns are sized; they share the grid's width until the user fits them to
+   * their data.
+   */
+  protected readonly columnFit: WritableSignal<ColumnFit> = signal<ColumnFit>('view');
 
   /**
    * Holds the selected grid row.
@@ -401,15 +458,123 @@ export class QueryPanel {
    */
   protected readonly columns: Signal<readonly TableColumn[]> = computed(
     (): readonly TableColumn[] => [
-      { id: '#', header: '', width: '3.25rem', align: 'end' },
-      ...(this.resultSet()?.columns ?? []).map((column, index: number): TableColumn => ({
-        id: `${index}`,
-        header: column.name,
-        width: '11rem',
-        align: this.numericColumns().has(index) ? 'end' : 'start',
-        headerTooltip: column.type === undefined ? column.name : `${column.name} — ${column.type}`,
-      })),
+      { id: '#', header: '', width: `${INDEX_COLUMN_REM}rem`, align: 'end' },
+      ...(this.resultSet()?.columns ?? []).map(
+        (column: ResultColumn, index: number): TableColumn => ({
+          id: `${index}`,
+          header: column.name,
+          ...this.columnWidth(index),
+          align: this.numericColumns().has(index) ? 'end' : 'start',
+          headerTooltip: [
+            column.type === undefined ? column.name : `${column.name} — ${column.type}`,
+            ...(column.keys ?? []).map(
+              (key: ResultColumnKey): string => `${KEY_LABELS[key.kind]} ${key.name}`,
+            ),
+          ].join(' · '),
+          headerIcons: (column.keys ?? []).map((key: ResultColumnKey): Icon =>
+            key.kind === 'primary' ? Icon.DATABASE_PRIMARY_KEY : Icon.DATABASE_SECONDARY_KEY,
+          ),
+        }),
+      ),
     ],
+  );
+
+  /**
+   * Gets a result column's stated width under the chosen sizing, or none to share what is left.
+   * @param index The column's index in the result.
+   * @returns Returns the width to spread into its column.
+   */
+  private columnWidth(index: number): { readonly width?: string } {
+    const width: string | undefined =
+      this.columnFit() === 'data'
+        ? `calc(${this.dataChars()[index] ?? 0}ch + ${CELL_INSET})`
+        : this.viewWidths()[index];
+    return width === undefined ? {} : { width };
+  }
+
+  /**
+   * Gets each result column's natural width in the grid's characters: its longest value or its name
+   * (with its key marks), whichever is wider, up to {@link FIT_MAX_CHARS}. The grid's font is
+   * monospaced, so a count of characters in `ch` is the text's width exactly.
+   */
+  private readonly dataChars: Signal<readonly number[]> = computed((): readonly number[] => {
+    const columns: readonly ResultColumn[] = this.resultSet()?.columns ?? [];
+    const rows: readonly GridRow[] = this.gridRows()
+      .slice(0, FIT_SAMPLE_ROWS)
+      .map((row: TableRow): GridRow => row.data as GridRow);
+    return columns.map((column: ResultColumn, index: number): number => {
+      const keys: number = column.keys?.length ?? 0;
+      let chars: number =
+        column.name.length +
+        (keys === 0 ? 0 : KEY_ICON_CHARS + (keys - 1) * KEY_STACK_CHARS + KEY_GAP_CHARS);
+      for (const row of rows) {
+        chars = Math.max(chars, row.cells[index]?.text.length ?? 0);
+        if (chars >= FIT_MAX_CHARS) {
+          chars = FIT_MAX_CHARS;
+          break;
+        }
+      }
+      return Math.ceil(chars);
+    });
+  });
+
+  /**
+   * Holds the grid, whose width Fit to View shares out.
+   */
+  private readonly grid: Signal<ElementRef<HTMLElement> | undefined> = viewChild(Table, {
+    read: ElementRef,
+  });
+
+  /**
+   * Holds the grid's width in pixels, or 0 before it has been measured.
+   */
+  private readonly gridWidth: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets each result column's Fit to View width: the grid's width shared out so it never scrolls
+   * sideways, without giving a short column more than it needs. Any column whose values (or name) fit
+   * in an equal share keeps its natural width, and what that frees is shared again among the rest,
+   * until every remaining column is wider than its share — those are left unstated, so the table
+   * divides the remainder between them exactly. When every column fits, the spare room is handed out in
+   * proportion to their natural widths, so the grid is still filled edge to edge.
+   */
+  private readonly viewWidths: Signal<readonly (string | undefined)[]> = computed(
+    (): readonly (string | undefined)[] => {
+      const chars: readonly number[] = this.dataChars();
+      const width: number = this.gridWidth();
+      if (width <= 0 || chars.length === 0) {
+        return chars.map((): undefined => undefined);
+      }
+      const rem: number = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const inset: number = CELL_INSET_REM * rem + 1;
+      const natural: readonly number[] = chars.map(
+        (count: number): number => count * GRID_CHAR_REM * rem + inset,
+      );
+      const room: number = width - INDEX_COLUMN_REM * rem;
+      const total: number = natural.reduce((sum: number, each: number): number => sum + each, 0);
+      if (total <= room) {
+        // Everything fits: each column grows in proportion, and the last takes the rounding.
+        return natural.map((each: number, index: number): string | undefined =>
+          index === natural.length - 1 ? undefined : `${Math.floor((each * room) / total)}px`,
+        );
+      }
+      const fixed: Set<number> = new Set<number>();
+      let changed: boolean = true;
+      while (changed) {
+        changed = false;
+        const used: number = [...fixed].reduce((sum: number, at: number) => sum + natural[at], 0);
+        const share: number = (room - used) / (natural.length - fixed.size);
+        natural.forEach((each: number, at: number): void => {
+          if (!fixed.has(at) && each <= share) {
+            fixed.add(at);
+            changed = true;
+          }
+        });
+      }
+      return natural.map((each: number, at: number): string | undefined =>
+        fixed.has(at) ? `${Math.ceil(each)}px` : undefined,
+      );
+    },
   );
 
   /**
@@ -527,6 +692,18 @@ export class QueryPanel {
     effect((onCleanup: (cleanup: () => void) => void): void => {
       const detach: () => void = this.opener.attach(this.panel().id, (): void => this.execute());
       onCleanup(detach);
+    });
+    // Fit to View shares out the grid's width, so it follows the grid as the panel is resized.
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const grid: HTMLElement | undefined = this.grid()?.nativeElement;
+      if (grid === undefined || typeof ResizeObserver === 'undefined') {
+        return;
+      }
+      const observer: ResizeObserver = new ResizeObserver((): void =>
+        this.gridWidth.set(grid.clientWidth),
+      );
+      observer.observe(grid);
+      onCleanup((): void => observer.disconnect());
     });
     if (typeof ResizeObserver !== 'undefined') {
       const host: HTMLElement = this.elementRef.nativeElement;

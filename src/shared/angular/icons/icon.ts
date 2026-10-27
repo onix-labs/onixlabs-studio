@@ -1671,6 +1671,30 @@ export class Icon {
   public static readonly DATABASE_RAW: Icon = new Icon('ph-duotone ph-brackets-curly');
 
   /**
+   * Gets the icon of the Fit to View column sizing: the columns share the grid's width.
+   */
+  public static readonly DATABASE_FIT_VIEW: Icon = new Icon(
+    'ph-duotone ph-arrows-in-line-horizontal',
+  );
+
+  /**
+   * Gets the icon of the Fit to Data column sizing: each column is as wide as its values.
+   */
+  public static readonly DATABASE_FIT_DATA: Icon = new Icon(
+    'ph-duotone ph-arrows-out-line-horizontal',
+  );
+
+  /**
+   * Gets the icon of a result column that is the primary key, or part of it.
+   */
+  public static readonly DATABASE_PRIMARY_KEY: Icon = new Icon('ph-bold ph-key');
+
+  /**
+   * Gets the icon of a result column that belongs to a key other than the primary key.
+   */
+  public static readonly DATABASE_SECONDARY_KEY: Icon = new Icon('ph-duotone ph-key');
+
+  /**
    * Gets the duotone Orchestration icon shown on the welcome screen.
    */
   public static readonly WELCOME_ORCHESTRATION: Icon = new Icon('ph-duotone ph-computer-tower');

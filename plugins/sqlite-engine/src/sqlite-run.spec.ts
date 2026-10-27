@@ -133,6 +133,58 @@ describe('runScript', (): void => {
   });
 });
 
+describe('runScript column keys', (): void => {
+  let database: DatabaseSync;
+
+  beforeEach((): void => {
+    database = new DatabaseSync(':memory:');
+    database.exec(`
+      create table parent (id integer primary key, email text unique);
+      create table child (a int, b int, c text, d int references parent (id),
+                          primary key (a, b), unique (c));
+      create unique index child_d on child (d);
+    `);
+  });
+
+  afterEach((): void => {
+    database.close();
+  });
+
+  /**
+   * Runs a query and reads its columns' keys.
+   * @param sql The query.
+   * @returns Returns each column's keys, by name.
+   */
+  function keysOf(sql: string): Record<string, unknown> {
+    const execution: EngineExecution = runScript(database, sql, 1);
+    return Object.fromEntries(
+      execution.resultSets[0].columns.map((column) => [column.name, column.keys ?? []]),
+    );
+  }
+
+  it('marksEachColumnOfACompositePrimaryKey_andNamesUnnamedKeysByWhatTheyCover', (): void => {
+    expect(keysOf('select a, b, c, d, a + 1 as e from child')).toEqual({
+      a: [{ kind: 'primary', name: 'PRIMARY KEY' }],
+      b: [{ kind: 'primary', name: 'PRIMARY KEY' }],
+      c: [{ kind: 'unique', name: 'UNIQUE (c)' }],
+      // In two keys: a unique index of its own, and a reference to the parent's primary key.
+      d: [
+        { kind: 'unique', name: 'child_d' },
+        { kind: 'foreign', name: 'REFERENCES parent (id)' },
+      ],
+      // An expression comes from no table column, so is in no key.
+      e: [],
+    });
+  });
+
+  it('tracesAnAliasedColumnBackToItsTable', (): void => {
+    expect(keysOf('select id as identifier, email from parent')).toEqual({
+      identifier: [{ kind: 'primary', name: 'PRIMARY KEY' }],
+      email: [{ kind: 'unique', name: 'UNIQUE (email)' }],
+    });
+  });
+});
+
 describe('toValue', (): void => {
   it('passesPrimitivesThrough_andConvertsBigintsAndBytes', (): void => {
     expect(toValue(null)).toBeNull();

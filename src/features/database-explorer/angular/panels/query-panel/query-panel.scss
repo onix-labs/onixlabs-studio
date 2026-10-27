@@ -40,11 +40,19 @@
 
 .results__tabs {
   padding-inline: 0.5rem;
+  // The bar is a band of its own, so it needs no rule under its tabs; a rule inset by the padding
+  // never reached the panel's edges anyway.
+  --tab-list-rule-color: transparent;
 }
 
 .results__views {
   display: inline-flex;
   gap: 0.15rem;
+
+  // Column sizing is a choice of its own, set a little apart from the view it applies to.
+  &--sizing {
+    margin-inline-start: 0.75rem;
+  }
 }
 
 .results__view {
@@ -109,6 +117,8 @@
 // The grid's cells: monospaced, one line each, NULL muted and numbers to the right.
 .results__grid {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
+  --table-header-rule-color: transparent;
+  --table-splitter-color: var(--database-results-splitter-color);
 }
 
 .results__index {

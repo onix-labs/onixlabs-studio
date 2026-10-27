@@ -12,7 +12,7 @@ import {
   EngineSession,
   MAX_RESULT_ROWS,
 } from '../../protocol/database/engine';
-import { constraintKind, PostgresEngine, toValue } from './postgres-engine';
+import { columnKeyKind, constraintKind, PostgresEngine, toValue } from './postgres-engine';
 
 /**
  * One query a fake client was asked to run.
@@ -28,7 +28,12 @@ interface QueryCall {
  */
 interface FakeResult {
   readonly rows: unknown[][];
-  readonly fields: readonly { readonly name: string; readonly dataTypeID: number }[];
+  readonly fields: readonly {
+    readonly name: string;
+    readonly dataTypeID: number;
+    readonly tableID?: number;
+    readonly columnID?: number;
+  }[];
   readonly command?: string;
   readonly rowCount?: number | null;
 }
@@ -204,6 +209,16 @@ describe('constraintKind', (): void => {
       'exclusion',
       't',
     ]);
+  });
+});
+
+describe('columnKeyKind', (): void => {
+  it('mapsEachKeyCode_aUniqueIndexReadingAsAUniqueKey', (): void => {
+    expect(columnKeyKind('p')).toBe('primary');
+    expect(columnKeyKind('u')).toBe('unique');
+    expect(columnKeyKind('i')).toBe('unique');
+    expect(columnKeyKind('f')).toBe('foreign');
+    expect(columnKeyKind('c')).toBeNull();
   });
 });
 
@@ -727,6 +742,82 @@ describe('PostgresEngine', (): void => {
       { severity: 'info', text: '1 row returned', line: 13 },
       { severity: 'info', text: 'CREATE TABLE', line: 14 },
     ]);
+  });
+
+  it('execute_marksTheColumnsOfEachKey_primaryFirst', async (): Promise<void> => {
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult => {
+      if (call.text === 'select * from lines') {
+        return {
+          rows: [[1, 2, 3]],
+          fields: [
+            { name: 'order_id', dataTypeID: 23, tableID: 700, columnID: 1 },
+            { name: 'sku', dataTypeID: 25, tableID: 700, columnID: 3 },
+            { name: 'total', dataTypeID: 23 },
+          ],
+          command: 'SELECT',
+          rowCount: 1,
+        };
+      }
+      if (call.text.includes('pg_constraint')) {
+        expect(call.values).toEqual([[700]]);
+        return {
+          rows: [
+            [700, 'lines_order_fkey', 'f', 1],
+            [700, 'lines_pkey', 'p', 1],
+            [700, 'lines_sku_key', 'u', 3],
+            [700, 'lines_check', 'c', 3],
+          ],
+          fields: [],
+        };
+      }
+      return rowsResult([], []);
+    };
+
+    const execution: EngineExecution = await run(await open(), 'select * from lines');
+
+    expect(execution.resultSets[0].columns).toEqual([
+      {
+        name: 'order_id',
+        type: 'int4',
+        keys: [
+          { kind: 'primary', name: 'lines_pkey' },
+          { kind: 'foreign', name: 'lines_order_fkey' },
+        ],
+      },
+      { name: 'sku', type: 'text', keys: [{ kind: 'unique', name: 'lines_sku_key' }] },
+      { name: 'total', type: 'int4' },
+    ]);
+  });
+
+  it('execute_leavesTheColumnsUnmarked_whenTheKeysCannotBeRead', async (): Promise<void> => {
+    pgMock.respond = (_: FakeClient, call: QueryCall): FakeResult => {
+      if (call.text.includes('pg_constraint')) {
+        throw new Error('permission denied for table pg_constraint');
+      }
+      return {
+        rows: [[1]],
+        fields: [{ name: 'id', dataTypeID: 23, tableID: 700, columnID: 1 }],
+        command: 'SELECT',
+        rowCount: 1,
+      };
+    };
+
+    const execution: EngineExecution = await run(await open(), 'select id from lines');
+
+    expect(execution.failed).toBe(false);
+    expect(execution.resultSets[0].columns).toEqual([{ name: 'id', type: 'int4' }]);
+  });
+
+  it('execute_readsNoKeys_forAResultFromNoTable', async (): Promise<void> => {
+    pgMock.respond = (): FakeResult => rowsResult([[1]], ['one']);
+
+    await run(await open(), 'select 1 as one');
+
+    expect(
+      pgMock.clients[0].queries.some((call: QueryCall): boolean =>
+        call.text.includes('pg_constraint'),
+      ),
+    ).toBe(false);
   });
 
   it('execute_readsTheTypeNamesOnlyOnce', async (): Promise<void> => {

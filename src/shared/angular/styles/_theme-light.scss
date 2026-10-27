@@ -140,6 +140,8 @@
   // A resizable table's column splitter: one line, the darker of the groove's two — white would vanish
   // against a light header.
   --table-splitter-color: var(--status-strip-bevel-shadow-color);
+  // The query results grid's column splitters: a shade darker than the table splitter in dark mode.
+  --database-results-splitter-color: var(--table-splitter-color);
   // The Graph view's nodes: a theme grey with the accent at their rim, never a colour of their own.
   --graph-node-background-color: var(--gray-200);
 
