@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as MonacoApi from 'monaco-editor';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
@@ -6,7 +6,13 @@ import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdo
 import { TableColumn, TableRow } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
+import { FileWriteResult } from '@shared/api/file-channels';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { isStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { DatabaseEnginePrompt } from '@shared/angular/services/plugins/database-engine-prompt';
@@ -16,6 +22,8 @@ import {
   ExecuteOutcome,
   ExecuteRequest,
   ExpandOutcome,
+  DatabaseValue,
+  FetchRequest,
 } from '@shared/api/database-engine-protocol';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DatabaseClient } from '../../database-client/database-client';
@@ -158,6 +166,79 @@ class FakeClient {
   public cancel(id: string): void {
     this.cancels.push(id);
   }
+
+  /**
+   * Answers a fetch with no more rows, as an engine does once the result is gone.
+   * @param request The request.
+   * @returns Returns no rows.
+   */
+  public fetch(request: FetchRequest): Promise<readonly (readonly DatabaseValue[])[]> {
+    void request;
+    return Promise.resolve([]);
+  }
+}
+
+/**
+ * A stand-in for the file system, answering the save dialog and recording what was written.
+ */
+class FakeFileSystem {
+  /**
+   * Holds the path the save dialog answers, or null for a cancelled dialog.
+   */
+  public chosen: string | null = '/exports/out';
+
+  /**
+   * Holds the default names the save dialog was opened with.
+   */
+  public readonly dialogs: (string | undefined)[] = [];
+
+  /**
+   * Holds every text write.
+   */
+  public readonly writes: { path: string; content: string; hasBom: boolean }[] = [];
+
+  /**
+   * Holds every byte write.
+   */
+  public readonly byteWrites: { path: string; bytes: Uint8Array }[] = [];
+
+  /**
+   * Holds what every write answers.
+   */
+  public result: FileWriteResult = { success: true, path: '/exports/out' };
+
+  /**
+   * Answers the save dialog.
+   * @param defaultPath The name it opens with.
+   * @returns Returns {@link chosen}.
+   */
+  public saveDialog(defaultPath?: string): Promise<string | null> {
+    this.dialogs.push(defaultPath);
+    return Promise.resolve(this.chosen);
+  }
+
+  /**
+   * Records a text write.
+   * @param path The path.
+   * @param content The text.
+   * @param hasBom Whether a byte-order mark leads it.
+   * @returns Returns {@link result}.
+   */
+  public write(path: string, content: string, hasBom: boolean = false): Promise<FileWriteResult> {
+    this.writes.push({ path, content, hasBom });
+    return Promise.resolve(this.result);
+  }
+
+  /**
+   * Records a byte write.
+   * @param path The path.
+   * @param bytes The bytes.
+   * @returns Returns {@link result}.
+   */
+  public writeBytes(path: string, bytes: Uint8Array): Promise<FileWriteResult> {
+    this.byteWrites.push({ path, bytes });
+    return Promise.resolve(this.result);
+  }
 }
 
 /**
@@ -269,6 +350,8 @@ describe('QueryPanel', () => {
   let attached: string[];
   let completions: FakeCompletions;
   let monacoApi: FakeMonacoApi;
+  let files: FakeFileSystem;
+  let notes: NotificationRequest[];
 
   /**
    * Reads the panel's protected members, which are what the template binds to.
@@ -286,6 +369,8 @@ describe('QueryPanel', () => {
     readonly rawJson: () => string;
     readonly errorCount: () => number;
     readonly tab: () => 'results' | 'messages';
+    readonly moreItems: () => readonly MenuItem[];
+    onMoreAction(id: string): void;
     onText(text: string): void;
     setConnection(id: string): void;
     setDatabase(name: string): void;
@@ -323,12 +408,18 @@ describe('QueryPanel', () => {
     attached = [];
     completions = new FakeCompletions();
     monacoApi = new FakeMonacoApi();
+    files = new FakeFileSystem();
+    notes = [];
     TestBed.configureTestingModule({
       imports: [QueryPanel],
       providers: [
         DatabaseWorkspace,
         { provide: DatabaseClient, useValue: client },
-        { provide: FileSystem, useValue: {} },
+        { provide: FileSystem, useValue: files },
+        {
+          provide: Notifications,
+          useValue: { notify: (request: NotificationRequest): number => notes.push(request) },
+        },
         { provide: DatabaseCompletions, useValue: completions },
         { provide: Monaco, useValue: { getMonaco: (): FakeMonacoApi => monacoApi } },
         { provide: DatabaseEnginePrompt, useValue: { installedKey: signal<string>('x') } },
@@ -347,6 +438,10 @@ describe('QueryPanel', () => {
     workspace = TestBed.inject(DatabaseWorkspace);
     TestBed.tick();
     await settle();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   /**
@@ -538,6 +633,153 @@ describe('QueryPanel', () => {
       ],
     });
   });
+  /**
+   * Builds the panel for a query against PostgreSQL and runs it, so a result shows.
+   * @returns Returns the query.
+   */
+  async function ranQuery(): Promise<DatabaseQuery> {
+    const query: DatabaseQuery = workspace.addQuery(postgres().id, undefined, 'select 1', 'Users');
+    build(query);
+    component.execute();
+    await settle();
+    return query;
+  }
+
+  it('moreItems_withoutAResult_offerTheExportsDisabled', () => {
+    build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+    expect(
+      panel()
+        .moreItems()
+        .map((item: MenuItem): readonly [string, boolean | undefined] => [
+          item.label,
+          item.disabled,
+        ]),
+    ).toEqual([
+      ['Export to CSV', true],
+      ['Export to XLSX', true],
+    ]);
+  });
+
+  it('moreItems_withAResult_offerTheExports', async () => {
+    await ranQuery();
+
+    expect(
+      panel()
+        .moreItems()
+        .every((item: MenuItem): boolean => item.disabled === false),
+    ).toBe(true);
+  });
+
+  it('exportToCsv_writesEveryRowWithAByteOrderMarkAndSaysSo', async () => {
+    await ranQuery();
+
+    panel().onMoreAction('export-csv');
+    await vi.waitFor((): void => {
+      expect(notes).toHaveLength(1);
+    });
+
+    expect(files.dialogs).toEqual(['Users.csv']);
+    expect(files.writes).toEqual([
+      { path: '/exports/out', content: 'id,name\r\n1,Ada\r\n2,\r\n', hasBom: true },
+    ]);
+    expect(notes[0]).toMatchObject({
+      severity: 'info',
+      title: 'Exported 2 rows to CSV',
+      detail: '/exports/out',
+    });
+  });
+
+  it('exportToXlsx_writesAWorkbooksBytes', async () => {
+    // jsdom's Blob cannot stream, as the renderer's can; stand in one that does.
+    vi.stubGlobal(
+      'Blob',
+      class {
+        public constructor(private readonly parts: readonly Uint8Array[]) {}
+
+        /**
+         * Streams the parts.
+         * @returns Returns the stream.
+         */
+        public stream(): ReadableStream<Uint8Array> {
+          const parts: readonly Uint8Array[] = this.parts;
+          return new ReadableStream<Uint8Array>({
+            start(controller: ReadableStreamDefaultController<Uint8Array>): void {
+              parts.forEach((part: Uint8Array): void => controller.enqueue(part));
+              controller.close();
+            },
+          });
+        }
+      },
+    );
+    await ranQuery();
+
+    panel().onMoreAction('export-xlsx');
+    await vi.waitFor((): void => {
+      expect(notes).toHaveLength(1);
+    });
+
+    expect(files.dialogs).toEqual(['Users.xlsx']);
+    expect(files.writes).toEqual([]);
+    expect(files.byteWrites).toHaveLength(1);
+    // A zip archive's local file header.
+    expect([...files.byteWrites[0].bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(notes[0]).toMatchObject({ severity: 'info', title: 'Exported 2 rows to XLSX' });
+  });
+
+  it('export_whenTheSaveDialogIsCancelled_writesNothing', async () => {
+    await ranQuery();
+    files.chosen = null;
+
+    panel().onMoreAction('export-csv');
+    await settle();
+
+    expect(files.dialogs).toHaveLength(1);
+    expect(files.writes).toEqual([]);
+    expect(notes).toEqual([]);
+  });
+
+  it('export_whenTheWriteFails_saysWhy', async () => {
+    await ranQuery();
+    files.result = { success: false, error: 'Disk full' };
+
+    panel().onMoreAction('export-csv');
+    await vi.waitFor((): void => {
+      expect(notes).toHaveLength(1);
+    });
+
+    expect(notes[0]).toMatchObject({
+      severity: 'error',
+      title: 'The export to CSV failed',
+      detail: 'Disk full',
+    });
+  });
+
+  it('export_whenTheRestOfTheRowsAreGone_warnsItHasOnlyThoseLoaded', async () => {
+    client.outcome = {
+      ...client.outcome,
+      resultSets: [{ ...client.outcome.resultSets[0], totalRows: 5 }],
+    };
+    await ranQuery();
+
+    panel().onMoreAction('export-csv');
+    await vi.waitFor((): void => {
+      expect(notes).toHaveLength(1);
+    });
+
+    expect(notes[0].severity).toBe('warning');
+    expect(notes[0].detail).toContain('only the rows already loaded');
+  });
+
+  it('onMoreAction_anUnknownItem_doesNothing', async () => {
+    await ranQuery();
+
+    panel().onMoreAction('something-else');
+    await settle();
+
+    expect(files.dialogs).toEqual([]);
+  });
+
   /**
    * Stands in for the editor the template would render, over a model of the given line, and tells the
    * panel it is ready.

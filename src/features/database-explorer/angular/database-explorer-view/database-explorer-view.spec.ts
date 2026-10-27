@@ -2,16 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NgTemplateOutlet } from '@angular/common';
 import { NO_ERRORS_SCHEMA, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DatabaseEngineInfo } from '@shared/api/database-engine-protocol';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TabList } from '@shared/angular/components/forms/tab-list/tab-list';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -46,6 +47,7 @@ import { DatabaseCompletions } from '../database-completions/database-completion
 import { DATABASE_EXPLORER_DOCK_BLUEPRINT } from '../database-explorer-dock-blueprint';
 import {
   ConnectionTarget,
+  DatabaseExplorerCommandHandler,
   DatabaseExplorerCommands,
   RibbonPanel,
 } from '../database-explorer-commands/database-explorer-commands';
@@ -89,6 +91,7 @@ class FakeWorkspace {
   public readonly engines: WritableSignal<readonly DatabaseEngineInfo[]> = signal<
     readonly DatabaseEngineInfo[]
   >([]);
+  public readonly canRemember: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
    * Finds a connection.
@@ -252,6 +255,7 @@ describe('DatabaseExplorerView', () => {
     });
     fixture = TestBed.createComponent(DatabaseExplorerView);
     fixture.componentRef.setInput('tabId', 'tab-1');
+    fixture.componentRef.setInput('isActive', true);
     view = fixture.componentInstance;
     dockState = fixture.debugElement.injector.get(DockState);
     dockFloating = fixture.debugElement.injector.get(DockFloating);
@@ -288,11 +292,59 @@ describe('DatabaseExplorerView', () => {
     );
   }
 
-  it('ngOnInit_registersTheViewWithTheRibbonsCommands', () => {
+  it('whileTheTabIsActive_registersTheViewWithTheRibbonsCommands', () => {
     workspace.connections.set([connection('c1', 'Production')]);
     workspace.selection.set({ kind: 'connection', connectionId: 'c1' });
 
     expect(TestBed.inject(DatabaseExplorerCommands).connectionTarget()?.id).toBe('c1');
+  });
+
+  it('whenTheTabIsNoLongerActive_clearsTheRibbonsCommands', () => {
+    workspace.connections.set([connection('c1', 'Production')]);
+    workspace.selection.set({ kind: 'connection', connectionId: 'c1' });
+    const commands: DatabaseExplorerCommands = TestBed.inject(DatabaseExplorerCommands);
+
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(commands.connectionTarget()).toBeNull();
+  });
+
+  it('whenTheTabIsActiveAgain_registersAgain', () => {
+    workspace.connections.set([connection('c1', 'Production')]);
+    workspace.selection.set({ kind: 'connection', connectionId: 'c1' });
+    const commands: DatabaseExplorerCommands = TestBed.inject(DatabaseExplorerCommands);
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    fixture.componentRef.setInput('isActive', true);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(commands.connectionTarget()?.id).toBe('c1');
+  });
+
+  it('whenAnotherTabIsActive_doesNotTakeTheRibbonsCommands', () => {
+    const commands: DatabaseExplorerCommands = TestBed.inject(DatabaseExplorerCommands);
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    TestBed.tick();
+    const front: { connectionTarget: () => ConnectionTarget | null } = {
+      connectionTarget: (): ConnectionTarget | null => ({
+        id: 'front',
+        name: 'Front',
+        state: 'closed',
+      }),
+    };
+    commands.register(front as unknown as DatabaseExplorerCommandHandler);
+
+    // The inactive tab neither takes the registry back nor clears the tab in front.
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(commands.connectionTarget()?.id).toBe('front');
   });
 
   describe('connectionTarget', () => {
@@ -463,13 +515,18 @@ describe('DatabaseExplorerView', () => {
       );
     });
 
-    it('inTheDefaultLayout_showsAllButTheTerminal', () => {
+    it('inTheDefaultLayout_showsEveryPanel_theTerminalCollapsedUnderTheWell', () => {
       expect(openPanels()).toEqual({
         objects: true,
         properties: true,
         agent: true,
-        terminal: false,
+        terminal: true,
       });
+      const well: StackNode | null = findDocumentWell(dockState.layout());
+      const terminal: StackNode | null = findStackOfPanel(dockState.layout(), 'terminal');
+      expect(terminal?.collapsed).toBe(true);
+      expect(terminal?.side).toBe('bottom');
+      expect(terminal?.id).not.toBe(well?.id);
     });
 
     it('whenClosed_isNotShowing', () => {
@@ -548,6 +605,7 @@ describe('DatabaseExplorerView', () => {
     });
 
     it('whenTheTerminalIsHidden_docksItUnderTheWell', () => {
+      dockState.removeFromLayout('terminal');
       const dockEdge: ReturnType<typeof vi.spyOn> = vi.spyOn(dockState, 'dockEdge');
       const reveal: ReturnType<typeof vi.spyOn> = vi.spyOn(dockReveal, 'reveal');
 
@@ -568,6 +626,9 @@ describe('DatabaseExplorerView', () => {
     });
 
     it('twice_onAHiddenPanel_showsThenClosesIt', async () => {
+      dockState.removeFromLayout('terminal');
+      expect(openPanels()['terminal']).toBe(false);
+
       view.togglePanel('terminal');
       expect(openPanels()['terminal']).toBe(true);
 
@@ -639,6 +700,28 @@ const UNSECTIONED: DatabaseEngineInfo = {
   connectionFields: [{ id: 'file', label: 'File', kind: 'text' }],
 };
 
+/**
+ * An engine with a sign-in, a password to remember, and a boolean option.
+ */
+const SIGN_IN: DatabaseEngineInfo = {
+  id: 'sign-in',
+  displayName: 'Sign In',
+  language: 'sql',
+  queryExtension: 'sql',
+  capabilities: [],
+  connectionFields: [
+    { id: 'user', label: 'User', kind: 'text', section: 'authentication' },
+    {
+      id: 'password',
+      label: 'Password',
+      kind: 'password',
+      secret: true,
+      section: 'authentication',
+    },
+    { id: 'tls', label: 'Use TLS', kind: 'boolean', defaultValue: 'false', section: 'server' },
+  ],
+};
+
 describe('DatabaseExplorerView connection dialog', () => {
   let fixture: ComponentFixture<DatabaseExplorerView>;
   let workspace: FakeWorkspace;
@@ -659,7 +742,6 @@ describe('DatabaseExplorerView connection dialog', () => {
           AppIcon,
           Button,
           ButtonRow,
-          Checkbox,
           Dropdown,
           Modal,
           ModalContent,
@@ -668,6 +750,7 @@ describe('DatabaseExplorerView connection dialog', () => {
           SettingRow,
           TabList,
           TextField,
+          Toggle,
         ],
         schemas: [NO_ERRORS_SCHEMA],
         providers: [
@@ -788,5 +871,103 @@ describe('DatabaseExplorerView connection dialog', () => {
 
     const tabs: HTMLButtonElement[] = tabsOf(content);
     expect(tabs[1].querySelector('app-icon')).toBeNull();
+  });
+
+  /**
+   * Reads the labels of the dialog's rows, in order.
+   * @param content The dialog's content.
+   * @returns Returns the labels.
+   */
+  function rowLabels(content: HTMLElement): readonly string[] {
+    return Array.from(content.querySelectorAll('.setting-row__label')).map(
+      (label: Element): string => label.textContent.trim(),
+    );
+  }
+
+  /**
+   * Gets the dialog's modal.
+   * @returns Returns the modal component.
+   */
+  function modal(): Modal {
+    return fixture.debugElement.query(By.directive(Modal)).componentInstance as Modal;
+  }
+
+  it('newConnection_opensAtAFixedSixteenByTwelve_andMayExpand', async () => {
+    await openDialog(TABBED);
+
+    const dialog: Modal = modal();
+    expect([dialog.width(), dialog.height()]).toEqual([48, 36]);
+    expect([dialog.minWidth(), dialog.minHeight()]).toEqual([48, 36]);
+    expect([dialog.maxWidth(), dialog.maxHeight()]).toEqual([48, 36]);
+    expect(dialog.expandable()).toBe(true);
+  });
+
+  it('askingOnlyForSecrets_isACompactDialog', async () => {
+    await openDialog(SIGN_IN);
+    prompts.mode.set('secrets');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const dialog: Modal = modal();
+    expect(dialog.width()).toBe(30);
+    expect(dialog.height()).toBeUndefined();
+    expect(dialog.minWidth()).toBeUndefined();
+    expect(dialog.maxHeight()).toBeUndefined();
+    expect(dialog.expandable()).toBe(false);
+  });
+
+  it('theEngine_isAskedForAboveTheName', async () => {
+    const content: HTMLElement = await openDialog(UNSECTIONED);
+
+    expect(rowLabels(content).slice(0, 2)).toEqual(['Engine', 'Name']);
+  });
+
+  it('rememberPassword_isAToggle', async () => {
+    const content: HTMLElement = await openDialog(SIGN_IN);
+
+    const remember: HTMLInputElement | null = content.querySelector<HTMLInputElement>(
+      'input[role="switch"][aria-label="Remember password"]',
+    );
+    expect(remember?.checked).toBe(true);
+    expect(content.querySelector('app-checkbox')).toBeNull();
+
+    remember?.click();
+
+    expect(prompts.remember()).toBe(false);
+  });
+
+  it('aBooleanField_isAToggleNamedForItsField', async () => {
+    const content: HTMLElement = await openDialog(SIGN_IN);
+
+    const tls: HTMLInputElement | null = content.querySelector<HTMLInputElement>(
+      'input[role="switch"][aria-label="Use TLS"]',
+    );
+    expect(tls?.checked).toBe(false);
+
+    tls?.click();
+
+    expect(prompts.values()['tls']).toBe('true');
+  });
+
+  it('aFailedTest_showsTheEnginesReason', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+    prompts.test.set({ state: 'failed', message: 'ECONNREFUSED' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(content.querySelector('.connection__test--failed')?.textContent).toContain(
+      'ECONNREFUSED',
+    );
+  });
+
+  it('aFailedTestWithNoReason_saysSo', async () => {
+    const content: HTMLElement = await openDialog(TABBED);
+    prompts.test.set({ state: 'failed', message: '' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(content.querySelector('.connection__test--failed')?.textContent).toContain(
+      'The connection failed, and the engine gave no reason.',
+    );
   });
 });

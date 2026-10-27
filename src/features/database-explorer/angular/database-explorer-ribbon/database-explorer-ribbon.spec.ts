@@ -142,6 +142,11 @@ const PANELS: readonly RibbonPanel[] = [
   { id: 'terminal', title: 'Terminal', icon: Icon.TERMINAL, open: false },
 ];
 
+/**
+ * The agent's panel, the one the ribbon's Tools group toggles; closed.
+ */
+const AGENT: RibbonPanel = { id: 'agent', title: 'Agent', icon: Icon.AGENT, open: false };
+
 describe('DatabaseExplorerRibbon', () => {
   let fixture: ComponentFixture<DatabaseExplorerRibbon>;
   let internals: DatabaseExplorerRibbonInternals;
@@ -357,29 +362,34 @@ describe('DatabaseExplorerRibbon', () => {
     expect(handler.calls).toEqual(['newQuery', 'execute']);
   });
 
-  it('tools_withNoPanels_offerOnlyResetLayout', () => {
-    expect(labels('Tools')).toEqual(['Reset Layout']);
-  });
-
-  it('tools_offerAToggleForEachPanel_pressedWhileItShows', () => {
+  it('tools_withNoAgentPanel_offerNothing', () => {
     handler.panels.set(PANELS);
     refresh();
 
-    expect(labels('Tools')).toEqual(['Object Explorer', 'Terminal', 'Reset Layout']);
-    expect(button('Tools', 'Object Explorer').getAttribute('aria-pressed')).toBe('true');
-    expect(button('Tools', 'Terminal').getAttribute('aria-pressed')).toBe('false');
-    expect(iconOf(button('Tools', 'Terminal'))).toBe(Icon.TERMINAL.classList);
+    expect(labels('Tools')).toEqual([]);
   });
 
-  it('tools_whenPressed_toggleThePanelOrResetTheLayout', () => {
-    handler.panels.set(PANELS);
+  it('tools_offerOnlyTheAgentsToggle_pressedWhileItShows', () => {
+    handler.panels.set([...PANELS, AGENT]);
     refresh();
 
-    button('Tools', 'Terminal').click();
-    button('Tools', 'Object Explorer').click();
-    button('Tools', 'Reset Layout').click();
+    expect(labels('Tools')).toEqual(['Agent']);
+    expect(button('Tools', 'Agent').getAttribute('aria-pressed')).toBe('false');
+    expect(iconOf(button('Tools', 'Agent'))).toContain('ph-brain');
 
-    expect(handler.calls).toEqual(['togglePanel:terminal', 'togglePanel:objects', 'resetLayout']);
+    handler.panels.set([...PANELS, { ...AGENT, open: true }]);
+    refresh();
+
+    expect(button('Tools', 'Agent').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('tools_whenPressed_toggleTheAgent', () => {
+    handler.panels.set([...PANELS, AGENT]);
+    refresh();
+
+    button('Tools', 'Agent').click();
+
+    expect(handler.calls).toEqual(['togglePanel:agent']);
   });
 
   it('save_whenPressed_savesInPlace', () => {
