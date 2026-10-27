@@ -239,6 +239,13 @@ class FakeFeatures {
     this.refreshes.push(languages);
   }
 
+  /** The languages formatting was turned on for, with the support it was turned on with (#1141). */
+  public readonly formattingEnabled: [string, unknown][] = [];
+
+  public enableFormatting(language: string, support: unknown): void {
+    this.formattingEnabled.push([language, support]);
+  }
+
   public readonly supports: [string, LspSessionSupport | null][] = [];
 
   public setSessionSupport(sessionId: string, support: LspSessionSupport | null): void {
@@ -433,6 +440,26 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
+    });
+
+    it('openingADocument_turnsFormattingOnForItsLanguage_withWhatTheServerOffers (#1141)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: {
+          documentFormattingProvider: true,
+          documentOnTypeFormattingProvider: {
+            firstTriggerCharacter: '}',
+            moreTriggerCharacter: [';'],
+          },
+        },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      const expected: unknown = { document: true, range: false, onTypeTriggers: ['}', ';'] };
+      expect(features.formattingEnabled).toEqual([['typescript', expected]]);
+      expect(features.resolver?.('/root/src/a.ts')?.formatting).toEqual(expected);
     });
 
     it('documentRefs_carryHowTheSessionsServerCompletes_andTheFeaturesHearOfIt (#1021)', async () => {

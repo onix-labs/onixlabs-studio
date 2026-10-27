@@ -33,6 +33,7 @@ const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   colorBrackets: false,
   wordWrap: false,
   stickyScroll: false,
+  formatOnType: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
   insertSpaces: true,

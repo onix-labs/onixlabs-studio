@@ -22,6 +22,7 @@ import {
   LspCodeActionSupport,
   LspDocumentRef,
   LspFeatures,
+  LspFormattingSupport,
   LspRenameSupport,
   LspSessionSupport,
 } from './lsp-features';
@@ -45,6 +46,7 @@ import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
   executeCommandsOf,
+  formattingSupportOf,
   renameSupportOf,
   saveIncludesText,
   semanticLegendOf,
@@ -452,6 +454,14 @@ export class LspClient implements OnDestroy {
   private readonly codeActionSupport: Map<string, LspCodeActionSupport> = new Map<
     string,
     LspCodeActionSupport
+  >();
+
+  /**
+   * Holds how each started session's server formats code (#1141).
+   */
+  private readonly formattingSupport: Map<string, LspFormattingSupport> = new Map<
+    string,
+    LspFormattingSupport
   >();
 
   /**
@@ -921,6 +931,7 @@ export class LspClient implements OnDestroy {
       rename: this.renameSupport.get(sessionId) ?? 'none',
       codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
       commands: this.executeCommands.get(sessionId) ?? [],
+      formatting: this.formattingSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
@@ -1328,6 +1339,7 @@ export class LspClient implements OnDestroy {
     this.legends.clear();
     this.renameSupport.clear();
     this.codeActionSupport.clear();
+    this.formattingSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
     }
@@ -1363,6 +1375,12 @@ export class LspClient implements OnDestroy {
     // diagnostics so its (project-blind) errors no longer compete with the server's. Done only on a
     // successful start, so a server that fails to launch leaves Monaco's diagnostics as a fallback.
     this.suppressBuiltInDiagnostics(tracked.languageId);
+    // Format Document, Format Selection and format-on-type for the language, when this server formats
+    // (#1141). Registered on demand so the commands are offered only where something will answer.
+    const formatting: LspFormattingSupport | undefined = this.formattingSupport.get(sessionId);
+    if (formatting !== undefined) {
+      this.features.enableFormatting(tracked.languageId, formatting);
+    }
     tracked.opened = true;
     tracked.text = content;
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didOpen', {
@@ -1587,6 +1605,7 @@ export class LspClient implements OnDestroy {
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
+          this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
           this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
           const assist: LspSessionSupport = {
             completion: completionSupportOf(result.capabilities),

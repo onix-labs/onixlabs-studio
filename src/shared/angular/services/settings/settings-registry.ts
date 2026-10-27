@@ -107,6 +107,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.accentSelection': boolean;
   readonly 'textEditor.global.wordWrap': boolean;
   readonly 'textEditor.global.stickyScroll': boolean;
+  readonly 'textEditor.global.formatOnType': boolean;
   readonly 'textEditor.global.cursorBlinking': CursorBlinkingStyle;
   readonly 'textEditor.global.cursorSmoothCaretAnimation': CursorSmoothCaretAnimation;
   readonly 'textEditor.global.insertSpaces': boolean;
@@ -715,6 +716,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'textEditor.global.stickyScroll',
         title: 'Sticky scroll',
         description: 'Pin scope context to the top while scrolling.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        // On everywhere by default, overridable per language (Matthew's ruling on #1141) — switch it off
+        // for, say, TypeScript in a project that a different formatter lays out.
+        key: 'textEditor.global.formatOnType',
+        title: 'Format on type',
+        description:
+          "Lay out the line as you type a closing brace, a semicolon or a new line, using the language's own formatter.",
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,

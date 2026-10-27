@@ -53,7 +53,8 @@ describe('LanguageEditorOverrides', () => {
     expect(element.querySelector('.language-editor-overrides__subtitle')?.textContent).toContain(
       'Rust files',
     );
-    expect(element.querySelectorAll('app-setting-row').length).toBe(9);
+    // Ten overridable settings, Format on type (#1141) among them.
+    expect(element.querySelectorAll('app-setting-row').length).toBe(10);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 

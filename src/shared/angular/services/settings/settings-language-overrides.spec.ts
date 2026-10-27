@@ -14,6 +14,7 @@ const GLOBAL: TextEditorSettings = {
   colorBrackets: true,
   wordWrap: false,
   stickyScroll: true,
+  formatOnType: true,
   cursorBlinking: 'blink',
   cursorSmoothCaretAnimation: 'off',
   insertSpaces: true,

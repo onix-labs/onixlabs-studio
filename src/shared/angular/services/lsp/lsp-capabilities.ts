@@ -1,5 +1,5 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
-import type { LspCodeActionSupport, LspRenameSupport } from './lsp-features';
+import type { LspCodeActionSupport, LspFormattingSupport, LspRenameSupport } from './lsp-features';
 
 /**
  * Extracts the semantic token legend from a server's initialize capabilities, or null when the server
@@ -92,6 +92,52 @@ export function codeActionSupportOf(capabilities: unknown): LspCodeActionSupport
   return (provider as { resolveProvider?: unknown }).resolveProvider === true
     ? 'resolve'
     : 'actions';
+}
+
+/**
+ * Determines whether a server capability is offered: `true`, or an options object.
+ * @param provider The capability, untrusted.
+ * @returns Returns true when it is offered.
+ */
+function isOffered(provider: unknown): boolean {
+  return provider === true || (typeof provider === 'object' && provider !== null);
+}
+
+/**
+ * Reads how a server formats code (#1141): a whole document (`documentFormattingProvider`), a range
+ * (`documentRangeFormattingProvider`), and as the user types (`documentOnTypeFormattingProvider`, on
+ * the characters it names — Roslyn's are `}`, `;` and a newline).
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how the server formats.
+ */
+export function formattingSupportOf(capabilities: unknown): LspFormattingSupport {
+  const caps:
+    | {
+        documentFormattingProvider?: unknown;
+        documentRangeFormattingProvider?: unknown;
+        documentOnTypeFormattingProvider?: unknown;
+      }
+    | undefined = capabilities as typeof caps;
+  const onType: unknown = caps?.documentOnTypeFormattingProvider;
+  const first: unknown = (onType as { firstTriggerCharacter?: unknown } | undefined)
+    ?.firstTriggerCharacter;
+  const more: unknown = (onType as { moreTriggerCharacter?: unknown } | undefined)
+    ?.moreTriggerCharacter;
+  const candidates: readonly unknown[] = [
+    first,
+    ...(Array.isArray(more) ? (more as unknown[]) : []),
+  ];
+  const triggers: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.length === 1 && !triggers.includes(candidate)) {
+      triggers.push(candidate);
+    }
+  }
+  return {
+    document: isOffered(caps?.documentFormattingProvider),
+    range: isOffered(caps?.documentRangeFormattingProvider),
+    onTypeTriggers: triggers,
+  };
 }
 
 /**
