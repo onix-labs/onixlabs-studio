@@ -442,6 +442,21 @@ describe('LspClient', () => {
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
     });
 
+    it('documentRefs_carryWhetherTheSessionsServerFindsImplementationsAndTypes (#1142)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { implementationProvider: true },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.resolver?.('/root/src/a.ts')?.navigation).toEqual({
+        implementation: true,
+        typeDefinition: false,
+      });
+    });
+
     it('openingADocument_turnsFormattingOnForItsLanguage_withWhatTheServerOffers (#1141)', async () => {
       lsp.startResult = {
         success: true,

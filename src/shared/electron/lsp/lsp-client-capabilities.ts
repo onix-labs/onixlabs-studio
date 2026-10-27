@@ -66,6 +66,9 @@ export function clientCapabilities(): ClientCapabilities {
       rangeFormatting: { dynamicRegistration: false },
       onTypeFormatting: { dynamicRegistration: false },
       definition: { linkSupport: false },
+      // Go to Implementation and Go to Type Definition (#1142), answered by path like a definition.
+      implementation: { linkSupport: false },
+      typeDefinition: { linkSupport: false },
       references: {},
       // Nested symbols, so a server answers with each type's members inside it rather than one flat
       // list; the editor strip's Type and Member dropdowns read them (#882).

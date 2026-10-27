@@ -244,6 +244,9 @@ describe('EditorContextMenu (#1012)', () => {
     references: Mock<LspFeatures['references']>;
     servesRename: Mock<LspFeatures['servesRename']>;
     servesCodeActions: Mock<LspFeatures['servesCodeActions']>;
+    servesNavigation: Mock<LspFeatures['servesNavigation']>;
+    implementations: Mock<LspFeatures['implementations']>;
+    typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -277,6 +280,13 @@ describe('EditorContextMenu (#1012)', () => {
       ),
       servesRename: vi.fn<LspFeatures['servesRename']>((): boolean => false),
       servesCodeActions: vi.fn<LspFeatures['servesCodeActions']>((): boolean => false),
+      servesNavigation: vi.fn<LspFeatures['servesNavigation']>((): boolean => false),
+      implementations: vi.fn<LspFeatures['implementations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -353,6 +363,29 @@ describe('EditorContextMenu (#1012)', () => {
       lsp.servesDocument.mockReturnValue(false);
       monaco.languages.registerDefinitionProvider('csharp', { provideDefinition: () => null });
       expect(rowOf(menu.itemsFor(editor), 'definition')).toBeDefined();
+    });
+
+    it('typeDefinitionAndImplementation_shownWhereTheServerAnswersThem_afterGoToDefinition (#1142)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'csharp' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'implementation')).toBeUndefined();
+      expect(rowOf(menu.itemsFor(editor), 'typeDefinition')).toBeUndefined();
+
+      lsp.servesNavigation.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(idsOf(items).slice(0, 3)).toEqual(['definition', 'typeDefinition', 'implementation']);
+      expect(rowOf(items, 'implementation')).toMatchObject({
+        label: 'Go to Implementation',
+        shortcut: '⌘F12',
+      });
+      // No chord for Go to Type Definition: it shows none rather than an empty hint.
+      expect(rowOf(items, 'typeDefinition')).toEqual({
+        id: 'typeDefinition',
+        label: 'Go to Type Definition',
+      });
     });
 
     it('find_disabledWhereNothingAnswers_andFormatSelection_withNothingSelected', () => {

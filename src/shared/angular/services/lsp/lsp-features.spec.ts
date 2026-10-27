@@ -13,6 +13,7 @@ import {
   LspCodeActionSupport,
   LspFeatures,
   LspFormattingSupport,
+  LspNavigationSupport,
   LspRenameAnswer,
   LspRenamePreparation,
   LspRenameSupport,
@@ -224,6 +225,7 @@ describe('LspFeatures', () => {
   /** The document's catch-up hook, when a test gives it one. */
   let syncHook: ((text: string) => Promise<void>) | undefined;
   let formattingSupport: LspFormattingSupport | undefined;
+  let navigationSupport: LspNavigationSupport | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -251,6 +253,7 @@ describe('LspFeatures', () => {
     serverDiagnostics = undefined;
     syncHook = undefined;
     formattingSupport = undefined;
+    navigationSupport = undefined;
     captured.formatting = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
@@ -317,6 +320,7 @@ describe('LspFeatures', () => {
             ...(signatureSupport === undefined ? {} : { signatureHelp: signatureSupport }),
             ...(syncHook === undefined ? {} : { sync: syncHook }),
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
+            ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
           }
         : null,
     );
@@ -891,6 +895,94 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('implementations and type definitions (#1142)', () => {
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const at: { lineNumber: number; column: number } = { lineNumber: 3, column: 7 };
+
+    it('askTheServerByTheirOwnMethods_andAnswerWithPaths', async () => {
+      responses['textDocument/implementation'] = [
+        {
+          uri: 'file:///root/formal.ts',
+          range: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+        },
+        {
+          targetUri: 'file:///root/casual.ts',
+          targetSelectionRange: {
+            start: { line: 6, character: 4 },
+            end: { line: 6, character: 9 },
+          },
+        },
+      ];
+      responses['textDocument/typeDefinition'] = [
+        {
+          uri: 'file:///root/person.ts',
+          range: { start: { line: 0, character: 13 }, end: { line: 0, character: 19 } },
+        },
+      ];
+      navigationSupport = { implementation: true, typeDefinition: true };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
+        LspFeatures['implementations']
+      >[0];
+
+      expect(features.servesNavigation(model, 'implementation')).toBe(true);
+      expect(features.servesNavigation(model, 'typeDefinition')).toBe(true);
+      expect(await features.implementations(model, at)).toEqual([
+        {
+          path: '/root/formal.ts',
+          range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        },
+        {
+          path: '/root/casual.ts',
+          range: { startLineNumber: 7, startColumn: 5, endLineNumber: 7, endColumn: 10 },
+        },
+      ]);
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/implementation',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          position: { line: 2, character: 6 },
+        },
+      });
+      expect(await features.typeDefinitions(model, at)).toEqual([
+        {
+          path: '/root/person.ts',
+          range: { startLineNumber: 1, startColumn: 14, endLineNumber: 1, endColumn: 20 },
+        },
+      ]);
+      expect(requests.at(-1)?.method).toBe('textDocument/typeDefinition');
+    });
+
+    it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
+      navigationSupport = { implementation: false, typeDefinition: true };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
+        LspFeatures['implementations']
+      >[0];
+      const unowned: Parameters<LspFeatures['implementations']>[0] = {
+        uri: { toString: (): string => 'inmemory://model/unowned' },
+      } as Parameters<LspFeatures['implementations']>[0];
+      const asked: number = requests.length;
+
+      expect(features.servesNavigation(model, 'implementation')).toBe(false);
+      expect(await features.implementations(model, at)).toBeNull();
+      expect(features.servesNavigation(unowned, 'typeDefinition')).toBe(false);
+      expect(await features.typeDefinitions(unowned, at)).toBeNull();
+      expect(requests.length).toBe(asked);
+    });
+
+    it('areNotServed_byAServerThatSaidNothingOfThem', async () => {
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
+        LspFeatures['implementations']
+      >[0];
+
+      expect(features.servesNavigation(model, 'implementation')).toBe(false);
+      expect(features.servesNavigation(model, 'typeDefinition')).toBe(false);
+    });
   });
 
   it('references_askTheServerWithTheDeclaration_andPreviewOpenAndUnopenedFiles', async () => {

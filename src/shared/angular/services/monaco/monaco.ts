@@ -624,9 +624,20 @@ export class Monaco {
       (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void => {
         this.log.info('Monaco', 'Studio navigation command', mode);
         const navigation: EditorNavigation = this.injector.get(EditorNavigation);
-        void (mode === 'definition'
-          ? navigation.goToDefinition(editor)
-          : navigation.findReferences(editor));
+        switch (mode) {
+          case 'definition':
+            void navigation.goToDefinition(editor);
+            return;
+          case 'implementation':
+            void navigation.goToImplementation(editor);
+            return;
+          case 'typeDefinition':
+            void navigation.goToTypeDefinition(editor);
+            return;
+          case 'references':
+            void navigation.findReferences(editor);
+            return;
+        }
       },
     );
   }

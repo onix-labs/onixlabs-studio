@@ -5,7 +5,7 @@ import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-comma
  * Names where Studio's navigation takes an editor: to the definition of the symbol at the caret, or to
  * the list of every reference to it (#1014).
  */
-export type NavigationMode = 'definition' | 'references';
+export type NavigationMode = 'definition' | 'references' | 'implementation' | 'typeDefinition';
 
 /**
  * Lists every Monaco command that goes to a symbol's definition, declaration, type definition,
@@ -37,6 +37,18 @@ export const STUDIO_GO_TO_DEFINITION_COMMAND: string = 'studio.goToDefinition';
  * Names Studio's Find All References command, bound to ⇧F12 (Shift+F12) in every editor.
  */
 export const STUDIO_FIND_REFERENCES_COMMAND: string = 'studio.findReferences';
+
+/**
+ * Names Studio's Go to Implementation (#1142), bound to ⌘F12 (Ctrl+F12) as in Visual Studio and VS
+ * Code, in place of Monaco's own, which opened its peek.
+ */
+export const STUDIO_GO_TO_IMPLEMENTATION_COMMAND: string = 'studio.goToImplementation';
+
+/**
+ * Names Studio's Go to Type Definition (#1142). No chord: neither Visual Studio nor VS Code gives it
+ * one, so it is reached from the editor's right-click menu.
+ */
+export const STUDIO_GO_TO_TYPE_DEFINITION_COMMAND: string = 'studio.goToTypeDefinition';
 
 /**
  * Names the editor contribution behind Monaco's ⌘-click (Ctrl-click) on a symbol: it underlines the
@@ -110,6 +122,8 @@ export function installNavigationCommands(
     };
   monaco.editor.registerCommand(STUDIO_GO_TO_DEFINITION_COMMAND, run('definition'));
   monaco.editor.registerCommand(STUDIO_FIND_REFERENCES_COMMAND, run('references'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_IMPLEMENTATION_COMMAND, run('implementation'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
   monaco.editor.addKeybindingRules([
     // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
@@ -121,6 +135,11 @@ export function installNavigationCommands(
     {
       keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F12,
       command: STUDIO_FIND_REFERENCES_COMMAND,
+      when,
+    },
+    {
+      keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.F12,
+      command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
       when,
     },
   ]);
