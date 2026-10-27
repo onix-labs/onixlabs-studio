@@ -1316,6 +1316,29 @@ describe('LspFeatures', () => {
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 5, 15, 0, 0, 6, 6, 2, 0, 1, 4, 4, 13, 8]);
   });
 
+  it('semanticTokens_coloursRoslynsCustomTypes_soARecordIsAType (#1137)', async () => {
+    // Roslyn's legend names records, constants and extension methods with types the standard set
+    // lacks; a record used to be dropped and painted in the plain text colour.
+    semanticLegend = {
+      tokenTypes: ['recordClass', 'constant', 'extensionMethod', 'recordStruct', 'punctuation'],
+      tokenModifiers: [],
+    };
+    responses['textDocument/semanticTokens/full'] = {
+      // recordClass@0:0 len6, constant@0:7 len5, extensionMethod@1:0 len3, recordStruct@1:4 len5,
+      // punctuation@1:9 len1 (no standard equivalent: dropped, keeping the grammar colour)
+      data: [0, 0, 6, 0, 0, 0, 7, 5, 1, 0, 1, 0, 3, 2, 0, 0, 4, 5, 3, 0, 0, 5, 1, 4, 0],
+    };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // Fixed legend: class=2, enumMember=10, method=13, struct=5.
+    expect([...(tokens?.data ?? [])]).toEqual([
+      0, 0, 6, 2, 0, 0, 7, 5, 10, 0, 1, 0, 3, 13, 0, 0, 4, 5, 5, 0,
+    ]);
+  });
+
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
     semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
     await build();

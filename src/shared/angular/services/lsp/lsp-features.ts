@@ -487,12 +487,41 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Maps a server's token-type name (including common spellings that differ from the standard set) to
  * the standard type it is coloured as. A type with no entry and no standard name is dropped (so its
  * range simply keeps its grammar colour).
+ *
+ * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
+ * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
+ * the plain text colour instead of as a type (#1137). Names with no sensible standard equivalent —
+ * punctuation, XML doc-comment parts, JSON-in-string parts — are deliberately absent, so the grammar's
+ * own colour stands.
  */
 const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
+  // Members.
   field: 'property',
-  constant: 'variable',
-  regex: 'regexp',
+  // A constant takes the theme's constant colour (the one enum members use), not a local's.
+  constant: 'enumMember',
   label: 'variable',
+  extensionMethod: 'method',
+  operatorOverloaded: 'method',
+  // Types: records are classes and structs; a delegate is a type; a VB module is a class.
+  recordClass: 'class',
+  recordStruct: 'struct',
+  delegate: 'type',
+  module: 'class',
+  // Keywords, comments and strings.
+  controlKeyword: 'keyword',
+  // Code inside an inactive `#if` is shown as a comment, as Visual Studio dims it.
+  excludedCode: 'comment',
+  stringVerbatim: 'string',
+  // Regular expressions, spelt by Roslyn per part of the pattern.
+  regex: 'regexp',
+  regexAlternation: 'regexp',
+  regexAnchor: 'regexp',
+  regexCharacterClass: 'regexp',
+  regexGrouping: 'regexp',
+  regexOtherEscape: 'regexp',
+  regexQuantifier: 'regexp',
+  regexSelfEscapedCharacter: 'regexp',
+  regexText: 'regexp',
 };
 
 /**
