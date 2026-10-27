@@ -8,6 +8,7 @@ import {
   ExecuteOutcome,
   ExpandOutcome,
   NodeActionOutcome,
+  ResultColumn,
   ResultSet,
 } from '@shared/api/database-engine-protocol';
 import {
@@ -73,6 +74,31 @@ export type DatabaseSelection =
       readonly title: string;
       readonly properties: readonly { readonly name: string; readonly value: string }[];
     };
+
+/**
+ * Every row of a result set, gathered for an export.
+ */
+export interface ExportRows {
+  /**
+   * Gets the result's columns.
+   */
+  readonly columns: readonly ResultColumn[];
+
+  /**
+   * Gets its rows.
+   */
+  readonly rows: readonly (readonly DatabaseValue[])[];
+
+  /**
+   * Gets whether these are all of them, or only those already here because the connection closed.
+   */
+  readonly complete: boolean;
+}
+
+/**
+ * How many rows an export fetches at a time.
+ */
+const EXPORT_PAGE_ROWS: number = 10_000;
 
 /**
  * Mints an identifier.
@@ -1149,6 +1175,44 @@ export class DatabaseWorkspace {
         set.id === resultSetId ? { ...set, rows: [...set.rows, ...rows] } : set,
       ),
     });
+  }
+
+  /**
+   * Gets every row of a result set, for an export: the rows already here, and the rest the engine
+   * kept, fetched page by page. When the connection has closed since the query ran, the engine's
+   * rows are gone, and only those already here are given — {@link ExportRows.complete} says which.
+   * @param id The query's id.
+   * @param resultSetId The result set's id.
+   * @returns Returns a promise resolving the rows, or null when there is no such result.
+   */
+  public async exportRows(id: string, resultSetId: string): Promise<ExportRows | null> {
+    const query: DatabaseQuery | undefined = this.query(id);
+    const resultSet: ResultSet | undefined = this.outcome(id)?.resultSets.find(
+      (set: ResultSet): boolean => set.id === resultSetId,
+    );
+    if (query === undefined || resultSet === undefined) {
+      return null;
+    }
+    const open: OpenSession | undefined =
+      query.connectionId === null ? undefined : this.sessionsSignal().get(query.connectionId);
+    const rows: (readonly DatabaseValue[])[] = [...resultSet.rows];
+    while (open !== undefined && rows.length < resultSet.totalRows) {
+      const page: readonly (readonly DatabaseValue[])[] = await this.client.fetch({
+        session: open.session,
+        resultSet: resultSetId,
+        offset: rows.length,
+        count: EXPORT_PAGE_ROWS,
+      });
+      if (page.length === 0) {
+        break;
+      }
+      rows.push(...page);
+    }
+    return {
+      columns: resultSet.columns,
+      rows,
+      complete: rows.length >= resultSet.totalRows,
+    };
   }
 
   /**

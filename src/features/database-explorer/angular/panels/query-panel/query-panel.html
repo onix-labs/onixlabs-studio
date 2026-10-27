@@ -4,6 +4,7 @@
   <app-panel-toolbar role="group" aria-label="Query">
     <app-dropdown
       class="query__connection"
+      [fullWidth]="true"
       [options]="connectionOptions()"
       [value]="query.connectionId ?? ''"
       placeholder="Choose a connection"
@@ -13,13 +14,13 @@
     @if (databaseOptions().length > 0) {
       <app-dropdown
         class="query__database"
+        [fullWidth]="true"
         [options]="databaseOptions()"
         [value]="query.database ?? ''"
         ariaLabel="Database"
         (valueChange)="setDatabase($event)"
       />
     }
-    <span class="query__spacer"></span>
     <app-button
       variant="solid"
       [icon]="running() ? Icon.STOP : Icon.PLAY"
@@ -30,7 +31,21 @@
       [disabled]="!canRun()"
       (click)="execute()"
     />
+    <app-button
+      variant="none"
+      [icon]="Icon.DOTS_THREE_BOLD"
+      ariaLabel="More Actions"
+      tooltip="More Actions"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
+    />
   </app-panel-toolbar>
+  <app-menu
+    #moreMenu
+    [items]="moreItems()"
+    placement="down-end"
+    (selected)="onMoreAction($event)"
+  />
 
   @if (resultsDefaultSize(); as resultsSize) {
     <app-panel-layout class="query" layoutKey="database-query">

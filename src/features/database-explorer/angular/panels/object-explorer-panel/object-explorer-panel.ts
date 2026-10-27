@@ -199,8 +199,8 @@ export class ObjectExplorerPanel {
   ];
 
   /**
-   * Gets the tree's flattened rows: each connection with its saved queries first, then whatever of
-   * its object tree has been expanded.
+   * Gets the tree's flattened rows: each connection with whatever of its object tree has been expanded,
+   * then its saved queries.
    *
    * A search filters the *loaded* tree — it does not go and introspect everything to find a match —
    * and keeps every ancestor of a match so it is visible where it lives.
@@ -230,7 +230,6 @@ export class ObjectExplorerPanel {
       const engine: DatabaseEngineInfo | undefined = this.workspace.engine(connection.engine);
       const below: TreeRow[] = [];
       if (filter !== '' || expanded.has(id)) {
-        below.push(...this.queryRows(connection.id, allQueries, folded, filter));
         if (state === 'connecting') {
           below.push(this.statusRow(`${id}:status`, 1, 'Connecting…', false));
         } else if (state === 'failed') {
@@ -238,6 +237,8 @@ export class ObjectExplorerPanel {
         } else if (state === 'open') {
           below.push(...this.nodeRows(connection.id, null, 1, children, expanded, filter));
         }
+        // The saved queries after what the connection reaches, as SSMS keeps its own folders last.
+        below.push(...this.queryRows(connection.id, allQueries, folded, filter));
       }
       const matches: boolean = filter === '' || connection.name.toLowerCase().includes(filter);
       if (!matches && below.length === 0) {

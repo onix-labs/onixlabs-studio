@@ -2,9 +2,18 @@
 
 <!-- The connection dialog. Its fields are the chosen engine's own, as the engine described them;
      Studio draws each with the atom for its kind. -->
+<!-- New and Edit Connection open at a fixed 16:12 (48 × 36 rem), the fields taking the room and the
+     buttons along the bottom; asking only for a password stays a compact dialog that fits its one
+     field. -->
 <app-modal
   [open]="prompts.mode() !== null"
-  [width]="30"
+  [width]="prompts.mode() === 'secrets' ? 30 : 48"
+  [height]="prompts.mode() === 'secrets' ? undefined : 36"
+  [minWidth]="prompts.mode() === 'secrets' ? undefined : 48"
+  [minHeight]="prompts.mode() === 'secrets' ? undefined : 36"
+  [maxWidth]="prompts.mode() === 'secrets' ? undefined : 48"
+  [maxHeight]="prompts.mode() === 'secrets' ? undefined : 36"
+  [expandable]="prompts.mode() !== 'secrets'"
   ariaLabel="Connection"
   (dismiss)="prompts.cancel()"
 >
@@ -36,15 +45,6 @@
 
     <div class="connection__fields">
       @if (prompts.mode() !== 'secrets') {
-        <app-setting-row label="Name">
-          <app-text-field
-            class="connection__control"
-            [value]="prompts.name()"
-            placeholder="Connection name"
-            ariaLabel="Connection name"
-            (valueChange)="prompts.name.set($event)"
-          />
-        </app-setting-row>
         <app-setting-row label="Engine">
           <app-dropdown
             class="connection__control"
@@ -54,6 +54,15 @@
             [fullWidth]="true"
             ariaLabel="Engine"
             (valueChange)="prompts.chooseEngine($event)"
+          />
+        </app-setting-row>
+        <app-setting-row label="Name">
+          <app-text-field
+            class="connection__control"
+            [value]="prompts.name()"
+            placeholder="Connection name"
+            ariaLabel="Connection name"
+            (valueChange)="prompts.name.set($event)"
           />
         </app-setting-row>
       }
@@ -130,7 +139,8 @@
             />
           }
           @case ('boolean') {
-            <app-checkbox
+            <app-toggle
+              [ariaLabel]="field.label"
               [checked]="prompts.values()[field.id] === 'true'"
               (checkedChange)="prompts.setValue(field.id, $event ? 'true' : 'false')"
             />
@@ -175,7 +185,8 @@
       <ng-template #remember>
         @if (hasSecretFields()) {
           <app-setting-row label="Remember password">
-            <app-checkbox
+            <app-toggle
+              ariaLabel="Remember password"
               [checked]="prompts.remember()"
               [disabled]="!workspace.canRemember()"
               (checkedChange)="prompts.remember.set($event)"
@@ -206,7 +217,10 @@
       }
       @case ('failed') {
         <p class="connection__test connection__test--failed">
-          <app-icon [icon]="Icon.WARNING" /> {{ $any(prompts.test()).message }}
+          <app-icon [icon]="Icon.WARNING" />
+          {{
+            $any(prompts.test()).message || 'The connection failed, and the engine gave no reason.'
+          }}
         </p>
       }
     }

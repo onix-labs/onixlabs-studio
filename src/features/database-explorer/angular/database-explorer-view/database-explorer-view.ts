@@ -16,11 +16,11 @@ import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NgTemplateOutlet } from '@angular/common';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -111,7 +111,6 @@ import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/data
     AppIcon,
     Button,
     ButtonRow,
-    Checkbox,
     DockContainer,
     Dropdown,
     Modal,
@@ -121,6 +120,7 @@ import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/data
     SettingRow,
     TabList,
     TextField,
+    Toggle,
   ],
   templateUrl: './database-explorer-view.html',
   styleUrl: './database-explorer-view.scss',
@@ -367,6 +367,9 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     effect((): void => {
       const tabId: string = this.tabId();
       if (this.isActive()) {
+        // The ribbon and the app menu act on the tab in front: every Database Explorer tab shares
+        // the one command registry, so only the active tab may answer it.
+        untracked((): void => this.commands.register(this));
         untracked((): void =>
           this.keybindings.register(tabId, [
             { id: 'database.save', command: (): void => this.saveDocument() },
@@ -374,6 +377,7 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
           ]),
         );
       } else {
+        untracked((): void => this.commands.clear(this));
         untracked((): void => this.keybindings.deactivate(tabId));
       }
     });
@@ -386,7 +390,6 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     void this.capabilities;
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
-    this.commands.register(this);
     this.tabContext.setTabId(this.tabId());
     const opened: OpenDatabaseDocument | undefined = this.databaseFiles.takeInitial(this.tabId());
     if (opened !== undefined) {

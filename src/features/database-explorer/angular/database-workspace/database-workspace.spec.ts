@@ -30,7 +30,7 @@ import { DatabaseEnginePrompt } from '@shared/angular/services/plugins/database-
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DatabaseSelectAction } from '@shared/angular/services/settings/settings-registry';
 import { DatabaseClient } from '../database-client/database-client';
-import { DatabaseWorkspace, NodeChildren, nodeKey } from './database-workspace';
+import { DatabaseWorkspace, ExportRows, NodeChildren, nodeKey } from './database-workspace';
 
 /**
  * An engine with a secret password field, as a server engine has.
@@ -129,6 +129,11 @@ class FakeClient {
   public readonly fetches: FetchRequest[] = [];
 
   /**
+   * Holds the pages the next fetches answer, one each, or null to answer two more rows every time.
+   */
+  public pages: (readonly (readonly DatabaseValue[])[])[] | null = null;
+
+  /**
    * Holds every action call.
    */
   public readonly actions: { session: string; path: string; action: string }[] = [];
@@ -222,6 +227,9 @@ class FakeClient {
    */
   public fetch(request: FetchRequest): Promise<readonly (readonly DatabaseValue[])[]> {
     this.fetches.push(request);
+    if (this.pages !== null) {
+      return Promise.resolve(this.pages.shift() ?? []);
+    }
     return Promise.resolve([[2], [3]]);
   }
 
@@ -1292,6 +1300,70 @@ describe('DatabaseWorkspace', () => {
       { session: 'session-1', resultSet: 'rs-1', offset: 1, count: 1_000 },
     ]);
     expect(workspace.outcome(query.id)?.resultSets[0].rows).toEqual([[1], [2], [3]]);
+  });
+
+  it('exportRows_fetchesTheRestFromWhereTheRowsEnd', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select n');
+    await workspace.execute(query.id, 'select n');
+
+    const gathered: ExportRows | null = await workspace.exportRows(query.id, 'rs-1');
+
+    expect(client.fetches).toEqual([
+      { session: 'session-1', resultSet: 'rs-1', offset: 1, count: 10_000 },
+    ]);
+    expect(gathered).toEqual({ columns: [{ name: 'n' }], rows: [[1], [2], [3]], complete: true });
+    // The grid's own rows are left as they were: an export is not a page fetched for the grid.
+    expect(workspace.outcome(query.id)?.resultSets[0].rows).toEqual([[1]]);
+  });
+
+  it('exportRows_fetchesPageByPageUntilItHasThemAll', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select n');
+    await workspace.execute(query.id, 'select n');
+    client.pages = [[[2]], [[3]]];
+
+    const gathered: ExportRows | null = await workspace.exportRows(query.id, 'rs-1');
+
+    expect(client.fetches.map((request: FetchRequest): number => request.offset)).toEqual([1, 2]);
+    expect(gathered?.rows).toEqual([[1], [2], [3]]);
+    expect(gathered?.complete).toBe(true);
+  });
+
+  it('exportRows_whenAPageComesBackEmpty_stopsAndSaysItIsIncomplete', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select n');
+    await workspace.execute(query.id, 'select n');
+    client.pages = [[]];
+
+    const gathered: ExportRows | null = await workspace.exportRows(query.id, 'rs-1');
+
+    expect(client.fetches).toHaveLength(1);
+    expect(gathered?.rows).toEqual([[1]]);
+    expect(gathered?.complete).toBe(false);
+  });
+
+  it('exportRows_afterTheConnectionCloses_givesTheRowsAlreadyHereAsIncomplete', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select n');
+    await workspace.execute(query.id, 'select n');
+    await workspace.disconnect(connection.id);
+
+    const gathered: ExportRows | null = await workspace.exportRows(query.id, 'rs-1');
+
+    expect(client.fetches).toEqual([]);
+    expect(gathered).toEqual({ columns: [{ name: 'n' }], rows: [[1]], complete: false });
+  });
+
+  it('exportRows_forAnUnknownQueryOrResult_isNull', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select n');
+
+    expect(await workspace.exportRows(query.id, 'rs-1')).toBeNull();
+    await workspace.execute(query.id, 'select n');
+    expect(await workspace.exportRows(query.id, 'rs-9')).toBeNull();
+    expect(await workspace.exportRows('nope', 'rs-1')).toBeNull();
+    expect(client.fetches).toEqual([]);
   });
 
   it('outcomes_areNotPartOfTheDocument', async () => {

@@ -13,18 +13,11 @@
   min-block-size: 0;
 }
 
-.query__connection {
-  flex: 0 1 14rem;
-  min-inline-size: 8rem;
-}
-
+// The pickers share the strip's room equally, Execute and the menu keeping their own widths.
+.query__connection,
 .query__database {
-  flex: 0 1 11rem;
+  flex: 1 1 0;
   min-inline-size: 7rem;
-}
-
-.query__spacer {
-  flex: 1 1 auto;
 }
 
 .query__editor {

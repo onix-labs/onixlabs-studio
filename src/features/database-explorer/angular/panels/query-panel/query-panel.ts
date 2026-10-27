@@ -14,7 +14,14 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import type * as MonacoApi from 'monaco-editor';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { FileWriteResult } from '@shared/api/file-channels';
+import { toCsv, toXlsx } from '../../database-export/result-export';
+import { ExportRows } from '../../database-workspace/database-workspace';
 import {
   DatabaseEngineInfo,
   DatabaseNode,
@@ -126,6 +133,8 @@ interface GridRow {
     AppIcon,
     TabList,
     Button,
+    CdkMenuTrigger,
+    Menu,
     Dropdown,
     GraphView,
     Panel,
@@ -146,6 +155,8 @@ export class QueryPanel {
   public readonly panel: InputSignal<DockPanel> = input.required<DockPanel>();
 
   private readonly workspace: DatabaseWorkspace = inject(DatabaseWorkspace);
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+  private readonly notifications: Notifications = inject(Notifications);
   private readonly opener: DatabaseQueryOpener = inject(DatabaseQueryOpener);
   private readonly dockState: DockState = inject(DockState);
   private readonly monaco: Monaco = inject(Monaco);
@@ -343,6 +354,17 @@ export class QueryPanel {
   protected readonly resultsVisible: Signal<boolean> = computed(
     (): boolean => this.running() || this.outcome() !== null,
   );
+
+  /**
+   * Gets the tool strip's menu: the exports of the result set showing, offered once there is one.
+   */
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
+    const none: boolean = this.resultSet() === undefined || this.running();
+    return [
+      { id: EXPORT_CSV, label: 'Export to CSV', icon: Icon.EXPORT, disabled: none },
+      { id: EXPORT_XLSX, label: 'Export to XLSX', icon: Icon.EXPORT, disabled: none },
+    ];
+  });
 
   /**
    * Gets the result set showing.
@@ -679,6 +701,61 @@ export class QueryPanel {
   }
 
   /**
+   * Runs an item from the tool strip's menu.
+   * @param id The item's id.
+   */
+  protected onMoreAction(id: string): void {
+    if (id === EXPORT_CSV || id === EXPORT_XLSX) {
+      void this.exportResult(id === EXPORT_CSV ? 'csv' : 'xlsx');
+    }
+  }
+
+  /**
+   * Exports the result set showing — every row of it, not only the page on screen — to a file the
+   * user chooses, and says how it went.
+   * @param format The file format.
+   */
+  private async exportResult(format: 'csv' | 'xlsx'): Promise<void> {
+    const resultSet: ResultSet | undefined = this.resultSet();
+    const title: string = this.query()?.title ?? 'Results';
+    if (resultSet === undefined) {
+      return;
+    }
+    const path: string | null = await this.fileSystem.saveDialog(`${title}.${format}`);
+    if (path === null) {
+      return;
+    }
+    const gathered: ExportRows | null = await this.workspace.exportRows(
+      this.panel().id,
+      resultSet.id,
+    );
+    if (gathered === null) {
+      return;
+    }
+    const result: FileWriteResult =
+      format === 'csv'
+        ? // A byte-order mark, so Excel reads the file as UTF-8 rather than guessing.
+          await this.fileSystem.write(path, toCsv(gathered.columns, gathered.rows), true)
+        : await this.fileSystem.writeBytes(path, await toXlsx(gathered.columns, gathered.rows));
+    const rows: string = `${gathered.rows.length.toLocaleString()} row${gathered.rows.length === 1 ? '' : 's'}`;
+    if (!result.success) {
+      this.notifications.notify({
+        severity: 'error',
+        title: `The export to ${format.toUpperCase()} failed`,
+        detail: result.error ?? path,
+      });
+      return;
+    }
+    this.notifications.notify({
+      severity: gathered.complete ? 'info' : 'warning',
+      title: `Exported ${rows} to ${format.toUpperCase()}`,
+      detail: gathered.complete
+        ? path
+        : `${path} — only the rows already loaded: the connection closed before the rest could be read.`,
+    });
+  }
+
+  /**
    * Runs the selection, or the whole query when nothing is selected; cancels it when it is running.
    */
   public execute(): void {
@@ -884,3 +961,9 @@ function completionKind(
       return kinds.Property;
   }
 }
+
+/**
+ * The tool strip menu's export items.
+ */
+const EXPORT_CSV: string = 'export-csv';
+const EXPORT_XLSX: string = 'export-xlsx';

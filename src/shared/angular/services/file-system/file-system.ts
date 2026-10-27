@@ -52,6 +52,20 @@ export class FileSystem {
   }
 
   /**
+   * Writes bytes to a file, replacing what was there — a file Studio produces, such as an export.
+   * @param path The absolute path, as a save dialog chose it.
+   * @param bytes The bytes.
+   * @returns Returns a promise resolving whether it was written.
+   */
+  public writeBytes(path: string, bytes: Uint8Array): Promise<FileWriteResult> {
+    this.log.trace('FileSystem', 'Writing bytes', path);
+    return (
+      this.bridge?.invoke<FileWriteResult>(FileChannel.WriteBytes, path, bytes) ??
+      Promise.resolve(UNAVAILABLE_WRITE)
+    );
+  }
+
+  /**
    * Writes contents to a file on disk.
    * @param path The absolute path to write to.
    * @param content The contents to write.

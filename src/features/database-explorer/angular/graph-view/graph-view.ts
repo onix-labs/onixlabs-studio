@@ -2,7 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
+  inject,
   input,
   InputSignal,
   output,
@@ -18,22 +20,7 @@ import {
   GraphRelationshipValue,
 } from '@shared/api/database-engine-protocol';
 import { cellText } from '../database-values';
-
-/**
- * The theme's accent hues, cycled through per label so every label keeps one colour across a result.
- */
-const LABEL_COLOURS: readonly string[] = [
-  'var(--accent-blue)',
-  'var(--accent-mint)',
-  'var(--accent-orange)',
-  'var(--accent-purple)',
-  'var(--accent-pink)',
-  'var(--accent-cyan)',
-  'var(--accent-yellow)',
-  'var(--accent-coral)',
-  'var(--accent-green)',
-  'var(--accent-violet)',
-];
+import { ForceSimulation } from './force-simulation';
 
 /**
  * The radius of a node's circle, in layout units.
@@ -41,9 +28,20 @@ const LABEL_COLOURS: readonly string[] = [
 const NODE_RADIUS: number = 22;
 
 /**
- * How many steps the force layout runs before the graph is drawn.
+ * How much one pixel of scroll zooms, as an exponent: about 1% a pixel.
  */
-const LAYOUT_STEPS: number = 320;
+const ZOOM_SENSITIVITY: number = 0.01;
+
+/**
+ * The most one scroll event is counted as, in pixels, so a wheel's notch zooms by a step rather than
+ * a leap.
+ */
+const ZOOM_STEP_LIMIT: number = 40;
+
+/**
+ * The heat the layout is settled to before it is drawn; the rest of its settling is animated.
+ */
+const SETTLED_OUT_OF_SIGHT: number = 0.08;
 
 /**
  * The most nodes the view draws. A larger result is drawn in part, with a note: a force layout of
@@ -57,7 +55,6 @@ const MAX_NODES: number = 300;
 interface LaidNode {
   readonly value: GraphNodeValue;
   readonly caption: string;
-  readonly colour: string;
 }
 
 /**
@@ -156,24 +153,16 @@ export class GraphView {
         }
       }
     }
-    const labels: string[] = [];
     const all: GraphNodeValue[] = [...nodes.values()];
     const kept: GraphNodeValue[] = all.slice(0, MAX_NODES);
     const keptIds: ReadonlySet<string> = new Set<string>(
       kept.map((node: GraphNodeValue): string => node.id),
     );
     return {
-      nodes: kept.map((node: GraphNodeValue): LaidNode => {
-        const label: string = node.labels[0] ?? '';
-        if (!labels.includes(label)) {
-          labels.push(label);
-        }
-        return {
-          value: node,
-          caption: captionOf(node),
-          colour: LABEL_COLOURS[labels.indexOf(label) % LABEL_COLOURS.length],
-        };
-      }),
+      nodes: kept.map((node: GraphNodeValue): LaidNode => ({
+        value: node,
+        caption: captionOf(node),
+      })),
       relationships: [...relationships.values()]
         .filter(
           (relationship: GraphRelationshipValue): boolean =>
@@ -223,6 +212,7 @@ export class GraphView {
   private drag: {
     readonly kind: 'pan' | 'node';
     readonly id?: string;
+    readonly relationship?: LaidRelationship;
     x: number;
     y: number;
     moved: boolean;
@@ -235,7 +225,19 @@ export class GraphView {
   protected readonly viewBox: WritableSignal<string> = signal<string>('-400 -300 800 600');
 
   /**
-   * Lays the graph out afresh whenever the result changes.
+   * Holds the live layout, rebuilt for each result.
+   */
+  private simulation: ForceSimulation | null = null;
+
+  /**
+   * Holds the animation frame the simulation's next step is drawn in, or null while it is at rest.
+   */
+  private frame: number | null = null;
+
+  /**
+   * Lays the graph out afresh whenever the result changes: settled out of sight first, so the view
+   * fits the shape it comes to rather than the spiral it starts from, then left to come to rest on
+   * screen.
    */
   public constructor() {
     effect((): void => {
@@ -244,12 +246,52 @@ export class GraphView {
         readonly relationships: readonly LaidRelationship[];
       } = this.graph();
       untracked((): void => {
-        const positions: ReadonlyMap<string, Point> = layout(graph.nodes, graph.relationships);
+        this.stop();
+        const simulation: ForceSimulation = new ForceSimulation(
+          graph.nodes.map((node: LaidNode): string => node.value.id),
+          graph.relationships.map((relationship: LaidRelationship) => relationship.value),
+          NODE_RADIUS,
+        );
+        simulation.settle(SETTLED_OUT_OF_SIGHT);
+        this.simulation = simulation;
+        const positions: ReadonlyMap<string, Point> = simulation.positions();
         this.positions.set(positions);
         this.viewBox.set(fit(positions));
         this.view.set({ x: 0, y: 0, k: 1 });
+        this.run();
       });
     });
+    inject(DestroyRef).onDestroy((): void => this.stop());
+  }
+
+  /**
+   * Keeps the simulation stepping, a step a frame, until it comes to rest.
+   */
+  private run(): void {
+    if (this.frame !== null || this.simulation === null) {
+      return;
+    }
+    const step: () => void = (): void => {
+      const simulation: ForceSimulation | null = this.simulation;
+      if (simulation === null) {
+        this.frame = null;
+        return;
+      }
+      simulation.tick();
+      this.positions.set(simulation.positions());
+      this.frame = simulation.active ? requestAnimationFrame(step) : null;
+    };
+    this.frame = requestAnimationFrame(step);
+  }
+
+  /**
+   * Stops the simulation's steps.
+   */
+  private stop(): void {
+    if (this.frame !== null) {
+      cancelAnimationFrame(this.frame);
+      this.frame = null;
+    }
   }
 
   /**
@@ -262,31 +304,26 @@ export class GraphView {
   }
 
   /**
-   * Gets the midpoint of a relationship, where its type is written.
-   * @param relationship The relationship.
-   * @returns Returns the midpoint.
+   * Holds each relationship's lane among those it shares its two nodes with, and each self-loop's
+   * place around its node, so no two are drawn over each other. Read by {@link edge}.
    */
-  protected middle(relationship: LaidRelationship): Point {
-    const start: Point = this.at(relationship.value.start);
-    const end: Point = this.at(relationship.value.end);
-    return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  }
+  private readonly lanes: Signal<ReadonlyMap<string, Lane>> = computed(
+    (): ReadonlyMap<string, Lane> => laneRelationships(this.graph().relationships),
+  );
 
   /**
-   * Gets the end of a relationship's line, stopped at the target circle's edge so the arrowhead shows.
+   * Gets how a relationship is drawn: its path, from the edge of one circle to the edge of the other
+   * (or, for a node related to itself, a loop on its rim), and where its type is written.
    * @param relationship The relationship.
-   * @returns Returns the end point.
+   * @returns Returns the path and the label's position.
    */
-  protected lineEnd(relationship: LaidRelationship): Point {
+  protected edge(relationship: LaidRelationship): EdgeGeometry {
+    const lane: Lane = this.lanes().get(relationship.value.id) ?? { kind: 'pair', offset: 0 };
     const start: Point = this.at(relationship.value.start);
-    const end: Point = this.at(relationship.value.end);
-    const dx: number = end.x - start.x;
-    const dy: number = end.y - start.y;
-    const length: number = Math.hypot(dx, dy) || 1;
-    return {
-      x: end.x - (dx / length) * (NODE_RADIUS + 3),
-      y: end.y - (dy / length) * (NODE_RADIUS + 3),
-    };
+    if (lane.kind === 'loop') {
+      return loopGeometry(start, lane.angle);
+    }
+    return curveGeometry(start, this.at(relationship.value.end), lane.offset);
   }
 
   /**
@@ -294,16 +331,27 @@ export class GraphView {
    * @param event The pointer event.
    * @param id The node pressed on, or undefined for the background.
    */
-  protected onPointerDown(event: PointerEvent, id?: string): void {
+  protected onPointerDown(event: PointerEvent, id?: string, relationship?: LaidRelationship): void {
     event.stopPropagation();
+    // Captured by the canvas, so the drag follows the pointer anywhere — which also means the press
+    // never becomes a click on what was under it: picking is decided at the release instead.
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
     this.drag = {
       kind: id === undefined ? 'pan' : 'node',
       id,
+      relationship,
       x: event.clientX,
       y: event.clientY,
       moved: false,
     };
+    if (id !== undefined) {
+      // Held from the press, so the graph comes alive under the pointer before it even moves.
+      const at: Point | null = this.simulation?.position(id) ?? null;
+      if (at !== null) {
+        this.simulation?.hold(id, at);
+        this.run();
+      }
+    }
   }
 
   /**
@@ -335,13 +383,12 @@ export class GraphView {
     }
     const k: number = this.view().k;
     const id: string = drag.id ?? '';
-    this.positions.update((positions: ReadonlyMap<string, Point>): ReadonlyMap<string, Point> => {
-      const current: Point = positions.get(id) ?? { x: 0, y: 0 };
-      return new Map<string, Point>([
-        ...positions,
-        [id, { x: current.x + dx / k, y: current.y + dy / k }],
-      ]);
-    });
+    const current: Point | null = this.simulation?.position(id) ?? null;
+    if (current !== null) {
+      // The node follows the pointer; the simulation, kept warm while it is held, moves the rest.
+      this.simulation?.hold(id, { x: current.x + dx / k, y: current.y + dy / k });
+      this.run();
+    }
   }
 
   /**
@@ -349,28 +396,71 @@ export class GraphView {
    * @param node The node released over, if the drag was of one.
    */
   protected onPointerUp(node?: LaidNode): void {
-    const drag: { readonly kind: 'pan' | 'node'; moved: boolean } | null = this.drag;
+    const drag: {
+      readonly kind: 'pan' | 'node';
+      readonly id?: string;
+      readonly relationship?: LaidRelationship;
+      moved: boolean;
+    } | null = this.drag;
     this.drag = null;
-    if (drag !== null && !drag.moved && node !== undefined) {
+    if (drag?.kind === 'node' && drag.id !== undefined) {
+      // Let go: the node rejoins the rest, and the graph rearranges itself around it.
+      this.simulation?.release(drag.id);
+      this.run();
+    }
+    if (drag === null || drag.moved) {
+      return;
+    }
+    // A press on a relationship that did not move picks it; one that moved panned the canvas.
+    if (node !== undefined) {
       this.pickNode(node.value);
+    } else if (drag.relationship !== undefined) {
+      this.pickRelationship(drag.relationship);
     }
   }
 
   /**
-   * Zooms about the pointer.
+   * Scrolls the graph: Option (Alt) + scroll zooms about the pointer, as does a trackpad pinch (which
+   * arrives as a scroll with Control held); a plain scroll pans, so a trackpad moves around the graph
+   * as it would a page.
    * @param event The wheel event.
    */
   protected onWheel(event: WheelEvent): void {
     event.preventDefault();
     const svg: SVGSVGElement = event.currentTarget as SVGSVGElement;
-    const point: DOMPoint | undefined = svg
-      .getScreenCTM()
-      ?.inverse()
-      .transformPoint(new DOMPoint(event.clientX, event.clientY));
+    if (!event.altKey && !event.ctrlKey) {
+      const units: number = unitsPerPixel(svg);
+      this.view.update((view) => ({
+        ...view,
+        x: view.x - event.deltaX * units,
+        y: view.y - event.deltaY * units,
+      }));
+      return;
+    }
+    // The pointer in the canvas's own coordinates, so the zoom holds the point under it still.
+    // (`matrixTransform` on the point: the matrix `getScreenCTM` answers has no `transformPoint`.)
+    const screen: DOMMatrix | null = svg.getScreenCTM();
+    const point: DOMPoint | undefined =
+      screen === null
+        ? undefined
+        : new DOMPoint(event.clientX, event.clientY).matrixTransform(screen.inverse());
     const px: number = point?.x ?? 0;
     const py: number = point?.y ?? 0;
+    // Whichever axis moved: with a modifier held, some devices (a Magic Mouse among them) report the
+    // scroll on the other axis, or in lines rather than pixels.
+    const unit: number =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? 400
+          : 1;
+    const delta: number =
+      (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX) * unit;
     this.view.update((view) => {
-      const k: number = Math.min(4, Math.max(0.2, view.k * Math.exp(-event.deltaY * 0.0015)));
+      // Fine steps (a Magic Mouse or trackpad sends many of about a pixel each, finer still with
+      // Option held) each zoom visibly; a coarse one (a wheel's notch) is capped, so it cannot leap.
+      const step: number = Math.max(-ZOOM_STEP_LIMIT, Math.min(ZOOM_STEP_LIMIT, delta));
+      const k: number = Math.min(4, Math.max(0.2, view.k * Math.exp(-step * ZOOM_SENSITIVITY)));
       const scale: number = k / view.k;
       return { k, x: px - (px - view.x) * scale, y: py - (py - view.y) * scale };
     });
@@ -431,7 +521,8 @@ function fit(positions: ReadonlyMap<string, Point>): string {
   if (points.length === 0) {
     return '-400 -300 800 600';
   }
-  const margin: number = NODE_RADIUS * 3;
+  // Room for a circle, its caption, and a self-loop standing off its rim.
+  const margin: number = NODE_RADIUS * 4;
   const xs: readonly number[] = points.map((point: Point): number => point.x);
   const ys: readonly number[] = points.map((point: Point): number => point.y);
   const minX: number = Math.min(...xs) - margin;
@@ -470,80 +561,149 @@ function captionOf(node: GraphNodeValue): string {
 }
 
 /**
- * Lays a graph out with a small force simulation: every pair of nodes repels, every relationship pulls
- * its ends together like a spring, and everything is pulled gently to the centre. Deterministic — the
- * nodes start on a spiral, not at random — so the same result draws the same way twice.
- * @param nodes The nodes.
- * @param relationships The relationships.
- * @returns Returns each node's position.
- */
-function layout(
-  nodes: readonly LaidNode[],
-  relationships: readonly LaidRelationship[],
-): ReadonlyMap<string, Point> {
-  const ids: readonly string[] = nodes.map((node: LaidNode): string => node.value.id);
-  const index: ReadonlyMap<string, number> = new Map<string, number>(
-    ids.map((id: string, at: number): [string, number] => [id, at]),
-  );
-  const x: Float64Array = new Float64Array(ids.length);
-  const y: Float64Array = new Float64Array(ids.length);
-  ids.forEach((_: string, at: number): void => {
-    const angle: number = at * 2.399963;
-    const radius: number = 30 * Math.sqrt(at + 1);
-    x[at] = Math.cos(angle) * radius;
-    y[at] = Math.sin(angle) * radius;
-  });
-  const springs: readonly [number, number][] = relationships
-    .map((relationship: LaidRelationship): [number, number] => [
-      index.get(relationship.value.start) ?? -1,
-      index.get(relationship.value.end) ?? -1,
-    ])
-    .filter(([a, b]: [number, number]): boolean => a >= 0 && b >= 0 && a !== b);
-  for (let step: number = 0; step < LAYOUT_STEPS; step++) {
-    const heat: number = 1 - step / LAYOUT_STEPS;
-    const fx: Float64Array = new Float64Array(ids.length);
-    const fy: Float64Array = new Float64Array(ids.length);
-    for (let a: number = 0; a < ids.length; a++) {
-      for (let b: number = a + 1; b < ids.length; b++) {
-        const dx: number = x[a] - x[b];
-        const dy: number = y[a] - y[b];
-        const distance: number = Math.max(1, dx * dx + dy * dy);
-        const force: number = 9000 / distance;
-        const length: number = Math.sqrt(distance);
-        fx[a] += (dx / length) * force;
-        fy[a] += (dy / length) * force;
-        fx[b] -= (dx / length) * force;
-        fy[b] -= (dy / length) * force;
-      }
-    }
-    for (const [a, b] of springs) {
-      const dx: number = x[b] - x[a];
-      const dy: number = y[b] - y[a];
-      const length: number = Math.max(1, Math.hypot(dx, dy));
-      const force: number = (length - 120) * 0.05;
-      fx[a] += (dx / length) * force;
-      fy[a] += (dy / length) * force;
-      fx[b] -= (dx / length) * force;
-      fy[b] -= (dy / length) * force;
-    }
-    for (let at: number = 0; at < ids.length; at++) {
-      fx[at] -= x[at] * 0.01;
-      fy[at] -= y[at] * 0.01;
-      const limit: number = 30 * heat + 1;
-      x[at] += Math.max(-limit, Math.min(limit, fx[at]));
-      y[at] += Math.max(-limit, Math.min(limit, fy[at]));
-    }
-  }
-  return new Map<string, Point>(
-    ids.map((id: string, at: number): [string, Point] => [id, { x: x[at], y: y[at] }]),
-  );
-}
-
-/**
  * Shortens a caption to what fits inside a node's circle.
  * @param caption The caption.
  * @returns Returns it, cut with an ellipsis when too long.
  */
 function shorten(caption: string): string {
   return caption.length > 11 ? `${caption.slice(0, 10)}…` : caption;
+}
+
+/**
+ * How far apart, in layout units, the curves between one pair of nodes bow.
+ */
+const LANE_SPREAD: number = 26;
+
+/**
+ * How far a self-loop stands off its node's rim.
+ */
+const LOOP_REACH: number = 48;
+
+/**
+ * The angle between self-loops on one node, in radians.
+ */
+const LOOP_STEP: number = Math.PI / 4;
+
+/**
+ * Where a relationship is drawn among those sharing its nodes: a lane to one side of the straight
+ * line between two nodes, or a place around the rim of the node it loops back to.
+ */
+type Lane =
+  | { readonly kind: 'pair'; readonly offset: number }
+  | { readonly kind: 'loop'; readonly angle: number };
+
+/**
+ * How one relationship is drawn.
+ */
+interface EdgeGeometry {
+  /**
+   * Gets the SVG path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets where its type is written.
+   */
+  readonly label: Point;
+}
+
+/**
+ * Assigns each relationship a lane: those between the same two nodes, whichever way they point,
+ * fanned evenly either side of the straight line (one alone stays straight), and each node's
+ * self-loops spaced around its rim from the top.
+ * @param relationships The relationships.
+ * @returns Returns each relationship's lane, by id.
+ */
+export function laneRelationships(
+  relationships: readonly { readonly value: GraphRelationshipValue }[],
+): ReadonlyMap<string, Lane> {
+  const groups: Map<string, GraphRelationshipValue[]> = new Map<string, GraphRelationshipValue[]>();
+  for (const { value } of relationships) {
+    const key: string =
+      value.start === value.end
+        ? `loop\u0000${value.start}`
+        : [value.start, value.end].sort().join('\u0000');
+    groups.set(key, [...(groups.get(key) ?? []), value]);
+  }
+  const lanes: Map<string, Lane> = new Map<string, Lane>();
+  for (const group of groups.values()) {
+    group.forEach((value: GraphRelationshipValue, index: number): void => {
+      if (value.start === value.end) {
+        lanes.set(value.id, { kind: 'loop', angle: -Math.PI / 2 + index * LOOP_STEP });
+        return;
+      }
+      // Offsets are measured against the pair's canonical direction, so a relationship pointing the
+      // other way is bowed to its own side rather than onto one going this way.
+      const canonical: boolean = value.start < value.end;
+      const offset: number = (index - (group.length - 1) / 2) * LANE_SPREAD;
+      lanes.set(value.id, { kind: 'pair', offset: canonical ? offset : -offset });
+    });
+  }
+  return lanes;
+}
+
+/**
+ * Draws a relationship between two nodes as a quadratic curve bowed by its lane's offset (straight
+ * when the offset is nothing), from one circle's edge to just short of the other's, where the
+ * arrowhead sits.
+ * @param start The start node's centre.
+ * @param end The end node's centre.
+ * @param offset How far the curve's middle stands off the straight line.
+ * @returns Returns the path and label position.
+ */
+export function curveGeometry(start: Point, end: Point, offset: number): EdgeGeometry {
+  const dx: number = end.x - start.x;
+  const dy: number = end.y - start.y;
+  const length: number = Math.hypot(dx, dy) || 1;
+  // The control point stands twice the offset off the line, so the curve's middle stands the offset.
+  const normal: Point = { x: -dy / length, y: dx / length };
+  const control: Point = {
+    x: (start.x + end.x) / 2 + normal.x * offset * 2,
+    y: (start.y + end.y) / 2 + normal.y * offset * 2,
+  };
+  const from: Point = towards(start, control, NODE_RADIUS);
+  const to: Point = towards(end, control, NODE_RADIUS + 3);
+  return {
+    path: `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`,
+    label: {
+      x: (from.x + 2 * control.x + to.x) / 4,
+      y: (from.y + 2 * control.y + to.y) / 4,
+    },
+  };
+}
+
+/**
+ * Draws a node's relationship to itself as a loop off its rim, centred on an angle.
+ * @param centre The node's centre.
+ * @param angle Where on the rim the loop stands, in radians.
+ * @returns Returns the path and label position.
+ */
+export function loopGeometry(centre: Point, angle: number): EdgeGeometry {
+  const spread: number = 0.45;
+  const rim: (at: number, distance: number) => Point = (at: number, distance: number): Point => ({
+    x: centre.x + Math.cos(at) * distance,
+    y: centre.y + Math.sin(at) * distance,
+  });
+  const from: Point = rim(angle - spread, NODE_RADIUS);
+  const to: Point = rim(angle + spread, NODE_RADIUS + 3);
+  const out: Point = rim(angle - spread * 1.6, NODE_RADIUS + LOOP_REACH);
+  const back: Point = rim(angle + spread * 1.6, NODE_RADIUS + LOOP_REACH);
+  return {
+    path: `M ${from.x} ${from.y} C ${out.x} ${out.y} ${back.x} ${back.y} ${to.x} ${to.y}`,
+    label: rim(angle, NODE_RADIUS + LOOP_REACH * 0.85),
+  };
+}
+
+/**
+ * Gets the point a distance from one point towards another.
+ * @param from The point moved from.
+ * @param to The point moved towards.
+ * @param distance How far.
+ * @returns Returns the point.
+ */
+function towards(from: Point, to: Point, distance: number): Point {
+  const dx: number = to.x - from.x;
+  const dy: number = to.y - from.y;
+  const length: number = Math.hypot(dx, dy) || 1;
+  return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance };
 }

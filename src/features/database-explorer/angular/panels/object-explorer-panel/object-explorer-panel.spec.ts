@@ -378,7 +378,7 @@ describe('ObjectExplorerPanel', () => {
     expect((row(`c:${connection.id}`).data as { detail: string }).detail).toBe('SQLite 3.46');
   });
 
-  it('rows_whenAConnectionConnects_unfoldToItsQueriesThenItsObjects', async () => {
+  it('rows_whenAConnectionConnects_unfoldToItsObjectsThenItsQueries', async () => {
     await build();
     const connection: DatabaseConnection = workspace.addConnection('Local', 'sqlite', {});
     workspace.addQuery(connection.id, undefined, 'select 1', 'Recent orders');
@@ -388,9 +388,9 @@ describe('ObjectExplorerPanel', () => {
 
     expect(describeRows()).toEqual([
       'connection:Local',
+      '  node:Tables',
       '  queries:Queries (1)',
       '    query:Recent orders',
-      '  node:Tables',
     ]);
     expect((row(`c:${connection.id}`).data as { state: string }).state).toBe('open');
   });
@@ -409,9 +409,9 @@ describe('ObjectExplorerPanel', () => {
 
     expect(describeRows()).toEqual([
       'connection:Local',
-      '  queries:Queries (0)',
       '  node:Tables',
       '    node:orders',
+      '  queries:Queries (0)',
     ]);
   });
 
@@ -450,8 +450,8 @@ describe('ObjectExplorerPanel', () => {
     expect(row(`c:${connection.id}`).tone).toBe('danger');
     expect(describeRows()).toEqual([
       'connection:Local',
-      '  queries:Queries (0)',
       '  status:file not found',
+      '  queries:Queries (0)',
     ]);
   });
 
