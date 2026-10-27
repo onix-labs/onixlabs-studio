@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { FileChangeType, FileEvent, LspFileWatcher } from './lsp-file-watcher';
-import { globToRegExp } from './lsp-watch-glob';
 
 /**
  * Waits long enough for a coalescing window (and the platform watcher's own latency) to pass.
@@ -93,7 +92,7 @@ describe('LspFileWatcher', () => {
 
   it('honoursRegisteredPatterns_reportingOnlyMatches', async () => {
     start();
-    watcher?.setPatterns([globToRegExp('**/*.rs')]);
+    watcher?.register('r1', [{ globPattern: '**/*.rs' }]);
     await settle();
     writeFileSync(path.join(root, 'main.rs'), 'x');
     writeFileSync(path.join(root, 'notes.txt'), 'x');
@@ -102,6 +101,35 @@ describe('LspFileWatcher', () => {
     const uris: string[] = events().map((event: FileEvent): string => event.uri);
     expect(uris.some((uri: string): boolean => uri.endsWith('/main.rs'))).toBe(true);
     expect(uris.some((uri: string): boolean => uri.endsWith('/notes.txt'))).toBe(false);
+  });
+
+  it('reportsTheUnionOfRegistrations_eachRelativeToItsOwnBaseFolder (#1170)', async () => {
+    // Roslyn's shape: one registration per project, each a pattern relative to that project.
+    mkdirSync(path.join(root, 'Core'), { recursive: true });
+    mkdirSync(path.join(root, 'Tests'), { recursive: true });
+    start();
+    watcher?.register('core-cs', [
+      { globPattern: { baseUri: pathToFileURL(path.join(root, 'Core')).href, pattern: '**/*.cs' } },
+    ]);
+    watcher?.register('tests-proj', [
+      {
+        globPattern: {
+          baseUri: pathToFileURL(path.join(root, 'Tests')).href,
+          pattern: 'Tests.csproj',
+        },
+      },
+    ]);
+    await settle();
+    writeFileSync(path.join(root, 'Core', 'A.cs'), 'x');
+    writeFileSync(path.join(root, 'Tests', 'Tests.csproj'), 'x');
+    writeFileSync(path.join(root, 'Tests', 'B.cs'), 'x');
+    await settle();
+
+    const uris: string[] = events().map((event: FileEvent): string => event.uri);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/Core/A.cs'))).toBe(true);
+    expect(uris.some((uri: string): boolean => uri.endsWith('/Tests/Tests.csproj'))).toBe(true);
+    // Neither registration asked for source files under Tests.
+    expect(uris.some((uri: string): boolean => uri.endsWith('/Tests/B.cs'))).toBe(false);
   });
 
   it('close_stopsDelivering', async () => {

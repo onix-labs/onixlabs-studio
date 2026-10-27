@@ -24,7 +24,6 @@ import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
-import { globToRegExp } from './lsp-watch-glob';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
 import { clientCapabilities } from './lsp-client-capabilities';
 
@@ -344,6 +343,10 @@ export class LspManager {
       parsed.rootPath,
       (events: readonly FileEvent[]): void => {
         if (this.sessions.get(parsed.sessionId)?.child === child) {
+          logger.trace(
+            'LspManager',
+            `Told ${parsed.sessionId} about ${events.length} file change(s) on disk`,
+          );
           void connection.sendNotification('workspace/didChangeWatchedFiles', { changes: events });
         }
       },
@@ -616,16 +619,15 @@ export class LspManager {
         return null;
       },
     );
+    // Unregistered by id, as the protocol does: a server that drops one project's watchers keeps the
+    // rest. (The field really is spelt `unregisterations`.)
     connection.onRequest(
       'client/unregisterCapability',
-      (params: { unregisterations?: readonly { method?: unknown }[] }): null => {
-        if (
-          (params.unregisterations ?? []).some(
-            (entry: { method?: unknown }): boolean =>
-              entry.method === 'workspace/didChangeWatchedFiles',
-          )
-        ) {
-          session.watcher.setPatterns(null);
+      (params: { unregisterations?: readonly { id?: unknown; method?: unknown }[] }): null => {
+        for (const entry of params.unregisterations ?? []) {
+          if (entry.method === 'workspace/didChangeWatchedFiles' && typeof entry.id === 'string') {
+            session.watcher.unregister(entry.id);
+          }
         }
         return null;
       },
@@ -673,43 +675,30 @@ export class LspManager {
   }
 
   /**
-   * Applies one dynamic registration: a `workspace/didChangeWatchedFiles` registration narrows the
-   * session's file watcher to the server's globs (a relative pattern is taken relative to the
-   * session root; an absolute or `file:` base is honoured when it is the root, and otherwise treated
-   * as "anything", since the watcher only covers the root). Other methods need nothing here.
+   * Applies one dynamic registration: a `workspace/didChangeWatchedFiles` registration is **added**
+   * to the session's file watcher under its id, so what the server hears about is the union of every
+   * registration it has made (#1170). Each pattern is relative to its own base folder, which may be
+   * a sub-folder of the root; a base outside the root names nothing the watcher can see. Other
+   * methods need nothing here.
    * @param session The session the registration belongs to.
    * @param registration The registration entry, untrusted.
    */
   private applyRegistration(session: LspSession, registration: unknown): void {
     const entry: {
+      id?: unknown;
       method?: unknown;
-      registerOptions?: { watchers?: readonly { globPattern?: unknown }[] };
+      registerOptions?: { watchers?: unknown };
     } | null = (registration as typeof entry) ?? null;
     if (entry?.method !== 'workspace/didChangeWatchedFiles') {
       return;
     }
-    const patterns: RegExp[] = [];
-    let unbounded: boolean = false;
-    for (const watcher of entry.registerOptions?.watchers ?? []) {
-      const glob: unknown = watcher.globPattern;
-      if (typeof glob === 'string') {
-        if (path.isAbsolute(glob) || glob.startsWith('file:')) {
-          // An absolute glob outside our root cannot be narrowed safely; report everything.
-          unbounded = true;
-        } else {
-          patterns.push(globToRegExp(glob));
-        }
-      } else if (typeof glob === 'object' && glob !== null) {
-        const relative: { baseUri?: unknown; pattern?: unknown } = glob;
-        if (typeof relative.pattern === 'string') {
-          patterns.push(globToRegExp(relative.pattern));
-        }
-      }
-    }
-    session.watcher.setPatterns(unbounded || patterns.length === 0 ? null : patterns);
-    logger.debug(
+    // The protocol requires an id; one without is kept under a name no unregistration can reach.
+    const id: string =
+      typeof entry.id === 'string' ? entry.id : `anonymous-${session.watcher.registrationCount}`;
+    session.watcher.register(id, entry.registerOptions?.watchers);
+    logger.trace(
       'LspManager',
-      `Server registered ${patterns.length} watch pattern(s) for ${session.rootPath}`,
+      `Server watch registration ${id} for ${session.rootPath} (${session.watcher.registrationCount} live)`,
     );
   }
 

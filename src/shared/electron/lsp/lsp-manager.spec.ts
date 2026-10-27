@@ -124,7 +124,7 @@ describe('LspManager (#1015)', () => {
         [gone, 1],
         [live, 1],
       ]),
-      watcher: { setPatterns: (): void => undefined },
+      watcher: { register: (): void => undefined, unregister: (): void => undefined },
     };
     const connection: FakeConnection = fakeConnection();
     (manager as unknown as ManagerInternals).answerServerRequests(connection, 's1', session);
