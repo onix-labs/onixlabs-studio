@@ -10,6 +10,7 @@
     (pointerdown)="onPointerDown($event)"
     (pointermove)="onPointerMove($event)"
     (pointerup)="onPointerUp()"
+    (pointercancel)="onPointerUp()"
     (wheel)="onWheel($event)"
   >
     <defs>
@@ -76,6 +77,7 @@
           [attr.transform]="'translate(' + point.x + ' ' + point.y + ')'"
           (pointerdown)="onPointerDown($event, node.value.id)"
           (pointerup)="$event.stopPropagation(); onPointerUp(node)"
+          (pointercancel)="$event.stopPropagation(); onPointerUp()"
         >
           <circle r="22" />
           <text text-anchor="middle" dy="4">{{ node.caption }}</text>

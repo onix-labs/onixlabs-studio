@@ -2,7 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
+  inject,
   input,
   InputSignal,
   output,
@@ -18,6 +20,7 @@ import {
   GraphRelationshipValue,
 } from '@shared/api/database-engine-protocol';
 import { cellText } from '../database-values';
+import { ForceSimulation } from './force-simulation';
 
 /**
  * The radius of a node's circle, in layout units.
@@ -25,9 +28,20 @@ import { cellText } from '../database-values';
 const NODE_RADIUS: number = 22;
 
 /**
- * How many steps the force layout runs before the graph is drawn.
+ * How much one pixel of scroll zooms, as an exponent: about 1% a pixel.
  */
-const LAYOUT_STEPS: number = 320;
+const ZOOM_SENSITIVITY: number = 0.01;
+
+/**
+ * The most one scroll event is counted as, in pixels, so a wheel's notch zooms by a step rather than
+ * a leap.
+ */
+const ZOOM_STEP_LIMIT: number = 40;
+
+/**
+ * The heat the layout is settled to before it is drawn; the rest of its settling is animated.
+ */
+const SETTLED_OUT_OF_SIGHT: number = 0.08;
 
 /**
  * The most nodes the view draws. A larger result is drawn in part, with a note: a force layout of
@@ -211,7 +225,19 @@ export class GraphView {
   protected readonly viewBox: WritableSignal<string> = signal<string>('-400 -300 800 600');
 
   /**
-   * Lays the graph out afresh whenever the result changes.
+   * Holds the live layout, rebuilt for each result.
+   */
+  private simulation: ForceSimulation | null = null;
+
+  /**
+   * Holds the animation frame the simulation's next step is drawn in, or null while it is at rest.
+   */
+  private frame: number | null = null;
+
+  /**
+   * Lays the graph out afresh whenever the result changes: settled out of sight first, so the view
+   * fits the shape it comes to rather than the spiral it starts from, then left to come to rest on
+   * screen.
    */
   public constructor() {
     effect((): void => {
@@ -220,12 +246,52 @@ export class GraphView {
         readonly relationships: readonly LaidRelationship[];
       } = this.graph();
       untracked((): void => {
-        const positions: ReadonlyMap<string, Point> = layout(graph.nodes, graph.relationships);
+        this.stop();
+        const simulation: ForceSimulation = new ForceSimulation(
+          graph.nodes.map((node: LaidNode): string => node.value.id),
+          graph.relationships.map((relationship: LaidRelationship) => relationship.value),
+          NODE_RADIUS,
+        );
+        simulation.settle(SETTLED_OUT_OF_SIGHT);
+        this.simulation = simulation;
+        const positions: ReadonlyMap<string, Point> = simulation.positions();
         this.positions.set(positions);
         this.viewBox.set(fit(positions));
         this.view.set({ x: 0, y: 0, k: 1 });
+        this.run();
       });
     });
+    inject(DestroyRef).onDestroy((): void => this.stop());
+  }
+
+  /**
+   * Keeps the simulation stepping, a step a frame, until it comes to rest.
+   */
+  private run(): void {
+    if (this.frame !== null || this.simulation === null) {
+      return;
+    }
+    const step: () => void = (): void => {
+      const simulation: ForceSimulation | null = this.simulation;
+      if (simulation === null) {
+        this.frame = null;
+        return;
+      }
+      simulation.tick();
+      this.positions.set(simulation.positions());
+      this.frame = simulation.active ? requestAnimationFrame(step) : null;
+    };
+    this.frame = requestAnimationFrame(step);
+  }
+
+  /**
+   * Stops the simulation's steps.
+   */
+  private stop(): void {
+    if (this.frame !== null) {
+      cancelAnimationFrame(this.frame);
+      this.frame = null;
+    }
   }
 
   /**
@@ -278,6 +344,14 @@ export class GraphView {
       y: event.clientY,
       moved: false,
     };
+    if (id !== undefined) {
+      // Held from the press, so the graph comes alive under the pointer before it even moves.
+      const at: Point | null = this.simulation?.position(id) ?? null;
+      if (at !== null) {
+        this.simulation?.hold(id, at);
+        this.run();
+      }
+    }
   }
 
   /**
@@ -309,13 +383,12 @@ export class GraphView {
     }
     const k: number = this.view().k;
     const id: string = drag.id ?? '';
-    this.positions.update((positions: ReadonlyMap<string, Point>): ReadonlyMap<string, Point> => {
-      const current: Point = positions.get(id) ?? { x: 0, y: 0 };
-      return new Map<string, Point>([
-        ...positions,
-        [id, { x: current.x + dx / k, y: current.y + dy / k }],
-      ]);
-    });
+    const current: Point | null = this.simulation?.position(id) ?? null;
+    if (current !== null) {
+      // The node follows the pointer; the simulation, kept warm while it is held, moves the rest.
+      this.simulation?.hold(id, { x: current.x + dx / k, y: current.y + dy / k });
+      this.run();
+    }
   }
 
   /**
@@ -325,10 +398,16 @@ export class GraphView {
   protected onPointerUp(node?: LaidNode): void {
     const drag: {
       readonly kind: 'pan' | 'node';
+      readonly id?: string;
       readonly relationship?: LaidRelationship;
       moved: boolean;
     } | null = this.drag;
     this.drag = null;
+    if (drag?.kind === 'node' && drag.id !== undefined) {
+      // Let go: the node rejoins the rest, and the graph rearranges itself around it.
+      this.simulation?.release(drag.id);
+      this.run();
+    }
     if (drag === null || drag.moved) {
       return;
     }
@@ -341,20 +420,47 @@ export class GraphView {
   }
 
   /**
-   * Zooms about the pointer.
+   * Scrolls the graph: Option (Alt) + scroll zooms about the pointer, as does a trackpad pinch (which
+   * arrives as a scroll with Control held); a plain scroll pans, so a trackpad moves around the graph
+   * as it would a page.
    * @param event The wheel event.
    */
   protected onWheel(event: WheelEvent): void {
     event.preventDefault();
     const svg: SVGSVGElement = event.currentTarget as SVGSVGElement;
-    const point: DOMPoint | undefined = svg
-      .getScreenCTM()
-      ?.inverse()
-      .transformPoint(new DOMPoint(event.clientX, event.clientY));
+    if (!event.altKey && !event.ctrlKey) {
+      const units: number = unitsPerPixel(svg);
+      this.view.update((view) => ({
+        ...view,
+        x: view.x - event.deltaX * units,
+        y: view.y - event.deltaY * units,
+      }));
+      return;
+    }
+    // The pointer in the canvas's own coordinates, so the zoom holds the point under it still.
+    // (`matrixTransform` on the point: the matrix `getScreenCTM` answers has no `transformPoint`.)
+    const screen: DOMMatrix | null = svg.getScreenCTM();
+    const point: DOMPoint | undefined =
+      screen === null
+        ? undefined
+        : new DOMPoint(event.clientX, event.clientY).matrixTransform(screen.inverse());
     const px: number = point?.x ?? 0;
     const py: number = point?.y ?? 0;
+    // Whichever axis moved: with a modifier held, some devices (a Magic Mouse among them) report the
+    // scroll on the other axis, or in lines rather than pixels.
+    const unit: number =
+      event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? 400
+          : 1;
+    const delta: number =
+      (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX) * unit;
     this.view.update((view) => {
-      const k: number = Math.min(4, Math.max(0.2, view.k * Math.exp(-event.deltaY * 0.0015)));
+      // Fine steps (a Magic Mouse or trackpad sends many of about a pixel each, finer still with
+      // Option held) each zoom visibly; a coarse one (a wheel's notch) is capped, so it cannot leap.
+      const step: number = Math.max(-ZOOM_STEP_LIMIT, Math.min(ZOOM_STEP_LIMIT, delta));
+      const k: number = Math.min(4, Math.max(0.2, view.k * Math.exp(-step * ZOOM_SENSITIVITY)));
       const scale: number = k / view.k;
       return { k, x: px - (px - view.x) * scale, y: py - (py - view.y) * scale };
     });
@@ -452,76 +558,6 @@ function captionOf(node: GraphNodeValue): string {
     (value: DatabaseValue): boolean => typeof value === 'string',
   );
   return typeof first === 'string' ? shorten(first) : (node.labels[0] ?? '');
-}
-
-/**
- * Lays a graph out with a small force simulation: every pair of nodes repels, every relationship pulls
- * its ends together like a spring, and everything is pulled gently to the centre. Deterministic — the
- * nodes start on a spiral, not at random — so the same result draws the same way twice.
- * @param nodes The nodes.
- * @param relationships The relationships.
- * @returns Returns each node's position.
- */
-function layout(
-  nodes: readonly LaidNode[],
-  relationships: readonly LaidRelationship[],
-): ReadonlyMap<string, Point> {
-  const ids: readonly string[] = nodes.map((node: LaidNode): string => node.value.id);
-  const index: ReadonlyMap<string, number> = new Map<string, number>(
-    ids.map((id: string, at: number): [string, number] => [id, at]),
-  );
-  const x: Float64Array = new Float64Array(ids.length);
-  const y: Float64Array = new Float64Array(ids.length);
-  ids.forEach((_: string, at: number): void => {
-    const angle: number = at * 2.399963;
-    const radius: number = 30 * Math.sqrt(at + 1);
-    x[at] = Math.cos(angle) * radius;
-    y[at] = Math.sin(angle) * radius;
-  });
-  const springs: readonly [number, number][] = relationships
-    .map((relationship: LaidRelationship): [number, number] => [
-      index.get(relationship.value.start) ?? -1,
-      index.get(relationship.value.end) ?? -1,
-    ])
-    .filter(([a, b]: [number, number]): boolean => a >= 0 && b >= 0 && a !== b);
-  for (let step: number = 0; step < LAYOUT_STEPS; step++) {
-    const heat: number = 1 - step / LAYOUT_STEPS;
-    const fx: Float64Array = new Float64Array(ids.length);
-    const fy: Float64Array = new Float64Array(ids.length);
-    for (let a: number = 0; a < ids.length; a++) {
-      for (let b: number = a + 1; b < ids.length; b++) {
-        const dx: number = x[a] - x[b];
-        const dy: number = y[a] - y[b];
-        const distance: number = Math.max(1, dx * dx + dy * dy);
-        const force: number = 9000 / distance;
-        const length: number = Math.sqrt(distance);
-        fx[a] += (dx / length) * force;
-        fy[a] += (dy / length) * force;
-        fx[b] -= (dx / length) * force;
-        fy[b] -= (dy / length) * force;
-      }
-    }
-    for (const [a, b] of springs) {
-      const dx: number = x[b] - x[a];
-      const dy: number = y[b] - y[a];
-      const length: number = Math.max(1, Math.hypot(dx, dy));
-      const force: number = (length - 120) * 0.05;
-      fx[a] += (dx / length) * force;
-      fy[a] += (dy / length) * force;
-      fx[b] -= (dx / length) * force;
-      fy[b] -= (dy / length) * force;
-    }
-    for (let at: number = 0; at < ids.length; at++) {
-      fx[at] -= x[at] * 0.01;
-      fy[at] -= y[at] * 0.01;
-      const limit: number = 30 * heat + 1;
-      x[at] += Math.max(-limit, Math.min(limit, fx[at]));
-      y[at] += Math.max(-limit, Math.min(limit, fy[at]));
-    }
-  }
-  return new Map<string, Point>(
-    ids.map((id: string, at: number): [string, Point] => [id, { x: x[at], y: y[at] }]),
-  );
 }
 
 /**
