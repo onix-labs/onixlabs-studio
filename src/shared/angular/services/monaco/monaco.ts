@@ -466,6 +466,7 @@ export class Monaco {
       lineDecorationsWidth: 16,
       wordWrap: resolved.wordWrap ? 'on' : 'off',
       stickyScroll: { enabled: resolved.stickyScroll },
+      formatOnType: resolved.formatOnType,
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
       scrollBeyondLastLine: false,
       renderWhitespace: 'selection',

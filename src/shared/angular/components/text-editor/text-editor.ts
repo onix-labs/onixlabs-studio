@@ -355,6 +355,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
+        formatOnType: resolved.formatOnType,
         cursorBlinking: resolved.cursorBlinking,
         cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
         tabSize: resolved.tabSize,

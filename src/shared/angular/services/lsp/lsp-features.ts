@@ -104,6 +104,11 @@ export interface LspDocumentRef {
   readonly commands?: readonly string[];
 
   /**
+   * Gets how the server formats code (#1141). Undefined is taken as not at all.
+   */
+  readonly formatting?: LspFormattingSupport;
+
+  /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
    * code-action request sends back for the span it asks about (#1016). Undefined is taken as none.
    */
@@ -218,6 +223,42 @@ export type LspCommandOutcome =
  * cannot say beforehand whether a symbol can be; `prepare` — it says first (`textDocument/prepareRename`).
  */
 export type LspRenameSupport = 'none' | 'rename' | 'prepare';
+
+/**
+ * Describes how a server formats code (#1141).
+ */
+export interface LspFormattingSupport {
+  /**
+   * Gets whether it formats a whole document (`textDocument/formatting`).
+   */
+  readonly document: boolean;
+
+  /**
+   * Gets whether it formats a range (`textDocument/rangeFormatting`).
+   */
+  readonly range: boolean;
+
+  /**
+   * Gets the characters it formats on as they are typed (`textDocument/onTypeFormatting`), or empty
+   * when it does not.
+   */
+  readonly onTypeTriggers: readonly string[];
+}
+
+/**
+ * The languages whose Monaco build already formats them (the TypeScript, JSON, CSS and HTML workers).
+ * A language server's formatter is not added for these: Monaco offers no way to choose between two
+ * formatters in a standalone editor, so a second one would make which formatter runs arbitrary.
+ */
+const MONACO_FORMATTED_LANGUAGES: ReadonlySet<string> = new Set<string>([
+  'typescript',
+  'javascript',
+  'json',
+  'css',
+  'scss',
+  'less',
+  'html',
+]);
 
 /**
  * What a language server says of the symbol at a position before the new name is asked for (#1015).
@@ -586,6 +627,12 @@ export class LspFeatures {
   private registered: boolean = false;
 
   /**
+   * Holds the formatting providers registered so far, as `<language>:<document|range|onType>`, so
+   * each is registered once (#1141).
+   */
+  private readonly formattingRegistered: Set<string> = new Set<string>();
+
+  /**
    * Fires to ask Monaco to re-request semantic tokens, one emitter per registered language. Monaco
    * requests tokens when a document first opens — before its language server has started — and caches
    * the empty result; firing a language's emitter once its server is ready makes Monaco ask again so
@@ -719,6 +766,127 @@ export class LspFeatures {
     for (const listener of this.servedListeners) {
       listener(sessionId);
     }
+  }
+
+  /**
+   * Turns on formatting for a language, with what a server serving it can do (#1141): Format
+   * Document, Format Selection, and formatting as the user types its trigger characters.
+   *
+   * Registered on demand, when a session that formats starts serving a document of the language,
+   * rather than for every language up front: Monaco offers Format Document (in the menu, on its chord,
+   * on the ribbon) exactly when a formatter is registered for the language, and one registered for a
+   * language whose server cannot format would offer a command that does nothing. Each kind is
+   * registered once per language. Languages Monaco already formats are left to Monaco (see
+   * {@link MONACO_FORMATTED_LANGUAGES}).
+   * @param language The Monaco language identifier.
+   * @param support How the serving server formats.
+   */
+  public enableFormatting(language: string, support: LspFormattingSupport): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined || MONACO_FORMATTED_LANGUAGES.has(language)) {
+      return;
+    }
+    const registered: Set<string> = this.formattingRegistered;
+    if (support.document && !registered.has(`${language}:document`)) {
+      registered.add(`${language}:document`);
+      monaco.languages.registerDocumentFormattingEditProvider(language, {
+        provideDocumentFormattingEdits: (
+          model: MonacoApi.editor.ITextModel,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+          this.provideFormatting(model, 'textDocument/formatting', options),
+      });
+    }
+    if (support.range && !registered.has(`${language}:range`)) {
+      registered.add(`${language}:range`);
+      monaco.languages.registerDocumentRangeFormattingEditProvider(language, {
+        provideDocumentRangeFormattingEdits: (
+          model: MonacoApi.editor.ITextModel,
+          range: MonacoApi.Range,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+          this.provideFormatting(model, 'textDocument/rangeFormatting', options, {
+            range: {
+              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+            },
+          }),
+      });
+    }
+    if (support.onTypeTriggers.length > 0 && !registered.has(`${language}:onType`)) {
+      registered.add(`${language}:onType`);
+      monaco.languages.registerOnTypeFormattingEditProvider(language, {
+        autoFormatTriggerCharacters: [...support.onTypeTriggers],
+        provideOnTypeFormattingEdits: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+          ch: string,
+          options: MonacoApi.languages.FormattingOptions,
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
+          this.provideFormatting(model, 'textDocument/onTypeFormatting', options, {
+            position: toLspPosition(position),
+            ch,
+          }),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model to format it — the whole document, a range, or around a character
+   * just typed — and maps its edits to Monaco's.
+   * @param model The model to format.
+   * @param method The formatting request.
+   * @param options The editor's indentation, which the server is told to follow.
+   * @param extra The request's own parameters (a range, or the position and character typed).
+   * @returns Returns the edits, or undefined when no server serves the model, it does not format this
+   * way, or the request fails.
+   */
+  private async provideFormatting(
+    model: MonacoApi.editor.ITextModel,
+    method:
+      'textDocument/formatting' | 'textDocument/rangeFormatting' | 'textDocument/onTypeFormatting',
+    options: MonacoApi.languages.FormattingOptions,
+    extra?: Record<string, unknown>,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const support: LspFormattingSupport | undefined = ref?.formatting;
+    if (ref === null || this.bridge === undefined || support === undefined) {
+      return undefined;
+    }
+    const offered: boolean =
+      method === 'textDocument/formatting'
+        ? support.document
+        : method === 'textDocument/rangeFormatting'
+          ? support.range
+          : typeof extra?.['ch'] === 'string' && support.onTypeTriggers.includes(extra['ch']);
+    if (!offered) {
+      return undefined;
+    }
+    // The server must have the text the edits will apply to — above all for on-type formatting, which
+    // is asked the moment the character lands.
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(LspChannel.Request, ref.sessionId, method, {
+        textDocument: { uri: ref.uri },
+        options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        ...extra,
+      });
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    return (result as readonly { range?: LspRange; newText?: unknown }[])
+      .filter(
+        (edit: { range?: LspRange; newText?: unknown }): boolean =>
+          edit.range !== undefined && typeof edit.newText === 'string',
+      )
+      .map((edit: { range?: LspRange; newText?: unknown }): MonacoApi.languages.TextEdit => ({
+        range: this.toRange(edit.range!),
+        text: edit.newText as string,
+      }));
   }
 
   /**

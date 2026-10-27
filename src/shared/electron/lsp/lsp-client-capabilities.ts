@@ -60,6 +60,11 @@ export function clientCapabilities(): ClientCapabilities {
         contextSupport: true,
       },
       hover: { contentFormat: ['markdown', 'plaintext'] },
+      // Format Document, Format Selection and format-on-type (#1141): the server lays the code out,
+      // honouring the project's own conventions (`.editorconfig` for Roslyn).
+      formatting: { dynamicRegistration: false },
+      rangeFormatting: { dynamicRegistration: false },
+      onTypeFormatting: { dynamicRegistration: false },
       definition: { linkSupport: false },
       references: {},
       // Nested symbols, so a server answers with each type's members inside it rather than one flat

@@ -1,9 +1,52 @@
 import {
   codeActionSupportOf,
   executeCommandsOf,
+  formattingSupportOf,
   renameSupportOf,
   semanticLegendOf,
 } from './lsp-capabilities';
+
+describe('formattingSupportOf (#1141)', () => {
+  it('readsRoslynsFormatters_andItsOnTypeTriggerCharacters', () => {
+    // Exactly what Roslyn 5.4/5.13 advertise.
+    expect(
+      formattingSupportOf({
+        documentFormattingProvider: true,
+        documentRangeFormattingProvider: true,
+        documentOnTypeFormattingProvider: {
+          firstTriggerCharacter: '}',
+          moreTriggerCharacter: [';', '\n'],
+        },
+      }),
+    ).toEqual({ document: true, range: true, onTypeTriggers: ['}', ';', '\n'] });
+  });
+
+  it('acceptsProviderOptionObjects_andReadsAbsenceAsNotFormatting', () => {
+    expect(formattingSupportOf({ documentFormattingProvider: { workDoneProgress: true } })).toEqual(
+      {
+        document: true,
+        range: false,
+        onTypeTriggers: [],
+      },
+    );
+    expect(formattingSupportOf(undefined)).toEqual({
+      document: false,
+      range: false,
+      onTypeTriggers: [],
+    });
+  });
+
+  it('dropsMalformedAndDuplicateTriggerCharacters', () => {
+    expect(
+      formattingSupportOf({
+        documentOnTypeFormattingProvider: {
+          firstTriggerCharacter: '}',
+          moreTriggerCharacter: ['}', 'ab', 3],
+        },
+      }).onTypeTriggers,
+    ).toEqual(['}']);
+  });
+});
 
 describe('semanticLegendOf', () => {
   it('extractsTheLegendWhenTheServerAdvertisesOne', () => {

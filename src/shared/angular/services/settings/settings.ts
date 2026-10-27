@@ -208,6 +208,12 @@ export interface TextEditorSettings {
   readonly stickyScroll: boolean;
 
   /**
+   * Gets a value indicating whether the language's formatter lays out the line as a closing brace, a
+   * semicolon or a new line is typed (#1141).
+   */
+  readonly formatOnType: boolean;
+
+  /**
    * Gets the cursor blinking animation style.
    */
   readonly cursorBlinking: CursorBlinkingStyle;
@@ -613,6 +619,7 @@ export class Settings {
       colorBrackets: this.read('textEditor.global.colorBrackets'),
       wordWrap: this.read('textEditor.global.wordWrap'),
       stickyScroll: this.read('textEditor.global.stickyScroll'),
+      formatOnType: this.read('textEditor.global.formatOnType'),
       cursorBlinking: this.read('textEditor.global.cursorBlinking'),
       cursorSmoothCaretAnimation: this.read('textEditor.global.cursorSmoothCaretAnimation'),
       insertSpaces: this.read('textEditor.global.insertSpaces'),

@@ -12,6 +12,7 @@ import {
   LspCodeAction,
   LspCodeActionSupport,
   LspFeatures,
+  LspFormattingSupport,
   LspRenameAnswer,
   LspRenamePreparation,
   LspRenameSupport,
@@ -66,6 +67,27 @@ interface CapturedProviders {
   };
   /** The semantic-token change emitter per registered language, in registration order. */
   semanticEmitters: Map<string, FakeEmitter>;
+  /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
+  formatting?: Map<string, FakeFormattingProvider>;
+}
+
+/**
+ * A formatting provider as the specs call it: whichever of Monaco's three shapes it was registered as.
+ */
+interface FakeFormattingProvider {
+  autoFormatTriggerCharacters?: string[];
+  provideDocumentFormattingEdits?(model: unknown, options: unknown): Promise<unknown>;
+  provideDocumentRangeFormattingEdits?(
+    model: unknown,
+    range: unknown,
+    options: unknown,
+  ): Promise<unknown>;
+  provideOnTypeFormattingEdits?(
+    model: unknown,
+    position: unknown,
+    ch: string,
+    options: unknown,
+  ): Promise<unknown>;
 }
 
 /**
@@ -133,6 +155,15 @@ function fakeMonacoNamespace(
       registerDocumentSymbolProvider: (_language: string, provider: unknown): void => {
         captured.symbols = provider as CapturedProviders['symbols'];
       },
+      registerDocumentFormattingEditProvider: (language: string, provider: unknown): void => {
+        (captured.formatting ??= new Map()).set(`${language}:document`, provider);
+      },
+      registerDocumentRangeFormattingEditProvider: (language: string, provider: unknown): void => {
+        (captured.formatting ??= new Map()).set(`${language}:range`, provider);
+      },
+      registerOnTypeFormattingEditProvider: (language: string, provider: unknown): void => {
+        (captured.formatting ??= new Map()).set(`${language}:onType`, provider);
+      },
       registerDocumentSemanticTokensProvider: (language: string, provider: unknown): void => {
         captured.semantic = provider as CapturedProviders['semantic'];
         const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
@@ -192,6 +223,7 @@ describe('LspFeatures', () => {
   let serverDiagnostics: readonly LspDiagnostic[] | undefined;
   /** The document's catch-up hook, when a test gives it one. */
   let syncHook: ((text: string) => Promise<void>) | undefined;
+  let formattingSupport: LspFormattingSupport | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -218,6 +250,8 @@ describe('LspFeatures', () => {
     serverCommands = undefined;
     serverDiagnostics = undefined;
     syncHook = undefined;
+    formattingSupport = undefined;
+    captured.formatting = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         if (channel === (FileChannel.Read as string)) {
@@ -282,12 +316,130 @@ describe('LspFeatures', () => {
             ...(completionSupport === undefined ? {} : { completion: completionSupport }),
             ...(signatureSupport === undefined ? {} : { signatureHelp: signatureSupport }),
             ...(syncHook === undefined ? {} : { sync: syncHook }),
+            ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
           }
         : null,
     );
     await flush();
     return features;
   }
+
+  describe('formatting (#1141)', () => {
+    const ROSLYN: LspFormattingSupport = {
+      document: true,
+      range: true,
+      onTypeTriggers: ['}', ';', '\n'],
+    };
+    const OPTIONS: unknown = { tabSize: 4, insertSpaces: true };
+
+    it('registersEachFormatterOncePerLanguage_withTheServersTriggerCharacters', async () => {
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+      features.enableFormatting('csharp', ROSLYN);
+
+      expect([...(captured.formatting?.keys() ?? [])]).toEqual([
+        'csharp:document',
+        'csharp:range',
+        'csharp:onType',
+      ]);
+      expect(captured.formatting?.get('csharp:onType')?.autoFormatTriggerCharacters).toEqual([
+        '}',
+        ';',
+        '\n',
+      ]);
+    });
+
+    it('registersOnlyWhatTheServerOffers_andNothingForLanguagesMonacoAlreadyFormats', async () => {
+      const features: LspFeatures = await build();
+      features.enableFormatting('python', { document: true, range: false, onTypeTriggers: [] });
+      // Two formatters for one language would leave which one runs to chance.
+      features.enableFormatting('typescript', ROSLYN);
+
+      expect([...(captured.formatting?.keys() ?? [])]).toEqual(['python:document']);
+    });
+
+    it('formatDocument_asksTheServerWithTheEditorsIndentation_andMapsItsEdits', async () => {
+      formattingSupport = ROSLYN;
+      responses['textDocument/formatting'] = [
+        {
+          range: { start: { line: 2, character: 0 }, end: { line: 2, character: 8 } },
+          newText: '    ',
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      const edits: unknown = await captured.formatting
+        ?.get('csharp:document')
+        ?.provideDocumentFormattingEdits?.(fakeModel(MODEL_URI, 'csharp'), OPTIONS);
+
+      expect(requests).toEqual([
+        {
+          sessionId: '/root::typescript',
+          method: 'textDocument/formatting',
+          params: { textDocument: { uri: 'file:///root/app.ts' }, options: OPTIONS },
+        },
+      ]);
+      expect(edits).toEqual([
+        {
+          range: { startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 9 },
+          text: '    ',
+        },
+      ]);
+    });
+
+    it('formatOnType_bringsTheServerUpToDate_thenSendsThePositionAndCharacter', async () => {
+      formattingSupport = ROSLYN;
+      const order: string[] = [];
+      syncHook = (): Promise<void> => {
+        order.push('sync');
+        return Promise.resolve();
+      };
+      responses['textDocument/onTypeFormatting'] = [];
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      await captured.formatting
+        ?.get('csharp:onType')
+        ?.provideOnTypeFormattingEdits?.(
+          fakeModel(MODEL_URI, 'csharp'),
+          { lineNumber: 5, column: 2 },
+          '}',
+          OPTIONS,
+        );
+      order.push(requests[0]?.method ?? 'none');
+
+      expect(order).toEqual(['sync', 'textDocument/onTypeFormatting']);
+      expect(requests[0]?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        options: OPTIONS,
+        position: { line: 4, character: 1 },
+        ch: '}',
+      });
+    });
+
+    it('asksNothing_whenTheServingServerDoesNotFormatThatWay', async () => {
+      formattingSupport = { document: true, range: false, onTypeTriggers: [] };
+      const features: LspFeatures = await build();
+      features.enableFormatting('csharp', ROSLYN);
+
+      const onType: unknown = await captured.formatting
+        ?.get('csharp:onType')
+        ?.provideOnTypeFormattingEdits?.(
+          fakeModel(MODEL_URI, 'csharp'),
+          { lineNumber: 1, column: 1 },
+          '}',
+          OPTIONS,
+        );
+      const range: unknown = await captured.formatting
+        ?.get('csharp:range')
+        ?.provideDocumentRangeFormattingEdits?.(fakeModel(MODEL_URI, 'csharp'), {}, OPTIONS);
+
+      expect(onType).toBeUndefined();
+      expect(range).toBeUndefined();
+      expect(requests).toEqual([]);
+    });
+  });
 
   it('aRequestAboutAPosition_bringsTheServerUpToDateFirst', async () => {
     // Matthew's live check of #1021: a completion on "." overtook the change that typed it, and the
