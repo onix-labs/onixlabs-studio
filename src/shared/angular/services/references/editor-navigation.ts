@@ -11,7 +11,7 @@ import {
   providedReferences,
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { LinePreviews } from './line-previews';
-import { CodeLocation, ReferenceItem, ReferenceList } from './reference-list';
+import { CodeLocation, ReferenceItem, ReferenceList, ReferenceListKind } from './reference-list';
 import { ReferencesRouter } from './references-router';
 
 /**
@@ -136,16 +136,97 @@ export class EditorNavigation {
    * @param editor The editor.
    * @returns Returns a promise that resolves once the definition is shown, or found not to be.
    */
-  public async goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+  public goToDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        this.definitionsAt(editor, model, position),
+    );
+  }
+
+  /**
+   * Determines whether Go to Implementation can answer for a document: the language server serving it
+   * answers `textDocument/implementation` (#1142).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersImplementations(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'implementation')
+    );
+  }
+
+  /**
+   * Determines whether Go to Type Definition can answer for a document: the language server serving
+   * it answers `textDocument/typeDefinition` (#1142).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersTypeDefinitions(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'typeDefinition')
+    );
+  }
+
+  /**
+   * Goes to the code that implements the symbol at the caret (#1142) — for an interface or abstract
+   * member, the classes that implement it: straight there when there is one, listed in the References
+   * panel when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the implementation is shown, or found not to be.
+   */
+  public goToImplementation(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'implementations',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).implementations(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Goes to the declaration of the type of the symbol at the caret (#1142) — from a variable,
+   * parameter or property to its type: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the type is shown, or found not to be.
+   */
+  public goToTypeDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).typeDefinitions(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Finds places for the symbol at the caret and goes to them: straight there when there is one (or no
+   * References panel answers the editor), listed in the References panel when there are several.
+   * @param editor The editor.
+   * @param kind What the list lists, when there are several.
+   * @param find Finds the places.
+   * @returns Returns a promise that resolves once a place is shown, or none was found.
+   */
+  private async goToFound(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    find: (
+      model: MonacoApi.editor.ITextModel,
+      position: MonacoApi.Position,
+    ) => Promise<readonly CodeLocation[]>,
+  ): Promise<void> {
     const model: MonacoApi.editor.ITextModel | null = editor.getModel();
     const position: MonacoApi.Position | null = editor.getPosition();
     if (model === null || position === null) {
       return;
     }
-    const found: readonly CodeLocation[] = await this.definitionsAt(editor, model, position);
+    const found: readonly CodeLocation[] = await find(model, position);
     const first: CodeLocation | undefined = found[0];
     if (first === undefined) {
-      this.log.debug('navigation', 'No definition found', model.getLanguageId());
+      this.log.debug('navigation', `No ${kind} found`, model.getLanguageId());
       return;
     }
     if (found.length === 1 || !this.router.answers(editor)) {
@@ -153,10 +234,7 @@ export class EditorNavigation {
       return;
     }
     const items: readonly ReferenceItem[] = await this.linePreviews.fill(found, instanceOf(editor));
-    this.router.show(
-      { kind: 'definitions', symbol: symbolAt(model, position), status: 'done', items },
-      editor,
-    );
+    this.router.show({ kind, symbol: symbolAt(model, position), status: 'done', items }, editor);
   }
 
   /**

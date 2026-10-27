@@ -8,6 +8,8 @@ import {
   NavigationMode,
   STUDIO_FIND_REFERENCES_COMMAND,
   STUDIO_GO_TO_DEFINITION_COMMAND,
+  STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+  STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
 } from './monaco-navigation-commands';
 
 /**
@@ -221,6 +223,24 @@ describe('installNavigationCommands (#1014)', () => {
     }
   });
 
+  it('bindsGoToImplementationToCmdF12_andLeavesTypeDefinitionUnbound_onEveryPlatform (#1142)', () => {
+    for (const isMac of [true, false]) {
+      const installed: Installed = install(isMac, []);
+
+      expect(installed.rules).toContainEqual({
+        keybinding: KEYS.CtrlCmd | F12,
+        command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+        when,
+      });
+      expect(
+        installed.rules.some(
+          (rule: MonacoApi.editor.IKeybindingRule): boolean =>
+            rule.command === STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
+        ),
+      ).toBe(false);
+    }
+  });
+
   it('theCommands_handTheFocusedEditorOn_withTheirMode_andNothingWithoutFocus', () => {
     const idle: FakeEditor = fakeEditor(false);
     const focused: FakeEditor = fakeEditor(true);
@@ -228,10 +248,14 @@ describe('installNavigationCommands (#1014)', () => {
 
     installed.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();
     installed.commands.get(STUDIO_FIND_REFERENCES_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_IMPLEMENTATION_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND)?.();
 
     expect(installed.navigated).toEqual([
       { editor: focused.editor, mode: 'definition' },
       { editor: focused.editor, mode: 'references' },
+      { editor: focused.editor, mode: 'implementation' },
+      { editor: focused.editor, mode: 'typeDefinition' },
     ]);
     const unfocused: Installed = install(false, [idle.editor]);
     unfocused.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();

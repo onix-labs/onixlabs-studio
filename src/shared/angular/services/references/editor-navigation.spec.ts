@@ -125,6 +125,9 @@ describe('EditorNavigation (#1014)', () => {
     servesDocument: Mock<LspFeatures['servesDocument']>;
     definitions: Mock<LspFeatures['definitions']>;
     references: Mock<LspFeatures['references']>;
+    servesNavigation: Mock<LspFeatures['servesNavigation']>;
+    implementations: Mock<LspFeatures['implementations']>;
+    typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
   let shown: ReferenceList[];
@@ -157,6 +160,13 @@ describe('EditorNavigation (#1014)', () => {
       ),
       references: vi.fn<LspFeatures['references']>((): Promise<readonly ReferenceItem[] | null> =>
         Promise.resolve(null),
+      ),
+      servesNavigation: vi.fn<LspFeatures['servesNavigation']>((): boolean => false),
+      implementations: vi.fn<LspFeatures['implementations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
     };
     opener = vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -265,6 +275,75 @@ describe('EditorNavigation (#1014)', () => {
       lsp.servesDocument.mockReturnValue(false);
       monaco.languages.registerReferenceProvider('typescript', { provideReferences: () => [] });
       expect(navigation.offersReferences(fake.editor)).toBe(true);
+    });
+  });
+
+  describe('go to implementation and type definition (#1142)', () => {
+    it('areOffered_onlyWhereTheServerAnswersThem', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: unknown, kind: string): boolean => kind === 'implementation',
+      );
+
+      expect(navigation.offersImplementations(fake.editor)).toBe(true);
+      expect(navigation.offersTypeDefinitions(fake.editor)).toBe(false);
+      expect(lsp.servesNavigation).toHaveBeenCalledWith(fake.model, 'typeDefinition');
+    });
+
+    it('severalImplementations_areListedAsImplementations_inThePanel', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.implementations.mockResolvedValue([
+        { path: '/root/app.ts', range: span(2, 3, 8) },
+        { path: '/root/app.ts', range: span(4, 15, 20) },
+      ]);
+
+      await navigation.goToImplementation(fake.editor);
+
+      expect(lsp.implementations).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([
+        {
+          kind: 'implementations',
+          symbol: 'greet',
+          status: 'done',
+          items: [
+            { path: '/root/app.ts', range: span(2, 3, 8), preview: '  greet(): void {}' },
+            { path: '/root/app.ts', range: span(4, 15, 20), preview: 'new Greeter().greet();' },
+          ],
+        },
+      ]);
+    });
+
+    it('oneTypeDefinition_goesStraightThere_listingNothing', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.typeDefinitions.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToTypeDefinition(fake.editor);
+
+      expect(lsp.typeDefinitions).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([]);
+      expect(fake.calls).toContain('focus');
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('noAnswer_goesNowhere', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.goToImplementation(fake.editor);
+      await navigation.goToTypeDefinition(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).toEqual([]);
+      expect(opener).not.toHaveBeenCalled();
     });
   });
 

@@ -2,6 +2,7 @@ import {
   codeActionSupportOf,
   executeCommandsOf,
   formattingSupportOf,
+  navigationSupportOf,
   renameSupportOf,
   semanticLegendOf,
 } from './lsp-capabilities';
@@ -45,6 +46,25 @@ describe('formattingSupportOf (#1141)', () => {
         },
       }).onTypeTriggers,
     ).toEqual(['}']);
+  });
+});
+
+describe('navigationSupportOf (#1142)', () => {
+  it('readsImplementationAndTypeDefinition_asBooleansOrOptions', () => {
+    expect(
+      navigationSupportOf({
+        implementationProvider: true,
+        typeDefinitionProvider: { workDoneProgress: true },
+      }),
+    ).toEqual({ implementation: true, typeDefinition: true });
+    expect(navigationSupportOf({ implementationProvider: false })).toEqual({
+      implementation: false,
+      typeDefinition: false,
+    });
+    expect(navigationSupportOf(undefined)).toEqual({
+      implementation: false,
+      typeDefinition: false,
+    });
   });
 });
 

@@ -109,6 +109,12 @@ export interface LspDocumentRef {
   readonly formatting?: LspFormattingSupport;
 
   /**
+   * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
+   * none.
+   */
+  readonly navigation?: LspNavigationSupport;
+
+  /**
    * Gets the document's diagnostics exactly as the server sent them, codes and data included, which a
    * code-action request sends back for the span it asks about (#1016). Undefined is taken as none.
    */
@@ -223,6 +229,26 @@ export type LspCommandOutcome =
  * cannot say beforehand whether a symbol can be; `prepare` — it says first (`textDocument/prepareRename`).
  */
 export type LspRenameSupport = 'none' | 'rename' | 'prepare';
+
+/**
+ * Describes which navigations beyond Go to Definition a server answers (#1142).
+ */
+export interface LspNavigationSupport {
+  /**
+   * Gets whether it answers Go to Implementation (`textDocument/implementation`).
+   */
+  readonly implementation: boolean;
+
+  /**
+   * Gets whether it answers Go to Type Definition (`textDocument/typeDefinition`).
+   */
+  readonly typeDefinition: boolean;
+}
+
+/**
+ * Names a navigation a server may answer beyond Go to Definition (#1142).
+ */
+export type LspNavigationKind = keyof LspNavigationSupport;
 
 /**
  * Describes how a server formats code (#1141).
@@ -1565,18 +1591,77 @@ export class LspFeatures {
    * @returns Returns the definitions, in the server's order, or null when no server serves the
    * document (an empty list is a server answering that it knows of none).
    */
-  public async definitions(
+  public definitions(
     model: MonacoApi.editor.ITextModel,
     position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.locationsByPath(model, position, 'textDocument/definition');
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers a navigation beyond Go to
+   * Definition (#1142), so the command is offered only where something will answer.
+   * @param model The editor model.
+   * @param kind The navigation.
+   * @returns Returns true when the serving server answers it.
+   */
+  public servesNavigation(model: MonacoApi.editor.ITextModel, kind: LspNavigationKind): boolean {
+    return this.resolve(model)?.navigation?.[kind] === true;
+  }
+
+  /**
+   * Asks the language server that serves a document where the symbol at a position is implemented —
+   * for an interface or abstract member, the classes that implement it — for Go to Implementation
+   * (#1142). Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the implementations, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public implementations(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'implementation')
+      ? this.locationsByPath(model, position, 'textDocument/implementation')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks the language server that serves a document where the type of the symbol at a position is
+   * declared — from a variable or parameter to its type — for Go to Type Definition (#1142).
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the type definitions, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public typeDefinitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'typeDefinition')
+      ? this.locationsByPath(model, position, 'textDocument/typeDefinition')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks the serving language server a location request and answers its places by path.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param method The location request.
+   * @returns Returns the places, in the server's order, or null when no server serves the document (an
+   * empty list is a server answering that it knows of none).
+   */
+  private async locationsByPath(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    method:
+      'textDocument/definition' | 'textDocument/implementation' | 'textDocument/typeDefinition',
   ): Promise<readonly LspDefinition[] | null> {
     if (this.resolve(model) === null) {
       return null;
     }
-    const result: unknown = await this.request(
-      model,
-      'textDocument/definition',
-      position as MonacoApi.Position,
-    );
+    const result: unknown = await this.request(model, method, position as MonacoApi.Position);
     if (result === null || result === undefined) {
       return [];
     }

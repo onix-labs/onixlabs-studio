@@ -200,13 +200,7 @@ export function headingFor(list: ReferenceList | null): ReferencesHeading {
   const count: number = list.items.length;
   const files: number = new Set<string>(list.items.map((item: ReferenceItem): string => item.path))
     .size;
-  const noun: string = references
-    ? count === 1
-      ? 'reference'
-      : 'references'
-    : count === 1
-      ? 'definition'
-      : 'definitions';
+  const noun: string = `${list.kind === 'references' ? 'reference' : list.kind === 'implementations' ? 'implementation' : 'definition'}${count === 1 ? '' : 's'}`;
   const tail: string = count === 0 ? '' : ` in ${files} ${files === 1 ? 'file' : 'files'}`;
   if (list.symbol.length === 0) {
     return { lead: `${count} ${noun}${tail}`, symbol: '', tail: '' };

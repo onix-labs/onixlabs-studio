@@ -1,5 +1,10 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
-import type { LspCodeActionSupport, LspFormattingSupport, LspRenameSupport } from './lsp-features';
+import type {
+  LspCodeActionSupport,
+  LspFormattingSupport,
+  LspNavigationSupport,
+  LspRenameSupport,
+} from './lsp-features';
 
 /**
  * Extracts the semantic token legend from a server's initialize capabilities, or null when the server
@@ -101,6 +106,22 @@ export function codeActionSupportOf(capabilities: unknown): LspCodeActionSupport
  */
 function isOffered(provider: unknown): boolean {
   return provider === true || (typeof provider === 'object' && provider !== null);
+}
+
+/**
+ * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
+ * the code that implements it (`implementationProvider`), and to the declaration of its type
+ * (`typeDefinitionProvider`).
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns which it answers.
+ */
+export function navigationSupportOf(capabilities: unknown): LspNavigationSupport {
+  const caps: { implementationProvider?: unknown; typeDefinitionProvider?: unknown } | undefined =
+    capabilities as typeof caps;
+  return {
+    implementation: isOffered(caps?.implementationProvider),
+    typeDefinition: isOffered(caps?.typeDefinitionProvider),
+  };
 }
 
 /**

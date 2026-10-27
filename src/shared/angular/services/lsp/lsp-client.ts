@@ -23,6 +23,7 @@ import {
   LspDocumentRef,
   LspFeatures,
   LspFormattingSupport,
+  LspNavigationSupport,
   LspRenameSupport,
   LspSessionSupport,
 } from './lsp-features';
@@ -47,6 +48,7 @@ import {
   codeActionSupportOf,
   executeCommandsOf,
   formattingSupportOf,
+  navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
   semanticLegendOf,
@@ -454,6 +456,14 @@ export class LspClient implements OnDestroy {
   private readonly codeActionSupport: Map<string, LspCodeActionSupport> = new Map<
     string,
     LspCodeActionSupport
+  >();
+
+  /**
+   * Holds which navigations beyond Go to Definition each started session's server answers (#1142).
+   */
+  private readonly navigationSupport: Map<string, LspNavigationSupport> = new Map<
+    string,
+    LspNavigationSupport
   >();
 
   /**
@@ -932,6 +942,7 @@ export class LspClient implements OnDestroy {
       codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
       commands: this.executeCommands.get(sessionId) ?? [],
       formatting: this.formattingSupport.get(sessionId),
+      navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
@@ -1340,6 +1351,7 @@ export class LspClient implements OnDestroy {
     this.renameSupport.clear();
     this.codeActionSupport.clear();
     this.formattingSupport.clear();
+    this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
     }
@@ -1606,6 +1618,7 @@ export class LspClient implements OnDestroy {
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
+          this.navigationSupport.set(sessionId, navigationSupportOf(result.capabilities));
           this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
           const assist: LspSessionSupport = {
             completion: completionSupportOf(result.capabilities),

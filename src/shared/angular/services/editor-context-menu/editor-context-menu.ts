@@ -21,6 +21,8 @@ const COMMAND_SOURCE: string = 'app-editor-context-menu';
  */
 export type EditorContextMenuCommand =
   | 'definition'
+  | 'typeDefinition'
+  | 'implementation'
   | 'references'
   | 'symbol'
   | 'line'
@@ -82,6 +84,9 @@ interface ShortcutHints {
  */
 const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   definition: { mac: 'F12', windows: 'F12' },
+  // No chord: neither Visual Studio nor VS Code gives Go to Type Definition one (#1142).
+  typeDefinition: { mac: '', windows: '' },
+  implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
@@ -287,6 +292,13 @@ export class EditorContextMenu {
     if (this.navigation.offersDefinitions(editor)) {
       navigation.push(this.item('definition', 'Go to Definition'));
     }
+    // Offered only where the language server answers them (#1142).
+    if (this.navigation.offersTypeDefinitions(editor)) {
+      navigation.push(this.item('typeDefinition', 'Go to Type Definition'));
+    }
+    if (this.navigation.offersImplementations(editor)) {
+      navigation.push(this.item('implementation', 'Go to Implementation'));
+    }
     // Shown where the language can answer, but inert where no References panel would list the
     // answer — as Find is where no find panel answers.
     if (this.navigation.offersReferences(editor)) {
@@ -342,6 +354,12 @@ export class EditorContextMenu {
     switch (command as EditorContextMenuCommand) {
       case 'definition':
         void this.goToDefinition(editor);
+        return;
+      case 'typeDefinition':
+        void this.navigation.goToTypeDefinition(editor);
+        return;
+      case 'implementation':
+        void this.navigation.goToImplementation(editor);
         return;
       case 'references':
         void this.navigation.findReferences(editor);
@@ -446,7 +464,10 @@ export class EditorContextMenu {
         : platform === 'linux'
           ? (hints.linux ?? hints.windows)
           : hints.windows;
-    return disabled ? { id: command, label, shortcut, disabled } : { id: command, label, shortcut };
+    // A command with no chord shows none, rather than an empty hint.
+    const item: MenuItem =
+      shortcut === '' ? { id: command, label } : { id: command, label, shortcut };
+    return disabled ? { ...item, disabled } : item;
   }
 
   /**
