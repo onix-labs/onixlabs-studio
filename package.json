@@ -54,7 +54,7 @@
   "dependencies": {
     "@defasm/core": "^2.4.5",
     "@vscode/ripgrep": "^1.18.0",
-    "ai": "^7.0.142",
+    "ai": "^7.0.152",
     "node-pty": "^1.1.0",
     "systeminformation": "^5.33.16",
     "vscode-jsonrpc": "^10.0.0",
