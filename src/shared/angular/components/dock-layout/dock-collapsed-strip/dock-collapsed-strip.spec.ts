@@ -98,11 +98,12 @@ describe('DockCollapsedStrip', () => {
     expect(flyout?.style.blockSize).toBe('88px');
   });
 
-  it('render_whenThereIsRoomForThePeek_leavesItAtItsFullSize', () => {
+  it('render_whenThereIsRoomForThePeek_opensItAtHalfTheRoom', () => {
+    // 770px above a bottom gutter, less the gaps at each end: 758px of room, half of it 379px.
     renderCollapsed('output', 'bottom');
     stubGeometry(
-      { top: 370, bottom: 400, left: 0, right: 500 },
-      { top: 0, bottom: 400, left: 0, right: 500 },
+      { top: 770, bottom: 800, left: 0, right: 500 },
+      { top: 0, bottom: 800, left: 0, right: 500 },
     );
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
@@ -112,7 +113,43 @@ describe('DockCollapsedStrip', () => {
     const flyout: HTMLElement | null = element.querySelector<HTMLElement>(
       '.dock-collapsed-strip__flyout',
     );
-    expect(flyout?.style.blockSize).toBe('230px');
+    expect(flyout?.style.blockSize).toBe('379px');
+  });
+
+  it('render_aSideGuttersPeek_opensAtHalfTheWidthBesideIt', () => {
+    // A right-hand gutter with 912px to its left: 900px of room after the gaps, so 450px wide.
+    renderCollapsed('files', 'right');
+    stubGeometry(
+      { top: 0, bottom: 600, left: 912, right: 940 },
+      { top: 0, bottom: 600, left: 0, right: 940 },
+    );
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('.dock-collapsed-strip__tab')?.click();
+    fixture.detectChanges();
+
+    const flyout: HTMLElement | null = element.querySelector<HTMLElement>(
+      '.dock-collapsed-strip__flyout',
+    );
+    expect(flyout?.style.inlineSize).toBe('450px');
+  });
+
+  it('render_aPeekWithLittleRoom_neverOpensBelowTheResizeFloor_unlessTheRoomIsSmaller', () => {
+    // 300px of room halves to 150px, under the 180px floor, so it opens at the floor.
+    renderCollapsed('output', 'bottom');
+    stubGeometry(
+      { top: 312, bottom: 340, left: 0, right: 500 },
+      { top: 0, bottom: 340, left: 0, right: 500 },
+    );
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('.dock-collapsed-strip__tab')?.click();
+    fixture.detectChanges();
+
+    const flyout: HTMLElement | null = element.querySelector<HTMLElement>(
+      '.dock-collapsed-strip__flyout',
+    );
+    expect(flyout?.style.blockSize).toBe('180px');
   });
 
   /**
