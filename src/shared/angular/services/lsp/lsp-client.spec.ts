@@ -15,7 +15,7 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspClient, WorkspaceSymbolMatch } from './lsp-client';
+import { LspClient, testLines, WorkspaceSymbolMatch } from './lsp-client';
 import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
@@ -484,6 +484,133 @@ describe('LspClient', () => {
 
       expect(raised).toHaveLength(1);
       expect(raised[0]).toMatchObject({ severity: 'warning', title: 'MSBuild is old.' });
+    });
+  });
+
+  describe('running tests (#1150)', () => {
+    let raised: NotificationRequest[];
+    let lines: string[];
+    let shown: string[];
+
+    beforeEach(() => {
+      raised = [];
+      lines = [];
+      shown = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({
+                appendLine: (line: string): void => void lines.push(line),
+                clear: (): void => void (lines = []),
+              }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    it('aRunsLog_streamsIntoTheTestsChannel_andAFailureIsRaised_withShowLog', async () => {
+      let finish: (value: unknown) => void = (): void => undefined;
+      lsp.requestAnswers['textDocument/runTests'] = new Promise((resolve) => {
+        finish = resolve;
+      });
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      client.syncDocument({
+        documentId: 't',
+        path: '/root/T.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+      const lens: unknown = {
+        textDocument: { uri: 'file:///root/T.cs' },
+        range: { start: { line: 16, character: 16 }, end: { line: 16, character: 28 } },
+        attachDebugger: false,
+      };
+
+      features.resolver?.('/root/T.cs')?.runTests?.(lens);
+      await flush();
+      const request: { params: unknown } | undefined = lsp.requests.at(-1);
+      const token: unknown = (request?.params as { partialResultToken?: unknown })
+        ?.partialResultToken;
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: { stage: 'Building project...', message: 'Build succeeded.' },
+      });
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: {
+          stage: 'Running tests...',
+          message:
+            '[Failed] Fixture.Tests.PersonTests.Create_Fails\n    Message:\n        Assert.Equal() Failure: Strings differ',
+          progress: { testsPassed: 0, testsFailed: 1, testsSkipped: 0, totalTests: 1 },
+        },
+      });
+      finish([]);
+      await flush();
+
+      expect(shown).toEqual(['lsp-tests']);
+      expect(request?.params).toMatchObject({ ...(lens as object), attachDebugger: false });
+      expect(lines[0]).toBe('Build succeeded.');
+      expect(lines[1]).toContain('[Failed] Fixture.Tests.PersonTests.Create_Fails');
+      expect(raised).toEqual([
+        expect.objectContaining({
+          severity: 'error',
+          title: 'Create_Fails failed',
+          detail: 'Assert.Equal() Failure: Strings differ',
+        }),
+      ]);
+      raised[0]?.actions?.[0]?.run();
+      expect(shown).toEqual(['lsp-tests', 'lsp-tests']);
+    });
+
+    it('testLines_placesEachReportedTestOnItsLensesLine', () => {
+      const source: readonly string[] = [
+        'public class PersonTests',
+        '{',
+        '    public void Create_KeepsTheName()',
+        '    public void Create_Fails()',
+        '    public void Create_Skips()',
+      ];
+      const lens: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({
+        range: { start: { line, character: from }, end: { line, character: to } },
+        command: { command: 'dotnet.test.run' },
+      });
+
+      const placed: Map<number, string> = testLines(
+        [
+          lens(0, 13, 24),
+          lens(2, 16, 35),
+          lens(3, 16, 28),
+          lens(4, 16, 28),
+          { range: { start: { line: 2, character: 16 }, end: { line: 2, character: 35 } } },
+        ],
+        (line: number): string => source[line - 1] ?? '',
+        new Map([
+          ['Fixture.Tests.PersonTests.Create_KeepsTheName', 'passed'],
+          ['Fixture.Tests.PersonTests.Create_Fails', 'failed'],
+          ['Fixture.Tests.PersonTests.Create_Skips', 'skipped'],
+        ]),
+      );
+
+      expect([...placed]).toEqual([
+        [3, 'passed'],
+        [4, 'failed'],
+      ]);
     });
   });
 

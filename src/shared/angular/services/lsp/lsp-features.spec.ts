@@ -276,6 +276,7 @@ describe('LspFeatures', () => {
   let autoInsertHandler: ((editor: unknown, ch: string) => void) | undefined;
   let autoInsertTriggers: readonly string[] | undefined;
   let codeLensSupport: LspCodeLensSupport | undefined;
+  let testsRun: unknown[] | undefined;
   let completionSupport: LspCompletionSupport | null | undefined;
   let signatureSupport: LspSignatureHelpSupport | null | undefined;
   let openModels: unknown[];
@@ -322,6 +323,7 @@ describe('LspFeatures', () => {
     structureSupport = undefined;
     autoInsertTriggers = undefined;
     codeLensSupport = undefined;
+    testsRun = undefined;
     captured.codeLens = undefined;
     captured.structure = undefined;
     captured.inlayHints = undefined;
@@ -403,6 +405,9 @@ describe('LspFeatures', () => {
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
             ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
             ...(codeLensSupport === undefined ? {} : { codeLens: codeLensSupport }),
+            ...(testsRun === undefined
+              ? {}
+              : { runTests: (lens: unknown): void => void testsRun?.push(lens) }),
           }
         : null,
     );
@@ -1167,9 +1172,9 @@ describe('LspFeatures', () => {
 
     it('aCommandTheServerRuns_isRunThere_andAnyOtherShowsItsTitleAlone', async () => {
       codeLensSupport = { resolve: false };
-      serverCommands = ['dotnet.test.run'];
+      serverCommands = ['dotnet.restore.project'];
       responses['textDocument/codeLens'] = [
-        { ...(LENS as object), command: { title: 'Run test', command: 'dotnet.test.run' } },
+        { ...(LENS as object), command: { title: 'Restore', command: 'dotnet.restore.project' } },
         { ...(LENS as object), command: { title: 'Debug test', command: 'unknown.debug' } },
       ];
       const features: LspFeatures = await build();
@@ -1186,11 +1191,75 @@ describe('LspFeatures', () => {
       ).toEqual([
         {
           id: 'studio.lsp.executeCommand',
-          title: 'Run test',
-          arguments: ['/root::typescript', { title: 'Run test', command: 'dotnet.test.run' }],
+          title: 'Restore',
+          arguments: ['/root::typescript', { title: 'Restore', command: 'dotnet.restore.project' }],
         },
         { id: '', title: 'Debug test' },
       ]);
+    });
+
+    it('aRunTestLens_runsItsTestsOnTheDocumentsSession_andADebugLensIsNotOfferedYet (#1150)', async () => {
+      codeLensSupport = { resolve: true };
+      testsRun = [];
+      const runArgument: unknown = {
+        textDocument: { uri: 'file:///root/app.ts' },
+        range: { start: { line: 8, character: 16 }, end: { line: 8, character: 35 } },
+        attachDebugger: false,
+        runSettingsPath: null,
+      };
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [runArgument] },
+        },
+        {
+          ...(LENS as object),
+          command: {
+            title: 'Debug Test',
+            command: 'dotnet.test.run',
+            arguments: [{ ...(runArgument as object), attachDebugger: true }],
+          },
+        },
+      ];
+      const model: unknown = { ...(owned as object), uri: { toString: (): string => MODEL_URI } };
+      openModels.push(model);
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+
+      const list: { lenses: unknown[] } | undefined = await captured.codeLens
+        ?.get('csharp')
+        ?.provideCodeLenses(model);
+      const lenses: { command?: { id: string; title: string; arguments?: unknown[] } }[] =
+        list?.lenses as { command?: { id: string; title: string; arguments?: unknown[] } }[];
+
+      expect(lenses.map((lens) => lens.command?.title)).toEqual(['Run Test']);
+      expect(lenses[0]?.command?.id).toBe('studio.lsp.runTests');
+      captured.commands?.get('studio.lsp.runTests')?.(
+        undefined,
+        ...(lenses[0]?.command?.arguments ?? []),
+      );
+      expect(testsRun).toEqual([runArgument]);
+    });
+
+    it('aRunTestLens_whereNothingRunsTests_showsItsTitleAlone (#1150)', async () => {
+      codeLensSupport = { resolve: false };
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: { title: 'Run Test', command: 'dotnet.test.run', arguments: [{}] },
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+
+      const list: { lenses: unknown[] } | undefined = await captured.codeLens
+        ?.get('csharp')
+        ?.provideCodeLenses(owned);
+
+      expect((list?.lenses[0] as { command?: unknown }).command).toEqual({
+        id: '',
+        title: 'Run Test',
+      });
     });
 
     it('askNothing_forADocumentWhoseServerShowsNone', async () => {

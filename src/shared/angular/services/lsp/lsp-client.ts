@@ -17,7 +17,8 @@ import {
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
-import { Output } from '../output/output';
+import { Output, OutputChannel } from '../output/output';
+import { Icon } from '@shared/angular/icons/icon';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -183,6 +184,100 @@ function toWorkspaceSymbols(result: unknown): WorkspaceSymbolMatch[] {
     });
   }
   return symbols;
+}
+
+/**
+ * The Output channel a test run's log streams into (#1150), shown in the Logs panel as "Tests".
+ */
+const TESTS_CHANNEL: string = 'lsp-tests';
+
+/**
+ * The request that asks Roslyn to build, find and run the tests a lens names (#1150).
+ */
+const RUN_TESTS_METHOD: string = 'textDocument/runTests';
+
+/**
+ * Matches the line Roslyn reports a test's outcome with — `[Failed] Namespace.Class.Method` —
+ * capturing the outcome and the test's fully qualified name.
+ */
+const TEST_OUTCOME: RegExp = /^\[(Passed|Failed|Skipped)\] (\S+)/;
+
+/**
+ * A test's outcome.
+ */
+export type TestOutcome = 'passed' | 'failed' | 'skipped';
+
+/**
+ * A test run under way (#1150).
+ */
+interface TestRun {
+  /**
+   * Gets the session running it.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the channel its log streams into.
+   */
+  readonly channel: OutputChannel;
+
+  /**
+   * Gets each test's outcome, by fully qualified name.
+   */
+  readonly outcomes: Map<string, TestOutcome>;
+
+  /**
+   * Gets the failures, in the order reported, each with the first line of what went wrong.
+   */
+  readonly failures: { readonly name: string; readonly summary: string }[];
+}
+
+/**
+ * Finds the line of each test a run reported (#1150): a document's test lenses (`dotnet.test.run`)
+ * each sit on a test's name — the text their range covers — so a test reported by its fully qualified
+ * name is placed on its lens's line. Skipped tests are left unmarked.
+ * @param lenses The document's code lenses, untrusted.
+ * @param lineAt Reads a one-based line of the document.
+ * @param outcomes Each test's outcome, by fully qualified name.
+ * @returns Returns each test's outcome, by one-based line.
+ */
+export function testLines(
+  lenses: unknown,
+  lineAt: (line: number) => string,
+  outcomes: ReadonlyMap<string, TestOutcome>,
+): Map<number, TestOutcome> {
+  const byName: Map<string, TestOutcome> = new Map<string, TestOutcome>();
+  for (const [name, outcome] of outcomes) {
+    byName.set(testName(name), outcome);
+  }
+  const lines: Map<number, TestOutcome> = new Map<number, TestOutcome>();
+  for (const lens of Array.isArray(lenses)
+    ? (lenses as readonly { range?: LspRange; command?: { command?: unknown } }[])
+    : []) {
+    if (lens?.command?.command !== 'dotnet.test.run' || lens.range === undefined) {
+      continue;
+    }
+    const { start, end } = lens.range;
+    if (start.line !== end.line) {
+      continue;
+    }
+    const outcome: TestOutcome | undefined = byName.get(
+      lineAt(start.line + 1).slice(start.character, end.character),
+    );
+    if (outcome !== undefined && outcome !== 'skipped') {
+      lines.set(start.line + 1, outcome);
+    }
+  }
+  return lines;
+}
+
+/**
+ * Reads a test's own name from its fully qualified name: `Namespace.Class.Method(args)` → `Method`.
+ * @param name The fully qualified name.
+ * @returns Returns the method's name.
+ */
+function testName(name: string): string {
+  return name.replace(/\(.*$/, '').split('.').pop() ?? name;
 }
 
 /**
@@ -554,6 +649,23 @@ export class LspClient implements OnDestroy {
    * Holds the notification store a server's errors and warnings are raised in (#1134).
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the test runs under way (#1150), keyed by their progress token.
+   */
+  private readonly testRuns: Map<string, TestRun> = new Map<string, TestRun>();
+
+  /**
+   * Counts the test runs Studio has asked for, naming each one's progress token.
+   */
+  private testRunCount: number = 0;
+
+  /**
+   * Holds each document's test markers (#1150), keyed by its Monaco model URI: the decorations shown,
+   * and each test's last outcome by line.
+   */
+  private readonly testMarkers: Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }> =
+    new Map<string, { ids: string[]; outcomes: Map<number, TestOutcome> }>();
 
   /**
    * Counts the restores Studio has asked for, naming each one's progress token.
@@ -1197,6 +1309,7 @@ export class LspClient implements OnDestroy {
       structure: this.structureSupport.get(sessionId),
       autoInsertTriggers: this.autoInsertTriggers.get(sessionId),
       codeLens: this.codeLensSupport.get(sessionId),
+      runTests: (lens: unknown): void => void this.runTests(sessionId, tracked, lens),
       navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
@@ -2220,6 +2333,14 @@ export class LspClient implements OnDestroy {
    * @param params The notification parameters (`token` and `value`).
    */
   private onProgress(sessionId: string, params: unknown): void {
+    // A test run's own progress: its log, its counts, each test's outcome (#1150).
+    const run: TestRun | undefined = this.testRuns.get(
+      String((params as { token?: unknown } | null)?.token),
+    );
+    if (run !== undefined) {
+      this.onTestProgress(run, (params as { value?: unknown }).value);
+      return;
+    }
     const candidate: {
       token?: unknown;
       value?: { kind?: unknown; title?: unknown; message?: unknown; percentage?: unknown };
@@ -2543,6 +2664,171 @@ export class LspClient implements OnDestroy {
       actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
       key: `lsp-restore:${sessionId}`,
     });
+  }
+
+  /**
+   * Runs the tests a Run Test lens names (#1150): the server builds the project, finds the tests and
+   * runs them, reporting as it goes. Its log streams into the Tests channel of the Logs panel, brought
+   * forward; its counts into the server's status row; each test's outcome, once the run ends, into a
+   * marker on the test's line; and a run with failures raises a toast with the log a click away.
+   * @param sessionId The session serving the lens's document.
+   * @param tracked The lens's document.
+   * @param lens The lens's argument, as the server gave it: the document, the range of the test or
+   * class, and whether to attach a debugger.
+   * @returns Returns a promise that resolves once the run has ended.
+   */
+  private async runTests(
+    sessionId: string,
+    tracked: TrackedDocument,
+    lens: unknown,
+  ): Promise<void> {
+    const argument: { range?: unknown } | null = (lens as { range?: unknown } | null) ?? null;
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (this.bridge === undefined || argument?.range === undefined || serverId === undefined) {
+      return;
+    }
+    const channel: OutputChannel = this.output.channel(TESTS_CHANNEL, 'Tests');
+    channel.clear();
+    this.output.show(TESTS_CHANNEL);
+    const token: string = `studio-tests-${++this.testRunCount}`;
+    const run: TestRun = {
+      sessionId,
+      channel,
+      outcomes: new Map<string, TestOutcome>(),
+      failures: [],
+    };
+    this.testRuns.set(token, run);
+    this.status.setProgress(sessionId, 'Tests');
+    this.log.info('LspClient', 'Running tests', sessionId);
+    try {
+      await this.bridge.invoke(LspChannel.Request, sessionId, RUN_TESTS_METHOD, {
+        ...argument,
+        attachDebugger: false,
+        partialResultToken: token,
+      });
+    } catch (error: unknown) {
+      channel.appendLine(
+        `The tests could not be run: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      this.testRuns.delete(token);
+      this.status.setProgress(sessionId, null);
+    }
+    await this.markTestOutcomes(sessionId, tracked, run.outcomes);
+    if (run.failures.length > 0) {
+      const [first] = run.failures;
+      this.notifications.notify({
+        severity: 'error',
+        title:
+          run.failures.length === 1
+            ? `${testName(first.name)} failed`
+            : `${run.failures.length} tests failed`,
+        detail: first.summary,
+        actions: [{ label: 'Show log', run: (): void => this.output.show(TESTS_CHANNEL) }],
+        key: `lsp-tests:${sessionId}`,
+      });
+    }
+  }
+
+  /**
+   * Takes a test run's progress: its log lines, its counts, and each test's outcome as it is reported.
+   * @param run The run.
+   * @param value The progress — a report, or several.
+   */
+  private onTestProgress(run: TestRun, value: unknown): void {
+    for (const report of (Array.isArray(value) ? value : [value]) as readonly {
+      stage?: unknown;
+      message?: unknown;
+      progress?: { testsPassed?: unknown; testsFailed?: unknown; totalTests?: unknown };
+    }[]) {
+      if (typeof report?.message === 'string' && report.message.length > 0) {
+        run.channel.appendLine(report.message);
+        const outcome: RegExpExecArray | null = TEST_OUTCOME.exec(report.message);
+        if (outcome !== null) {
+          const result: TestOutcome = outcome[1].toLowerCase() as TestOutcome;
+          run.outcomes.set(outcome[2], result);
+          if (result === 'failed') {
+            const detail: string | undefined = report.message
+              .split('\n')
+              .slice(1)
+              .map((line: string): string => line.trim())
+              .find((line: string): boolean => line.length > 0 && line !== 'Message:');
+            run.failures.push({ name: outcome[2], summary: detail ?? '' });
+          }
+        }
+      }
+      const counts:
+        { testsPassed?: unknown; testsFailed?: unknown; totalTests?: unknown } | undefined =
+        report?.progress;
+      if (typeof counts?.totalTests === 'number') {
+        this.status.setProgress(
+          run.sessionId,
+          `Tests — ${String(counts.testsPassed)} passed, ${String(counts.testsFailed)} failed of ${counts.totalTests}`,
+        );
+      } else if (typeof report?.stage === 'string') {
+        this.status.setProgress(run.sessionId, `Tests — ${report.stage.replace(/\.+$/, '')}`);
+      }
+    }
+  }
+
+  /**
+   * Marks each test's line with its outcome (#1150): the document's test lenses say where each test
+   * is — the name their range covers — and a test the run reported is marked on its lens's line, in
+   * the gutter's right lane. A test the run did not report keeps the mark it had.
+   * @param sessionId The session serving the document.
+   * @param tracked The document.
+   * @param outcomes Each test's outcome, by fully qualified name.
+   * @returns Returns a promise that resolves once the marks are drawn.
+   */
+  private async markTestOutcomes(
+    sessionId: string,
+    tracked: TrackedDocument,
+    outcomes: ReadonlyMap<string, TestOutcome>,
+  ): Promise<void> {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
+    const model: MonacoApi.editor.ITextModel | null =
+      monaco === undefined || modelUri === undefined
+        ? null
+        : monaco.editor.getModel(monaco.Uri.parse(modelUri));
+    if (monaco === undefined || model === null || modelUri === undefined || outcomes.size === 0) {
+      return;
+    }
+    let lenses: unknown;
+    try {
+      lenses = await this.bridge?.invoke(LspChannel.Request, sessionId, 'textDocument/codeLens', {
+        textDocument: { uri: tracked.uri },
+      });
+    } catch {
+      return;
+    }
+    const marks: { ids: string[]; outcomes: Map<number, TestOutcome> } = this.testMarkers.get(
+      modelUri,
+    ) ?? { ids: [], outcomes: new Map<number, TestOutcome>() };
+    for (const [line, outcome] of testLines(
+      lenses,
+      (line: number): string => (line <= model.getLineCount() ? model.getLineContent(line) : ''),
+      outcomes,
+    )) {
+      marks.outcomes.set(line, outcome);
+    }
+    marks.ids = model.deltaDecorations(
+      marks.ids,
+      [...marks.outcomes].map(
+        ([line, outcome]: [number, TestOutcome]): MonacoApi.editor.IModelDeltaDecoration => ({
+          range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+          options: {
+            glyphMarginClassName: `${(outcome === 'passed' ? Icon.SUCCESS_FILL : Icon.ERROR_FILL).classList} test-result-glyph test-result-glyph--${outcome}`,
+            glyphMarginHoverMessage: {
+              value: outcome === 'passed' ? 'Passed' : 'Failed — see the Tests log',
+            },
+            glyphMargin: { position: monaco.editor.GlyphMarginLane.Right },
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          },
+        }),
+      ),
+    );
+    this.testMarkers.set(modelUri, marks);
   }
 
   /**
