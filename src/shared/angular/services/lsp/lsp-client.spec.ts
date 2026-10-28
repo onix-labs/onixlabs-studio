@@ -66,6 +66,9 @@ class FakeLsp implements Bridge {
   public readonly running: Set<string> = new Set<string>();
   public startResult: LspStartResult = { success: true };
   public diagnosticReport: unknown = null;
+  /** The requests the client sent its servers, and the answers given for chosen methods (#1143). */
+  public readonly requests: { sessionId: string; method: string; params: unknown }[] = [];
+  public readonly requestAnswers: Record<string, unknown> = {};
   private notificationListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
   private applyEditListener: ((...args: unknown[]) => void) | null = null;
@@ -92,6 +95,14 @@ class FakeLsp implements Bridge {
         return Promise.resolve(this.startResult as T);
       }
       case LspChannel.Request as string:
+        this.requests.push({
+          sessionId: args[0] as string,
+          method: args[1] as string,
+          params: args[2],
+        });
+        if (typeof args[1] === 'string' && args[1] in this.requestAnswers) {
+          return Promise.resolve(this.requestAnswers[args[1]] as T);
+        }
         return Promise.resolve(
           (args[1] === 'textDocument/diagnostic' ? this.diagnosticReport : null) as T,
         );
@@ -107,6 +118,7 @@ class FakeLsp implements Bridge {
           serverPaths: {},
           serverArgs: {},
           languageServers: {},
+          serverSettings: {},
         } as LspSettingsData as T);
       case LspChannel.SetSettings as string:
         return Promise.resolve(args[0] as T);
@@ -284,6 +296,7 @@ describe('LspClient', () => {
   let offeredLanguages: string[];
   let installedServers: WritableSignal<readonly LspServerSummary[]>;
   let catalogueLoaded: WritableSignal<boolean>;
+  let serverSettings: Record<string, Record<string, unknown>>;
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -317,6 +330,8 @@ describe('LspClient', () => {
             catalogue: (): readonly LspServerSummary[] => installedServers(),
             catalogueLoaded: (): boolean => catalogueLoaded(),
             displayNameOf: (): string | null => null,
+            serverSetting: (serverId: string, section: string): unknown =>
+              serverSettings[serverId]?.[section],
             ready: Promise.resolve(),
           },
         },
@@ -336,6 +351,7 @@ describe('LspClient', () => {
     offeredLanguages = [];
     installedServers = signal<readonly LspServerSummary[]>(CATALOGUE);
     catalogueLoaded = signal<boolean>(true);
+    serverSettings = {};
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
@@ -438,6 +454,136 @@ describe('LspClient', () => {
 
       expect(raised).toHaveLength(1);
       expect(raised[0]).toMatchObject({ severity: 'warning', title: 'MSBuild is old.' });
+    });
+  });
+
+  describe('restore when asked first (#1143)', () => {
+    let raised: NotificationRequest[];
+
+    beforeEach(() => {
+      raised = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Logs Roslyn's warning for each project that has unresolved dependencies, then waits for the
+     * gathered offer.
+     * @param projects The project files.
+     */
+    async function reportUnresolved(projects: readonly string[]): Promise<void> {
+      for (const project of projects) {
+        lsp.notify('/root::csharp', 'window/logMessage', {
+          type: 2,
+          message: `[solution/open] [LanguageServerProjectLoader] Project ${project} has unresolved dependencies`,
+        });
+      }
+      await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve, 1_700));
+    }
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('gathersTheProjectsALoadReports_intoOneOfferToRestoreThem_whichRestoresThem', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      lsp.requestAnswers['workspace/_roslyn_restore'] = { success: true };
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      await reportUnresolved(['/root/A/A.csproj', '/root/B/B.csproj', '/root/A/A.csproj']);
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'warning',
+        title: '2 projects need their packages restored',
+        key: 'lsp-restore:/root::csharp',
+      });
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      expect(lsp.requests.at(-1)).toEqual({
+        sessionId: '/root::csharp',
+        method: 'workspace/_roslyn_restore',
+        params: {
+          projectFilePaths: ['/root/A/A.csproj', '/root/B/B.csproj'],
+          partialResultToken: expect.any(String) as unknown,
+        },
+      });
+      expect(raised).toHaveLength(1);
+    });
+
+    it('aRestoreUnderWay_showsItsProgressInTheServersStatus_untilItIsDone', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      let finish: (value: unknown) => void = (): void => undefined;
+      lsp.requestAnswers['workspace/_roslyn_restore'] = new Promise((resolve) => {
+        finish = resolve;
+      });
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const progressOf: () => string | undefined = (): string | undefined =>
+        status.servers().find((server: LspServer): boolean => server.sessionId === '/root::csharp')
+          ?.progress;
+      await openCsharp(client);
+      await reportUnresolved(['/root/A/A.csproj']);
+
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      const token: unknown = (lsp.requests.at(-1)?.params as { partialResultToken?: unknown })
+        ?.partialResultToken;
+      lsp.notify('/root::csharp', '$/progress', {
+        token,
+        value: [{ stage: 'Restore', message: 'Restoring A.csproj' }],
+      });
+
+      expect(progressOf()).toBe('Restore — Restoring A.csproj');
+      finish({ success: true });
+      await flush();
+      expect(progressOf()).toBeUndefined();
+    });
+
+    it('aRestoreThatFails_isRaisedWithItsLog', async () => {
+      serverSettings = { csharp: { 'projects.dotnet_enable_automatic_restore': false } };
+      lsp.requestAnswers['workspace/_roslyn_restore'] = { success: false };
+      const client: LspClient = build();
+      await openCsharp(client);
+      await reportUnresolved(['/root/A/A.csproj']);
+      expect(raised[0]?.title).toBe('A.csproj needs its packages restored');
+
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+
+      expect(raised.at(-1)).toMatchObject({
+        severity: 'error',
+        title: 'Restoring packages failed',
+      });
+      expect(raised.at(-1)?.actions?.[0]?.label).toBe('Show log');
+    });
+
+    it('offersNothing_whileTheServerRestoresByItself', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      await reportUnresolved(['/root/A/A.csproj']);
+
+      expect(raised).toEqual([]);
     });
   });
 

@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
   LspServerId,
+  LspServerSettingValue,
   LspServerSummary,
   LspSettings as LspSettingsData,
 } from '@shared/api/lsp-channels';
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: LspSettingsData = {
   serverPaths: {},
   serverArgs: {},
   languageServers: {},
+  serverSettings: {},
 };
 
 /**
@@ -340,6 +342,50 @@ export class LspSettings {
       serverArgs[serverId] = args;
     }
     await this.store({ ...this.current(), serverArgs });
+  }
+
+  /**
+   * Gets the user's value for a setting a server declares (#1143), or undefined when they have set
+   * none and the server keeps its default.
+   * @param serverId The server.
+   * @param section The setting's configuration section.
+   * @returns Returns the value, or undefined.
+   */
+  public serverSetting(serverId: string, section: string): LspServerSettingValue | undefined {
+    return this.current().serverSettings[serverId]?.[section];
+  }
+
+  /**
+   * Sets the user's value for a setting a server declares (#1143), persisting it through the main
+   * process, which tells the server's running sessions at once. Null clears it, back to the server's
+   * default.
+   * @param serverId The server.
+   * @param section The setting's configuration section.
+   * @param value The value, or null to clear it.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setServerSetting(
+    serverId: string,
+    section: string,
+    value: LspServerSettingValue | null,
+  ): Promise<void> {
+    const values: Record<string, LspServerSettingValue> = {
+      ...this.current().serverSettings[serverId],
+    };
+    if (value === null) {
+      delete values[section];
+    } else {
+      values[section] = value;
+    }
+    const serverSettings: Record<string, Readonly<Record<string, LspServerSettingValue>>> = {
+      ...this.current().serverSettings,
+    };
+    if (Object.keys(values).length === 0) {
+      delete serverSettings[serverId];
+    } else {
+      serverSettings[serverId] = values;
+    }
+    await this.store({ ...this.current(), serverSettings });
   }
 
   /**

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LspChannel, LspSettings } from '@shared/api/lsp-channels';
 import { logger } from '../logger';
 import { migrateServerId, readServerPaths } from './lsp-settings-migration';
+import { LspServerSettingValues, parseServerSettings } from './lsp-server-settings';
 
 /**
  * Holds the default settings used before any have been stored.
@@ -15,19 +16,26 @@ const DEFAULT_SETTINGS: LspSettings = {
   serverPaths: {},
   serverArgs: {},
   languageServers: {},
+  serverSettings: {},
 };
 
 /**
  * Owns the user's language-server settings in the main process: which servers are disabled and the
  * optional Java runtime override. The settings are persisted in the user-data directory so the server
  * registry can honour them when it resolves a server, and exposed to the renderer (which reads them to
- * avoid starting a disabled server). Changes take effect for servers started afterwards.
+ * avoid starting a disabled server). Most changes take effect for servers started afterwards; the
+ * settings servers declare reach running servers at once, through {@link onChange}.
  */
 export class LspSettingsManager {
   /**
    * Holds the active settings, loaded on registration and updated on change.
    */
   private settings: LspSettings = DEFAULT_SETTINGS;
+
+  /**
+   * Holds the listeners told when stored settings change, with the settings before and after.
+   */
+  private readonly listeners: ((previous: LspSettings, next: LspSettings) => void)[] = [];
 
   /**
    * Restores the persisted settings and registers the settings IPC handlers.
@@ -54,6 +62,15 @@ export class LspSettingsManager {
   }
 
   /**
+   * Listens for stored changes, so a running server can be told of a setting it reads at any time
+   * (#1143) rather than only when it next starts.
+   * @param listener The listener, given the settings before and after the change.
+   */
+  public onChange(listener: (previous: LspSettings, next: LspSettings) => void): void {
+    this.listeners.push(listener);
+  }
+
+  /**
    * Validates and stores new settings, persisting them for subsequent launches.
    * @param value The candidate settings from the renderer.
    * @returns Returns the stored settings (unchanged when the candidate is invalid).
@@ -62,8 +79,12 @@ export class LspSettingsManager {
     const parsed: LspSettings | null = this.parse(value);
     if (parsed !== null) {
       logger.info('LspSettingsManager', 'Updated language-server settings');
+      const previous: LspSettings = this.settings;
       this.settings = parsed;
       this.save();
+      for (const listener of this.listeners) {
+        listener(previous, parsed);
+      }
     } else {
       logger.warn('LspSettingsManager', 'Rejected malformed language-server settings');
     }
@@ -123,6 +144,7 @@ export class LspSettingsManager {
       serverPaths?: unknown;
       serverArgs?: unknown;
       languageServers?: unknown;
+      serverSettings?: unknown;
     } = value;
     const disabledServers: unknown = candidate.disabledServers;
     if (
@@ -155,6 +177,12 @@ export class LspSettingsManager {
     if (languageServers === null) {
       return null;
     }
+    const serverSettings: Record<string, LspServerSettingValues> | null = parseServerSettings(
+      candidate.serverSettings,
+    );
+    if (serverSettings === null) {
+      return null;
+    }
     return {
       disabledServers: (disabledServers as readonly string[]).map(migrateServerId),
       javaPath,
@@ -162,6 +190,7 @@ export class LspSettingsManager {
       serverPaths,
       serverArgs,
       languageServers,
+      serverSettings,
     };
   }
 

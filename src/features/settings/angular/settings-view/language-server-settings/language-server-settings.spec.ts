@@ -26,6 +26,7 @@ function settingsData(): LspSettingsData {
     serverPaths: { clangd: '/usr/bin/clangd' },
     serverArgs: {},
     languageServers: {},
+    serverSettings: {},
   };
 }
 
@@ -34,6 +35,7 @@ describe('LanguageServerSettings', () => {
   let selection: Record<string, string>;
   let disabled: Set<string>;
   let calls: string[];
+  let stored: Record<string, boolean | string>;
 
   /**
    * Renders the page for a language with a fake settings service.
@@ -70,6 +72,16 @@ describe('LanguageServerSettings', () => {
               calls.push(`serverPath:${id}:${value}`);
               return Promise.resolve();
             },
+            serverSetting: (_id: string, section: string): boolean | string | undefined =>
+              stored[section],
+            setServerSetting: (
+              id: string,
+              section: string,
+              value: boolean | string | null,
+            ): Promise<void> => {
+              calls.push(`setting:${id}:${section}:${String(value)}`);
+              return Promise.resolve();
+            },
           },
         },
       ],
@@ -89,6 +101,7 @@ describe('LanguageServerSettings', () => {
     selection = {};
     disabled = new Set<string>();
     calls = [];
+    stored = {};
   });
 
   it('oneServer_offersNoChoice', async () => {
@@ -162,5 +175,81 @@ describe('LanguageServerSettings', () => {
     field.dispatchEvent(new Event('change'));
 
     expect(calls.some((c: string): boolean => c.startsWith('args:rust:'))).toBe(true);
+  });
+
+  describe('settings the server declares (#1143)', () => {
+    const ROSLYN: LspServerSummary = {
+      ...server('csharp', ['csharp']),
+      settings: [
+        {
+          section: 'projects.dotnet_enable_automatic_restore',
+          label: 'Restore packages',
+          description: 'Restore or ask first.',
+          default: true,
+          options: [
+            { value: true, label: 'Automatically' },
+            { value: false, label: 'Ask first' },
+          ],
+        },
+        {
+          section: 'projects.dotnet_enable_file_based_programs',
+          label: 'File-based programs',
+          description: 'Support for a file of its own.',
+          default: true,
+        },
+      ],
+    };
+
+    /**
+     * Finds the row a setting is shown in.
+     * @param element The page.
+     * @param label The setting's label.
+     * @returns Returns the row.
+     */
+    function row(element: HTMLElement, label: string): HTMLElement {
+      return [...element.querySelectorAll<HTMLElement>('app-setting-row')].find(
+        (candidate: HTMLElement): boolean => candidate.textContent?.includes(label) ?? false,
+      )!;
+    }
+
+    it('areShown_withTheServersDefaults_whileTheUserHasSetNothing', async () => {
+      installed = { csharp: [ROSLYN] };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+
+      expect(row(element, 'Restore packages').querySelector('select')?.value).toBe('true');
+      expect(
+        row(element, 'File-based programs').querySelector<HTMLInputElement>('app-toggle input')
+          ?.checked,
+      ).toBe(true);
+    });
+
+    it('showTheUsersValue_andStoreAChange_clearingItWhenItIsTheDefaultAgain', async () => {
+      installed = { csharp: [ROSLYN] };
+      selection = { csharp: 'csharp' };
+      stored = { 'projects.dotnet_enable_automatic_restore': false };
+      const element: HTMLElement = await render('csharp', 'C#');
+      const select: HTMLSelectElement = row(element, 'Restore packages').querySelector('select')!;
+      expect(select.value).toBe('false');
+
+      select.value = 'true';
+      select.dispatchEvent(new Event('change'));
+      row(element, 'File-based programs')
+        .querySelector<HTMLInputElement>('app-toggle input')!
+        .click();
+
+      expect(calls).toEqual([
+        'setting:csharp:projects.dotnet_enable_automatic_restore:null',
+        'setting:csharp:projects.dotnet_enable_file_based_programs:false',
+      ]);
+    });
+
+    it('aServerThatDeclaresNone_showsNone', async () => {
+      installed = { python: [server('pyright', ['python'])] };
+      selection = { python: 'pyright' };
+      const element: HTMLElement = await render('python', 'Python');
+
+      expect(element.textContent).not.toContain('Restore packages');
+    });
   });
 });

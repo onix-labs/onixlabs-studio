@@ -121,6 +121,9 @@ export function clientCapabilities(): ClientCapabilities {
     workspace: {
       workspaceFolders: true,
       configuration: true,
+      // A changed setting is announced with `didChangeConfiguration`, on which a server asks for its
+      // configuration again (#1143); nothing is registered for it dynamically.
+      didChangeConfiguration: { dynamicRegistration: false },
       semanticTokens: { refreshSupport: true },
       // The main process watches the session root and sends `didChangeWatchedFiles`; a server
       // narrows that to its own globs through a dynamic registration.

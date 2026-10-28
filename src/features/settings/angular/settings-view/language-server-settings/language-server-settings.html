@@ -36,6 +36,28 @@
     />
   </app-setting-row>
 
+  @for (setting of declaredSettings(); track setting.descriptor.section) {
+    <app-setting-row
+      [label]="setting.descriptor.label"
+      [description]="setting.descriptor.description"
+    >
+      @if (setting.options.length > 0) {
+        <app-dropdown
+          [options]="setting.options"
+          [value]="setting.choice"
+          [ariaLabel]="setting.descriptor.label"
+          (valueChange)="setDeclared(setting, $event)"
+        />
+      } @else {
+        <app-toggle
+          [checked]="setting.value === true"
+          [ariaLabel]="setting.descriptor.label"
+          (checkedChange)="setDeclared(setting, $event)"
+        />
+      }
+    </app-setting-row>
+  }
+
   <app-setting-row
     label="Arguments"
     description="Extra command-line arguments appended when the server starts. Separate arguments with spaces."

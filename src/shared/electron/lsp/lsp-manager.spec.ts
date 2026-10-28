@@ -232,4 +232,79 @@ describe('LspManager (#1015)', () => {
       ]);
     });
   });
+
+  describe('server settings (#1143)', () => {
+    it('answersAServersConfigurationRequest_fromTheUsersValuesForThatServer', async () => {
+      const asked: string[] = [];
+      const registry: unknown = {
+        configurationOf: (serverId: string): unknown => {
+          asked.push(serverId);
+          return { 'projects.dotnet_enable_automatic_restore': false };
+        },
+      };
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        registry as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
+        request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/configuration')?.({
+        items: [{ section: 'projects.dotnet_enable_automatic_restore' }, { section: 'other' }],
+      });
+
+      expect(answer).toEqual([false, null]);
+      expect(asked).toEqual(['csharp']);
+    });
+
+    it('aChangedSetting_tellsThatServersSessionsToReadTheirConfigurationAgain_andNoOthers', () => {
+      const manager: ManagerInternals & {
+        announceConfigurationChange(serverIds: readonly string[]): void;
+      } = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      ) as unknown as ManagerInternals & {
+        announceConfigurationChange(serverIds: readonly string[]): void;
+      };
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      const session: (id: string, serverId: string) => unknown = (
+        id: string,
+        serverId: string,
+      ): unknown => ({
+        request: { sessionId: id, serverId, rootPath: '/root' },
+        connection: {
+          sendNotification: (method: string, params: unknown): Promise<void> => {
+            sent.push({ session: id, method, params });
+            return Promise.resolve();
+          },
+        },
+      });
+      manager.sessions.set('/a::csharp', session('/a::csharp', 'csharp'));
+      manager.sessions.set('/b::csharp', session('/b::csharp', 'csharp'));
+      manager.sessions.set('/a::typescript', session('/a::typescript', 'typescript'));
+
+      manager.announceConfigurationChange(['csharp']);
+
+      expect(sent).toEqual([
+        {
+          session: '/a::csharp',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: null },
+        },
+        {
+          session: '/b::csharp',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: null },
+        },
+      ]);
+    });
+  });
 });
