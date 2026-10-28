@@ -6,6 +6,7 @@ import {
   Component,
   computed,
   contentChild,
+  effect,
   ElementRef,
   inject,
   input,
@@ -420,8 +421,11 @@ export class TreeView {
    * row is brought into the scrollport — so selection driven from outside (an explorer following the
    * active document) is always visible. A row being edited takes precedence over the selection, since
    * it is where the user is typing.
+   *
+   * The virtual scroller is also kept measuring its own height: see {@link watchViewportSize}.
    */
   public constructor() {
+    this.watchViewportSize();
     afterRenderEffect((): void => {
       const id: string | null = this.editingId() ?? this.selectedId();
       const rows: readonly TreeRow[] = this.rows();
@@ -460,6 +464,26 @@ export class TreeView {
       if (row !== null && typeof row.scrollIntoView === 'function') {
         row.scrollIntoView({ block: 'nearest' });
       }
+    });
+  }
+
+  /**
+   * Keeps the virtual scroller's idea of its own height current. CDK measures the viewport once,
+   * when it is created, and again only when the window resizes — so a tree created while its panel
+   * was hidden (a background tab, a worktree checkout, a panel not yet laid out) measured nothing and
+   * rendered only its buffer's few rows, filling a third to a half of the panel, until something
+   * happened to recreate it; and a splitter drag or a flyout resize was never seen at all. Watching
+   * the viewport's own box catches every one of those, and re-measures as it changes.
+   */
+  private watchViewportSize(): void {
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const viewport: CdkVirtualScrollViewport | undefined = this.viewport();
+      if (viewport === undefined) {
+        return;
+      }
+      onCleanup(
+        observeSize(viewport.elementRef.nativeElement, (): void => viewport.checkViewportSize()),
+      );
     });
   }
 
@@ -665,4 +689,20 @@ function rowHeightPx(): number {
   );
   const rootPx: number = Number.isFinite(parsed) && parsed > 0 ? parsed : FALLBACK_ROOT_FONT_PX;
   return Math.round(rootPx * ROW_HEIGHT_REM);
+}
+
+/**
+ * Watches an element's box, calling back whenever its size changes — including from nothing, as an
+ * element hidden when it was created comes into view.
+ * @param element The element.
+ * @param onResize Called with each change.
+ * @returns Returns the function that stops watching; a no-op where there is no ResizeObserver (jsdom).
+ */
+export function observeSize(element: Element, onResize: () => void): () => void {
+  if (typeof ResizeObserver === 'undefined') {
+    return (): void => undefined;
+  }
+  const observer: ResizeObserver = new ResizeObserver((): void => onResize());
+  observer.observe(element);
+  return (): void => observer.disconnect();
 }

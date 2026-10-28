@@ -1,7 +1,7 @@
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MenuItem } from '@shared/angular/components/menu/menu';
-import { TreeEdit, TreeMenuSelection, TreeRow, TreeView } from './tree-view';
+import { observeSize, TreeEdit, TreeMenuSelection, TreeRow, TreeView } from './tree-view';
 
 /**
  * Builds a tree row with the given identity, depth, and expansion state, carrying its id as the
@@ -625,5 +625,50 @@ describe('TreeView multi-select (#1048)', () => {
     rows()[2].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
 
     expect(component.gestures).toEqual(['c:replace']);
+  });
+});
+
+describe('observeSize (#1182 follow-up: explorer trees sized to a fraction of their panel)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('callsBackOnEachChangeOfTheElementsBox_untilStopped', () => {
+    const observed: Element[] = [];
+    let report: () => void = (): void => undefined;
+    let disconnected: boolean = false;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        public constructor(callback: () => void) {
+          report = callback;
+        }
+        public observe(element: Element): void {
+          observed.push(element);
+        }
+        public disconnect(): void {
+          disconnected = true;
+        }
+      },
+    );
+    const element: HTMLElement = document.createElement('div');
+    let resized: number = 0;
+
+    const stop: () => void = observeSize(element, (): number => (resized += 1));
+    report();
+    report();
+    stop();
+
+    expect(observed).toEqual([element]);
+    expect(resized).toBe(2);
+    expect(disconnected).toBe(true);
+  });
+
+  it('isANoOp_whereThereIsNoResizeObserver', () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+
+    expect((): void =>
+      observeSize(document.createElement('div'), (): void => undefined)(),
+    ).not.toThrow();
   });
 });
