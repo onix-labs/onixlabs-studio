@@ -10,6 +10,7 @@ import {
   STUDIO_GO_TO_DEFINITION_COMMAND,
   STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
   STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
+  STUDIO_REFERENCES_LENS_COMMAND,
 } from './monaco-navigation-commands';
 
 /**
@@ -260,6 +261,28 @@ describe('installNavigationCommands (#1014)', () => {
     const unfocused: Installed = install(false, [idle.editor]);
     unfocused.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();
     expect(unfocused.navigated).toEqual([]);
+  });
+
+  it('aReferencesLens_placesItsDocumentsEditorAtTheSymbol_andListsItsReferences (#1149)', () => {
+    const placed: unknown[] = [];
+    const lensEditor: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/3' } }),
+      setPosition: (position: unknown): void => void placed.push(position),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const other: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/1' } }),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const installed: Installed = install(true, [other, lensEditor]);
+    const run: (...args: unknown[]) => void = installed.commands.get(
+      STUDIO_REFERENCES_LENS_COMMAND,
+    ) as unknown as (...args: unknown[]) => void;
+
+    run(undefined, 'inmemory://model/3', { line: 8, character: 11 });
+    run(undefined, 'inmemory://model/404', { line: 8, character: 11 });
+    run(undefined, 'inmemory://model/3', 'not a position');
+
+    expect(placed).toEqual([{ lineNumber: 9, column: 12 }]);
+    expect(installed.navigated).toEqual([{ editor: lensEditor, mode: 'references' }]);
   });
 
   it('everyEditorCreated_neverPeeks_soSeveralAnswersGoToTheFirst', () => {

@@ -455,8 +455,16 @@ describe('LspManager (#1015)', () => {
     const answer: unknown = await connection.handlers.get('workspace/inlayHint/refresh')?.(
       undefined,
     );
+    const lensAnswer: unknown = await connection.handlers.get('workspace/codeLens/refresh')?.(
+      undefined,
+    );
 
     expect(answer).toBeNull();
-    expect(forwarded).toEqual(['/root::csharp workspace/inlayHint/refresh']);
+    expect(lensAnswer).toBeNull();
+    // ...and a code lens refresh likewise (#1149).
+    expect(forwarded).toEqual([
+      '/root::csharp workspace/inlayHint/refresh',
+      '/root::csharp workspace/codeLens/refresh',
+    ]);
   });
 });

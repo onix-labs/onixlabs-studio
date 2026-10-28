@@ -70,6 +70,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'window/_roslyn_showToast',
   // Sent on from the server's request of the same name, for the editors to ask for hints again.
   'workspace/inlayHint/refresh',
+  // Sent on from the server's request of the same name, for the editors to ask for lenses again.
+  'workspace/codeLens/refresh',
 ]);
 
 /**
@@ -782,6 +784,12 @@ export class LspManager {
     // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
     // A server's hints are stale (a setting changed, a project loaded): the renderer has its editors
     // ask again (#1145).
+    // A server's code lenses are stale (a reference added elsewhere, a setting changed): the renderer
+    // has its editors ask again (#1149).
+    connection.onRequest('workspace/codeLens/refresh', (): null => {
+      this.forwardNotification(sessionId, 'workspace/codeLens/refresh', undefined);
+      return null;
+    });
     connection.onRequest('workspace/inlayHint/refresh', (): null => {
       this.forwardNotification(sessionId, 'workspace/inlayHint/refresh', undefined);
       return null;

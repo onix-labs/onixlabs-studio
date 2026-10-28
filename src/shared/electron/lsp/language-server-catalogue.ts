@@ -332,6 +332,13 @@ const CSHARP: LanguageServerDescriptor = {
       advanced: true,
     },
     {
+      section: 'csharp|code_lens.dotnet_enable_references_code_lens',
+      label: 'Reference counts',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
+      default: true,
+    },
+    {
       section: 'projects.dotnet_enable_automatic_restore',
       label: 'Restore packages',
       description:

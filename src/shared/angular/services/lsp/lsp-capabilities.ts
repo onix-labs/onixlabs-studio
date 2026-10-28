@@ -2,6 +2,7 @@ import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import type {
   LspCodeActionSupport,
   LspFormattingSupport,
+  LspCodeLensSupport,
   LspInlayHintSupport,
   LspStructureSupport,
   LspNavigationSupport,
@@ -186,6 +187,21 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
       semanticLegendOf(capabilities) !== null &&
       (range === true || (typeof range === 'object' && range !== null)),
   };
+}
+
+/**
+ * Reads how a server shows facts above a document's types and members (#1149) from its
+ * `codeLensProvider`.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how it does, or undefined when it does not.
+ */
+export function codeLensSupportOf(capabilities: unknown): LspCodeLensSupport | undefined {
+  const provider: unknown = (capabilities as { codeLensProvider?: unknown } | undefined)
+    ?.codeLensProvider;
+  if (!isOffered(provider)) {
+    return undefined;
+  }
+  return { resolve: (provider as { resolveProvider?: unknown }).resolveProvider === true };
 }
 
 /**

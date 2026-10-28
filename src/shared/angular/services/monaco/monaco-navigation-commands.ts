@@ -34,6 +34,12 @@ export const MONACO_NAVIGATION_COMMANDS: readonly string[] = [
 export const STUDIO_GO_TO_DEFINITION_COMMAND: string = 'studio.goToDefinition';
 
 /**
+ * The Monaco command a references lens runs (#1149): it lists the lens's symbol's references in the
+ * References panel. Its arguments are the model's URI and the symbol's protocol position.
+ */
+export const STUDIO_REFERENCES_LENS_COMMAND: string = 'studio.lsp.codeLensReferences';
+
+/**
  * Names Studio's Find All References command, bound to ⇧F12 (Shift+F12) in every editor.
  */
 export const STUDIO_FIND_REFERENCES_COMMAND: string = 'studio.findReferences';
@@ -124,6 +130,32 @@ export function installNavigationCommands(
   monaco.editor.registerCommand(STUDIO_FIND_REFERENCES_COMMAND, run('references'));
   monaco.editor.registerCommand(STUDIO_GO_TO_IMPLEMENTATION_COMMAND, run('implementation'));
   monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
+  // A references lens (#1149) lists its symbol's references: the editor showing the lens's document is
+  // placed at the symbol, then searched from as Find All References searches.
+  monaco.editor.registerCommand(
+    STUDIO_REFERENCES_LENS_COMMAND,
+    (_accessor: unknown, modelUri: unknown, position: unknown): void => {
+      const at: { line?: unknown; character?: unknown } | null =
+        (position as { line?: unknown; character?: unknown } | null) ?? null;
+      if (
+        typeof modelUri !== 'string' ||
+        typeof at?.line !== 'number' ||
+        typeof at.character !== 'number'
+      ) {
+        return;
+      }
+      const editor: MonacoApi.editor.ICodeEditor | undefined = monaco.editor
+        .getEditors()
+        .find(
+          (candidate: MonacoApi.editor.ICodeEditor): boolean =>
+            candidate.getModel()?.uri.toString() === modelUri,
+        );
+      if (editor !== undefined) {
+        editor.setPosition({ lineNumber: at.line + 1, column: at.character + 1 });
+        onNavigate(editor, 'references');
+      }
+    },
+  );
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
   monaco.editor.addKeybindingRules([
     // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.

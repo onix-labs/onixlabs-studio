@@ -4,6 +4,7 @@ import {
   formattingSupportOf,
   inlayHintSupportOf,
   autoInsertTriggersOf,
+  codeLensSupportOf,
   structureSupportOf,
   navigationSupportOf,
   renameSupportOf,
@@ -68,6 +69,17 @@ describe('navigationSupportOf (#1142)', () => {
       implementation: false,
       typeDefinition: false,
     });
+  });
+});
+
+describe('codeLensSupportOf (#1149)', () => {
+  it('readsWhetherTheServerShowsLenses_andFillsThemInOnRequest', () => {
+    // What Roslyn 5.13 advertises.
+    expect(codeLensSupportOf({ codeLensProvider: { resolveProvider: true } })).toEqual({
+      resolve: true,
+    });
+    expect(codeLensSupportOf({ codeLensProvider: {} })).toEqual({ resolve: false });
+    expect(codeLensSupportOf({})).toBeUndefined();
   });
 });
 

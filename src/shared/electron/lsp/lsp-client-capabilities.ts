@@ -68,6 +68,8 @@ export function clientCapabilities(): ClientCapabilities {
         foldingRangeKind: { valueSet: ['comment', 'imports', 'region'] },
       },
       documentHighlight: { dynamicRegistration: false },
+      // Facts above types and members — Roslyn's reference counts (#1149) — each filled in as shown.
+      codeLens: { dynamicRegistration: false },
       // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's
       // or type's signature — and a hint's insertable text are filled in when it is hovered.
       inlayHint: {
@@ -148,6 +150,8 @@ export function clientCapabilities(): ClientCapabilities {
       // A server may say its hints are stale (a setting changed, a project loaded), on which the
       // editors ask again (#1145).
       inlayHint: { refreshSupport: true },
+      // A server may say its lenses are stale, on which the editors ask again (#1149).
+      codeLens: { refreshSupport: true },
       // Go to Symbol in Workspace (#1146). No resolveSupport: a server must say where each symbol is
       // in its first answer, which Roslyn does.
       symbol: {

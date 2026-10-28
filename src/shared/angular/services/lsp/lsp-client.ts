@@ -26,6 +26,7 @@ import {
   LspDocumentRef,
   LspFeatures,
   LspFormattingSupport,
+  LspCodeLensSupport,
   LspInlayHintSupport,
   LspStructureSupport,
   LspNavigationSupport,
@@ -56,6 +57,7 @@ import {
   inlayHintSupportOf,
   structureSupportOf,
   autoInsertTriggersOf,
+  codeLensSupportOf,
   navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
@@ -698,6 +700,15 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds how each session's server shows facts above types and members (#1149), keyed by session id;
+   * a session whose server shows none has no entry.
+   */
+  private readonly codeLensSupport: Map<string, LspCodeLensSupport> = new Map<
+    string,
+    LspCodeLensSupport
+  >();
+
+  /**
    * Holds how each started session's server completes and answers signature help (#1021).
    */
   private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
@@ -1185,6 +1196,7 @@ export class LspClient implements OnDestroy {
       inlayHints: this.inlayHintSupport.get(sessionId),
       structure: this.structureSupport.get(sessionId),
       autoInsertTriggers: this.autoInsertTriggers.get(sessionId),
+      codeLens: this.codeLensSupport.get(sessionId),
       navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
@@ -1683,6 +1695,7 @@ export class LspClient implements OnDestroy {
     this.workspaceSymbolSessions.clear();
     this.structureSupport.clear();
     this.autoInsertTriggers.clear();
+    this.codeLensSupport.clear();
     this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
@@ -1734,6 +1747,10 @@ export class LspClient implements OnDestroy {
     const structure: LspStructureSupport | undefined = this.structureSupport.get(sessionId);
     if (structure !== undefined) {
       this.features.enableStructure(tracked.languageId, structure);
+    }
+    // Facts above types and members — Roslyn's reference counts — where this server shows them (#1149).
+    if (this.codeLensSupport.has(sessionId)) {
+      this.features.enableCodeLens(tracked.languageId);
     }
     tracked.opened = true;
     tracked.text = content;
@@ -1990,6 +2007,10 @@ export class LspClient implements OnDestroy {
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
           this.structureSupport.set(sessionId, structureSupportOf(result.capabilities));
+          const codeLens: LspCodeLensSupport | undefined = codeLensSupportOf(result.capabilities);
+          if (codeLens !== undefined) {
+            this.codeLensSupport.set(sessionId, codeLens);
+          }
           const triggers: readonly string[] | undefined = autoInsertTriggersOf(result.capabilities);
           if (triggers !== undefined) {
             this.autoInsertTriggers.set(sessionId, triggers);
@@ -2134,6 +2155,12 @@ export class LspClient implements OnDestroy {
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
     // showing them asks again (#1145).
+    // The server's code lenses are stale (a reference added elsewhere, a setting changed): every
+    // editor showing them asks again (#1149).
+    if (message.method === 'workspace/codeLens/refresh') {
+      this.features.refreshCodeLenses();
+      return;
+    }
     if (message.method === 'workspace/inlayHint/refresh') {
       this.features.refreshInlayHints();
       return;

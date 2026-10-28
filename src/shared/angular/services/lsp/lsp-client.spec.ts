@@ -280,6 +280,18 @@ class FakeFeatures {
     this.structureEnabled.push([language, support]);
   }
 
+  /** The languages code lenses were turned on for, and how many refreshes were asked (#1149). */
+  public readonly codeLensEnabled: string[] = [];
+  public codeLensRefreshes: number = 0;
+
+  public enableCodeLens(language: string): void {
+    this.codeLensEnabled.push(language);
+  }
+
+  public refreshCodeLenses(): void {
+    this.codeLensRefreshes += 1;
+  }
+
   public refreshInlayHints(): void {
     this.inlayHintRefreshes += 1;
   }
@@ -1019,6 +1031,21 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.autoInsertTriggers).toEqual(['/', '\n']);
+    });
+
+    it('openingADocument_turnsLensesOnWhereTheServerShowsThem_andARefreshAsksAgain (#1149)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { codeLensProvider: { resolveProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.codeLensEnabled).toEqual(['typescript']);
+      expect(features.resolver?.('/root/src/a.ts')?.codeLens).toEqual({ resolve: true });
+      lsp.notify('/root::typescript', 'workspace/codeLens/refresh', undefined);
+      expect(features.codeLensRefreshes).toBe(1);
     });
 
     it('aServerThatSetsNoHints_turnsNoneOn (#1145)', async () => {
