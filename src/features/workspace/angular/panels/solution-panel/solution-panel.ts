@@ -31,9 +31,12 @@ import {
   ExplorerVcsTarget,
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
+import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
+import { DiagnosticSeverity } from '@shared/angular/services/diagnostics/diagnostics';
 import { Icon } from '@shared/angular/icons/icon';
 import {
-  ExplorerChangesOnly,
+  ExplorerFilterState,
   ExplorerToolbar,
 } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
@@ -172,6 +175,11 @@ export class SolutionPanel {
    * Holds the workspace git status the rows are decorated from.
    */
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Holds where the workspace's problems are, for the error squiggles and the filter (#1182 follow-up).
+   */
+  private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
 
   /**
    * Holds the version-control commands a row offers, shared with the File Explorer (#1041).
@@ -476,6 +484,8 @@ export class SolutionPanel {
       // How version control sees what the row stands for, in colour (#860) — when the Solution
       // Explorer shows source-control state at all.
       ...(this.solution.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
+      // An error in what the row stands for, or anywhere beneath it, squiggles its name.
+      ...(this.hasProblems(row, 'error') ? { squiggle: true } : {}),
       data: row,
     })),
   );
@@ -526,83 +536,96 @@ export class SolutionPanel {
   });
 
   /**
-   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
-   * repository, without which nothing is changed and the switch stands for nothing.
+   * Gets the kinds the tree is narrowed to that can narrow it here (#1182 follow-up): those ticked,
+   * less Show Differences outside a repository, where nothing is changed.
    */
-  protected readonly changesOnly: Signal<boolean> = computed(
-    (): boolean => this.solution.showsChangesOnly() && this.git.isRepository(),
-  );
-
-  /**
-   * Gets the state of the tool strip's Show Changed Files Only toggle: on while the tree is narrowed,
-   * and pressable only when there is something to narrow it to — a repository with changes in it.
-   */
-  protected readonly changesOnlyToggle: Signal<ExplorerChangesOnly> = computed(
-    (): ExplorerChangesOnly => ({
-      on: this.changesOnly(),
-      unavailable: !this.git.isRepository()
-        ? 'not a repository'
-        : !this.git.hasChanges()
-          ? 'no changes'
-          : null,
-    }),
-  );
-
-  /**
-   * Turns *Show Changed Files Only* on or off, from the tool strip's toggle.
-   */
-  protected toggleChangesOnly(): void {
-    this.solution.toggleChangesOnly();
-  }
-
-  /**
-   * Turns the filter off once nothing is changed — after a commit, say — so the tree goes back to
-   * showing everything rather than standing empty. Waits for the repository's status to be read, so a
-   * repository that has only just opened is not taken for a clean one.
-   */
-  private readonly leaveWhenClean: unknown = effect((): void => {
-    if (this.changesOnly() && this.git.statusRead() && !this.git.hasChanges()) {
-      untracked((): void => this.solution.toggleChangesOnly());
-    }
-  });
-
-  /**
-   * Gets the solution's rows the tree shows: all of them, or only the changes and the projects and
-   * folders on the way to them (#1053). The root row stays, since it heads the tree.
-   */
-  private readonly shownRows: Signal<readonly SolutionRow[]> = computed(
-    (): readonly SolutionRow[] => {
-      const rows: readonly SolutionRow[] = this.solution.rows();
-      return this.changesOnly()
-        ? rows.filter(
-            (row: SolutionRow): boolean =>
-              row.kind === 'solution' || isChangedState(this.scmStateFor(row)),
-          )
-        : rows;
+  private readonly filterKinds: Signal<ReadonlySet<ExplorerFilterKind>> = computed(
+    (): ReadonlySet<ExplorerFilterKind> => {
+      const selected: ReadonlySet<ExplorerFilterKind> = this.solution.filter.selected();
+      if (!selected.has('changes') || this.git.isRepository()) {
+        return selected;
+      }
+      const usable: Set<ExplorerFilterKind> = new Set<ExplorerFilterKind>(selected);
+      usable.delete('changes');
+      return usable;
     },
   );
 
   /**
-   * Holds the rows the filter opened to lead to changes, so turning it off closes exactly those, and a
-   * row the user closes is not opened again behind their back.
+   * Gets the tool strip's filter: what is ticked, Show Differences not offered at all outside a
+   * repository, and inert in one with nothing changed.
    */
-  private readonly openedForChanges: Set<string> = new Set<string>();
+  protected readonly filterState: Signal<ExplorerFilterState> = computed(
+    (): ExplorerFilterState => ({
+      selected: this.solution.filter.selected(),
+      unavailable:
+        this.git.isRepository() && !this.git.hasChanges() ? { changes: 'no changes' } : {},
+      ...(this.git.isRepository() ? {} : { hidden: ['changes'] }),
+    }),
+  );
 
   /**
-   * Opens the projects and folders that lead to changes while the filter is on — level by level, as
-   * each one's contents arrive — and closes them again when it is turned off.
+   * Ticks or unticks a kind in the filter, from the tool strip's funnel.
+   * @param kind The kind.
    */
-  private readonly followChanges: unknown = effect((): void => {
-    const on: boolean = this.changesOnly();
+  protected toggleFilter(kind: ExplorerFilterKind): void {
+    this.solution.filter.toggle(kind);
+  }
+
+  /**
+   * Unticks Show Differences once nothing is changed — after a commit, say — so the tree goes back to
+   * showing everything else rather than standing empty (#1053). Waits for the repository's status to
+   * be read, so a repository that has only just opened is not taken for a clean one.
+   */
+  private readonly leaveWhenClean: unknown = effect((): void => {
+    if (
+      this.solution.filter.selected().has('changes') &&
+      this.git.isRepository() &&
+      this.git.statusRead() &&
+      !this.git.hasChanges()
+    ) {
+      untracked((): void => this.solution.filter.clear('changes'));
+    }
+  });
+
+  /**
+   * Gets the solution's rows the tree shows: all of them, or — narrowed — the files matching any kind
+   * ticked and the projects and folders on the way to them. The root row stays, since it heads the
+   * tree.
+   */
+  private readonly shownRows: Signal<readonly SolutionRow[]> = computed(
+    (): readonly SolutionRow[] => {
+      const rows: readonly SolutionRow[] = this.solution.rows();
+      const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
+      return kinds.size === 0
+        ? rows
+        : rows.filter(
+            (row: SolutionRow): boolean => row.kind === 'solution' || this.matches(row, kinds),
+          );
+    },
+  );
+
+  /**
+   * Holds the rows the filter opened to lead to what it shows, so clearing it closes exactly those,
+   * and a row the user closes is not opened again behind their back.
+   */
+  private readonly openedForFilter: Set<string> = new Set<string>();
+
+  /**
+   * Opens the projects and folders that lead to what the filter shows while it narrows the tree —
+   * level by level, as each one's contents arrive — and closes them again when it is cleared.
+   */
+  private readonly followFilter: unknown = effect((): void => {
+    const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
     const rows: readonly SolutionRow[] = this.solution.rows();
     untracked((): void => {
-      if (!on) {
+      if (kinds.size === 0) {
         for (const row of rows) {
-          if (this.openedForChanges.has(row.key) && row.expanded) {
+          if (this.openedForFilter.has(row.key) && row.expanded) {
             this.solution.toggle(row);
           }
         }
-        this.openedForChanges.clear();
+        this.openedForFilter.clear();
         return;
       }
       for (const row of rows) {
@@ -610,15 +633,45 @@ export class SolutionPanel {
           row.expandable &&
           !row.expanded &&
           !row.loading &&
-          !this.openedForChanges.has(row.key) &&
-          isChangedState(this.scmStateFor(row))
+          !this.openedForFilter.has(row.key) &&
+          this.matches(row, kinds)
         ) {
-          this.openedForChanges.add(row.key);
+          this.openedForFilter.add(row.key);
           this.solution.toggle(row);
         }
       }
     });
   });
+
+  /**
+   * Determines whether a row matches any kind the tree is narrowed to: what it stands for changed, or
+   * has problems of a ticked severity — or leads to something that does.
+   * @param row The row.
+   * @param kinds The kinds.
+   * @returns Returns true when it does.
+   */
+  private matches(row: SolutionRow, kinds: ReadonlySet<ExplorerFilterKind>): boolean {
+    for (const kind of kinds) {
+      if (
+        kind === 'changes' ? isChangedState(this.scmStateFor(row)) : this.hasProblems(row, kind)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Determines whether what a row stands for has problems of a severity, or leads to something that
+   * does: any of its paths — a file, a project's file or directory, a solution folder's projects, the
+   * solution's own folder.
+   * @param row The row.
+   * @param severity The severity.
+   * @returns Returns true when it does.
+   */
+  private hasProblems(row: SolutionRow, severity: DiagnosticSeverity): boolean {
+    return row.scmPaths.some((path: string): boolean => this.problems.has(path, severity));
+  }
 
   /**
    * Resolves how version control sees what a row stands for. A solution folder has no directory of

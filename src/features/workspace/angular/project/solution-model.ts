@@ -1,4 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
@@ -606,25 +607,14 @@ export class SolutionModel {
   }
 
   /**
-   * Holds whether the Solution Explorer shows only what version control sees as changed (#1053), remembered
-   * across restarts.
+   * Holds what the tree is narrowed to (#1182 follow-up): files version control sees as changed, or
+   * with problems of the severities ticked — remembered across restarts, and carrying over the older
+   * Show Changed Files Only switch (#1053).
    */
-  private readonly changesOnly: WritableSignal<boolean> = signal<boolean>(
-    readStoredFlag('workspace.solution.changesOnly'),
+  public readonly filter: ExplorerFilter = new ExplorerFilter(
+    'workspace.solution.filters',
+    'workspace.solution.changesOnly',
   );
-
-  /**
-   * Gets whether the Solution Explorer shows only what version control sees as changed (#1053).
-   */
-  public readonly showsChangesOnly: Signal<boolean> = this.changesOnly.asReadonly();
-
-  /**
-   * Toggles whether the Solution Explorer shows only what changed, and remembers the choice.
-   */
-  public toggleChangesOnly(): void {
-    this.changesOnly.update((value: boolean): boolean => !value);
-    writeStoredFlag('workspace.solution.changesOnly', this.changesOnly());
-  }
 
   /**
    * Rebuilds the solution from disk, preserving expansion. Used when a project file has been edited
@@ -1440,31 +1430,5 @@ export class SolutionModel {
   private directoryOf(path: string): string {
     const slash: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
     return slash > 0 ? path.slice(0, slash) : path;
-  }
-}
-
-/**
- * Reads a remembered on/off switch, off when it was never set or storage is unavailable.
- * @param key The storage key.
- * @returns Returns the switch.
- */
-function readStoredFlag(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Remembers an on/off switch, quietly when storage is unavailable.
- * @param key The storage key.
- * @param value The switch.
- */
-function writeStoredFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Not remembered; the switch still works for this session.
   }
 }

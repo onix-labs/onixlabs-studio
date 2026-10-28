@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import {
@@ -284,25 +285,14 @@ export class Workspace {
   }
 
   /**
-   * Holds whether the tree shows only what version control sees as changed (#1053), remembered
-   * across restarts.
+   * Holds what the tree is narrowed to (#1182 follow-up): files version control sees as changed, or
+   * with problems of the severities ticked — remembered across restarts, and carrying over the older
+   * Show Changed Files Only switch (#1053).
    */
-  private readonly changesOnly: WritableSignal<boolean> = signal<boolean>(
-    readStoredFlag('workspace.files.changesOnly'),
+  public readonly filter: ExplorerFilter = new ExplorerFilter(
+    'workspace.files.filters',
+    'workspace.files.changesOnly',
   );
-
-  /**
-   * Gets whether the tree shows only what version control sees as changed (#1053).
-   */
-  public readonly showsChangesOnly: Signal<boolean> = this.changesOnly.asReadonly();
-
-  /**
-   * Toggles whether the tree shows only what changed, and remembers the choice.
-   */
-  public toggleChangesOnly(): void {
-    this.changesOnly.update((value: boolean): boolean => !value);
-    writeStoredFlag('workspace.files.changesOnly', this.changesOnly());
-  }
 
   /**
    * Re-reads every directory the tree has loaded, keeping what is expanded — the manual counterpart
@@ -1136,31 +1126,5 @@ export class Workspace {
     if (this.rootListing()?.path === root) {
       this.treeNodes.set(nodes);
     }
-  }
-}
-
-/**
- * Reads a remembered on/off switch, off when it was never set or storage is unavailable.
- * @param key The storage key.
- * @returns Returns the switch.
- */
-function readStoredFlag(key: string): boolean {
-  try {
-    return localStorage.getItem(key) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Remembers an on/off switch, quietly when storage is unavailable.
- * @param key The storage key.
- * @param value The switch.
- */
-function writeStoredFlag(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Not remembered; the switch still works for this session.
   }
 }

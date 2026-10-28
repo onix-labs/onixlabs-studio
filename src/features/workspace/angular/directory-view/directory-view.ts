@@ -80,6 +80,7 @@ import {
 } from '@features/workspace/angular/workspace-find/workspace-find';
 import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
 import { ReferencesPanelState } from '@features/workspace/angular/panels/references-panel/references-panel-state';
+import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
 import { HierarchyPanelState } from '@features/workspace/angular/panels/hierarchy-panel/hierarchy-panel-state';
 import {
   HierarchyReveal,
@@ -294,6 +295,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     ReferencesPanelState,
     // The hierarchy this tab's Hierarchy panel shows (#1153), per view for the same reason.
     HierarchyPanelState,
+    // Where this tab's problems are, for its explorers' error squiggles and filters (#1182 follow-up).
+    WorkspaceProblems,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
     DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for

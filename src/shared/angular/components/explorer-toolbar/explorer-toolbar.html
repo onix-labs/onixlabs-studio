@@ -8,21 +8,18 @@
     (valueChange)="onSearchValue($event)"
   />
   <div class="explorer-toolbar__actions">
-    <!-- Narrows the tree to what has changed, for the explorers that can (#1053). With nothing to
-         narrow to — no repository, or no changes — it stays put but cannot be pressed, and says why. -->
-    @if (changesOnly(); as filter) {
+    <!-- Narrows the tree to the files that matter now (#1182 follow-up): those version control sees as
+         changed, or with problems of the severities ticked — additive, and nothing ticked shows
+         everything. Pressed, in the accent, while anything is ticked. -->
+    @if (filter(); as state) {
       <app-button
         variant="none"
-        [icon]="Icon.GIT_DIFF"
-        ariaLabel="Show Changed Files Only"
-        [tooltip]="
-          filter.unavailable === null
-            ? 'Show Changed Files Only'
-            : 'Show Changed Files Only (' + filter.unavailable + ')'
-        "
-        [pressed]="filter.on"
-        [disabled]="filter.unavailable !== null"
-        (click)="changesOnlyToggle.emit()"
+        [icon]="Icon.FILTER"
+        ariaLabel="Filter"
+        tooltip="Filter"
+        [pressed]="state.selected.size > 0"
+        [cdkMenuTriggerFor]="filterMenu.panel() ?? null"
+        [cdkMenuPosition]="filterMenu.position()"
       />
     }
     <app-button
@@ -60,3 +57,5 @@
   placement="down-end"
   (selected)="moreSelected.emit($event)"
 />
+
+<app-menu #filterMenu [items]="filterItems()" placement="down-end" (selected)="onFilter($event)" />

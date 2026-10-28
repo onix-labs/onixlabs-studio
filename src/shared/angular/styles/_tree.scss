@@ -204,6 +204,21 @@ app-tree-view {
   }
 }
 
+// A row whose subject has an error, or leads to one (the explorers, after #1182): its name carries the
+// red squiggle an editor draws under an error, whatever colour version control gives it. The name's
+// box clips its overflow (for the ellipsis), which cut the wave down to a row of dots; padding gives the
+// wave room inside the box, and the negative margin gives the row its height back.
+.tree-row--squiggle .tree-name {
+  padding-block-end: 4px;
+  margin-block-end: -4px;
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: var(--error-color);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: none;
+}
+
 // Empty state shown when a tree has no content (no folder, or no solution detected).
 .tree-empty {
   display: flex;
