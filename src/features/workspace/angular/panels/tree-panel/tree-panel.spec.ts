@@ -465,7 +465,7 @@ describe('TreePanel row context menu', () => {
       expect(options.map((item: MenuItem): string => item.id)).not.toContain('changes-only');
     });
 
-    it('showDifferences_isInertWithNothingChanged_orOutsideARepository', () => {
+    it('showDifferences_isInertWithNothingChanged_andNotOfferedOutsideARepository', () => {
       vi.spyOn(git, 'hasChanges').mockReturnValue(false);
       vi.spyOn(git, 'statusRead').mockReturnValue(false);
       workspace.filter.toggle('warning');
@@ -475,13 +475,15 @@ describe('TreePanel row context menu', () => {
         disabled: true,
       });
 
+      // Outside a repository it is not offered at all.
       vi.spyOn(git, 'isRepository').mockReturnValue(false);
       workspace.filter.toggle('warning');
-      expect(funnel().rows[0]).toEqual({
-        label: 'Show Differences (not a repository)',
-        checked: false,
-        disabled: true,
-      });
+      expect(funnel().rows.map((row: { label: string }): string => row.label)).toEqual([
+        'Show Errors',
+        'Show Warnings',
+        'Show Info',
+        'Show Hints',
+      ]);
     });
 
     it('errors_squiggleTheFileAndEveryFolderAboveIt_andShowErrorsNarrowsTheTreeToThem', async () => {

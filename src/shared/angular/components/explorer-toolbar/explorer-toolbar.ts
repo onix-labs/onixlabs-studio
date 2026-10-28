@@ -32,6 +32,12 @@ export interface ExplorerFilterState {
    * Gets why each kind that cannot be ticked cannot be, by kind.
    */
   readonly unavailable: Readonly<Partial<Record<ExplorerFilterKind, string>>>;
+
+  /**
+   * Gets the kinds that mean nothing here and are not offered at all — Show Differences outside a
+   * repository — or undefined when every kind is offered.
+   */
+  readonly hidden?: readonly ExplorerFilterKind[];
 }
 
 /**
@@ -102,7 +108,10 @@ export class ExplorerToolbar {
       if (filter === null) {
         return [];
       }
-      return EXPLORER_FILTER_KINDS.map(
+      return EXPLORER_FILTER_KINDS.filter(
+        ({ kind }: { readonly kind: ExplorerFilterKind }): boolean =>
+          !(filter.hidden ?? []).includes(kind),
+      ).map(
         ({
           kind,
           label,

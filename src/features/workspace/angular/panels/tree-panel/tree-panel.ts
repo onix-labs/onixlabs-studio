@@ -286,17 +286,15 @@ export class TreePanel {
   );
 
   /**
-   * Gets the tool strip's filter: what is ticked, and Show Differences inert where there is nothing to
-   * narrow to — no repository, or no changes in it.
+   * Gets the tool strip's filter: what is ticked, Show Differences not offered at all outside a
+   * repository, and inert in one with nothing changed.
    */
   protected readonly filterState: Signal<ExplorerFilterState> = computed(
     (): ExplorerFilterState => ({
       selected: this.workspace.filter.selected(),
-      unavailable: !this.git.isRepository()
-        ? { changes: 'not a repository' }
-        : !this.git.hasChanges()
-          ? { changes: 'no changes' }
-          : {},
+      unavailable:
+        this.git.isRepository() && !this.git.hasChanges() ? { changes: 'no changes' } : {},
+      ...(this.git.isRepository() ? {} : { hidden: ['changes'] }),
     }),
   );
 
