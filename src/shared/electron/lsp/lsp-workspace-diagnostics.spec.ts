@@ -180,7 +180,7 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
     expect(sent[1]?.params.previousResultIds).toEqual([]);
   });
 
-  it('keepsEachDocumentsLatestFullReport_forAWindowThatAttachesLater_andDropsThemOnReset (#1182)', async () => {
+  it('keepsEachDocumentsLatestFullReport_forAWindowThatAttachesLater_andDropsThemOnReset (#1182)', () => {
     const subject: InstanceType<typeof WorkspaceDiagnosticsPull> = pull();
     subject.start();
     subject.partial({
