@@ -508,6 +508,102 @@ const PROVIDER_ID: string = 'lsp';
 const MAX_AUTO_RESTARTS: number = 5;
 
 /**
+ * Describes a session's crash bookkeeping.
+ */
+export interface LspCrashRecord {
+  /**
+   * Gets how many unsolicited exits the session has accumulated.
+   */
+  readonly count: number;
+
+  /**
+   * Gets when the last one happened.
+   */
+  readonly lastAt: number;
+
+  /**
+   * Gets the reason the server gave for the last one, when it gave one.
+   */
+  readonly reason?: string;
+
+  /**
+   * Gets whether the last one was a clean exit (code 0, no signal) that nothing asked for.
+   */
+  readonly clean: boolean;
+
+  /**
+   * Gets whether the last one repeated the one before it (#1136) — see {@link repeatsPreviousExit}.
+   * A repeat is deterministic: the server will do the same on every respawn, so the automatic restart
+   * stops at the second occurrence instead of re-loading the workspace five times to learn that.
+   */
+  readonly repeated: boolean;
+}
+
+/**
+ * Determines whether an exit repeats the one before it (#1136): both were clean exits nothing asked
+ * for, or the server gave the same reason for both. An exit by signal never repeats — an OOM kill
+ * depends on load, not on the server — and keeps the ordinary backoff.
+ * @param exit The exit.
+ * @param previous The session's crash record before it, if any.
+ * @returns Returns true when the exit repeats the previous one.
+ */
+export function repeatsPreviousExit(exit: LspExit, previous: LspCrashRecord | undefined): boolean {
+  if (exit.signal !== null || previous === undefined) {
+    return false;
+  }
+  return (
+    (exit.code === 0 && previous.clean) ||
+    (exit.reason !== undefined && exit.reason === previous.reason)
+  );
+}
+
+/**
+ * Records an unsolicited exit against a session's crash bookkeeping.
+ * @param exit The exit.
+ * @param previous The session's crash record before it, if any.
+ * @param now The time of the exit.
+ * @returns Returns the new record.
+ */
+export function recordCrash(
+  exit: LspExit,
+  previous: LspCrashRecord | undefined,
+  now: number,
+): LspCrashRecord {
+  return {
+    count: (previous?.count ?? 0) + 1,
+    lastAt: now,
+    ...(exit.reason === undefined ? {} : { reason: exit.reason }),
+    clean: exit.code === 0 && exit.signal === null,
+    repeated: repeatsPreviousExit(exit, previous),
+  };
+}
+
+/**
+ * Determines whether a session's crashes have stopped its automatic restart: it repeated itself, or
+ * it has crashed {@link MAX_AUTO_RESTARTS} times.
+ * @param crash The session's crash record.
+ * @returns Returns true when the automatic restart has given up.
+ */
+export function crashesExhausted(crash: LspCrashRecord | undefined): boolean {
+  return crash !== undefined && (crash.repeated || crash.count >= MAX_AUTO_RESTARTS);
+}
+
+/**
+ * Says why the automatic restart gave up, with the server's last reason when it gave one.
+ * @param crash The session's crash record.
+ * @returns Returns the status line.
+ */
+export function givenUpReason(crash: LspCrashRecord | undefined): string {
+  const stopped: string =
+    crash?.repeated === true
+      ? 'The server stopped the same way twice, so it was not restarted again'
+      : 'The server crashed repeatedly and was stopped';
+  return crash?.reason === undefined
+    ? `${stopped}. Restart it to try again.`
+    : `${stopped}: ${crash.reason} Restart it to try again.`;
+}
+
+/**
  * The base delay before a crashed session may be restarted automatically. Each further crash doubles
  * it (up to {@link CRASH_BACKOFF_MAX_MS}), so a struggling server gets progressively longer breathers
  * instead of an immediate respawn on the next keystroke.
@@ -930,10 +1026,7 @@ export class LspClient implements OnDestroy {
    * Holds the crash bookkeeping per session — how many unsolicited exits it has accumulated and when
    * the last one happened — driving the exponential restart backoff and the cumulative cap.
    */
-  private readonly crashes: Map<string, { count: number; lastAt: number }> = new Map<
-    string,
-    { count: number; lastAt: number }
-  >();
+  private readonly crashes: Map<string, LspCrashRecord> = new Map<string, LspCrashRecord>();
 
   /**
    * Holds the pending post-load pull timers per session, cancellable when the session exits or this
@@ -2209,9 +2302,9 @@ export class LspClient implements OnDestroy {
    * @returns Returns the human-readable block reason, or null when the start may proceed.
    */
   private startBlockReason(sessionId: string): string | null {
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
-    if (crash !== undefined && crash.count >= MAX_AUTO_RESTARTS) {
-      return 'The server crashed repeatedly and was stopped. Restart it to try again.';
+    const crash: LspCrashRecord | undefined = this.crashes.get(sessionId);
+    if (crashesExhausted(crash)) {
+      return givenUpReason(crash);
     }
     const failure: { attempts: number; lastAt: number } | undefined =
       this.startFailures.get(sessionId);
@@ -2235,7 +2328,7 @@ export class LspClient implements OnDestroy {
     if (failure !== undefined && Date.now() - failure.lastAt < START_RETRY_COOLDOWN_MS) {
       return true;
     }
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(sessionId);
+    const crash: LspCrashRecord | undefined = this.crashes.get(sessionId);
     if (crash === undefined) {
       return false;
     }
@@ -2474,11 +2567,11 @@ export class LspClient implements OnDestroy {
     }
     // Remember the crash (cumulatively — no rolling window a slow crash cycle could slip through),
     // so restarts back off exponentially and eventually stop instead of respawning forever.
-    const crash: { count: number; lastAt: number } | undefined = this.crashes.get(exit.sessionId);
-    this.crashes.set(exit.sessionId, { count: (crash?.count ?? 0) + 1, lastAt: Date.now() });
+    const crash: LspCrashRecord = recordCrash(exit, this.crashes.get(exit.sessionId), Date.now());
+    this.crashes.set(exit.sessionId, crash);
     this.log.warn(
       'LspClient',
-      `Server session exited unexpectedly (crash #${(crash?.count ?? 0) + 1})`,
+      `Server session exited unexpectedly (crash #${crash.count}${crash.repeated ? ', repeated' : ''})`,
       exit.sessionId,
     );
     this.legends.delete(exit.sessionId);
@@ -2490,13 +2583,19 @@ export class LspClient implements OnDestroy {
     // then the row's Restart button lets the user recover it by hand.
     // The server's own last words, when it left any, are the one thing that tells a protocol error
     // from a deliberate stop — say them, rather than only that it stopped.
+    const exhausted: boolean = crashesExhausted(crash);
     this.status.setState(
       exit.sessionId,
       'unavailable',
-      exit.reason === undefined
-        ? 'The server stopped unexpectedly. Restart it to try again.'
-        : `The server stopped unexpectedly: ${exit.reason} Restart it to try again.`,
+      exhausted
+        ? givenUpReason(crash)
+        : exit.reason === undefined
+          ? 'The server stopped unexpectedly. Restart it to try again.'
+          : `The server stopped unexpectedly: ${exit.reason} Restart it to try again.`,
     );
+    if (exhausted) {
+      this.raiseGivenUp(exit.sessionId, crash);
+    }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
     this.clearPostLoadPulls(exit.sessionId);
@@ -2923,6 +3022,33 @@ export class LspClient implements OnDestroy {
       detail: count === 1 ? server : `Latest: ${message}`,
       actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
       key: `lsp-problem:${sessionId}`,
+    });
+  }
+
+  /**
+   * Tells the user a server's automatic restart has given up (#1136) — a status row alone goes
+   * unnoticed, and a server that stays down takes every language feature with it — with Restart and
+   * Show log.
+   * @param sessionId The session.
+   * @param crash Its crash record.
+   */
+  private raiseGivenUp(sessionId: string, crash: LspCrashRecord): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (serverId === undefined) {
+      return;
+    }
+    const server: string = this.lspSettings.displayNameOf(serverId) ?? serverId;
+    this.notifications.notify({
+      severity: 'error',
+      title: crash.repeated
+        ? `${server} stopped the same way twice and was not restarted`
+        : `${server} crashed repeatedly and was stopped`,
+      detail: crash.reason ?? 'It gave no reason. The log may say more.',
+      actions: [
+        { label: 'Restart', run: (): void => void this.restart(sessionId) },
+        { label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) },
+      ],
+      key: `lsp-given-up:${sessionId}`,
     });
   }
 
