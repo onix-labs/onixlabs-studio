@@ -4,6 +4,7 @@ import {
   NO_QUICK_FIXES_LABEL,
   NO_QUICK_FIXES_ROW,
   QuickFixAction,
+  quickFixChoiceOf,
   quickFixIndexOf,
 } from './quick-fix-menu';
 
@@ -109,5 +110,152 @@ describe('buildQuickFixMenu (#1016)', () => {
     expect(NO_QUICK_FIXES_LABEL).toBe('No fixes available here');
     expect(quickFixIndexOf(NO_QUICK_FIXES_ROW)).toBeNull();
     expect(quickFixIndexOf('rename')).toBeNull();
+  });
+});
+
+/**
+ * Lists rows as a tree of labels: a row with a submenu as `label ▸ [children]`.
+ * @param rows The rows.
+ * @returns Returns the labels.
+ */
+function treeOf(rows: readonly MenuItem[]): unknown[] {
+  return rows.map((row: MenuItem): unknown =>
+    row.separator === true
+      ? '|'
+      : row.children === undefined
+        ? row.label
+        : { [row.label]: treeOf(row.children) },
+  );
+}
+
+/**
+ * Finds a row's identifier by its labels, outermost first.
+ * @param rows The rows.
+ * @param labels The labels down to it.
+ * @returns Returns its identifier.
+ */
+function idAt(rows: readonly MenuItem[], ...labels: string[]): string | undefined {
+  let level: readonly MenuItem[] = rows;
+  let found: MenuItem | undefined;
+  for (const label of labels) {
+    found = level.find((row: MenuItem): boolean => row.label === label);
+    level = found?.children ?? [];
+  }
+  return found?.id;
+}
+
+describe('buildQuickFixMenu fix-all and nested actions (#1151)', () => {
+  const SCOPES: readonly string[] = [
+    'Document',
+    'Project',
+    'Solution',
+    'ContainingMember',
+    'ContainingType',
+  ];
+
+  it('foldsAFixAllIntoItsFix_asFixHereThenEveryScopeNarrowestFirst', () => {
+    const rows: readonly MenuItem[] = buildQuickFixMenu([
+      action('Remove unused variable', { path: ['Remove unused variable'] }),
+      action('Fix All: Remove unused variable', {
+        path: ['Remove unused variable'],
+        fixAllScopes: SCOPES,
+      }),
+      action('Use implicit type', { kind: 'refactor', path: ['Use implicit type'] }),
+    ]);
+
+    expect(treeOf(rows)).toEqual([
+      {
+        'Remove unused variable': [
+          'Fix Here',
+          '|',
+          'Fix All in Containing Member',
+          'Fix All in Containing Type',
+          'Fix All in Document',
+          'Fix All in Project',
+          'Fix All in Solution',
+        ],
+      },
+      '|',
+      'Use implicit type',
+    ]);
+    expect(quickFixChoiceOf(idAt(rows, 'Remove unused variable', 'Fix Here') ?? '')).toEqual({
+      indices: [0],
+      scope: null,
+    });
+    expect(
+      quickFixChoiceOf(idAt(rows, 'Remove unused variable', 'Fix All in Solution') ?? ''),
+    ).toEqual({ indices: [1], scope: 'Solution' });
+  });
+
+  it('aFixAllWithNoFixBesideIt_isASubmenuOfItsScopes', () => {
+    const rows: readonly MenuItem[] = buildQuickFixMenu([
+      action('Fix All: Add braces', { fixAllScopes: ['Solution', 'Document', 'Workspace'] }),
+    ]);
+
+    expect(treeOf(rows)).toEqual([
+      {
+        'Fix All: Add braces': [
+          'Fix All in Document',
+          'Fix All in Solution',
+          'Fix All in Workspace',
+        ],
+      },
+    ]);
+  });
+
+  it('nestedActions_followTheirPaths_keepingEachChildsPlaceForTheChoice', () => {
+    const at: (...path: string[]) => Partial<QuickFixAction> = (
+      ...path: string[]
+    ): Partial<QuickFixAction> => ({
+      path: ['Suppress or configure issues', ...path],
+    });
+    const rows: readonly MenuItem[] = buildQuickFixMenu([
+      action('Remove unused variable'),
+      action('Suppress or configure issues', {
+        path: ['Suppress or configure issues'],
+        children: [
+          action('in Source', at('Suppress CS0219', 'in Source')),
+          action('Fix All: in Source', {
+            ...at('Suppress CS0219', 'in Source'),
+            fixAllScopes: ['Document', 'Solution'],
+          }),
+          action('None', at('Configure CS0219 severity', 'None')),
+          action('Error', at('Configure CS0219 severity', 'Error')),
+          action('Hidden', { ...at('Configure CS0219 severity', 'Hidden'), disabledReason: 'No.' }),
+        ],
+      }),
+    ]);
+
+    expect(treeOf(rows)).toEqual([
+      'Remove unused variable',
+      {
+        'Suppress or configure issues': [
+          {
+            'Suppress CS0219': [
+              { 'in Source': ['Fix Here', '|', 'Fix All in Document', 'Fix All in Solution'] },
+            ],
+          },
+          { 'Configure CS0219 severity': ['None', 'Error'] },
+        ],
+      },
+    ]);
+    expect(
+      quickFixChoiceOf(
+        idAt(rows, 'Suppress or configure issues', 'Configure CS0219 severity', 'Error') ?? '',
+      ),
+    ).toEqual({ indices: [1, 3], scope: null });
+    expect(
+      quickFixChoiceOf(
+        idAt(
+          rows,
+          'Suppress or configure issues',
+          'Suppress CS0219',
+          'in Source',
+          'Fix All in Solution',
+        ) ?? '',
+      ),
+    ).toEqual({ indices: [1, 1], scope: 'Solution' });
+    // A submenu's own row chooses nothing.
+    expect(quickFixChoiceOf(idAt(rows, 'Suppress or configure issues') ?? '')).toBeNull();
   });
 });
