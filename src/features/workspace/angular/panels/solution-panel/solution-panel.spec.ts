@@ -1,4 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
+import type { MockInstance } from 'vitest';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -401,6 +403,82 @@ describe('SolutionPanel', () => {
       ).toHaveLength(2);
     });
 
+    it('rename_aFileOrAFolderOnDisk_renamesItThroughTheWorkspace_theFilesStemSelected', async () => {
+      const rename: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(Workspace), 'rename')
+        .mockResolvedValue({ success: true, path: '/root/A/Renamed.cs' });
+      const file: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const folder: SolutionRow = makeRow({
+        key: 'sub',
+        label: 'Sub',
+        kind: 'item-folder',
+        path: '/root/A/Sub',
+      });
+      const internals: { renameSelection: () => string } = component as unknown as {
+        renameSelection: () => string;
+      };
+
+      component.onContextAction({ itemId: 'rename', row: treeRow(file) });
+      expect(component.renameTarget()).toBe(file);
+      expect(internals.renameSelection()).toBe('stem');
+      await component.commitRename({ row: treeRow(file), value: 'Renamed.cs' });
+
+      component.onContextAction({ itemId: 'rename', row: treeRow(folder) });
+      expect(internals.renameSelection()).toBe('all');
+      await component.commitRename({ row: treeRow(folder), value: 'Sub' });
+
+      // The folder kept its name: nothing to do.
+      expect(rename).toHaveBeenCalledTimes(1);
+      expect(rename).toHaveBeenCalledWith('/root/A/g.cs', 'Renamed.cs');
+    });
+
+    it('delete_asksFirst_thenDeletesEverySelectedFileThroughTheWorkspace', async () => {
+      const remove: MockInstance<Workspace['delete']> = vi
+        .spyOn(TestBed.inject(Workspace), 'delete')
+        .mockResolvedValue({ success: true, trashed: true });
+      const g: SolutionRow = makeRow({
+        key: 'g',
+        label: 'g.cs',
+        kind: 'file',
+        path: '/root/A/g.cs',
+      });
+      const h: SolutionRow = makeRow({
+        key: 'h',
+        label: 'h.cs',
+        kind: 'file',
+        path: '/root/A/h.cs',
+      });
+      solution.rows.set([g, h]);
+      fixture.detectChanges();
+      component.onRowSelect({ row: treeRow(g), mode: 'replace' });
+      component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
+
+      component.onContextAction({ itemId: 'delete', row: treeRow(g) });
+      expect(component.deleteTargets()).toEqual([g, h]);
+      expect(remove).not.toHaveBeenCalled();
+      await component.confirmDelete();
+
+      expect(remove.mock.calls).toEqual([['/root/A/g.cs'], ['/root/A/h.cs']]);
+      expect(component.deleteTargets()).toBeNull();
+    });
+
+    it('aProjectOrASolutionFolder_isNeitherRenamedNorDeletedHere', () => {
+      solution.model.set(model);
+
+      expect(menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }))).not.toContain(
+        'delete',
+      );
+      expect(menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }))).not.toContain(
+        'rename',
+      );
+      expect(menuIds(makeRow({ kind: 'folder', path: null }))).not.toContain('delete');
+    });
+
     it('anError_squigglesItsFile_andEveryRowLeadingToIt_toTheRoot (#1182 follow-up)', () => {
       TestBed.inject(Diagnostics).register({
         id: 'test',
@@ -482,7 +560,13 @@ describe('SolutionPanel', () => {
       component.onRowSelect({ row: treeRow(g), mode: 'replace' });
       component.onRowSelect({ row: treeRow(h), mode: 'toggle' });
 
-      expect(menuIds(g)).toEqual(['open', 'copy-path', 'copy-relative-path']);
+      expect(menuIds(g)).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'solution-menu.sep-edit',
+        'delete',
+      ]);
       component.onContextAction({ itemId: 'copy-path', row: treeRow(h) });
       expect(copied).toEqual(['/root/A/g.cs\n/root/A/h.cs']);
 
@@ -492,7 +576,15 @@ describe('SolutionPanel', () => {
 
     it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
-      expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
+      expect(ids).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
+      ]);
     });
 
     it('contextMenuFor_aModifiedFile_offersShowDiff_andChoosingItOpensTheDiff', () => {
@@ -511,6 +603,9 @@ describe('SolutionPanel', () => {
         'reveal',
         'solution-menu.sep-vcs',
         'show-diff',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
       expect(menuIds(makeRow({ kind: 'file', path: '/root/A/h.cs' }))).not.toContain('show-diff');
 
@@ -597,6 +692,9 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
     });
 
@@ -773,6 +871,9 @@ describe('SolutionPanel', () => {
         'copy-path',
         'copy-relative-path',
         'reveal',
+        'solution-menu.sep-edit',
+        'rename',
+        'delete',
       ]);
     });
 

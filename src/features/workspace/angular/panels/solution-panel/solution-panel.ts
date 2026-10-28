@@ -31,6 +31,9 @@ import {
   ExplorerVcsTarget,
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
+import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { FileOperationResult } from '@shared/api/workspace-channels';
+import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
 import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
 import { DiagnosticSeverity } from '@shared/angular/services/diagnostics/diagnostics';
@@ -76,6 +79,16 @@ const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
+
+/**
+ * Identifies the Rename action on a file or a folder on disk.
+ */
+const ACTION_RENAME: string = 'rename';
+
+/**
+ * Identifies the Delete action on a file or a folder on disk, or on several.
+ */
+const ACTION_DELETE: string = 'delete';
 
 /**
  * Prefixes the context-menu id of a capability action run against a single project, so the handler can
@@ -206,7 +219,30 @@ export class SolutionPanel {
   private readonly buildRunner: BuildRunner = inject(BuildRunner);
 
   /**
-   * Holds the solution-folder row being renamed in place, or null when none is.
+   * Holds the workspace, whose files and folders the Solution Explorer renames and deletes on disk.
+   */
+  private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the rows awaiting the delete confirmation, or null when it is closed.
+   */
+  public readonly deleteTargets: WritableSignal<readonly SolutionRow[] | null> = signal<
+    readonly SolutionRow[] | null
+  >(null);
+
+  /**
+   * Gets the delete confirmation's heading: the entry by name, or how many there are.
+   */
+  protected readonly deleteTitle: Signal<string> = computed((): string => {
+    const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
+    return targets.length === 1
+      ? `Delete “${targets[0].label}”?`
+      : `Delete ${targets.length} items?`;
+  });
+
+  /**
+   * Holds the row being renamed in place — a solution folder, a file or a folder on disk — or null
+   * when none is.
    */
   public readonly renameTarget: WritableSignal<SolutionRow | null> = signal<SolutionRow | null>(
     null,
@@ -300,6 +336,15 @@ export class SolutionPanel {
       if (vcs.length > 0) {
         items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
+      // A file, or a folder on disk, is renamed and deleted as the File Explorer does it. A project
+      // and a solution folder are what the solution declares, and keep their own commands.
+      if (onDisk(row)) {
+        items.push(
+          { id: 'solution-menu.sep-edit', label: '', separator: true },
+          { id: ACTION_RENAME, label: 'Rename', icon: Icon.PENCIL },
+          { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+        );
+      }
     }
     return items;
   };
@@ -310,9 +355,17 @@ export class SolutionPanel {
    * @param row The solution-folder row to rename.
    */
   private beginRename(row: SolutionRow): void {
-    this.log.info('workspace.solution', 'Rename solution folder', row.key);
+    this.log.info('workspace.solution', 'Rename', row.kind, row.key);
     this.renameTarget.set(row);
   }
+
+  /**
+   * Gets what the rename field selects to begin with: a file's name without its extension, so the
+   * common edit keeps the extension; a folder's whole name.
+   */
+  protected readonly renameSelection: Signal<RowEditSelection> = computed((): RowEditSelection =>
+    this.renameTarget()?.kind === 'file' ? 'stem' : 'all',
+  );
 
   /**
    * Ends the rename without acting on it — abandoned, or committed with no new name to apply.
@@ -339,7 +392,27 @@ export class SolutionPanel {
     }
     this.renameTarget.set(null);
     if (/[/\\]/.test(commit.value)) {
-      this.reportRenameFailure('A folder name cannot contain a slash.');
+      this.reportRenameFailure(
+        row.kind === 'file'
+          ? 'A file name cannot contain a slash.'
+          : 'A folder name cannot contain a slash.',
+      );
+      return;
+    }
+    if (commit.value === row.label) {
+      return;
+    }
+    if (onDisk(row)) {
+      const path: string | null = this.pathFor(row);
+      if (path === null) {
+        return;
+      }
+      // On disk, as the File Explorer renames it — open documents follow — and the solution's own
+      // watch re-reads the project, keeping what is expanded.
+      const renamed: FileOperationResult = await this.workspace.rename(path, commit.value);
+      if (!renamed.success) {
+        this.reportRenameFailure(renamed.error);
+      }
       return;
     }
     const result: ProjectOperationResult = await this.solution.renameSolutionFolder(
@@ -348,6 +421,65 @@ export class SolutionPanel {
     );
     if (!result.success) {
       this.reportRenameFailure(result.error);
+    }
+  }
+
+  /**
+   * Closes the delete confirmation without deleting anything.
+   */
+  public cancelDelete(): void {
+    this.deleteTargets.set(null);
+  }
+
+  /**
+   * Deletes the rows the confirmation was opened for, to the Trash where the platform allows it, as
+   * the File Explorer does — reporting what could not be deleted, and what was deleted for good for
+   * want of a Trash.
+   * @returns Returns a promise that resolves once every deletion has been attempted.
+   */
+  public async confirmDelete(): Promise<void> {
+    const targets: readonly SolutionRow[] | null = this.deleteTargets();
+    if (targets === null || targets.length === 0) {
+      return;
+    }
+    this.deleteTargets.set(null);
+    const failed: { row: SolutionRow; error: string | undefined }[] = [];
+    const permanent: SolutionRow[] = [];
+    for (const row of targets) {
+      const path: string | null = this.pathFor(row);
+      if (path === null) {
+        continue;
+      }
+      this.log.info('workspace.solution', 'Delete requested', path);
+      const result: FileOperationResult = await this.workspace.delete(path);
+      if (!result.success) {
+        failed.push({ row, error: result.error });
+      } else if (result.trashed === false) {
+        permanent.push(row);
+      }
+    }
+    if (failed.length > 0) {
+      this.notifications.notify({
+        severity: 'error',
+        title:
+          failed.length === 1 && targets.length === 1
+            ? 'Could not delete'
+            : `Could not delete ${failed.length} of ${targets.length} items`,
+        detail:
+          failed.length === 1
+            ? failed[0].error
+            : failed.map(({ row }: { row: SolutionRow }): string => row.label).join(', '),
+      });
+    }
+    if (permanent.length > 0) {
+      this.notifications.notify({
+        severity: 'warning',
+        title:
+          permanent.length === 1
+            ? `Deleted “${permanent[0].label}” permanently`
+            : `Deleted ${permanent.length} items permanently`,
+        detail: 'This location has no Trash, so it could not be recovered from there.',
+      });
     }
   }
 
@@ -769,8 +901,12 @@ export class SolutionPanel {
       this.requestProjectAction(selection.itemId.slice(PROJECT_ACTION_PREFIX.length), row);
       return;
     }
-    if (selection.itemId === ACTION_RENAME_FOLDER) {
+    if (selection.itemId === ACTION_RENAME_FOLDER || selection.itemId === ACTION_RENAME) {
       this.beginRename(row);
+      return;
+    }
+    if (selection.itemId === ACTION_DELETE) {
+      this.deleteTargets.set([row]);
       return;
     }
     const path: string | null = this.pathFor(row);
@@ -854,6 +990,12 @@ export class SolutionPanel {
     if (vcs.length > 0) {
       items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
     }
+    if (targets.every((row: SolutionRow): boolean => onDisk(row))) {
+      items.push(
+        { id: 'solution-menu.sep-edit', label: '', separator: true },
+        { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH },
+      );
+    }
     return items;
   }
 
@@ -873,6 +1015,9 @@ export class SolutionPanel {
       return;
     }
     switch (itemId) {
+      case ACTION_DELETE:
+        this.deleteTargets.set(targets);
+        return;
       case ACTION_OPEN:
         for (const path of paths) {
           void this.fileOpener.openPath(path);
@@ -1116,4 +1261,15 @@ export class SolutionPanel {
         return Icon.FILE;
     }
   }
+}
+
+/**
+ * Determines whether a row stands for something on disk the Solution Explorer renames and deletes
+ * itself: a file, or a folder inside a project. A project and a solution folder are what the solution
+ * declares, and keep their own commands.
+ * @param row The row.
+ * @returns Returns true when it does.
+ */
+function onDisk(row: SolutionRow): boolean {
+  return row.kind === 'file' || row.kind === 'item-folder';
 }
