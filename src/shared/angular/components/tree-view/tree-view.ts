@@ -119,6 +119,12 @@ export interface TreeRow {
   readonly strong?: boolean;
 
   /**
+   * Gets a value indicating whether the row's name carries a red squiggle: what it stands for has an
+   * error, or leads to something that does (#1182 follow-up), as an editor marks an error in code.
+   */
+  readonly squiggle?: boolean;
+
+  /**
    * Gets a short description of the row's state, shown as its tooltip and read by assistive
    * technology — so a state carried by colour is never carried by colour alone.
    */

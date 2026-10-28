@@ -360,16 +360,16 @@ describe('Workspace mutations', () => {
     expect(service.showsGitStatus()).toBe(false);
   });
 
-  it('showsChangesOnly_isOffUntilToggled_andIsRemembered', () => {
-    // #1053: unlike the two switches above, this one survives a restart.
-    localStorage.removeItem('workspace.files.changesOnly');
-    expect(service.showsChangesOnly()).toBe(false);
+  it('filter_isEmptyUntilTicked_andIsRemembered', () => {
+    // #1053, then #1182 follow-up: unlike the two switches above, the filter survives a restart.
+    localStorage.removeItem('workspace.files.filters');
+    expect(service.filter.active()).toBe(false);
 
-    service.toggleChangesOnly();
+    service.filter.toggle('error');
 
-    expect(service.showsChangesOnly()).toBe(true);
-    expect(localStorage.getItem('workspace.files.changesOnly')).toBe('true');
-    localStorage.removeItem('workspace.files.changesOnly');
+    expect([...service.filter.selected()]).toEqual(['error']);
+    expect(localStorage.getItem('workspace.files.filters')).toBe('["error"]');
+    localStorage.removeItem('workspace.files.filters');
   });
 
   it('delete_reconcilesTheDirectory_soTheEntryDropsOut', async () => {
