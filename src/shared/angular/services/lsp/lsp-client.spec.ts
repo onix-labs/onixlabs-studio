@@ -1439,7 +1439,12 @@ describe('LspClient', () => {
       const client: LspClient = build(features);
       await open(client);
 
-      const expected: unknown = { folding: true, highlights: true, rangeTokens: false };
+      const expected: unknown = {
+        folding: true,
+        highlights: true,
+        rangeTokens: false,
+        selectionRanges: false,
+      };
       expect(features.structureEnabled).toEqual([['typescript', expected]]);
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);
     });

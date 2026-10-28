@@ -68,6 +68,8 @@ export function clientCapabilities(): ClientCapabilities {
         foldingRangeKind: { valueSet: ['comment', 'imports', 'region'] },
       },
       documentHighlight: { dynamicRegistration: false },
+      // Expand and Shrink Selection grow by the compiler's syntax nodes (#1155).
+      selectionRange: { dynamicRegistration: false },
       // Facts above types and members — Roslyn's reference counts (#1149) — each filled in as shown.
       codeLens: { dynamicRegistration: false },
       // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's

@@ -98,6 +98,7 @@ interface FakeCodeLensProvider {
 interface FakeStructureProvider {
   provideFoldingRanges?(model: unknown): Promise<unknown>;
   provideDocumentHighlights?(model: unknown, position: unknown): Promise<unknown>;
+  provideSelectionRanges?(model: unknown, positions: unknown[]): Promise<unknown>;
   provideDocumentRangeSemanticTokens?(
     model: unknown,
     range: unknown,
@@ -213,6 +214,9 @@ function fakeMonacoNamespace(
       },
       registerDocumentRangeSemanticTokensProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:rangeTokens`, provider);
+      },
+      registerSelectionRangeProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
       },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): void => {
         (captured.formatting ??= new Map()).set(`${language}:document`, provider);
@@ -1357,7 +1361,12 @@ describe('LspFeatures', () => {
   });
 
   describe("folds, occurrences and a range's tokens (#1147)", () => {
-    const ALL: LspStructureSupport = { folding: true, highlights: true, rangeTokens: true };
+    const ALL: LspStructureSupport = {
+      folding: true,
+      highlights: true,
+      rangeTokens: true,
+      selectionRanges: true,
+    };
     const owned: unknown = {
       uri: { toString: (): string => MODEL_URI },
       getValue: (): string => '',
@@ -1367,14 +1376,89 @@ describe('LspFeatures', () => {
       const features: LspFeatures = await build();
       features.enableStructure('csharp', ALL);
       features.enableStructure('csharp', ALL);
-      features.enableStructure('go', { folding: true, highlights: false, rangeTokens: false });
+      features.enableStructure('go', {
+        folding: true,
+        highlights: false,
+        rangeTokens: false,
+        selectionRanges: false,
+      });
 
       expect([...(captured.structure?.keys() ?? [])]).toEqual([
         'csharp:folding',
         'csharp:highlights',
         'csharp:rangeTokens',
+        'csharp:selectionRanges',
         'go:folding',
       ]);
+    });
+
+    it('selectionRanges_climbFromTheIdentifierOutward_oneChainPerCaret (#1155)', async () => {
+      structureSupport = ALL;
+      const span: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({
+        start: { line, character: from },
+        end: { line, character: to },
+      });
+      responses['textDocument/selectionRange'] = [
+        {
+          range: span(5, 23, 29),
+          parent: { range: span(5, 16, 29), parent: { range: span(5, 0, 41) } },
+        },
+        { range: span(9, 4, 8) },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const ranges: unknown = await captured.structure
+        ?.get('csharp:selectionRanges')
+        ?.provideSelectionRanges?.(owned, [
+          { lineNumber: 6, column: 25 },
+          { lineNumber: 10, column: 6 },
+        ]);
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'textDocument/selectionRange',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          positions: [
+            { line: 5, character: 24 },
+            { line: 9, character: 5 },
+          ],
+        },
+      });
+      const monacoRange: (line: number, from: number, to: number) => unknown = (
+        line: number,
+        from: number,
+        to: number,
+      ): unknown => ({
+        range: { startLineNumber: line, startColumn: from, endLineNumber: line, endColumn: to },
+      });
+      expect(ranges).toEqual([
+        [monacoRange(6, 24, 30), monacoRange(6, 17, 30), monacoRange(6, 1, 42)],
+        [monacoRange(10, 5, 9)],
+      ]);
+    });
+
+    it('selectionRanges_thatDoNotAnswerEveryCaret_orAServerThatGivesNone_fallBackToMonacos', async () => {
+      structureSupport = { ...ALL, selectionRanges: false };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      const provider: FakeStructureProvider | undefined =
+        captured.structure?.get('csharp:selectionRanges');
+
+      expect(await provider?.provideSelectionRanges?.(owned, [{ lineNumber: 1, column: 1 }])).toBe(
+        undefined,
+      );
+      expect(requests).toEqual([]);
+
+      structureSupport = ALL;
+      responses['textDocument/selectionRange'] = [];
+      expect(await provider?.provideSelectionRanges?.(owned, [{ lineNumber: 1, column: 1 }])).toBe(
+        undefined,
+      );
     });
 
     it('folds_asTheServerFoldsThem_withTheirKinds_droppingWhatFoldsNothing', async () => {

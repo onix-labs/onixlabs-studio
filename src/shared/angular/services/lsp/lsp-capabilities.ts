@@ -166,8 +166,9 @@ export function formattingSupportOf(capabilities: unknown): LspFormattingSupport
 
 /**
  * Reads which of the compiler's views of a document's structure a server gives (#1147): folds
- * (`foldingRangeProvider`), occurrences (`documentHighlightProvider`), and a range's semantic tokens
- * (`semanticTokensProvider.range`).
+ * (`foldingRangeProvider`), occurrences (`documentHighlightProvider`), a range's semantic tokens
+ * (`semanticTokensProvider.range`), and the syntax nodes around a position (`selectionRangeProvider`,
+ * #1155).
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it gives.
  */
@@ -176,6 +177,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
     | {
         foldingRangeProvider?: unknown;
         documentHighlightProvider?: unknown;
+        selectionRangeProvider?: unknown;
         semanticTokensProvider?: { range?: unknown; legend?: unknown };
       }
     | undefined = capabilities as typeof caps;
@@ -186,6 +188,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
     rangeTokens:
       semanticLegendOf(capabilities) !== null &&
       (range === true || (typeof range === 'object' && range !== null)),
+    selectionRanges: isOffered(caps?.selectionRangeProvider),
   };
 }
 
