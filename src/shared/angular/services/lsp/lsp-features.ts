@@ -1397,7 +1397,7 @@ export class LspFeatures {
         let node: { range?: LspRange; parent?: unknown } | null = chain as typeof node;
         while (node?.range !== undefined && ranges.length < 256) {
           ranges.push({ range: this.toRange(node.range) });
-          node = (node.parent ?? null);
+          node = node.parent ?? null;
         }
         return ranges;
       },
