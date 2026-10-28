@@ -25,6 +25,12 @@ const READINESS_WATCHDOG_MS: number = 120_000;
 const STALLED_DETAIL: string = 'Still starting after two minutes — restart if it seems stuck.';
 
 /**
+ * How long a server's passing notice (#1154) — an information-level `window/showMessage` — stays on its
+ * row before the row goes back to saying how the server is.
+ */
+export const NOTICE_MS: number = 10_000;
+
+/**
  * Holds a tracked server's identity, current state, and the callback that restarts it. One entry
  * exists per running session; the owning {@link import('./lsp-client').LspClient} supplies the
  * restart callback so a restart re-opens that client's documents against a fresh server.
@@ -59,6 +65,11 @@ interface ServerEntry {
    * Gets whether the server has been starting for longer than the watchdog allows.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets what the server last told the user in passing, while it is still showing, or undefined.
+   */
+  readonly notice?: string;
 
   /**
    * Restarts the server: tears the running session down and re-opens its documents against a new one.
@@ -111,6 +122,12 @@ export interface LspServer {
    * menu can offer a restart for a server that may be stuck without declaring it failed.
    */
   readonly stalled: boolean;
+
+  /**
+   * Gets what the server last told the user in passing (#1154) — an information-level message — for a
+   * few seconds after it said it, or undefined.
+   */
+  readonly notice?: string;
 }
 
 /**
@@ -154,6 +171,14 @@ export class LspStatus {
   >();
 
   /**
+   * Holds the timer that clears each session's passing notice.
+   */
+  private readonly noticeTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -177,6 +202,7 @@ export class LspStatus {
         detail: entry.detail,
         progress: entry.progress,
         stalled: entry.stalled,
+        notice: entry.notice,
       }))
       .sort(
         (first: LspServer, second: LspServer): number =>
@@ -221,6 +247,27 @@ export class LspStatus {
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     next.set(sessionId, { ...current, progress: progress ?? undefined });
     this.entries.set(next);
+  }
+
+  /**
+   * Shows what a server told the user in passing (#1154) on its row for {@link NOTICE_MS}, replacing
+   * any notice still showing. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param notice The message.
+   */
+  public setNotice(sessionId: string, notice: string): void {
+    if (!this.entries().has(sessionId)) {
+      return;
+    }
+    this.updateNotice(sessionId, notice);
+    clearTimeout(this.noticeTimers.get(sessionId));
+    this.noticeTimers.set(
+      sessionId,
+      setTimeout((): void => {
+        this.noticeTimers.delete(sessionId);
+        this.updateNotice(sessionId, undefined);
+      }, NOTICE_MS),
+    );
   }
 
   /**
@@ -279,6 +326,23 @@ export class LspStatus {
     next.delete(sessionId);
     this.entries.set(next);
     this.clearWatchdog(sessionId);
+    clearTimeout(this.noticeTimers.get(sessionId));
+    this.noticeTimers.delete(sessionId);
+  }
+
+  /**
+   * Sets or clears a tracked server's passing notice.
+   * @param sessionId The session.
+   * @param notice The notice, or undefined to clear it.
+   */
+  private updateNotice(sessionId: string, notice: string | undefined): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.notice === notice) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, notice });
+    this.entries.set(next);
   }
 
   /**

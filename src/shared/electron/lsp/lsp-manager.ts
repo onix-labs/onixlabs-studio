@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
@@ -183,12 +184,18 @@ export class LspManager {
   private readonly attaches: LspAttachDebuggerForwarder;
 
   /**
+   * Holds the forwarder that puts a server's questions to the user (#1154).
+   */
+  private readonly questions: LspShowMessageForwarder;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
    * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
+   * @param questions The forwarder that puts a server's questions to the user (#1154).
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
@@ -196,12 +203,14 @@ export class LspManager {
     registry: LspServerRegistry,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
     attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
+    questions: LspShowMessageForwarder = new LspShowMessageForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
     this.applyEdits = applyEdits;
     this.attaches = attaches;
+    this.questions = questions;
   }
 
   /**
@@ -247,6 +256,7 @@ export class LspManager {
     );
     this.applyEdits.register();
     this.attaches.register();
+    this.questions.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
@@ -313,6 +323,7 @@ export class LspManager {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
     this.applyEdits.dispose();
     this.attaches.dispose();
+    this.questions.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -884,6 +895,11 @@ export class LspManager {
       'workspace/attachDebugger',
       (params: unknown): Promise<{ didAttach: boolean }> =>
         this.attaches.forward(sessionId, this.applierOf(session), params),
+    );
+    // A server's question for the user ("Import this project?"), answered with the action they chose,
+    // or null once they dismiss it (#1154).
+    connection.onRequest('window/showMessageRequest', (params: unknown): Promise<unknown> =>
+      this.questions.forward(sessionId, this.applierOf(session), params),
     );
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.

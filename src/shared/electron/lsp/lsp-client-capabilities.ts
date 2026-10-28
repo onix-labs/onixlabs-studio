@@ -176,6 +176,11 @@ export function clientCapabilities(): ClientCapabilities {
       // the commands it runs; whatever it changes comes back as a `workspace/applyEdit`.
       executeCommand: { dynamicRegistration: false },
     },
-    window: { workDoneProgress: true },
+    // A server's question is put to the user with its actions as buttons, and the chosen action
+    // returned exactly as the server sent it, whatever else it carries (#1154).
+    window: {
+      workDoneProgress: true,
+      showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
+    },
   };
 }

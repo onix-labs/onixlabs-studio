@@ -8,6 +8,7 @@ import {
   LspSettings as LspSettingsData,
   LspStartRequest,
   LspStartResult,
+  LspShowMessageRequest,
 } from '@shared/api/lsp-channels';
 
 import { DirectoryListing } from '@shared/api/workspace-channels';
@@ -26,11 +27,13 @@ import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings'
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
+  Notification,
+  NotificationAction,
   NotificationRequest,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
-import { LspServer, LspStatus } from './lsp-status';
+import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
 
 /**
  * The registered servers these tests run against, standing in for the catalogue the real settings
@@ -77,9 +80,16 @@ class FakeLsp implements Bridge {
   /** The answers to requests to attach the debugger (#1150). */
   public readonly attachReplies: unknown[] = [];
   private attachListener: ((...args: unknown[]) => void) | null = null;
+  /** The answers to a server's questions (#1154). */
+  public readonly questionReplies: unknown[] = [];
+  private questionListener: ((...args: unknown[]) => void) | null = null;
 
   public attachDebugger(request: unknown): void {
     this.attachListener?.(request);
+  }
+
+  public ask(request: unknown): void {
+    this.questionListener?.(request);
   }
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
@@ -142,6 +152,9 @@ class FakeLsp implements Bridge {
     if (channel === (LspChannel.AttachDebuggerReply as string)) {
       this.attachReplies.push(args[0]);
     }
+    if (channel === (LspChannel.ShowMessageReply as string)) {
+      this.questionReplies.push(args[0]);
+    }
     if (channel === (LspChannel.Notify as string)) {
       this.notifications.push({
         sessionId: args[0] as string,
@@ -168,6 +181,12 @@ class FakeLsp implements Bridge {
       this.attachListener = listener;
       return (): void => {
         this.attachListener = null;
+      };
+    }
+    if (channel === (LspChannel.ShowMessage as string)) {
+      this.questionListener = listener;
+      return (): void => {
+        this.questionListener = null;
       };
     }
     if (channel === (LspChannel.ServerExit as string)) {
@@ -408,6 +427,103 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('server questions and notices (#1154)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    const QUESTION: LspShowMessageRequest = {
+      requestId: 'q1',
+      sessionId: '/root::csharp',
+      type: 2,
+      message: 'Restore the solution?',
+      actions: ['Restore', 'Not now'],
+    };
+
+    it('aQuestion_isAStickyToastWhoseButtonsAnswerIt_once', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask(QUESTION);
+      TestBed.tick();
+
+      const toast: Notification | undefined = notifications.toasts()[0];
+      expect(toast).toMatchObject({
+        severity: 'warning',
+        title: 'Restore the solution?',
+        sticky: true,
+        key: 'lsp-question:q1',
+      });
+      expect(toast?.actions.map((action: NotificationAction): string => action.label)).toEqual([
+        'Restore',
+        'Not now',
+      ]);
+      expect(lsp.questionReplies).toEqual([]);
+      toast?.actions[0]?.run();
+      notifications.dismiss(toast?.id ?? 0);
+      TestBed.tick();
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: 0 }]);
+    });
+
+    it('aQuestionDismissedWithoutAnAnswer_isAnsweredNull', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask(QUESTION);
+      TestBed.tick();
+      notifications.dismissByKey('lsp-question:q1');
+      TestBed.tick();
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: null }]);
+    });
+
+    it('aQuestionForASessionThisWindowDoesNotHold_isNotAsked', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      await openCsharp(client);
+
+      lsp.ask({ ...QUESTION, sessionId: '/elsewhere::csharp' });
+      TestBed.tick();
+
+      expect(notifications.toasts()).toEqual([]);
+      expect(lsp.questionReplies).toEqual([]);
+    });
+
+    it('anInformationMessage_showsOnTheServersRowForAFewSeconds_withoutAToast', async () => {
+      const client: LspClient = build();
+      const notifications: Notifications = TestBed.inject(Notifications);
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        lsp.notify('/root::csharp', 'window/showMessage', {
+          type: 3,
+          message: 'Solution loaded.',
+        });
+
+        expect(status.servers()[0]?.notice).toBe('Solution loaded.');
+        expect(notifications.toasts()).toEqual([]);
+        vi.advanceTimersByTime(NOTICE_MS);
+        expect(status.servers()[0]?.notice).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('crash policy (#1136)', () => {
