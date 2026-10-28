@@ -1,3 +1,4 @@
+import { applyAutoInsert } from '@shared/angular/services/monaco/monaco-auto-insert';
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
@@ -118,6 +119,12 @@ export interface LspDocumentRef {
    * Undefined is taken as none.
    */
   readonly structure?: LspStructureSupport;
+
+  /**
+   * Gets the characters whose typing the server answers by inserting text (#1148) — Roslyn's `/`
+   * (a doc-comment skeleton after `///`), newline, and quotes. Undefined is taken as none.
+   */
+  readonly autoInsertTriggers?: readonly string[];
 
   /**
    * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
@@ -316,6 +323,12 @@ export interface LspStructureSupport {
    */
   readonly rangeTokens: boolean;
 }
+
+/**
+ * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
+ * skeleton, `$0` marking where the caret goes.
+ */
+const SNIPPET_TEXT_EDIT_FORMAT: number = 2;
 
 /**
  * The languages whose Monaco build already formats them (the TypeScript, JSON, CSS and HTML workers).
@@ -975,6 +988,66 @@ export class LspFeatures {
   }
 
   /**
+   * Answers a character typed with what the document's server inserts (#1148): after `///` above a
+   * member, Roslyn's doc-comment skeleton — `<summary>`, a `<param>` per parameter, `<returns>` — the
+   * caret left in the summary; after Enter in a doc comment, the next line's `///`. Asked only for a
+   * character the server declares (Roslyn's `_vs_onAutoInsert`), and applied only when the document
+   * has not changed while the server answered, so a quick typist's next keystrokes are never undone.
+   * @param editor The editor typed in.
+   * @param ch The character typed (`\n` for Enter).
+   * @returns Returns a promise that resolves once the answer is applied, or found not to be.
+   */
+  private async autoInsert(editor: MonacoApi.editor.ICodeEditor, ch: string): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    if (model === null || position === null || this.bridge === undefined) {
+      return;
+    }
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || ref.autoInsertTriggers?.includes(ch) !== true) {
+      return;
+    }
+    const version: number = model.getVersionId();
+    await ref.sync?.(model.getValue());
+    const options: MonacoApi.editor.TextModelResolvedOptions = model.getOptions();
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/_vs_onAutoInsert',
+        {
+          _vs_textDocument: { uri: ref.uri },
+          _vs_position: toLspPosition(position),
+          _vs_ch: ch,
+          _vs_options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+        },
+      );
+    } catch {
+      return;
+    }
+    const answer: {
+      _vs_textEditFormat?: unknown;
+      _vs_textEdit?: { range?: LspRange; newText?: unknown };
+    } | null = (result as typeof answer) ?? null;
+    const edit: { range?: LspRange; newText?: unknown } | undefined = answer?._vs_textEdit;
+    if (
+      edit?.range === undefined ||
+      typeof edit.newText !== 'string' ||
+      model.isDisposed() ||
+      model.getVersionId() !== version
+    ) {
+      return;
+    }
+    applyAutoInsert(
+      editor,
+      this.toRange(edit.range),
+      edit.newText,
+      answer?._vs_textEditFormat === SNIPPET_TEXT_EDIT_FORMAT,
+    );
+  }
+
+  /**
    * Turns on the compiler's views of a language's structure (#1147), when a session that gives them
    * starts serving a document of it: its folds — members, regions, usings, comments, from their
    * declaration line, as Visual Studio folds — the reads and writes of the symbol under the caret,
@@ -1432,6 +1505,11 @@ export class LspFeatures {
     this.monaco.suppressWordSuggestionsWhen((model: MonacoApi.editor.ITextModel): boolean =>
       this.servesDocument(model),
     );
+    // What a server inserts in answer to a character typed — Roslyn's doc-comment skeleton after
+    // `///` (#1148).
+    this.monaco.useAutoInsert((editor: MonacoApi.editor.ICodeEditor, ch: string): void => {
+      void this.autoInsert(editor, ch);
+    });
     // A document whose server folds it is folded by the server alone (#1147).
     this.monaco.suppressBraceFoldingWhen(
       (model: MonacoApi.editor.ITextModel): boolean =>

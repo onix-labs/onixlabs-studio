@@ -33,6 +33,7 @@ import {
   NavigationMode,
 } from './monaco-navigation-commands';
 import { installRenameCommands } from './monaco-rename-commands';
+import { AutoInsertHandler, installAutoInsert } from './monaco-auto-insert';
 import { installQuickFixCommands, QUICK_FIX_EDITOR_OPTIONS } from './monaco-quick-fix-commands';
 import {
   HOVER_EDITOR_OPTIONS,
@@ -291,6 +292,12 @@ export class Monaco {
    * back here through the markdown renderer's code blocks.
    */
   private assist: (SuggestPresenter & ParameterHintsPresenter) | null = null;
+
+  /**
+   * Holds what is told of each character typed, for a language server's auto-insert (#1148), or null
+   * until the language-server features hand theirs over.
+   */
+  private autoInsert: AutoInsertHandler | null = null;
 
   /**
    * Gets a value indicating whether Monaco has finished loading.
@@ -576,6 +583,9 @@ export class Monaco {
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
     this.installRenameCommands(window.monaco);
+    if (window.monaco !== undefined) {
+      installAutoInsert(window.monaco, this.typed);
+    }
     this.installQuickFixCommands(window.monaco);
     this.installHoverCommands(window.monaco);
     this.installSuggestCommands(window.monaco);
@@ -825,6 +835,7 @@ export class Monaco {
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);
       this.installRenameCommands(monaco);
+      installAutoInsert(monaco, this.typed);
       this.installQuickFixCommands(monaco);
       this.installHoverCommands(monaco);
       this.installSuggestCommands(monaco);
@@ -913,6 +924,23 @@ export class Monaco {
       this.braceFoldingSuppressors.delete(predicate);
     };
   }
+
+  /**
+   * Takes what answers a character typed in any editor (#1148): the language-server features hand
+   * theirs over, so a server's doc-comment skeleton follows `///`.
+   * @param handler Receives the editor and the character typed.
+   */
+  public useAutoInsert(handler: AutoInsertHandler): void {
+    this.autoInsert = handler;
+  }
+
+  /**
+   * Hands a typed character on to the auto-insert, once one has been handed over.
+   */
+  private readonly typed: AutoInsertHandler = (
+    editor: MonacoApi.editor.ICodeEditor,
+    ch: string,
+  ): void => this.autoInsert?.(editor, ch);
 
   /**
    * Takes what draws the completion list and the signature card in every editor (#1021): the

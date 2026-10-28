@@ -55,6 +55,7 @@ import {
   formattingSupportOf,
   inlayHintSupportOf,
   structureSupportOf,
+  autoInsertTriggersOf,
   navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
@@ -689,6 +690,14 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds the characters whose typing each session's server answers by inserting text (#1148).
+   */
+  private readonly autoInsertTriggers: Map<string, readonly string[]> = new Map<
+    string,
+    readonly string[]
+  >();
+
+  /**
    * Holds how each started session's server completes and answers signature help (#1021).
    */
   private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
@@ -1175,6 +1184,7 @@ export class LspClient implements OnDestroy {
       formatting: this.formattingSupport.get(sessionId),
       inlayHints: this.inlayHintSupport.get(sessionId),
       structure: this.structureSupport.get(sessionId),
+      autoInsertTriggers: this.autoInsertTriggers.get(sessionId),
       navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
@@ -1672,6 +1682,7 @@ export class LspClient implements OnDestroy {
     this.inlayHintSupport.clear();
     this.workspaceSymbolSessions.clear();
     this.structureSupport.clear();
+    this.autoInsertTriggers.clear();
     this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
@@ -1979,6 +1990,10 @@ export class LspClient implements OnDestroy {
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
           this.structureSupport.set(sessionId, structureSupportOf(result.capabilities));
+          const triggers: readonly string[] | undefined = autoInsertTriggersOf(result.capabilities);
+          if (triggers !== undefined) {
+            this.autoInsertTriggers.set(sessionId, triggers);
+          }
           if (workspaceSymbolsOffered(result.capabilities)) {
             this.workspaceSymbolSessions.add(sessionId);
           }

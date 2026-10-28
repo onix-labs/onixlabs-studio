@@ -3,6 +3,7 @@ import {
   executeCommandsOf,
   formattingSupportOf,
   inlayHintSupportOf,
+  autoInsertTriggersOf,
   structureSupportOf,
   navigationSupportOf,
   renameSupportOf,
@@ -67,6 +68,21 @@ describe('navigationSupportOf (#1142)', () => {
       implementation: false,
       typeDefinition: false,
     });
+  });
+});
+
+describe('autoInsertTriggersOf (#1148)', () => {
+  it('readsTheCharactersRoslynAnswersByInsertingText', () => {
+    // What Roslyn 5.13 advertises.
+    expect(
+      autoInsertTriggersOf({
+        _vs_onAutoInsertProvider: { _vs_triggerCharacters: ["'", '/', '\n', '"', 'too long', 3] },
+      }),
+    ).toEqual(["'", '/', '\n', '"']);
+    expect(autoInsertTriggersOf({ _vs_onAutoInsertProvider: { _vs_triggerCharacters: [] } })).toBe(
+      undefined,
+    );
+    expect(autoInsertTriggersOf(undefined)).toBeUndefined();
   });
 });
 

@@ -189,6 +189,25 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
 }
 
 /**
+ * Reads the characters whose typing a server answers by inserting text (#1148): Roslyn's
+ * `_vs_onAutoInsertProvider`, as the Visual Studio clients know it.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns the characters, or undefined when the server inserts nothing.
+ */
+export function autoInsertTriggersOf(capabilities: unknown): readonly string[] | undefined {
+  const triggers: unknown = (
+    capabilities as { _vs_onAutoInsertProvider?: { _vs_triggerCharacters?: unknown } } | undefined
+  )?._vs_onAutoInsertProvider?._vs_triggerCharacters;
+  if (!Array.isArray(triggers)) {
+    return undefined;
+  }
+  const characters: string[] = (triggers as unknown[]).filter(
+    (ch: unknown): ch is string => typeof ch === 'string' && [...ch].length === 1,
+  );
+  return characters.length === 0 ? undefined : characters;
+}
+
+/**
  * Reads how a server sets hints into the code (#1145) from its `inlayHintProvider`.
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns how it does, or undefined when it does not.
