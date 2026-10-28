@@ -1,7 +1,7 @@
 <div class="quick-open" role="dialog" [attr.aria-label]="label()">
   <app-text-field
     class="quick-open__field"
-    [kind]="mode() === 'symbol' ? 'search' : 'text'"
+    [kind]="mode() === 'symbol' || mode() === 'workspace' ? 'search' : 'text'"
     [(value)]="picker.query"
     [placeholder]="placeholder()"
     [ariaLabel]="fieldLabel()"
@@ -28,7 +28,9 @@
       {{ picker.renameEntry().hint }}
     </p>
   } @else if (symbols() === null) {
-    <p class="quick-open__hint" aria-live="polite">Reading the file's symbols…</p>
+    <p class="quick-open__hint" aria-live="polite">
+      {{ mode() === 'workspace' ? 'Searching the workspace…' : "Reading the file's symbols…" }}
+    </p>
   } @else {
     <app-list-view
       class="quick-open__list"

@@ -25,6 +25,7 @@ import {
   DockPanelCommands,
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { DirectoryRibbon } from './directory-ribbon';
@@ -943,7 +944,29 @@ describe('DirectoryRibbon', () => {
           ?.items ?? [];
       expect(edit.map((entry: MenuEntry): string | undefined => entry.id)).toEqual([
         'directory.find',
+        'directory.goToWorkspaceSymbol',
       ]);
+    });
+
+    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheMenuAndTheRibbon (#1146)', () => {
+      let opened: number = 0;
+      vi.spyOn(TestBed.inject(WorkspaceSymbolRouter), 'open').mockImplementation(
+        (): void => void (opened += 1),
+      );
+      const edit: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')
+          ?.items ?? [];
+      const entry: MenuEntry | undefined = edit.find(
+        (candidate: MenuEntry): boolean => candidate.id === 'directory.goToWorkspaceSymbol',
+      );
+
+      menu.dispatch('directory.goToWorkspaceSymbol');
+      (internals() as unknown as { onGoToWorkspaceSymbol(): void }).onGoToWorkspaceSymbol();
+
+      expect(entry?.label).toBe('Go to Symbol in Workspace');
+      // The chord is the workspace's own keybinding, which the user can change.
+      expect(entry?.accelerator).toBeUndefined();
+      expect(opened).toBe(2);
     });
 
     it('find_opensTheSearchPanelScopedToTheCurrentFile_throughTheFindRouter', () => {

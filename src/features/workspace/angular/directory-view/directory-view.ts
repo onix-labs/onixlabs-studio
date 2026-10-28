@@ -108,6 +108,8 @@ import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { PackageModel } from '@features/workspace/angular/project/package-model';
@@ -254,6 +256,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     },
     DebugSession,
     LspClient,
+    // Go to Symbol in Workspace (#1146) searches this workspace's language servers.
+    WorkspaceSymbolPalette,
     SolutionModel,
     PackageModel,
     PackageExplorer,
@@ -910,6 +914,23 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly workspaceFind: WorkspaceFind = inject(WorkspaceFind);
 
   /**
+   * Holds Go to Symbol in Workspace (#1146), opened by its chord and, through the router, from the
+   * ribbon and the application menu.
+   */
+  private readonly symbolPalette: WorkspaceSymbolPalette = inject(WorkspaceSymbolPalette);
+
+  /**
+   * Holds the router the shared surfaces open Go to Symbol in Workspace through, registered while
+   * this workspace is in front.
+   */
+  private readonly symbolRouter: WorkspaceSymbolRouter = inject(WorkspaceSymbolRouter);
+
+  /**
+   * Opens Go to Symbol in Workspace, as the router hands this workspace's handler on.
+   */
+  private readonly openSymbolPalette: () => void = (): void => this.symbolPalette.open();
+
+  /**
    * Holds the channel find requests reach this tab's Search panel through (#1007).
    */
   private readonly searchRequests: SearchPanelRequests = inject(SearchPanelRequests);
@@ -1537,13 +1558,16 @@ export class DirectoryView implements OnInit, OnDestroy {
             command: (): void => this.revealSearch({ mode: 'find', scope: 'workspace' }),
           },
           { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
+          { id: 'workspace.goToSymbol', command: this.openSymbolPalette },
         ]);
+        this.symbolRouter.register(this.openSymbolPalette);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceReferences.register(this.revealReferencesHandler, this.openReferenceHandler);
         this.workspaceDocuments.register(this.documentHandler);
         this.dockPanelCommands.register(this.dockPanelHandler);
       } else {
         this.keybindings.deactivate(this.viewScope());
+        this.symbolRouter.unregister(this.openSymbolPalette);
         this.workspaceFind.unregister(this.revealSearchHandler);
         this.workspaceReferences.unregister(this.revealReferencesHandler);
         this.workspaceDocuments.unregister(this.documentHandler);

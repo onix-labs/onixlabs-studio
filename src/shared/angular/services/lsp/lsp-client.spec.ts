@@ -15,7 +15,7 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspClient } from './lsp-client';
+import { LspClient, WorkspaceSymbolMatch } from './lsp-client';
 import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
@@ -465,6 +465,76 @@ describe('LspClient', () => {
 
       expect(raised).toHaveLength(1);
       expect(raised[0]).toMatchObject({ severity: 'warning', title: 'MSBuild is old.' });
+    });
+  });
+
+  describe('symbols across the workspace (#1146)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('asksEveryServerThatFindsThem_andListsWhatTheyFound', async () => {
+      lsp.startResult = { success: true, capabilities: { workspaceSymbolProvider: true } };
+      lsp.requestAnswers['workspace/symbol'] = [
+        {
+          name: 'FormalGreeter',
+          kind: 5,
+          location: {
+            uri: 'file:///root/Services/FormalGreeter.cs',
+            range: { start: { line: 4, character: 20 }, end: { line: 4, character: 33 } },
+          },
+          containerName: 'project Fixture.Services (net10.0)',
+        },
+        { name: 'Decompiled', kind: 5, location: { uri: 'csharp:/metadata/x.cs' } },
+        { name: 'NoRange', kind: 12, location: { uri: 'file:///root/Util.cs' } },
+      ];
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      const found: readonly WorkspaceSymbolMatch[] = await client.workspaceSymbols('  FoGr ');
+
+      expect(lsp.requests.at(-1)).toEqual({
+        sessionId: '/root::csharp',
+        method: 'workspace/symbol',
+        params: { query: 'FoGr' },
+      });
+      expect(found).toEqual([
+        {
+          name: 'FormalGreeter',
+          kind: 5,
+          container: 'project Fixture.Services (net10.0)',
+          path: '/root/Services/FormalGreeter.cs',
+          range: { startLineNumber: 5, startColumn: 21, endLineNumber: 5, endColumn: 34 },
+        },
+        {
+          name: 'NoRange',
+          kind: 12,
+          container: '',
+          path: '/root/Util.cs',
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        },
+      ]);
+    });
+
+    it('asksNothing_forNothingTyped_orWhereNoServerFindsThem', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      const asked: number = lsp.requests.length;
+
+      expect(await client.workspaceSymbols('Greeter')).toEqual([]);
+      lsp.startResult = { success: true, capabilities: { workspaceSymbolProvider: true } };
+      expect(await client.workspaceSymbols('   ')).toEqual([]);
+      expect(lsp.requests.length).toBe(asked);
     });
   });
 

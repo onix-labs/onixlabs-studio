@@ -1,4 +1,4 @@
-import type { ClientCapabilities } from 'vscode-languageserver-protocol';
+import type { ClientCapabilities, SymbolKind } from 'vscode-languageserver-protocol';
 import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-channels';
 
 /**
@@ -137,6 +137,17 @@ export function clientCapabilities(): ClientCapabilities {
       // A server may say its hints are stale (a setting changed, a project loaded), on which the
       // editors ask again (#1145).
       inlayHint: { refreshSupport: true },
+      // Go to Symbol in Workspace (#1146). No resolveSupport: a server must say where each symbol is
+      // in its first answer, which Roslyn does.
+      symbol: {
+        dynamicRegistration: false,
+        symbolKind: {
+          valueSet: Array.from(
+            { length: 26 },
+            (_: unknown, index: number): SymbolKind => (index + 1) as SymbolKind,
+          ),
+        },
+      },
       // The main process watches the session root and sends `didChangeWatchedFiles`; a server
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
