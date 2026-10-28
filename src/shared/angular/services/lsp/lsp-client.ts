@@ -57,9 +57,16 @@ import {
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
+
+/**
+ * The time within which a server's errors and warnings count as one burst, updating one toast with a
+ * count rather than raising another (#1134).
+ */
+const SERVER_PROBLEM_BURST_MS: number = 60_000;
 
 /**
  * The parameters a session was started with, kept so a restart can bring its server back up.
@@ -419,6 +426,18 @@ export class LspClient implements OnDestroy {
    * Holds the user's settings, read for the brace style a server is told when it starts (#1177).
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notification store a server's errors and warnings are raised in (#1134).
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds, per session, the distinct errors and warnings its server has raised in the current burst
+   * and when the last arrived, so a burst updates one toast with a count (#1134).
+   */
+  private readonly serverProblems: Map<string, { messages: ReadonlySet<string>; at: number }> =
+    new Map<string, { messages: ReadonlySet<string>; at: number }>();
 
   /**
    * Holds the prompt that offers to install language support when a document finds none.
@@ -1864,6 +1883,16 @@ export class LspClient implements OnDestroy {
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
       this.appendServerLog(message.sessionId, message.params);
+      if (message.method === 'window/showMessage') {
+        this.raiseServerProblem(message.sessionId, message.params);
+      }
+      return;
+    }
+    // Roslyn says what the user must see (a project that failed to load or restore) through a toast
+    // of its own rather than `window/showMessage` (#1134).
+    if (message.method === 'window/_roslyn_showToast') {
+      this.appendServerLog(message.sessionId, message.params);
+      this.raiseServerProblem(message.sessionId, message.params);
       return;
     }
     if (message.method !== 'textDocument/publishDiagnostics') {
@@ -2102,6 +2131,50 @@ export class LspClient implements OnDestroy {
       return;
     }
     this.output.channel(`lsp:${serverId}`, `LSP: ${serverId}`).appendLine(message);
+  }
+
+  /**
+   * Raises a server's error or warning for the user as a toast (#1134), with "Show log" opening its
+   * Output channel. One toast per session: a burst (a solution whose projects fail to load one after
+   * another) updates the toast with a count rather than stacking a toast per project. Information and
+   * log-level messages stay in the Output channel only.
+   * @param sessionId The session the message came from.
+   * @param params The message: `{ type, message }` for `window/showMessage`, `{ messageType, message }`
+   * for Roslyn's toast.
+   */
+  private raiseServerProblem(sessionId: string, params: unknown): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    const candidate: { type?: unknown; messageType?: unknown; message?: unknown } | null =
+      (params as typeof candidate) ?? null;
+    const type: unknown = candidate?.type ?? candidate?.messageType;
+    const text: unknown = candidate?.message;
+    if (serverId === undefined || (type !== 1 && type !== 2) || typeof text !== 'string') {
+      return;
+    }
+    const message: string = text.replace(/\s*See (the )?logs? for details\.?\s*$/i, '').trim();
+    if (message.length === 0) {
+      return;
+    }
+    // Roslyn reports one failed project more than once; a repeat is the same problem, not another.
+    const now: number = Date.now();
+    const previous: { messages: ReadonlySet<string>; at: number } | undefined =
+      this.serverProblems.get(sessionId);
+    const messages: Set<string> = new Set<string>(
+      previous !== undefined && now - previous.at < SERVER_PROBLEM_BURST_MS
+        ? previous.messages
+        : [],
+    );
+    messages.add(message);
+    this.serverProblems.set(sessionId, { messages, at: now });
+    const count: number = messages.size;
+    const server: string = this.lspSettings.displayNameOf(serverId) ?? serverId;
+    this.notifications.notify({
+      severity: type === 1 ? 'error' : 'warning',
+      title: count === 1 ? message : `${server} reported ${count} problems`,
+      detail: count === 1 ? server : `Latest: ${message}`,
+      actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
+      key: `lsp-problem:${sessionId}`,
+    });
   }
 
   /**

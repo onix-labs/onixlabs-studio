@@ -1457,6 +1457,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // Bring the Logs panel forward when the user asks to see a channel (a notification's "Show log",
+    // #1134) — in the workspace they are looking at, never a background tab.
+    effect((): void => {
+      if (this.outputService.showRequests() > 0 && untracked((): boolean => this.isActive())) {
+        untracked((): void => this.ensureLogsPanel(true));
+      }
+    });
+
     // Start the structure-aware language server as soon as a recognised project model opens, rather
     // than on the first file, so it begins loading the workspace up front: Roslyn for a .NET
     // solution, the TypeScript server for a Node/npm workspace, jdtls for a Gradle/Maven JVM build.
