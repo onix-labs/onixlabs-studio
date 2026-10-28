@@ -1,4 +1,6 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import {
   Diagnostic,
@@ -11,7 +13,9 @@ import { Icon } from '@shared/angular/icons/icon';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import type { MockInstance } from 'vitest';
 
+import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { ProblemsPanel } from './problems-panel';
+import type { ProblemOwner } from './problems-grouping';
 
 /**
  * A provider whose single contribution the test pushes immediately on connect.
@@ -80,7 +84,9 @@ describe('ProblemsPanel', () => {
     fixture.detectChanges();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Cannot find name');
-    expect(text).toContain('main.ts:3:5');
+    // Grouped by default (#1182): under its file, the problem names only its line and column.
+    expect(text).toContain('main.ts');
+    expect(text).toContain('3:5');
   });
 
   it('filter_bySeverity_showsOnlyTheChosenSeverity', () => {
@@ -148,6 +154,176 @@ describe('ProblemsPanel', () => {
     expect(goTo).toHaveBeenCalledWith(null, {
       path: '/root/src/Broken.cs',
       range: { startLineNumber: 5, startColumn: 34, endLineNumber: 5, endColumn: 34 },
+    });
+  });
+
+  describe('grouped by project and file (#1182)', () => {
+    /**
+     * A problem in a file.
+     * @param path The file's absolute path.
+     * @param message The message.
+     * @param line Its line.
+     * @param severity Its severity.
+     * @returns Returns the problem.
+     */
+    function problem(
+      path: string,
+      message: string,
+      line: number,
+      severity: Diagnostic['severity'] = 'error',
+    ): Diagnostic {
+      return {
+        file: path.split('/').pop() ?? path,
+        message,
+        severity,
+        line,
+        column: 9,
+        source: 'csharp',
+        documentId: null,
+        path,
+        scope: 'workspace',
+      };
+    }
+
+    const OWNERS: Readonly<Record<string, ProblemOwner>> = {
+      core: { name: 'Fixture.Core', path: '/ws/Core/Core.csproj', directory: '/ws/Core' },
+      services: {
+        name: 'Fixture.Services',
+        path: '/ws/Services/Services.csproj',
+        directory: '/ws/Services',
+      },
+    };
+
+    /**
+     * Builds the panel over a project model that owns /ws/Core and /ws/Services, showing problems.
+     * @param problems The problems.
+     * @returns Returns the panel's element.
+     */
+    async function show(problems: readonly Diagnostic[]): Promise<HTMLElement> {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [ProblemsPanel],
+        providers: [
+          { provide: ActiveWorkspace, useValue: { rootPath: signal<string | null>('/ws') } },
+          {
+            provide: SolutionModel,
+            useValue: {
+              owningProject: (path: string): ProblemOwner | null =>
+                path.startsWith('/ws/Core/')
+                  ? OWNERS['core']
+                  : path.startsWith('/ws/Services/')
+                    ? OWNERS['services']
+                    : null,
+            },
+          },
+        ],
+      }).compileComponents();
+      TestBed.inject(Diagnostics).register(new StaticProvider(problems));
+      fixture = TestBed.createComponent(ProblemsPanel);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('panel', panel);
+      await fixture.whenStable();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    /**
+     * Reads the tree's rows as text.
+     * @param host The panel's element.
+     * @returns Returns each row's text, trimmed.
+     */
+    function rows(host: HTMLElement): string[] {
+      return [...host.querySelectorAll<HTMLElement>('.tree-row')].map((row: HTMLElement): string =>
+        (row.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      );
+    }
+
+    it('listsEachProjectThenEachFile_withCounts_otherFilesLast', async () => {
+      const host: HTMLElement = await show([
+        problem('/ws/Services/FormalGreeter.cs', 'CS0029 cannot convert', 13),
+        problem('/ws/Core/Person.cs', 'CS0103 name does not exist', 8),
+        problem('/ws/Core/Person.cs', 'CS0168 declared but never used', 3, 'warning'),
+        problem('/ws/tools/Script.cs', 'IDE0005 using is unnecessary', 1, 'hint'),
+      ]);
+
+      expect(rows(host)).toEqual([
+        'Fixture.Core 1 1',
+        'Person.cs2',
+        'CS0168 declared but never usedcsharp 3:9',
+        'CS0103 name does not existcsharp 8:9',
+        'Fixture.Services 1',
+        'FormalGreeter.cs1',
+        'CS0029 cannot convertcsharp 13:9',
+        'Other Files 1',
+        'tools/Script.cs1',
+        'IDE0005 using is unnecessarycsharp 1:9',
+      ]);
+    });
+
+    it('aGroupFolds_andExpandAllCollapseAllActOnEveryGroup', async () => {
+      const host: HTMLElement = await show([
+        problem('/ws/Core/Person.cs', 'one', 1),
+        problem('/ws/Services/Greeter.cs', 'two', 2),
+      ]);
+      const click: (selector: string, text: string) => Promise<void> = async (
+        selector: string,
+        text: string,
+      ): Promise<void> => {
+        [...host.querySelectorAll<HTMLElement>(selector)]
+          .find((element: HTMLElement): boolean => (element.textContent ?? '').includes(text))
+          ?.click();
+        await fixture.whenStable();
+      };
+      const button: (label: string) => Promise<void> = async (label: string): Promise<void> => {
+        host
+          .querySelector<HTMLButtonElement>(`app-panel-toolbar button[aria-label="${label}"]`)
+          ?.click();
+        await fixture.whenStable();
+      };
+
+      await click('.tree-row', 'Fixture.Core');
+      expect(rows(host)).toEqual([
+        'Fixture.Core 1',
+        'Fixture.Services 1',
+        'Greeter.cs1',
+        'twocsharp 2:9',
+      ]);
+
+      await button('Collapse All');
+      expect(rows(host)).toEqual(['Fixture.Core 1', 'Fixture.Services 1']);
+
+      await button('Expand All');
+      expect(rows(host)).toHaveLength(6);
+    });
+
+    it('choosingAProblem_revealsIt_evenInAFileThatIsNotOpen', async () => {
+      const host: HTMLElement = await show([problem('/ws/Core/Person.cs', 'one', 4)]);
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+
+      host.querySelectorAll<HTMLElement>('.tree-row')[2]?.click();
+
+      expect(goTo).toHaveBeenCalledWith(null, {
+        path: '/ws/Core/Person.cs',
+        range: { startLineNumber: 4, startColumn: 9, endLineNumber: 4, endColumn: 9 },
+      });
+    });
+
+    it('theToggle_showsTheFlatList_whereAProblemInAClosedFileCanStillBeChosen', async () => {
+      const host: HTMLElement = await show([problem('/ws/Core/Person.cs', 'one', 4)]);
+
+      [...host.querySelectorAll<HTMLButtonElement>('app-panel-toolbar button')]
+        .find((button: HTMLButtonElement): boolean =>
+          (button.textContent ?? '').includes('Group by Project and File'),
+        )
+        ?.click();
+      await fixture.whenStable();
+
+      expect(host.querySelector('.tree-row')).toBeNull();
+      const row: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>('.problems-row');
+      expect(row?.textContent).toContain('Person.cs:4:9');
+      // A problem in a file nobody has opened is still a way to it (#1144).
+      expect(row?.disabled).toBe(false);
     });
   });
 });
