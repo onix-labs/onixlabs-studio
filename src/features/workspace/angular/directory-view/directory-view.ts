@@ -109,6 +109,7 @@ import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsav
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
@@ -931,6 +932,20 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly openSymbolPalette: () => void = (): void => this.symbolPalette.open();
 
   /**
+   * Holds the router a language server's request to attach the debugger reaches this workspace's
+   * debug session through, registered while this workspace is in front (#1150).
+   */
+  private readonly debugAttach: DebugAttachRouter = inject(DebugAttachRouter);
+
+  /**
+   * Attaches this workspace's debugger to a process, as the router hands this workspace's handler on.
+   */
+  private readonly attachDebugger: (processId: number, name: string) => Promise<boolean> = (
+    processId: number,
+    name: string,
+  ): Promise<boolean> => this.debugSession.attachToProcess(processId, name);
+
+  /**
    * Holds the channel find requests reach this tab's Search panel through (#1007).
    */
   private readonly searchRequests: SearchPanelRequests = inject(SearchPanelRequests);
@@ -1561,6 +1576,7 @@ export class DirectoryView implements OnInit, OnDestroy {
           { id: 'workspace.goToSymbol', command: this.openSymbolPalette },
         ]);
         this.symbolRouter.register(this.openSymbolPalette);
+        this.debugAttach.register(this.attachDebugger);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceReferences.register(this.revealReferencesHandler, this.openReferenceHandler);
         this.workspaceDocuments.register(this.documentHandler);
@@ -1568,6 +1584,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       } else {
         this.keybindings.deactivate(this.viewScope());
         this.symbolRouter.unregister(this.openSymbolPalette);
+        this.debugAttach.unregister(this.attachDebugger);
         this.workspaceFind.unregister(this.revealSearchHandler);
         this.workspaceReferences.unregister(this.revealReferencesHandler);
         this.workspaceDocuments.unregister(this.documentHandler);

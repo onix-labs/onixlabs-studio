@@ -24,6 +24,7 @@ import type {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
   NotificationRequest,
   Notifications,
@@ -73,6 +74,13 @@ class FakeLsp implements Bridge {
   private exitListener: ((...args: unknown[]) => void) | null = null;
   private applyEditListener: ((...args: unknown[]) => void) | null = null;
   public readonly applyEditReplies: unknown[] = [];
+  /** The answers to requests to attach the debugger (#1150). */
+  public readonly attachReplies: unknown[] = [];
+  private attachListener: ((...args: unknown[]) => void) | null = null;
+
+  public attachDebugger(request: unknown): void {
+    this.attachListener?.(request);
+  }
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     switch (channel) {
@@ -131,6 +139,9 @@ class FakeLsp implements Bridge {
     if (channel === (LspChannel.ApplyEditReply as string)) {
       this.applyEditReplies.push(args[0]);
     }
+    if (channel === (LspChannel.AttachDebuggerReply as string)) {
+      this.attachReplies.push(args[0]);
+    }
     if (channel === (LspChannel.Notify as string)) {
       this.notifications.push({
         sessionId: args[0] as string,
@@ -151,6 +162,12 @@ class FakeLsp implements Bridge {
       this.applyEditListener = listener;
       return (): void => {
         this.applyEditListener = null;
+      };
+    }
+    if (channel === (LspChannel.AttachDebugger as string)) {
+      this.attachListener = listener;
+      return (): void => {
+        this.attachListener = null;
       };
     }
     if (channel === (LspChannel.ServerExit as string)) {
@@ -572,6 +589,40 @@ describe('LspClient', () => {
       ]);
       raised[0]?.actions?.[0]?.run();
       expect(shown).toEqual(['lsp-tests', 'lsp-tests']);
+    });
+
+    it('aDebugLensAsksForTheDebugger_whichTheWorkspaceAttachesToTheTestHost (#1150)', async () => {
+      const attached: [number, string][] = [];
+      lsp.requestAnswers['textDocument/runTests'] = new Promise((): void => undefined);
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      TestBed.inject(DebugAttachRouter).register(
+        (processId: number, name: string): Promise<boolean> => {
+          attached.push([processId, name]);
+          return Promise.resolve(true);
+        },
+      );
+      client.syncDocument({
+        documentId: 't',
+        path: '/root/T.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+
+      features.resolver?.('/root/T.cs')?.runTests?.({
+        range: { start: { line: 8, character: 16 }, end: { line: 8, character: 35 } },
+        attachDebugger: true,
+      });
+      await flush();
+      lsp.attachDebugger({ requestId: 'r1', sessionId: '/root::csharp', processId: 46456 });
+      lsp.attachDebugger({ requestId: 'r2', sessionId: '/elsewhere::csharp', processId: 1 });
+      await flush();
+
+      expect(lsp.requests.at(-1)?.params).toMatchObject({ attachDebugger: true });
+      expect(attached).toEqual([[46456, 'Tests']]);
+      expect(lsp.attachReplies).toEqual([{ requestId: 'r1', didAttach: true }]);
+      expect(lines).toContain('Attaching the debugger to the test host (process 46456).');
     });
 
     it('testLines_placesEachReportedTestOnItsLensesLine', () => {

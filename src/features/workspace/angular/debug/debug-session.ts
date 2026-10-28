@@ -516,6 +516,68 @@ export class DebugSession implements DebugHandler, OnDestroy {
   }
 
   /**
+   * Attaches the debugger to a process that is already running (#1150) — the test host Roslyn starts
+   * for Debug Test and waits in for a debugger — rather than launching one. The workspace's debug
+   * adapter is started as for a launch, and configured the same way once it reports `initialized`:
+   * the workspace's breakpoints are sent, then `configurationDone`.
+   * @param processId The process to attach to.
+   * @param name What is being debugged, as the session names it.
+   * @returns Returns a promise resolving true once the debugger has attached, false when it could not
+   * (no adapter, a session already running, or the adapter refused).
+   */
+  public async attachToProcess(processId: number, name: string): Promise<boolean> {
+    const declared: string | undefined = this.solutionModel.capabilities()?.debug?.adapter;
+    const adapter: string | undefined =
+      declared === undefined ? undefined : this.debugAdapters.resolveAdapter(declared);
+    const root: string | undefined = this.workspace.root()?.path;
+    if (this.bridge === undefined || this.stateSignal() !== 'idle' || root === undefined) {
+      return false;
+    }
+    if (adapter === undefined) {
+      this.debugChannel.appendLine('No debug adapter is available for this workspace.');
+      return false;
+    }
+    this.activeConfigurationName = name;
+    this.activeAdapterId = adapter;
+    const sessionId: string = `${root}#${++this.counter}`;
+    this.currentSession = sessionId;
+    this.threadId = undefined;
+    this.capabilities = {};
+    this.stateSignal.set('running');
+    this.debugChannel.appendLine(`> Debug ${name} (attaching to process ${processId})`);
+    const result: DebugStartResult = await this.bridge.invoke<DebugStartResult>(
+      DebugChannel.Start,
+      { sessionId, adapterId: adapter, rootPath: root },
+    );
+    if (this.currentSession !== sessionId) {
+      return false;
+    }
+    if (!result.success) {
+      this.debugChannel.appendLine(`Debug failed: ${result.error ?? 'unknown error'}`);
+      this.reset();
+      return false;
+    }
+    this.capabilities = (result.capabilities as DebugProtocol.Capabilities | undefined) ?? {};
+    // The adapter answers `attach` once configuration is done (onEvent's `initialized` sends the
+    // breakpoints and `configurationDone`), so awaiting it here waits until the debugger is in place.
+    try {
+      await this.request('attach', { processId });
+      // netcoredbg drops breakpoints set before it has a process — and `initialized` came before the
+      // attach — so they are sent again now it has one. The process is still waiting for the answer
+      // (Roslyn's test host waits for the debugger), so they are in place before its code runs.
+      await this.syncBreakpoints();
+    } catch (error: unknown) {
+      if (this.currentSession === sessionId) {
+        this.log.error('debug-session', 'Debug attach failed', error);
+        this.debugChannel.appendLine(`Debug attach failed: ${messageOf(error)}`);
+        this.stop();
+      }
+      return false;
+    }
+    return this.currentSession === sessionId;
+  }
+
+  /**
    * Handles an adapter event for the running session.
    * @param message The event message.
    */

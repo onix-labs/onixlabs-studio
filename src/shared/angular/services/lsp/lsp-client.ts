@@ -4,6 +4,8 @@ import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
   LspApplyEditReply,
+  LspAttachDebuggerReply,
+  LspAttachDebuggerRequest,
   LspBraceStyle,
   LspApplyEditRequest,
   LspChannel,
@@ -67,6 +69,7 @@ import {
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
@@ -909,6 +912,16 @@ export class LspClient implements OnDestroy {
   private applyEditDisposer: (() => void) | null = null;
 
   /**
+   * Holds the unsubscribe function for the main process's requests to attach the debugger (#1150).
+   */
+  private attachDebuggerDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the router the workspace in front attaches its debugger through (#1150).
+   */
+  private readonly debugAttach: DebugAttachRouter = inject(DebugAttachRouter);
+
+  /**
    * Holds the disposer for the served-listener subscription, or null when not subscribed.
    */
   private servedDisposer: (() => void) | null = null;
@@ -1024,6 +1037,10 @@ export class LspClient implements OnDestroy {
     this.applyEditDisposer = this.bridge.on(LspChannel.ApplyEdit, (...args: unknown[]): void => {
       void this.onApplyEdit(args[0] as LspApplyEditRequest);
     });
+    this.attachDebuggerDisposer = this.bridge.on(
+      LspChannel.AttachDebugger,
+      (...args: unknown[]): void => void this.onAttachDebugger(args[0] as LspAttachDebuggerRequest),
+    );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
@@ -1773,6 +1790,7 @@ export class LspClient implements OnDestroy {
     this.notificationDisposer?.();
     this.exitDisposer?.();
     this.applyEditDisposer?.();
+    this.attachDebuggerDisposer?.();
     this.featuresDisposer?.();
     this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
@@ -2497,6 +2515,37 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Attaches the workspace's debugger to a process one of this client's servers started (#1150) —
+   * Roslyn's test host, waiting for a debugger for Debug Test — and tells the server whether it did.
+   * A request for a session this client does not hold is another window's to answer.
+   * @param request The request, as the main process forwards it.
+   * @returns Returns a promise that resolves once the server is answered.
+   */
+  private async onAttachDebugger(request: LspAttachDebuggerRequest): Promise<void> {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    this.log.info('LspClient', `Attaching the debugger to process ${request.processId}`);
+    const run: TestRun | undefined = [...this.testRuns.values()].find(
+      (candidate: TestRun): boolean => candidate.sessionId === request.sessionId,
+    );
+    run?.channel.appendLine(
+      `Attaching the debugger to the test host (process ${request.processId}).`,
+    );
+    let didAttach: boolean;
+    try {
+      didAttach = await this.debugAttach.attach(request.processId, 'Tests');
+    } catch {
+      didAttach = false;
+    }
+    if (!didAttach) {
+      run?.channel.appendLine('The debugger could not attach; the tests run without it.');
+    }
+    const reply: LspAttachDebuggerReply = { requestId: request.requestId, didAttach };
+    this.bridge?.send(LspChannel.AttachDebuggerReply, reply);
+  }
+
+  /**
    * Applies a server's own edit (#1015) — a code action's, a command's — for one of this client's
    * sessions, through the same applier a rename uses: open files in their editors, undoable and left
    * unsaved, closed files on disk, confined to the workspace. The server is told whether all of it
@@ -2667,8 +2716,9 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Runs the tests a Run Test lens names (#1150): the server builds the project, finds the tests and
-   * runs them, reporting as it goes. Its log streams into the Tests channel of the Logs panel, brought
+   * Runs the tests a Run Test or Debug Test lens names (#1150): the server builds the project, finds
+   * the tests and runs them, reporting as it goes — for Debug Test, first asking for the debugger to
+   * attach to the test host (see {@link onAttachDebugger}). Its log streams into the Tests channel of the Logs panel, brought
    * forward; its counts into the server's status row; each test's outcome, once the run ends, into a
    * marker on the test's line; and a run with failures raises a toast with the log a click away.
    * @param sessionId The session serving the lens's document.
@@ -2682,7 +2732,8 @@ export class LspClient implements OnDestroy {
     tracked: TrackedDocument,
     lens: unknown,
   ): Promise<void> {
-    const argument: { range?: unknown } | null = (lens as { range?: unknown } | null) ?? null;
+    const argument: { range?: unknown; attachDebugger?: unknown } | null =
+      (lens as { range?: unknown; attachDebugger?: unknown } | null) ?? null;
     const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
     if (this.bridge === undefined || argument?.range === undefined || serverId === undefined) {
       return;
@@ -2703,7 +2754,7 @@ export class LspClient implements OnDestroy {
     try {
       await this.bridge.invoke(LspChannel.Request, sessionId, RUN_TESTS_METHOD, {
         ...argument,
-        attachDebugger: false,
+        attachDebugger: argument.attachDebugger === true,
         partialResultToken: token,
       });
     } catch (error: unknown) {

@@ -1239,8 +1239,8 @@ export class LspFeatures {
   /**
    * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
    * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}); a command the server runs
-   * itself is run there; a Run Test lens runs its tests on the session (#1150), and a Debug Test lens
-   * is not offered yet; any other shows its title alone.
+   * itself is run there; a Run Test or Debug Test lens runs its tests on the session (#1150); any
+   * other shows its title alone.
    * @param model The model the lens is in.
    * @param ref The document's session.
    * @param lens The server's lens, untrusted.
@@ -1257,12 +1257,9 @@ export class LspFeatures {
       return {};
     }
     if (command.command === ROSLYN_RUN_TESTS) {
+      // Run Test and Debug Test alike: a Debug Test lens's argument asks for the debugger, which
+      // attaches to the test host the server starts (#1150).
       const argument: unknown = command.arguments?.[0];
-      // Debug Test needs the debugger to attach to the test host the server starts — until it can,
-      // the lens is not offered (#1150).
-      if ((argument as { attachDebugger?: unknown } | null)?.attachDebugger === true) {
-        return null;
-      }
       return ref.runTests === undefined
         ? { command: { id: '', title: command.title } }
         : {

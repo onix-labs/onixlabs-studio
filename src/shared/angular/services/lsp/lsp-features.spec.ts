@@ -1198,7 +1198,7 @@ describe('LspFeatures', () => {
       ]);
     });
 
-    it('aRunTestLens_runsItsTestsOnTheDocumentsSession_andADebugLensIsNotOfferedYet (#1150)', async () => {
+    it('aRunOrDebugTestLens_runsItsTestsOnTheDocumentsSession (#1150)', async () => {
       codeLensSupport = { resolve: true };
       testsRun = [];
       const runArgument: unknown = {
@@ -1232,7 +1232,8 @@ describe('LspFeatures', () => {
       const lenses: { command?: { id: string; title: string; arguments?: unknown[] } }[] =
         list?.lenses as { command?: { id: string; title: string; arguments?: unknown[] } }[];
 
-      expect(lenses.map((lens) => lens.command?.title)).toEqual(['Run Test']);
+      expect(lenses.map((lens) => lens.command?.title)).toEqual(['Run Test', 'Debug Test']);
+      expect(lenses[1]?.command?.id).toBe('studio.lsp.runTests');
       expect(lenses[0]?.command?.id).toBe('studio.lsp.runTests');
       captured.commands?.get('studio.lsp.runTests')?.(
         undefined,

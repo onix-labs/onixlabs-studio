@@ -467,4 +467,33 @@ describe('LspManager (#1015)', () => {
       '/root::csharp workspace/codeLens/refresh',
     ]);
   });
+
+  it('aServersRequestToAttachTheDebugger_isForwardedToTheRendererHoldingTheSession (#1150)', async () => {
+    const attaches: { forward: unknown; register: () => void; dispose: () => void } = {
+      forward: vi.fn((): Promise<{ didAttach: boolean }> => Promise.resolve({ didAttach: true })),
+      register: (): void => undefined,
+      dispose: (): void => undefined,
+    };
+    const manager: InstanceType<typeof LspManager> = new LspManager(
+      (): BrowserWindow | null => null,
+      new WorkspaceContext(),
+      {} as LspServerRegistry,
+      new LspApplyEditForwarder(),
+      attaches as unknown as ConstructorParameters<typeof LspManager>[4],
+    );
+    const live: WebContents = contents();
+    const connection: FakeConnection = fakeConnection();
+    (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
+      request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+      clients: new Map<WebContents, number>([[live, 1]]),
+      watcher: { register: (): void => undefined, unregister: (): void => undefined },
+    });
+
+    const answer: unknown = await connection.handlers.get('workspace/attachDebugger')?.({
+      processId: 46456,
+    });
+
+    expect(answer).toEqual({ didAttach: true });
+    expect(attaches.forward).toHaveBeenCalledWith('/root::csharp', live, { processId: 46456 });
+  });
 });
