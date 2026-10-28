@@ -179,4 +179,30 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
     expect(sent[0]?.token.isCancellationRequested).toBe(true);
     expect(sent[1]?.params.previousResultIds).toEqual([]);
   });
+
+  it('keepsEachDocumentsLatestFullReport_forAWindowThatAttachesLater_andDropsThemOnReset (#1182)', async () => {
+    const subject: InstanceType<typeof WorkspaceDiagnosticsPull> = pull();
+    subject.start();
+    subject.partial({
+      items: [
+        { uri: 'file:///root/A.cs', kind: 'full', resultId: 'a1', items: [{ message: 'old' }] },
+        { uri: 'file:///root/B.cs', kind: 'full', resultId: 'b1', items: [] },
+      ],
+    });
+    subject.partial({
+      items: [
+        { uri: 'file:///root/A.cs', kind: 'full', resultId: 'a2', items: [{ message: 'new' }] },
+        { uri: 'file:///root/B.cs', kind: 'unchanged', resultId: 'b1' },
+      ],
+    });
+
+    // An unchanged report leaves the last full one standing.
+    expect(subject.snapshot()).toEqual([
+      { uri: 'file:///root/A.cs', kind: 'full', resultId: 'a2', items: [{ message: 'new' }] },
+      { uri: 'file:///root/B.cs', kind: 'full', resultId: 'b1', items: [] },
+    ]);
+
+    subject.reset();
+    expect(subject.snapshot()).toEqual([]);
+  });
 });

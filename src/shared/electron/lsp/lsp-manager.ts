@@ -55,6 +55,12 @@ const INITIALIZE_TIMEOUT_MS: number = 60000;
 const SHUTDOWN_TIMEOUT_MS: number = 3000;
 
 /**
+ * Names the notification a server sends once it has loaded the workspace (Roslyn's), which a window
+ * attaching later is told again.
+ */
+const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitializationComplete';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -135,6 +141,13 @@ interface LspSession {
    * null for a server that does not serve them.
    */
   workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
+
+  /**
+   * Holds whether the server has said it finished loading the workspace
+   * (`workspace/projectInitializationComplete`), which a window attaching later is told, since the
+   * server says it only once.
+   */
+  loaded: boolean;
 
   /**
    * Holds which windows hold each document open on the server (#1190), so the server never hears a
@@ -353,7 +366,11 @@ export class LspManager {
         'LspManager',
         `Reusing LSP session ${parsed.sessionId} (refCount now ${this.refCount(existing)})`,
       );
-      return existing.ready;
+      const result: LspStartResult = await existing.ready;
+      if (result.success) {
+        this.catchUp(parsed.sessionId, existing, sender);
+      }
+      return result;
     }
     return this.launch(parsed, sender);
   }
@@ -506,6 +523,7 @@ export class LspManager {
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
+      loaded: false,
       openDocuments: new LspOpenDocuments<WebContents>(),
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
@@ -951,6 +969,47 @@ export class LspManager {
   }
 
   /**
+   * Tells a window that attached to a running session what the windows before it were told and the
+   * server will not say again (#1182): that it finished loading the workspace, and the workspace's
+   * diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
+   * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
+   * its start answer, which it needs to take them.
+   * @param sessionId The session.
+   * @param session The session's state.
+   * @param sender The window that attached.
+   */
+  private catchUp(sessionId: string, session: LspSession, sender: WebContents): void {
+    setTimeout((): void => {
+      if (sender.isDestroyed() || this.sessions.get(sessionId) !== session) {
+        return;
+      }
+      const reports: readonly WorkspaceDocumentReport[] =
+        session.workspaceDiagnostics?.snapshot() ?? [];
+      if (reports.length > 0) {
+        const message: LspMessage = {
+          sessionId,
+          method: WORKSPACE_DIAGNOSTICS_METHOD,
+          params: { reports },
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.loaded) {
+        const message: LspMessage = {
+          sessionId,
+          method: PROJECT_INITIALIZATION_COMPLETE,
+          params: {},
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      logger.debug(
+        'LspManager',
+        `Caught a window up on session ${sessionId}`,
+        `${reports.length} report(s), loaded=${session.loaded}`,
+      );
+    }, 0);
+  }
+
+  /**
    * Forwards a server notification to the renderer.
    * @param sessionId The session the notification belongs to.
    * @param method The LSP method name.
@@ -962,6 +1021,12 @@ export class LspManager {
     // forwarded one is a structured-clone plus a renderer handler invocation, only to be discarded.
     if (!FORWARDED_NOTIFICATIONS.has(method)) {
       return;
+    }
+    if (method === PROJECT_INITIALIZATION_COMPLETE) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.loaded = true;
+      }
     }
     const message: LspMessage = { sessionId, method, params };
     this.send(sessionId, LspChannel.Notification, message);

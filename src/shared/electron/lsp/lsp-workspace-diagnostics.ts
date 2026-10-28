@@ -76,6 +76,15 @@ export class WorkspaceDiagnosticsPull {
   private readonly resultIds: Map<string, string> = new Map<string, string>();
 
   /**
+   * Holds each document's latest full report, so a window that attaches to the session later is
+   * given what the windows before it were (see {@link snapshot}).
+   */
+  private readonly latest: Map<string, WorkspaceDocumentReport> = new Map<
+    string,
+    WorkspaceDocumentReport
+  >();
+
+  /**
    * Holds the open request's cancellation, or null when none is open.
    */
   private source: CancellationTokenSource | null = null;
@@ -172,8 +181,18 @@ export class WorkspaceDiagnosticsPull {
    */
   public reset(): void {
     this.resultIds.clear();
+    this.latest.clear();
     this.deliver([], true);
     this.refresh();
+  }
+
+  /**
+   * Gets every document's latest report, in full: what a window attaching to a running session is
+   * given, since the server reports a document again only once it changes.
+   * @returns Returns the reports.
+   */
+  public snapshot(): readonly WorkspaceDocumentReport[] {
+    return [...this.latest.values()];
   }
 
   /**
@@ -291,12 +310,16 @@ export class WorkspaceDiagnosticsPull {
       if (typeof report.resultId === 'string') {
         this.resultIds.set(report.uri, report.resultId);
       }
-      reports.push({
+      const accepted: WorkspaceDocumentReport = {
         uri: report.uri,
         kind: report.kind,
         ...(report.kind === 'full' && Array.isArray(report.items) ? { items: report.items } : {}),
         ...(typeof report.resultId === 'string' ? { resultId: report.resultId } : {}),
-      });
+      };
+      if (accepted.kind === 'full') {
+        this.latest.set(accepted.uri, accepted);
+      }
+      reports.push(accepted);
     }
     if (reports.length > 0) {
       this.deliver(reports);

@@ -291,16 +291,19 @@ export class ProblemsPanel {
 
   /**
    * Gets whether the workspace is still being analysed: a language server serving it is still loading
-   * it. The list says so in place of saying it found nothing.
+   * it, and not yet for so long that it is flagged stalled. The list says so in place of saying it
+   * found nothing.
    */
   protected readonly analyzing: Signal<boolean> = computed((): boolean => {
     const root: string | null = this.activeWorkspace.rootPath();
-    return this.lspStatus
-      .servers()
-      .some(
-        (server: LspServer): boolean =>
-          server.state === 'starting' && (root === null || server.rootPath === root),
-      );
+    return this.lspStatus.servers().some(
+      (server: LspServer): boolean =>
+        server.state === 'starting' &&
+        // A server the readiness watchdog has flagged may never say it loaded: past that, the list
+        // shows what it has rather than a spinner with no end.
+        !server.stalled &&
+        (root === null || server.rootPath === root),
+    );
   });
 
   /**
