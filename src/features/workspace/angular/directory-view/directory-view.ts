@@ -80,6 +80,12 @@ import {
 } from '@features/workspace/angular/workspace-find/workspace-find';
 import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
 import { ReferencesPanelState } from '@features/workspace/angular/panels/references-panel/references-panel-state';
+import { HierarchyPanelState } from '@features/workspace/angular/panels/hierarchy-panel/hierarchy-panel-state';
+import {
+  HierarchyReveal,
+  HierarchyRouter,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import {
   WorkspaceReferences,
   WorkspaceReferencesOpen,
@@ -219,6 +225,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
   output: ['errors', 'terminal'],
   packages: ['errors', 'terminal'],
   references: ['errors', 'terminal'],
+  hierarchy: ['references', 'errors', 'terminal'],
   debug: ['errors', 'terminal'],
   history: ['errors', 'terminal'],
 };
@@ -285,6 +292,8 @@ const AGENT_OPEN: OpenOptions = { background: true };
     SearchPanelRequests,
     // The list this tab's References panel shows (#1014), per view so it outlives the panel.
     ReferencesPanelState,
+    // The hierarchy this tab's Hierarchy panel shows (#1153), per view for the same reason.
+    HierarchyPanelState,
     // Beside the openers it switches between, so a switch acts on this tab's dock and documents.
     DocumentDiffSwitch,
     // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
@@ -968,6 +977,23 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly referencesState: ReferencesPanelState = inject(ReferencesPanelState);
 
   /**
+   * Holds the router Show Call Hierarchy and Show Type Hierarchy reach this tab through (#1153).
+   */
+  private readonly hierarchyRouter: HierarchyRouter = inject(HierarchyRouter);
+
+  /**
+   * Holds the hierarchy this tab's Hierarchy panel shows.
+   */
+  private readonly hierarchyState: HierarchyPanelState = inject(HierarchyPanelState);
+
+  /**
+   * Holds a stable reveal callback registered with {@link hierarchyRouter}, so it can be unregistered
+   * by identity.
+   */
+  private readonly revealHierarchyHandler: HierarchyReveal = (source: HierarchySource): void =>
+    this.revealHierarchy(source);
+
+  /**
    * Holds a stable reveal callback registered with {@link workspaceReferences}, so it can be
    * unregistered by identity.
    */
@@ -1579,6 +1605,9 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.debugAttach.register(this.attachDebugger);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceReferences.register(this.revealReferencesHandler, this.openReferenceHandler);
+        this.hierarchyRouter.register(this.revealHierarchyHandler, (): string | null =>
+          this.documents.activeDocumentId(),
+        );
         this.workspaceDocuments.register(this.documentHandler);
         this.dockPanelCommands.register(this.dockPanelHandler);
       } else {
@@ -1587,6 +1616,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.debugAttach.unregister(this.attachDebugger);
         this.workspaceFind.unregister(this.revealSearchHandler);
         this.workspaceReferences.unregister(this.revealReferencesHandler);
+        this.hierarchyRouter.unregister(this.revealHierarchyHandler);
         this.workspaceDocuments.unregister(this.documentHandler);
         this.dockPanelCommands.unregister(this.dockPanelHandler);
       }
@@ -1694,6 +1724,29 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     }
     this.dockReveal.reveal('references');
+  }
+
+  /**
+   * Shows a hierarchy in this tab's Hierarchy panel (#1153) — tabbing the panel in beside References
+   * (or the Error List, or the Terminal, or any tool group) when the layout has none — then bringing
+   * it forward. A panel the layout already holds stays wherever it was put.
+   * @param source The hierarchy, which replaces the one shown.
+   */
+  private revealHierarchy(source: HierarchySource): void {
+    this.hierarchyState.show(source);
+    if (!collectPanelIds(this.dockState.layout()).includes('hierarchy')) {
+      const anchor: StackNode | null =
+        findStackOfPanel(this.dockState.layout(), 'references') ??
+        findStackOfPanel(this.dockState.layout(), 'errors') ??
+        findStackOfPanel(this.dockState.layout(), 'terminal') ??
+        firstStackOfRole(this.dockState.layout(), 'tool');
+      if (anchor !== null) {
+        this.dockState.tabInto(anchor.id, 'hierarchy');
+      } else {
+        this.dockState.dockEdge('hierarchy', 'bottom');
+      }
+    }
+    this.dockReveal.reveal('hierarchy');
   }
 
   /**
@@ -2099,6 +2152,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceReferences.unregister(this.revealReferencesHandler);
+    this.hierarchyRouter.unregister(this.revealHierarchyHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
     this.dockPanelCommands.unregister(this.dockPanelHandler);
     this.forgeRepository.dispose();

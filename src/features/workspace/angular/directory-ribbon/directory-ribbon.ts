@@ -21,6 +21,8 @@ import {
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { Log } from '@shared/angular/services/log/log';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type { HierarchyKind } from '@shared/angular/services/hierarchy/hierarchy';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
@@ -162,6 +164,18 @@ export class DirectoryRibbon {
             label: 'Go to Symbol in Workspace',
             run: (): void => this.onGoToWorkspaceSymbol(),
           },
+          // No accelerators: ⌃⌥H and ⌃⇧H are the editor's own (#1153); a native accelerator would
+          // take the chord from every control.
+          {
+            id: 'directory.showCallHierarchy',
+            label: 'Show Call Hierarchy',
+            run: (): void => this.onShowHierarchy('calls'),
+          },
+          {
+            id: 'directory.showTypeHierarchy',
+            label: 'Show Type Hierarchy',
+            run: (): void => this.onShowHierarchy('types'),
+          },
         ],
       },
       {
@@ -239,6 +253,11 @@ export class DirectoryRibbon {
    * Holds the router Go to Symbol in Workspace opens through, in the workspace in front (#1146).
    */
   private readonly symbolRouter: WorkspaceSymbolRouter = inject(WorkspaceSymbolRouter);
+
+  /**
+   * Holds the navigation that shows a symbol's call or type hierarchy (#1153).
+   */
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
 
   /**
    * Holds the workspace document seam the File group's Save and Save All dispatch through.
@@ -569,6 +588,15 @@ export class DirectoryRibbon {
   protected onGoToWorkspaceSymbol(): void {
     this.log.info('workspace.ribbon', 'Go to Symbol in Workspace invoked');
     this.symbolRouter.open();
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the editor in front (#1153).
+   * @param kind Which hierarchy.
+   */
+  protected onShowHierarchy(kind: HierarchyKind): void {
+    this.log.info('workspace.ribbon', 'Show hierarchy invoked', kind);
+    void this.navigation.showHierarchyInActiveEditor(kind);
   }
 
   /**

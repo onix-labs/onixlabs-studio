@@ -24,6 +24,7 @@ import {
   STUDIO_LSP_COMMAND,
   opensBlockAt,
 } from './lsp-features';
+import type { HierarchyNode, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 import type { LspCompletionSupport, LspSignatureHelpSupport } from './lsp-completion';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
@@ -1722,7 +1723,12 @@ describe('LspFeatures', () => {
           range: { start: { line: 0, character: 13 }, end: { line: 0, character: 19 } },
         },
       ];
-      navigationSupport = { implementation: true, typeDefinition: true };
+      navigationSupport = {
+        implementation: true,
+        typeDefinition: true,
+        callHierarchy: false,
+        typeHierarchy: false,
+      };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
         LspFeatures['implementations']
@@ -1758,7 +1764,12 @@ describe('LspFeatures', () => {
     });
 
     it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
-      navigationSupport = { implementation: false, typeDefinition: true };
+      navigationSupport = {
+        implementation: false,
+        typeDefinition: true,
+        callHierarchy: false,
+        typeHierarchy: false,
+      };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
         LspFeatures['implementations']
@@ -1783,6 +1794,135 @@ describe('LspFeatures', () => {
 
       expect(features.servesNavigation(model, 'implementation')).toBe(false);
       expect(features.servesNavigation(model, 'typeDefinition')).toBe(false);
+    });
+  });
+
+  describe('call and type hierarchies (#1153)', () => {
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
+    const HIERARCHIES: LspNavigationSupport = {
+      implementation: false,
+      typeDefinition: false,
+      callHierarchy: true,
+      typeHierarchy: true,
+    };
+    const span: (line: number, from: number, to: number) => unknown = (
+      line: number,
+      from: number,
+      to: number,
+    ): unknown => ({
+      start: { line, character: from },
+      end: { line, character: to },
+    });
+    /**
+     * Builds a server's hierarchy item, as Roslyn 5.13 answers one.
+     * @param name The symbol's name.
+     * @param uri Its document.
+     * @param line Its line.
+     * @returns Returns the item.
+     */
+    const item: (name: string, uri: string, line: number) => unknown = (
+      name: string,
+      uri: string,
+      line: number,
+    ): unknown => ({
+      name,
+      kind: 6,
+      detail: 'Fixture.Services.FormalGreeter',
+      uri,
+      range: span(line, 4, 40),
+      selectionRange: span(line, 18, 23),
+      data: { SymbolKeyData: `key:${name}` },
+    });
+    const model: () => Parameters<LspFeatures['hierarchy']>[0] = (): Parameters<
+      LspFeatures['hierarchy']
+    >[0] => owned as Parameters<LspFeatures['hierarchy']>[0];
+
+    it('preparesTheRoot_andWalksALevelAtATime_handingTheServerItsOwnItemBack', async () => {
+      navigationSupport = HIERARCHIES;
+      const root: unknown = item('Greet(string)', 'file:///root/formal.ts', 10);
+      responses['textDocument/prepareCallHierarchy'] = [root];
+      responses['callHierarchy/incomingCalls'] = [
+        { from: item('Main()', 'file:///root/program.ts', 4), fromRanges: [span(8, 4, 9)] },
+      ];
+      responses['callHierarchy/outgoingCalls'] = [
+        { to: item('Format(string)', 'file:///root/text.ts', 2), fromRanges: [] },
+        { to: { name: 'malformed' } },
+      ];
+      const features: LspFeatures = await build();
+
+      const source: HierarchySource | null = await features.hierarchy(model(), at, 'calls');
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/prepareCallHierarchy',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          position: { line: 10, character: 19 },
+        },
+      });
+      expect(source?.kind).toBe('calls');
+      expect(source?.roots).toEqual([
+        {
+          name: 'Greet(string)',
+          detail: 'Fixture.Services.FormalGreeter',
+          kind: 6,
+          location: {
+            path: '/root/formal.ts',
+            range: { startLineNumber: 11, startColumn: 19, endLineNumber: 11, endColumn: 24 },
+          },
+          item: root,
+        },
+      ]);
+
+      const callers: readonly HierarchyNode[] | null | undefined = await source?.children(
+        source.roots[0],
+        'callers',
+      );
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'callHierarchy/incomingCalls',
+        params: { item: root },
+      });
+      expect(callers?.map((node: HierarchyNode): string => node.name)).toEqual(['Main()']);
+      expect(callers?.[0]?.location.path).toBe('/root/program.ts');
+
+      const callees: readonly HierarchyNode[] | null | undefined = await source?.children(
+        source.roots[0],
+        'callees',
+      );
+      expect(requests.at(-1)?.method).toBe('callHierarchy/outgoingCalls');
+      expect(callees?.map((node: HierarchyNode): string => node.name)).toEqual(['Format(string)']);
+    });
+
+    it('typeHierarchies_walkBaseAndDerivedTypes_andAFailedWalkIsNull', async () => {
+      navigationSupport = HIERARCHIES;
+      const root: unknown = item('FormalGreeter', 'file:///root/formal.ts', 4);
+      responses['textDocument/prepareTypeHierarchy'] = [root];
+      responses['typeHierarchy/supertypes'] = [item('IGreeter', 'file:///root/greeter.ts', 2)];
+      responses['typeHierarchy/subtypes'] = new Error('The symbol could not be resolved.');
+      const features: LspFeatures = await build();
+
+      const source: HierarchySource | null = await features.hierarchy(model(), at, 'types');
+
+      expect(requests.at(-1)?.method).toBe('textDocument/prepareTypeHierarchy');
+      const bases: readonly HierarchyNode[] | null | undefined = await source?.children(
+        source.roots[0],
+        'supertypes',
+      );
+      expect(bases?.map((node: HierarchyNode): string => node.name)).toEqual(['IGreeter']);
+      expect(await source?.children(source.roots[0], 'subtypes')).toBeNull();
+    });
+
+    it('nothingAtTheCaret_hasNoRoots_andAServerThatGivesNone_isNeverAsked', async () => {
+      navigationSupport = { ...HIERARCHIES, typeHierarchy: false };
+      responses['textDocument/prepareCallHierarchy'] = null;
+      const features: LspFeatures = await build();
+
+      expect((await features.hierarchy(model(), at, 'calls'))?.roots).toEqual([]);
+      const asked: number = requests.length;
+      expect(await features.hierarchy(model(), at, 'types')).toBeNull();
+      expect(requests.length).toBe(asked);
     });
   });
 

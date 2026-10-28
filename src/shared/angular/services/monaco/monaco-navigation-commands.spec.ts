@@ -10,6 +10,8 @@ import {
   STUDIO_GO_TO_DEFINITION_COMMAND,
   STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
   STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
+  STUDIO_CALL_HIERARCHY_COMMAND,
+  STUDIO_TYPE_HIERARCHY_COMMAND,
   STUDIO_REFERENCES_LENS_COMMAND,
 } from './monaco-navigation-commands';
 
@@ -27,6 +29,11 @@ const KEYS: { CtrlCmd: number; Shift: number; Alt: number; WinCtrl: number } = {
  * Monaco's `KeyCode.F12`, as the fake instance numbers it.
  */
 const F12: number = 70;
+
+/**
+ * Monaco's `KeyCode.KeyH`, as the fake instance numbers it.
+ */
+const KEY_H: number = 38;
 
 /**
  * Monaco's mouse-target types the specs click on.
@@ -82,7 +89,7 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
   };
   const fake: typeof MonacoApi = {
     KeyMod: KEYS,
-    KeyCode: { F12 },
+    KeyCode: { F12, KeyH: KEY_H },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -242,6 +249,27 @@ describe('installNavigationCommands (#1014)', () => {
     }
   });
 
+  it('bindsTheHierarchiesToTheControlKey_withAltOrShiftH_onEveryPlatform (#1153)', () => {
+    // ⌃ on a Mac is Monaco's WinCtrl; elsewhere Ctrl is its CtrlCmd.
+    for (const [isMac, control] of [
+      [true, KEYS.WinCtrl],
+      [false, KEYS.CtrlCmd],
+    ] as const) {
+      const installed: Installed = install(isMac, []);
+
+      expect(installed.rules).toContainEqual({
+        keybinding: control | KEYS.Alt | KEY_H,
+        command: STUDIO_CALL_HIERARCHY_COMMAND,
+        when,
+      });
+      expect(installed.rules).toContainEqual({
+        keybinding: control | KEYS.Shift | KEY_H,
+        command: STUDIO_TYPE_HIERARCHY_COMMAND,
+        when,
+      });
+    }
+  });
+
   it('theCommands_handTheFocusedEditorOn_withTheirMode_andNothingWithoutFocus', () => {
     const idle: FakeEditor = fakeEditor(false);
     const focused: FakeEditor = fakeEditor(true);
@@ -251,12 +279,16 @@ describe('installNavigationCommands (#1014)', () => {
     installed.commands.get(STUDIO_FIND_REFERENCES_COMMAND)?.();
     installed.commands.get(STUDIO_GO_TO_IMPLEMENTATION_COMMAND)?.();
     installed.commands.get(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND)?.();
+    installed.commands.get(STUDIO_CALL_HIERARCHY_COMMAND)?.();
+    installed.commands.get(STUDIO_TYPE_HIERARCHY_COMMAND)?.();
 
     expect(installed.navigated).toEqual([
       { editor: focused.editor, mode: 'definition' },
       { editor: focused.editor, mode: 'references' },
       { editor: focused.editor, mode: 'implementation' },
       { editor: focused.editor, mode: 'typeDefinition' },
+      { editor: focused.editor, mode: 'callHierarchy' },
+      { editor: focused.editor, mode: 'typeHierarchy' },
     ]);
     const unfocused: Installed = install(false, [idle.editor]);
     unfocused.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();

@@ -24,6 +24,8 @@ export type EditorContextMenuCommand =
   | 'typeDefinition'
   | 'implementation'
   | 'references'
+  | 'callHierarchy'
+  | 'typeHierarchy'
   | 'symbol'
   | 'line'
   | 'rename'
@@ -88,6 +90,9 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   typeDefinition: { mac: '', windows: '' },
   implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
+  // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
+  callHierarchy: { mac: '⌃⌥H', windows: 'Ctrl+Alt+H' },
+  typeHierarchy: { mac: '⌃⇧H', windows: 'Ctrl+Shift+H' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   rename: { mac: 'F2', windows: 'F2' },
@@ -306,6 +311,13 @@ export class EditorContextMenu {
         this.item('references', 'Find All References', !this.navigation.listsReferences(editor)),
       );
     }
+    // Offered where the language server gives them and a workspace's Hierarchy panel shows them (#1153).
+    if (this.navigation.offersHierarchy(editor, 'calls')) {
+      navigation.push(this.item('callHierarchy', 'Show Call Hierarchy'));
+    }
+    if (this.navigation.offersHierarchy(editor, 'types')) {
+      navigation.push(this.item('typeHierarchy', 'Show Type Hierarchy'));
+    }
     navigation.push(this.item('symbol', 'Go to Symbol'), this.item('line', 'Go to Line'));
 
     const find: MenuItem[] = [this.item('find', 'Find', !this.findRouter.answers(editor))];
@@ -363,6 +375,12 @@ export class EditorContextMenu {
         return;
       case 'references':
         void this.navigation.findReferences(editor);
+        return;
+      case 'callHierarchy':
+        void this.navigation.showHierarchy(editor, 'calls');
+        return;
+      case 'typeHierarchy':
+        void this.navigation.showHierarchy(editor, 'types');
         return;
       case 'symbol':
         this.goToRouter.open(editor, 'symbol');

@@ -9,6 +9,7 @@ import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import { HierarchyKind, HierarchyRouter } from '@shared/angular/services/hierarchy/hierarchy';
 import type {
   ReferenceItem,
   ReferenceList,
@@ -386,6 +387,38 @@ describe('EditorContextMenu (#1012)', () => {
         id: 'typeDefinition',
         label: 'Go to Type Definition',
       });
+    });
+
+    it('hierarchies_shownWhereTheServerGivesThem_andAWorkspaceShowsThem_withRidersChords (#1153)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'csharp' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'callHierarchy')).toBeUndefined();
+
+      TestBed.inject(HierarchyRouter).register((): void => undefined);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+      const shown: string[] = [];
+      vi.spyOn(TestBed.inject(EditorNavigation), 'showHierarchy').mockImplementation(
+        (_editor: unknown, kind: HierarchyKind): Promise<void> => {
+          shown.push(kind);
+          return Promise.resolve();
+        },
+      );
+      menu.run('callHierarchy', editor);
+      menu.run('typeHierarchy', editor);
+
+      expect(rowOf(items, 'callHierarchy')).toMatchObject({
+        label: 'Show Call Hierarchy',
+        shortcut: '⌃⌥H',
+      });
+      expect(rowOf(items, 'typeHierarchy')).toMatchObject({
+        label: 'Show Type Hierarchy',
+        shortcut: '⌃⇧H',
+      });
+      expect(idsOf(items).indexOf('typeHierarchy')).toBeLessThan(idsOf(items).indexOf('symbol'));
+      expect(shown).toEqual(['calls', 'types']);
     });
 
     it('find_disabledWhereNothingAnswers_andFormatSelection_withNothingSelected', () => {

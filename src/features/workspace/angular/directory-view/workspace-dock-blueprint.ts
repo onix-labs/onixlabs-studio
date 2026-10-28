@@ -4,6 +4,7 @@ import { OutputPanel } from '@features/workspace/angular/panels/output-panel/out
 import { PackagesPanel } from '@features/workspace/angular/panels/packages-panel/packages-panel';
 import { ProblemsPanel } from '@features/workspace/angular/panels/problems-panel/problems-panel';
 import { ReferencesPanel } from '@features/workspace/angular/panels/references-panel/references-panel';
+import { HierarchyPanel } from '@features/workspace/angular/panels/hierarchy-panel/hierarchy-panel';
 import { SearchPanel } from '@features/workspace/angular/panels/search-panel/search-panel';
 import { SolutionPanel } from '@features/workspace/angular/panels/solution-panel/solution-panel';
 import { TerminalPanel } from '@shared/angular/components/panels/terminal-panel/terminal-panel';
@@ -122,6 +123,15 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.REFERENCES,
       role: 'tool',
       component: ReferencesPanel,
+    },
+    {
+      // Show Call Hierarchy's and Show Type Hierarchy's tree (#1153): like References, added to the
+      // layout only when asked for, beside the Error List.
+      id: 'hierarchy',
+      title: 'Hierarchy',
+      icon: Icon.HIERARCHY,
+      role: 'tool',
+      component: HierarchyPanel,
     },
     {
       id: 'terminal',

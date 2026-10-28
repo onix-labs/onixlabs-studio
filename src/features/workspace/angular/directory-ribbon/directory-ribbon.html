@@ -69,6 +69,19 @@
       label="Go to Symbol"
       (action)="onGoToWorkspaceSymbol()"
     />
+    <!-- The call and type hierarchy of the symbol at the caret in the editor in front (#1153). -->
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CALL_HIERARCHY"
+        label="Call Hierarchy"
+        (action)="onShowHierarchy('calls')"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.HIERARCHY"
+        label="Type Hierarchy"
+        (action)="onShowHierarchy('types')"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <!-- Everything you launch against the project, as one group. Start is a split button: its face runs

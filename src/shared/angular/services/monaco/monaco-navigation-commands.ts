@@ -5,7 +5,13 @@ import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-comma
  * Names where Studio's navigation takes an editor: to the definition of the symbol at the caret, or to
  * the list of every reference to it (#1014).
  */
-export type NavigationMode = 'definition' | 'references' | 'implementation' | 'typeDefinition';
+export type NavigationMode =
+  | 'definition'
+  | 'references'
+  | 'implementation'
+  | 'typeDefinition'
+  | 'callHierarchy'
+  | 'typeHierarchy';
 
 /**
  * Lists every Monaco command that goes to a symbol's definition, declaration, type definition,
@@ -55,6 +61,17 @@ export const STUDIO_GO_TO_IMPLEMENTATION_COMMAND: string = 'studio.goToImplement
  * one, so it is reached from the editor's right-click menu.
  */
 export const STUDIO_GO_TO_TYPE_DEFINITION_COMMAND: string = 'studio.goToTypeDefinition';
+
+/**
+ * Names Studio's Show Call Hierarchy (#1153), bound to ⌃⌥H (Ctrl+Alt+H) as in Rider.
+ */
+export const STUDIO_CALL_HIERARCHY_COMMAND: string = 'studio.showCallHierarchy';
+
+/**
+ * Names Studio's Show Type Hierarchy (#1153), bound to ⌃⇧H (Ctrl+Shift+H): Rider's own ⌃H is
+ * delete-left in a Mac editor.
+ */
+export const STUDIO_TYPE_HIERARCHY_COMMAND: string = 'studio.showTypeHierarchy';
 
 /**
  * Names the editor contribution behind Monaco's ⌘-click (Ctrl-click) on a symbol: it underlines the
@@ -130,6 +147,8 @@ export function installNavigationCommands(
   monaco.editor.registerCommand(STUDIO_FIND_REFERENCES_COMMAND, run('references'));
   monaco.editor.registerCommand(STUDIO_GO_TO_IMPLEMENTATION_COMMAND, run('implementation'));
   monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
+  monaco.editor.registerCommand(STUDIO_CALL_HIERARCHY_COMMAND, run('callHierarchy'));
+  monaco.editor.registerCommand(STUDIO_TYPE_HIERARCHY_COMMAND, run('typeHierarchy'));
   // A references lens (#1149) lists its symbol's references: the editor showing the lens's document is
   // placed at the symbol, then searched from as Find All References searches.
   monaco.editor.registerCommand(
@@ -157,6 +176,7 @@ export function installNavigationCommands(
     },
   );
   const when: string = `editorFocus && !${FIND_PASSTHROUGH_CONTEXT_KEY}`;
+  const control: number = isMac ? monaco.KeyMod.WinCtrl : monaco.KeyMod.CtrlCmd;
   monaco.editor.addKeybindingRules([
     // A removal with no chord drops every chord the command has, whichever platform Monaco runs on.
     ...MONACO_NAVIGATION_COMMANDS.map((command: string): MonacoApi.editor.IKeybindingRule => ({
@@ -172,6 +192,17 @@ export function installNavigationCommands(
     {
       keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.F12,
       command: STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+      when,
+    },
+    // The control key itself on every platform: ⌃ on a Mac (Monaco's WinCtrl), Ctrl elsewhere.
+    {
+      keybinding: control | monaco.KeyMod.Alt | monaco.KeyCode.KeyH,
+      command: STUDIO_CALL_HIERARCHY_COMMAND,
+      when,
+    },
+    {
+      keybinding: control | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
+      command: STUDIO_TYPE_HIERARCHY_COMMAND,
       when,
     },
   ]);
