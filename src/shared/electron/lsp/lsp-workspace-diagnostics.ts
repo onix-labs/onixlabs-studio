@@ -123,7 +123,7 @@ export class WorkspaceDiagnosticsPull {
    * Initializes a new instance of the {@link WorkspaceDiagnosticsPull} class.
    * @param connection The server connection.
    * @param deliver Receives each batch of document reports, partial or final — or, with `reset`, word to
-   * drop every report it holds.
+   * drop every report it holds, or, with `complete`, word that a request ran to its end (#1182).
    * @param label Names the session in the log.
    */
   public constructor(
@@ -131,6 +131,7 @@ export class WorkspaceDiagnosticsPull {
     private readonly deliver: (
       reports: readonly WorkspaceDocumentReport[],
       reset?: boolean,
+      complete?: boolean,
     ) => void,
     private readonly label: string,
   ) {}
@@ -250,6 +251,8 @@ export class WorkspaceDiagnosticsPull {
         }
         this.accept((result as { items?: unknown } | null)?.items);
         this.failures = 0;
+        // The request ran to its end: every document the server reports has been reported (#1182).
+        this.deliver([], false, true);
         this.send();
       })
       .catch((error: unknown): void => {

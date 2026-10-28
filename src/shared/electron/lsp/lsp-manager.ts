@@ -150,6 +150,12 @@ interface LspSession {
   loaded: boolean;
 
   /**
+   * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
+   * workspace (#1182): the workspace has been analysed, which a window attaching later is told.
+   */
+  analysed: boolean;
+
+  /**
    * Holds which windows hold each document open on the server (#1190), so the server never hears a
    * document opened twice — Roslyn aborts on that — nor closed while another window still has it.
    */
@@ -295,11 +301,22 @@ export class LspManager {
     }
     session.workspaceDiagnostics = new WorkspaceDiagnosticsPull(
       session.connection,
-      (reports: readonly WorkspaceDocumentReport[], reset?: boolean): void => {
+      (reports: readonly WorkspaceDocumentReport[], reset?: boolean, complete?: boolean): void => {
+        if (reset === true) {
+          session.analysed = false;
+        }
+        // A pull that runs to its end once the server has loaded the workspace has reported all of it.
+        if (complete === true && session.loaded) {
+          session.analysed = true;
+        }
         const message: LspMessage = {
           sessionId,
           method: WORKSPACE_DIAGNOSTICS_METHOD,
-          params: reset === true ? { reports, reset: true } : { reports },
+          params: {
+            reports,
+            ...(reset === true ? { reset: true } : {}),
+            ...(complete === true ? { complete: true } : {}),
+          },
         };
         this.send(sessionId, LspChannel.Notification, message);
       },
@@ -524,6 +541,7 @@ export class LspManager {
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
       loaded: false,
+      analysed: false,
       openDocuments: new LspOpenDocuments<WebContents>(),
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
@@ -541,6 +559,7 @@ export class LspManager {
           success: true,
           serverInfo: result.serverInfo,
           capabilities: result.capabilities,
+          ...(session.workspaceDiagnostics === null ? {} : { pullsWorkspaceDiagnostics: true }),
         };
       })
       .catch((error: unknown): LspStartResult => {
@@ -985,19 +1004,20 @@ export class LspManager {
       }
       const reports: readonly WorkspaceDocumentReport[] =
         session.workspaceDiagnostics?.snapshot() ?? [];
-      if (reports.length > 0) {
-        const message: LspMessage = {
-          sessionId,
-          method: WORKSPACE_DIAGNOSTICS_METHOD,
-          params: { reports },
-        };
-        sender.send(LspChannel.Notification, message);
-      }
+      // Loaded first: the window takes a pull as complete only from a server it knows has loaded.
       if (session.loaded) {
         const message: LspMessage = {
           sessionId,
           method: PROJECT_INITIALIZATION_COMPLETE,
           params: {},
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (reports.length > 0 || session.analysed) {
+        const message: LspMessage = {
+          sessionId,
+          method: WORKSPACE_DIAGNOSTICS_METHOD,
+          params: { reports, ...(session.analysed ? { complete: true } : {}) },
         };
         sender.send(LspChannel.Notification, message);
       }

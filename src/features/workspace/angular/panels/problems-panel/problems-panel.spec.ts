@@ -213,6 +213,8 @@ describe('ProblemsPanel', () => {
           {
             provide: SolutionModel,
             useValue: {
+              settled: (): boolean => true,
+              model: (): null => null,
               owningProject: (path: string): ProblemOwner | null =>
                 path.startsWith('/ws/Core/')
                   ? OWNERS['core']
@@ -341,6 +343,8 @@ describe('ProblemsPanel', () => {
       problems: readonly Diagnostic[],
       starting: boolean = false,
       solution: boolean = true,
+      settled: boolean = true,
+      analysis: 'pending' | 'done' | undefined = undefined,
     ): Promise<HTMLElement> {
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
@@ -352,6 +356,7 @@ describe('ProblemsPanel', () => {
             useValue: {
               owningProject: (): null => null,
               model: signal<unknown>(solution ? { projects: [] } : null),
+              settled: signal<boolean>(settled),
             },
           },
           {
@@ -362,6 +367,8 @@ describe('ProblemsPanel', () => {
                   sessionId: '/ws::csharp',
                   rootPath: '/ws',
                   state: starting ? 'starting' : 'ready',
+                  stalled: false,
+                  analysis,
                 },
               ]),
             },
@@ -416,6 +423,20 @@ describe('ProblemsPanel', () => {
         'Analyzing Solution',
       );
       expect(host.querySelector('.problems-empty__ok')).toBeNull();
+    });
+
+    it('beforeTheProjectModelIsRead_orBeforeALoadedServersFirstFullReport_isStillAnalysing', async () => {
+      expect(
+        (await show([], false, true, false)).querySelector('.problems-empty--analyzing'),
+      ).not.toBeNull();
+      expect(
+        (await show([], false, true, true, 'pending')).querySelector('.problems-empty--analyzing'),
+      ).not.toBeNull();
+      const done: HTMLElement = await show([], false, true, true, 'done');
+      expect(done.querySelector('.problems-empty--analyzing')).toBeNull();
+      expect(done.querySelector('.problems-empty')?.textContent?.trim()).toBe(
+        'No problems found in this solution',
+      );
     });
 
     it('aFilterThatFindsNothing_saysWhatItFoundNoneOf', async () => {

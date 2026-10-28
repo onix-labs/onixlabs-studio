@@ -23,6 +23,7 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
   let sent: SentRequest[];
   let delivered: (readonly WorkspaceDocumentReport[])[];
   let resets: number;
+  let completions: number;
 
   /**
    * Builds a pull over a fake server that holds each request until the test answers it.
@@ -45,9 +46,13 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
             });
           }),
       },
-      (reports: readonly WorkspaceDocumentReport[], reset?: boolean): void => {
+      (reports: readonly WorkspaceDocumentReport[], reset?: boolean, complete?: boolean): void => {
         if (reset === true) {
           resets += 1;
+          return;
+        }
+        if (complete === true) {
+          completions += 1;
           return;
         }
         delivered.push(reports);
@@ -61,6 +66,7 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
     sent = [];
     delivered = [];
     resets = 0;
+    completions = 0;
   });
 
   afterEach(() => {
@@ -103,6 +109,8 @@ describe('WorkspaceDiagnosticsPull (#1144)', () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(sent).toHaveLength(2);
+    // The request ran to its end, which is said once its last reports are delivered (#1182).
+    expect(completions).toBe(1);
     expect(sent[1]?.params.previousResultIds).toEqual([
       { uri: 'file:///root/A.cs', value: 'a1' },
       { uri: 'file:///root/B.cs', value: 'b1' },

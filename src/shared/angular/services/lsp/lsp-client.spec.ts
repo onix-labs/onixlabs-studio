@@ -9,6 +9,7 @@ import {
   LspStartRequest,
   LspStartResult,
   LspShowMessageRequest,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 
 import { DirectoryListing } from '@shared/api/workspace-channels';
@@ -523,6 +524,65 @@ describe('LspClient', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('analysis of the whole workspace (#1182)', () => {
+    const SESSION: string = '/root::csharp';
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('isPending_untilAPullRunsToItsEnd_afterTheServerLoaded', async () => {
+      lsp.startResult = { success: true, capabilities: {}, pullsWorkspaceDiagnostics: true };
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+
+      expect(status.analysisOf(SESSION)).toBe('pending');
+      // A pull that ends before the server has loaded the workspace reported a workspace not yet there.
+      lsp.notify(SESSION, WORKSPACE_DIAGNOSTICS_METHOD, { reports: [], complete: true });
+      expect(status.analysisOf(SESSION)).toBe('pending');
+
+      lsp.notify(SESSION, 'workspace/projectInitializationComplete', {});
+      lsp.notify(SESSION, WORKSPACE_DIAGNOSTICS_METHOD, { reports: [], complete: true });
+
+      expect(status.analysisOf(SESSION)).toBe('done');
+    });
+
+    it('aServerThatNeverReportsItComplete_isNotLeftAnalysingForever', async () => {
+      lsp.startResult = { success: true, capabilities: {}, pullsWorkspaceDiagnostics: true };
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await openCsharp(client);
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'workspace/projectInitializationComplete', {});
+        vi.advanceTimersByTime(59_999);
+        expect(status.analysisOf(SESSION)).toBe('pending');
+        vi.advanceTimersByTime(1);
+        expect(status.analysisOf(SESSION)).toBe('done');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('aServerThatDoesNotReportTheWholeWorkspace_hasNoAnalysis', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      expect(TestBed.inject(LspStatus).analysisOf(SESSION)).toBeUndefined();
     });
   });
 

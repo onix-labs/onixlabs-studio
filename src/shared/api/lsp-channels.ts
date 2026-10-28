@@ -297,6 +297,12 @@ export interface LspStartResult {
    * Gets the failure reason, when the server did not start.
    */
   readonly error?: string;
+
+  /**
+   * Gets whether the session pulls the server's diagnostics for the whole workspace (#1144), whose
+   * first complete pull after the server loaded is when the workspace has been analysed (#1182).
+   */
+  readonly pullsWorkspaceDiagnostics?: boolean;
 }
 
 /**

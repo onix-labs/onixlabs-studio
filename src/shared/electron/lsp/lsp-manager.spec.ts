@@ -609,6 +609,7 @@ describe('LspManager (#1015)', () => {
         ready: Promise.resolve({ success: true, capabilities: {} }),
         workspaceDiagnostics: { snapshot: (): unknown[] => [REPORT] },
         loaded,
+        analysed: loaded,
         openDocuments: new LspOpenDocuments<unknown>(),
       });
       return manager as ManagerInternals;
@@ -631,9 +632,10 @@ describe('LspManager (#1015)', () => {
       await internals.start(START, late.contents);
       await vi.advanceTimersByTimeAsync(0);
 
+      // Loaded first: the window takes a pull as complete only from a server it knows has loaded.
       expect(late.sent).toEqual([
-        { method: 'studio/workspaceDiagnostics', params: { reports: [REPORT] } },
         { method: 'workspace/projectInitializationComplete', params: {} },
+        { method: 'studio/workspaceDiagnostics', params: { reports: [REPORT], complete: true } },
       ]);
     });
 
