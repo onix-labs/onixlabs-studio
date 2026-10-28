@@ -20,6 +20,7 @@
     [contextMenuFor]="contextMenuFor"
     [editingId]="renameTarget()?.key ?? null"
     [editValue]="renameTarget()?.label ?? ''"
+    [editSelection]="renameSelection()"
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowOpen($event)"
     (rowActivate)="onRowOpen($event)"
@@ -30,7 +31,7 @@
     (editCommit)="commitRename($event)"
     (editCancel)="cancelRename()"
   >
-    <!-- A solution folder being renamed keeps its icon; the tree's field takes the place of the rest. -->
+    <!-- A row being renamed keeps its icon; the tree's field takes the place of the rest. -->
     <ng-template let-row let-editing="editing">
       @let r = rowOf(row);
       <app-icon
@@ -91,6 +92,30 @@
     <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
       <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- Deleting a file or a folder on disk asks first, as in the File Explorer: the entries go to the
+     Trash where the platform has one, and what could not go there is reported afterwards. -->
+<app-modal
+  [open]="deleteTargets() !== null"
+  [width]="26"
+  ariaLabel="Delete"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="solution-panel__confirm-title">{{ deleteTitle() }}</h2>
+    <p class="solution-panel__confirm-message">
+      @if ((deleteTargets()?.length ?? 0) > 1) {
+        They move to the Trash, so you can put them back from there if you need them.
+      } @else {
+        It moves to the Trash, so you can put it back from there if you need it.
+      }
+    </p>
+    <app-button-row>
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+      <app-button label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>
