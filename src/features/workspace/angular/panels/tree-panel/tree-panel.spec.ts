@@ -1,4 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -25,6 +27,16 @@ import {
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { TreePanel } from './tree-panel';
 
+/**
+ * Builds a filter that remembers nothing between specs: its storage is cleared first.
+ * @param key The storage key's stem.
+ * @returns Returns the filter.
+ */
+function freshFilter(key: string): ExplorerFilter {
+  localStorage.removeItem(`${key}.filters`);
+  localStorage.removeItem(`${key}.changesOnly`);
+  return new ExplorerFilter(`${key}.filters`, `${key}.changesOnly`);
+}
 /**
  * Builds a workspace tree node of the given kind.
  * @param name The entry's base name.
@@ -89,10 +101,12 @@ class FakeWorkspace {
     this.showsGitStatus.update((value: boolean): boolean => !value);
   }
 
-  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly filter: ExplorerFilter = freshFilter('test.files');
 
-  public toggleChangesOnly(): void {
-    this.showsChangesOnly.update((value: boolean): boolean => !value);
+  public setChangesOnly(on: boolean): void {
+    if (this.filter.selected().has('changes') !== on) {
+      this.filter.toggle('changes');
+    }
   }
 
   public refreshFromDisk(): Promise<void> {
@@ -347,7 +361,7 @@ describe('TreePanel row context menu', () => {
     }
 
     it('opensTheFoldersLeadingToChanges_andHidesTheRest', async () => {
-      workspace.showsChangesOnly.set(true);
+      workspace.setChangesOnly(true);
       fixture.detectChanges();
       await fixture.whenStable();
       // The fake opens src; its entries arrive, and the effect opens app in turn.
@@ -371,7 +385,7 @@ describe('TreePanel row context menu', () => {
       expect(shown()).toEqual(['/ws/src', '/ws/src/app', '/ws/src/app/main.ts']);
 
       // Off again: the folders it opened close, and everything shows.
-      workspace.showsChangesOnly.set(false);
+      workspace.setChangesOnly(false);
       fixture.detectChanges();
       await fixture.whenStable();
       expect(workspace.toggled).toEqual(['/ws/src', '/ws/src/app', '/ws/src', '/ws/src/app']);
@@ -380,11 +394,11 @@ describe('TreePanel row context menu', () => {
     it('whenNothingIsChanged_theFilterTurnsItselfOff_andTheTreeShowsEverything', () => {
       // After a commit, say: rather than an empty tree, the whole tree again.
       vi.spyOn(git, 'hasChanges').mockReturnValue(false);
-      workspace.showsChangesOnly.set(true);
+      workspace.setChangesOnly(true);
       fixture.detectChanges();
       TestBed.tick();
 
-      expect(workspace.showsChangesOnly()).toBe(false);
+      expect(workspace.filter.selected().has('changes')).toBe(false);
       expect(shown()).toEqual(['/ws/docs', '/ws/src']);
     });
 
@@ -392,29 +406,58 @@ describe('TreePanel row context menu', () => {
       // A repository just opened has no status yet; it is not taken for a clean one.
       vi.spyOn(git, 'statusRead').mockReturnValue(false);
       vi.spyOn(git, 'hasChanges').mockReturnValue(false);
-      workspace.showsChangesOnly.set(true);
+      workspace.setChangesOnly(true);
       fixture.detectChanges();
       TestBed.tick();
 
-      expect(workspace.showsChangesOnly()).toBe(true);
+      expect(workspace.filter.selected().has('changes')).toBe(true);
     });
 
-    it('theSwitch_isAToolStripToggle_notAnOption', () => {
-      // Turned on through the model first: the spied repository check is not reactive, so the strip
-      // reads it again only once a real signal it depends on changes.
-      workspace.showsChangesOnly.set(true);
+    /**
+     * Reads the tool strip's funnel and the rows of its menu.
+     * @returns Returns whether the funnel is pressed, and each row's label, tick and inertness.
+     */
+    function funnel(): {
+      pressed: string | null | undefined;
+      rows: { label: string; checked: boolean | undefined; disabled: boolean }[];
+    } {
       fixture.detectChanges();
-      const toggle: () => HTMLButtonElement | null = (): HTMLButtonElement | null =>
-        (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
-          'button[aria-label="Show Changed Files Only"]',
-        );
-      expect(toggle()?.getAttribute('aria-pressed')).toBe('true');
+      const button: HTMLButtonElement | null = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLButtonElement>('app-explorer-toolbar button[aria-label="Filter"]');
+      const toolbar: { filterItems: () => readonly MenuItem[] } = fixture.debugElement.query(
+        (element: { name: string }): boolean => element.name === 'app-explorer-toolbar',
+      ).componentInstance as { filterItems: () => readonly MenuItem[] };
+      return {
+        pressed: button?.getAttribute('aria-pressed'),
+        rows: toolbar.filterItems().map((item: MenuItem) => ({
+          label: item.label,
+          checked: item.checked,
+          disabled: item.disabled === true,
+        })),
+      };
+    }
 
-      toggle()?.click();
-      fixture.detectChanges();
-      expect(workspace.showsChangesOnly()).toBe(false);
-      expect(toggle()?.getAttribute('aria-pressed')).toBe('false');
+    it('theFilter_isAFunnel_whoseMenuTicksWhatTheTreeShows_pressedWhileAnythingIsTicked', () => {
+      // The spied repository check is not reactive: the strip reads it again only once a real signal
+      // it depends on changes.
+      workspace.filter.toggle('error');
+      workspace.filter.toggle('error');
+      expect(funnel()).toEqual({
+        pressed: 'false',
+        rows: [
+          { label: 'Show Differences', checked: false, disabled: false },
+          { label: 'Show Errors', checked: false, disabled: false },
+          { label: 'Show Warnings', checked: false, disabled: false },
+          { label: 'Show Info', checked: false, disabled: false },
+          { label: 'Show Hints', checked: false, disabled: false },
+        ],
+      });
 
+      workspace.filter.toggle('error');
+
+      expect(funnel().pressed).toBe('true');
+      expect(funnel().rows[1]?.checked).toBe(true);
       const options: readonly MenuItem[] =
         (component as unknown as { moreItems: () => readonly MenuItem[] })
           .moreItems()
@@ -422,27 +465,79 @@ describe('TreePanel row context menu', () => {
       expect(options.map((item: MenuItem): string => item.id)).not.toContain('changes-only');
     });
 
-    it('theSwitch_isDisabledWithNothingChanged', () => {
+    it('showDifferences_isInertWithNothingChanged_andNotOfferedOutsideARepository', () => {
       vi.spyOn(git, 'hasChanges').mockReturnValue(false);
       vi.spyOn(git, 'statusRead').mockReturnValue(false);
-      workspace.showsChangesOnly.set(true);
-      workspace.showsChangesOnly.set(false);
-      fixture.detectChanges();
-      const toggle: HTMLButtonElement | null = (
-        fixture.nativeElement as HTMLElement
-      ).querySelector<HTMLButtonElement>('button[aria-label="Show Changed Files Only"]');
-      expect(toggle?.disabled).toBe(true);
+      workspace.filter.toggle('warning');
+      expect(funnel().rows[0]).toEqual({
+        label: 'Show Differences (no changes)',
+        checked: false,
+        disabled: true,
+      });
+
+      // Outside a repository it is not offered at all.
+      vi.spyOn(git, 'isRepository').mockReturnValue(false);
+      workspace.filter.toggle('warning');
+      expect(funnel().rows.map((row: { label: string }): string => row.label)).toEqual([
+        'Show Errors',
+        'Show Warnings',
+        'Show Info',
+        'Show Hints',
+      ]);
     });
 
-    it('theSwitch_isDisabledOutsideARepository', () => {
-      vi.spyOn(git, 'isRepository').mockReturnValue(false);
-      workspace.showsChangesOnly.set(true);
+    it('errors_squiggleTheFileAndEveryFolderAboveIt_andShowErrorsNarrowsTheTreeToThem', async () => {
+      TestBed.inject(Diagnostics).register({
+        id: 'test',
+        connect: (onChange: (diagnostics: readonly Diagnostic[]) => void): (() => void) => {
+          onChange([
+            {
+              file: 'main.ts',
+              message: 'broken',
+              severity: 'error',
+              line: 1,
+              column: 1,
+              source: 'ts',
+              documentId: null,
+              path: '/ws/src/app/main.ts',
+              scope: 'workspace',
+            },
+          ]);
+          return (): void => undefined;
+        },
+      });
+      vi.spyOn(git, 'stateFor').mockReturnValue(null);
+      workspace.rows.set([
+        { node: docs, depth: 0, expanded: false },
+        { node: src, depth: 0, expanded: true },
+        { node: app, depth: 1, expanded: true },
+        { node: changed, depth: 2, expanded: false },
+        { node: same, depth: 2, expanded: false },
+      ]);
+      const squiggled: () => string[] = (): string[] => {
+        fixture.detectChanges();
+        return Array.from(
+          (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+            '.tree-row.tree-row--squiggle',
+          ),
+        ).map((row: HTMLElement): string => row.dataset['treeId'] ?? '');
+      };
+
+      expect(squiggled()).toEqual(['/ws/src', '/ws/src/app', '/ws/src/app/main.ts']);
+
+      workspace.filter.toggle('error');
+      await fixture.whenStable();
+
+      expect(shown()).toEqual(['/ws/src', '/ws/src/app', '/ws/src/app/main.ts']);
+    });
+
+    it('aFilterThatMatchesNothing_saysSo', () => {
+      workspace.filter.toggle('hint');
       fixture.detectChanges();
-      const toggle: HTMLButtonElement | null = (
-        fixture.nativeElement as HTMLElement
-      ).querySelector<HTMLButtonElement>('button[aria-label="Show Changed Files Only"]');
-      expect(toggle?.disabled).toBe(true);
-      expect(toggle?.getAttribute('aria-pressed')).toBe('false');
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.tree-empty')?.textContent,
+      ).toContain('No files match the filter.');
     });
   });
 

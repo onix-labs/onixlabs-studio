@@ -29,13 +29,15 @@ import {
   ExplorerVcsTarget,
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
+import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
 import {
-  ExplorerChangesOnly,
+  ExplorerFilterState,
   ExplorerToolbar,
 } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
@@ -176,6 +178,11 @@ export class TreePanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
+   * Holds where the workspace's problems are, for the error squiggles and the filter (#1182 follow-up).
+   */
+  private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
+
+  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
@@ -244,6 +251,8 @@ export class TreePanel {
       expanded: row.expanded,
       // How version control sees the path, in colour (#860) — unless the colours are switched off.
       ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
+      // An error in the file, or beneath the folder, squiggles its name as an editor would.
+      ...(this.problems.has(row.node.path, 'error') ? { squiggle: true } : {}),
       data: row.node,
     }));
     const edit: NameEdit | null = this.editing();
@@ -254,70 +263,88 @@ export class TreePanel {
   });
 
   /**
-   * Gets whether the tree shows only what changed (#1053): the switch is on, and the folder is a
-   * repository, without which nothing is changed and the switch stands for nothing.
+   * Gets the kinds the tree is narrowed to that can narrow it here (#1182 follow-up): those ticked,
+   * less Show Differences outside a repository, where nothing is changed.
    */
-  protected readonly changesOnly: Signal<boolean> = computed(
-    (): boolean => this.workspace.showsChangesOnly() && this.git.isRepository(),
-  );
-
-  /**
-   * Gets the state of the tool strip's Show Changed Files Only toggle: on while the tree is narrowed,
-   * and pressable only when there is something to narrow it to — a repository with changes in it.
-   */
-  protected readonly changesOnlyToggle: Signal<ExplorerChangesOnly> = computed(
-    (): ExplorerChangesOnly => ({
-      on: this.changesOnly(),
-      unavailable: !this.git.isRepository()
-        ? 'not a repository'
-        : !this.git.hasChanges()
-          ? 'no changes'
-          : null,
-    }),
-  );
-
-  /**
-   * Turns the filter off once nothing is changed — after a commit, say — so the tree goes back to
-   * showing everything rather than standing empty. Waits for the repository's status to be read, so a
-   * repository that has only just opened is not taken for a clean one.
-   */
-  private readonly leaveWhenClean: unknown = effect((): void => {
-    if (this.changesOnly() && this.git.statusRead() && !this.git.hasChanges()) {
-      untracked((): void => this.workspace.toggleChangesOnly());
-    }
-  });
-
-  /**
-   * Gets the workspace's rows the tree shows: all of them, or only the changes and the folders on the
-   * way to them (#1053).
-   */
-  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
-    (): readonly WorkspaceTreeRow[] => {
-      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
-      return this.changesOnly()
-        ? rows.filter((row: WorkspaceTreeRow): boolean =>
-            isChangedState(this.git.stateFor(row.node.path)),
-          )
-        : rows;
+  private readonly filterKinds: Signal<ReadonlySet<ExplorerFilterKind>> = computed(
+    (): ReadonlySet<ExplorerFilterKind> => {
+      const selected: ReadonlySet<ExplorerFilterKind> = this.workspace.filter.selected();
+      if (!selected.has('changes') || this.git.isRepository()) {
+        return selected;
+      }
+      const usable: Set<ExplorerFilterKind> = new Set<ExplorerFilterKind>(selected);
+      usable.delete('changes');
+      return usable;
     },
   );
 
   /**
-   * Holds the folders the filter opened to lead to changes, so turning it off closes exactly those and
-   * leaves the tree as it was — and so a folder the user closes is not opened again behind their back.
+   * Gets whether the tree is narrowed at all: something it can be narrowed to is ticked.
    */
-  private readonly openedForChanges: Set<string> = new Set<string>();
+  protected readonly filtering: Signal<boolean> = computed(
+    (): boolean => this.filterKinds().size > 0,
+  );
 
   /**
-   * Opens the folders that lead to changes while the filter is on — level by level, as each opened
-   * folder's entries arrive — and closes them again when it is turned off.
+   * Gets the tool strip's filter: what is ticked, Show Differences not offered at all outside a
+   * repository, and inert in one with nothing changed.
    */
-  private readonly followChanges: unknown = effect((): void => {
-    const on: boolean = this.changesOnly();
+  protected readonly filterState: Signal<ExplorerFilterState> = computed(
+    (): ExplorerFilterState => ({
+      selected: this.workspace.filter.selected(),
+      unavailable:
+        this.git.isRepository() && !this.git.hasChanges() ? { changes: 'no changes' } : {},
+      ...(this.git.isRepository() ? {} : { hidden: ['changes'] }),
+    }),
+  );
+
+  /**
+   * Unticks Show Differences once nothing is changed — after a commit, say — so the tree goes back to
+   * showing everything else rather than standing empty (#1053). Waits for the repository's status to
+   * be read, so a repository that has only just opened is not taken for a clean one.
+   */
+  private readonly leaveWhenClean: unknown = effect((): void => {
+    if (
+      this.workspace.filter.selected().has('changes') &&
+      this.git.isRepository() &&
+      this.git.statusRead() &&
+      !this.git.hasChanges()
+    ) {
+      untracked((): void => this.workspace.filter.clear('changes'));
+    }
+  });
+
+  /**
+   * Gets the workspace's rows the tree shows: all of them, or — narrowed — the files matching any kind
+   * ticked and the folders on the way to them.
+   */
+  private readonly shownRows: Signal<readonly WorkspaceTreeRow[]> = computed(
+    (): readonly WorkspaceTreeRow[] => {
+      const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
+      const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
+      return kinds.size === 0
+        ? rows
+        : rows.filter((row: WorkspaceTreeRow): boolean => this.matches(row.node.path, kinds));
+    },
+  );
+
+  /**
+   * Holds the folders the filter opened to lead to what it shows, so clearing it closes exactly those
+   * and leaves the tree as it was — and so a folder the user closes is not opened again behind their
+   * back.
+   */
+  private readonly openedForFilter: Set<string> = new Set<string>();
+
+  /**
+   * Opens the folders that lead to what the filter shows while it narrows the tree — level by level,
+   * as each opened folder's entries arrive — and closes them again when it is cleared.
+   */
+  private readonly followFilter: unknown = effect((): void => {
+    const kinds: ReadonlySet<ExplorerFilterKind> = this.filterKinds();
     const rows: readonly WorkspaceTreeRow[] = this.workspace.rows();
     untracked((): void => {
-      if (!on) {
-        for (const path of this.openedForChanges) {
+      if (kinds.size === 0) {
+        for (const path of this.openedForFilter) {
           const row: WorkspaceTreeRow | undefined = rows.find(
             (candidate: WorkspaceTreeRow): boolean => candidate.node.path === path,
           );
@@ -325,7 +352,7 @@ export class TreePanel {
             void this.workspace.toggleDirectory(path);
           }
         }
-        this.openedForChanges.clear();
+        this.openedForFilter.clear();
         return;
       }
       for (const row of rows) {
@@ -333,15 +360,33 @@ export class TreePanel {
         if (
           row.node.type === 'directory' &&
           !row.expanded &&
-          !this.openedForChanges.has(path) &&
-          this.git.stateFor(path) === 'contains'
+          !this.openedForFilter.has(path) &&
+          this.matches(path, kinds)
         ) {
-          this.openedForChanges.add(path);
+          this.openedForFilter.add(path);
           void this.workspace.toggleDirectory(path);
         }
       }
     });
   });
+
+  /**
+   * Determines whether a path matches any kind the tree is narrowed to: a file changed, or with
+   * problems of a ticked severity — or a folder leading to one.
+   * @param path The file's or folder's absolute path.
+   * @param kinds The kinds.
+   * @returns Returns true when it does.
+   */
+  private matches(path: string, kinds: ReadonlySet<ExplorerFilterKind>): boolean {
+    for (const kind of kinds) {
+      if (
+        kind === 'changes' ? isChangedState(this.git.stateFor(path)) : this.problems.has(path, kind)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /**
    * Gets where the selection is, for the status strip: the folder holding the selected row, from the

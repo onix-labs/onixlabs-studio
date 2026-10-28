@@ -1,6 +1,8 @@
 import { signal, WritableSignal } from '@angular/core';
 import type { MockInstance } from 'vitest';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
+import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   ProjectAction,
@@ -26,6 +28,16 @@ import {
 import { ExplorerVcsMenu } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { SolutionPanel } from './solution-panel';
 
+/**
+ * Builds a filter that remembers nothing between specs: its storage is cleared first.
+ * @param key The storage key's stem.
+ * @returns Returns the filter.
+ */
+function freshFilter(key: string): ExplorerFilter {
+  localStorage.removeItem(`${key}.filters`);
+  localStorage.removeItem(`${key}.changesOnly`);
+  return new ExplorerFilter(`${key}.filters`, `${key}.changesOnly`);
+}
 /**
  * A fake solution model whose rows and model presence the test sets, recording toggles, search queries,
  * and expand/collapse calls the panel forwards from its toolbar.
@@ -57,10 +69,12 @@ class FakeSolutionModel {
     this.showsGitStatus.update((value: boolean): boolean => !value);
   }
 
-  public readonly showsChangesOnly: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly filter: ExplorerFilter = freshFilter('test.solution');
 
-  public toggleChangesOnly(): void {
-    this.showsChangesOnly.update((value: boolean): boolean => !value);
+  public setChangesOnly(on: boolean): void {
+    if (this.filter.selected().has('changes') !== on) {
+      this.filter.toggle('changes');
+    }
   }
 
   public refreshFromDisk(): void {
@@ -379,7 +393,7 @@ describe('SolutionPanel', () => {
       });
       solution.model.set(model);
       solution.rows.set([root, a, b]);
-      solution.showsChangesOnly.set(true);
+      solution.setChangesOnly(true);
       fixture.detectChanges();
       await fixture.whenStable();
 
@@ -463,6 +477,46 @@ describe('SolutionPanel', () => {
         'rename',
       );
       expect(menuIds(makeRow({ kind: 'folder', path: null }))).not.toContain('delete');
+    });
+
+    it('anError_squigglesItsFile_andEveryRowLeadingToIt_toTheRoot (#1182 follow-up)', () => {
+      TestBed.inject(Diagnostics).register({
+        id: 'test',
+        connect: (onChange: (diagnostics: readonly Diagnostic[]) => void): (() => void) => {
+          onChange([
+            {
+              file: 'g.cs',
+              message: 'CS0029',
+              severity: 'error',
+              line: 1,
+              column: 1,
+              source: 'csharp',
+              documentId: null,
+              path: '/root/A/g.cs',
+              scope: 'workspace',
+            },
+          ]);
+          return (): void => undefined;
+        },
+      });
+      const rows: readonly SolutionRow[] = [
+        makeRow({ key: 'root', kind: 'solution', path: null, scmPaths: ['/root'] }),
+        makeRow({ key: 'folder', kind: 'folder', path: null, scmPaths: ['/root/A'] }),
+        makeRow({ key: 'a', kind: 'project', path: '/root/A/A.csproj', scmPaths: ['/root/A'] }),
+        makeRow({ key: 'g', kind: 'file', path: '/root/A/g.cs' }),
+        makeRow({ key: 'b', kind: 'project', path: '/root/B/B.csproj', scmPaths: ['/root/B'] }),
+      ];
+      solution.model.set(model);
+      solution.rows.set(rows);
+
+      const squiggled: string[] = (
+        component as unknown as { rows: () => readonly { id: string; squiggle?: boolean }[] }
+      )
+        .rows()
+        .filter((tree: { squiggle?: boolean }): boolean => tree.squiggle === true)
+        .map((tree: { id: string }): string => tree.id);
+
+      expect(squiggled).toEqual(['root', 'folder', 'a', 'g']);
     });
 
     it('statusStrip_saysWhereTheSelectionIs_andWhatItIs', () => {
