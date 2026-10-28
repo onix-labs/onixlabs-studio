@@ -1318,6 +1318,11 @@ export class Icon {
   public static readonly SUCCESS_FILL: Icon = new Icon('ph-fill ph-check-circle');
 
   /**
+   * Gets the success icon in duotone, large in an empty view that has found nothing wrong (#1182).
+   */
+  public static readonly SUCCESS_DUOTONE: Icon = new Icon('ph-duotone ph-check-circle');
+
+  /**
    * Gets the duotone Note icon used by markdown alerts.
    */
   public static readonly ALERT_NOTE: Icon = new Icon('ph-duotone ph-info');

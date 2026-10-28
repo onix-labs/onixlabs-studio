@@ -24,7 +24,10 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Chip } from '@shared/angular/components/chip/chip';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { LspServer, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { fileIconFor } from '@shared/angular/icons/file-icon';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
@@ -81,16 +84,33 @@ interface SeverityOption {
    * The button icon.
    */
   readonly icon: Icon;
+
+  /**
+   * The tone the button and its count wear: the severity's colour.
+   */
+  readonly tone: ButtonTone;
+
+  /**
+   * What the empty list says it found none of, in "No … found in this solution".
+   */
+  readonly noun: string;
 }
 
 /**
- * The severity filter options shown as toggle buttons in the tool-strip.
+ * The severity filter options shown as toggle buttons in the tool-strip, each with its count.
  */
 const SEVERITY_OPTIONS: readonly SeverityOption[] = [
-  { value: 'all', label: 'Everything', icon: Icon.LIST_ALL },
-  { value: 'error', label: 'Errors', icon: Icon.ERROR },
-  { value: 'warning', label: 'Warnings', icon: Icon.WARNING },
+  { value: 'all', label: 'Everything', icon: Icon.LIST_ALL, tone: 'accent', noun: 'problems' },
+  { value: 'error', label: 'Errors', icon: Icon.ERROR, tone: 'danger', noun: 'errors' },
+  { value: 'warning', label: 'Warnings', icon: Icon.WARNING, tone: 'warning', noun: 'warnings' },
+  { value: 'info', label: 'Info', icon: Icon.INFO, tone: 'info', noun: 'messages' },
+  { value: 'hint', label: 'Hints', icon: Icon.HINT, tone: 'info', noun: 'hints' },
 ];
+
+/**
+ * Identifies the "…" menu's Group by Project and File row.
+ */
+const MENU_GROUP: string = 'problems.group';
 
 /**
  * Renders the aggregated {@link Diagnostics} as the body of the Problems (Error List) dock panel: a
@@ -109,7 +129,7 @@ type ProblemRow =
 
 @Component({
   selector: 'app-problems-panel',
-  imports: [Chip, Button, AppIcon, Dropdown, PanelToolbar, TreeView],
+  imports: [Chip, Button, AppIcon, CdkMenuTrigger, Dropdown, Menu, PanelToolbar, TreeView],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -166,6 +186,11 @@ export class ProblemsPanel {
    * Holds the active workspace, whose root a file no project owns is named relative to.
    */
   private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
+   * Holds the language servers' states, which say whether the workspace is still being analysed.
+   */
+  private readonly lspStatus: LspStatus = inject(LspStatus);
 
   /**
    * Holds whether the list is grouped by project and file (#1182), or flat.
@@ -231,6 +256,78 @@ export class ProblemsPanel {
         );
     },
   );
+
+  /**
+   * Gets the diagnostics the source filter keeps, which each severity's count counts.
+   */
+  private readonly ofSource: Signal<readonly Diagnostic[]> = computed((): readonly Diagnostic[] => {
+    const source: string = this.source();
+    return this.diagnostics
+      .all()
+      .filter(
+        (diagnostic: Diagnostic): boolean => source === ALL_SOURCES || diagnostic.source === source,
+      );
+  });
+
+  /**
+   * Gets how many problems each filter shows, for the count on its toggle.
+   */
+  protected readonly counts: Signal<Readonly<Record<SeverityFilter, number>>> = computed(
+    (): Readonly<Record<SeverityFilter, number>> => {
+      const counts: Record<SeverityFilter, number> = {
+        all: 0,
+        error: 0,
+        warning: 0,
+        info: 0,
+        hint: 0,
+      };
+      for (const diagnostic of this.ofSource()) {
+        counts.all++;
+        counts[diagnostic.severity]++;
+      }
+      return counts;
+    },
+  );
+
+  /**
+   * Gets whether the workspace is still being analysed: a language server serving it is still loading
+   * it. The list says so in place of saying it found nothing.
+   */
+  protected readonly analyzing: Signal<boolean> = computed((): boolean => {
+    const root: string | null = this.activeWorkspace.rootPath();
+    return this.lspStatus
+      .servers()
+      .some(
+        (server: LspServer): boolean =>
+          server.state === 'starting' && (root === null || server.rootPath === root),
+      );
+  });
+
+  /**
+   * Gets what the workspace is called in the list's messages: a solution where it has one.
+   */
+  protected readonly scopeNoun: Signal<string> = computed((): string =>
+    this.solution.model() === null ? 'workspace' : 'solution',
+  );
+
+  /**
+   * Gets what the list says when the filters leave nothing: none of the chosen severity found — from
+   * the chosen source, when one is chosen — in the solution or workspace.
+   */
+  protected readonly emptyMessage: Signal<string> = computed((): string => {
+    const option: SeverityOption | undefined = SEVERITY_OPTIONS.find(
+      (candidate: SeverityOption): boolean => candidate.value === this.severity(),
+    );
+    const source: string = this.source();
+    return `No ${option?.noun ?? 'problems'}${source === ALL_SOURCES ? '' : ` from ${source}`} found in this ${this.scopeNoun()}`;
+  });
+
+  /**
+   * Gets the "…" menu's rows.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    { id: MENU_GROUP, label: 'Group by Project and File', checked: this.grouped() },
+  ]);
 
   /**
    * Gets the filtered diagnostics actually rendered, capped so a large solution's thousands of
@@ -310,6 +407,16 @@ export class ProblemsPanel {
     }
     return rows;
   });
+
+  /**
+   * Runs a "…" menu row.
+   * @param id The row's identifier.
+   */
+  protected onMenu(id: string): void {
+    if (id === MENU_GROUP) {
+      this.toggleGrouped();
+    }
+  }
 
   /**
    * Switches between the grouped and the flat list.

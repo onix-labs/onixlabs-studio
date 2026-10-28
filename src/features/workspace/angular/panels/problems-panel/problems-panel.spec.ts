@@ -14,6 +14,7 @@ import { EditorNavigation } from '@shared/angular/services/references/editor-nav
 import type { MockInstance } from 'vitest';
 
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
+import { LspServer, LspStatus } from '@shared/angular/services/lsp/lsp-status';
 import { ProblemsPanel } from './problems-panel';
 import type { ProblemOwner } from './problems-grouping';
 
@@ -61,7 +62,11 @@ describe('ProblemsPanel', () => {
   it('render_whenNoDiagnostics_showsTheEmptyState', () => {
     fixture.detectChanges();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('No problems detected');
+    // A green tick and that nothing was found, in a workspace with no solution (#1182).
+    expect(text).toContain('No problems found in this workspace');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.problems-empty__ok'),
+    ).not.toBeNull();
   });
 
   it('render_whenDiagnosticsReported_listsTheMessage', () => {
@@ -312,11 +317,8 @@ describe('ProblemsPanel', () => {
     it('theToggle_showsTheFlatList_whereAProblemInAClosedFileCanStillBeChosen', async () => {
       const host: HTMLElement = await show([problem('/ws/Core/Person.cs', 'one', 4)]);
 
-      [...host.querySelectorAll<HTMLButtonElement>('app-panel-toolbar button')]
-        .find((button: HTMLButtonElement): boolean =>
-          (button.textContent ?? '').includes('Group by Project and File'),
-        )
-        ?.click();
+      // The toggle is a checked row of the strip's "…" menu.
+      (component as unknown as { onMenu(id: string): void }).onMenu('problems.group');
       await fixture.whenStable();
 
       expect(host.querySelector('.tree-row')).toBeNull();
@@ -324,6 +326,109 @@ describe('ProblemsPanel', () => {
       expect(row?.textContent).toContain('Person.cs:4:9');
       // A problem in a file nobody has opened is still a way to it (#1144).
       expect(row?.disabled).toBe(false);
+    });
+  });
+
+  describe('the strip and the empty view (#1182)', () => {
+    /**
+     * Builds the panel showing problems, with language servers in the given states.
+     * @param problems The problems.
+     * @param starting Whether a language server for the workspace is still starting.
+     * @param solution Whether the workspace has a solution.
+     * @returns Returns the panel's element.
+     */
+    async function show(
+      problems: readonly Diagnostic[],
+      starting: boolean = false,
+      solution: boolean = true,
+    ): Promise<HTMLElement> {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [ProblemsPanel],
+        providers: [
+          { provide: ActiveWorkspace, useValue: { rootPath: signal<string | null>('/ws') } },
+          {
+            provide: SolutionModel,
+            useValue: {
+              owningProject: (): null => null,
+              model: signal<unknown>(solution ? { projects: [] } : null),
+            },
+          },
+          {
+            provide: LspStatus,
+            useValue: {
+              servers: signal<readonly Partial<LspServer>[]>([
+                {
+                  sessionId: '/ws::csharp',
+                  rootPath: '/ws',
+                  state: starting ? 'starting' : 'ready',
+                },
+              ]),
+            },
+          },
+        ],
+      }).compileComponents();
+      TestBed.inject(Diagnostics).register(new StaticProvider(problems));
+      fixture = TestBed.createComponent(ProblemsPanel);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('panel', panel);
+      await fixture.whenStable();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    /**
+     * A problem of a severity.
+     * @param severity The severity.
+     * @returns Returns the problem.
+     */
+    function of(severity: Diagnostic['severity']): Diagnostic {
+      return {
+        file: 'A.cs',
+        message: severity,
+        severity,
+        line: 1,
+        column: 1,
+        source: 'csharp',
+        documentId: null,
+        path: '/ws/A.cs',
+        scope: 'workspace',
+      };
+    }
+
+    it('eachSeverityHasAToggleWithItsCount_andNoTotalsSitAtTheEnd', async () => {
+      const host: HTMLElement = await show([of('error'), of('warning'), of('warning'), of('hint')]);
+
+      const toggles: string[] = [...host.querySelectorAll<HTMLElement>('.problems-filter')].map(
+        (toggle: HTMLElement): string => (toggle.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      );
+
+      expect(toggles).toEqual(['Everything4', 'Errors1', 'Warnings2', 'Info0', 'Hints1']);
+      expect(host.querySelector('app-panel-toolbar .problems-count')).toBeNull();
+      expect(
+        host.querySelector('app-panel-toolbar button[aria-label="More Actions"]'),
+      ).not.toBeNull();
+    });
+
+    it('whileTheSolutionIsAnalysed_saysSo_ratherThanThatNothingIsWrong', async () => {
+      const host: HTMLElement = await show([], true);
+
+      expect(host.querySelector('.problems-empty--analyzing')?.textContent).toContain(
+        'Analyzing Solution',
+      );
+      expect(host.querySelector('.problems-empty__ok')).toBeNull();
+    });
+
+    it('aFilterThatFindsNothing_saysWhatItFoundNoneOf', async () => {
+      const host: HTMLElement = await show([of('warning')]);
+
+      [...host.querySelectorAll<HTMLButtonElement>('app-panel-toolbar button')]
+        .find((button: HTMLButtonElement): boolean => (button.textContent ?? '').includes('Errors'))
+        ?.click();
+      await fixture.whenStable();
+
+      expect(host.querySelector('.problems-empty')?.textContent?.trim()).toBe(
+        'No errors found in this solution',
+      );
     });
   });
 });
