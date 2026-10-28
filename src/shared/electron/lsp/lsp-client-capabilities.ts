@@ -125,6 +125,9 @@ export function clientCapabilities(): ClientCapabilities {
       // configuration again (#1143); nothing is registered for it dynamically.
       didChangeConfiguration: { dynamicRegistration: false },
       semanticTokens: { refreshSupport: true },
+      // A server may say its diagnostics are stale (a project finished loading, the analysis scope
+      // changed), on which the workspace pull starts afresh (#1144).
+      diagnostics: { refreshSupport: true },
       // The main process watches the session root and sends `didChangeWatchedFiles`; a server
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },

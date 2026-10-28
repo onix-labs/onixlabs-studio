@@ -8,6 +8,9 @@ import {
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
 
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type { MockInstance } from 'vitest';
+
 import { ProblemsPanel } from './problems-panel';
 
 /**
@@ -122,5 +125,29 @@ describe('ProblemsPanel', () => {
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('a mere warning');
     expect(text).not.toContain('a genuine error');
+  });
+
+  it('reveal_aProblemInAFileThatIsNotOpen_opensItAtTheProblem (#1144)', () => {
+    const navigation: EditorNavigation = TestBed.inject(EditorNavigation);
+    const goTo: MockInstance<EditorNavigation['goTo']> = vi
+      .spyOn(navigation, 'goTo')
+      .mockResolvedValue(undefined);
+
+    component.reveal({
+      file: 'Broken.cs',
+      message: 'Cannot implicitly convert type string to int',
+      severity: 'error',
+      line: 5,
+      column: 34,
+      source: 'csharp',
+      documentId: null,
+      path: '/root/src/Broken.cs',
+      scope: 'workspace',
+    });
+
+    expect(goTo).toHaveBeenCalledWith(null, {
+      path: '/root/src/Broken.cs',
+      range: { startLineNumber: 5, startColumn: 34, endLineNumber: 5, endColumn: 34 },
+    });
   });
 });

@@ -12,6 +12,8 @@ import {
   LspSemanticTokensLegend,
   LspServerSummary,
   LspStartResult,
+  REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics } from '../diagnostics/diagnostics';
@@ -603,6 +605,15 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds each session's diagnostics for the files of its workspace (#1144), keyed by session and
+   * then by normalised path — open or not; {@link publish} lists those of files that are not open.
+   */
+  private readonly workspaceDiagnostics: Map<string, Map<string, readonly Diagnostic[]>> = new Map<
+    string,
+    Map<string, readonly Diagnostic[]>
+  >();
+
+  /**
    * Holds the current diagnostics for each document, keyed by document id.
    */
   private readonly diagnosticsByDocument: Map<string, readonly Diagnostic[]> = new Map<
@@ -1110,6 +1121,11 @@ export class LspClient implements OnDestroy {
         queue: Promise.resolve(),
       };
       this.tracked.set(key, tracked);
+      // An opened file's errors now come from its own pull: its workspace report leaves the list at
+      // once rather than lingering until something else republishes (#1144).
+      if ([...this.workspaceDiagnostics.values()].some((files) => files.has(key))) {
+        this.publish();
+      }
       this.enqueue(tracked, (): Promise<void> => this.open(tracked, state.content));
     } else {
       existing.languageId = state.languageId;
@@ -1670,6 +1686,11 @@ export class LspClient implements OnDestroy {
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didClose', {
       textDocument: { uri: tracked.uri },
     });
+    // A closed file's diagnostics are the workspace's to report now, but the server lets its open
+    // workspace request wait through a close: have it pulled afresh (#1144).
+    this.bridge.send(LspChannel.Notify, sessionId, REFRESH_WORKSPACE_DIAGNOSTICS_METHOD, {
+      uri: tracked.uri,
+    });
   }
 
   /**
@@ -1914,6 +1935,11 @@ export class LspClient implements OnDestroy {
     }
     // The server's semantic classification improved after it last served tokens (its project or a
     // standalone file's virtual project finished loading): recompute and repaint.
+    // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
+    if (message.method === WORKSPACE_DIAGNOSTICS_METHOD) {
+      this.ingestWorkspaceDiagnostics(message.sessionId, message.params);
+      return;
+    }
     if (message.method === 'workspace/semanticTokens/refresh') {
       this.scheduleRecolor(message.sessionId);
       return;
@@ -2349,7 +2375,72 @@ export class LspClient implements OnDestroy {
     for (const diagnostics of this.diagnosticsByDocument.values()) {
       merged.push(...diagnostics);
     }
+    // A file's workspace report stands in for it only while it is not open: an open document's own
+    // pull is fresher (it sees unsaved edits). A session no longer running reports nothing.
+    for (const [sessionId, files] of this.workspaceDiagnostics) {
+      if (!this.sessionInfo.has(sessionId)) {
+        continue;
+      }
+      for (const [key, diagnostics] of files) {
+        if (!this.tracked.has(key)) {
+          merged.push(...diagnostics);
+        }
+      }
+    }
     this.emit(merged);
+  }
+
+  /**
+   * Takes a batch of a server's diagnostics for the whole workspace (#1144): each file's full report
+   * replaces what it had (an empty one clears it), and an unchanged report keeps it. They reach the
+   * Error List as workspace diagnostics, located by path, so a file that is not open still lists its
+   * errors and opens at them.
+   * @param sessionId The session the reports came from.
+   * @param params The batch: `{ reports }`, with `reset` when the pull is starting over.
+   */
+  private ingestWorkspaceDiagnostics(sessionId: string, params: unknown): void {
+    const batch: { reports?: unknown; reset?: unknown } | null = (params as typeof batch) ?? null;
+    const reports: unknown = batch?.reports;
+    if (!Array.isArray(reports)) {
+      return;
+    }
+    const files: Map<string, readonly Diagnostic[]> =
+      this.workspaceDiagnostics.get(sessionId) ?? new Map<string, readonly Diagnostic[]>();
+    this.workspaceDiagnostics.set(sessionId, files);
+    // The pull is starting over: what it reported before is dropped, and reported again if it holds.
+    let changed: boolean = batch?.reset === true && files.size > 0;
+    if (batch?.reset === true) {
+      files.clear();
+    }
+    for (const report of reports as readonly {
+      uri?: unknown;
+      kind?: unknown;
+      items?: unknown;
+    }[]) {
+      if (typeof report.uri !== 'string' || report.kind !== 'full') {
+        continue;
+      }
+      const uri: string = report.uri;
+      const key: string = normalise(uriToPath(uri));
+      const items: readonly LspDiagnostic[] = Array.isArray(report.items)
+        ? (report.items as readonly LspDiagnostic[])
+        : [];
+      if (items.length === 0) {
+        changed = files.delete(key) || changed;
+        continue;
+      }
+      files.set(
+        key,
+        items.map((diagnostic: LspDiagnostic): Diagnostic => ({
+          ...toDiagnostic(diagnostic, { uri, documentId: null }),
+          scope: 'workspace',
+        })),
+      );
+      changed = true;
+    }
+    if (changed) {
+      this.publish();
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
+import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -21,6 +22,8 @@ import {
   LspServerSummary,
   LspStartRequest,
   LspStartResult,
+  REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
+  WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
@@ -119,6 +122,12 @@ interface LspSession {
    * (a client without capabilities silently loses pull diagnostics and semantic tokens).
    */
   ready: Promise<LspStartResult>;
+
+  /**
+   * Holds the pull that keeps the server's diagnostics for the whole workspace flowing (#1144), or
+   * null for a server that does not serve them.
+   */
+  workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
 }
 
 /**
@@ -220,6 +229,42 @@ export class LspManager {
   }
 
   /**
+   * Starts the pull of a server's diagnostics for the whole workspace (#1144), when it serves them:
+   * it says so in its capabilities, or its descriptor does (Roslyn answers `workspace/diagnostic`
+   * while advertising `workspaceDiagnostics: false` to a client without dynamic registration). Each
+   * batch of reports goes to the session's renderers.
+   * @param sessionId The session.
+   * @param session The session's state.
+   * @param result The server's initialize result.
+   */
+  private startWorkspaceDiagnostics(
+    sessionId: string,
+    session: LspSession,
+    result: InitializeResult,
+  ): void {
+    const provider: unknown = result.capabilities.diagnosticProvider;
+    const advertised: boolean =
+      (provider as { workspaceDiagnostics?: unknown } | undefined)?.workspaceDiagnostics === true;
+    if (!advertised && !this.registry.servesWorkspaceDiagnostics(session.request.serverId)) {
+      return;
+    }
+    session.workspaceDiagnostics = new WorkspaceDiagnosticsPull(
+      session.connection,
+      (reports: readonly WorkspaceDocumentReport[], reset?: boolean): void => {
+        const message: LspMessage = {
+          sessionId,
+          method: WORKSPACE_DIAGNOSTICS_METHOD,
+          params: reset === true ? { reports, reset: true } : { reports },
+        };
+        this.send(sessionId, LspChannel.Notification, message);
+      },
+      sessionId,
+    );
+    session.workspaceDiagnostics.start();
+    logger.info('LspManager', `Pulling workspace diagnostics for session ${sessionId}`);
+  }
+
+  /**
    * Tells each running session of the given servers that its configuration changed, so it asks for
    * it again through `workspace/configuration` (#1143).
    * @param serverIds The servers whose settings changed.
@@ -233,6 +278,9 @@ export class LspManager {
       void session.connection.sendNotification('workspace/didChangeConfiguration', {
         settings: null,
       });
+      // A setting may change what the server reports at all (its analysis scope): start the
+      // workspace diagnostics over rather than keep what it no longer mentions (#1144).
+      session.workspaceDiagnostics?.reset();
     }
   }
 
@@ -380,6 +428,19 @@ export class LspManager {
       }
       this.forwardNotification(parsed.sessionId, method, params);
     });
+    // The connection keeps `$/progress` to itself — it never reaches the handler above — and hands on
+    // only the progress no request of its own is waiting for. A workspace diagnostics pull's partial
+    // results go to the pull (#1144); the rest is the server's own progress, for its status row.
+    connection.onUnhandledProgress((progress: { token: unknown; value: unknown }): void => {
+      const pull: WorkspaceDiagnosticsPull | null | undefined = this.sessions.get(
+        parsed.sessionId,
+      )?.workspaceDiagnostics;
+      if (pull?.owns(progress.token) === true) {
+        pull.partial(progress.value);
+        return;
+      }
+      this.forwardNotification(parsed.sessionId, '$/progress', progress);
+    });
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
       this.handleExit(parsed.sessionId, child, code, signal),
     );
@@ -410,6 +471,7 @@ export class LspManager {
       clients: new Map<WebContents, number>(),
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
+      workspaceDiagnostics: null,
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
     this.sessions.set(parsed.sessionId, session);
@@ -420,11 +482,14 @@ export class LspManager {
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
     session.ready = this.initialize(connection, parsed.rootPath, spec)
-      .then((result: InitializeResult): LspStartResult => ({
-        success: true,
-        serverInfo: result.serverInfo,
-        capabilities: result.capabilities,
-      }))
+      .then((result: InitializeResult): LspStartResult => {
+        this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
+        return {
+          success: true,
+          serverInfo: result.serverInfo,
+          capabilities: result.capabilities,
+        };
+      })
       .catch((error: unknown): LspStartResult => {
         logger.warn('LspManager', `LSP server ${spec.command} failed to initialize`, error);
         this.tearDown(parsed.sessionId);
@@ -504,6 +569,11 @@ export class LspManager {
     }
     const session: LspSession | undefined = this.sessions.get(id);
     if (session === undefined) {
+      return;
+    }
+    if (method === REFRESH_WORKSPACE_DIAGNOSTICS_METHOD) {
+      const closed: unknown = (params as { uri?: unknown } | null)?.uri;
+      session.workspaceDiagnostics?.refresh(typeof closed === 'string' ? closed : undefined);
       return;
     }
     void session.connection.sendNotification(method, params);
@@ -648,6 +718,7 @@ export class LspManager {
     logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
     this.sessions.delete(id);
     session.watcher.close();
+    session.workspaceDiagnostics?.stop();
     try {
       session.connection.dispose();
     } catch (error: unknown) {
@@ -699,6 +770,12 @@ export class LspManager {
       },
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
+    // The server's diagnostics changed in a way an open workspace pull will not report (a project
+    // finished loading, the analysis scope changed): pull afresh (#1144).
+    connection.onRequest('workspace/diagnostic/refresh', (): null => {
+      session.workspaceDiagnostics?.refresh();
+      return null;
+    });
     // A server sends this when its semantic classification has improved (a project finished loading)
     // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
     connection.onRequest('workspace/semanticTokens/refresh', (): null => {

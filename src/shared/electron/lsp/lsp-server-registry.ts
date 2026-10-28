@@ -163,6 +163,16 @@ export class LspServerRegistry {
   }
 
   /**
+   * Determines whether a server answers `workspace/diagnostic` whatever its static capabilities say
+   * (#1144).
+   * @param serverId The server.
+   * @returns Returns true when its descriptor says it does.
+   */
+  public servesWorkspaceDiagnostics(serverId: LspServerId): boolean {
+    return this.descriptors.get(serverId)?.servesWorkspaceDiagnostics === true;
+  }
+
+  /**
    * Gets the user's values for the settings a server declares (#1143), keyed by configuration section,
    * for answering its `workspace/configuration` requests.
    * @param serverId The server.

@@ -457,6 +457,117 @@ describe('LspClient', () => {
     });
   });
 
+  describe('diagnostics for the whole workspace (#1144)', () => {
+    const BROKEN: unknown = {
+      uri: 'file:///root/src/Broken.cs',
+      kind: 'full',
+      resultId: 'r1',
+      items: [
+        {
+          range: { start: { line: 4, character: 33 }, end: { line: 4, character: 44 } },
+          severity: 1,
+          message: 'Cannot implicitly convert type string to int',
+          source: 'csharp',
+        },
+      ],
+    };
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     * @param path The document's path.
+     */
+    async function openCsharp(client: LspClient, path: string = '/root/src/A.cs'): Promise<void> {
+      client.syncDocument({ documentId: path, path, languageId: 'csharp', content: '' });
+      await flush();
+    }
+
+    it('aFileThatIsNotOpen_listsItsErrors_locatedByPath', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      expect(diagnostics.emitted).toEqual([
+        {
+          file: 'Broken.cs',
+          message: 'Cannot implicitly convert type string to int',
+          severity: 'error',
+          line: 5,
+          column: 34,
+          source: 'csharp',
+          documentId: null,
+          path: '/root/src/Broken.cs',
+          scope: 'workspace',
+        },
+      ]);
+    });
+
+    it('aFileOnceOpen_isListedFromItsOwnPull_notTwice', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      await openCsharp(client, '/root/src/Broken.cs');
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Other.cs', kind: 'full', items: [] }],
+      });
+
+      expect(
+        diagnostics.emitted.filter(
+          (diagnostic: Diagnostic): boolean => diagnostic.scope === 'workspace',
+        ),
+      ).toEqual([]);
+    });
+
+    it('aResetBatch_dropsWhatTheSessionReportedBefore', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [], reset: true });
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('closingADocument_hasTheWorkspacePulledAfresh_forgettingIt', async () => {
+      const client: LspClient = build();
+      await openCsharp(client, '/root/src/Broken.cs');
+
+      client.closeDocument('/root/src/Broken.cs');
+      await flush();
+
+      expect(lsp.notifications.slice(-2)).toEqual([
+        {
+          sessionId: '/root::csharp',
+          method: 'textDocument/didClose',
+          params: { textDocument: { uri: 'file:///root/src/Broken.cs' } },
+        },
+        {
+          sessionId: '/root::csharp',
+          method: 'studio/refreshWorkspaceDiagnostics',
+          params: { uri: 'file:///root/src/Broken.cs' },
+        },
+      ]);
+    });
+
+    it('anUnchangedReportKeepsTheErrors_anEmptyOneClearsThem', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', { reports: [BROKEN] });
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Broken.cs', kind: 'unchanged', resultId: 'r1' }],
+      });
+      expect(diagnostics.emitted).toHaveLength(1);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [{ uri: 'file:///root/src/Broken.cs', kind: 'full', resultId: 'r2', items: [] }],
+      });
+      expect(diagnostics.emitted).toEqual([]);
+    });
+  });
+
   describe('restore when asked first (#1143)', () => {
     let raised: NotificationRequest[];
 

@@ -307,4 +307,127 @@ describe('LspManager (#1015)', () => {
       ]);
     });
   });
+
+  describe('workspace diagnostics (#1144)', () => {
+    it('aServersRefresh_pullsAfresh_andIsAnswered', async () => {
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      let refreshed: number = 0;
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
+        request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+        workspaceDiagnostics: { refresh: (): void => void (refreshed += 1) },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/diagnostic/refresh')?.(
+        undefined,
+      );
+
+      expect(answer).toBeNull();
+      expect(refreshed).toBe(1);
+    });
+
+    it('startsAPull_forAServerWhoseDescriptorSaysItServesThem_orWhoseCapabilitiesDo', () => {
+      const pulling: (serverId: string, capabilities: unknown) => unknown[] = (
+        serverId: string,
+        capabilities: unknown,
+      ): unknown[] => {
+        const manager: InstanceType<typeof LspManager> = new LspManager(
+          (): BrowserWindow | null => null,
+          new WorkspaceContext(),
+          {
+            servesWorkspaceDiagnostics: (id: string): boolean => id === 'csharp',
+          } as unknown as LspServerRegistry,
+          new LspApplyEditForwarder(),
+        );
+        const requests: unknown[] = [];
+        const session: { request: unknown; connection: unknown; workspaceDiagnostics: unknown } = {
+          request: { sessionId: 's', serverId, rootPath: '/root' },
+          connection: {
+            sendRequest: (method: string, params: unknown): Promise<unknown> => {
+              requests.push({ method, params });
+              return new Promise<unknown>((): void => undefined);
+            },
+          },
+          workspaceDiagnostics: null,
+        };
+        (
+          manager as unknown as {
+            startWorkspaceDiagnostics(id: string, session: unknown, result: unknown): void;
+          }
+        ).startWorkspaceDiagnostics('s', session, { capabilities });
+        return requests;
+      };
+
+      expect(pulling('csharp', { diagnosticProvider: { workspaceDiagnostics: false } })).toEqual([
+        {
+          method: 'workspace/diagnostic',
+          params: { previousResultIds: [], partialResultToken: expect.any(String) as unknown },
+        },
+      ]);
+      expect(pulling('rust', { diagnosticProvider: { workspaceDiagnostics: true } })).toHaveLength(
+        1,
+      );
+      expect(pulling('rust', { diagnosticProvider: { workspaceDiagnostics: false } })).toEqual([]);
+    });
+  });
+
+  describe('workspace diagnostics from the renderer and settings (#1144)', () => {
+    /**
+     * Builds a manager holding one session whose pull records what it is asked.
+     * @param calls Receives the pull's calls.
+     * @returns Returns the manager's internals.
+     */
+    function holding(calls: string[]): ManagerInternals & {
+      notify(id: unknown, method: unknown, params: unknown): void;
+      announceConfigurationChange(serverIds: readonly string[]): void;
+    } {
+      const manager: unknown = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      const internals: ManagerInternals = manager as ManagerInternals;
+      internals.sessions.set('/root::csharp', {
+        request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+        connection: {
+          sendNotification: (method: string): Promise<void> => {
+            calls.push(`server:${method}`);
+            return Promise.resolve();
+          },
+        },
+        workspaceDiagnostics: {
+          refresh: (forget?: string): void => void calls.push(`refresh:${forget ?? ''}`),
+          reset: (): void => void calls.push('reset'),
+        },
+      });
+      return manager as ManagerInternals & {
+        notify(id: unknown, method: unknown, params: unknown): void;
+        announceConfigurationChange(serverIds: readonly string[]): void;
+      };
+    }
+
+    it('aClosedDocument_refreshesThePull_forgettingIt_withoutTellingTheServer', () => {
+      const calls: string[] = [];
+      holding(calls).notify('/root::csharp', 'studio/refreshWorkspaceDiagnostics', {
+        uri: 'file:///root/Broken.cs',
+      });
+
+      expect(calls).toEqual(['refresh:file:///root/Broken.cs']);
+    });
+
+    it('aSettingsChange_startsThePullOver', () => {
+      const calls: string[] = [];
+      holding(calls).announceConfigurationChange(['csharp']);
+
+      expect(calls).toEqual(['server:workspace/didChangeConfiguration', 'reset']);
+    });
+  });
 });

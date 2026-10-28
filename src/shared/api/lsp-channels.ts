@@ -169,6 +169,23 @@ export interface LspSemanticTokensLegend {
 }
 
 /**
+ * Names the notification the main process sends the renderer with a batch of a server's diagnostics
+ * for the whole workspace (#1144): `{ reports }`, each report `{ uri, kind, items?, resultId? }` as
+ * `workspace/diagnostic` answers it, files that are not open included — or, with `reset: true`, word
+ * that the pull is starting over and every report it sent before is to be dropped.
+ */
+export const WORKSPACE_DIAGNOSTICS_METHOD: string = 'studio/workspaceDiagnostics';
+
+/**
+ * Names the notification the renderer sends the main process, on the Notify channel, to have a
+ * session's workspace diagnostics pulled afresh (#1144) — after a document closes, which the server
+ * leaves its open request waiting through, though the closed file's diagnostics are now the
+ * workspace's to report. Its parameters name the closed document, `{ uri }`. It never reaches the
+ * server.
+ */
+export const REFRESH_WORKSPACE_DIAGNOSTICS_METHOD: string = 'studio/refreshWorkspaceDiagnostics';
+
+/**
  * Describes a request to start a language-server session.
  */
 export interface LspStartRequest {

@@ -14,9 +14,10 @@ export interface DiagnosticContext {
   readonly uri: string;
 
   /**
-   * Gets the document identifier.
+   * Gets the document identifier, or null for a file that is not open (a workspace diagnostic,
+   * #1144), which is located by its path alone.
    */
-  readonly documentId: string;
+  readonly documentId: string | null;
 }
 
 /**
