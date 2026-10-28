@@ -759,7 +759,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Per-language overrides of the global editor settings, edited on each language page under Language Providers.',
         control: { kind: 'custom', component: 'language-editor-overrides' },
-        default: {},
+        // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
+        // an ordinary override, so the user can change or clear it like any other (#1177).
+        default: { csharp: { braceStyle: 'allman' } },
       },
     ],
   },

@@ -18,6 +18,11 @@ type LspServerRegistry = import('./lsp-server-registry').LspServerRegistry;
  */
 interface ManagerInternals {
   answerServerRequests(connection: unknown, sessionId: string, session: unknown): void;
+  parseStartRequest(request: unknown): unknown;
+  restart(id: string, braceStyle?: string): Promise<unknown>;
+  readonly sessions: Map<string, unknown>;
+  shutDown(id: string, session: unknown): Promise<void>;
+  launch(request: unknown, sender: unknown): Promise<unknown>;
 }
 
 /**
@@ -163,5 +168,68 @@ describe('LspManager (#1015)', () => {
     await connection.handlers.get('workspace/applyEdit')?.({ edit: {} });
 
     expect(targets).toEqual([main]);
+  });
+
+  describe('brace style (#1177)', () => {
+    /**
+     * Builds a manager with nothing behind it.
+     * @returns Returns its internals.
+     */
+    function manager(): ManagerInternals {
+      return new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      ) as unknown as ManagerInternals;
+    }
+
+    const REQUEST: Record<string, string> = {
+      sessionId: '/root::csharp',
+      serverId: 'csharp',
+      rootPath: '/root',
+    };
+
+    it('aStartRequest_keepsAKnownBraceStyle_andIsRefusedForAnyOther', () => {
+      const internals: ManagerInternals = manager();
+
+      expect(internals.parseStartRequest({ ...REQUEST, braceStyle: 'allman' })).toEqual({
+        ...REQUEST,
+        standaloneFile: undefined,
+        braceStyle: 'allman',
+      });
+      expect(internals.parseStartRequest(REQUEST)).toEqual({
+        ...REQUEST,
+        standaloneFile: undefined,
+      });
+      expect(internals.parseStartRequest({ ...REQUEST, braceStyle: 'whitesmiths' })).toBeNull();
+      expect(internals.parseStartRequest({ ...REQUEST, braceStyle: 3 })).toBeNull();
+    });
+
+    it('aRestartWithANewBraceStyle_relaunchesWithIt_andWithoutOne_keepsTheOld', async () => {
+      const internals: ManagerInternals = manager();
+      const launched: unknown[] = [];
+      vi.spyOn(internals, 'shutDown').mockResolvedValue(undefined);
+      vi.spyOn(internals, 'launch').mockImplementation((request: unknown): Promise<unknown> => {
+        launched.push(request);
+        return Promise.resolve({ success: true });
+      });
+      internals.sessions.set('/root::csharp', {
+        request: { ...REQUEST, braceStyle: 'allman' },
+        clients: new Map<WebContents, number>(),
+      });
+
+      await internals.restart('/root::csharp', 'kr');
+      internals.sessions.set('/root::csharp', {
+        request: { ...REQUEST, braceStyle: 'allman' },
+        clients: new Map<WebContents, number>(),
+      });
+      await internals.restart('/root::csharp');
+
+      expect(launched).toEqual([
+        { ...REQUEST, braceStyle: 'kr' },
+        { ...REQUEST, braceStyle: 'allman' },
+      ]);
+    });
   });
 });

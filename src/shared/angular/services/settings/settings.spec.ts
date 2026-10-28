@@ -20,6 +20,11 @@ function connection(id: string): AiConnection {
   };
 }
 
+/**
+ * The language overrides Studio ships with: C# braces on their own line (#1177).
+ */
+const CSHARP_ALLMAN: Record<string, unknown> = { csharp: { braceStyle: 'allman' } };
+
 describe('Settings', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -60,7 +65,10 @@ describe('Settings', () => {
 
     service.setLanguageOverride('typescript', 'wordWrap', true);
 
-    expect(service.languageOverrides()).toEqual({ typescript: { wordWrap: true } });
+    expect(service.languageOverrides()).toEqual({
+      ...CSHARP_ALLMAN,
+      typescript: { wordWrap: true },
+    });
   });
 
   it('clearLanguageOverride_whenLastFieldCleared_dropsTheLanguage', () => {
@@ -69,10 +77,10 @@ describe('Settings', () => {
     service.setLanguageOverride('typescript', 'tabSize', 2);
 
     service.clearLanguageOverride('typescript', 'wordWrap');
-    expect(service.languageOverrides()).toEqual({ typescript: { tabSize: 2 } });
+    expect(service.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, typescript: { tabSize: 2 } });
 
     service.clearLanguageOverride('typescript', 'tabSize');
-    expect(service.languageOverrides()).toEqual({});
+    expect(service.languageOverrides()).toEqual(CSHARP_ALLMAN);
   });
 
   it('resolveSettingsForLanguage_whenOverridden_mergesOverGlobal', () => {
@@ -84,6 +92,19 @@ describe('Settings', () => {
 
     expect(resolved.wordWrap).toBe(true);
     expect(resolved.fontSize).toBe(14);
+  });
+
+  it('csharp_shipsWithAnAllmanBraceOverride_overTheGlobalKAndR_whichClearingRevertsTo (#1177)', () => {
+    const service: Settings = TestBed.inject(Settings);
+
+    expect(service.globalTextEditor().braceStyle).toBe('kr');
+    expect(service.resolveSettingsForLanguage('csharp').braceStyle).toBe('allman');
+    expect(service.resolveSettingsForLanguage('typescript').braceStyle).toBe('kr');
+
+    service.clearLanguageOverride('csharp', 'braceStyle');
+
+    expect(service.languageOverrides()).toEqual({});
+    expect(service.resolveSettingsForLanguage('csharp').braceStyle).toBe('kr');
   });
 
   it('resolveSettingsForLanguage_whenNothingOverridden_returnsGlobal', () => {
@@ -121,7 +142,7 @@ describe('Settings', () => {
 
     expect(service.globalTextEditor().wordWrap).toBe(true);
     expect(service.globalTextEditor().showLineNumbers).toBe(true);
-    expect(service.languageOverrides()).toEqual({});
+    expect(service.languageOverrides()).toEqual(CSHARP_ALLMAN);
   });
 
   it('ai_whenDefaulted_usesClaudeConnectionPromptAndNoCap', () => {

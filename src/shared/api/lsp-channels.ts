@@ -92,6 +92,12 @@ export interface LspServerSummary extends LanguageSlotEntry {
    * Gets the stable identifier the renderer names this server by.
    */
   readonly id: LspServerId;
+
+  /**
+   * Gets whether the server is told the brace style when it starts, and only then (#1177): a change to
+   * the Brace style setting for a language it serves restarts its sessions, so it takes effect.
+   */
+  readonly takesBraceStyle?: boolean;
 }
 
 /**
@@ -186,7 +192,26 @@ export interface LspStartRequest {
    * without opening a workspace. Undefined for workspace-rooted sessions.
    */
   readonly standaloneFile?: string;
+
+  /**
+   * Gets the brace style the user's settings give the language the session was started for (#1177) —
+   * the global Text Editor setting, or the language's override of it — for a server that can only be
+   * told it at launch. A project's own `.editorconfig` still wins over it. Undefined when the
+   * renderer says nothing, in which case the server keeps its own default.
+   */
+  readonly braceStyle?: LspBraceStyle;
 }
+
+/**
+ * Names a brace placement style, as the Text Editor's Brace style setting does: K&R (the brace on the
+ * line that opens the block), Allman (on its own line) or GNU (on its own line, indented).
+ */
+export type LspBraceStyle = 'kr' | 'allman' | 'gnu';
+
+/**
+ * Lists every {@link LspBraceStyle}, for validating one from the renderer.
+ */
+export const LSP_BRACE_STYLES: readonly LspBraceStyle[] = ['kr', 'allman', 'gnu'];
 
 /**
  * Describes the server software backing a session, as reported by the server's `initialize` result.

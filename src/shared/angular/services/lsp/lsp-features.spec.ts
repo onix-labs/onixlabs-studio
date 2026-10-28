@@ -1,3 +1,4 @@
+import type * as MonacoApi from 'monaco-editor';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
@@ -18,6 +19,7 @@ import {
   LspRenamePreparation,
   LspRenameSupport,
   STUDIO_LSP_COMMAND,
+  opensBlockAt,
 } from './lsp-features';
 import type { LspCompletionSupport, LspSignatureHelpSupport } from './lsp-completion';
 import { readFileSync } from 'node:fs';
@@ -443,6 +445,131 @@ describe('LspFeatures', () => {
       expect(range).toBeUndefined();
       expect(requests).toEqual([]);
     });
+
+    describe('Enter inside a just-opened block (#1177)', () => {
+      // Enter between Monaco's auto-closed braces, the caret on the middle line.
+      const BLOCK: readonly string[] = [
+        'public class Wave',
+        '{',
+        '    public void Hello() {',
+        '        ',
+        '    }',
+        '}',
+      ];
+      const CARET: { lineNumber: number; column: number } = { lineNumber: 4, column: 9 };
+
+      /**
+       * Builds a model over lines, as the brace placement reads it.
+       * @param lines The lines.
+       * @returns Returns the model.
+       */
+      function blockModel(lines: readonly string[]): unknown {
+        return {
+          ...(fakeModel(MODEL_URI, 'csharp', lines.join('\n')) as object),
+          getLineCount: (): number => lines.length,
+          getLineContent: (line: number): string => lines[line - 1] ?? '',
+          getLineMaxColumn: (line: number): number => (lines[line - 1] ?? '').length + 1,
+        };
+      }
+
+      /**
+       * Presses Enter in a model, as Monaco asks the on-type formatter.
+       * @param lines The lines after the newline.
+       * @returns Returns the edits.
+       */
+      async function enter(lines: readonly string[]): Promise<unknown> {
+        const features: LspFeatures = await build();
+        features.enableFormatting('csharp', ROSLYN);
+        return captured.formatting
+          ?.get('csharp:onType')
+          ?.provideOnTypeFormattingEdits?.(blockModel(lines), CARET, '\n', OPTIONS);
+      }
+
+      it('formatsTheBlock_andKeepsOnlyTheEditsOnTheBracesLineAndAbove', async () => {
+        formattingSupport = ROSLYN;
+        responses['textDocument/onTypeFormatting'] = [];
+        // Roslyn's answer for Allman: the brace onto its own line, and the blank line collapsed.
+        responses['textDocument/rangeFormatting'] = [
+          {
+            range: { start: { line: 2, character: 23 }, end: { line: 2, character: 24 } },
+            newText: '\n    ',
+          },
+          {
+            range: { start: { line: 3, character: 0 }, end: { line: 4, character: 4 } },
+            newText: '    ',
+          },
+        ];
+
+        const edits: unknown = await enter(BLOCK);
+
+        expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+          'textDocument/onTypeFormatting',
+          'textDocument/rangeFormatting',
+        ]);
+        expect(requests[1]?.params).toEqual({
+          textDocument: { uri: 'file:///root/app.ts' },
+          options: OPTIONS,
+          range: { start: { line: 2, character: 0 }, end: { line: 4, character: 5 } },
+        });
+        expect(edits).toEqual([
+          {
+            range: { startLineNumber: 3, startColumn: 24, endLineNumber: 3, endColumn: 25 },
+            text: '\n    ',
+          },
+        ]);
+      });
+
+      it('leavesTheServersOwnNewlineEditsAlone_askingNothingMore', async () => {
+        formattingSupport = ROSLYN;
+        responses['textDocument/onTypeFormatting'] = [
+          {
+            range: { start: { line: 3, character: 0 }, end: { line: 3, character: 8 } },
+            newText: '        ',
+          },
+        ];
+
+        const edits: unknown = await enter(BLOCK);
+
+        expect(requests.map((request: { method: string }): string => request.method)).toEqual([
+          'textDocument/onTypeFormatting',
+        ]);
+        expect(edits).toHaveLength(1);
+      });
+
+      it('outsideAJustOpenedBlock_asksNothingMore', async () => {
+        formattingSupport = ROSLYN;
+        responses['textDocument/onTypeFormatting'] = [];
+
+        const edits: unknown = await enter([
+          'public class Wave',
+          '{',
+          '    var x = 1;',
+          '        ',
+          '    }',
+          '}',
+        ]);
+
+        expect(requests).toHaveLength(1);
+        expect(edits).toEqual([]);
+      });
+    });
+  });
+
+  it('opensBlockAt_isTheBlankLineBetweenAnOpeningAndAClosingBrace (#1177)', () => {
+    const model: (lines: readonly string[]) => MonacoApi.editor.ITextModel = (
+      lines: readonly string[],
+    ): MonacoApi.editor.ITextModel =>
+      ({
+        getLineCount: (): number => lines.length,
+        getLineContent: (line: number): string => lines[line - 1] ?? '',
+      }) as unknown as MonacoApi.editor.ITextModel;
+
+    expect(opensBlockAt(model(['void F() {', '    ', '}']), 2)).toBe(true);
+    expect(opensBlockAt(model(['void F() {', '', '  } // end']), 2)).toBe(true);
+    expect(opensBlockAt(model(['void F() {', '    x', '}']), 2)).toBe(false);
+    expect(opensBlockAt(model(['void F()', '    ', '}']), 2)).toBe(false);
+    expect(opensBlockAt(model(['void F() {', '    ']), 2)).toBe(false);
+    expect(opensBlockAt(model(['    ', '}']), 1)).toBe(false);
   });
 
   it('aRequestAboutAPosition_bringsTheServerUpToDateFirst', async () => {

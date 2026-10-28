@@ -23,6 +23,7 @@ import type {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus } from './lsp-status';
 
@@ -51,6 +52,8 @@ class FakeLsp implements Bridge {
   public readonly notifications: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly stops: string[] = [];
   public readonly restarts: string[] = [];
+  /** The brace style each restart was asked to start with, if any (#1177). */
+  public readonly restartBraceStyles: unknown[] = [];
   /**
    * The sessions the (fake) main process currently has running: a successful Start adds one, a stop
    * or an exit removes it, and a Restart of anything else answers "No such session" as the real one
@@ -75,6 +78,7 @@ class FakeLsp implements Bridge {
       case LspChannel.Restart as string: {
         const sessionId: string = args[0] as string;
         this.restarts.push(sessionId);
+        this.restartBraceStyles.push(args[1]);
         if (!this.running.has(sessionId)) {
           return Promise.resolve({ success: false, error: 'No such session' } as T);
         }
@@ -334,6 +338,94 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('brace style (#1177)', () => {
+    let global: WritableSignal<{ braceStyle: string }>;
+    let overrides: WritableSignal<Record<string, { braceStyle?: string }>>;
+
+    beforeEach(() => {
+      installedServers.set(
+        CATALOGUE.map((server: LspServerSummary): LspServerSummary =>
+          server.id === 'csharp' ? { ...server, takesBraceStyle: true } : server,
+        ),
+      );
+      global = signal<{ braceStyle: string }>({ braceStyle: 'kr' });
+      overrides = signal<Record<string, { braceStyle?: string }>>({
+        csharp: { braceStyle: 'allman' },
+      });
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Settings,
+            useValue: {
+              globalTextEditor: global,
+              languageOverrides: overrides,
+              resolveSettingsForLanguage: (language: string): unknown => ({
+                ...global(),
+                ...overrides()[language],
+              }),
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Opens a document, starting its session.
+     * @param client The client.
+     * @param path The document's path.
+     * @param languageId Its language.
+     */
+    async function openDocument(
+      client: LspClient,
+      path: string,
+      languageId: string,
+    ): Promise<void> {
+      client.syncDocument({ documentId: path, path, languageId, content: '' });
+      await flush();
+    }
+
+    it('aServerThatTakesTheBraceStyle_isStartedWithItsLanguagesStyle_andNoOtherIs', async () => {
+      const client: LspClient = build();
+
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      expect(lsp.starts).toEqual([
+        { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root', braceStyle: 'allman' },
+        { sessionId: '/root::typescript', serverId: 'typescript', rootPath: '/root' },
+      ]);
+    });
+
+    it('aSessionPreStartedForAWorkspace_takesItsServersLanguagesStyle', async () => {
+      const client: LspClient = build();
+
+      client.prestartServer('csharp', '/root');
+      await flush();
+
+      expect(lsp.starts).toEqual([
+        { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root', braceStyle: 'allman' },
+      ]);
+    });
+
+    it('changingTheStyleForItsLanguage_restartsItWithTheNewStyle_andOnlyIt', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      global.set({ braceStyle: 'gnu' });
+      TestBed.tick();
+      await flush();
+      expect(lsp.restarts).toEqual([]);
+
+      overrides.set({});
+      TestBed.tick();
+      await flush();
+
+      expect(lsp.restarts).toEqual(['/root::csharp']);
+      expect(lsp.restartBraceStyles).toEqual(['gnu']);
+    });
   });
 
   describe('rename and server edits (#1015)', () => {

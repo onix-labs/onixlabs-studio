@@ -12,6 +12,8 @@ import {
 } from 'vscode-jsonrpc/node';
 import type { InitializeParams, InitializeResult } from 'vscode-languageserver-protocol';
 import {
+  LSP_BRACE_STYLES,
+  LspBraceStyle,
   LspChannel,
   LspExit,
   LspMessage,
@@ -182,9 +184,9 @@ export class LspManager {
     );
     ipcMain.handle(
       LspChannel.Restart,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<LspStartResult> =>
-        typeof id === 'string'
-          ? this.restart(id)
+      (_event: IpcMainInvokeEvent, id: unknown, braceStyle?: unknown): Promise<LspStartResult> =>
+        typeof id === 'string' && (braceStyle === undefined || isBraceStyle(braceStyle))
+          ? this.restart(id, braceStyle)
           : Promise.resolve({ success: false, error: 'Invalid restart request' }),
     );
     ipcMain.handle(
@@ -259,9 +261,11 @@ export class LspManager {
    * count, so with the session shared by another surface the old process survived and the "restarted"
    * client silently reattached to it — the spinner and the cleared crash counters were theatre.
    * @param id The session identifier.
+   * @param braceStyle The brace style to start the new server with, when the user's setting for the
+   * session's language changed (#1177); undefined keeps the one it was started with.
    * @returns Returns the new session's start outcome, or a failure when no such session is running.
    */
-  private async restart(id: string): Promise<LspStartResult> {
+  private async restart(id: string, braceStyle?: LspBraceStyle): Promise<LspStartResult> {
     const session: LspSession | undefined = this.sessions.get(id);
     if (session === undefined) {
       return { success: false, error: 'No such session' };
@@ -269,7 +273,9 @@ export class LspManager {
     logger.info('LspManager', `Restarting LSP session ${id} on request`);
     const holders: WebContents[] = [...session.clients.keys()];
     await this.shutDown(id, session);
-    const ready: Promise<LspStartResult> = this.launch(session.request, null);
+    const request: LspStartRequest =
+      braceStyle === undefined ? session.request : { ...session.request, braceStyle };
+    const ready: Promise<LspStartResult> = this.launch(request, null);
     const exit: LspExit = { sessionId: id, code: null, signal: null, restarted: true };
     for (const contents of holders) {
       if (!contents.isDestroyed()) {
@@ -294,7 +300,11 @@ export class LspManager {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
-    const resolution: LspResolution = await this.registry.resolve(parsed.serverId, parsed.rootPath);
+    const resolution: LspResolution = await this.registry.resolve(
+      parsed.serverId,
+      parsed.rootPath,
+      parsed.braceStyle,
+    );
     const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
       logger.warn(
@@ -763,6 +773,7 @@ export class LspManager {
       serverId?: unknown;
       rootPath?: unknown;
       standaloneFile?: unknown;
+      braceStyle?: unknown;
     } = request;
     if (
       typeof candidate.sessionId !== 'string' ||
@@ -777,11 +788,15 @@ export class LspManager {
     if (candidate.standaloneFile !== undefined && typeof candidate.standaloneFile !== 'string') {
       return null;
     }
+    if (candidate.braceStyle !== undefined && !isBraceStyle(candidate.braceStyle)) {
+      return null;
+    }
     return {
       sessionId: candidate.sessionId,
       serverId: candidate.serverId,
       rootPath: candidate.rootPath,
       standaloneFile: candidate.standaloneFile,
+      ...(candidate.braceStyle === undefined ? {} : { braceStyle: candidate.braceStyle }),
     };
   }
 
@@ -861,4 +876,13 @@ export class LspManager {
       contents.send(channel, payload);
     }
   }
+}
+
+/**
+ * Determines whether an untrusted value from the renderer names a brace style.
+ * @param value The value.
+ * @returns Returns true when it is one of {@link LSP_BRACE_STYLES}.
+ */
+function isBraceStyle(value: unknown): value is LspBraceStyle {
+  return LSP_BRACE_STYLES.includes(value as LspBraceStyle);
 }

@@ -1,4 +1,4 @@
-import { LspServerId } from '@shared/api/lsp-channels';
+import { LspBraceStyle, LspServerId } from '@shared/api/lsp-channels';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
 import { LspProvisioner } from './lsp-provisioner';
@@ -111,6 +111,12 @@ export interface LanguageServerContext {
   readonly rootPath: string;
 
   /**
+   * Gets the brace style the user's settings give the language the session was started for (#1177),
+   * for a server that can only be told it at launch — or undefined, leaving the server its default.
+   */
+  readonly braceStyle?: LspBraceStyle;
+
+  /**
    * Gets the user's language-server settings (runtime path overrides and the like).
    */
   readonly settings: LspSettingsManager;
@@ -167,6 +173,12 @@ export interface LanguageServerDescriptor {
    * Ties break on catalogue order, so a deterministic default always exists.
    */
   readonly priority: number;
+
+  /**
+   * Gets whether the server reads {@link LanguageServerContext.braceStyle} when it starts (#1177), so a
+   * change to the setting must restart it.
+   */
+  readonly takesBraceStyle?: boolean;
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when
