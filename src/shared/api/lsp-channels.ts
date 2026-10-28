@@ -73,6 +73,18 @@ export enum LspChannel {
    * Answers an {@link ApplyEdit} with what was applied (renderer→main, send).
    */
   ApplyEditReply = 'lsp:apply-edit-reply',
+
+  /**
+   * Asks the renderer holding a session to attach the debugger to a process the server started — a
+   * test host Roslyn waits in for Debug Test (#1150) — and answer on {@link AttachDebuggerReply}
+   * (main→renderer, send).
+   */
+  AttachDebugger = 'lsp:attach-debugger',
+
+  /**
+   * Answers an {@link AttachDebugger} with whether the debugger attached (renderer→main, send).
+   */
+  AttachDebuggerReply = 'lsp:attach-debugger-reply',
 }
 
 /**
@@ -320,6 +332,42 @@ export interface LspApplyEditRequest {
    * Gets the edit to apply: an LSP `WorkspaceEdit`, opaque at this layer and read by the renderer.
    */
   readonly edit: unknown;
+}
+
+/**
+ * A server's request that the debugger attach to a process it started (#1150), as the main process
+ * forwards it to the renderer holding the session.
+ */
+export interface LspAttachDebuggerRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the process to attach to.
+   */
+  readonly processId: number;
+}
+
+/**
+ * The renderer's answer to a {@link LspAttachDebuggerRequest}.
+ */
+export interface LspAttachDebuggerReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets whether the debugger attached.
+   */
+  readonly didAttach: boolean;
 }
 
 /**

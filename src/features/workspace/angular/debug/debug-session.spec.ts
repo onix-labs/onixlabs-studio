@@ -231,6 +231,52 @@ describe('DebugSession', () => {
     expect(launch?.args).toMatchObject({ name: 'App', cwd: '/ws', args: ['--flag'] });
   });
 
+  describe('attaching to a running process (#1150)', () => {
+    it('startsTheAdapter_attachesToTheProcess_andSendsTheBreakpointsAgainOnceItHasOne', async () => {
+      const session: DebugSession = build();
+      TestBed.inject(Breakpoints).toggle('/ws/Tests/PersonTests.cs', 11);
+
+      const attached: boolean = await session.attachToProcess(46456, 'Tests');
+
+      expect(attached).toBe(true);
+      expect(bridge.invokesOn(DebugChannel.Resolve)).toHaveLength(0);
+      expect(bridge.invokesOn(DebugChannel.Start)[0]?.args[0]).toMatchObject({
+        adapterId: 'netcoredbg',
+        rootPath: '/ws',
+      });
+      const commands: string[] = bridge.requests().map((r) => r.command);
+      expect(commands).toEqual(['attach', 'setBreakpoints']);
+      expect(bridge.requests()[0]?.args).toEqual({ processId: 46456 });
+      expect(bridge.requests()[1]?.args).toMatchObject({
+        source: { path: '/ws/Tests/PersonTests.cs' },
+        breakpoints: [{ line: 11 }],
+      });
+      expect(session.state()).toBe('running');
+    });
+
+    it('withNoAdapter_orASessionAlreadyRunning_attachesNothing', async () => {
+      caps.set(capabilities(null));
+      const session: DebugSession = build();
+
+      expect(await session.attachToProcess(1, 'Tests')).toBe(false);
+      expect(bridge.invokesOn(DebugChannel.Start)).toHaveLength(0);
+
+      caps.set(capabilities('netcoredbg'));
+      session.launch(config());
+      await flush();
+      expect(await session.attachToProcess(1, 'Tests')).toBe(false);
+    });
+
+    it('anAttachTheAdapterRefuses_endsTheSession_andSaysSo', async () => {
+      bridge.rejects.add('attach');
+      const session: DebugSession = build();
+
+      expect(await session.attachToProcess(46456, 'Tests')).toBe(false);
+
+      expect(output.lines.some((l) => l.includes('Debug attach failed'))).toBe(true);
+    });
+  });
+
   it('launch_failure_reportsAndResetsToIdle', async () => {
     bridge.startResult = { success: false, error: 'adapter missing' };
     const session: DebugSession = build();

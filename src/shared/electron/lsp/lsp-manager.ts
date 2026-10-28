@@ -3,6 +3,7 @@ import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
+import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -169,22 +170,31 @@ export class LspManager {
   private readonly applyEdits: LspApplyEditForwarder;
 
   /**
+   * Holds the forwarder that asks the renderer to attach the debugger to a process a server started
+   * (#1150).
+   */
+  private readonly attaches: LspAttachDebuggerForwarder;
+
+  /**
    * Initializes a new instance of the {@link LspManager} class.
    * @param windowGetter A function that returns the window server notifications are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
    * @param registry The registry that resolves server identifiers into spawn specifications.
    * @param applyEdits The forwarder that hands a server's edits to the renderer.
+   * @param attaches The forwarder that asks the renderer to attach the debugger (#1150).
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspaceContext: WorkspaceContext,
     registry: LspServerRegistry,
     applyEdits: LspApplyEditForwarder = new LspApplyEditForwarder(),
+    attaches: LspAttachDebuggerForwarder = new LspAttachDebuggerForwarder(),
   ) {
     this.windowGetter = windowGetter;
     this.workspaceContext = workspaceContext;
     this.registry = registry;
     this.applyEdits = applyEdits;
+    this.attaches = attaches;
   }
 
   /**
@@ -229,6 +239,7 @@ export class LspManager {
       this.announceConfigurationChange(serverIds),
     );
     this.applyEdits.register();
+    this.attaches.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
@@ -294,6 +305,7 @@ export class LspManager {
   public disposeAll(): void {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
     this.applyEdits.dispose();
+    this.attaches.dispose();
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -810,6 +822,13 @@ export class LspManager {
     // the bare null the catch-all below would give, which a server reads as an unexplained failure.
     connection.onRequest('workspace/applyEdit', (params: unknown): Promise<ApplyEditResult> =>
       this.applyEdits.forward(sessionId, this.applierOf(session), params),
+    );
+    // Roslyn's Debug Test starts the test host and waits in it for a debugger (#1150): the renderer
+    // that holds the session attaches the workspace's debugger, and the server is told whether it did.
+    connection.onRequest(
+      'workspace/attachDebugger',
+      (params: unknown): Promise<{ didAttach: boolean }> =>
+        this.attaches.forward(sessionId, this.applierOf(session), params),
     );
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
