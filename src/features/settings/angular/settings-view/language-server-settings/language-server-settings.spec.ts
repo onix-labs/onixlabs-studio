@@ -244,6 +244,39 @@ describe('LanguageServerSettings', () => {
       ]);
     });
 
+    it('finerSettings_areFoldedAwayUnderAdvanced (#1145)', async () => {
+      installed = {
+        csharp: [
+          {
+            ...ROSLYN,
+            settings: [
+              ...(ROSLYN.settings ?? []),
+              {
+                section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
+                label: 'Names for other arguments',
+                description: 'Every other argument.',
+                default: false,
+                advanced: true,
+              },
+            ],
+          },
+        ],
+      };
+      selection = { csharp: 'csharp' };
+      const element: HTMLElement = await render('csharp', 'C#');
+      const accordion: HTMLElement | null = element.querySelector('app-accordion');
+
+      expect(accordion?.textContent).toContain('Advanced');
+      expect(row(element, 'Restore packages').closest('app-accordion')).toBeNull();
+      expect(element.textContent).not.toContain('Names for other arguments');
+
+      accordion?.querySelector<HTMLElement>('button')?.click();
+      await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve));
+      TestBed.tick();
+
+      expect(row(element, 'Names for other arguments').closest('app-accordion')).toBe(accordion);
+    });
+
     it('aServerThatDeclaresNone_showsNone', async () => {
       installed = { python: [server('pyright', ['python'])] };
       selection = { python: 'pyright' };

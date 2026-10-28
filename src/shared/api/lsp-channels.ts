@@ -486,4 +486,9 @@ export interface LspServerSettingDescriptor {
    * Gets the choices, for a setting offered as a choice; undefined for a switch.
    */
   readonly options?: readonly LspServerSettingOption[];
+
+  /**
+   * Gets whether the setting is a finer one, offered folded away under "Advanced" (#1145).
+   */
+  readonly advanced?: boolean;
 }

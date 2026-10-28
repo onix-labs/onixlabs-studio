@@ -430,4 +430,33 @@ describe('LspManager (#1015)', () => {
       expect(calls).toEqual(['server:workspace/didChangeConfiguration', 'reset']);
     });
   });
+
+  it('aServersInlayHintRefresh_isSentOnToItsRenderers_andAnswered (#1145)', async () => {
+    const manager: InstanceType<typeof LspManager> = new LspManager(
+      (): BrowserWindow | null => null,
+      new WorkspaceContext(),
+      {} as LspServerRegistry,
+      new LspApplyEditForwarder(),
+    );
+    const forwarded: string[] = [];
+    vi.spyOn(
+      manager as unknown as { forwardNotification(id: string, method: string): void },
+      'forwardNotification',
+    ).mockImplementation(
+      (id: string, method: string): void => void forwarded.push(`${id} ${method}`),
+    );
+    const connection: FakeConnection = fakeConnection();
+    (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::csharp', {
+      request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+      clients: new Map<WebContents, number>(),
+      watcher: { register: (): void => undefined, unregister: (): void => undefined },
+    });
+
+    const answer: unknown = await connection.handlers.get('workspace/inlayHint/refresh')?.(
+      undefined,
+    );
+
+    expect(answer).toBeNull();
+    expect(forwarded).toEqual(['/root::csharp workspace/inlayHint/refresh']);
+  });
 });

@@ -26,6 +26,7 @@ import {
   LspDocumentRef,
   LspFeatures,
   LspFormattingSupport,
+  LspInlayHintSupport,
   LspNavigationSupport,
   LspRenameSupport,
   LspSessionSupport,
@@ -51,6 +52,7 @@ import {
   codeActionSupportOf,
   executeCommandsOf,
   formattingSupportOf,
+  inlayHintSupportOf,
   navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
@@ -570,6 +572,15 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds how each session's server sets hints into the code (#1145), keyed by session id; a session
+   * whose server sets none has no entry.
+   */
+  private readonly inlayHintSupport: Map<string, LspInlayHintSupport> = new Map<
+    string,
+    LspInlayHintSupport
+  >();
+
+  /**
    * Holds how each started session's server completes and answers signature help (#1021).
    */
   private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
@@ -1054,6 +1065,7 @@ export class LspClient implements OnDestroy {
       codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
       commands: this.executeCommands.get(sessionId) ?? [],
       formatting: this.formattingSupport.get(sessionId),
+      inlayHints: this.inlayHintSupport.get(sessionId),
       navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
@@ -1515,6 +1527,7 @@ export class LspClient implements OnDestroy {
     this.renameSupport.clear();
     this.codeActionSupport.clear();
     this.formattingSupport.clear();
+    this.inlayHintSupport.clear();
     this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
@@ -1556,6 +1569,10 @@ export class LspClient implements OnDestroy {
     const formatting: LspFormattingSupport | undefined = this.formattingSupport.get(sessionId);
     if (formatting !== undefined) {
       this.features.enableFormatting(tracked.languageId, formatting);
+    }
+    // Parameter names and inferred types set into the code, when this server sets them (#1145).
+    if (this.inlayHintSupport.has(sessionId)) {
+      this.features.enableInlayHints(tracked.languageId);
     }
     tracked.opened = true;
     tracked.text = content;
@@ -1811,6 +1828,12 @@ export class LspClient implements OnDestroy {
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
+          const inlayHints: LspInlayHintSupport | undefined = inlayHintSupportOf(
+            result.capabilities,
+          );
+          if (inlayHints !== undefined) {
+            this.inlayHintSupport.set(sessionId, inlayHints);
+          }
           this.navigationSupport.set(sessionId, navigationSupportOf(result.capabilities));
           this.executeCommands.set(sessionId, executeCommandsOf(result.capabilities));
           const assist: LspSessionSupport = {
@@ -1938,6 +1961,12 @@ export class LspClient implements OnDestroy {
     // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
     if (message.method === WORKSPACE_DIAGNOSTICS_METHOD) {
       this.ingestWorkspaceDiagnostics(message.sessionId, message.params);
+      return;
+    }
+    // The server's hints are stale (a setting changed, a project finished loading): every editor
+    // showing them asks again (#1145).
+    if (message.method === 'workspace/inlayHint/refresh') {
+      this.features.refreshInlayHints();
       return;
     }
     if (message.method === 'workspace/semanticTokens/refresh') {

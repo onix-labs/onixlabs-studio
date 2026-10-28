@@ -109,6 +109,11 @@ export interface LspDocumentRef {
   readonly formatting?: LspFormattingSupport;
 
   /**
+   * Gets how the server sets hints into the code (#1145). Undefined is taken as not at all.
+   */
+  readonly inlayHints?: LspInlayHintSupport;
+
+  /**
    * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
    * none.
    */
@@ -269,6 +274,18 @@ export interface LspFormattingSupport {
    * when it does not.
    */
   readonly onTypeTriggers: readonly string[];
+}
+
+/**
+ * Describes how a server sets hints into the code (#1145): parameter names at call sites, inferred
+ * types after `var`.
+ */
+export interface LspInlayHintSupport {
+  /**
+   * Gets whether it fills a hint's tooltip in on request (`inlayHint/resolve`), rather than with
+   * every hint up front.
+   */
+  readonly resolve: boolean;
 }
 
 /**
@@ -659,6 +676,26 @@ export class LspFeatures {
   private readonly formattingRegistered: Set<string> = new Set<string>();
 
   /**
+   * Holds the languages hints are registered for (#1145).
+   */
+  private readonly inlayHintsRegistered: Set<string> = new Set<string>();
+
+  /**
+   * Holds the event that asks every editor showing hints to ask again, made with the first
+   * registration.
+   */
+  private inlayHintsChanged: MonacoApi.Emitter<void> | undefined;
+
+  /**
+   * Holds, for each hint shown from a server that fills hints in on request, the server's own hint
+   * and its session, for resolving it when hovered.
+   */
+  private readonly inlayHintOrigins: WeakMap<
+    MonacoApi.languages.InlayHint,
+    { hint: LspInlayHint; sessionId: string }
+  > = new WeakMap<MonacoApi.languages.InlayHint, { hint: LspInlayHint; sessionId: string }>();
+
+  /**
    * Fires to ask Monaco to re-request semantic tokens, one emitter per registered language. Monaco
    * requests tokens when a document first opens — before its language server has started — and caches
    * the empty result; firing a language's emitter once its server is ready makes Monaco ask again so
@@ -901,6 +938,179 @@ export class LspFeatures {
     return edits?.filter(
       (edit: MonacoApi.languages.TextEdit): boolean => edit.range.endLineNumber < caret,
     );
+  }
+
+  /**
+   * Turns on hints set into the code for a language (#1145) — parameter names at call sites, inferred
+   * types after `var` — when a session that serves them starts serving a document of it. Registered
+   * once per language; which hints a server sets is its own settings' business (Settings › Language
+   * Providers), which it is told of without a restart.
+   * @param language The Monaco language identifier.
+   */
+  public enableInlayHints(language: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined || this.inlayHintsRegistered.has(language)) {
+      return;
+    }
+    this.inlayHintsRegistered.add(language);
+    this.inlayHintsChanged ??= new monaco.Emitter<void>();
+    monaco.languages.registerInlayHintsProvider(language, {
+      onDidChangeInlayHints: this.inlayHintsChanged.event,
+      provideInlayHints: (
+        model: MonacoApi.editor.ITextModel,
+        range: MonacoApi.Range,
+      ): Promise<MonacoApi.languages.InlayHintList | undefined> =>
+        this.provideInlayHints(model, range),
+      resolveInlayHint: (
+        hint: MonacoApi.languages.InlayHint,
+      ): Promise<MonacoApi.languages.InlayHint> => this.resolveInlayHint(hint),
+    });
+  }
+
+  /**
+   * Asks every editor showing hints to ask for them again: the server said they are stale
+   * (`workspace/inlayHint/refresh`) — a setting changed, or a project finished loading (#1145).
+   */
+  public refreshInlayHints(): void {
+    this.inlayHintsChanged?.fire();
+  }
+
+  /**
+   * Asks the server serving a model for the hints in a range, and maps them to Monaco's.
+   * @param model The model.
+   * @param range The range shown.
+   * @returns Returns the hints, or undefined when no server serving the model sets them.
+   */
+  private async provideInlayHints(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.Range,
+  ): Promise<MonacoApi.languages.InlayHintList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.inlayHints === undefined) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/inlayHint',
+        {
+          textDocument: { uri: ref.uri },
+          range: {
+            start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+            end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+          },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return { hints: [], dispose: (): void => undefined };
+    }
+    const hints: MonacoApi.languages.InlayHint[] = [];
+    for (const candidate of result as readonly LspInlayHint[]) {
+      const hint: MonacoApi.languages.InlayHint | null = this.toInlayHint(candidate);
+      if (hint !== null) {
+        if (ref.inlayHints.resolve) {
+          this.inlayHintOrigins.set(hint, { hint: candidate, sessionId: ref.sessionId });
+        }
+        hints.push(hint);
+      }
+    }
+    return { hints, dispose: (): void => undefined };
+  }
+
+  /**
+   * Fills a hint in when it is hovered: its tooltip — the parameter's or type's signature — and the
+   * text a double-click inserts, which the server leaves out of the first answer.
+   * @param hint The hint.
+   * @returns Returns the hint, filled in when the server answered.
+   */
+  private async resolveInlayHint(
+    hint: MonacoApi.languages.InlayHint,
+  ): Promise<MonacoApi.languages.InlayHint> {
+    const origin: { hint: LspInlayHint; sessionId: string } | undefined =
+      this.inlayHintOrigins.get(hint);
+    if (origin === undefined || this.bridge === undefined) {
+      return hint;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        origin.sessionId,
+        'inlayHint/resolve',
+        origin.hint,
+      );
+    } catch {
+      return hint;
+    }
+    const resolved: MonacoApi.languages.InlayHint | null = this.toInlayHint(result as LspInlayHint);
+    return resolved === null
+      ? hint
+      : {
+          ...hint,
+          label: resolved.label,
+          tooltip: resolved.tooltip ?? hint.tooltip,
+          textEdits: resolved.textEdits ?? hint.textEdits,
+        };
+  }
+
+  /**
+   * Maps a server's hint to Monaco's, or null for one that is malformed.
+   * @param hint The server's hint, untrusted.
+   * @returns Returns the hint.
+   */
+  private toInlayHint(hint: LspInlayHint | null | undefined): MonacoApi.languages.InlayHint | null {
+    const position: LspPosition | undefined = hint?.position;
+    if (
+      hint === null ||
+      hint === undefined ||
+      typeof position?.line !== 'number' ||
+      typeof position.character !== 'number'
+    ) {
+      return null;
+    }
+    const label: string | MonacoApi.languages.InlayHintLabelPart[] | null =
+      typeof hint.label === 'string'
+        ? hint.label
+        : Array.isArray(hint.label)
+          ? hint.label
+              .filter((part: LspInlayHintLabelPart): boolean => typeof part?.value === 'string')
+              .map((part: LspInlayHintLabelPart): MonacoApi.languages.InlayHintLabelPart => ({
+                label: part.value,
+                ...(part.tooltip === undefined ? {} : { tooltip: toTooltip(part.tooltip) }),
+              }))
+          : null;
+    if (label === null || label.length === 0) {
+      return null;
+    }
+    return {
+      label,
+      position: { lineNumber: position.line + 1, column: position.character + 1 },
+      ...(hint.kind === 1 || hint.kind === 2 ? { kind: hint.kind } : {}),
+      ...(hint.paddingLeft === true ? { paddingLeft: true } : {}),
+      ...(hint.paddingRight === true ? { paddingRight: true } : {}),
+      ...(hint.tooltip === undefined ? {} : { tooltip: toTooltip(hint.tooltip) }),
+      ...(Array.isArray(hint.textEdits)
+        ? {
+            textEdits: hint.textEdits
+              .filter(
+                (edit: { range?: LspRange; newText?: unknown }): boolean =>
+                  edit?.range !== undefined && typeof edit.newText === 'string',
+              )
+              .map(
+                (edit: { range?: LspRange; newText?: unknown }): MonacoApi.languages.TextEdit => ({
+                  range: this.toRange(edit.range!),
+                  text: edit.newText as string,
+                }),
+              ),
+          }
+        : {}),
+    };
   }
 
   /**
@@ -2167,6 +2377,41 @@ export class LspFeatures {
     const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
     return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
   }
+}
+
+/**
+ * A part of a hint's label, as a server sends it.
+ */
+interface LspInlayHintLabelPart {
+  readonly value: string;
+  readonly tooltip?: string | { readonly kind?: string; readonly value?: string };
+}
+
+/**
+ * A hint set into the code, as a server sends it (`textDocument/inlayHint`).
+ */
+interface LspInlayHint {
+  readonly position?: LspPosition;
+  readonly label?: string | readonly LspInlayHintLabelPart[];
+  readonly kind?: number;
+  readonly paddingLeft?: boolean;
+  readonly paddingRight?: boolean;
+  readonly tooltip?: string | { readonly kind?: string; readonly value?: string };
+  readonly textEdits?: readonly { range?: LspRange; newText?: unknown }[];
+}
+
+/**
+ * Maps a server's tooltip — plain text or markup — to Monaco's.
+ * @param tooltip The tooltip.
+ * @returns Returns Monaco's tooltip.
+ */
+function toTooltip(
+  tooltip: string | { readonly kind?: string; readonly value?: string },
+): string | MonacoApi.IMarkdownString {
+  if (typeof tooltip === 'string') {
+    return tooltip;
+  }
+  return tooltip.kind === 'markdown' ? { value: tooltip.value ?? '' } : (tooltip.value ?? '');
 }
 
 /**

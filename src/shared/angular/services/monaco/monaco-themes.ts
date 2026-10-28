@@ -128,6 +128,16 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
   };
   const darkRules: MonacoApi.editor.ITokenThemeRule[] = semanticRules(false);
   const lightRules: MonacoApi.editor.ITokenThemeRule[] = semanticRules(true);
+  // Inlay hints (#1145) — parameter names and inferred types set into the code — read as a muted
+  // aside on a faint pill, never as code.
+  const darkHints: Record<string, string> = {
+    'editorInlayHint.foreground': '#9DA5B4',
+    'editorInlayHint.background': '#FFFFFF12',
+  };
+  const lightHints: Record<string, string> = {
+    'editorInlayHint.foreground': '#5F6672',
+    'editorInlayHint.background': '#0000000D',
+  };
 
   monaco.editor.defineTheme('onix-dark-outline', {
     base: 'vs-dark',
@@ -139,6 +149,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
       'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#ffffff20',
       'editorCursor.foreground': gray100,
+      ...darkHints,
     },
   });
   monaco.editor.defineTheme('onix-dark-filled', {
@@ -151,6 +162,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
       'editor.lineHighlightBackground': '#ffffff10',
       'editor.lineHighlightBorder': '#00000000',
       'editorCursor.foreground': gray100,
+      ...darkHints,
     },
   });
   monaco.editor.defineTheme('onix-light-outline', {
@@ -163,6 +175,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
       'editor.lineHighlightBackground': '#00000000',
       'editor.lineHighlightBorder': '#00000020',
       'editorCursor.foreground': gray900,
+      ...lightHints,
     },
   });
   monaco.editor.defineTheme('onix-light-filled', {
@@ -175,6 +188,7 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
       'editor.lineHighlightBackground': '#00000008',
       'editor.lineHighlightBorder': '#00000000',
       'editorCursor.foreground': gray900,
+      ...lightHints,
     },
   });
 }

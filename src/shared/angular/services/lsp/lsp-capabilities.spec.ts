@@ -2,6 +2,7 @@ import {
   codeActionSupportOf,
   executeCommandsOf,
   formattingSupportOf,
+  inlayHintSupportOf,
   navigationSupportOf,
   renameSupportOf,
   semanticLegendOf,
@@ -65,6 +66,18 @@ describe('navigationSupportOf (#1142)', () => {
       implementation: false,
       typeDefinition: false,
     });
+  });
+});
+
+describe('inlayHintSupportOf (#1145)', () => {
+  it('readsWhetherTheServerSetsHints_andFillsThemInOnRequest', () => {
+    // What Roslyn 5.13 advertises.
+    expect(inlayHintSupportOf({ inlayHintProvider: { resolveProvider: true } })).toEqual({
+      resolve: true,
+    });
+    expect(inlayHintSupportOf({ inlayHintProvider: true })).toEqual({ resolve: false });
+    expect(inlayHintSupportOf({ inlayHintProvider: false })).toBeUndefined();
+    expect(inlayHintSupportOf(undefined)).toBeUndefined();
   });
 });
 

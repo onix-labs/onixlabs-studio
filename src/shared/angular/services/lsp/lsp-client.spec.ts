@@ -265,6 +265,17 @@ class FakeFeatures {
   public enableFormatting(language: string, support: unknown): void {
     this.formattingEnabled.push([language, support]);
   }
+  /** The languages hints were turned on for (#1145). */
+  public readonly inlayHintsEnabled: string[] = [];
+  public inlayHintRefreshes: number = 0;
+
+  public enableInlayHints(language: string): void {
+    this.inlayHintsEnabled.push(language);
+  }
+
+  public refreshInlayHints(): void {
+    this.inlayHintRefreshes += 1;
+  }
 
   public readonly supports: [string, LspSessionSupport | null][] = [];
 
@@ -890,6 +901,29 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.rename).toBe('prepare');
+    });
+
+    it('openingADocument_turnsHintsOnForItsLanguage_whenTheServerSetsThem_andARefreshAsksAgain (#1145)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { inlayHintProvider: { resolveProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.inlayHintsEnabled).toEqual(['typescript']);
+      expect(features.resolver?.('/root/src/a.ts')?.inlayHints).toEqual({ resolve: true });
+      lsp.notify('/root::typescript', 'workspace/inlayHint/refresh', undefined);
+      expect(features.inlayHintRefreshes).toBe(1);
+    });
+
+    it('aServerThatSetsNoHints_turnsNoneOn (#1145)', async () => {
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.inlayHintsEnabled).toEqual([]);
     });
 
     it('documentRefs_carryWhetherTheSessionsServerFindsImplementationsAndTypes (#1142)', async () => {

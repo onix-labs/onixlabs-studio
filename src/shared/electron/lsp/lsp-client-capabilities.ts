@@ -60,6 +60,12 @@ export function clientCapabilities(): ClientCapabilities {
         contextSupport: true,
       },
       hover: { contentFormat: ['markdown', 'plaintext'] },
+      // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's
+      // or type's signature — and a hint's insertable text are filled in when it is hovered.
+      inlayHint: {
+        dynamicRegistration: false,
+        resolveSupport: { properties: ['tooltip', 'textEdits', 'label.tooltip'] },
+      },
       // Format Document, Format Selection and format-on-type (#1141): the server lays the code out,
       // honouring the project's own conventions (`.editorconfig` for Roslyn).
       formatting: { dynamicRegistration: false },
@@ -128,6 +134,9 @@ export function clientCapabilities(): ClientCapabilities {
       // A server may say its diagnostics are stale (a project finished loading, the analysis scope
       // changed), on which the workspace pull starts afresh (#1144).
       diagnostics: { refreshSupport: true },
+      // A server may say its hints are stale (a setting changed, a project loaded), on which the
+      // editors ask again (#1145).
+      inlayHint: { refreshSupport: true },
       // The main process watches the session root and sends `didChangeWatchedFiles`; a server
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },

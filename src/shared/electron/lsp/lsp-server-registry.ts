@@ -6,7 +6,11 @@ import {
   LspServerSummary,
   LspSettings,
 } from '@shared/api/lsp-channels';
-import { LspServerSettingValues, serversWithChangedSettings } from './lsp-server-settings';
+import {
+  LspServerSettingValues,
+  serversWithChangedSettings,
+  withDeclaredDefaults,
+} from './lsp-server-settings';
 import { logger } from '../logger';
 import { languageServerCatalogue } from './language-server-catalogue';
 import {
@@ -173,13 +177,16 @@ export class LspServerRegistry {
   }
 
   /**
-   * Gets the user's values for the settings a server declares (#1143), keyed by configuration section,
-   * for answering its `workspace/configuration` requests.
+   * Gets the values to answer a server's `workspace/configuration` requests with (#1143): the user's
+   * for the settings it declares, and each one's default where they have set none.
    * @param serverId The server.
-   * @returns Returns the values, or undefined when the user has set none.
+   * @returns Returns the values, or undefined for a server that declares none and has none set.
    */
   public configurationOf(serverId: LspServerId): LspServerSettingValues | undefined {
-    return this.settings.get().serverSettings[serverId];
+    return withDeclaredDefaults(
+      this.descriptors.get(serverId)?.settings,
+      this.settings.get().serverSettings[serverId],
+    );
   }
 
   /**

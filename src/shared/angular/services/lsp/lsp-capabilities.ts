@@ -2,6 +2,7 @@ import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import type {
   LspCodeActionSupport,
   LspFormattingSupport,
+  LspInlayHintSupport,
   LspNavigationSupport,
   LspRenameSupport,
 } from './lsp-features';
@@ -159,6 +160,20 @@ export function formattingSupportOf(capabilities: unknown): LspFormattingSupport
     range: isOffered(caps?.documentRangeFormattingProvider),
     onTypeTriggers: triggers,
   };
+}
+
+/**
+ * Reads how a server sets hints into the code (#1145) from its `inlayHintProvider`.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns how it does, or undefined when it does not.
+ */
+export function inlayHintSupportOf(capabilities: unknown): LspInlayHintSupport | undefined {
+  const provider: unknown = (capabilities as { inlayHintProvider?: unknown } | undefined)
+    ?.inlayHintProvider;
+  if (!isOffered(provider)) {
+    return undefined;
+  }
+  return { resolve: (provider as { resolveProvider?: unknown }).resolveProvider === true };
 }
 
 /**
