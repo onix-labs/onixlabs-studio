@@ -230,9 +230,35 @@ const CSHARP: LanguageServerDescriptor = {
   languages: ['csharp'],
   priority: DEFAULT_PRIORITY,
   takesBraceStyle: true,
+  // Roslyn answers workspace/diagnostic though it advertises otherwise without dynamic registration;
+  // how far it reaches is the analysis scope below (#1144).
+  servesWorkspaceDiagnostics: true,
   // What Roslyn reads through workspace/configuration that a user would recognise (#1143); the
   // defaults are Roslyn's own, which it uses while the user has set nothing.
   settings: [
+    {
+      section: 'csharp|background_analysis.dotnet_compiler_diagnostics_scope',
+      label: 'Errors and warnings',
+      description:
+        'Which files the compiler checks for the Error List: the files you have open, or every file in the solution, open or not.',
+      default: 'openFiles',
+      options: [
+        { value: 'openFiles', label: 'Open files' },
+        { value: 'fullSolution', label: 'Whole solution' },
+      ],
+    },
+    {
+      section: 'csharp|background_analysis.dotnet_analyzer_diagnostics_scope',
+      label: 'Code analysis',
+      description:
+        'Which files code analysis — analyzer warnings and suggestions — runs on. The whole solution is thorough, but slow on a large one.',
+      default: 'openFiles',
+      options: [
+        { value: 'openFiles', label: 'Open files' },
+        { value: 'fullSolution', label: 'Whole solution' },
+        { value: 'none', label: 'Off' },
+      ],
+    },
     {
       section: 'projects.dotnet_enable_automatic_restore',
       label: 'Restore packages',

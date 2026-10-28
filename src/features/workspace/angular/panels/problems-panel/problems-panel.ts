@@ -16,6 +16,7 @@ import {
   Diagnostics,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
@@ -128,6 +129,12 @@ export class ProblemsPanel {
   private readonly editors: Editors = inject(Editors);
 
   /**
+   * Holds the navigation that opens a file and places the caret once its editor has registered, for a
+   * problem in a file that is not open (#1144).
+   */
+  private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
    * Holds the structured logger for problems panel actions.
    */
   private readonly log: Log = inject(Log);
@@ -235,6 +242,20 @@ export class ProblemsPanel {
       `Navigate to problem at ${diagnostic.file}:${diagnostic.line}`,
       diagnostic.message,
     );
+    if (diagnostic.documentId === null && diagnostic.path !== null) {
+      // A file that is not open (a whole-solution error, #1144): opened, then placed at the problem
+      // once its editor has registered.
+      void this.navigation.goTo(null, {
+        path: diagnostic.path,
+        range: {
+          startLineNumber: diagnostic.line,
+          startColumn: diagnostic.column,
+          endLineNumber: diagnostic.line,
+          endColumn: diagnostic.column,
+        },
+      });
+      return;
+    }
     if (diagnostic.path !== null) {
       void this.fileOpener.openPath(diagnostic.path);
     }

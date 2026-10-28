@@ -181,6 +181,12 @@ export interface LanguageServerDescriptor {
   readonly takesBraceStyle?: boolean;
 
   /**
+   * Gets whether the server answers `workspace/diagnostic` — diagnostics for every file, open or not
+   * (#1144) — whatever its static capabilities say.
+   */
+  readonly servesWorkspaceDiagnostics?: boolean;
+
+  /**
    * Gets the settings the server reads through `workspace/configuration` that the user is offered
    * (#1143), on its language's page in Settings. Only settings a user would recognise.
    */
