@@ -14,6 +14,7 @@ import {
   LspCodeActionSupport,
   LspFeatures,
   LspFormattingSupport,
+  LspInlayHintSupport,
   LspNavigationSupport,
   LspRenameAnswer,
   LspRenamePreparation,
@@ -72,6 +73,17 @@ interface CapturedProviders {
   semanticEmitters: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
+  /** The inlay-hint providers registered, keyed by language (#1145). */
+  inlayHints?: Map<string, FakeInlayHintsProvider>;
+}
+
+/**
+ * An inlay-hint provider as the specs call it (#1145).
+ */
+interface FakeInlayHintsProvider {
+  onDidChangeInlayHints?: unknown;
+  provideInlayHints(model: unknown, range: unknown): Promise<{ hints: unknown[] } | undefined>;
+  resolveInlayHint(hint: unknown): Promise<unknown>;
 }
 
 /**
@@ -158,6 +170,9 @@ function fakeMonacoNamespace(
       registerDocumentSymbolProvider: (_language: string, provider: unknown): void => {
         captured.symbols = provider as CapturedProviders['symbols'];
       },
+      registerInlayHintsProvider: (language: string, provider: unknown): void => {
+        (captured.inlayHints ??= new Map()).set(language, provider);
+      },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): void => {
         (captured.formatting ??= new Map()).set(`${language}:document`, provider);
       },
@@ -228,6 +243,7 @@ describe('LspFeatures', () => {
   let syncHook: ((text: string) => Promise<void>) | undefined;
   let formattingSupport: LspFormattingSupport | undefined;
   let navigationSupport: LspNavigationSupport | undefined;
+  let inlayHintSupport: LspInlayHintSupport | undefined;
 
   beforeEach(() => {
     captured.completion = undefined;
@@ -256,6 +272,8 @@ describe('LspFeatures', () => {
     syncHook = undefined;
     formattingSupport = undefined;
     navigationSupport = undefined;
+    inlayHintSupport = undefined;
+    captured.inlayHints = undefined;
     captured.formatting = undefined;
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
@@ -323,6 +341,7 @@ describe('LspFeatures', () => {
             ...(syncHook === undefined ? {} : { sync: syncHook }),
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
+            ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
           }
         : null,
     );
@@ -1022,6 +1041,129 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('inlay hints (#1145)', () => {
+    const owned: unknown = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    };
+    const SHOWN: unknown = { startLineNumber: 1, startColumn: 1, endLineNumber: 20, endColumn: 1 };
+    const NAME_HINT: unknown = {
+      position: { line: 9, character: 35 },
+      label: 'name:',
+      kind: 2,
+      paddingRight: true,
+      data: { ResultId: 1 },
+    };
+
+    it('areRegisteredOncePerLanguage_withAnEventThatAsksAgain', async () => {
+      const features: LspFeatures = await build();
+      features.enableInlayHints('csharp');
+      features.enableInlayHints('csharp');
+
+      expect([...(captured.inlayHints?.keys() ?? [])]).toEqual(['csharp']);
+      expect(captured.inlayHints?.get('csharp')?.onDidChangeInlayHints).toBeDefined();
+    });
+
+    it('askForTheRangeShown_andMapTheServersHints', async () => {
+      inlayHintSupport = { resolve: true };
+      responses['textDocument/inlayHint'] = [
+        NAME_HINT,
+        {
+          position: { line: 9, character: 12 },
+          label: [{ value: 'Person' }, { value: '?', tooltip: 'nullable' }],
+          kind: 1,
+          textEdits: [
+            {
+              range: { start: { line: 9, character: 8 }, end: { line: 9, character: 11 } },
+              newText: 'Person?',
+            },
+          ],
+        },
+        { label: 'no position' },
+      ];
+      const features: LspFeatures = await build();
+      features.enableInlayHints('csharp');
+
+      const list: { hints: unknown[] } | undefined = await captured.inlayHints
+        ?.get('csharp')
+        ?.provideInlayHints(owned, SHOWN);
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/inlayHint',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          range: { start: { line: 0, character: 0 }, end: { line: 19, character: 0 } },
+        },
+      });
+      expect(list?.hints).toEqual([
+        { label: 'name:', position: { lineNumber: 10, column: 36 }, kind: 2, paddingRight: true },
+        {
+          label: [{ label: 'Person' }, { label: '?', tooltip: 'nullable' }],
+          position: { lineNumber: 10, column: 13 },
+          kind: 1,
+          textEdits: [
+            {
+              range: { startLineNumber: 10, startColumn: 9, endLineNumber: 10, endColumn: 12 },
+              text: 'Person?',
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('aHoveredHint_isFilledInWithItsTooltip', async () => {
+      inlayHintSupport = { resolve: true };
+      responses['textDocument/inlayHint'] = [NAME_HINT];
+      responses['inlayHint/resolve'] = {
+        ...(NAME_HINT as object),
+        tooltip: { kind: 'markdown', value: '(parameter) string name' },
+      };
+      const features: LspFeatures = await build();
+      features.enableInlayHints('csharp');
+      const provider: FakeInlayHintsProvider | undefined = captured.inlayHints?.get('csharp');
+      const list: { hints: unknown[] } | undefined = await provider?.provideInlayHints(
+        owned,
+        SHOWN,
+      );
+
+      const resolved: unknown = await provider?.resolveInlayHint(list?.hints[0]);
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'inlayHint/resolve',
+        params: NAME_HINT,
+      });
+      expect(resolved).toMatchObject({
+        label: 'name:',
+        tooltip: { value: '(parameter) string name' },
+      });
+    });
+
+    it('askNothing_forADocumentWhoseServerSetsNone', async () => {
+      const features: LspFeatures = await build();
+      features.enableInlayHints('csharp');
+
+      expect(await captured.inlayHints?.get('csharp')?.provideInlayHints(owned, SHOWN)).toBe(
+        undefined,
+      );
+      expect(requests).toEqual([]);
+    });
+
+    it('aRefresh_firesTheEvent_soEditorsAskAgain', async () => {
+      const features: LspFeatures = await build();
+      features.refreshInlayHints();
+      features.enableInlayHints('csharp');
+
+      features.refreshInlayHints();
+
+      const emitter: FakeEmitter | undefined = (
+        features as unknown as { inlayHintsChanged?: FakeEmitter }
+      ).inlayHintsChanged;
+      expect(emitter?.fired).toBe(1);
+    });
   });
 
   describe('implementations and type definitions (#1142)', () => {

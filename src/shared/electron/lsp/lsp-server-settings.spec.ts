@@ -3,6 +3,7 @@ import {
   answerConfiguration,
   parseServerSettings,
   serversWithChangedSettings,
+  withDeclaredDefaults,
 } from './lsp-server-settings';
 
 describe('parseServerSettings (#1143)', () => {
@@ -61,5 +62,34 @@ describe('serversWithChangedSettings (#1143)', () => {
         { csharp: { a: false }, go: { b: 'x' }, java: { d: true } },
       ).sort(),
     ).toEqual(['csharp', 'java', 'rust']);
+  });
+});
+
+describe('withDeclaredDefaults (#1145)', () => {
+  const DECLARED: {
+    section: string;
+    label: string;
+    description: string;
+    default: boolean | string;
+  }[] = [
+    { section: 'hints.parameters', label: 'P', description: 'p', default: false },
+    { section: 'restore', label: 'R', description: 'r', default: true },
+  ];
+
+  it('answersAClearedSettingWithItsDefault_notNull_soTurningItOffSticks', () => {
+    expect(withDeclaredDefaults(DECLARED, undefined)).toEqual({
+      'hints.parameters': false,
+      restore: true,
+    });
+    expect(withDeclaredDefaults(DECLARED, { 'hints.parameters': true, other: 'x' })).toEqual({
+      'hints.parameters': true,
+      restore: true,
+      other: 'x',
+    });
+  });
+
+  it('leavesAServerThatDeclaresNothing_withTheUsersValuesAlone', () => {
+    expect(withDeclaredDefaults(undefined, undefined)).toBeUndefined();
+    expect(withDeclaredDefaults([], { a: true })).toEqual({ a: true });
   });
 });

@@ -1,4 +1,8 @@
-import { LspServerId, LspServerSettingValue } from '@shared/api/lsp-channels';
+import {
+  LspServerId,
+  LspServerSettingDescriptor,
+  LspServerSettingValue,
+} from '@shared/api/lsp-channels';
 
 /**
  * The user's values for one server's declared settings, keyed by configuration section.
@@ -38,6 +42,29 @@ export function parseServerSettings(
     }
   }
   return result;
+}
+
+/**
+ * Lays the user's values over the defaults of the settings a server declares (#1145), so a setting
+ * the user has cleared is answered with its default rather than null: Roslyn reads a null on a
+ * second reading as "unchanged" and keeps the value it had, so a switch turned on and then cleared
+ * would stay on. Settings the server does not declare are left out, and answered null as before.
+ * @param declared The settings the server declares.
+ * @param values The user's values, or undefined when they have set none.
+ * @returns Returns the values to answer with.
+ */
+export function withDeclaredDefaults(
+  declared: readonly LspServerSettingDescriptor[] | undefined,
+  values: LspServerSettingValues | undefined,
+): LspServerSettingValues | undefined {
+  if (declared === undefined || declared.length === 0) {
+    return values;
+  }
+  const defaults: Record<string, LspServerSettingValue> = {};
+  for (const setting of declared) {
+    defaults[setting.section] = setting.default;
+  }
+  return { ...defaults, ...values };
 }
 
 /**

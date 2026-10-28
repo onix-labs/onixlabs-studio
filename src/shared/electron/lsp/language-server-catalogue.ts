@@ -260,6 +260,78 @@ const CSHARP: LanguageServerDescriptor = {
       ],
     },
     {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_parameters',
+      label: 'Parameter names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument.',
+      default: false,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_types',
+      label: 'Inferred types',
+      description:
+        'Show the type the compiler infers where the code does not name it, such as after var.',
+      default: false,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_literal_parameters',
+      label: 'Names for literal arguments',
+      description:
+        'Show parameter names for arguments that are literals, such as numbers and strings.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_object_creation_parameters',
+      label: 'Names in object creation',
+      description: 'Show parameter names for the arguments of a new expression.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_indexer_parameters',
+      label: 'Names for indexer arguments',
+      description: 'Show parameter names for the arguments of an indexer.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
+      label: 'Names for other arguments',
+      description:
+        'Show parameter names for every other argument, such as variables and member accesses.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_variable_types',
+      label: 'Types of var declarations',
+      description: 'Show the inferred type of a variable declared with var.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_lambda_parameter_types',
+      label: 'Types of lambda parameters',
+      description: "Show the inferred types of a lambda expression's parameters.",
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_object_creation',
+      label: 'Types of target-typed new',
+      description: 'Show the type a target-typed new() creates.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_collection_expressions',
+      label: 'Types of collection expressions',
+      description: 'Show the type a collection expression creates.',
+      default: true,
+      advanced: true,
+    },
+    {
       section: 'projects.dotnet_enable_automatic_restore',
       label: 'Restore packages',
       description:

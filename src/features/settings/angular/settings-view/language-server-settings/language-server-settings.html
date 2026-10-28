@@ -37,6 +37,24 @@
   </app-setting-row>
 
   @for (setting of declaredSettings(); track setting.descriptor.section) {
+    <ng-container
+      [ngTemplateOutlet]="declaredRow"
+      [ngTemplateOutletContext]="{ $implicit: setting }"
+    />
+  }
+
+  @if (advancedSettings().length > 0) {
+    <app-accordion heading="Advanced">
+      @for (setting of advancedSettings(); track setting.descriptor.section) {
+        <ng-container
+          [ngTemplateOutlet]="declaredRow"
+          [ngTemplateOutletContext]="{ $implicit: setting }"
+        />
+      }
+    </app-accordion>
+  }
+
+  <ng-template #declaredRow let-setting>
     <app-setting-row
       [label]="setting.descriptor.label"
       [description]="setting.descriptor.description"
@@ -56,7 +74,7 @@
         />
       }
     </app-setting-row>
-  }
+  </ng-template>
 
   <app-setting-row
     label="Arguments"

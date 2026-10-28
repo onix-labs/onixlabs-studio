@@ -68,6 +68,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   // Roslyn's own "show this to the user" (a project that failed to load or restore, #1134), which it
   // sends in place of `window/showMessage`.
   'window/_roslyn_showToast',
+  // Sent on from the server's request of the same name, for the editors to ask for hints again.
+  'workspace/inlayHint/refresh',
 ]);
 
 /**
@@ -778,6 +780,12 @@ export class LspManager {
     });
     // A server sends this when its semantic classification has improved (a project finished loading)
     // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
+    // A server's hints are stale (a setting changed, a project loaded): the renderer has its editors
+    // ask again (#1145).
+    connection.onRequest('workspace/inlayHint/refresh', (): null => {
+      this.forwardNotification(sessionId, 'workspace/inlayHint/refresh', undefined);
+      return null;
+    });
     connection.onRequest('workspace/semanticTokens/refresh', (): null => {
       this.forwardNotification(sessionId, 'workspace/semanticTokens/refresh', undefined);
       return null;

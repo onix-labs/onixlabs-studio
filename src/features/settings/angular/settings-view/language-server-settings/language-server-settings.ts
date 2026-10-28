@@ -17,6 +17,8 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { NgTemplateOutlet } from '@angular/common';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 /**
@@ -101,7 +103,7 @@ interface DeclaredSetting {
  */
 @Component({
   selector: 'app-language-server-settings',
-  imports: [Dropdown, SettingRow, TextField, Toggle],
+  imports: [Accordion, Dropdown, NgTemplateOutlet, SettingRow, TextField, Toggle],
   templateUrl: './language-server-settings.html',
   styleUrl: './language-server-settings.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -224,9 +226,29 @@ export class LanguageServerSettings {
 
   /**
    * Gets the settings the active server declares (#1143), each with the value it has now — the user's,
-   * or the server's default while they have set none.
+   * or the server's default while they have set none — but for the finer ones under "Advanced".
    */
   protected readonly declaredSettings: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] =>
+      this.allDeclared().filter(
+        (setting: DeclaredSetting): boolean => !setting.descriptor.advanced,
+      ),
+  );
+
+  /**
+   * Gets the finer settings the active server declares, folded away under "Advanced" (#1145).
+   */
+  protected readonly advancedSettings: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] =>
+      this.allDeclared().filter(
+        (setting: DeclaredSetting): boolean => setting.descriptor.advanced === true,
+      ),
+  );
+
+  /**
+   * Gets every setting the active server declares, each with the value it has now.
+   */
+  private readonly allDeclared: Signal<readonly DeclaredSetting[]> = computed(
     (): readonly DeclaredSetting[] => {
       const serverId: string = this.activeServer();
       this.lspSettings.settings();
