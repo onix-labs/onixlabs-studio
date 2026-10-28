@@ -273,6 +273,13 @@ class FakeFeatures {
     this.inlayHintsEnabled.push(language);
   }
 
+  /** The languages the compiler's views of structure were turned on for, with what (#1147). */
+  public readonly structureEnabled: [string, unknown][] = [];
+
+  public enableStructure(language: string, support: unknown): void {
+    this.structureEnabled.push([language, support]);
+  }
+
   public refreshInlayHints(): void {
     this.inlayHintRefreshes += 1;
   }
@@ -986,6 +993,20 @@ describe('LspClient', () => {
       expect(features.resolver?.('/root/src/a.ts')?.inlayHints).toEqual({ resolve: true });
       lsp.notify('/root::typescript', 'workspace/inlayHint/refresh', undefined);
       expect(features.inlayHintRefreshes).toBe(1);
+    });
+
+    it('openingADocument_turnsOnTheFoldsOccurrencesAndRangeTokensItsServerGives (#1147)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { foldingRangeProvider: true, documentHighlightProvider: true },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      const expected: unknown = { folding: true, highlights: true, rangeTokens: false };
+      expect(features.structureEnabled).toEqual([['typescript', expected]]);
+      expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);
     });
 
     it('aServerThatSetsNoHints_turnsNoneOn (#1145)', async () => {

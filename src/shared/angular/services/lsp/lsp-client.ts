@@ -27,6 +27,7 @@ import {
   LspFeatures,
   LspFormattingSupport,
   LspInlayHintSupport,
+  LspStructureSupport,
   LspNavigationSupport,
   LspRenameSupport,
   LspSessionSupport,
@@ -53,6 +54,7 @@ import {
   executeCommandsOf,
   formattingSupportOf,
   inlayHintSupportOf,
+  structureSupportOf,
   navigationSupportOf,
   renameSupportOf,
   saveIncludesText,
@@ -678,6 +680,15 @@ export class LspClient implements OnDestroy {
   private readonly workspaceSymbolSessions: Set<string> = new Set<string>();
 
   /**
+   * Holds which of the compiler's views of a document's structure each session's server gives
+   * (#1147), keyed by session id.
+   */
+  private readonly structureSupport: Map<string, LspStructureSupport> = new Map<
+    string,
+    LspStructureSupport
+  >();
+
+  /**
    * Holds how each started session's server completes and answers signature help (#1021).
    */
   private readonly assistSupport: Map<string, LspSessionSupport> = new Map<
@@ -1163,6 +1174,7 @@ export class LspClient implements OnDestroy {
       commands: this.executeCommands.get(sessionId) ?? [],
       formatting: this.formattingSupport.get(sessionId),
       inlayHints: this.inlayHintSupport.get(sessionId),
+      structure: this.structureSupport.get(sessionId),
       navigation: this.navigationSupport.get(sessionId),
       completion: this.assistSupport.get(sessionId)?.completion ?? null,
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
@@ -1659,6 +1671,7 @@ export class LspClient implements OnDestroy {
     this.formattingSupport.clear();
     this.inlayHintSupport.clear();
     this.workspaceSymbolSessions.clear();
+    this.structureSupport.clear();
     this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
@@ -1704,6 +1717,12 @@ export class LspClient implements OnDestroy {
     // Parameter names and inferred types set into the code, when this server sets them (#1145).
     if (this.inlayHintSupport.has(sessionId)) {
       this.features.enableInlayHints(tracked.languageId);
+    }
+    // The compiler's folds, occurrences and a range's semantic tokens, where this server gives them
+    // (#1147).
+    const structure: LspStructureSupport | undefined = this.structureSupport.get(sessionId);
+    if (structure !== undefined) {
+      this.features.enableStructure(tracked.languageId, structure);
     }
     tracked.opened = true;
     tracked.text = content;
@@ -1959,6 +1978,7 @@ export class LspClient implements OnDestroy {
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
+          this.structureSupport.set(sessionId, structureSupportOf(result.capabilities));
           if (workspaceSymbolsOffered(result.capabilities)) {
             this.workspaceSymbolSessions.add(sessionId);
           }

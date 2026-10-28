@@ -3,6 +3,7 @@ import {
   executeCommandsOf,
   formattingSupportOf,
   inlayHintSupportOf,
+  structureSupportOf,
   navigationSupportOf,
   renameSupportOf,
   semanticLegendOf,
@@ -65,6 +66,30 @@ describe('navigationSupportOf (#1142)', () => {
     expect(navigationSupportOf(undefined)).toEqual({
       implementation: false,
       typeDefinition: false,
+    });
+  });
+});
+
+describe('structureSupportOf (#1147)', () => {
+  it('readsFoldsOccurrencesAndRangeTokens_aRangeOnlyWithALegend', () => {
+    const legend: unknown = { tokenTypes: ['class'], tokenModifiers: [] };
+    // What Roslyn 5.13 advertises, offered full and range.
+    expect(
+      structureSupportOf({
+        foldingRangeProvider: true,
+        documentHighlightProvider: true,
+        semanticTokensProvider: { legend, range: true, full: false },
+      }),
+    ).toEqual({ folding: true, highlights: true, rangeTokens: true });
+    expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
+      folding: false,
+      highlights: false,
+      rangeTokens: false,
+    });
+    expect(structureSupportOf(undefined)).toEqual({
+      folding: false,
+      highlights: false,
+      rangeTokens: false,
     });
   });
 });

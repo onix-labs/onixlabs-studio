@@ -15,6 +15,7 @@ import {
   LspFeatures,
   LspFormattingSupport,
   LspInlayHintSupport,
+  LspStructureSupport,
   LspNavigationSupport,
   LspRenameAnswer,
   LspRenamePreparation,
@@ -73,8 +74,22 @@ interface CapturedProviders {
   semanticEmitters: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
+  /** The structure providers registered, keyed `<language>:<folding|highlights|rangeTokens>` (#1147). */
+  structure?: Map<string, FakeStructureProvider>;
   /** The inlay-hint providers registered, keyed by language (#1145). */
   inlayHints?: Map<string, FakeInlayHintsProvider>;
+}
+
+/**
+ * A folding, highlight or range-token provider as the specs call it (#1147).
+ */
+interface FakeStructureProvider {
+  provideFoldingRanges?(model: unknown): Promise<unknown>;
+  provideDocumentHighlights?(model: unknown, position: unknown): Promise<unknown>;
+  provideDocumentRangeSemanticTokens?(
+    model: unknown,
+    range: unknown,
+  ): Promise<{ data: Uint32Array } | null>;
 }
 
 /**
@@ -173,6 +188,17 @@ function fakeMonacoNamespace(
       registerInlayHintsProvider: (language: string, provider: unknown): void => {
         (captured.inlayHints ??= new Map()).set(language, provider);
       },
+      FoldingRangeKind: { Comment: 'comment', Imports: 'imports', Region: 'region' },
+      DocumentHighlightKind: { Text: 0, Read: 1, Write: 2 },
+      registerFoldingRangeProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:folding`, provider);
+      },
+      registerDocumentHighlightProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:highlights`, provider);
+      },
+      registerDocumentRangeSemanticTokensProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:rangeTokens`, provider);
+      },
       registerDocumentFormattingEditProvider: (language: string, provider: unknown): void => {
         (captured.formatting ??= new Map()).set(`${language}:document`, provider);
       },
@@ -230,6 +256,8 @@ describe('LspFeatures', () => {
   let semanticLegend: LspSemanticTokensLegend | null;
   let suppressWhen: ((model: unknown) => boolean) | undefined;
   let wordsSuppressedWhen: ((model: unknown) => boolean) | undefined;
+  let braceFoldingSuppressedWhen: ((model: unknown) => boolean) | undefined;
+  let structureSupport: LspStructureSupport | undefined;
   let completionSupport: LspCompletionSupport | null | undefined;
   let signatureSupport: LspSignatureHelpSupport | null | undefined;
   let openModels: unknown[];
@@ -273,6 +301,8 @@ describe('LspFeatures', () => {
     formattingSupport = undefined;
     navigationSupport = undefined;
     inlayHintSupport = undefined;
+    structureSupport = undefined;
+    captured.structure = undefined;
     captured.inlayHints = undefined;
     captured.formatting = undefined;
     const bridge: Bridge = {
@@ -321,6 +351,10 @@ describe('LspFeatures', () => {
         wordsSuppressedWhen = predicate;
         return (): void => undefined;
       },
+      suppressBraceFoldingWhen: (predicate: (model: unknown) => boolean): (() => void) => {
+        braceFoldingSuppressedWhen = predicate;
+        return (): void => undefined;
+      },
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -342,6 +376,7 @@ describe('LspFeatures', () => {
             ...(formattingSupport === undefined ? {} : { formatting: formattingSupport }),
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
+            ...(structureSupport === undefined ? {} : { structure: structureSupport }),
           }
         : null,
     );
@@ -1041,6 +1076,141 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe("folds, occurrences and a range's tokens (#1147)", () => {
+    const ALL: LspStructureSupport = { folding: true, highlights: true, rangeTokens: true };
+    const owned: unknown = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    };
+
+    it('areRegisteredOncePerLanguage_onlyForWhatTheServerGives', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+      features.enableStructure('csharp', ALL);
+      features.enableStructure('go', { folding: true, highlights: false, rangeTokens: false });
+
+      expect([...(captured.structure?.keys() ?? [])]).toEqual([
+        'csharp:folding',
+        'csharp:highlights',
+        'csharp:rangeTokens',
+        'go:folding',
+      ]);
+    });
+
+    it('folds_asTheServerFoldsThem_withTheirKinds_droppingWhatFoldsNothing', async () => {
+      structureSupport = ALL;
+      responses['textDocument/foldingRange'] = [
+        { startLine: 14, endLine: 18, kind: 'implementation' },
+        { startLine: 13, endLine: 24, kind: 'region', collapsedText: 'Counting' },
+        { startLine: 6, endLine: 8, kind: 'comment' },
+        { startLine: 0, endLine: 2, kind: 'imports' },
+        { startLine: 30, endLine: 30 },
+        { endLine: 4 },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const folds: unknown = await captured.structure
+        ?.get('csharp:folding')
+        ?.provideFoldingRanges?.(owned);
+
+      expect(folds).toEqual([
+        { start: 15, end: 19 },
+        { start: 14, end: 25, kind: 'region' },
+        { start: 7, end: 9, kind: 'comment' },
+        { start: 1, end: 3, kind: 'imports' },
+      ]);
+    });
+
+    it('occurrences_tellReadsFromWrites', async () => {
+      structureSupport = ALL;
+      responses['textDocument/documentHighlight'] = [
+        {
+          range: { start: { line: 11, character: 16 }, end: { line: 11, character: 21 } },
+          kind: 1,
+        },
+        { range: { start: { line: 17, character: 8 }, end: { line: 17, character: 13 } }, kind: 3 },
+        {
+          range: { start: { line: 17, character: 16 }, end: { line: 17, character: 21 } },
+          kind: 2,
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const highlights: unknown = await captured.structure
+        ?.get('csharp:highlights')
+        ?.provideDocumentHighlights?.(owned, { lineNumber: 12, column: 17 });
+
+      expect(requests.at(-1)?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        position: { line: 11, character: 16 },
+      });
+      expect(highlights).toEqual([
+        {
+          range: { startLineNumber: 12, startColumn: 17, endLineNumber: 12, endColumn: 22 },
+          kind: 0,
+        },
+        {
+          range: { startLineNumber: 18, startColumn: 9, endLineNumber: 18, endColumn: 14 },
+          kind: 2,
+        },
+        {
+          range: { startLineNumber: 18, startColumn: 17, endLineNumber: 18, endColumn: 22 },
+          kind: 1,
+        },
+      ]);
+    });
+
+    it('aRangesTokens_areAskedForTheRangeShown_andRemappedOntoTheFixedLegend', async () => {
+      structureSupport = ALL;
+      semanticLegend = {
+        tokenTypes: ['class', 'method', 'field', 'keyword'],
+        tokenModifiers: ['static'],
+      };
+      responses['textDocument/semanticTokens/range'] = { data: [10, 4, 6, 0, 0] };
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      const tokens: { data: Uint32Array } | null | undefined = await captured.structure
+        ?.get('csharp:rangeTokens')
+        ?.provideDocumentRangeSemanticTokens?.(owned, {
+          startLineNumber: 11,
+          startColumn: 1,
+          endLineNumber: 19,
+          endColumn: 1,
+        });
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/semanticTokens/range',
+        params: {
+          textDocument: { uri: 'file:///root/app.ts' },
+          range: { start: { line: 10, character: 0 }, end: { line: 18, character: 0 } },
+        },
+      });
+      expect([...(tokens?.data ?? [])]).toEqual([10, 4, 6, 2, 0]);
+    });
+
+    it('aDocumentWhoseServerGivesNone_isLeftToTheHeuristics', async () => {
+      const features: LspFeatures = await build();
+      features.enableStructure('csharp', ALL);
+
+      expect(
+        await captured.structure?.get('csharp:folding')?.provideFoldingRanges?.(owned),
+      ).toBeUndefined();
+      expect(
+        await captured.structure
+          ?.get('csharp:rangeTokens')
+          ?.provideDocumentRangeSemanticTokens?.(owned, {}),
+      ).toBeNull();
+      expect(requests).toEqual([]);
+      expect(braceFoldingSuppressedWhen?.(owned)).toBe(false);
+      structureSupport = ALL;
+      expect(braceFoldingSuppressedWhen?.(owned)).toBe(true);
+    });
   });
 
   describe('inlay hints (#1145)', () => {

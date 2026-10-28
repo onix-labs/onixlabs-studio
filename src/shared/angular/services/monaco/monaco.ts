@@ -255,6 +255,24 @@ export class Monaco {
    * server registers one (via {@link suppressHeuristicTokensWhen}) so its accurate tokens are never
    * second-guessed by the heuristic for documents it serves.
    */
+  /**
+   * Holds the predicates that leave a document's folding to its language server (#1147).
+   */
+  private readonly braceFoldingSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
+    new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
+
+  /**
+   * Determines whether a document's folding is left to its language server, for the brace folding.
+   * @param model The document.
+   * @returns Returns true when a server folds it.
+   */
+  private readonly braceFoldingSuppressed: (model: MonacoApi.editor.ITextModel) => boolean = (
+    model: MonacoApi.editor.ITextModel,
+  ): boolean =>
+    [...this.braceFoldingSuppressors].some(
+      (predicate: (model: MonacoApi.editor.ITextModel) => boolean): boolean => predicate(model),
+    );
+
   private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
 
@@ -553,7 +571,7 @@ export class Monaco {
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
-    registerBraceFolding(window.monaco);
+    registerBraceFolding(window.monaco, this.braceFoldingSuppressed);
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
@@ -802,7 +820,7 @@ export class Monaco {
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
-      registerBraceFolding(monaco);
+      registerBraceFolding(monaco, this.braceFoldingSuppressed);
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);
@@ -876,6 +894,23 @@ export class Monaco {
     this.heuristicTokenSuppressors.add(predicate);
     return (): void => {
       this.heuristicTokenSuppressors.delete(predicate);
+    };
+  }
+
+  /**
+   * Registers a predicate that leaves the folding of the documents it owns to their language server
+   * (#1147): the Visual-Studio-style brace folding steps aside for them, so the compiler's folds —
+   * members, regions, usings, comments — are not merged with its guesses. Predicates accumulate, as
+   * {@link suppressHeuristicTokensWhen} does.
+   * @param predicate Returns true for a model whose server folds it.
+   * @returns Returns a function that removes the predicate.
+   */
+  public suppressBraceFoldingWhen(
+    predicate: (model: MonacoApi.editor.ITextModel) => boolean,
+  ): () => void {
+    this.braceFoldingSuppressors.add(predicate);
+    return (): void => {
+      this.braceFoldingSuppressors.delete(predicate);
     };
   }
 
