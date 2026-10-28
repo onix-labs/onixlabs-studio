@@ -1,6 +1,12 @@
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { LspBraceStyle, LspServerId, LspServerSummary } from '@shared/api/lsp-channels';
+import {
+  LspBraceStyle,
+  LspServerId,
+  LspServerSummary,
+  LspSettings,
+} from '@shared/api/lsp-channels';
+import { LspServerSettingValues, serversWithChangedSettings } from './lsp-server-settings';
 import { logger } from '../logger';
 import { languageServerCatalogue } from './language-server-catalogue';
 import {
@@ -119,6 +125,9 @@ export class LspServerRegistry {
         languages: descriptor.languages,
         priority: descriptor.priority,
         ...(descriptor.takesBraceStyle === true ? { takesBraceStyle: true } : {}),
+        ...(descriptor.settings === undefined || descriptor.settings.length === 0
+          ? {}
+          : { settings: descriptor.settings }),
       }),
     );
   }
@@ -151,6 +160,32 @@ export class LspServerRegistry {
     return resolution.spec === null
       ? resolution
       : { spec: this.withExtraArgs(serverId, resolution.spec), error: null };
+  }
+
+  /**
+   * Gets the user's values for the settings a server declares (#1143), keyed by configuration section,
+   * for answering its `workspace/configuration` requests.
+   * @param serverId The server.
+   * @returns Returns the values, or undefined when the user has set none.
+   */
+  public configurationOf(serverId: LspServerId): LspServerSettingValues | undefined {
+    return this.settings.get().serverSettings[serverId];
+  }
+
+  /**
+   * Listens for changes to the user's values for servers' declared settings (#1143).
+   * @param listener The listener, given the servers whose values changed.
+   */
+  public onConfigurationChange(listener: (serverIds: readonly LspServerId[]) => void): void {
+    this.settings.onChange((previous: LspSettings, next: LspSettings): void => {
+      const changed: LspServerId[] = serversWithChangedSettings(
+        previous.serverSettings,
+        next.serverSettings,
+      );
+      if (changed.length > 0) {
+        listener(changed);
+      }
+    });
   }
 
   /**

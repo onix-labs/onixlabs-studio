@@ -7,7 +7,12 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { LspServerSummary } from '@shared/api/lsp-channels';
+import {
+  LspServerSettingDescriptor,
+  LspServerSettingOption,
+  LspServerSettingValue,
+  LspServerSummary,
+} from '@shared/api/lsp-channels';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -59,6 +64,31 @@ const PATH_LABELS: Readonly<Record<PathOverride, { label: string; description: s
     description: 'Your own clangd executable. Leave empty to use the copy installed under Plugins.',
   },
 };
+
+/**
+ * A setting a language server declares, as its page shows it (#1143).
+ */
+interface DeclaredSetting {
+  /**
+   * Gets what the server declares.
+   */
+  readonly descriptor: LspServerSettingDescriptor;
+
+  /**
+   * Gets the value it has now: the user's, or the server's default.
+   */
+  readonly value: LspServerSettingValue;
+
+  /**
+   * Gets the value as the dropdown names it, for a choice.
+   */
+  readonly choice: string;
+
+  /**
+   * Gets the choices as dropdown options; empty for a switch.
+   */
+  readonly options: readonly DropdownOption[];
+}
 
 /**
  * The settings for one language's tooling: which installed server serves it, whether it runs, the
@@ -191,6 +221,58 @@ export class LanguageServerSettings {
         return '';
     }
   });
+
+  /**
+   * Gets the settings the active server declares (#1143), each with the value it has now — the user's,
+   * or the server's default while they have set none.
+   */
+  protected readonly declaredSettings: Signal<readonly DeclaredSetting[]> = computed(
+    (): readonly DeclaredSetting[] => {
+      const serverId: string = this.activeServer();
+      this.lspSettings.settings();
+      const server: LspServerSummary | undefined = this.servers().find(
+        (candidate: LspServerSummary): boolean => candidate.id === serverId,
+      );
+      return (server?.settings ?? []).map(
+        (descriptor: LspServerSettingDescriptor): DeclaredSetting => {
+          const value: LspServerSettingValue =
+            this.lspSettings.serverSetting(serverId, descriptor.section) ?? descriptor.default;
+          return {
+            descriptor,
+            value,
+            choice: String(value),
+            options: (descriptor.options ?? []).map(
+              (option: LspServerSettingOption): DropdownOption => ({
+                value: String(option.value),
+                label: option.label,
+              }),
+            ),
+          };
+        },
+      );
+    },
+  );
+
+  /**
+   * Sets a setting the active server declares: storing the value, or clearing it when it is the
+   * server's own default, so a default the server later changes is followed.
+   * @param setting The setting.
+   * @param value The new value — a switch's state, or the chosen option's value as the dropdown
+   * names it.
+   */
+  protected setDeclared(setting: DeclaredSetting, value: boolean | string): void {
+    const chosen: LspServerSettingValue =
+      typeof value === 'boolean'
+        ? value
+        : ((setting.descriptor.options ?? []).find(
+            (option: LspServerSettingOption): boolean => String(option.value) === value,
+          )?.value ?? value);
+    void this.lspSettings.setServerSetting(
+      this.activeServer(),
+      setting.descriptor.section,
+      chosen === setting.descriptor.default ? null : chosen,
+    );
+  }
 
   /**
    * Chooses which installed server serves this language.

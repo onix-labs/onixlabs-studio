@@ -230,6 +230,35 @@ const CSHARP: LanguageServerDescriptor = {
   languages: ['csharp'],
   priority: DEFAULT_PRIORITY,
   takesBraceStyle: true,
+  // What Roslyn reads through workspace/configuration that a user would recognise (#1143); the
+  // defaults are Roslyn's own, which it uses while the user has set nothing.
+  settings: [
+    {
+      section: 'projects.dotnet_enable_automatic_restore',
+      label: 'Restore packages',
+      description:
+        "Restore a project's NuGet packages when it needs them — on opening the solution, or when a project file changes — or ask first.",
+      default: true,
+      options: [
+        { value: true, label: 'Automatically' },
+        { value: false, label: 'Ask first' },
+      ],
+    },
+    {
+      section: 'projects.dotnet_enable_file_based_programs',
+      label: 'File-based programs',
+      description:
+        'Give a C# file that belongs to no project — a program run with `dotnet run app.cs` — full language support of its own.',
+      default: true,
+    },
+    {
+      section: 'navigation.dotnet_navigate_to_decompiled_sources',
+      label: 'Go to decompiled sources',
+      description:
+        'Go to Definition on framework or package code opens its decompiled source, rather than only its signatures.',
+      default: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const dotnet: string | null = await context.provisioner.detectDotnet(
       context.settings.get().dotnetPath,

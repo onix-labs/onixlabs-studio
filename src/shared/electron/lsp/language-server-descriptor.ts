@@ -1,4 +1,4 @@
-import { LspBraceStyle, LspServerId } from '@shared/api/lsp-channels';
+import { LspBraceStyle, LspServerId, LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
 import { LspProvisioner } from './lsp-provisioner';
@@ -179,6 +179,12 @@ export interface LanguageServerDescriptor {
    * change to the setting must restart it.
    */
   readonly takesBraceStyle?: boolean;
+
+  /**
+   * Gets the settings the server reads through `workspace/configuration` that the user is offered
+   * (#1143), on its language's page in Settings. Only settings a user would recognise.
+   */
+  readonly settings?: readonly LspServerSettingDescriptor[];
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when

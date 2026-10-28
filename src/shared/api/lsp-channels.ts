@@ -98,6 +98,11 @@ export interface LspServerSummary extends LanguageSlotEntry {
    * the Brace style setting for a language it serves restarts its sessions, so it takes effect.
    */
   readonly takesBraceStyle?: boolean;
+
+  /**
+   * Gets the settings the server declares (#1143), offered on its language's page in Settings.
+   */
+  readonly settings?: readonly LspServerSettingDescriptor[];
 }
 
 /**
@@ -402,4 +407,66 @@ export interface LspSettings {
    * genuine preferences and a language served by exactly one server never needs an entry.
    */
   readonly languageServers: Readonly<Record<string, LspServerId>>;
+
+  /**
+   * Gets the user's values for the settings servers declare (#1143), keyed by server identifier and
+   * then by configuration section — what the server is answered with when it asks through
+   * `workspace/configuration`. A setting with no entry is answered with null, the server's default.
+   */
+  readonly serverSettings: Readonly<
+    Record<LspServerId, Readonly<Record<string, LspServerSettingValue>>>
+  >;
+}
+
+/**
+ * The value of a setting a server declares: a switch, or one of a choice's values.
+ */
+export type LspServerSettingValue = boolean | string;
+
+/**
+ * Describes one choice of a {@link LspServerSettingDescriptor} offered as a choice.
+ */
+export interface LspServerSettingOption {
+  /**
+   * Gets the value the server is answered with when this choice is made.
+   */
+  readonly value: LspServerSettingValue;
+
+  /**
+   * Gets the choice as the user reads it.
+   */
+  readonly label: string;
+}
+
+/**
+ * Describes a setting a language server declares (#1143): what the user sees in Settings › Language
+ * Providers, and the `workspace/configuration` section the server is answered from. Plain data, so a
+ * server contributed by a plugin declares its own the same way.
+ */
+export interface LspServerSettingDescriptor {
+  /**
+   * Gets the configuration section the server asks for, such as
+   * `projects.dotnet_enable_automatic_restore`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the setting's name, as the user reads it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets what the setting does, in a sentence.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the server's own default, shown while the user has set nothing.
+   */
+  readonly default: LspServerSettingValue;
+
+  /**
+   * Gets the choices, for a setting offered as a choice; undefined for a switch.
+   */
+  readonly options?: readonly LspServerSettingOption[];
 }

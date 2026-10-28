@@ -54,6 +54,7 @@ describe('LspSettings', () => {
       serverPaths: {},
       serverArgs: {},
       languageServers: {},
+      serverSettings: {},
     };
     catalogue = CATALOGUE;
     // Everything in the catalogue is installed unless a test says otherwise.
@@ -189,6 +190,29 @@ describe('LspSettings', () => {
 
     expect(setCalls.at(-1)?.serverArgs['typescript']).toBeUndefined();
     expect(service.serverArgsText('typescript')).toBe('');
+  });
+
+  it('setServerSetting_storesAServersValue_andNullClearsIt_droppingAServerLeftWithNone (#1143)', async () => {
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.refresh();
+
+    await service.setServerSetting('csharp', 'projects.dotnet_enable_automatic_restore', false);
+    await service.setServerSetting('csharp', 'projects.dotnet_enable_file_based_programs', false);
+    expect(setCalls.at(-1)?.serverSettings).toEqual({
+      csharp: {
+        'projects.dotnet_enable_automatic_restore': false,
+        'projects.dotnet_enable_file_based_programs': false,
+      },
+    });
+    expect(service.serverSetting('csharp', 'projects.dotnet_enable_automatic_restore')).toBe(false);
+
+    await service.setServerSetting('csharp', 'projects.dotnet_enable_automatic_restore', null);
+    await service.setServerSetting('csharp', 'projects.dotnet_enable_file_based_programs', null);
+
+    expect(setCalls.at(-1)?.serverSettings).toEqual({});
+    expect(service.serverSetting('csharp', 'projects.dotnet_enable_automatic_restore')).toBe(
+      undefined,
+    );
   });
 
   it('catalogueLoaded_isFalseUntilTheCatalogueLands_thenTrueEvenWhenEmpty', async () => {

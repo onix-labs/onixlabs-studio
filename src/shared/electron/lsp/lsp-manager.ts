@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents }
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
+import { answerConfiguration } from './lsp-server-settings';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -209,8 +210,30 @@ export class LspManager {
     ipcMain.handle(LspChannel.GetCatalogue, (): readonly LspServerSummary[] =>
       this.registry.catalogue(),
     );
+    // A server reads its declared settings whenever it is told they changed, so a change reaches a
+    // running server at once rather than on its next start (#1143).
+    this.registry.onConfigurationChange((serverIds: readonly string[]): void =>
+      this.announceConfigurationChange(serverIds),
+    );
     this.applyEdits.register();
     logger.info('LspManager', 'Registered language-server IPC handlers');
+  }
+
+  /**
+   * Tells each running session of the given servers that its configuration changed, so it asks for
+   * it again through `workspace/configuration` (#1143).
+   * @param serverIds The servers whose settings changed.
+   */
+  private announceConfigurationChange(serverIds: readonly string[]): void {
+    for (const [id, session] of this.sessions) {
+      if (!serverIds.includes(session.request.serverId)) {
+        continue;
+      }
+      logger.info('LspManager', `Settings changed; telling session ${id} to read them again`);
+      void session.connection.sendNotification('workspace/didChangeConfiguration', {
+        settings: null,
+      });
+    }
   }
 
   /**
@@ -682,13 +705,12 @@ export class LspManager {
       this.forwardNotification(sessionId, 'workspace/semanticTokens/refresh', undefined);
       return null;
     });
-    // Answer each requested configuration item with null (rather than an empty object): null tells a
-    // server to use its default for that setting, whereas `{}` is parsed as a value and rejected by
-    // servers (such as Roslyn) that expect a scalar per key.
+    // Answer each requested configuration item with the user's value for the setting the server
+    // declared (#1143), or null — the server's default — for anything else.
     connection.onRequest(
       'workspace/configuration',
       (params: { items?: readonly unknown[] }): unknown[] =>
-        (params.items ?? []).map((): unknown => null),
+        answerConfiguration(this.registry.configurationOf(session.request.serverId), params.items),
     );
     // A server's own edit — a code action's or a command's — is applied by the renderer that holds
     // the session, as a rename is (#1015), and the server told whether it was: `{ applied }`, never

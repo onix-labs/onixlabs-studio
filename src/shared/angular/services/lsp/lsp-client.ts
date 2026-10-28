@@ -63,6 +63,28 @@ import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
 /**
+ * The configuration section of the setting that chooses whether a server restores packages by itself
+ * or asks first (#1143) — Roslyn's, the server that declares it.
+ */
+const AUTOMATIC_RESTORE_SECTION: string = 'projects.dotnet_enable_automatic_restore';
+
+/**
+ * Matches the warning Roslyn logs for a project whose packages are not restored, capturing its path —
+ * with automatic restore off, the only word it gives (#1143).
+ */
+const UNRESOLVED_PROJECT: RegExp = /Project (.+?\.[a-z]+proj) has unresolved dependencies/;
+
+/**
+ * The request that asks Roslyn to restore projects' packages.
+ */
+const RESTORE_METHOD: string = 'workspace/_roslyn_restore';
+
+/**
+ * How long to gather projects a load reports as needing a restore before offering to restore them.
+ */
+const UNRESTORED_GATHER_MS: number = 1_500;
+
+/**
  * The time within which a server's errors and warnings count as one burst, updating one toast with a
  * count rather than raising another (#1134).
  */
@@ -431,6 +453,25 @@ export class LspClient implements OnDestroy {
    * Holds the notification store a server's errors and warnings are raised in (#1134).
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Counts the restores Studio has asked for, naming each one's progress token.
+   */
+  private restores: number = 0;
+
+  /**
+   * Holds, per session, the projects reported as needing a restore while the user asks to be asked
+   * first, gathered into one offer (#1143).
+   */
+  private readonly unrestored: Map<string, Set<string>> = new Map<string, Set<string>>();
+
+  /**
+   * Holds, per session, the timer that raises the gathered offer to restore.
+   */
+  private readonly unrestoredTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   /**
    * Holds, per session, the distinct errors and warnings its server has raised in the current burst
@@ -1441,6 +1482,11 @@ export class LspClient implements OnDestroy {
       clearTimeout(timer);
     }
     this.standaloneReapTimers.clear();
+    for (const timer of this.unrestoredTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.unrestoredTimers.clear();
+    this.unrestored.clear();
     for (const sessionId of [...this.postLoadPullTimers.keys()]) {
       this.clearPostLoadPulls(sessionId);
     }
@@ -1883,6 +1929,9 @@ export class LspClient implements OnDestroy {
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
       this.appendServerLog(message.sessionId, message.params);
+      if (message.method === 'window/logMessage') {
+        this.noteUnrestoredProject(message.sessionId, message.params);
+      }
       if (message.method === 'window/showMessage') {
         this.raiseServerProblem(message.sessionId, message.params);
       }
@@ -1954,8 +2003,13 @@ export class LspClient implements OnDestroy {
       return;
     }
     const parts: string[] = [title];
-    if (typeof value.message === 'string' && value.message.length > 0) {
-      parts.push(value.message);
+    // A request's partial results arrive on its token as an array (a restore Studio asked for, #1143,
+    // reports each step that way): the latest entry says what is happening.
+    const message: unknown = Array.isArray(candidate.value)
+      ? (candidate.value.at(-1) as { message?: unknown } | undefined)?.message
+      : value.message;
+    if (typeof message === 'string' && message.length > 0) {
+      parts.push(message);
     }
     if (typeof value.percentage === 'number') {
       parts.push(`${Math.round(value.percentage)}%`);
@@ -2131,6 +2185,113 @@ export class LspClient implements OnDestroy {
       return;
     }
     this.output.channel(`lsp:${serverId}`, `LSP: ${serverId}`).appendLine(message);
+  }
+
+  /**
+   * Notes a project the server could not resolve the packages of, when the user has asked to be asked
+   * before restoring (#1143): Roslyn then restores nothing and says only, in a warning, that a project
+   * "has unresolved dependencies". The projects a load reports together are gathered into one toast
+   * offering to restore them.
+   * @param sessionId The session the log line came from.
+   * @param params The log message.
+   */
+  private noteUnrestoredProject(sessionId: string, params: unknown): void {
+    const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
+    if (
+      serverId === undefined ||
+      this.lspSettings.serverSetting(serverId, AUTOMATIC_RESTORE_SECTION) !== false
+    ) {
+      return;
+    }
+    const text: unknown = (params as { message?: unknown } | null)?.message;
+    const project: string | undefined =
+      typeof text === 'string' ? UNRESOLVED_PROJECT.exec(text)?.[1] : undefined;
+    if (project === undefined) {
+      return;
+    }
+    const projects: Set<string> = this.unrestored.get(sessionId) ?? new Set<string>();
+    projects.add(project);
+    this.unrestored.set(sessionId, projects);
+    clearTimeout(this.unrestoredTimers.get(sessionId));
+    this.unrestoredTimers.set(
+      sessionId,
+      setTimeout((): void => this.offerRestore(sessionId, serverId), UNRESTORED_GATHER_MS),
+    );
+  }
+
+  /**
+   * Offers to restore the projects gathered for a session, in one toast.
+   * @param sessionId The session.
+   * @param serverId Its server.
+   */
+  private offerRestore(sessionId: string, serverId: string): void {
+    this.unrestoredTimers.delete(sessionId);
+    const projects: readonly string[] = [...(this.unrestored.get(sessionId) ?? [])];
+    this.unrestored.delete(sessionId);
+    if (projects.length === 0) {
+      return;
+    }
+    const first: string = projects[0].split(/[\\/]/).pop() ?? projects[0];
+    this.notifications.notify({
+      severity: 'warning',
+      title:
+        projects.length === 1
+          ? `${first} needs its packages restored`
+          : `${projects.length} projects need their packages restored`,
+      detail: this.lspSettings.displayNameOf(serverId) ?? serverId,
+      actions: [
+        {
+          label: 'Restore',
+          run: (): void => void this.restoreProjects(sessionId, serverId, projects),
+        },
+      ],
+      key: `lsp-restore:${sessionId}`,
+      sticky: true,
+    });
+  }
+
+  /**
+   * Asks a session's server to restore projects' packages (#1143); its progress shows in the server's
+   * status row, and a failure is raised with the server's log a click away.
+   * @param sessionId The session.
+   * @param serverId Its server.
+   * @param projects The project files to restore.
+   * @returns Returns a promise that resolves once the server has answered.
+   */
+  private async restoreProjects(
+    sessionId: string,
+    serverId: string,
+    projects: readonly string[],
+  ): Promise<void> {
+    this.log.info('LspClient', `Restoring ${projects.length} project(s)`, sessionId);
+    // The server reports a restore it was asked for as partial results on this token, which the
+    // server's status row shows as it does the server's own progress.
+    const token: string = `studio-restore-${++this.restores}`;
+    const tokens: Map<string, string> =
+      this.progressTitles.get(sessionId) ?? new Map<string, string>();
+    tokens.set(token, 'Restore');
+    this.progressTitles.set(sessionId, tokens);
+    this.status.setProgress(sessionId, 'Restore');
+    let result: unknown;
+    try {
+      result = await this.bridge?.invoke(LspChannel.Request, sessionId, RESTORE_METHOD, {
+        projectFilePaths: projects,
+        partialResultToken: token,
+      });
+    } catch {
+      result = null;
+    }
+    this.onProgress(sessionId, { token, value: { kind: 'end' } });
+    if ((result as { success?: unknown } | null)?.success === true) {
+      return;
+    }
+    this.notifications.notify({
+      severity: 'error',
+      title: 'Restoring packages failed',
+      detail: this.lspSettings.displayNameOf(serverId) ?? serverId,
+      actions: [{ label: 'Show log', run: (): void => this.output.show(`lsp:${serverId}`) }],
+      key: `lsp-restore:${sessionId}`,
+    });
   }
 
   /**
