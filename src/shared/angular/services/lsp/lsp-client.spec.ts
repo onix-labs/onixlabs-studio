@@ -24,6 +24,10 @@ import type {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
+import {
+  NotificationRequest,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus } from './lsp-status';
 
@@ -338,6 +342,103 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('server problems as toasts (#1134)', () => {
+    let raised: NotificationRequest[];
+    let shown: string[];
+
+    beforeEach(() => {
+      raised = [];
+      shown = [];
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({ appendLine: (): void => undefined }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('roslynsToast_ofAProjectThatFailedToLoad_isRaised_withShowLogOpeningItsOutputChannel', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'window/_roslyn_showToast', {
+        messageType: 1,
+        message: 'There were problems loading project Fixture.Core.csproj. See log for details.',
+        commands: [{ title: 'Show C# logs', command: 'csharp.showOutputWindow' }],
+      });
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'There were problems loading project Fixture.Core.csproj.',
+        detail: 'csharp',
+        key: 'lsp-problem:/root::csharp',
+      });
+      raised[0]?.actions?.[0]?.run();
+      expect(raised[0]?.actions?.[0]?.label).toBe('Show log');
+      expect(shown).toEqual(['lsp:csharp']);
+    });
+
+    it('aBurst_updatesOneToastWithACountOfDistinctProblems', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      for (const project of ['A', 'B', 'B', 'C']) {
+        lsp.notify('/root::csharp', 'window/_roslyn_showToast', {
+          messageType: 1,
+          message: `There were problems loading project ${project}.csproj. See log for details.`,
+        });
+      }
+
+      expect(raised.map((request: NotificationRequest): string => request.title)).toEqual([
+        'There were problems loading project A.csproj.',
+        'csharp reported 2 problems',
+        // Roslyn repeats a failed project's report: the same problem, not a third.
+        'csharp reported 2 problems',
+        'csharp reported 3 problems',
+      ]);
+      expect(raised.at(-1)?.detail).toBe('Latest: There were problems loading project C.csproj.');
+      expect(new Set(raised.map((request: NotificationRequest) => request.key)).size).toBe(1);
+    });
+
+    it('showMessageWarnings_areRaisedToo_butInformationStaysInTheLog', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'window/showMessage', { type: 3, message: 'Loaded.' });
+      lsp.notify('/root::csharp', 'window/_roslyn_showToast', { messageType: 3, message: 'Hi.' });
+      lsp.notify('/root::csharp', 'window/showMessage', { type: 2, message: 'MSBuild is old.' });
+
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({ severity: 'warning', title: 'MSBuild is old.' });
+    });
   });
 
   describe('brace style (#1177)', () => {

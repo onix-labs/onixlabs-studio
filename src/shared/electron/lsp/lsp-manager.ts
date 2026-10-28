@@ -61,6 +61,9 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
+  // Roslyn's own "show this to the user" (a project that failed to load or restore, #1134), which it
+  // sends in place of `window/showMessage`.
+  'window/_roslyn_showToast',
 ]);
 
 /**

@@ -62,6 +62,17 @@ describe('Output', () => {
     expect(output.activeChannelId()).toBe(DEFAULT_CHANNEL);
   });
 
+  it('show_activatesTheChannel_andCountsARequestToShowIt_whichRevealAlone_doesNot (#1134)', () => {
+    output.channel('lsp:csharp', 'LSP: csharp');
+    output.channel('build', 'Build').reveal();
+    expect(output.showRequests()).toBe(0);
+
+    output.show('lsp:csharp');
+
+    expect(output.activeChannelId()).toBe('lsp:csharp');
+    expect(output.showRequests()).toBe(1);
+  });
+
   it('channel_registersTheChannelForSelection', () => {
     output.channel('build', 'Build');
     output.channel('run', 'Run');
