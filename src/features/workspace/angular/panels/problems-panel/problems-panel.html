@@ -1,5 +1,5 @@
 <app-panel-toolbar role="group" aria-label="Filter by severity">
-  <!-- One toggle per severity (#1182), each in its colour with how many there are. -->
+  <!-- One toggle per severity (#1182), each in its colour with how many there are, when any. -->
   @for (option of severityOptions; track option.value) {
     <app-button
       variant="none"
@@ -11,9 +11,12 @@
       [tooltip]="option.label"
       (click)="selectSeverity(option.value)"
     >
-      <app-chip class="problems-filter__count" [tone]="option.tone">{{
-        counts()[option.value]
-      }}</app-chip>
+      <!-- A count only where there is something to count. -->
+      @if (counts()[option.value] > 0) {
+        <app-chip class="problems-filter__count" [tone]="option.tone">{{
+          counts()[option.value]
+        }}</app-chip>
+      }
     </app-button>
   }
   @if (sourceOptions().length > 2) {

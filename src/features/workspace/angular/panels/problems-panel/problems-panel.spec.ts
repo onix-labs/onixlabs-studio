@@ -409,7 +409,8 @@ describe('ProblemsPanel', () => {
         (toggle: HTMLElement): string => (toggle.textContent ?? '').replace(/\s+/g, ' ').trim(),
       );
 
-      expect(toggles).toEqual(['Everything4', 'Errors1', 'Warnings2', 'Info0', 'Hints1']);
+      // No count where there is nothing to count.
+      expect(toggles).toEqual(['Everything4', 'Errors1', 'Warnings2', 'Info', 'Hints1']);
       expect(host.querySelector('app-panel-toolbar .problems-count')).toBeNull();
       expect(
         host.querySelector('app-panel-toolbar button[aria-label="More Actions"]'),
