@@ -9,6 +9,7 @@ vi.mock('electron', () => ({
 const { LspManager } = await import('./lsp-manager');
 const { clientCapabilities } = await import('./lsp-client-capabilities');
 const { LspApplyEditForwarder } = await import('./lsp-apply-edit');
+const { LspOpenDocuments } = await import('./lsp-open-documents');
 const { WorkspaceContext } = await import('../workspace-context');
 type ApplyEditResult = import('./lsp-apply-edit').ApplyEditResult;
 type LspServerRegistry = import('./lsp-server-registry').LspServerRegistry;
@@ -495,5 +496,74 @@ describe('LspManager (#1015)', () => {
 
     expect(answer).toEqual({ didAttach: true });
     expect(attaches.forward).toHaveBeenCalledWith('/root::csharp', live, { processId: 46456 });
+  });
+
+  describe('open documents across windows (#1190)', () => {
+    /**
+     * The manager, as the specs send it renderers' notifications.
+     */
+    type Notifying = ManagerInternals & {
+      notify(id: unknown, method: unknown, params: unknown, sender?: unknown): void;
+    };
+
+    /**
+     * Builds a manager holding one session, recording what the server is sent.
+     * @param sent Receives each notification the server is sent.
+     * @returns Returns the manager's internals.
+     */
+    function holding(sent: string[]): Notifying {
+      const manager: unknown = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      (manager as ManagerInternals).sessions.set('/root::csharp', {
+        request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+        connection: {
+          sendNotification: (method: string, params: unknown): Promise<void> => {
+            sent.push(
+              `${method} ${(params as { textDocument?: { uri?: string } }).textDocument?.uri ?? ''}`,
+            );
+            return Promise.resolve();
+          },
+        },
+        openDocuments: new LspOpenDocuments<unknown>(),
+      });
+      return manager as Notifying;
+    }
+
+    const OPEN: unknown = { textDocument: { uri: 'file:///root/A.cs', text: '' } };
+    const CLOSE: unknown = { textDocument: { uri: 'file:///root/A.cs' } };
+
+    it('aWindowReopeningADocumentTheServerHasOpen_closesItThereFirst', () => {
+      const sent: string[] = [];
+      const manager: Notifying = holding(sent);
+      const window: WebContents = contents();
+
+      manager.notify('/root::csharp', 'textDocument/didOpen', OPEN, window);
+      manager.notify('/root::csharp', 'textDocument/didOpen', OPEN, window);
+
+      expect(sent).toEqual([
+        'textDocument/didOpen file:///root/A.cs',
+        'textDocument/didClose file:///root/A.cs',
+        'textDocument/didOpen file:///root/A.cs',
+      ]);
+    });
+
+    it('aDocumentClosedByOneWindow_staysOpenOnTheServerWhileAnotherHoldsIt', () => {
+      const sent: string[] = [];
+      const manager: Notifying = holding(sent);
+      const main: WebContents = contents();
+      const popOut: WebContents = contents();
+      manager.notify('/root::csharp', 'textDocument/didOpen', OPEN, main);
+      manager.notify('/root::csharp', 'textDocument/didOpen', OPEN, popOut);
+      sent.length = 0;
+
+      manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, popOut);
+      expect(sent).toEqual([]);
+      manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, main);
+      expect(sent).toEqual(['textDocument/didClose file:///root/A.cs']);
+    });
   });
 });
