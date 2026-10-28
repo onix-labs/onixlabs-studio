@@ -14,7 +14,38 @@
   --problem-hint: var(--info-color);
 }
 
-// The error/warning tallies sit at the trailing end of the tool-strip.
+// Each severity's toggle wears its colour on its glyph even at rest (#1182), so the strip reads as
+// the severities at a glance; pressed, the whole toggle takes it.
+.problems-filter {
+  --problems-filter-color: var(--accent-color);
+
+  &--error {
+    --problems-filter-color: var(--problem-error);
+  }
+
+  &--warning {
+    --problems-filter-color: var(--problem-warning);
+  }
+
+  &--info {
+    --problems-filter-color: var(--problem-info);
+  }
+
+  &--hint {
+    --problems-filter-color: var(--problem-hint);
+  }
+
+  ::ng-deep .button__icon {
+    color: var(--problems-filter-color);
+  }
+}
+
+// The count bubble after each toggle's label.
+.problems-filter__count {
+  margin-inline-start: 0.375rem;
+}
+
+// A project's tallies in the grouped list.
 .problems-count {
   display: inline-flex;
   align-items: center;
@@ -27,6 +58,11 @@
 
   &--warning {
     color: var(--problem-warning);
+  }
+
+  // A project's information and hints — an unnecessary using — counted together.
+  &--info {
+    color: var(--problem-info);
   }
 }
 
@@ -74,20 +110,37 @@
   align-self: center;
   font-size: 0.875rem;
 
-  .problems-row--error & {
+  .problems-row--error &,
+  &.problems-icon--error {
     color: var(--problem-error);
   }
 
-  .problems-row--warning & {
+  .problems-row--warning &,
+  &.problems-icon--warning {
     color: var(--problem-warning);
   }
 
-  .problems-row--info & {
+  .problems-row--info &,
+  &.problems-icon--info {
     color: var(--problem-info);
   }
 
-  .problems-row--hint & {
+  .problems-row--hint &,
+  &.problems-icon--hint {
     color: var(--problem-hint);
+  }
+}
+
+// The grouped list (#1182): the shared tree fills what the strip leaves, and scrolls itself.
+.problems-tree {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+
+  // A project's tallies sit at the end of its row, as the strip's do.
+  .problems-count {
+    margin-inline-end: 0.375rem;
   }
 }
 
@@ -113,24 +166,37 @@
   margin-inline-end: 0.375rem;
 }
 
+// What the list shows in place of problems, centred: a green tick and that nothing was found, or —
+// while the workspace is still being analysed — a spinner saying so.
 .problems-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
   flex: 1 1 auto;
   color: var(--dock-tab-foreground-color);
-  opacity: 0.7;
-
-  i {
-    font-size: 1.5rem;
-    color: var(--success-color);
-  }
 
   p {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+  }
+}
+
+.problems-empty__ok {
+  font-size: 2.5rem;
+  color: var(--success-color);
+}
+
+.problems-empty__spinner {
+  font-size: 1.75rem;
+  color: var(--form-muted-foreground-color);
+  animation: problems-spin 0.8s linear infinite;
+}
+
+@keyframes problems-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

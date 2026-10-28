@@ -755,6 +755,11 @@ export class Icon {
   public static readonly HIERARCHY: Icon = new Icon('ph-duotone ph-tree-structure');
 
   /**
+   * Gets the Error List's Group by Project and File toggle's icon (#1182): a list folded into a tree.
+   */
+  public static readonly GROUP_BY_TREE: Icon = new Icon('ph-duotone ph-tree-view');
+
+  /**
    * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
    */
   public static readonly SYMBOL_CLASS: Icon = new Icon('ph ph-cube');
@@ -1311,6 +1316,11 @@ export class Icon {
    * example a working provider configuration).
    */
   public static readonly SUCCESS_FILL: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the success icon in duotone, large in an empty view that has found nothing wrong (#1182).
+   */
+  public static readonly SUCCESS_DUOTONE: Icon = new Icon('ph-duotone ph-check-circle');
 
   /**
    * Gets the duotone Note icon used by markdown alerts.

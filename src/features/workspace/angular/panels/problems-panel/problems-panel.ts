@@ -24,7 +24,20 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Chip } from '@shared/angular/components/chip/chip';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { Button } from '@shared/angular/components/forms/button/button';
+import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { LspServer, LspStatus } from '@shared/angular/services/lsp/lsp-status';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { fileIconFor } from '@shared/angular/icons/file-icon';
+import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { SolutionModel } from '@features/workspace/angular/project/solution-model';
+import {
+  groupProblems,
+  OTHER_FILES,
+  ProblemFileGroup,
+  ProblemProjectGroup,
+} from './problems-grouping';
 
 /**
  * Maps each severity to its icon.
@@ -71,16 +84,33 @@ interface SeverityOption {
    * The button icon.
    */
   readonly icon: Icon;
+
+  /**
+   * The tone the button and its count wear: the severity's colour.
+   */
+  readonly tone: ButtonTone;
+
+  /**
+   * What the empty list says it found none of, in "No … found in this solution".
+   */
+  readonly noun: string;
 }
 
 /**
- * The severity filter options shown as toggle buttons in the tool-strip.
+ * The severity filter options shown as toggle buttons in the tool-strip, each with its count.
  */
 const SEVERITY_OPTIONS: readonly SeverityOption[] = [
-  { value: 'all', label: 'Everything', icon: Icon.LIST_ALL },
-  { value: 'error', label: 'Errors', icon: Icon.ERROR },
-  { value: 'warning', label: 'Warnings', icon: Icon.WARNING },
+  { value: 'all', label: 'Everything', icon: Icon.LIST_ALL, tone: 'accent', noun: 'problems' },
+  { value: 'error', label: 'Errors', icon: Icon.ERROR, tone: 'danger', noun: 'errors' },
+  { value: 'warning', label: 'Warnings', icon: Icon.WARNING, tone: 'warning', noun: 'warnings' },
+  { value: 'info', label: 'Info', icon: Icon.INFO, tone: 'info', noun: 'messages' },
+  { value: 'hint', label: 'Hints', icon: Icon.HINT, tone: 'info', noun: 'hints' },
 ];
+
+/**
+ * Identifies the "…" menu's Group by Project and File row.
+ */
+const MENU_GROUP: string = 'problems.group';
 
 /**
  * Renders the aggregated {@link Diagnostics} as the body of the Problems (Error List) dock panel: a
@@ -89,9 +119,17 @@ const SEVERITY_OPTIONS: readonly SeverityOption[] = [
  * provider behind the {@link Diagnostics} seam (Monaco markers, each language server, build problems)
  * with no per-language special-casing.
  */
+/**
+ * Describes what a row of the grouped Error List shows (#1182).
+ */
+type ProblemRow =
+  | { readonly kind: 'project'; readonly project: ProblemProjectGroup }
+  | { readonly kind: 'file'; readonly file: ProblemFileGroup }
+  | { readonly kind: 'problem'; readonly problem: Diagnostic };
+
 @Component({
   selector: 'app-problems-panel',
-  imports: [Chip, Button, AppIcon, Dropdown, PanelToolbar],
+  imports: [Chip, Button, AppIcon, CdkMenuTrigger, Dropdown, Menu, PanelToolbar, TreeView],
   templateUrl: './problems-panel.html',
   styleUrl: './problems-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -138,6 +176,38 @@ export class ProblemsPanel {
    * Holds the structured logger for problems panel actions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the workspace's project model, which says which project owns a file (#1182).
+   */
+  private readonly solution: SolutionModel = inject(SolutionModel);
+
+  /**
+   * Holds the active workspace, whose root a file no project owns is named relative to.
+   */
+  private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
+   * Holds the language servers' states, which say whether the workspace is still being analysed.
+   */
+  private readonly lspStatus: LspStatus = inject(LspStatus);
+
+  /**
+   * Holds whether the list is grouped by project and file (#1182), or flat.
+   */
+  protected readonly grouped: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds the groups folded, by row id. Every group starts open.
+   */
+  private readonly collapsed: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Holds the problem row last chosen.
+   */
+  protected readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the selected severity filter.
@@ -188,6 +258,86 @@ export class ProblemsPanel {
   );
 
   /**
+   * Gets the diagnostics the source filter keeps, which each severity's count counts.
+   */
+  private readonly ofSource: Signal<readonly Diagnostic[]> = computed((): readonly Diagnostic[] => {
+    const source: string = this.source();
+    return this.diagnostics
+      .all()
+      .filter(
+        (diagnostic: Diagnostic): boolean => source === ALL_SOURCES || diagnostic.source === source,
+      );
+  });
+
+  /**
+   * Gets how many problems each filter shows, for the count on its toggle.
+   */
+  protected readonly counts: Signal<Readonly<Record<SeverityFilter, number>>> = computed(
+    (): Readonly<Record<SeverityFilter, number>> => {
+      const counts: Record<SeverityFilter, number> = {
+        all: 0,
+        error: 0,
+        warning: 0,
+        info: 0,
+        hint: 0,
+      };
+      for (const diagnostic of this.ofSource()) {
+        counts.all++;
+        counts[diagnostic.severity]++;
+      }
+      return counts;
+    },
+  );
+
+  /**
+   * Gets whether the workspace is still being analysed: its project model is still being read, or a
+   * language server serving it is still loading it, or has loaded it but not yet reported the whole of
+   * it. The list says so in place of saying it found nothing.
+   */
+  protected readonly analyzing: Signal<boolean> = computed((): boolean => {
+    // The project model is still being read: its language servers have not even started yet.
+    if (!this.solution.settled()) {
+      return true;
+    }
+    const root: string | null = this.activeWorkspace.rootPath();
+    return this.lspStatus.servers().some(
+      (server: LspServer): boolean =>
+        (root === null || server.rootPath === root) &&
+        // Still loading the workspace — unless the readiness watchdog has flagged it, past which the
+        // list shows what it has rather than a spinner with no end — or loaded, with its first
+        // report of the whole workspace still to come.
+        ((server.state === 'starting' && !server.stalled) ||
+          (server.state === 'ready' && server.analysis === 'pending')),
+    );
+  });
+
+  /**
+   * Gets what the workspace is called in the list's messages: a solution where it has one.
+   */
+  protected readonly scopeNoun: Signal<string> = computed((): string =>
+    this.solution.model() === null ? 'workspace' : 'solution',
+  );
+
+  /**
+   * Gets what the list says when the filters leave nothing: none of the chosen severity found — from
+   * the chosen source, when one is chosen — in the solution or workspace.
+   */
+  protected readonly emptyMessage: Signal<string> = computed((): string => {
+    const option: SeverityOption | undefined = SEVERITY_OPTIONS.find(
+      (candidate: SeverityOption): boolean => candidate.value === this.severity(),
+    );
+    const source: string = this.source();
+    return `No ${option?.noun ?? 'problems'}${source === ALL_SOURCES ? '' : ` from ${source}`} found in this ${this.scopeNoun()}`;
+  });
+
+  /**
+   * Gets the "…" menu's rows.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    { id: MENU_GROUP, label: 'Group by Project and File', checked: this.grouped() },
+  ]);
+
+  /**
    * Gets the filtered diagnostics actually rendered, capped so a large solution's thousands of
    * problems cannot materialise thousands of DOM rows; the toolbar counts still reflect the full
    * set, and {@link overflowCount} tells the user what the list is holding back.
@@ -202,6 +352,154 @@ export class ProblemsPanel {
   protected readonly overflowCount: Signal<number> = computed((): number =>
     Math.max(0, this.filtered().length - MAX_RENDERED_PROBLEMS),
   );
+
+  /**
+   * Gets the rendered problems grouped by project, then file (#1182).
+   */
+  protected readonly groups: Signal<readonly ProblemProjectGroup[]> = computed(
+    (): readonly ProblemProjectGroup[] =>
+      groupProblems(
+        this.visible(),
+        (path: string) => this.solution.owningProject(path),
+        this.activeWorkspace.rootPath(),
+      ),
+  );
+
+  /**
+   * Gets the grouped view's rows: each project, each of its files, and each file's problems — without
+   * the project level in a workspace with no projects — folded groups hiding what is beneath them.
+   */
+  protected readonly treeRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const groups: readonly ProblemProjectGroup[] = this.groups();
+    const collapsed: ReadonlySet<string> = this.collapsed();
+    const projectLevel: boolean = !(groups.length === 1 && groups[0]?.key === OTHER_FILES);
+    const rows: TreeRow[] = [];
+    for (const project of groups) {
+      const projectId: string = `project:${project.key}`;
+      if (projectLevel) {
+        rows.push({
+          id: projectId,
+          depth: 0,
+          expandable: true,
+          expanded: !collapsed.has(projectId),
+          data: { kind: 'project', project } satisfies ProblemRow,
+        });
+        if (collapsed.has(projectId)) {
+          continue;
+        }
+      }
+      const fileDepth: number = projectLevel ? 1 : 0;
+      for (const file of project.files) {
+        const fileId: string = `file:${project.key}:${file.key}`;
+        rows.push({
+          id: fileId,
+          depth: fileDepth,
+          expandable: true,
+          expanded: !collapsed.has(fileId),
+          hint: file.key,
+          data: { kind: 'file', file } satisfies ProblemRow,
+        });
+        if (collapsed.has(fileId)) {
+          continue;
+        }
+        file.problems.forEach((problem: Diagnostic, index: number): void => {
+          rows.push({
+            id: `${fileId}:${index}`,
+            depth: fileDepth + 1,
+            expandable: false,
+            expanded: false,
+            data: { kind: 'problem', problem } satisfies ProblemRow,
+          });
+        });
+      }
+    }
+    return rows;
+  });
+
+  /**
+   * Runs a "…" menu row.
+   * @param id The row's identifier.
+   */
+  protected onMenu(id: string): void {
+    if (id === MENU_GROUP) {
+      this.toggleGrouped();
+    }
+  }
+
+  /**
+   * Switches between the grouped and the flat list.
+   */
+  protected toggleGrouped(): void {
+    this.grouped.update((grouped: boolean): boolean => !grouped);
+    this.log.debug('workspace.problems', 'Group by project and file', this.grouped());
+  }
+
+  /**
+   * Unfolds every group.
+   */
+  protected expandAll(): void {
+    this.collapsed.set(new Set<string>());
+  }
+
+  /**
+   * Folds every project — or, with no project level, every file.
+   */
+  protected collapseAll(): void {
+    this.collapsed.set(
+      new Set<string>(
+        this.treeRows()
+          .filter((row: TreeRow): boolean => row.depth === 0 && row.expandable)
+          .map((row: TreeRow): string => row.id),
+      ),
+    );
+  }
+
+  /**
+   * Handles a chosen row in the grouped list: a problem is revealed, a group folds or unfolds.
+   * @param row The row.
+   */
+  protected onRowClick(row: TreeRow): void {
+    const entry: ProblemRow = this.rowOf(row);
+    if (entry.kind === 'problem') {
+      this.selectedId.set(row.id);
+      this.reveal(entry.problem);
+      return;
+    }
+    this.collapsed.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      if (!next.delete(row.id)) {
+        next.add(row.id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Unwraps a grouped row's payload.
+   * @param row The tree row.
+   * @returns Returns what it shows.
+   */
+  protected rowOf(row: TreeRow): ProblemRow {
+    return row.data as ProblemRow;
+  }
+
+  /**
+   * Gets a file group's icon.
+   * @param file The file group.
+   * @returns Returns the icon of its file type.
+   */
+  protected fileIcon(file: ProblemFileGroup): Icon {
+    return fileIconFor(file.label);
+  }
+
+  /**
+   * Determines whether a problem can be revealed: it is in a file, or in an open document.
+   * @param diagnostic The problem.
+   * @returns Returns true when it can.
+   */
+  protected revealable(diagnostic: Diagnostic): boolean {
+    return diagnostic.path !== null || diagnostic.documentId !== null;
+  }
 
   /**
    * Selects a severity filter.

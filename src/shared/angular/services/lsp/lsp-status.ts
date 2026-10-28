@@ -72,6 +72,12 @@ interface ServerEntry {
   readonly notice?: string;
 
   /**
+   * Gets how far the server's analysis of the whole workspace has got (#1182), for a server that
+   * reports the whole workspace's problems; undefined for any other.
+   */
+  readonly analysis?: LspAnalysis;
+
+  /**
    * Restarts the server: tears the running session down and re-opens its documents against a new one.
    */
   readonly restart: () => void;
@@ -128,7 +134,19 @@ export interface LspServer {
    * few seconds after it said it, or undefined.
    */
   readonly notice?: string;
+
+  /**
+   * Gets how far the server's analysis of the whole workspace has got (#1182): pending until its
+   * first complete report after it loaded the workspace, then done; undefined for a server that does
+   * not report the whole workspace.
+   */
+  readonly analysis?: LspAnalysis;
 }
+
+/**
+ * Names how far a server's analysis of the whole workspace has got (#1182).
+ */
+export type LspAnalysis = 'pending' | 'done';
 
 /**
  * Maps the first-party server identifiers to the short language names the menu has always shown for
@@ -203,6 +221,7 @@ export class LspStatus {
         progress: entry.progress,
         stalled: entry.stalled,
         notice: entry.notice,
+        analysis: entry.analysis,
       }))
       .sort(
         (first: LspServer, second: LspServer): number =>
@@ -268,6 +287,31 @@ export class LspStatus {
         this.updateNotice(sessionId, undefined);
       }, NOTICE_MS),
     );
+  }
+
+  /**
+   * Records how far a server's analysis of the whole workspace has got (#1182). Ignored when the
+   * session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param analysis How far it has got.
+   */
+  public setAnalysis(sessionId: string, analysis: LspAnalysis): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.analysis === analysis) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, analysis });
+    this.entries.set(next);
+  }
+
+  /**
+   * Gets how far a tracked server's analysis of the whole workspace has got.
+   * @param sessionId The session the server is keyed by.
+   * @returns Returns it, or undefined when the server does not report the whole workspace.
+   */
+  public analysisOf(sessionId: string): LspAnalysis | undefined {
+    return this.entries().get(sessionId)?.analysis;
   }
 
   /**

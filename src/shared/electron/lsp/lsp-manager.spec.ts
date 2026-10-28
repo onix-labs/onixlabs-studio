@@ -24,6 +24,8 @@ interface ManagerInternals {
   readonly sessions: Map<string, unknown>;
   shutDown(id: string, session: unknown): Promise<void>;
   launch(request: unknown, sender: unknown): Promise<unknown>;
+  start(request: unknown, sender: unknown): Promise<unknown>;
+  forwardNotification(sessionId: string, method: string, params: unknown): void;
 }
 
 /**
@@ -564,6 +566,97 @@ describe('LspManager (#1015)', () => {
       expect(sent).toEqual([]);
       manager.notify('/root::csharp', 'textDocument/didClose', CLOSE, main);
       expect(sent).toEqual(['textDocument/didClose file:///root/A.cs']);
+    });
+  });
+
+  describe('a window attaching to a running session (#1182)', () => {
+    /**
+     * A window recording what it is sent.
+     * @returns Returns the window and what it was sent.
+     */
+    function window(): { contents: WebContents; sent: { method: string; params: unknown }[] } {
+      const sent: { method: string; params: unknown }[] = [];
+      const contents: unknown = {
+        isDestroyed: (): boolean => false,
+        once: (): void => undefined,
+        send: (_channel: string, message: { method: string; params: unknown }): void =>
+          void sent.push({ method: message.method, params: message.params }),
+      };
+      return { contents: contents as WebContents, sent };
+    }
+
+    const REPORT: unknown = {
+      uri: 'file:///root/Broken.cs',
+      kind: 'full',
+      items: [{ message: 'CS0029' }],
+    };
+
+    /**
+     * Builds a manager holding a loaded session whose pull holds one report.
+     * @param loaded Whether the server has said it loaded the workspace.
+     * @returns Returns the manager's internals.
+     */
+    function running(loaded: boolean): ManagerInternals {
+      const manager: unknown = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      (manager as ManagerInternals).sessions.set('/root::csharp', {
+        request: { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        ready: Promise.resolve({ success: true, capabilities: {} }),
+        workspaceDiagnostics: { snapshot: (): unknown[] => [REPORT] },
+        loaded,
+        analysed: loaded,
+        openDocuments: new LspOpenDocuments<unknown>(),
+      });
+      return manager as ManagerInternals;
+    }
+
+    const START: unknown = { sessionId: '/root::csharp', serverId: 'csharp', rootPath: '/root' };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('isToldTheWorkspacesDiagnosticsAsTheyStand_andThatTheServerLoadedIt', async () => {
+      const internals: ManagerInternals = running(true);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Loaded first: the window takes a pull as complete only from a server it knows has loaded.
+      expect(late.sent).toEqual([
+        { method: 'workspace/projectInitializationComplete', params: {} },
+        { method: 'studio/workspaceDiagnostics', params: { reports: [REPORT], complete: true } },
+      ]);
+    });
+
+    it('beforeTheServerHasLoaded_isNotToldItHas', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
+        'workspace/projectInitializationComplete',
+      );
+    });
+
+    it('theServerSayingItLoaded_isRemembered', () => {
+      const internals: ManagerInternals = running(false);
+
+      internals.forwardNotification('/root::csharp', 'workspace/projectInitializationComplete', {});
+
+      expect((internals.sessions.get('/root::csharp') as { loaded: boolean }).loaded).toBe(true);
     });
   });
 });
