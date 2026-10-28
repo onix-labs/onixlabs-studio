@@ -85,6 +85,17 @@ export enum LspChannel {
    * Answers an {@link AttachDebugger} with whether the debugger attached (renderer→main, send).
    */
   AttachDebuggerReply = 'lsp:attach-debugger-reply',
+
+  /**
+   * Asks the renderer holding a session to put a server's question — `window/showMessageRequest`
+   * (#1154) — to the user, and answer on {@link ShowMessageReply} (main→renderer, send).
+   */
+  ShowMessage = 'lsp:show-message',
+
+  /**
+   * Answers a {@link ShowMessage} with the action the user chose, if any (renderer→main, send).
+   */
+  ShowMessageReply = 'lsp:show-message-reply',
 }
 
 /**
@@ -368,6 +379,52 @@ export interface LspAttachDebuggerReply {
    * Gets whether the debugger attached.
    */
   readonly didAttach: boolean;
+}
+
+/**
+ * A server's question for the user (#1154) — `window/showMessageRequest` — as the main process forwards
+ * it to the renderer holding the session.
+ */
+export interface LspShowMessageRequest {
+  /**
+   * Gets the identifier the answer names.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the session whose server asked.
+   */
+  readonly sessionId: string;
+
+  /**
+   * Gets the message type: 1 error, 2 warning, 3 info, 4 log.
+   */
+  readonly type: number;
+
+  /**
+   * Gets the message.
+   */
+  readonly message: string;
+
+  /**
+   * Gets the titles of the actions offered, in order.
+   */
+  readonly actions: readonly string[];
+}
+
+/**
+ * The renderer's answer to a {@link LspShowMessageRequest}.
+ */
+export interface LspShowMessageReply {
+  /**
+   * Gets the identifier of the request answered.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the index of the action the user chose, or null when they dismissed the question.
+   */
+  readonly action: number | null;
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   LspApplyEditReply,
   LspAttachDebuggerReply,
   LspAttachDebuggerRequest,
+  LspShowMessageReply,
+  LspShowMessageRequest,
   LspBraceStyle,
   LspApplyEditRequest,
   LspChannel,
@@ -70,7 +72,10 @@ import {
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
-import { Notifications } from '@shared/angular/services/notifications/notifications';
+import {
+  NotificationAction,
+  Notifications,
+} from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
@@ -1013,6 +1018,17 @@ export class LspClient implements OnDestroy {
   private attachDebuggerDisposer: (() => void) | null = null;
 
   /**
+   * Holds the unsubscribe function for the main process's requests to put a server's question to the
+   * user (#1154).
+   */
+  private showMessageDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the toast key of each server question waiting for the user (#1154), by request identifier.
+   */
+  private readonly questions: Map<string, string> = new Map<string, string>();
+
+  /**
    * Holds the router the workspace in front attaches its debugger through (#1150).
    */
   private readonly debugAttach: DebugAttachRouter = inject(DebugAttachRouter);
@@ -1133,6 +1149,9 @@ export class LspClient implements OnDestroy {
     this.attachDebuggerDisposer = this.bridge.on(
       LspChannel.AttachDebugger,
       (...args: unknown[]): void => void this.onAttachDebugger(args[0] as LspAttachDebuggerRequest),
+    );
+    this.showMessageDisposer = this.bridge.on(LspChannel.ShowMessage, (...args: unknown[]): void =>
+      this.onShowMessage(args[0] as LspShowMessageRequest),
     );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
@@ -1884,6 +1903,11 @@ export class LspClient implements OnDestroy {
     this.exitDisposer?.();
     this.applyEditDisposer?.();
     this.attachDebuggerDisposer?.();
+    this.showMessageDisposer?.();
+    for (const [requestId, key] of [...this.questions]) {
+      this.answerQuestion(requestId, null);
+      this.notifications.dismissByKey(key);
+    }
     this.featuresDisposer?.();
     this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
@@ -2645,6 +2669,55 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Puts one of this client's servers' questions to the user (#1154) — `window/showMessageRequest` —
+   * as a toast whose buttons are its actions, kept until it is answered. Choosing one answers the
+   * server with it; the toast going without an answer (or never showing, while muted) answers null. A question for a session this
+   * client does not hold is another window's to ask.
+   * @param request The question, as the main process forwards it.
+   */
+  private onShowMessage(request: LspShowMessageRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    const serverId: string | undefined = this.sessionInfo.get(request.sessionId)?.serverId;
+    const server: string =
+      serverId === undefined
+        ? 'Language server'
+        : (this.lspSettings.displayNameOf(serverId) ?? serverId);
+    const key: string = `lsp-question:${request.requestId}`;
+    this.questions.set(request.requestId, key);
+    this.log.info('LspClient', `Server asked: ${request.message}`, request.sessionId);
+    this.notifications.notify({
+      severity: request.type === 1 ? 'error' : request.type === 2 ? 'warning' : 'info',
+      title: request.message,
+      detail: server,
+      actions: request.actions.map((label: string, index: number): NotificationAction => ({
+        label,
+        run: (): void => this.answerQuestion(request.requestId, index),
+      })),
+      key,
+      sticky: true,
+      // Toast-only: the question is answered from its toast or not at all, so a dismissed one is not
+      // left in the notification centre with buttons that no longer answer anything.
+      route: 'toast-only',
+      onDismiss: (): void => this.answerQuestion(request.requestId, null),
+    });
+  }
+
+  /**
+   * Answers a server's question, once.
+   * @param requestId The question.
+   * @param action The index of the action chosen, or null when it was dismissed.
+   */
+  private answerQuestion(requestId: string, action: number | null): void {
+    if (!this.questions.delete(requestId)) {
+      return;
+    }
+    const reply: LspShowMessageReply = { requestId, action };
+    this.bridge?.send(LspChannel.ShowMessageReply, reply);
+  }
+
+  /**
    * Applies a server's own edit (#1015) — a code action's, a command's — for one of this client's
    * sessions, through the same applier a rename uses: open files in their editors, undoable and left
    * unsaved, closed files on disk, confined to the workspace. The server is told whether all of it
@@ -2984,8 +3057,8 @@ export class LspClient implements OnDestroy {
   /**
    * Raises a server's error or warning for the user as a toast (#1134), with "Show log" opening its
    * Output channel. One toast per session: a burst (a solution whose projects fail to load one after
-   * another) updates the toast with a count rather than stacking a toast per project. Information and
-   * log-level messages stay in the Output channel only.
+   * another) updates the toast with a count rather than stacking a toast per project. Information shows
+   * for a few seconds on the server's status row (#1154); log-level messages stay in the Output channel.
    * @param sessionId The session the message came from.
    * @param params The message: `{ type, message }` for `window/showMessage`, `{ messageType, message }`
    * for Roslyn's toast.
@@ -2996,6 +3069,11 @@ export class LspClient implements OnDestroy {
       (params as typeof candidate) ?? null;
     const type: unknown = candidate?.type ?? candidate?.messageType;
     const text: unknown = candidate?.message;
+    // Information is said in passing on the server's status row (#1154), not raised as a toast.
+    if (type === 3 && typeof text === 'string' && text.trim().length > 0) {
+      this.status.setNotice(sessionId, text.trim());
+      return;
+    }
     if (serverId === undefined || (type !== 1 && type !== 2) || typeof text !== 'string') {
       return;
     }

@@ -99,9 +99,10 @@ export class StatusStripLspMenu {
       case 'starting':
         // What the server says it is doing beats a generic label; a stall is worth saying; only then
         // the bare "Starting…".
-        return server.progress ?? server.detail ?? 'Starting…';
+        return server.progress ?? server.notice ?? server.detail ?? 'Starting…';
       case 'ready':
-        return 'Ready';
+        // What the server just told the user in passing, for a few seconds (#1154).
+        return server.notice ?? 'Ready';
       default:
         return server.detail ?? 'Unavailable';
     }

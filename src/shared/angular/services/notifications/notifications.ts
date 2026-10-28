@@ -108,6 +108,13 @@ export interface NotificationRequest {
    * the tab whose agent finished, say. Undefined when bringing Studio forward is enough.
    */
   readonly reveal?: () => void;
+
+  /**
+   * Runs once the toast leaves the stack — dismissed, coalesced over, evicted, withdrawn by muting, or
+   * after one of its actions ran — or at once when it never pops up. Lets a raiser waiting on an
+   * answer (a language server's question, #1154) learn it will not come. Undefined when nothing waits.
+   */
+  readonly onDismiss?: () => void;
 }
 
 /**
@@ -199,6 +206,11 @@ export class Notifications {
   >([]);
 
   /**
+   * Holds the dismissal callback of each live toast that has one, by notification identifier.
+   */
+  private readonly dismissals: Map<number, () => void> = new Map<number, () => void>();
+
+  /**
    * Holds the recent notifications, newest first, bounded to {@link MAX_HISTORY}. Independent of the
    * toast stack: a toast's departure (auto-dismiss or manual) leaves its history entry as the record.
    */
@@ -258,9 +270,12 @@ export class Notifications {
       timestamp: Date.now(),
     };
     if (route !== 'history-only' && !this.silenced(notification.severity)) {
-      this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
-        this.insert(current, notification),
-      );
+      if (request.onDismiss !== undefined) {
+        this.dismissals.set(notification.id, request.onDismiss);
+      }
+      this.setToasts(this.insert(this.toastsSignal(), notification));
+    } else {
+      request.onDismiss?.();
     }
     // Muted means quiet everywhere: what would not pop up in Studio does not pop up on the desktop.
     if (
@@ -290,8 +305,10 @@ export class Notifications {
     this.mutedSignal.set(muted);
     this.log.info('Notifications', muted ? 'Notifications muted' : 'Notifications unmuted');
     if (muted) {
-      this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
-        current.filter((toast: Notification): boolean => !this.silenced(toast.severity)),
+      this.setToasts(
+        this.toastsSignal().filter(
+          (toast: Notification): boolean => !this.silenced(toast.severity),
+        ),
       );
     }
   }
@@ -319,9 +336,7 @@ export class Notifications {
    * @param key The coalescing key.
    */
   public dismissByKey(key: string): void {
-    this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
-      current.filter((toast: Notification): boolean => toast.key !== key),
-    );
+    this.setToasts(this.toastsSignal().filter((toast: Notification): boolean => toast.key !== key));
   }
 
   /**
@@ -329,16 +344,14 @@ export class Notifications {
    * @param id The identifier of the toast to dismiss.
    */
   public dismiss(id: number): void {
-    this.toastsSignal.update((current: readonly Notification[]): readonly Notification[] =>
-      current.filter((toast: Notification): boolean => toast.id !== id),
-    );
+    this.setToasts(this.toastsSignal().filter((toast: Notification): boolean => toast.id !== id));
   }
 
   /**
    * Dismisses every toast. The history keeps its entries.
    */
   public dismissAll(): void {
-    this.toastsSignal.set([]);
+    this.setToasts([]);
   }
 
   /**
@@ -368,6 +381,26 @@ export class Notifications {
   public clearAll(): void {
     this.historySignal.set([]);
     this.dismissAll();
+  }
+
+  /**
+   * Replaces the toast stack, running the dismissal callback of every toast that left it.
+   * @param next The next stack.
+   */
+  private setToasts(next: readonly Notification[]): void {
+    this.toastsSignal.set(next);
+    if (this.dismissals.size === 0) {
+      return;
+    }
+    const live: ReadonlySet<number> = new Set<number>(
+      next.map((toast: Notification): number => toast.id),
+    );
+    for (const [id, onDismiss] of [...this.dismissals]) {
+      if (!live.has(id)) {
+        this.dismissals.delete(id);
+        onDismiss();
+      }
+    }
   }
 
   /**

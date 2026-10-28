@@ -304,4 +304,61 @@ describe('Notifications on the desktop', () => {
     service.notify({ severity: 'error', title: 'Build failed' });
     expect(shown).toEqual(['Build failed']);
   });
+
+  describe('onDismiss (#1154)', () => {
+    it('runsOnce_whenTheToastIsDismissed_byIdOrByKey', () => {
+      const gone: string[] = [];
+      service.notify({ severity: 'info', title: 'A', onDismiss: (): number => gone.push('A') });
+      service.notify({
+        severity: 'info',
+        title: 'B',
+        key: 'b',
+        onDismiss: (): number => gone.push('B'),
+      });
+
+      service.dismiss(service.toasts()[0]?.id ?? 0);
+      service.dismissByKey('b');
+      service.dismissAll();
+
+      expect(gone).toEqual(['A', 'B']);
+    });
+
+    it('runs_whenTheToastIsCoalescedOverEvictedOrWithdrawnByMuting', () => {
+      const gone: string[] = [];
+      service.notify({
+        severity: 'info',
+        title: 'Old',
+        key: 'k',
+        onDismiss: (): number => gone.push('coalesced'),
+      });
+      service.notify({ severity: 'info', title: 'New', key: 'k' });
+      service.notify({
+        severity: 'info',
+        title: 'Quiet',
+        onDismiss: (): number => gone.push('muted'),
+      });
+      service.setMuted(true);
+
+      expect(gone).toEqual(['coalesced', 'muted']);
+    });
+
+    it('runsAtOnce_whenTheToastNeverPopsUp', () => {
+      const gone: string[] = [];
+      service.setMuted(true);
+
+      service.notify({
+        severity: 'info',
+        title: 'Muted',
+        onDismiss: (): number => gone.push('muted'),
+      });
+      service.notify({
+        severity: 'info',
+        title: 'Tray',
+        route: 'history-only',
+        onDismiss: (): number => gone.push('tray'),
+      });
+
+      expect(gone).toEqual(['muted', 'tray']);
+    });
+  });
 });
