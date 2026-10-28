@@ -203,12 +203,15 @@ class FakeLsp implements Bridge {
     });
   }
 
-  public exit(sessionId: string, reason?: string): void {
+  public exit(
+    sessionId: string,
+    reason?: string,
+    how: { code: number | null; signal: string | null } = { code: 1, signal: null },
+  ): void {
     this.running.delete(sessionId);
     this.exitListener?.({
       sessionId,
-      code: 1,
-      signal: null,
+      ...how,
       ...(reason === undefined ? {} : { reason }),
     });
   }
@@ -405,6 +408,132 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('crash policy (#1136)', () => {
+    let raised: NotificationRequest[];
+    let shown: string[];
+    let now: number;
+
+    beforeEach(() => {
+      raised = [];
+      shown = [];
+      now = Date.now();
+      vi.spyOn(Date, 'now').mockImplementation((): number => now);
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: Notifications,
+            useValue: {
+              notify: (request: NotificationRequest): void => void raised.push(request),
+            },
+          },
+          {
+            provide: Output,
+            useValue: {
+              channel: (): unknown => ({ appendLine: (): void => undefined }),
+              show: (id: string): void => void shown.push(id),
+            },
+          },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const BASE: { documentId: string; path: string; languageId: string; content: string } = {
+      documentId: 'a',
+      path: '/root/A.cs',
+      languageId: 'csharp',
+      content: '',
+    };
+
+    /**
+     * Syncs the document once the crash backoff has passed, so the session restarts.
+     * @param client The client.
+     */
+    async function syncAfterBackoff(client: LspClient): Promise<void> {
+      now += 600_000;
+      client.syncDocument(BASE);
+      await flush();
+    }
+
+    it('aCleanExitTwice_stopsAtTheSecond_withAToastOfferingRestartAndShowLog', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', undefined, { code: 0, signal: null });
+      expect(raised).toEqual([]);
+      await syncAfterBackoff(client);
+      expect(lsp.starts).toHaveLength(2);
+      lsp.exit('/root::csharp', undefined, { code: 0, signal: null });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0]?.detail).toBe(
+        'The server stopped the same way twice, so it was not restarted again. Restart it to try again.',
+      );
+      expect(raised).toHaveLength(1);
+      expect(raised[0]).toMatchObject({
+        severity: 'error',
+        title: 'csharp stopped the same way twice and was not restarted',
+        key: 'lsp-given-up:/root::csharp',
+      });
+      expect(raised[0]?.actions?.map((action): string => action.label)).toEqual([
+        'Restart',
+        'Show log',
+      ]);
+      raised[0]?.actions?.[1]?.run();
+      expect(shown).toEqual(['lsp:csharp']);
+      raised[0]?.actions?.[0]?.run();
+      await flush();
+      expect(lsp.starts).toHaveLength(3);
+    });
+
+    it('theSameReasonTwice_stopsAtTheSecond_namingIt', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', 'Unhandled exception: boom.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Unhandled exception: boom.');
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0]?.detail).toBe(
+        'The server stopped the same way twice, so it was not restarted again: Unhandled exception: boom. Restart it to try again.',
+      );
+      expect(raised[0]?.detail).toBe('Unhandled exception: boom.');
+    });
+
+    it('differentReasons_orSignals_keepTheOrdinaryBackoff', async () => {
+      const client: LspClient = build();
+      client.syncDocument(BASE);
+      await flush();
+
+      lsp.exit('/root::csharp', 'First.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Second.');
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(5);
+      expect(raised).toEqual([]);
+      lsp.exit('/root::csharp', 'Killed.', { code: null, signal: 'SIGKILL' });
+      await syncAfterBackoff(client);
+
+      expect(lsp.starts).toHaveLength(5);
+      expect(raised[0]?.title).toBe('csharp crashed repeatedly and was stopped');
+    });
   });
 
   describe('server problems as toasts (#1134)', () => {
