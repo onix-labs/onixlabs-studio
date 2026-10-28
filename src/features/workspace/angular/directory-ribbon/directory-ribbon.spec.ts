@@ -952,7 +952,7 @@ describe('DirectoryRibbon', () => {
       ]);
     });
 
-    it('showHierarchy_showsTheActiveEditorsHierarchy_fromTheMenuAndTheRibbon (#1153)', () => {
+    it('showHierarchy_showsTheActiveEditorsHierarchy_fromTheEditMenu (#1153)', () => {
       const shown: string[] = [];
       vi.spyOn(TestBed.inject(EditorNavigation), 'showHierarchyInActiveEditor').mockImplementation(
         (kind: HierarchyKind): Promise<void> => {
@@ -966,9 +966,6 @@ describe('DirectoryRibbon', () => {
 
       menu.dispatch('directory.showCallHierarchy');
       menu.dispatch('directory.showTypeHierarchy');
-      (internals() as unknown as { onShowHierarchy(kind: HierarchyKind): void }).onShowHierarchy(
-        'calls',
-      );
 
       expect(
         edit
@@ -982,10 +979,10 @@ describe('DirectoryRibbon', () => {
             entry.id?.includes('Hierarchy') === true && entry.accelerator !== undefined,
         ),
       ).toBe(false);
-      expect(shown).toEqual(['calls', 'types', 'calls']);
+      expect(shown).toEqual(['calls', 'types']);
     });
 
-    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheMenuAndTheRibbon (#1146)', () => {
+    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheEditMenu (#1146)', () => {
       let opened: number = 0;
       vi.spyOn(TestBed.inject(WorkspaceSymbolRouter), 'open').mockImplementation(
         (): void => void (opened += 1),
@@ -998,12 +995,11 @@ describe('DirectoryRibbon', () => {
       );
 
       menu.dispatch('directory.goToWorkspaceSymbol');
-      (internals() as unknown as { onGoToWorkspaceSymbol(): void }).onGoToWorkspaceSymbol();
 
       expect(entry?.label).toBe('Go to Symbol in Workspace');
       // The chord is the workspace's own keybinding, which the user can change.
       expect(entry?.accelerator).toBeUndefined();
-      expect(opened).toBe(2);
+      expect(opened).toBe(1);
     });
 
     it('find_opensTheSearchPanelScopedToTheCurrentFile_throughTheFindRouter', () => {

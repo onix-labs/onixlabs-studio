@@ -228,8 +228,8 @@ export class EditorNavigation {
 
   /**
    * Shows the call or type hierarchy of the symbol at the caret in the active document's editor — the
-   * ribbon's and the Edit menu's way to what ⌃⌥H and ⌃⇧H do in an editor (#1153), which focus has
-   * left by the time a ribbon button is pressed.
+   * Edit menu's way to what ⌃⌥H and ⌃⇧H do in an editor (#1153), which focus has left by the time
+   * a menu item is chosen.
    * @param kind Which hierarchy.
    * @returns Returns a promise that resolves once the hierarchy is shown, or found not to be.
    */

@@ -755,11 +755,6 @@ export class Icon {
   public static readonly HIERARCHY: Icon = new Icon('ph-duotone ph-tree-structure');
 
   /**
-   * Gets Show Call Hierarchy's icon: calls flowing from one member to the next.
-   */
-  public static readonly CALL_HIERARCHY: Icon = new Icon('ph-duotone ph-flow-arrow');
-
-  /**
    * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
    */
   public static readonly SYMBOL_CLASS: Icon = new Icon('ph ph-cube');

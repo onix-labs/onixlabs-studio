@@ -583,7 +583,7 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Opens Go to Symbol in Workspace in the workspace in front (#1146).
+   * Opens Go to Symbol in Workspace in the workspace in front (#1146), from the Edit menu.
    */
   protected onGoToWorkspaceSymbol(): void {
     this.log.info('workspace.ribbon', 'Go to Symbol in Workspace invoked');
@@ -591,7 +591,8 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Shows the call or type hierarchy of the symbol at the caret in the editor in front (#1153).
+   * Shows the call or type hierarchy of the symbol at the caret in the editor in front (#1153), from
+   * the Edit menu.
    * @param kind Which hierarchy.
    */
   protected onShowHierarchy(kind: HierarchyKind): void {

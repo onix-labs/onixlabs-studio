@@ -61,29 +61,6 @@
     }
   </app-ribbon-strip-group>
 
-  <!-- Moving around the workspace by name (#1146): Go to Symbol in Workspace finds a type or member
-       anywhere in it, through its language servers — the ribbon's way to what ⌘T / Ctrl+T opens. -->
-  <app-ribbon-strip-group title="Navigate">
-    <app-ribbon-strip-button
-      [icon]="Icon.GO_TO_SYMBOL"
-      label="Go to Symbol"
-      (action)="onGoToWorkspaceSymbol()"
-    />
-    <!-- The call and type hierarchy of the symbol at the caret in the editor in front (#1153). -->
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.CALL_HIERARCHY"
-        label="Call Hierarchy"
-        (action)="onShowHierarchy('calls')"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIERARCHY"
-        label="Type Hierarchy"
-        (action)="onShowHierarchy('types')"
-      />
-    </app-ribbon-strip-column>
-  </app-ribbon-strip-group>
-
   <!-- Everything you launch against the project, as one group. Start is a split button: its face runs
        the workspace's default configuration in one press — the same single-press Run the Mission
        Control tiles offer — and its chevron opens the dropdown listing every authored configuration,

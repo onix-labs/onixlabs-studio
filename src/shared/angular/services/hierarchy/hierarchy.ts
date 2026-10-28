@@ -117,7 +117,7 @@ export class HierarchyRouter {
 
   /**
    * Registers the active workspace's reveal callback, and how to read the document it is editing —
-   * each workspace tab keeps its own, which the ribbon's hierarchy buttons act on.
+   * each workspace tab keeps its own, which the Edit menu's hierarchy items act on.
    * @param reveal The callback.
    * @param activeDocument Reads the id of the document the workspace is editing, or null.
    */
