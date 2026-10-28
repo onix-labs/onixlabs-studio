@@ -134,6 +134,12 @@ export interface LspDocumentRef {
   readonly codeLens?: LspCodeLensSupport;
 
   /**
+   * Runs the tests a test lens names (#1150) — its argument, as the server gave it — on the session
+   * serving the document, reporting what happens. Undefined where nothing runs them.
+   */
+  readonly runTests?: (lens: unknown) => void;
+
+  /**
    * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
    * none.
    */
@@ -348,6 +354,19 @@ export interface LspCodeLensSupport {
  * position, and the client is to list the symbol's references (#1149).
  */
 const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
+
+/**
+ * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
+ * test or class, and whether to attach a debugger.
+ */
+const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
+
+/**
+ * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
+ * serves the lens's document, which runs the tests. Its arguments are the model's URI and the lens's
+ * argument.
+ */
+export const STUDIO_RUN_TESTS_COMMAND: string = 'studio.lsp.runTests';
 
 /**
  * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
@@ -1167,10 +1186,15 @@ export class LspFeatures {
       if (range === undefined) {
         continue;
       }
-      const lens: MonacoApi.languages.CodeLens = {
-        range: this.toRange(range),
-        ...this.lensCommand(model, ref, candidate),
-      };
+      const command: { command?: MonacoApi.languages.Command } | null = this.lensCommand(
+        model,
+        ref,
+        candidate,
+      );
+      if (command === null) {
+        continue;
+      }
+      const lens: MonacoApi.languages.CodeLens = { range: this.toRange(range), ...command };
       this.codeLensOrigins.set(lens, { lens: candidate, sessionId: ref.sessionId });
       lenses.push(lens);
     }
@@ -1209,26 +1233,45 @@ export class LspFeatures {
     } catch {
       return lens;
     }
-    return { ...lens, ...this.lensCommand(model, ref, result) };
+    return { ...lens, ...(this.lensCommand(model, ref, result) ?? {}) };
   }
 
   /**
    * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
    * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}); a command the server runs
-   * itself is run there; any other shows its title alone.
+   * itself is run there; a Run Test lens runs its tests on the session (#1150), and a Debug Test lens
+   * is not offered yet; any other shows its title alone.
    * @param model The model the lens is in.
    * @param ref The document's session.
    * @param lens The server's lens, untrusted.
-   * @returns Returns the lens's command, or nothing for a lens not yet filled in.
+   * @returns Returns the lens's command, nothing for a lens not yet filled in, or null for a lens not
+   * offered.
    */
   private lensCommand(
     model: MonacoApi.editor.ITextModel,
     ref: LspDocumentRef,
     lens: unknown,
-  ): { command?: MonacoApi.languages.Command } {
+  ): { command?: MonacoApi.languages.Command } | null {
     const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
     if (command === null) {
       return {};
+    }
+    if (command.command === ROSLYN_RUN_TESTS) {
+      const argument: unknown = command.arguments?.[0];
+      // Debug Test needs the debugger to attach to the test host the server starts — until it can,
+      // the lens is not offered (#1150).
+      if ((argument as { attachDebugger?: unknown } | null)?.attachDebugger === true) {
+        return null;
+      }
+      return ref.runTests === undefined
+        ? { command: { id: '', title: command.title } }
+        : {
+            command: {
+              id: STUDIO_RUN_TESTS_COMMAND,
+              title: command.title,
+              arguments: [model.uri.toString(), argument],
+            },
+          };
     }
     if (command.command === ROSLYN_PEEK_REFERENCES) {
       const position: unknown =
@@ -1722,6 +1765,21 @@ export class LspFeatures {
         this.resolve(model)?.structure?.folding === true,
     );
     // A completion's server command, run when the completion is accepted (#1021).
+    // A Run Test lens runs its tests on the session serving its document (#1150).
+    monaco.editor.registerCommand(
+      STUDIO_RUN_TESTS_COMMAND,
+      (_accessor: unknown, modelUri: unknown, lens: unknown): void => {
+        const model: MonacoApi.editor.ITextModel | undefined = monaco.editor
+          .getModels()
+          .find(
+            (candidate: MonacoApi.editor.ITextModel): boolean =>
+              candidate.uri.toString() === modelUri,
+          );
+        if (model !== undefined) {
+          this.resolve(model)?.runTests?.(lens);
+        }
+      },
+    );
     monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
       (_accessor: unknown, sessionId: unknown, command: unknown): void =>
