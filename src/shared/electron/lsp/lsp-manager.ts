@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { logger } from '../logger';
 import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
+import { LspOpenDocuments } from './lsp-open-documents';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -133,6 +134,12 @@ interface LspSession {
    * null for a server that does not serve them.
    */
   workspaceDiagnostics: WorkspaceDiagnosticsPull | null;
+
+  /**
+   * Holds which windows hold each document open on the server (#1190), so the server never hears a
+   * document opened twice — Roslyn aborts on that — nor closed while another window still has it.
+   */
+  readonly openDocuments: LspOpenDocuments<WebContents>;
 }
 
 /**
@@ -227,8 +234,8 @@ export class LspManager {
     );
     ipcMain.on(
       LspChannel.Notify,
-      (_event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
-        this.notify(id, method, params),
+      (event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
+        this.notify(id, method, params, event.sender),
     );
     ipcMain.handle(LspChannel.GetCatalogue, (): readonly LspServerSummary[] =>
       this.registry.catalogue(),
@@ -488,6 +495,7 @@ export class LspManager {
       tail,
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
       workspaceDiagnostics: null,
+      openDocuments: new LspOpenDocuments<WebContents>(),
     };
     this.answerServerRequests(connection, parsed.sessionId, session);
     this.sessions.set(parsed.sessionId, session);
@@ -578,8 +586,10 @@ export class LspManager {
    * @param id The session identifier.
    * @param method The LSP method name.
    * @param params The method parameters.
+   * @param sender The renderer sending it, whose open documents are tracked (#1190); undefined for
+   * a notification of the main process's own.
    */
-  private notify(id: unknown, method: unknown, params: unknown): void {
+  private notify(id: unknown, method: unknown, params: unknown, sender?: WebContents): void {
     if (typeof id !== 'string' || typeof method !== 'string' || method.length === 0) {
       return;
     }
@@ -592,7 +602,46 @@ export class LspManager {
       session.workspaceDiagnostics?.refresh(typeof closed === 'string' ? closed : undefined);
       return;
     }
+    if (sender !== undefined && !this.trackOpenDocument(id, session, method, params, sender)) {
+      return;
+    }
     void session.connection.sendNotification(method, params);
+  }
+
+  /**
+   * Keeps the server's view of a session's open documents consistent with the windows holding them
+   * (#1190): a document opened while the server already has it open — a window reloaded while its
+   * session kept running, and opened its documents again — is closed on the server first, as Roslyn
+   * aborts on a second `didOpen`; a document closed while another window still holds it stays open.
+   * @param id The session identifier.
+   * @param session The session.
+   * @param method The notification.
+   * @param params Its parameters.
+   * @param sender The renderer sending it.
+   * @returns Returns false when the notification is not to reach the server.
+   */
+  private trackOpenDocument(
+    id: string,
+    session: LspSession,
+    method: string,
+    params: unknown,
+    sender: WebContents,
+  ): boolean {
+    if (method !== 'textDocument/didOpen' && method !== 'textDocument/didClose') {
+      return true;
+    }
+    const uri: unknown = (params as { textDocument?: { uri?: unknown } } | null)?.textDocument?.uri;
+    if (typeof uri !== 'string') {
+      return true;
+    }
+    if (method === 'textDocument/didClose') {
+      return session.openDocuments.close(uri, sender);
+    }
+    if (session.openDocuments.open(uri, sender)) {
+      logger.debug('LspManager', `Re-opening ${uri} on session ${id}; the server had it open`);
+      void session.connection.sendNotification('textDocument/didClose', { textDocument: { uri } });
+    }
+    return true;
   }
 
   /**
@@ -613,6 +662,12 @@ export class LspManager {
         }
         current.clients.delete(sender);
         logger.debug('LspManager', `A renderer holding session ${id} was destroyed`);
+        // The documents only it held are closed on the server, for a session that carries on (#1190).
+        for (const uri of current.openDocuments.release(sender)) {
+          void current.connection.sendNotification('textDocument/didClose', {
+            textDocument: { uri },
+          });
+        }
         if (this.refCount(current) === 0) {
           void this.shutDown(id, current);
         }
