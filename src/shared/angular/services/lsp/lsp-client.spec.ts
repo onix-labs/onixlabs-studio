@@ -1009,6 +1009,18 @@ describe('LspClient', () => {
       expect(features.resolver?.('/root/src/a.ts')?.structure).toEqual(expected);
     });
 
+    it('documentRefs_carryTheCharactersTheServerAnswersByInsertingText (#1148)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { _vs_onAutoInsertProvider: { _vs_triggerCharacters: ['/', '\n'] } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+
+      expect(features.resolver?.('/root/src/a.ts')?.autoInsertTriggers).toEqual(['/', '\n']);
+    });
+
     it('aServerThatSetsNoHints_turnsNoneOn (#1145)', async () => {
       const features: FakeFeatures = new FakeFeatures();
       const client: LspClient = build(features);

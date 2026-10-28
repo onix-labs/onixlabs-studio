@@ -258,6 +258,8 @@ describe('LspFeatures', () => {
   let wordsSuppressedWhen: ((model: unknown) => boolean) | undefined;
   let braceFoldingSuppressedWhen: ((model: unknown) => boolean) | undefined;
   let structureSupport: LspStructureSupport | undefined;
+  let autoInsertHandler: ((editor: unknown, ch: string) => void) | undefined;
+  let autoInsertTriggers: readonly string[] | undefined;
   let completionSupport: LspCompletionSupport | null | undefined;
   let signatureSupport: LspSignatureHelpSupport | null | undefined;
   let openModels: unknown[];
@@ -302,6 +304,7 @@ describe('LspFeatures', () => {
     navigationSupport = undefined;
     inlayHintSupport = undefined;
     structureSupport = undefined;
+    autoInsertTriggers = undefined;
     captured.structure = undefined;
     captured.inlayHints = undefined;
     captured.formatting = undefined;
@@ -355,6 +358,9 @@ describe('LspFeatures', () => {
         braceFoldingSuppressedWhen = predicate;
         return (): void => undefined;
       },
+      useAutoInsert: (handler: (editor: unknown, ch: string) => void): void => {
+        autoInsertHandler = handler;
+      },
     };
     TestBed.configureTestingModule({ providers: [{ provide: Monaco, useValue: monaco }] });
     const editors: Editors = TestBed.inject(Editors);
@@ -377,6 +383,7 @@ describe('LspFeatures', () => {
             ...(navigationSupport === undefined ? {} : { navigation: navigationSupport }),
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
+            ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
           }
         : null,
     );
@@ -1076,6 +1083,90 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('auto-insert (#1148)', () => {
+    const SKELETON: unknown = {
+      _vs_textEditFormat: 2,
+      _vs_textEdit: {
+        range: { start: { line: 7, character: 7 }, end: { line: 7, character: 7 } },
+        newText: ' <summary>\n    /// $0\n    /// </summary>',
+      },
+    };
+
+    /**
+     * Builds an editor typed into, recording what is inserted.
+     * @param inserted Receives each snippet inserted, and the selection it replaced.
+     * @param version The model's version, which the test may move on.
+     * @returns Returns the editor.
+     */
+    function typedInto(inserted: unknown[], version: { value: number }): unknown {
+      const model: unknown = {
+        uri: { toString: (): string => MODEL_URI },
+        getValue: (): string => '',
+        getVersionId: (): number => version.value,
+        isDisposed: (): boolean => false,
+        getOptions: (): unknown => ({ tabSize: 4, insertSpaces: true }),
+      };
+      return {
+        getModel: (): unknown => model,
+        getPosition: (): unknown => ({ lineNumber: 8, column: 8 }),
+        setSelection: (range: unknown): void => void inserted.push({ select: range }),
+        getContribution: (): unknown => ({
+          insert: (template: string): void => void inserted.push(template),
+        }),
+      };
+    }
+
+    it('aCharacterTheServerDeclares_isAnsweredWithItsSnippet_atTheCaret', async () => {
+      autoInsertTriggers = ["'", '/', '\n', '"'];
+      responses['textDocument/_vs_onAutoInsert'] = SKELETON;
+      await build();
+      const inserted: unknown[] = [];
+
+      autoInsertHandler?.(typedInto(inserted, { value: 1 }), '/');
+      await flush();
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'textDocument/_vs_onAutoInsert',
+        params: {
+          _vs_textDocument: { uri: 'file:///root/app.ts' },
+          _vs_position: { line: 7, character: 7 },
+          _vs_ch: '/',
+          _vs_options: { tabSize: 4, insertSpaces: true },
+        },
+      });
+      expect(inserted).toEqual([
+        { select: { startLineNumber: 8, startColumn: 8, endLineNumber: 8, endColumn: 8 } },
+        ' <summary>\n    /// $0\n    /// </summary>',
+      ]);
+    });
+
+    it('aCharacterTheServerDoesNotDeclare_asksNothing', async () => {
+      autoInsertTriggers = ['/'];
+      await build();
+
+      autoInsertHandler?.(typedInto([], { value: 1 }), 'x');
+      await flush();
+
+      expect(requests).toEqual([]);
+    });
+
+    it('anAnswerToADocumentThatChangedMeanwhile_isDropped', async () => {
+      autoInsertTriggers = ['/'];
+      responses['textDocument/_vs_onAutoInsert'] = SKELETON;
+      await build();
+      const inserted: unknown[] = [];
+      const version: { value: number } = { value: 1 };
+
+      autoInsertHandler?.(typedInto(inserted, version), '/');
+      version.value = 2;
+      await flush();
+
+      expect(requests).toHaveLength(1);
+      expect(inserted).toEqual([]);
+    });
   });
 
   describe("folds, occurrences and a range's tokens (#1147)", () => {
