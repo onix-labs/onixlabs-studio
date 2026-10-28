@@ -4,6 +4,7 @@ import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
 import {
   LspApplyEditReply,
+  LspBraceStyle,
   LspApplyEditRequest,
   LspChannel,
   LspExit,
@@ -55,10 +56,40 @@ import {
   supportsPullDiagnostics,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
+/**
+ * The parameters a session was started with, kept so a restart can bring its server back up.
+ */
+interface LspSessionInfo {
+  /**
+   * Gets the server's identifier.
+   */
+  readonly serverId: string;
+
+  /**
+   * Gets the root the session is rooted at.
+   */
+  readonly rootPath: string;
+
+  /**
+   * Gets the standalone file the session vouches for, if any.
+   */
+  readonly standaloneFile?: string;
+
+  /**
+   * Gets the language of the document the session was started for, if known.
+   */
+  readonly languageId?: string;
+
+  /**
+   * Gets the brace style the server was started with (#1177), for a server that takes one.
+   */
+  readonly braceStyle?: LspBraceStyle;
+}
 /**
  * Describes the state of an open document the client keeps a server in sync with.
  */
@@ -385,6 +416,11 @@ export class LspClient implements OnDestroy {
   private readonly lspSettings: LspSettings = inject(LspSettings);
 
   /**
+   * Holds the user's settings, read for the brace style a server is told when it starts (#1177).
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the prompt that offers to install language support when a document finds none.
    */
   private readonly languageSupport: LanguageSupportPrompt = inject(LanguageSupportPrompt);
@@ -419,10 +455,7 @@ export class LspClient implements OnDestroy {
    * Holds the parameters each session was started with, keyed by session id, so a restart can bring a
    * server back up even when it currently serves no open documents.
    */
-  private readonly sessionInfo: Map<
-    string,
-    { serverId: string; rootPath: string; standaloneFile?: string }
-  > = new Map<string, { serverId: string; rootPath: string; standaloneFile?: string }>();
+  private readonly sessionInfo: Map<string, LspSessionInfo> = new Map<string, LspSessionInfo>();
 
   /**
    * Holds the pending documentless reaps of standalone sessions, keyed by session id (see
@@ -638,6 +671,14 @@ export class LspClient implements OnDestroy {
         return;
       }
       untracked((): void => this.stopUninstalledSessions(installed));
+    });
+    // A server told the brace style only when it starts is restarted when the style for its
+    // language changes, so the setting takes effect without the user restarting it (#1177).
+    effect((): void => {
+      this.lspSettings.catalogue();
+      this.settings.globalTextEditor();
+      this.settings.languageOverrides();
+      untracked((): void => this.restartForBraceStyle());
     });
     if (this.bridge === undefined) {
       return;
@@ -1128,12 +1169,12 @@ export class LspClient implements OnDestroy {
    * failed, or the server crashed and was torn down), the client simply starts afresh itself. The
    * status indicator is held in its starting state for the whole cycle.
    * @param sessionId The session to restart.
+   * @param braceStyle The brace style to start the new server with, when it changed (#1177).
    * @returns Returns a promise that resolves once the restart has been requested (and, when the client
    * starts afresh itself, once its documents have been queued against the new server).
    */
-  public async restart(sessionId: string): Promise<void> {
-    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
-      this.sessionInfo.get(sessionId);
+  public async restart(sessionId: string, braceStyle?: LspBraceStyle): Promise<void> {
+    const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
     if (this.bridge === undefined || info === undefined) {
       return;
     }
@@ -1145,7 +1186,10 @@ export class LspClient implements OnDestroy {
     this.log.info('LspClient', `Restarting server '${info.serverId}'`, sessionId);
     let result: LspStartResult;
     try {
-      result = await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId);
+      result =
+        braceStyle === undefined
+          ? await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId)
+          : await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId, braceStyle);
     } catch (error: unknown) {
       result = {
         success: false,
@@ -1171,8 +1215,7 @@ export class LspClient implements OnDestroy {
    * has started).
    */
   private async reattach(sessionId: string): Promise<void> {
-    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
-      this.sessionInfo.get(sessionId);
+    const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
     if (info === undefined) {
       return;
     }
@@ -1190,6 +1233,7 @@ export class LspClient implements OnDestroy {
         info.serverId,
         info.rootPath,
         info.standaloneFile,
+        info.languageId,
       );
       if (started) {
         this.status.setState(sessionId, 'ready');
@@ -1209,6 +1253,45 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the server is rooted at.
    */
+  /**
+   * Gets the brace style a server is told when it starts a session for a language (#1177): the user's
+   * Brace style for the language — its override, or the global setting — for a server that takes it.
+   * @param serverId The server.
+   * @param languageId The language the session is started for.
+   * @returns Returns the brace style, or undefined for a server that does not take one.
+   */
+  private braceStyleFor(serverId: string, languageId: string): LspBraceStyle | undefined {
+    const takes: boolean = this.lspSettings
+      .catalogue()
+      .some(
+        (server: LspServerSummary): boolean =>
+          server.id === serverId && server.takesBraceStyle === true,
+      );
+    return takes ? this.settings.resolveSettingsForLanguage(languageId).braceStyle : undefined;
+  }
+
+  /**
+   * Restarts each session whose server takes the brace style at start, where the style for its
+   * language is no longer the one it was started with (#1177).
+   */
+  private restartForBraceStyle(): void {
+    for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
+      if (info.languageId === undefined) {
+        continue;
+      }
+      const braceStyle: LspBraceStyle | undefined = this.braceStyleFor(
+        info.serverId,
+        info.languageId,
+      );
+      if (braceStyle === undefined || braceStyle === info.braceStyle) {
+        continue;
+      }
+      this.log.info('LspClient', `Brace style is now '${braceStyle}'; restarting`, sessionId);
+      this.sessionInfo.set(sessionId, { ...info, braceStyle });
+      void this.restart(sessionId, braceStyle);
+    }
+  }
+
   /**
    * Stops the running sessions whose server is no longer installed, and forgets the documents that were
    * being served by them so a later install starts cleanly.
@@ -1545,6 +1628,7 @@ export class LspClient implements OnDestroy {
         tracked.serverId,
         tracked.rootPath,
         tracked.standalone ? uriToPath(tracked.uri) : undefined,
+        tracked.languageId,
       );
     const started: boolean = await pending;
     return started ? sessionId : null;
@@ -1560,6 +1644,8 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the session is rooted at.
    * @param standaloneFile The standalone file the session vouches for, or undefined.
+   * @param languageId The language of the document the session is started for, or undefined for a
+   * session pre-started before any document, which takes its server's language.
    * @returns Returns the in-flight start promise, resolving true when the server started.
    */
   private startSession(
@@ -1567,11 +1653,26 @@ export class LspClient implements OnDestroy {
     serverId: string,
     rootPath: string,
     standaloneFile?: string,
+    languageId?: string,
   ): Promise<boolean> {
     if (this.bridge === undefined) {
       return Promise.resolve(false);
     }
-    this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
+    // A session pre-started for a workspace has no document yet: it serves its server's language.
+    const language: string | undefined =
+      languageId ??
+      this.lspSettings
+        .catalogue()
+        .find((server: LspServerSummary): boolean => server.id === serverId)?.languages[0];
+    const braceStyle: LspBraceStyle | undefined =
+      language === undefined ? undefined : this.braceStyleFor(serverId, language);
+    this.sessionInfo.set(sessionId, {
+      serverId,
+      rootPath,
+      standaloneFile,
+      languageId: language,
+      braceStyle,
+    });
     const entry: { serverId: string; rootPath: string; restart: () => void } = {
       serverId,
       rootPath,
@@ -1602,7 +1703,13 @@ export class LspClient implements OnDestroy {
     this.status.register(sessionId, entry);
     this.log.info('LspClient', `Starting server '${serverId}'`, rootPath);
     const pending: Promise<boolean> = this.bridge
-      .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
+      .invoke<LspStartResult>(LspChannel.Start, {
+        sessionId,
+        serverId,
+        rootPath,
+        standaloneFile,
+        ...(braceStyle === undefined ? {} : { braceStyle }),
+      })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
           this.status.setState(sessionId, 'unavailable', result.error);

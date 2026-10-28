@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { LspServerId, LspServerSummary } from '@shared/api/lsp-channels';
+import { LspBraceStyle, LspServerId, LspServerSummary } from '@shared/api/lsp-channels';
 import { logger } from '../logger';
 import { languageServerCatalogue } from './language-server-catalogue';
 import {
@@ -118,6 +118,7 @@ export class LspServerRegistry {
         displayName: descriptor.displayName,
         languages: descriptor.languages,
         priority: descriptor.priority,
+        ...(descriptor.takesBraceStyle === true ? { takesBraceStyle: true } : {}),
       }),
     );
   }
@@ -128,9 +129,14 @@ export class LspServerRegistry {
    * a server that is configured but unavailable resolves with a reason to surface.
    * @param serverId The identifier of the server to resolve.
    * @param rootPath The workspace root the server is rooted at (used for per-workspace data).
+   * @param braceStyle The brace style the user's settings give the session's language, if any.
    * @returns Returns the resolution.
    */
-  public async resolve(serverId: LspServerId, rootPath: string): Promise<LspResolution> {
+  public async resolve(
+    serverId: LspServerId,
+    rootPath: string,
+    braceStyle?: LspBraceStyle,
+  ): Promise<LspResolution> {
     logger.trace('LspServerRegistry', `Resolving server ${serverId}`);
     if (this.settings.get().disabledServers.includes(serverId)) {
       logger.debug('LspServerRegistry', `Server ${serverId} is disabled by settings`);
@@ -141,7 +147,7 @@ export class LspServerRegistry {
       logger.debug('LspServerRegistry', `Unknown server ${serverId}`);
       return NO_SERVER;
     }
-    const resolution: LspResolution = await descriptor.resolve(this.context(rootPath));
+    const resolution: LspResolution = await descriptor.resolve(this.context(rootPath, braceStyle));
     return resolution.spec === null
       ? resolution
       : { spec: this.withExtraArgs(serverId, resolution.spec), error: null };
@@ -150,11 +156,13 @@ export class LspServerRegistry {
   /**
    * Builds the surface handed to a descriptor when it resolves.
    * @param rootPath The workspace root the server is being resolved for.
+   * @param braceStyle The brace style the user's settings give the session's language, if any.
    * @returns Returns the context.
    */
-  private context(rootPath: string): LanguageServerContext {
+  private context(rootPath: string, braceStyle?: LspBraceStyle): LanguageServerContext {
     return {
       rootPath,
+      braceStyle,
       settings: this.settings,
       provisioner: this.provisioner,
       nodePackageServer: (packageBinPath: string): LspServerSpec =>

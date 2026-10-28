@@ -12,6 +12,7 @@ import {
   resolved,
   unavailable,
 } from './language-server-descriptor';
+import { CUSTOM_AFTER_COMMON_TARGETS, writeCsharpBraceConfig } from './csharp-editor-config';
 import { JdtlsInstall } from './lsp-provisioner';
 import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
@@ -228,6 +229,7 @@ const CSHARP: LanguageServerDescriptor = {
   displayName: 'Roslyn Language Server',
   languages: ['csharp'],
   priority: DEFAULT_PRIORITY,
+  takesBraceStyle: true,
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const dotnet: string | null = await context.provisioner.detectDotnet(
       context.settings.get().dotnetPath,
@@ -256,6 +258,18 @@ const CSHARP: LanguageServerDescriptor = {
     if (path.isAbsolute(dotnet)) {
       // Help the server's apphost find the .NET runtime when it is not on the spawned PATH.
       env['DOTNET_ROOT'] = path.dirname(dotnet);
+    }
+    // Roslyn takes brace placement only from analyzer config, so the user's Brace style reaches it as
+    // a global config of Studio's own, which a project's .editorconfig still overrides (#1177).
+    if (context.braceStyle !== undefined) {
+      Object.assign(
+        env,
+        await writeCsharpBraceConfig(
+          logDir,
+          context.braceStyle,
+          process.env[CUSTOM_AFTER_COMMON_TARGETS],
+        ),
+      );
     }
     return resolved({
       command: server,

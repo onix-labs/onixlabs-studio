@@ -3,6 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { LanguageEditorOverrides } from './language-editor-overrides';
 
+/**
+ * The language overrides Studio ships with: C# braces on their own line (#1177).
+ */
+const CSHARP_ALLMAN: Record<string, unknown> = { csharp: { braceStyle: 'allman' } };
+
 describe('LanguageEditorOverrides', () => {
   let component: LanguageEditorOverrides;
   let fixture: ComponentFixture<LanguageEditorOverrides>;
@@ -86,7 +91,7 @@ describe('LanguageEditorOverrides', () => {
 
     await tick(1, true);
 
-    expect(settings.languageOverrides()).toEqual({ rust: { tabSize: 8 } });
+    expect(settings.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, rust: { tabSize: 8 } });
     expect(tabSizeSelect().disabled).toBe(false);
   });
 
@@ -98,7 +103,7 @@ describe('LanguageEditorOverrides', () => {
     fixture.detectChanges();
 
     // Stored as a number, as the global setting is — not the dropdown's string pick.
-    expect(settings.languageOverrides()).toEqual({ rust: { tabSize: 4 } });
+    expect(settings.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, rust: { tabSize: 4 } });
     expect(settings.globalTextEditor().tabSize).toBe(2);
     expect(settings.resolveSettingsForLanguage('rust').tabSize).toBe(4);
   });
@@ -107,7 +112,7 @@ describe('LanguageEditorOverrides', () => {
     await tick(1, true);
     await tick(1, false);
 
-    expect(settings.languageOverrides()).toEqual({});
+    expect(settings.languageOverrides()).toEqual(CSHARP_ALLMAN);
     expect(checks()[1].checked).toBe(false);
   });
 

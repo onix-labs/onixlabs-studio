@@ -843,18 +843,64 @@ export class LspFeatures {
       registered.add(`${language}:onType`);
       monaco.languages.registerOnTypeFormattingEditProvider(language, {
         autoFormatTriggerCharacters: [...support.onTypeTriggers],
-        provideOnTypeFormattingEdits: (
+        provideOnTypeFormattingEdits: async (
           model: MonacoApi.editor.ITextModel,
           position: MonacoApi.Position,
           ch: string,
           options: MonacoApi.languages.FormattingOptions,
-        ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
-          this.provideFormatting(model, 'textDocument/onTypeFormatting', options, {
-            position: toLspPosition(position),
-            ch,
-          }),
+        ): Promise<MonacoApi.languages.TextEdit[] | undefined> => {
+          const typed: MonacoApi.languages.TextEdit[] | undefined = await this.provideFormatting(
+            model,
+            'textDocument/onTypeFormatting',
+            options,
+            { position: toLspPosition(position), ch },
+          );
+          if (ch !== '\n' || (typed !== undefined && typed.length > 0)) {
+            return typed;
+          }
+          return (await this.placeOpeningBrace(model, position, options)) ?? typed;
+        },
       });
     }
+  }
+
+  /**
+   * Places the opening brace of a block just opened with Enter (#1177): with the caret on the blank
+   * line between an auto-closed `{` and `}`, asks the server to format the block and keeps the edits
+   * on the brace's line and above — so the brace goes where the language's formatter puts it (its own
+   * line, for Allman), while the caret's line and the closing brace are left as Enter made them.
+   *
+   * A server's own newline handling only indents (Roslyn answers `\n` with no edits): Visual Studio
+   * moves the brace with a brace-completion service of its own, which this stands in for.
+   * @param model The model.
+   * @param position The caret, just after the newline.
+   * @param options The editor's indentation.
+   * @returns Returns the edits, or undefined when the caret is not inside a just-opened block or the
+   * server cannot format a range.
+   */
+  private async placeOpeningBrace(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+    options: MonacoApi.languages.FormattingOptions,
+  ): Promise<MonacoApi.languages.TextEdit[] | undefined> {
+    const caret: number = position.lineNumber;
+    if (!opensBlockAt(model, caret)) {
+      return undefined;
+    }
+    const edits: MonacoApi.languages.TextEdit[] | undefined = await this.provideFormatting(
+      model,
+      'textDocument/rangeFormatting',
+      options,
+      {
+        range: {
+          start: { line: caret - 2, character: 0 },
+          end: { line: caret, character: model.getLineMaxColumn(caret + 1) - 1 },
+        },
+      },
+    );
+    return edits?.filter(
+      (edit: MonacoApi.languages.TextEdit): boolean => edit.range.endLineNumber < caret,
+    );
   }
 
   /**
@@ -2121,6 +2167,30 @@ export class LspFeatures {
     const withoutScheme: string = decodeURI(uri).replace(/^file:\/\//, '');
     return /^\/[a-zA-Z]:/.test(withoutScheme) ? withoutScheme.slice(1) : withoutScheme;
   }
+}
+
+/**
+ * Determines whether a line is the blank line Enter makes inside a just-opened block: the line above
+ * ends with `{`, the line itself holds only whitespace, and the line below starts with `}`.
+ * @param model The model.
+ * @param line The one-based line — the caret's, just after the newline.
+ * @returns Returns true when it is.
+ */
+export function opensBlockAt(model: MonacoApi.editor.ITextModel, line: number): boolean {
+  if (line < 2 || line >= model.getLineCount()) {
+    return false;
+  }
+  return (
+    model
+      .getLineContent(line - 1)
+      .trimEnd()
+      .endsWith('{') &&
+    model.getLineContent(line).trim().length === 0 &&
+    model
+      .getLineContent(line + 1)
+      .trimStart()
+      .startsWith('}')
+  );
 }
 
 /**
