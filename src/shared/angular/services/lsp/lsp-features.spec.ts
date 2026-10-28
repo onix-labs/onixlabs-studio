@@ -14,6 +14,7 @@ import {
   LspCodeActionSupport,
   LspFeatures,
   LspFormattingSupport,
+  LspCodeLensSupport,
   LspInlayHintSupport,
   LspStructureSupport,
   LspNavigationSupport,
@@ -74,10 +75,21 @@ interface CapturedProviders {
   semanticEmitters: Map<string, FakeEmitter>;
   /** The formatting providers registered, keyed `<language>:<document|range|onType>` (#1141). */
   formatting?: Map<string, FakeFormattingProvider>;
+  /** The code lens providers registered, keyed by language (#1149). */
+  codeLens?: Map<string, FakeCodeLensProvider>;
   /** The structure providers registered, keyed `<language>:<folding|highlights|rangeTokens>` (#1147). */
   structure?: Map<string, FakeStructureProvider>;
   /** The inlay-hint providers registered, keyed by language (#1145). */
   inlayHints?: Map<string, FakeInlayHintsProvider>;
+}
+
+/**
+ * A code lens provider as the specs call it (#1149).
+ */
+interface FakeCodeLensProvider {
+  onDidChange?: unknown;
+  provideCodeLenses(model: unknown): Promise<{ lenses: unknown[] } | undefined>;
+  resolveCodeLens(model: unknown, lens: unknown): Promise<unknown>;
 }
 
 /**
@@ -190,6 +202,9 @@ function fakeMonacoNamespace(
       },
       FoldingRangeKind: { Comment: 'comment', Imports: 'imports', Region: 'region' },
       DocumentHighlightKind: { Text: 0, Read: 1, Write: 2 },
+      registerCodeLensProvider: (language: string, provider: unknown): void => {
+        (captured.codeLens ??= new Map()).set(language, provider);
+      },
       registerFoldingRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:folding`, provider);
       },
@@ -260,6 +275,7 @@ describe('LspFeatures', () => {
   let structureSupport: LspStructureSupport | undefined;
   let autoInsertHandler: ((editor: unknown, ch: string) => void) | undefined;
   let autoInsertTriggers: readonly string[] | undefined;
+  let codeLensSupport: LspCodeLensSupport | undefined;
   let completionSupport: LspCompletionSupport | null | undefined;
   let signatureSupport: LspSignatureHelpSupport | null | undefined;
   let openModels: unknown[];
@@ -305,6 +321,8 @@ describe('LspFeatures', () => {
     inlayHintSupport = undefined;
     structureSupport = undefined;
     autoInsertTriggers = undefined;
+    codeLensSupport = undefined;
+    captured.codeLens = undefined;
     captured.structure = undefined;
     captured.inlayHints = undefined;
     captured.formatting = undefined;
@@ -384,6 +402,7 @@ describe('LspFeatures', () => {
             ...(inlayHintSupport === undefined ? {} : { inlayHints: inlayHintSupport }),
             ...(structureSupport === undefined ? {} : { structure: structureSupport }),
             ...(autoInsertTriggers === undefined ? {} : { autoInsertTriggers }),
+            ...(codeLensSupport === undefined ? {} : { codeLens: codeLensSupport }),
           }
         : null,
     );
@@ -1083,6 +1102,104 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('code lenses (#1149)', () => {
+    const owned: unknown = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    };
+    const LENS: unknown = {
+      range: { start: { line: 8, character: 11 }, end: { line: 8, character: 16 } },
+      data: { ListIndex: 2 },
+    };
+
+    it('areRegisteredOncePerLanguage_andARefreshAsksEachAgain', async () => {
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+      features.enableCodeLens('csharp');
+      features.enableCodeLens('fsharp');
+
+      features.refreshCodeLenses();
+
+      expect([...(captured.codeLens?.keys() ?? [])]).toEqual(['csharp', 'fsharp']);
+      const emitter: FakeEmitter | undefined = (
+        features as unknown as { codeLensChanged?: FakeEmitter }
+      ).codeLensChanged;
+      expect(emitter?.fired).toBe(2);
+    });
+
+    it('areAskedFor_andFilledInAsShown_aReferencesLensListingItsSymbolsReferences', async () => {
+      codeLensSupport = { resolve: true };
+      responses['textDocument/codeLens'] = [LENS, { data: 'no range' }];
+      responses['codeLens/resolve'] = {
+        ...(LENS as object),
+        command: {
+          title: '3 references',
+          command: 'roslyn.client.peekReferences',
+          arguments: ['file:///root/app.ts', { line: 8, character: 11 }],
+        },
+      };
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('csharp');
+
+      const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+      expect(list?.lenses).toEqual([
+        { range: { startLineNumber: 9, startColumn: 12, endLineNumber: 9, endColumn: 17 } },
+      ]);
+      const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'codeLens/resolve',
+        params: LENS,
+      });
+      expect(resolved).toEqual({
+        range: { startLineNumber: 9, startColumn: 12, endLineNumber: 9, endColumn: 17 },
+        command: {
+          id: 'studio.lsp.codeLensReferences',
+          title: '3 references',
+          arguments: [MODEL_URI, { line: 8, character: 11 }],
+        },
+      });
+    });
+
+    it('aCommandTheServerRuns_isRunThere_andAnyOtherShowsItsTitleAlone', async () => {
+      codeLensSupport = { resolve: false };
+      serverCommands = ['dotnet.test.run'];
+      responses['textDocument/codeLens'] = [
+        { ...(LENS as object), command: { title: 'Run test', command: 'dotnet.test.run' } },
+        { ...(LENS as object), command: { title: 'Debug test', command: 'unknown.debug' } },
+      ];
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+
+      const list: { lenses: unknown[] } | undefined = await captured.codeLens
+        ?.get('csharp')
+        ?.provideCodeLenses(owned);
+
+      expect(
+        (list?.lenses as { command?: { id: string; title: string } }[]).map(
+          (lens: { command?: { id: string; title: string } }): unknown => lens.command,
+        ),
+      ).toEqual([
+        {
+          id: 'studio.lsp.executeCommand',
+          title: 'Run test',
+          arguments: ['/root::typescript', { title: 'Run test', command: 'dotnet.test.run' }],
+        },
+        { id: '', title: 'Debug test' },
+      ]);
+    });
+
+    it('askNothing_forADocumentWhoseServerShowsNone', async () => {
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+
+      expect(await captured.codeLens?.get('csharp')?.provideCodeLenses(owned)).toBeUndefined();
+      expect(requests).toEqual([]);
+    });
   });
 
   describe('auto-insert (#1148)', () => {

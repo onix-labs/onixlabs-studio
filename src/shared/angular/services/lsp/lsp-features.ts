@@ -1,3 +1,4 @@
+import { STUDIO_REFERENCES_LENS_COMMAND } from '@shared/angular/services/monaco/monaco-navigation-commands';
 import { applyAutoInsert } from '@shared/angular/services/monaco/monaco-auto-insert';
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
@@ -125,6 +126,12 @@ export interface LspDocumentRef {
    * (a doc-comment skeleton after `///`), newline, and quotes. Undefined is taken as none.
    */
   readonly autoInsertTriggers?: readonly string[];
+
+  /**
+   * Gets how the server shows facts above the document's types and members (#1149). Undefined is
+   * taken as not at all.
+   */
+  readonly codeLens?: LspCodeLensSupport;
 
   /**
    * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
@@ -323,6 +330,24 @@ export interface LspStructureSupport {
    */
   readonly rangeTokens: boolean;
 }
+
+/**
+ * Describes how a server shows facts above a document's types and members (#1149): code lenses —
+ * Roslyn's reference counts.
+ */
+export interface LspCodeLensSupport {
+  /**
+   * Gets whether it fills a lens in (its title and command) on request (`codeLens/resolve`), rather
+   * than with every lens up front.
+   */
+  readonly resolve: boolean;
+}
+
+/**
+ * The command Roslyn gives a references lens: its arguments are the document's URI and the symbol's
+ * position, and the client is to list the symbol's references (#1149).
+ */
+const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
 
 /**
  * The `_vs_textEditFormat` of an auto-insert whose text is a snippet (#1148): Roslyn's doc-comment
@@ -728,6 +753,30 @@ export class LspFeatures {
   private readonly structureRegistered: Set<string> = new Set<string>();
 
   /**
+   * Holds the languages code lenses are registered for (#1149).
+   */
+  private readonly codeLensRegistered: Set<string> = new Set<string>();
+
+  /**
+   * Holds the event that asks every editor showing code lenses to ask again, made with the first
+   * registration.
+   */
+  private codeLensChanged: MonacoApi.Emitter<MonacoApi.languages.CodeLensProvider> | undefined;
+
+  /**
+   * Holds the code lens providers registered, one per language, each told to ask again on a refresh.
+   */
+  private readonly codeLensProviders: MonacoApi.languages.CodeLensProvider[] = [];
+
+  /**
+   * Holds, for each lens shown, the server's own lens and its session, for resolving it.
+   */
+  private readonly codeLensOrigins: WeakMap<
+    MonacoApi.languages.CodeLens,
+    { lens: unknown; sessionId: string }
+  > = new WeakMap<MonacoApi.languages.CodeLens, { lens: unknown; sessionId: string }>();
+
+  /**
    * Holds the event that asks every editor showing hints to ask again, made with the first
    * registration.
    */
@@ -1045,6 +1094,163 @@ export class LspFeatures {
       edit.newText,
       answer?._vs_textEditFormat === SNIPPET_TEXT_EDIT_FORMAT,
     );
+  }
+
+  /**
+   * Turns on code lenses for a language (#1149) — facts shown above its types and members, Roslyn's
+   * reference counts — when a session that shows them starts serving a document of it. Registered
+   * once per language; whether a server shows them is its own setting (Settings › Language
+   * Providers), which it is told of without a restart.
+   * @param language The Monaco language identifier.
+   */
+  public enableCodeLens(language: string): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined || this.codeLensRegistered.has(language)) {
+      return;
+    }
+    this.codeLensRegistered.add(language);
+    this.codeLensChanged ??= new monaco.Emitter<MonacoApi.languages.CodeLensProvider>();
+    const provider: MonacoApi.languages.CodeLensProvider = {
+      onDidChange: this.codeLensChanged.event,
+      provideCodeLenses: (
+        model: MonacoApi.editor.ITextModel,
+      ): Promise<MonacoApi.languages.CodeLensList | undefined> => this.provideCodeLenses(model),
+      resolveCodeLens: (
+        model: MonacoApi.editor.ITextModel,
+        lens: MonacoApi.languages.CodeLens,
+      ): Promise<MonacoApi.languages.CodeLens> => this.resolveCodeLens(model, lens),
+    };
+    this.codeLensProviders.push(provider);
+    monaco.languages.registerCodeLensProvider(language, provider);
+  }
+
+  /**
+   * Asks every editor showing code lenses to ask for them again: the server said they are stale
+   * (`workspace/codeLens/refresh`) — a reference was added elsewhere, a setting changed (#1149).
+   */
+  public refreshCodeLenses(): void {
+    for (const provider of this.codeLensProviders) {
+      this.codeLensChanged?.fire(provider);
+    }
+  }
+
+  /**
+   * Asks the server serving a model for its code lenses, leaving each to be filled in as Monaco
+   * shows it.
+   * @param model The model.
+   * @returns Returns the lenses, or undefined when no server serving the model shows them.
+   */
+  private async provideCodeLenses(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.CodeLensList | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.codeLens === undefined) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/codeLens',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    const lenses: MonacoApi.languages.CodeLens[] = [];
+    for (const candidate of Array.isArray(result) ? (result as readonly unknown[]) : []) {
+      const range: LspRange | undefined = (candidate as { range?: LspRange } | null)?.range;
+      if (range === undefined) {
+        continue;
+      }
+      const lens: MonacoApi.languages.CodeLens = {
+        range: this.toRange(range),
+        ...this.lensCommand(model, ref, candidate),
+      };
+      this.codeLensOrigins.set(lens, { lens: candidate, sessionId: ref.sessionId });
+      lenses.push(lens);
+    }
+    return { lenses, dispose: (): void => undefined };
+  }
+
+  /**
+   * Fills a lens in as Monaco shows it: the server gives its title (`4 references`) and command on
+   * request.
+   * @param model The model.
+   * @param lens The lens.
+   * @returns Returns the lens, filled in when the server answered.
+   */
+  private async resolveCodeLens(
+    model: MonacoApi.editor.ITextModel,
+    lens: MonacoApi.languages.CodeLens,
+  ): Promise<MonacoApi.languages.CodeLens> {
+    const origin: { lens: unknown; sessionId: string } | undefined = this.codeLensOrigins.get(lens);
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (
+      lens.command !== undefined ||
+      origin === undefined ||
+      ref === null ||
+      this.bridge === undefined
+    ) {
+      return lens;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        origin.sessionId,
+        'codeLens/resolve',
+        origin.lens,
+      );
+    } catch {
+      return lens;
+    }
+    return { ...lens, ...this.lensCommand(model, ref, result) };
+  }
+
+  /**
+   * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
+   * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}); a command the server runs
+   * itself is run there; any other shows its title alone.
+   * @param model The model the lens is in.
+   * @param ref The document's session.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns the lens's command, or nothing for a lens not yet filled in.
+   */
+  private lensCommand(
+    model: MonacoApi.editor.ITextModel,
+    ref: LspDocumentRef,
+    lens: unknown,
+  ): { command?: MonacoApi.languages.Command } {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    if (command === null) {
+      return {};
+    }
+    if (command.command === ROSLYN_PEEK_REFERENCES) {
+      const position: unknown =
+        command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), position],
+        },
+      };
+    }
+    if ((ref.commands ?? []).includes(command.command)) {
+      return {
+        command: {
+          id: STUDIO_LSP_COMMAND,
+          title: command.title,
+          arguments: [ref.sessionId, command],
+        },
+      };
+    }
+    return { command: { id: '', title: command.title } };
   }
 
   /**

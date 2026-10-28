@@ -133,10 +133,13 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
   const darkHints: Record<string, string> = {
     'editorInlayHint.foreground': '#9DA5B4',
     'editorInlayHint.background': '#FFFFFF12',
+    // Code lenses (#1149) — reference counts above members — as quiet as a comment.
+    'editorCodeLens.foreground': '#8B93A1',
   };
   const lightHints: Record<string, string> = {
     'editorInlayHint.foreground': '#5F6672',
     'editorInlayHint.background': '#0000000D',
+    'editorCodeLens.foreground': '#6B7280',
   };
 
   monaco.editor.defineTheme('onix-dark-outline', {
