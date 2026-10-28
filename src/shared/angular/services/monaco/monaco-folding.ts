@@ -60,15 +60,22 @@ interface BracePosition {
  * default indentation folding for these languages (Monaco uses registered providers in preference to
  * indentation folding), so those region and comment folds are re-provided here rather than lost.
  * @param monaco The loaded Monaco namespace, or undefined before it has loaded (a no-op).
+ * @param suppressed Returns true for a document a language server folds instead (#1147).
  */
-export function registerBraceFolding(monaco: typeof MonacoApi | undefined): void {
+export function registerBraceFolding(
+  monaco: typeof MonacoApi | undefined,
+  suppressed: (model: MonacoApi.editor.ITextModel) => boolean = (): boolean => false,
+): void {
   if (monaco === undefined) {
     return;
   }
   const provider: MonacoApi.languages.FoldingRangeProvider = {
+    // A document whose language server folds it (#1147) is folded by the server alone: two providers'
+    // ranges would be merged, and the heuristic's guesses would sit beside the compiler's answer.
     provideFoldingRanges: (
       model: MonacoApi.editor.ITextModel,
-    ): MonacoApi.languages.FoldingRange[] => computeFoldingRanges(monaco, model),
+    ): MonacoApi.languages.FoldingRange[] =>
+      suppressed(model) ? [] : computeFoldingRanges(monaco, model),
   };
   for (const language of BRACE_FOLDING_LANGUAGES) {
     monaco.languages.registerFoldingRangeProvider(language, provider);

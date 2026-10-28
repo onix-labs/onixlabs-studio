@@ -60,6 +60,14 @@ export function clientCapabilities(): ClientCapabilities {
         contextSupport: true,
       },
       hover: { contentFormat: ['markdown', 'plaintext'] },
+      // The compiler's folds and the reads and writes of the symbol under the caret (#1147). Folds are
+      // whole lines, as Monaco folds.
+      foldingRange: {
+        dynamicRegistration: false,
+        lineFoldingOnly: true,
+        foldingRangeKind: { valueSet: ['comment', 'imports', 'region'] },
+      },
+      documentHighlight: { dynamicRegistration: false },
       // Parameter names and inferred types set into the code (#1145); the tooltip — the parameter's
       // or type's signature — and a hint's insertable text are filled in when it is hovered.
       inlayHint: {
@@ -112,8 +120,11 @@ export function clientCapabilities(): ClientCapabilities {
       },
       // Advertise semantic tokens so servers send them; the renderer maps each server's legend onto
       // the standard one and feeds Monaco, colouring types, members, and parameters.
+      // Range as well as full (#1147): Monaco paints the screen shown from a range request before the
+      // whole file's tokens arrive. Roslyn then advertises `full: false`, but answers full requests
+      // still — and the full provider is registered off the server's legend, not that flag.
       semanticTokens: {
-        requests: { full: true, range: false },
+        requests: { full: true, range: true },
         tokenTypes: [...SEMANTIC_TOKEN_TYPES],
         tokenModifiers: [...SEMANTIC_TOKEN_MODIFIERS],
         formats: ['relative'],

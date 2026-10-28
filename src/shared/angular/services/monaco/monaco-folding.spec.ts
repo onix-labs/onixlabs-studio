@@ -1,5 +1,5 @@
 import type * as MonacoApi from 'monaco-editor';
-import { computeFoldingRanges } from './monaco-folding';
+import { computeFoldingRanges, registerBraceFolding } from './monaco-folding';
 
 /**
  * The stand-in fold kinds the fake Monaco returns, compared by reference in the assertions.
@@ -134,6 +134,38 @@ describe('computeFoldingRanges', () => {
     // between them is too short to fold on its own.
     expect(fold(['//region A', '// b', '//endregion'])).toEqual([
       { start: 1, end: 3, kind: REGION_KIND },
+    ]);
+  });
+});
+
+describe('registerBraceFolding (#1147)', () => {
+  it('leavesADocumentWhoseServerFoldsIt_toTheServer', () => {
+    const lines: readonly string[] = ['class Program', '{', '    int x;', '}'];
+    const providers: Map<string, MonacoApi.languages.FoldingRangeProvider> = new Map<
+      string,
+      MonacoApi.languages.FoldingRangeProvider
+    >();
+    const monaco: typeof MonacoApi = {
+      ...fakeMonaco(defaultTokens(lines)),
+      languages: {
+        FoldingRangeKind: { Region: REGION_KIND, Comment: COMMENT_KIND },
+        registerFoldingRangeProvider: (
+          language: string,
+          provider: MonacoApi.languages.FoldingRangeProvider,
+        ): void => void providers.set(language, provider),
+      },
+    } as unknown as typeof MonacoApi;
+    const served: MonacoApi.editor.ITextModel = fakeModel(lines);
+    const unserved: MonacoApi.editor.ITextModel = fakeModel(lines);
+
+    registerBraceFolding(monaco, (model: MonacoApi.editor.ITextModel): boolean => model === served);
+    const provider: MonacoApi.languages.FoldingRangeProvider | undefined = providers.get('csharp');
+    const token: MonacoApi.CancellationToken = {} as MonacoApi.CancellationToken;
+    const context: MonacoApi.languages.FoldingContext = {};
+
+    expect(provider?.provideFoldingRanges(served, context, token)).toEqual([]);
+    expect(provider?.provideFoldingRanges(unserved, context, token)).toEqual([
+      { start: 1, end: 4 },
     ]);
   });
 });

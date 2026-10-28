@@ -114,6 +114,12 @@ export interface LspDocumentRef {
   readonly inlayHints?: LspInlayHintSupport;
 
   /**
+   * Gets which of the compiler's views of the document's structure the server gives (#1147).
+   * Undefined is taken as none.
+   */
+  readonly structure?: LspStructureSupport;
+
+  /**
    * Gets which navigations beyond Go to Definition the server answers (#1142). Undefined is taken as
    * none.
    */
@@ -286,6 +292,29 @@ export interface LspInlayHintSupport {
    * every hint up front.
    */
   readonly resolve: boolean;
+}
+
+/**
+ * Describes which of the compiler's views of a document's structure a server gives (#1147): its
+ * folds, the occurrences of the symbol under the caret, and the semantic tokens of a range alone.
+ */
+export interface LspStructureSupport {
+  /**
+   * Gets whether it folds a document (`textDocument/foldingRange`).
+   */
+  readonly folding: boolean;
+
+  /**
+   * Gets whether it marks the reads and writes of the symbol under the caret
+   * (`textDocument/documentHighlight`).
+   */
+  readonly highlights: boolean;
+
+  /**
+   * Gets whether it colours a range alone (`textDocument/semanticTokens/range`), which paints the
+   * screen shown before the rest of a large file.
+   */
+  readonly rangeTokens: boolean;
 }
 
 /**
@@ -681,6 +710,11 @@ export class LspFeatures {
   private readonly inlayHintsRegistered: Set<string> = new Set<string>();
 
   /**
+   * Holds the structure providers registered (#1147), keyed `<language>:<folding|highlights|rangeTokens>`.
+   */
+  private readonly structureRegistered: Set<string> = new Set<string>();
+
+  /**
    * Holds the event that asks every editor showing hints to ask again, made with the first
    * registration.
    */
@@ -941,6 +975,214 @@ export class LspFeatures {
   }
 
   /**
+   * Turns on the compiler's views of a language's structure (#1147), when a session that gives them
+   * starts serving a document of it: its folds — members, regions, usings, comments, from their
+   * declaration line, as Visual Studio folds — the reads and writes of the symbol under the caret,
+   * and a range's semantic tokens, so a large file's visible screen is coloured before the rest. Each
+   * is registered once per language; a document no server serves keeps the heuristic folding and
+   * Monaco's own word highlighting.
+   * @param language The Monaco language identifier.
+   * @param support Which the server gives.
+   */
+  public enableStructure(language: string, support: LspStructureSupport): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return;
+    }
+    const registered: Set<string> = this.structureRegistered;
+    if (support.folding && !registered.has(`${language}:folding`)) {
+      registered.add(`${language}:folding`);
+      monaco.languages.registerFoldingRangeProvider(language, {
+        provideFoldingRanges: (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.FoldingRange[] | undefined> =>
+          this.provideFoldingRanges(monaco, model),
+      });
+    }
+    if (support.highlights && !registered.has(`${language}:highlights`)) {
+      registered.add(`${language}:highlights`);
+      monaco.languages.registerDocumentHighlightProvider(language, {
+        provideDocumentHighlights: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+        ): Promise<MonacoApi.languages.DocumentHighlight[] | undefined> =>
+          this.provideDocumentHighlights(monaco, model, position),
+      });
+    }
+    if (support.rangeTokens && !registered.has(`${language}:rangeTokens`)) {
+      registered.add(`${language}:rangeTokens`);
+      monaco.languages.registerDocumentRangeSemanticTokensProvider(language, {
+        getLegend: (): MonacoApi.languages.SemanticTokensLegend => SEMANTIC_LEGEND,
+        provideDocumentRangeSemanticTokens: (
+          model: MonacoApi.editor.ITextModel,
+          range: MonacoApi.Range,
+        ): Promise<MonacoApi.languages.SemanticTokens | null> =>
+          this.provideRangeSemanticTokens(model, range),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model for its folds, and maps them to Monaco's.
+   * @param monaco The Monaco namespace.
+   * @param model The model.
+   * @returns Returns the folds, or undefined when no server serving the model folds it.
+   */
+  private async provideFoldingRanges(
+    monaco: typeof MonacoApi,
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<MonacoApi.languages.FoldingRange[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.folding !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/foldingRange',
+        {
+          textDocument: { uri: ref.uri },
+        },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const kinds: Record<string, MonacoApi.languages.FoldingRangeKind> = {
+      comment: monaco.languages.FoldingRangeKind.Comment,
+      imports: monaco.languages.FoldingRangeKind.Imports,
+      region: monaco.languages.FoldingRangeKind.Region,
+    };
+    const ranges: MonacoApi.languages.FoldingRange[] = [];
+    for (const fold of result as readonly {
+      startLine?: unknown;
+      endLine?: unknown;
+      kind?: unknown;
+    }[]) {
+      if (typeof fold?.startLine !== 'number' || typeof fold.endLine !== 'number') {
+        continue;
+      }
+      if (fold.endLine <= fold.startLine) {
+        continue;
+      }
+      const kind: MonacoApi.languages.FoldingRangeKind | undefined =
+        typeof fold.kind === 'string' ? kinds[fold.kind] : undefined;
+      ranges.push({
+        start: fold.startLine + 1,
+        end: fold.endLine + 1,
+        ...(kind === undefined ? {} : { kind }),
+      });
+    }
+    return ranges;
+  }
+
+  /**
+   * Asks the server serving a model for the occurrences of the symbol at a position, each marked a
+   * read or a write, and maps them to Monaco's.
+   * @param monaco The Monaco namespace.
+   * @param model The model.
+   * @param position The caret.
+   * @returns Returns the occurrences, or undefined when no server serving the model marks them.
+   */
+  private async provideDocumentHighlights(
+    monaco: typeof MonacoApi,
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+  ): Promise<MonacoApi.languages.DocumentHighlight[] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.highlights !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentHighlight',
+        { textDocument: { uri: ref.uri }, position: toLspPosition(position) },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+    const kinds: Record<number, MonacoApi.languages.DocumentHighlightKind> = {
+      1: monaco.languages.DocumentHighlightKind.Text,
+      2: monaco.languages.DocumentHighlightKind.Read,
+      3: monaco.languages.DocumentHighlightKind.Write,
+    };
+    return (result as readonly { range?: LspRange; kind?: unknown }[])
+      .filter((highlight: { range?: LspRange }): boolean => highlight?.range !== undefined)
+      .map(
+        (highlight: {
+          range?: LspRange;
+          kind?: unknown;
+        }): MonacoApi.languages.DocumentHighlight => ({
+          range: this.toRange(highlight.range!),
+          kind:
+            (typeof highlight.kind === 'number' ? kinds[highlight.kind] : undefined) ??
+            monaco.languages.DocumentHighlightKind.Text,
+        }),
+      );
+  }
+
+  /**
+   * Asks the server serving a model for the semantic tokens of a range — what is on screen — remapped
+   * onto the fixed legend. Only real tokens are given: while the server cannot serve them, the whole
+   * document's tokens (with their heuristic stand-in) colour it.
+   * @param model The model.
+   * @param range The range shown.
+   * @returns Returns the tokens, or null to leave the range to the whole document's.
+   */
+  private async provideRangeSemanticTokens(
+    model: MonacoApi.editor.ITextModel,
+    range: MonacoApi.Range,
+  ): Promise<MonacoApi.languages.SemanticTokens | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const legend: LspSemanticTokensLegend | null | undefined = ref?.semanticLegend;
+    if (
+      ref === null ||
+      this.bridge === undefined ||
+      legend === undefined ||
+      legend === null ||
+      ref.structure?.rangeTokens !== true ||
+      ref.suppressServerTokens === true
+    ) {
+      return null;
+    }
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/semanticTokens/range',
+        {
+          textDocument: { uri: ref.uri },
+          range: {
+            start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+            end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+          },
+        },
+      );
+    } catch {
+      return null;
+    }
+    const data: unknown = (result as { data?: unknown } | null)?.data;
+    if (!Array.isArray(data)) {
+      return null;
+    }
+    const remapped: Uint32Array = this.remapSemanticTokens(data as number[], legend);
+    return remapped.length === 0 ? null : { data: remapped };
+  }
+
+  /**
    * Turns on hints set into the code for a language (#1145) — parameter names at call sites, inferred
    * types after `var` — when a session that serves them starts serving a document of it. Registered
    * once per language; which hints a server sets is its own settings' business (Settings › Language
@@ -1189,6 +1431,11 @@ export class LspFeatures {
     // stand in for the server's silence (#1021).
     this.monaco.suppressWordSuggestionsWhen((model: MonacoApi.editor.ITextModel): boolean =>
       this.servesDocument(model),
+    );
+    // A document whose server folds it is folded by the server alone (#1147).
+    this.monaco.suppressBraceFoldingWhen(
+      (model: MonacoApi.editor.ITextModel): boolean =>
+        this.resolve(model)?.structure?.folding === true,
     );
     // A completion's server command, run when the completion is accepted (#1021).
     monaco.editor.registerCommand(
