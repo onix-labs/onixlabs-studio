@@ -237,6 +237,27 @@ export interface LspCodeAction {
    * Gets the action exactly as the server sent it, which is what a `codeAction/resolve` sends back.
    */
   readonly raw: unknown;
+
+  /**
+   * Gets where the action sits among the server's nested actions (#1151) — Roslyn's `CodeActionPath`,
+   * `["Suppress or configure issues", "Suppress CS0219", "in Source"]` — or undefined when the server
+   * gave none.
+   */
+  readonly path?: readonly string[];
+
+  /**
+   * Gets the scopes the action fixes every occurrence in (#1151) — Roslyn's `FixAllFlavors`:
+   * `Document`, `Project`, `Solution`, `ContainingMember`, `ContainingType` — for a fix-all action,
+   * whose edit is asked for one scope at a time ({@link LspFeatures.resolveFixAll}); undefined for any
+   * other.
+   */
+  readonly fixAllScopes?: readonly string[];
+
+  /**
+   * Gets the actions nested under it (#1151) — Roslyn's "Suppress or configure issues" holds thirty —
+   * for an action that only opens them; undefined for any other.
+   */
+  readonly children?: readonly LspCodeAction[];
 }
 
 /**
@@ -740,6 +761,17 @@ const HEURISTIC_CACHE_LIMIT: number = 64;
  * Monaco's one-based and the protocol's zero-based coordinates here. Cross-file navigation resolves
  * to a target only when that file is already open as an editor model.
  */
+/**
+ * Names Roslyn's client command for a fix-all action (#1151): the client offers its scopes, and asks
+ * for the chosen scope's edit with `codeAction/resolveFixAll`.
+ */
+const FIX_ALL_COMMAND: string = 'roslyn.client.fixAllCodeAction';
+
+/**
+ * Names Roslyn's client command for a group of nested actions (#1151): the client opens them.
+ */
+const NESTED_ACTIONS_COMMAND: string = 'roslyn.client.nestedCodeAction';
+
 /**
  * Names the request that walks a hierarchy one level in each direction (#1153).
  */
@@ -2930,6 +2962,35 @@ export class LspFeatures {
   }
 
   /**
+   * Asks the language server that serves a document for a fix-all action's edit in one scope (#1151):
+   * every occurrence of the problem it fixes in the document, member, type, project or solution
+   * (Roslyn's `codeAction/resolveFixAll`, which answers with the edit across every file it touches).
+   * @param model The editor model the action was offered in.
+   * @param action The fix-all action.
+   * @param scope The scope, one of its {@link LspCodeAction.fixAllScopes}.
+   * @returns Returns the action with its edit for that scope, or with none when the server gave none.
+   */
+  public async resolveFixAll(
+    model: MonacoApi.editor.ITextModel,
+    action: LspCodeAction,
+    scope: string,
+  ): Promise<LspCodeAction> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const unresolved: LspCodeAction = { ...action, edit: null, command: null };
+    if (ref === null) {
+      return unresolved;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'codeAction/resolveFixAll', {
+      title: action.title,
+      data: actionDataOf(action.raw),
+      scope,
+    });
+    const resolved: LspCodeAction | null = outcome.ok ? this.toCodeAction(outcome.result) : null;
+    // The fix-all's own command is the client's to run — this is that run — so none is kept.
+    return resolved === null ? unresolved : { ...resolved, title: action.title, command: null };
+  }
+
+  /**
    * Runs a code action's command on the language server that serves a document (#1016)
    * (`workspace/executeCommand`). Only a command the server lists among those it runs is sent: any
    * other is a command for the client, which Studio does not run. Whatever the command changes, the
@@ -2993,7 +3054,31 @@ export class LspFeatures {
     }
     const disabled: unknown = entry.disabled;
     const reason: unknown = (disabled as { reason?: unknown } | undefined)?.reason;
+    const command: LspCommand | null = toCommand(entry.command);
+    const data: {
+      CodeActionPath?: unknown;
+      FixAllFlavors?: unknown;
+      NestedCodeActions?: unknown;
+    } | null = (actionDataOf(raw) as typeof data) ?? null;
+    const path: readonly string[] | undefined = Array.isArray(data?.CodeActionPath)
+      ? data.CodeActionPath.filter((step: unknown): step is string => typeof step === 'string')
+      : undefined;
+    // Roslyn's two client commands (#1151): a fix-all, whose scopes the client offers and resolves one
+    // at a time, and a group of nested actions, which the client opens.
+    const fixAllScopes: readonly string[] | undefined =
+      command?.command === FIX_ALL_COMMAND && Array.isArray(data?.FixAllFlavors)
+        ? data.FixAllFlavors.filter((scope: unknown): scope is string => typeof scope === 'string')
+        : undefined;
+    const children: readonly LspCodeAction[] | undefined =
+      command?.command === NESTED_ACTIONS_COMMAND && Array.isArray(data?.NestedCodeActions)
+        ? data.NestedCodeActions.map((child: unknown): LspCodeAction | null =>
+            this.toCodeAction(child),
+          ).filter((child: LspCodeAction | null): child is LspCodeAction => child !== null)
+        : undefined;
     return {
+      ...(path === undefined ? {} : { path }),
+      ...(fixAllScopes === undefined ? {} : { fixAllScopes }),
+      ...(children === undefined ? {} : { children }),
       title: entry.title,
       kind: typeof entry.kind === 'string' ? entry.kind : '',
       isPreferred: entry.isPreferred === true,
@@ -3007,7 +3092,7 @@ export class LspFeatures {
         typeof entry.edit === 'object' && entry.edit !== null
           ? fromLspWorkspaceEdit(entry.edit, (uri: string): string => this.uriToPath(uri))
           : null,
-      command: toCommand(entry.command),
+      command,
       raw,
     };
   }
@@ -3257,6 +3342,22 @@ function isCommand(raw: unknown): boolean {
     raw !== null &&
     typeof (raw as { command?: unknown }).command === 'string'
   );
+}
+
+/**
+ * Reads the data a code action carries for its server: its own `data`, or — for a Roslyn action whose
+ * command the client runs — its command's first argument, which carries the same.
+ * @param raw The action, untrusted.
+ * @returns Returns the data, or undefined when it carries none.
+ */
+function actionDataOf(raw: unknown): unknown {
+  const entry: { data?: unknown; command?: { arguments?: unknown } } | null =
+    typeof raw === 'object' && raw !== null ? raw : null;
+  if (entry?.data !== undefined) {
+    return entry.data;
+  }
+  const args: unknown = entry?.command?.arguments;
+  return Array.isArray(args) ? args[0] : undefined;
 }
 
 /**

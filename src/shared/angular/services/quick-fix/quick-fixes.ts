@@ -36,7 +36,8 @@ import {
   buildQuickFixMenu,
   isQuickFixKind,
   QuickFixAction,
-  quickFixIndexOf,
+  QuickFixChoice,
+  quickFixChoiceOf,
 } from './quick-fix-menu';
 
 /**
@@ -194,16 +195,47 @@ export class QuickFixes {
     const opened: boolean = this.injector
       .get(EditorContextMenu)
       .openAtCaret(editor, buildQuickFixMenu(session.actions), (id: string): void => {
-        const index: number | null = quickFixIndexOf(id);
-        const action: QuickFixAction | undefined =
-          index === null ? undefined : session.actions[index];
-        if (action !== undefined) {
-          void this.apply(editor, action);
-        }
+        void this.choose(editor, session.actions, quickFixChoiceOf(id));
       });
     if (!opened) {
       this.log.debug('quickFix', 'No menu host is attached to the editor');
     }
+  }
+
+  /**
+   * Applies what a row of the menu chooses (#1151): an action — however deeply nested — or, for a
+   * fix-all, every occurrence in the scope chosen, its edit asked for once it is chosen.
+   * @param editor The editor the menu was opened in.
+   * @param actions The actions the menu was built from.
+   * @param choice The row's choice, or null for a row that chooses none.
+   * @returns Returns a promise that resolves once the choice is applied, or found not to apply.
+   */
+  private async choose(
+    editor: MonacoApi.editor.ICodeEditor,
+    actions: readonly QuickFixAction[],
+    choice: QuickFixChoice | null,
+  ): Promise<void> {
+    if (choice === null) {
+      return;
+    }
+    let action: QuickFixAction | undefined;
+    let level: readonly QuickFixAction[] = actions;
+    for (const index of choice.indices) {
+      action = level[index];
+      level = action?.children ?? [];
+    }
+    if (action === undefined) {
+      return;
+    }
+    if (choice.scope === null) {
+      await this.apply(editor, action);
+      return;
+    }
+    if (action.resolveFixAll === undefined) {
+      return;
+    }
+    this.log.info('quickFix', `Fix all in ${choice.scope}`, action.title);
+    await this.apply(editor, await action.resolveFixAll(choice.scope));
   }
 
   /**
@@ -375,6 +407,28 @@ export class QuickFixes {
       origin: 'server',
       resolve: async (): Promise<QuickFixAction> =>
         this.fromServer(model, await features.resolveCodeAction(model, action), features),
+      ...(action.path === undefined ? {} : { path: action.path }),
+      ...(action.fixAllScopes === undefined
+        ? {}
+        : {
+            fixAllScopes: action.fixAllScopes,
+            // The scope's edit is the whole answer: there is nothing further to resolve or run.
+            resolveFixAll: async (scope: string): Promise<QuickFixAction> => ({
+              ...this.fromServer(
+                model,
+                await features.resolveFixAll(model, action, scope),
+                features,
+              ),
+              resolve: null,
+            }),
+          }),
+      ...(action.children === undefined
+        ? {}
+        : {
+            children: action.children.map((child: LspCodeAction): QuickFixAction =>
+              this.fromServer(model, child, features),
+            ),
+          }),
     };
   }
 

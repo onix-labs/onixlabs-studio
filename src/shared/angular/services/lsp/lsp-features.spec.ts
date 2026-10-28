@@ -2390,6 +2390,141 @@ describe('LspFeatures', () => {
       expect(await features.resolveCodeAction(model, action)).toBe(action);
     });
 
+    it('roslynsFixAllAndNestedActions_areRead_withTheirScopesPathsAndChildren (#1151)', async () => {
+      codeActionSupport = 'resolve';
+      const fixAllData: unknown = {
+        UniqueIdentifier: 'Fix All: Remove unused variable',
+        CodeActionPath: ['Remove unused variable'],
+        FixAllFlavors: ['Document', 'Project', 'Solution', 42],
+      };
+      responses['textDocument/codeAction'] = [
+        {
+          title: 'Remove unused variable',
+          kind: 'quickfix',
+          data: { CodeActionPath: ['Remove unused variable'] },
+        },
+        {
+          title: 'Fix All: Remove unused variable',
+          kind: 'quickfix',
+          command: {
+            title: 'Fix All: Remove unused variable',
+            command: 'roslyn.client.fixAllCodeAction',
+            arguments: [fixAllData],
+          },
+          data: fixAllData,
+        },
+        {
+          title: 'Suppress or configure issues',
+          kind: 'quickfix',
+          command: {
+            title: 'Suppress or configure issues',
+            command: 'roslyn.client.nestedCodeAction',
+            arguments: [
+              {
+                CodeActionPath: ['Suppress or configure issues'],
+                NestedCodeActions: [
+                  {
+                    title: 'in Source',
+                    kind: 'quickfix',
+                    data: {
+                      CodeActionPath: [
+                        'Suppress or configure issues',
+                        'Suppress CS0219',
+                        'in Source',
+                      ],
+                    },
+                  },
+                  { notAnAction: true },
+                ],
+              },
+            ],
+          },
+        },
+      ];
+      const features: LspFeatures = await build();
+
+      const [fix, fixAll, nested] = (await features.codeActions(model, caret)) ?? [];
+
+      expect(fix?.path).toEqual(['Remove unused variable']);
+      expect(fix?.fixAllScopes).toBeUndefined();
+      expect(fixAll?.fixAllScopes).toEqual(['Document', 'Project', 'Solution']);
+      expect(fixAll?.path).toEqual(['Remove unused variable']);
+      // The nested group's data rides on its command's argument.
+      expect(nested?.path).toEqual(['Suppress or configure issues']);
+      expect(nested?.children?.map((child: LspCodeAction): string => child.title)).toEqual([
+        'in Source',
+      ]);
+      expect(nested?.children?.[0]?.path).toEqual([
+        'Suppress or configure issues',
+        'Suppress CS0219',
+        'in Source',
+      ]);
+    });
+
+    it('resolveFixAll_asksForOneScopesEdit_withTheActionsData_andRunsNothingAfter (#1151)', async () => {
+      codeActionSupport = 'resolve';
+      const data: unknown = {
+        CodeActionPath: ['Remove unused variable'],
+        FixAllFlavors: ['Solution'],
+      };
+      responses['textDocument/codeAction'] = [
+        {
+          title: 'Fix All: Remove unused variable',
+          kind: 'quickfix',
+          command: {
+            title: 'Fix All: Remove unused variable',
+            command: 'roslyn.client.fixAllCodeAction',
+            arguments: [data],
+          },
+        },
+      ];
+      responses['codeAction/resolveFixAll'] = {
+        scope: 'Solution',
+        title: 'Fix All: Remove unused variable',
+        data,
+        edit: {
+          documentChanges: [
+            {
+              textDocument: { uri: 'file:///root/a.cs', version: null },
+              edits: [
+                {
+                  range: { start: { line: 8, character: 4 }, end: { line: 9, character: 8 } },
+                  newText: '',
+                },
+              ],
+            },
+            {
+              textDocument: { uri: 'file:///root/b.cs', version: null },
+              edits: [
+                {
+                  range: { start: { line: 2, character: 4 }, end: { line: 3, character: 8 } },
+                  newText: '',
+                },
+              ],
+            },
+          ],
+        },
+      };
+      const features: LspFeatures = await build();
+      const [fixAll] = (await features.codeActions(model, caret)) ?? [];
+
+      const resolved: LspCodeAction = await features.resolveFixAll(model, fixAll, 'Solution');
+
+      expect(requests.at(-1)).toMatchObject({
+        method: 'codeAction/resolveFixAll',
+        // With no data of its own, the action's data is its command's argument.
+        params: { title: 'Fix All: Remove unused variable', data, scope: 'Solution' },
+      });
+      expect(resolved.edit?.files.map((file: { path: string }): string => file.path)).toEqual([
+        '/root/a.cs',
+        '/root/b.cs',
+      ]);
+      expect(resolved.command).toBeNull();
+
+      responses['codeAction/resolveFixAll'] = new Error('gone');
+      expect((await features.resolveFixAll(model, fixAll, 'Solution')).edit).toBeNull();
+    });
+
     it('resolve_isNotAsked_ofAServerThatDoesNotResolve', async () => {
       codeActionSupport = 'actions';
       responses['textDocument/codeAction'] = [{ title: 'Fix', kind: 'quickfix' }];
