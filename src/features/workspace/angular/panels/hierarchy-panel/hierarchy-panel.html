@@ -1,0 +1,40 @@
+<!-- The strip says what is listed, of which symbol, and switches the way the hierarchy is walked. -->
+<app-panel-toolbar class="hierarchy-panel__strip">
+  <!-- Written tight, and kept so: the heading's own words carry its spaces, the symbol after them. -->
+  <!-- prettier-ignore -->
+  <span class="hierarchy-panel__heading" role="status">{{ heading().lead }}@if (heading().symbol.length > 0) {<code class="hierarchy-panel__symbol">{{ heading().symbol }}</code>}</span>
+  <span class="panel-toolbar__spacer"></span>
+  @if (source() !== null) {
+    <app-button-group
+      ariaLabel="Direction"
+      [options]="directions()"
+      [value]="direction()"
+      (valueChange)="onDirection($event)"
+    />
+  }
+</app-panel-toolbar>
+
+@if (emptyMessage(); as message) {
+  <div class="tree-empty hierarchy-panel__empty">
+    <p>{{ message }}</p>
+  </div>
+} @else {
+  <div class="hierarchy-panel__tree">
+    <app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
+      <ng-template let-row>
+        @let entry = rowOf(row);
+        @if (entry.kind === 'node') {
+          <app-icon class="tree-icon" [icon]="iconOf(entry.node)" />
+          <span class="tree-name"
+            >{{ entry.node.name }}
+            @if (entry.node.detail !== undefined) {
+              <span class="hierarchy-panel__detail">{{ entry.node.detail }}</span>
+            }
+          </span>
+        } @else {
+          <span class="tree-name hierarchy-panel__note">{{ entry.text }}</span>
+        }
+      </ng-template>
+    </app-tree-view>
+  </div>
+}

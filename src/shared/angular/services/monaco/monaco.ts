@@ -665,6 +665,12 @@ export class Monaco {
           case 'references':
             void navigation.findReferences(editor);
             return;
+          case 'callHierarchy':
+            void navigation.showHierarchy(editor, 'calls');
+            return;
+          case 'typeHierarchy':
+            void navigation.showHierarchy(editor, 'types');
+            return;
         }
       },
     );

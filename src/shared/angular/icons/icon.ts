@@ -750,6 +750,11 @@ export class Icon {
   public static readonly REFERENCES: Icon = new Icon('ph-duotone ph-list-magnifying-glass');
 
   /**
+   * Gets the Hierarchy panel's icon (#1153), and Show Type Hierarchy's: a tree of types.
+   */
+  public static readonly HIERARCHY: Icon = new Icon('ph-duotone ph-tree-structure');
+
+  /**
    * Gets the icon of a type in Go to Symbol's list: a class or a struct (#1009).
    */
   public static readonly SYMBOL_CLASS: Icon = new Icon('ph ph-cube');

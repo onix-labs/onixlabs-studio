@@ -28,6 +28,12 @@ import {
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { markStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { escapeMarkdown, fenced } from '@shared/angular/services/hover/hover-content';
+import type {
+  HierarchyDirection,
+  HierarchyKind,
+  HierarchyNode,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import type { LspDiagnostic } from './lsp-client';
 import {
   completionAnswer,
@@ -274,6 +280,16 @@ export interface LspNavigationSupport {
    * Gets whether it answers Go to Type Definition (`textDocument/typeDefinition`).
    */
   readonly typeDefinition: boolean;
+
+  /**
+   * Gets whether it shows a member's callers and callees (`textDocument/prepareCallHierarchy`, #1153).
+   */
+  readonly callHierarchy: boolean;
+
+  /**
+   * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
+   */
+  readonly typeHierarchy: boolean;
 }
 
 /**
@@ -724,6 +740,16 @@ const HEURISTIC_CACHE_LIMIT: number = 64;
  * Monaco's one-based and the protocol's zero-based coordinates here. Cross-file navigation resolves
  * to a target only when that file is already open as an editor model.
  */
+/**
+ * Names the request that walks a hierarchy one level in each direction (#1153).
+ */
+const HIERARCHY_METHODS: Readonly<Record<HierarchyDirection, string>> = {
+  callers: 'callHierarchy/incomingCalls',
+  callees: 'callHierarchy/outgoingCalls',
+  supertypes: 'typeHierarchy/supertypes',
+  subtypes: 'typeHierarchy/subtypes',
+};
+
 @Service()
 export class LspFeatures {
   /**
@@ -2547,6 +2573,108 @@ export class LspFeatures {
     return this.servesNavigation(model, 'typeDefinition')
       ? this.locationsByPath(model, position, 'textDocument/typeDefinition')
       : Promise.resolve(null);
+  }
+
+  /**
+   * Asks the language server that serves a document for the hierarchy of the symbol at a position
+   * (#1153) — a member's callers and callees, or a type's base and derived types — as its roots and a
+   * way to walk one level from any node, through the same server. The server's items go back to it
+   * untouched: Roslyn's carry the symbol's key in their `data`.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @param kind Which hierarchy.
+   * @returns Returns the hierarchy (with no roots when the caret names no symbol that has one), or null
+   * when no server serving the document answers it.
+   */
+  public async hierarchy(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+    kind: HierarchyKind,
+  ): Promise<HierarchySource | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    const navigation: LspNavigationKind = kind === 'calls' ? 'callHierarchy' : 'typeHierarchy';
+    if (ref === null || this.bridge === undefined || ref.navigation?.[navigation] !== true) {
+      return null;
+    }
+    const bridge: Bridge = this.bridge;
+    const sessionId: string = ref.sessionId;
+    const prepared: unknown = await this.request(
+      model,
+      kind === 'calls' ? 'textDocument/prepareCallHierarchy' : 'textDocument/prepareTypeHierarchy',
+      position as MonacoApi.Position,
+    );
+    const roots: readonly HierarchyNode[] = Array.isArray(prepared)
+      ? this.hierarchyNodes(prepared)
+      : [];
+    return {
+      kind,
+      roots,
+      children: async (
+        node: HierarchyNode,
+        direction: HierarchyDirection,
+      ): Promise<readonly HierarchyNode[] | null> => {
+        let result: unknown;
+        try {
+          result = await bridge.invoke(
+            LspChannel.Request,
+            sessionId,
+            HIERARCHY_METHODS[direction],
+            { item: node.item },
+          );
+        } catch {
+          return null;
+        }
+        if (!Array.isArray(result)) {
+          return result === null ? [] : null;
+        }
+        // A call is reported as the caller (`from`) or the callee (`to`) with the spans of the calls
+        // themselves; the hierarchy lists the members.
+        const items: readonly unknown[] =
+          direction === 'callers'
+            ? result.map((call: { from?: unknown } | null): unknown => call?.from)
+            : direction === 'callees'
+              ? result.map((call: { to?: unknown } | null): unknown => call?.to)
+              : result;
+        return this.hierarchyNodes(items);
+      },
+    };
+  }
+
+  /**
+   * Maps a server's hierarchy items to nodes, dropping any that are malformed.
+   * @param items The items: `CallHierarchyItem`s or `TypeHierarchyItem`s.
+   * @returns Returns the nodes.
+   */
+  private hierarchyNodes(items: readonly unknown[]): readonly HierarchyNode[] {
+    const nodes: HierarchyNode[] = [];
+    for (const item of items) {
+      const candidate: {
+        name?: unknown;
+        detail?: unknown;
+        kind?: unknown;
+        uri?: unknown;
+        range?: LspRange;
+        selectionRange?: LspRange;
+      } | null = (item as typeof candidate) ?? null;
+      const range: LspRange | undefined = candidate?.selectionRange ?? candidate?.range;
+      if (
+        typeof candidate?.name !== 'string' ||
+        typeof candidate.uri !== 'string' ||
+        range === undefined
+      ) {
+        continue;
+      }
+      nodes.push({
+        name: candidate.name,
+        ...(typeof candidate.detail === 'string' && candidate.detail.length > 0
+          ? { detail: candidate.detail }
+          : {}),
+        kind: typeof candidate.kind === 'number' ? candidate.kind : 0,
+        location: { path: this.uriToPath(candidate.uri), range: this.toRange(range) },
+        item,
+      });
+    }
+    return nodes;
   }
 
   /**

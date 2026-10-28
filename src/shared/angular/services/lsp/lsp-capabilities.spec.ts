@@ -54,21 +54,30 @@ describe('formattingSupportOf (#1141)', () => {
 });
 
 describe('navigationSupportOf (#1142)', () => {
-  it('readsImplementationAndTypeDefinition_asBooleansOrOptions', () => {
+  const NONE: unknown = {
+    implementation: false,
+    typeDefinition: false,
+    callHierarchy: false,
+    typeHierarchy: false,
+  };
+
+  it('readsImplementationTypeDefinitionAndHierarchies_asBooleansOrOptions', () => {
+    // What Roslyn 5.13 advertises (#1153).
     expect(
       navigationSupportOf({
         implementationProvider: true,
         typeDefinitionProvider: { workDoneProgress: true },
+        callHierarchyProvider: true,
+        typeHierarchyProvider: {},
       }),
-    ).toEqual({ implementation: true, typeDefinition: true });
-    expect(navigationSupportOf({ implementationProvider: false })).toEqual({
-      implementation: false,
-      typeDefinition: false,
+    ).toEqual({
+      implementation: true,
+      typeDefinition: true,
+      callHierarchy: true,
+      typeHierarchy: true,
     });
-    expect(navigationSupportOf(undefined)).toEqual({
-      implementation: false,
-      typeDefinition: false,
-    });
+    expect(navigationSupportOf({ implementationProvider: false })).toEqual(NONE);
+    expect(navigationSupportOf(undefined)).toEqual(NONE);
   });
 });
 

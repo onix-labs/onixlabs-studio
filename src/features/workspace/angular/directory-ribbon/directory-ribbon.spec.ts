@@ -26,6 +26,8 @@ import {
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type { HierarchyKind } from '@shared/angular/services/hierarchy/hierarchy';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 import { DirectoryRibbon } from './directory-ribbon';
@@ -945,10 +947,42 @@ describe('DirectoryRibbon', () => {
       expect(edit.map((entry: MenuEntry): string | undefined => entry.id)).toEqual([
         'directory.find',
         'directory.goToWorkspaceSymbol',
+        'directory.showCallHierarchy',
+        'directory.showTypeHierarchy',
       ]);
     });
 
-    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheMenuAndTheRibbon (#1146)', () => {
+    it('showHierarchy_showsTheActiveEditorsHierarchy_fromTheEditMenu (#1153)', () => {
+      const shown: string[] = [];
+      vi.spyOn(TestBed.inject(EditorNavigation), 'showHierarchyInActiveEditor').mockImplementation(
+        (kind: HierarchyKind): Promise<void> => {
+          shown.push(kind);
+          return Promise.resolve();
+        },
+      );
+      const edit: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')
+          ?.items ?? [];
+
+      menu.dispatch('directory.showCallHierarchy');
+      menu.dispatch('directory.showTypeHierarchy');
+
+      expect(
+        edit
+          .filter((entry: MenuEntry): boolean => entry.id?.includes('Hierarchy') === true)
+          .map((entry: MenuEntry): string | undefined => entry.label),
+      ).toEqual(['Show Call Hierarchy', 'Show Type Hierarchy']);
+      // The chords are the editor's own.
+      expect(
+        edit.some(
+          (entry: MenuEntry): boolean =>
+            entry.id?.includes('Hierarchy') === true && entry.accelerator !== undefined,
+        ),
+      ).toBe(false);
+      expect(shown).toEqual(['calls', 'types']);
+    });
+
+    it('goToSymbolInWorkspace_opensInTheWorkspaceInFront_fromTheEditMenu (#1146)', () => {
       let opened: number = 0;
       vi.spyOn(TestBed.inject(WorkspaceSymbolRouter), 'open').mockImplementation(
         (): void => void (opened += 1),
@@ -961,12 +995,11 @@ describe('DirectoryRibbon', () => {
       );
 
       menu.dispatch('directory.goToWorkspaceSymbol');
-      (internals() as unknown as { onGoToWorkspaceSymbol(): void }).onGoToWorkspaceSymbol();
 
       expect(entry?.label).toBe('Go to Symbol in Workspace');
       // The chord is the workspace's own keybinding, which the user can change.
       expect(entry?.accelerator).toBeUndefined();
-      expect(opened).toBe(2);
+      expect(opened).toBe(1);
     });
 
     it('find_opensTheSearchPanelScopedToTheCurrentFile_throughTheFindRouter', () => {

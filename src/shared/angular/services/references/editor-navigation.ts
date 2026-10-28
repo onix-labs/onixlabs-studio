@@ -2,6 +2,11 @@ import { inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorLocation, Editors } from '@shared/angular/services/editors/editors';
 import { revealTarget } from '@shared/angular/services/go-to/go-to-model';
+import {
+  HierarchyKind,
+  HierarchyRouter,
+  HierarchySource,
+} from '@shared/angular/services/hierarchy/hierarchy';
 import { Log } from '@shared/angular/services/log/log';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import {
@@ -46,6 +51,11 @@ export class EditorNavigation {
    * Holds the router that shows a references list where it is answered.
    */
   private readonly router: ReferencesRouter = inject(ReferencesRouter);
+
+  /**
+   * Holds the router that shows a hierarchy in the workspace's Hierarchy panel (#1153).
+   */
+  private readonly hierarchies: HierarchyRouter = inject(HierarchyRouter);
 
   /**
    * Holds the reader of each listed place's line.
@@ -168,6 +178,87 @@ export class EditorNavigation {
     const model: MonacoApi.editor.ITextModel | null = editor.getModel();
     return (
       model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'typeDefinition')
+    );
+  }
+
+  /**
+   * Determines whether Show Call Hierarchy or Show Type Hierarchy can answer for a document (#1153):
+   * the language server serving it gives that hierarchy, and a workspace is in front to show it in.
+   * @param editor The editor.
+   * @param kind Which hierarchy.
+   * @returns Returns true when it can.
+   */
+  public offersHierarchy(editor: MonacoApi.editor.ICodeEditor, kind: HierarchyKind): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return (
+      model !== null &&
+      this.hierarchies.available() &&
+      this.injector
+        .get(LspFeatures)
+        .servesNavigation(model, kind === 'calls' ? 'callHierarchy' : 'typeHierarchy')
+    );
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the workspace's Hierarchy panel
+   * (#1153): a member's callers (and, a click away, its callees), or a type's base types (and its
+   * derived types), each expanded a level at a time.
+   * @param editor The editor.
+   * @param kind Which hierarchy.
+   * @returns Returns a promise that resolves once the hierarchy is shown, or found not to be.
+   */
+  public async showHierarchy(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: HierarchyKind,
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    if (model === null || position === null || !this.hierarchies.available()) {
+      return;
+    }
+    const source: HierarchySource | null = await this.injector
+      .get(LspFeatures)
+      .hierarchy(model, position, kind);
+    if (source === null) {
+      this.log.debug('navigation', `No ${kind} hierarchy answers this document`);
+      return;
+    }
+    this.hierarchies.show(source);
+  }
+
+  /**
+   * Shows the call or type hierarchy of the symbol at the caret in the active document's editor — the
+   * Edit menu's way to what ⌃⌥H and ⌃⇧H do in an editor (#1153), which focus has left by the time
+   * a menu item is chosen.
+   * @param kind Which hierarchy.
+   * @returns Returns a promise that resolves once the hierarchy is shown, or found not to be.
+   */
+  public showHierarchyInActiveEditor(kind: HierarchyKind): Promise<void> {
+    const editor: MonacoApi.editor.ICodeEditor | null = this.activeEditor();
+    if (editor === null) {
+      this.log.debug('navigation', 'No code editor is active to show a hierarchy from');
+      return Promise.resolve();
+    }
+    return this.showHierarchy(editor, kind);
+  }
+
+  /**
+   * Finds the editor showing the active workspace's active document: the one the user was last
+   * editing, in front in its group.
+   * @returns Returns the editor, or null when the active document is not a code document.
+   */
+  private activeEditor(): MonacoApi.editor.ICodeEditor | null {
+    const documentId: string | null = this.hierarchies.activeDocumentId();
+    if (documentId === null) {
+      return null;
+    }
+    return (
+      window.monaco?.editor
+        .getEditors()
+        .find((candidate: MonacoApi.editor.ICodeEditor): boolean => {
+          const uri: string | undefined = candidate.getModel()?.uri.toString();
+          return uri !== undefined && this.editors.locate(uri)?.documentId === documentId;
+        }) ?? null
     );
   }
 

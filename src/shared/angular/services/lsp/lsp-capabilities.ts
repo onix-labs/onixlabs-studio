@@ -113,17 +113,26 @@ function isOffered(provider: unknown): boolean {
 
 /**
  * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
- * the code that implements it (`implementationProvider`), and to the declaration of its type
- * (`typeDefinitionProvider`).
+ * the code that implements it (`implementationProvider`), to the declaration of its type
+ * (`typeDefinitionProvider`), and up and down its call and type hierarchies (`callHierarchyProvider`,
+ * `typeHierarchyProvider`, #1153).
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it answers.
  */
 export function navigationSupportOf(capabilities: unknown): LspNavigationSupport {
-  const caps: { implementationProvider?: unknown; typeDefinitionProvider?: unknown } | undefined =
-    capabilities as typeof caps;
+  const caps:
+    | {
+        implementationProvider?: unknown;
+        typeDefinitionProvider?: unknown;
+        callHierarchyProvider?: unknown;
+        typeHierarchyProvider?: unknown;
+      }
+    | undefined = capabilities as typeof caps;
   return {
     implementation: isOffered(caps?.implementationProvider),
     typeDefinition: isOffered(caps?.typeDefinitionProvider),
+    callHierarchy: isOffered(caps?.callHierarchyProvider),
+    typeHierarchy: isOffered(caps?.typeHierarchyProvider),
   };
 }
 

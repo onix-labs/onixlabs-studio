@@ -88,6 +88,9 @@ export function clientCapabilities(): ClientCapabilities {
       implementation: { linkSupport: false },
       typeDefinition: { linkSupport: false },
       references: {},
+      // A member's callers and callees, and a type's base and derived types (#1153).
+      callHierarchy: { dynamicRegistration: false },
+      typeHierarchy: { dynamicRegistration: false },
       // Nested symbols, so a server answers with each type's members inside it rather than one flat
       // list; the editor strip's Type and Member dropdowns read them (#882).
       documentSymbol: { hierarchicalDocumentSymbolSupport: true },

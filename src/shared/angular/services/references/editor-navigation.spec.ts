@@ -7,6 +7,7 @@ import { captureEditorCapabilities } from '@shared/angular/services/monaco/monac
 import { EditorNavigation } from './editor-navigation';
 import { ReferenceItem, ReferenceList } from './reference-list';
 import { ReferencesRouter } from './references-router';
+import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 
 /**
  * The model URI of the editor under test.
@@ -128,6 +129,7 @@ describe('EditorNavigation (#1014)', () => {
     servesNavigation: Mock<LspFeatures['servesNavigation']>;
     implementations: Mock<LspFeatures['implementations']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
+    hierarchy: Mock<LspFeatures['hierarchy']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
   let shown: ReferenceList[];
@@ -167,6 +169,9 @@ describe('EditorNavigation (#1014)', () => {
       ),
       typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      hierarchy: vi.fn<LspFeatures['hierarchy']>((): Promise<HierarchySource | null> =>
+        Promise.resolve(null),
       ),
     };
     opener = vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -391,6 +396,75 @@ describe('EditorNavigation (#1014)', () => {
 
       expect(opener).not.toHaveBeenCalled();
       expect(reveal).toHaveBeenCalledWith('doc-7', 3, 2, 4);
+    });
+  });
+
+  describe('hierarchies (#1153)', () => {
+    const SOURCE: HierarchySource = {
+      kind: 'calls',
+      roots: [],
+      children: (): Promise<null> => Promise.resolve(null),
+    };
+
+    it('areOffered_whereTheServerGivesThem_andAWorkspaceShowsThem', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockImplementation(
+        (_model: unknown, kind: string): boolean => kind === 'callHierarchy',
+      );
+
+      expect(navigation.offersHierarchy(fake.editor, 'calls')).toBe(false);
+      TestBed.inject(HierarchyRouter).register((): void => undefined);
+      expect(navigation.offersHierarchy(fake.editor, 'calls')).toBe(true);
+      expect(navigation.offersHierarchy(fake.editor, 'types')).toBe(false);
+    });
+
+    it('show_asksTheServerAtTheCaret_andRoutesWhatItFindsToTheWorkspace', async () => {
+      const navigation: EditorNavigation = build();
+      const revealed: HierarchySource[] = [];
+      TestBed.inject(HierarchyRouter).register(
+        (source: HierarchySource): void => void revealed.push(source),
+      );
+      lsp.hierarchy.mockResolvedValueOnce(SOURCE).mockResolvedValueOnce(null);
+
+      await navigation.showHierarchy(fake.editor, 'calls');
+      await navigation.showHierarchy(fake.editor, 'types');
+
+      expect(lsp.hierarchy).toHaveBeenNthCalledWith(
+        1,
+        fake.model,
+        { lineNumber: 2, column: 4 },
+        'calls',
+      );
+      expect(revealed).toEqual([SOURCE]);
+    });
+
+    it('fromTheRibbon_showsTheActiveDocumentsEditor', async () => {
+      const navigation: EditorNavigation = build();
+      const revealed: HierarchySource[] = [];
+      let active: string | null = null;
+      // The workspace in front reads its own active document: each tab keeps one.
+      TestBed.inject(HierarchyRouter).register(
+        (source: HierarchySource): void => void revealed.push(source),
+        (): string | null => active,
+      );
+      (monaco.editor as unknown as { getEditors: () => unknown[] }).getEditors = (): unknown[] => [
+        fake.editor,
+      ];
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-3',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.hierarchy.mockResolvedValue(SOURCE);
+
+      await navigation.showHierarchyInActiveEditor('types');
+      expect(lsp.hierarchy).not.toHaveBeenCalled();
+
+      active = 'doc-3';
+      await navigation.showHierarchyInActiveEditor('types');
+
+      expect(lsp.hierarchy).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 }, 'types');
+      expect(revealed).toEqual([SOURCE]);
     });
   });
 });

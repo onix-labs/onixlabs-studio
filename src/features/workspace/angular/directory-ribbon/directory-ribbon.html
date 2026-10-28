@@ -61,16 +61,6 @@
     }
   </app-ribbon-strip-group>
 
-  <!-- Moving around the workspace by name (#1146): Go to Symbol in Workspace finds a type or member
-       anywhere in it, through its language servers — the ribbon's way to what ⌘T / Ctrl+T opens. -->
-  <app-ribbon-strip-group title="Navigate">
-    <app-ribbon-strip-button
-      [icon]="Icon.GO_TO_SYMBOL"
-      label="Go to Symbol"
-      (action)="onGoToWorkspaceSymbol()"
-    />
-  </app-ribbon-strip-group>
-
   <!-- Everything you launch against the project, as one group. Start is a split button: its face runs
        the workspace's default configuration in one press — the same single-press Run the Mission
        Control tiles offer — and its chevron opens the dropdown listing every authored configuration,
