@@ -99,25 +99,28 @@ describe('autoInsertTriggersOf (#1148)', () => {
 });
 
 describe('structureSupportOf (#1147)', () => {
-  it('readsFoldsOccurrencesAndRangeTokens_aRangeOnlyWithALegend', () => {
+  it('readsFoldsOccurrencesRangeTokensAndSelectionRanges_aRangeOnlyWithALegend', () => {
     const legend: unknown = { tokenTypes: ['class'], tokenModifiers: [] };
     // What Roslyn 5.13 advertises, offered full and range.
     expect(
       structureSupportOf({
         foldingRangeProvider: true,
         documentHighlightProvider: true,
+        selectionRangeProvider: true,
         semanticTokensProvider: { legend, range: true, full: false },
       }),
-    ).toEqual({ folding: true, highlights: true, rangeTokens: true });
+    ).toEqual({ folding: true, highlights: true, rangeTokens: true, selectionRanges: true });
     expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
       folding: false,
       highlights: false,
       rangeTokens: false,
+      selectionRanges: false,
     });
     expect(structureSupportOf(undefined)).toEqual({
       folding: false,
       highlights: false,
       rangeTokens: false,
+      selectionRanges: false,
     });
   });
 });

@@ -335,6 +335,12 @@ export interface LspStructureSupport {
    * screen shown before the rest of a large file.
    */
   readonly rangeTokens: boolean;
+
+  /**
+   * Gets whether it gives the syntax nodes around a position (`textDocument/selectionRange`), which
+   * Expand and Shrink Selection grow and shrink by (#1155).
+   */
+  readonly selectionRanges: boolean;
 }
 
 /**
@@ -1297,7 +1303,8 @@ export class LspFeatures {
    * Turns on the compiler's views of a language's structure (#1147), when a session that gives them
    * starts serving a document of it: its folds — members, regions, usings, comments, from their
    * declaration line, as Visual Studio folds — the reads and writes of the symbol under the caret,
-   * and a range's semantic tokens, so a large file's visible screen is coloured before the rest. Each
+   * a range's semantic tokens, so a large file's visible screen is coloured before the rest, and the
+   * syntax nodes Expand and Shrink Selection grow and shrink by (#1155). Each
    * is registered once per language; a document no server serves keeps the heuristic folding and
    * Monaco's own word highlighting.
    * @param language The Monaco language identifier.
@@ -1339,6 +1346,62 @@ export class LspFeatures {
           this.provideRangeSemanticTokens(model, range),
       });
     }
+    if (support.selectionRanges && !registered.has(`${language}:selectionRanges`)) {
+      registered.add(`${language}:selectionRanges`);
+      monaco.languages.registerSelectionRangeProvider(language, {
+        provideSelectionRanges: (
+          model: MonacoApi.editor.ITextModel,
+          positions: MonacoApi.Position[],
+        ): Promise<MonacoApi.languages.SelectionRange[][] | undefined> =>
+          this.provideSelectionRanges(model, positions),
+      });
+    }
+  }
+
+  /**
+   * Asks the server serving a model for the syntax nodes around each position (#1155) — identifier,
+   * expression, statement, block, member, type — innermost first, which Monaco's Expand Selection
+   * climbs (merged with its own word ranges) and Shrink Selection descends.
+   * @param model The model.
+   * @param positions The carets.
+   * @returns Returns each caret's ranges, innermost first, or undefined when no server serving the
+   * model gives them.
+   */
+  private async provideSelectionRanges(
+    model: MonacoApi.editor.ITextModel,
+    positions: readonly MonacoApi.Position[],
+  ): Promise<MonacoApi.languages.SelectionRange[][] | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.selectionRanges !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/selectionRange',
+        { textDocument: { uri: ref.uri }, positions: positions.map(toLspPosition) },
+      );
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(result) || result.length !== positions.length) {
+      return undefined;
+    }
+    return (result as readonly unknown[]).map(
+      (chain: unknown): MonacoApi.languages.SelectionRange[] => {
+        const ranges: MonacoApi.languages.SelectionRange[] = [];
+        // The server nests each node in its parent; the depth bound only stops a malformed cycle.
+        let node: { range?: LspRange; parent?: unknown } | null = chain as typeof node;
+        while (node?.range !== undefined && ranges.length < 256) {
+          ranges.push({ range: this.toRange(node.range) });
+          node = node.parent ?? null;
+        }
+        return ranges;
+      },
+    );
   }
 
   /**
