@@ -281,9 +281,21 @@ export class SolutionModel {
   private generation: number = 0;
 
   /**
+   * Holds whether the project model has been determined for the current root.
+   */
+  private readonly settledSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Gets the current project model, or null when there is none.
    */
   public readonly model: Signal<ProjectModel | null> = this.current.asReadonly();
+
+  /**
+   * Gets whether the workspace's project model has been determined — a solution, or that there is
+   * none — rather than still being loaded (#1182): until then, its language servers have not even
+   * been started, and the Error List is still analysing rather than finding nothing.
+   */
+  public readonly settled: Signal<boolean> = computed((): boolean => this.settledSignal());
 
   /**
    * Gets the active project's declared capabilities, or null when there is no model. Exposed so the
@@ -696,8 +708,10 @@ export class SolutionModel {
     const generation: number = ++this.generation;
     if (this.bridge === undefined || root === null) {
       this.reset(null);
+      this.settledSignal.set(true);
       return;
     }
+    this.settledSignal.set(false);
     const model: ProjectModel | null = await this.bridge.invoke<ProjectModel | null>(
       ProjectChannel.ModelLoad,
       root,
@@ -706,6 +720,7 @@ export class SolutionModel {
       return;
     }
     this.reset(model);
+    this.settledSignal.set(true);
     if (model !== null) {
       this.log.info(
         'workspace.solution',

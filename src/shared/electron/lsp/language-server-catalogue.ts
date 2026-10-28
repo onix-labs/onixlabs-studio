@@ -234,14 +234,16 @@ const CSHARP: LanguageServerDescriptor = {
   // how far it reaches is the analysis scope below (#1144).
   servesWorkspaceDiagnostics: true,
   // What Roslyn reads through workspace/configuration that a user would recognise (#1143); the
-  // defaults are Roslyn's own, which it uses while the user has set nothing.
+  // defaults are Roslyn's own, which it uses while the user has set nothing — bar the compiler's
+  // scope, which defaults to the whole solution as Visual Studio's does (#1182): the Error List then
+  // lists every file's errors from the start. Code analysis, the slow part, stays on open files.
   settings: [
     {
       section: 'csharp|background_analysis.dotnet_compiler_diagnostics_scope',
       label: 'Errors and warnings',
       description:
         'Which files the compiler checks for the Error List: the files you have open, or every file in the solution, open or not.',
-      default: 'openFiles',
+      default: 'fullSolution',
       options: [
         { value: 'openFiles', label: 'Open files' },
         { value: 'fullSolution', label: 'Whole solution' },

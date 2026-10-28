@@ -76,6 +76,15 @@ export class WorkspaceDiagnosticsPull {
   private readonly resultIds: Map<string, string> = new Map<string, string>();
 
   /**
+   * Holds each document's latest full report, so a window that attaches to the session later is
+   * given what the windows before it were (see {@link snapshot}).
+   */
+  private readonly latest: Map<string, WorkspaceDocumentReport> = new Map<
+    string,
+    WorkspaceDocumentReport
+  >();
+
+  /**
    * Holds the open request's cancellation, or null when none is open.
    */
   private source: CancellationTokenSource | null = null;
@@ -114,7 +123,7 @@ export class WorkspaceDiagnosticsPull {
    * Initializes a new instance of the {@link WorkspaceDiagnosticsPull} class.
    * @param connection The server connection.
    * @param deliver Receives each batch of document reports, partial or final — or, with `reset`, word to
-   * drop every report it holds.
+   * drop every report it holds, or, with `complete`, word that a request ran to its end (#1182).
    * @param label Names the session in the log.
    */
   public constructor(
@@ -122,6 +131,7 @@ export class WorkspaceDiagnosticsPull {
     private readonly deliver: (
       reports: readonly WorkspaceDocumentReport[],
       reset?: boolean,
+      complete?: boolean,
     ) => void,
     private readonly label: string,
   ) {}
@@ -172,8 +182,18 @@ export class WorkspaceDiagnosticsPull {
    */
   public reset(): void {
     this.resultIds.clear();
+    this.latest.clear();
     this.deliver([], true);
     this.refresh();
+  }
+
+  /**
+   * Gets every document's latest report, in full: what a window attaching to a running session is
+   * given, since the server reports a document again only once it changes.
+   * @returns Returns the reports.
+   */
+  public snapshot(): readonly WorkspaceDocumentReport[] {
+    return [...this.latest.values()];
   }
 
   /**
@@ -231,6 +251,8 @@ export class WorkspaceDiagnosticsPull {
         }
         this.accept((result as { items?: unknown } | null)?.items);
         this.failures = 0;
+        // The request ran to its end: every document the server reports has been reported (#1182).
+        this.deliver([], false, true);
         this.send();
       })
       .catch((error: unknown): void => {
@@ -291,12 +313,16 @@ export class WorkspaceDiagnosticsPull {
       if (typeof report.resultId === 'string') {
         this.resultIds.set(report.uri, report.resultId);
       }
-      reports.push({
+      const accepted: WorkspaceDocumentReport = {
         uri: report.uri,
         kind: report.kind,
         ...(report.kind === 'full' && Array.isArray(report.items) ? { items: report.items } : {}),
         ...(typeof report.resultId === 'string' ? { resultId: report.resultId } : {}),
-      });
+      };
+      if (accepted.kind === 'full') {
+        this.latest.set(accepted.uri, accepted);
+      }
+      reports.push(accepted);
     }
     if (reports.length > 0) {
       this.deliver(reports);

@@ -513,6 +513,13 @@ const PROVIDER_ID: string = 'lsp';
 const MAX_AUTO_RESTARTS: number = 5;
 
 /**
+ * How long a server may take, once it has loaded the workspace, to report the whole workspace's
+ * problems before the Error List stops saying it is analysing (#1182). Roslyn takes a second or two on
+ * a small solution; a server that never reports its pull complete must not leave a spinner forever.
+ */
+const ANALYSIS_TIMEOUT_MS: number = 60_000;
+
+/**
  * Describes a session's crash bookkeeping.
  */
 export interface LspCrashRecord {
@@ -1045,6 +1052,15 @@ export class LspClient implements OnDestroy {
   private readonly crashes: Map<string, LspCrashRecord> = new Map<string, LspCrashRecord>();
 
   /**
+   * Holds the timer that ends each session's analysis of the workspace should its server never
+   * report it complete (#1182).
+   */
+  private readonly analysisTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
    * Holds the pending post-load pull timers per session, cancellable when the session exits or this
    * client is destroyed.
    */
@@ -1178,6 +1194,26 @@ export class LspClient implements OnDestroy {
     }
     this.status.setState(sessionId, 'ready');
     this.features.refreshSemanticTokens(this.sessionLanguages(sessionId));
+    // A server whose analysis of the workspace never reports complete is not left analysing forever.
+    if (this.status.analysisOf(sessionId) === 'pending') {
+      clearTimeout(this.analysisTimers.get(sessionId));
+      this.analysisTimers.set(
+        sessionId,
+        setTimeout((): void => this.finishAnalysis(sessionId), ANALYSIS_TIMEOUT_MS),
+      );
+    }
+  }
+
+  /**
+   * Marks a server's analysis of the whole workspace done (#1182).
+   * @param sessionId The session.
+   */
+  private finishAnalysis(sessionId: string): void {
+    clearTimeout(this.analysisTimers.get(sessionId));
+    this.analysisTimers.delete(sessionId);
+    if (this.status.analysisOf(sessionId) === 'pending') {
+      this.status.setAnalysis(sessionId, 'done');
+    }
   }
 
   /**
@@ -1904,6 +1940,10 @@ export class LspClient implements OnDestroy {
     this.applyEditDisposer?.();
     this.attachDebuggerDisposer?.();
     this.showMessageDisposer?.();
+    for (const timer of this.analysisTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.analysisTimers.clear();
     for (const [requestId, key] of [...this.questions]) {
       this.answerQuestion(requestId, null);
       this.notifications.dismissByKey(key);
@@ -2250,6 +2290,10 @@ export class LspClient implements OnDestroy {
         }
         if (result.success) {
           this.startFailures.delete(sessionId);
+          // Its whole-workspace problems are still to come until its first complete pull (#1182).
+          if (result.pullsWorkspaceDiagnostics === true) {
+            this.status.setAnalysis(sessionId, 'pending');
+          }
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
@@ -2399,6 +2443,15 @@ export class LspClient implements OnDestroy {
     // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
     if (message.method === WORKSPACE_DIAGNOSTICS_METHOD) {
       this.ingestWorkspaceDiagnostics(message.sessionId, message.params);
+      // A pull that ran to its end once the server had loaded the workspace has reported all of it:
+      // the workspace is analysed (#1182). One that ends before then reported a workspace not yet
+      // loaded, and says nothing.
+      if (
+        (message.params as { complete?: unknown } | null)?.complete === true &&
+        this.status.stateOf(message.sessionId) === 'ready'
+      ) {
+        this.finishAnalysis(message.sessionId);
+      }
       return;
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
@@ -2571,6 +2624,8 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    clearTimeout(this.analysisTimers.get(exit.sessionId));
+    this.analysisTimers.delete(exit.sessionId);
     if (exit.restarted === true) {
       // A deliberate restart, with a fresh server already running under the same id: not a crash, so
       // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
