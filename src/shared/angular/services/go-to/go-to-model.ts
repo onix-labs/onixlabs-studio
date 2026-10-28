@@ -10,9 +10,9 @@ export type GoToMode = 'symbol' | 'line';
 /**
  * Names what one of the Go to surfaces — the quick-open box, or a dialog — asks for: a Go to's symbol
  * or line, or a symbol's new name for Rename Symbol (#1015), which the "Go to style" setting places
- * the same way.
+ * the same way — or, in the quick-open box alone, a symbol anywhere in the workspace (#1146).
  */
-export type GoToSurfaceMode = GoToMode | 'rename';
+export type GoToSurfaceMode = GoToMode | 'rename' | 'workspace';
 
 /**
  * The outcome of reading what was typed as a symbol's new name (#1015).
@@ -72,6 +72,12 @@ export interface GoToTarget {
    * Gets the column the selection ends at, or undefined to place the caret alone.
    */
   readonly endColumn?: number;
+
+  /**
+   * Gets the file the place is in, for a place in a file other than the editor's own — a symbol found
+   * in the workspace (#1146); undefined for a place in the document Go to was opened from.
+   */
+  readonly path?: string;
 }
 
 /**

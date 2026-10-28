@@ -8,6 +8,11 @@ export const WORKSPACE_KEYBINDINGS: KeybindingCatalogueEntry = {
   bindings: [
     { id: 'workspace.findInFiles', description: 'Find in files', chord: 'Mod+Shift+F' },
     {
+      id: 'workspace.goToSymbol',
+      description: 'Go to a symbol anywhere in the workspace',
+      chord: 'Mod+T',
+    },
+    {
       id: 'workspace.saveAll',
       description: 'Save all documents in the well',
       chord: 'Mod+S',

@@ -89,6 +89,98 @@ const RESTORE_METHOD: string = 'workspace/_roslyn_restore';
 const UNRESTORED_GATHER_MS: number = 1_500;
 
 /**
+ * The most symbols a workspace search lists (#1146): enough to scroll through, never a solution's
+ * worth.
+ */
+const MAX_WORKSPACE_SYMBOLS: number = 200;
+
+/**
+ * A symbol found by name across the workspace (#1146).
+ */
+export interface WorkspaceSymbolMatch {
+  /**
+   * Gets its name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets its kind, as the protocol numbers it (`SymbolKind`).
+   */
+  readonly kind: number;
+
+  /**
+   * Gets what it is declared in, as the server names it, or an empty string.
+   */
+  readonly container: string;
+
+  /**
+   * Gets the absolute path of its file.
+   */
+  readonly path: string;
+
+  /**
+   * Gets its name's span, one-based; the file's first line for a server that did not say where.
+   */
+  readonly range: MonacoApi.IRange;
+}
+
+/**
+ * Determines whether a server finds symbols by name across its workspace.
+ * @param capabilities The server's capabilities.
+ * @returns Returns true when it offers `workspaceSymbolProvider`.
+ */
+function workspaceSymbolsOffered(capabilities: unknown): boolean {
+  const provider: unknown = (capabilities as { workspaceSymbolProvider?: unknown } | undefined)
+    ?.workspaceSymbolProvider;
+  return provider === true || (typeof provider === 'object' && provider !== null);
+}
+
+/**
+ * Reads a `workspace/symbol` answer — `SymbolInformation` or `WorkspaceSymbol`, whose location may
+ * name only the file — dropping what names no file.
+ * @param result The answer, untrusted.
+ * @returns Returns the symbols.
+ */
+function toWorkspaceSymbols(result: unknown): WorkspaceSymbolMatch[] {
+  if (!Array.isArray(result)) {
+    return [];
+  }
+  const symbols: WorkspaceSymbolMatch[] = [];
+  for (const candidate of result as readonly {
+    name?: unknown;
+    kind?: unknown;
+    containerName?: unknown;
+    location?: { uri?: unknown; range?: LspRange };
+  }[]) {
+    const uri: unknown = candidate?.location?.uri;
+    if (
+      typeof candidate?.name !== 'string' ||
+      typeof uri !== 'string' ||
+      !uri.startsWith('file:')
+    ) {
+      continue;
+    }
+    const range: LspRange | undefined = candidate.location?.range;
+    symbols.push({
+      name: candidate.name,
+      kind: typeof candidate.kind === 'number' ? candidate.kind : 0,
+      container: typeof candidate.containerName === 'string' ? candidate.containerName : '',
+      path: uriToPath(uri),
+      range:
+        range === undefined
+          ? { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }
+          : {
+              startLineNumber: range.start.line + 1,
+              startColumn: range.start.character + 1,
+              endLineNumber: range.end.line + 1,
+              endColumn: range.end.character + 1,
+            },
+    });
+  }
+  return symbols;
+}
+
+/**
  * The time within which a server's errors and warnings count as one burst, updating one toast with a
  * count rather than raising another (#1134).
  */
@@ -579,6 +671,11 @@ export class LspClient implements OnDestroy {
     string,
     LspInlayHintSupport
   >();
+
+  /**
+   * Holds the sessions whose servers find symbols by name across their workspace (#1146).
+   */
+  private readonly workspaceSymbolSessions: Set<string> = new Set<string>();
 
   /**
    * Holds how each started session's server completes and answers signature help (#1021).
@@ -1250,6 +1347,39 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Finds symbols by name across the workspace (#1146): asks every running session whose server
+   * finds them (`workspace/symbol`) — not only C#'s — and gathers what they answer. Each server
+   * matches the name its own way (Roslyn: by the starts of words, `FoGr` for `FormalGreeter`).
+   * @param query What was typed.
+   * @returns Returns the symbols found, at most {@link MAX_WORKSPACE_SYMBOLS}.
+   */
+  public async workspaceSymbols(query: string): Promise<readonly WorkspaceSymbolMatch[]> {
+    const trimmed: string = query.trim();
+    if (this.bridge === undefined || trimmed.length === 0) {
+      return [];
+    }
+    const sessions: string[] = [...this.workspaceSymbolSessions].filter(
+      (sessionId: string): boolean => this.sessionInfo.has(sessionId),
+    );
+    const answers: (readonly WorkspaceSymbolMatch[])[] = await Promise.all(
+      sessions.map(async (sessionId: string): Promise<readonly WorkspaceSymbolMatch[]> => {
+        try {
+          const result: unknown = await this.bridge?.invoke(
+            LspChannel.Request,
+            sessionId,
+            'workspace/symbol',
+            { query: trimmed },
+          );
+          return toWorkspaceSymbols(result);
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return answers.flat().slice(0, MAX_WORKSPACE_SYMBOLS);
+  }
+
+  /**
    * Restarts a server. The main process owns the restart: it tears the server down whatever its
    * reference count, respawns it under the same session id, and tells every client holding it — this
    * one included — through an exit flagged `restarted`, on which {@link onExit} re-opens the client's
@@ -1528,6 +1658,7 @@ export class LspClient implements OnDestroy {
     this.codeActionSupport.clear();
     this.formattingSupport.clear();
     this.inlayHintSupport.clear();
+    this.workspaceSymbolSessions.clear();
     this.navigationSupport.clear();
     for (const sessionId of this.assistSupport.keys()) {
       this.features.setSessionSupport(sessionId, null);
@@ -1828,6 +1959,9 @@ export class LspClient implements OnDestroy {
           this.renameSupport.set(sessionId, renameSupportOf(result.capabilities));
           this.codeActionSupport.set(sessionId, codeActionSupportOf(result.capabilities));
           this.formattingSupport.set(sessionId, formattingSupportOf(result.capabilities));
+          if (workspaceSymbolsOffered(result.capabilities)) {
+            this.workspaceSymbolSessions.add(sessionId);
+          }
           const inlayHints: LspInlayHintSupport | undefined = inlayHintSupportOf(
             result.capabilities,
           );

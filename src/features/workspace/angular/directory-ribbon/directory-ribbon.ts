@@ -20,6 +20,7 @@ import {
   DockPanelState,
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { Log } from '@shared/angular/services/log/log';
+import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
@@ -154,6 +155,13 @@ export class DirectoryRibbon {
             accelerator: 'CmdOrCtrl+F',
             run: (): void => this.onFind(),
           },
+          // No accelerator: ⌘T / Ctrl+T is the workspace's own keybinding (#1146), which the user can
+          // change in Settings; a native accelerator would take the chord whatever they set.
+          {
+            id: 'directory.goToWorkspaceSymbol',
+            label: 'Go to Symbol in Workspace',
+            run: (): void => this.onGoToWorkspaceSymbol(),
+          },
         ],
       },
       {
@@ -226,6 +234,11 @@ export class DirectoryRibbon {
    * Holds the find router the Find command opens the workspace's Search panel through (#1007).
    */
   private readonly findRouter: FindRouter = inject(FindRouter);
+
+  /**
+   * Holds the router Go to Symbol in Workspace opens through, in the workspace in front (#1146).
+   */
+  private readonly symbolRouter: WorkspaceSymbolRouter = inject(WorkspaceSymbolRouter);
 
   /**
    * Holds the workspace document seam the File group's Save and Save All dispatch through.
@@ -548,6 +561,14 @@ export class DirectoryRibbon {
   protected onFind(): void {
     this.log.info('workspace.ribbon', 'Find invoked');
     this.findRouter.open({ mode: 'find', scope: 'file' });
+  }
+
+  /**
+   * Opens Go to Symbol in Workspace in the workspace in front (#1146).
+   */
+  protected onGoToWorkspaceSymbol(): void {
+    this.log.info('workspace.ribbon', 'Go to Symbol in Workspace invoked');
+    this.symbolRouter.open();
   }
 
   /**
