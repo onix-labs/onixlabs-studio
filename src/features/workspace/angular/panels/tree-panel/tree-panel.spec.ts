@@ -1,4 +1,5 @@
 import { signal, WritableSignal } from '@angular/core';
+import type { MockInstance } from 'vitest';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -11,6 +12,7 @@ import {
   Notifications,
   NotificationRequest,
 } from '@shared/angular/services/notifications/notifications';
+import { RenameTypeWithFile } from '@shared/angular/services/rename/rename-type-with-file';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import {
@@ -1025,6 +1027,9 @@ describe('TreePanel row context menu', () => {
 
   it('onEditCommit_aRename_renamesTheEntryAndSelectsItUnderItsNewName', async () => {
     workspace.result = { success: true, path: '/ws/entry.ts' };
+    const offer: MockInstance<RenameTypeWithFile['offer']> = vi
+      .spyOn(TestBed.inject(RenameTypeWithFile), 'offer')
+      .mockResolvedValue();
     component.onContextAction({
       itemId: 'rename',
       row: treeRow(node('main.ts', '/ws/main.ts', 'file')),
@@ -1035,6 +1040,8 @@ describe('TreePanel row context menu', () => {
     expect(workspace.renamed).toEqual([{ path: '/ws/main.ts', name: 'entry.ts' }]);
     // The entry that was selected no longer exists under its old name.
     expect(workspace.selectedPath()).toBe('/ws/entry.ts');
+    // The renamed file's type is offered a rename to match (#1152).
+    expect(offer).toHaveBeenCalledExactlyOnceWith('/ws/main.ts', '/ws/entry.ts');
   });
 
   it('onEditCommit_forARowThatIsNotTheOneBeingEdited_doesNothing', async () => {

@@ -70,6 +70,7 @@ import {
   supportsPullDiagnostics,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { languageForFileName } from '@shared/angular/services/monaco/monaco-languages';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
@@ -820,6 +821,11 @@ export class LspClient implements OnDestroy {
   private featuresDisposer: (() => void) | null = null;
 
   /**
+   * Holds the disposer that withdraws this client's file resolver (#1152), or null when not registered.
+   */
+  private filesDisposer: (() => void) | null = null;
+
+  /**
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -1172,6 +1178,9 @@ export class LspClient implements OnDestroy {
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
     );
+    this.filesDisposer = this.features.registerFiles((path: string): LspDocumentRef | null =>
+      this.resolveFile(path),
+    );
     // A server that answers feature requests is demonstrably serving, even when it never sends the
     // diagnostics or initialisation notifications the status otherwise waits for — without this, such
     // a server shows as "starting" forever.
@@ -1480,6 +1489,37 @@ export class LspClient implements OnDestroy {
       signatureHelp: this.assistSupport.get(sessionId)?.signatureHelp ?? null,
       diagnostics: this.serverDiagnostics.get(tracked.documentId) ?? [],
       sync: (text: string): Promise<void> => this.change(tracked, text),
+    };
+  }
+
+  /**
+   * Resolves a file path to the document a running session of this workspace knows it as, whether or
+   * not an editor has it open (#1152). An open document resolves as {@link resolveDocument} resolves
+   * it; a closed one resolves to the session serving its language at the workspace root, which reads
+   * it from disk — and only once that session's server has started, so asking never starts one.
+   * @param path The absolute file path to resolve.
+   * @returns Returns the document reference, or null.
+   */
+  private resolveFile(path: string): LspDocumentRef | null {
+    const open: LspDocumentRef | null = this.resolveDocument(path);
+    if (open !== null) {
+      return open;
+    }
+    const serverId: string | null = this.lspSettings.serverForLanguage(languageForFileName(path));
+    const resolved: { root: string; standalone: boolean } | null = this.documentRoot(path);
+    if (serverId === null || resolved === null || resolved.standalone) {
+      return null;
+    }
+    const sessionId: string = `${resolved.root}::${serverId}`;
+    if (!this.sessions.has(sessionId) || !this.codeActionSupport.has(sessionId)) {
+      return null;
+    }
+    return {
+      sessionId,
+      uri: pathToUri(path),
+      rename: this.renameSupport.get(sessionId) ?? 'none',
+      codeActions: this.codeActionSupport.get(sessionId) ?? 'none',
+      commands: this.executeCommands.get(sessionId) ?? [],
     };
   }
 
@@ -1949,6 +1989,7 @@ export class LspClient implements OnDestroy {
       this.notifications.dismissByKey(key);
     }
     this.featuresDisposer?.();
+    this.filesDisposer?.();
     this.servedDisposer?.();
     for (const sessionId of this.sessions.keys()) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);

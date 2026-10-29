@@ -298,6 +298,29 @@ describe('Go to dialogs', () => {
       await expect(answer).resolves.toBe(true);
     });
 
+    it('aTypeRenamedWithItsFile_namesTheAlternative_andCountsOneFileAsOne (#1152)', async () => {
+      const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
+      const fixture: ComponentFixture<RenameConfirmModal> =
+        TestBed.createComponent(RenameConfirmModal);
+      fixture.detectChanges();
+      const answer: Promise<boolean> = confirmation.ask({
+        oldName: 'IGreeter',
+        newName: 'Greeter',
+        title: 'Rename type to Greeter?',
+        confirmLabel: 'Rename Type',
+        cancelLabel: 'Rename File Only',
+        files: [{ path: '/ws/Greeter.cs', name: 'Greeter.cs', folder: '', edits: 1, open: false }],
+      });
+      fixture.detectChanges();
+      const host: HTMLElement = flush();
+
+      expect(host.textContent).toContain('1 change in 1 file. It changes on disk.');
+      expect(button(host, 'Rename Type')).toBeTruthy();
+      button(host, 'Rename File Only').click();
+
+      await expect(answer).resolves.toBe(false);
+    });
+
     it('cancel_answersNo', async () => {
       const confirmation: RenameConfirmation = TestBed.inject(RenameConfirmation);
       const fixture: ComponentFixture<RenameConfirmModal> =

@@ -1,3 +1,4 @@
+import type { CodeSymbol } from '@shared/angular/services/lsp/lsp-symbols';
 import type * as MonacoApi from 'monaco-editor';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
@@ -2201,6 +2202,110 @@ describe('LspFeatures', () => {
         kind: 'refused',
         reason: 'The new name is not valid.',
       });
+    });
+  });
+
+  describe("a file's code actions and symbols, open or not (#1152)", () => {
+    /**
+     * The caret at the type's name, on line 4, column 18.
+     */
+    const atType: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } = { startLineNumber: 4, startColumn: 18, endLineNumber: 4, endColumn: 18 };
+
+    /**
+     * Registers a file resolver that knows one closed file.
+     * @param features The service.
+     * @param codeActions How the session offers code actions.
+     */
+    function knowClosedFile(features: LspFeatures, codeActions: LspCodeActionSupport): void {
+      features.registerFiles((path: string) =>
+        path === '/root/Core/Greeter.cs'
+          ? { sessionId: '/root::roslyn', uri: 'file:///root/Core/Greeter.cs', codeActions }
+          : null,
+      );
+    }
+
+    it('askTheFileSession_forItsRefactorings_andFillOneIn', async () => {
+      const features: LspFeatures = await build();
+      knowClosedFile(features, 'resolve');
+      responses['textDocument/codeAction'] = [
+        { title: 'Rename type to Greeter', kind: 'refactor', data: { id: 7 } },
+      ];
+      responses['codeAction/resolve'] = {
+        title: 'Rename type to Greeter',
+        kind: 'refactor',
+        edit: {
+          changes: {
+            'file:///root/Core/Greeter.cs': [
+              {
+                range: { start: { line: 3, character: 17 }, end: { line: 3, character: 18 } },
+                newText: '',
+              },
+            ],
+          },
+        },
+      };
+
+      expect(features.servesFileCodeActions('/root/Core/Greeter.cs')).toBe(true);
+      const actions: readonly LspCodeAction[] | null = await features.fileCodeActions(
+        '/root/Core/Greeter.cs',
+        atType,
+        ['refactor'],
+      );
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::roslyn',
+        method: 'textDocument/codeAction',
+        params: {
+          textDocument: { uri: 'file:///root/Core/Greeter.cs' },
+          range: { start: { line: 3, character: 17 }, end: { line: 3, character: 17 } },
+          context: { diagnostics: [], only: ['refactor'], triggerKind: 2 },
+        },
+      });
+      const resolved: LspCodeAction = await features.resolveFileCodeAction(
+        '/root/Core/Greeter.cs',
+        actions![0],
+      );
+      expect(requests.at(-1)?.method).toBe('codeAction/resolve');
+      expect(resolved.edit?.files.map((file) => file.path)).toEqual(['/root/Core/Greeter.cs']);
+    });
+
+    it('readTheFileSymbols_fromItsSession', async () => {
+      const features: LspFeatures = await build();
+      knowClosedFile(features, 'resolve');
+      responses['textDocument/documentSymbol'] = [
+        {
+          name: 'IGreeter',
+          kind: 11,
+          range: { start: { line: 3, character: 0 }, end: { line: 9, character: 1 } },
+          selectionRange: { start: { line: 3, character: 17 }, end: { line: 3, character: 25 } },
+          children: [],
+        },
+      ];
+
+      const symbols: readonly CodeSymbol[] | null =
+        await features.fileSymbols('/root/Core/Greeter.cs');
+
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::roslyn',
+        method: 'textDocument/documentSymbol',
+        params: { textDocument: { uri: 'file:///root/Core/Greeter.cs' } },
+      });
+      expect(symbols?.map((symbol) => symbol.name)).toEqual(['IGreeter']);
+    });
+
+    it('answerNothing_forAFileNoSessionKnows_orOneThatOffersNoActions', async () => {
+      const features: LspFeatures = await build();
+      knowClosedFile(features, 'none');
+
+      expect(features.servesFileCodeActions('/root/Core/Greeter.cs')).toBe(false);
+      expect(features.servesFileCodeActions('/root/elsewhere.cs')).toBe(false);
+      expect(await features.fileCodeActions('/root/Core/Greeter.cs', atType)).toBeNull();
+      expect(await features.fileSymbols('/root/elsewhere.cs')).toBeNull();
+      expect(requests).toEqual([]);
     });
   });
 

@@ -16,7 +16,8 @@ import {
  * (changed in its editor, unsaved) or closed (changed on disk). Rename goes ahead; Cancel, Escape or
  * the window's close button changes nothing. Shown whichever Go to style is chosen: it is a decision
  * over a list, which only a dialog has room for. A code action's change across several files (#1016)
- * is confirmed here too, asking its own question with its own button.
+ * is confirmed here too, asking its own question with its own buttons, and so is a type renamed with
+ * its file (#1152), whose alternative keeps the file's new name alone.
  */
 @Component({
   selector: 'app-rename-confirm-modal',
@@ -52,7 +53,10 @@ import {
                 [label]="request.confirmLabel ?? 'Rename'"
                 (click)="confirmation.answer(true)"
               />
-              <app-button label="Cancel" (click)="confirmation.answer(false)" />
+              <app-button
+                [label]="request.cancelLabel ?? 'Cancel'"
+                (click)="confirmation.answer(false)"
+              />
             </app-button-row>
           </div>
         </ng-template>
@@ -103,13 +107,20 @@ export class RenameConfirmModal {
     const closed: boolean = request.files.some(
       (file: RenameConfirmationFile): boolean => !file.open,
     );
+    const one: boolean = request.files.length === 1;
     const where: string =
       open && closed
         ? ' Open files change in their editors, unsaved; the rest change on disk.'
         : open
-          ? ' They change in their editors, unsaved.'
-          : ' They change on disk.';
-    return `${places} changes in ${request.files.length} files.${where}`;
+          ? one
+            ? ' It changes in its editor, unsaved.'
+            : ' They change in their editors, unsaved.'
+          : one
+            ? ' It changes on disk.'
+            : ' They change on disk.';
+    const changes: string = places === 1 ? '1 change' : `${places} changes`;
+    const files: string = request.files.length === 1 ? '1 file' : `${request.files.length} files`;
+    return `${changes} in ${files}.${where}`;
   });
 
   /**

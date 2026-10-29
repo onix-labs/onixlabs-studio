@@ -32,6 +32,7 @@ import {
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { RenameTypeWithFile } from '@shared/angular/services/rename/rename-type-with-file';
 import { FileOperationResult } from '@shared/api/workspace-channels';
 import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
 import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
@@ -224,6 +225,11 @@ export class SolutionPanel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the offer to rename a renamed file's type with it (#1152).
+   */
+  private readonly renameType: RenameTypeWithFile = inject(RenameTypeWithFile);
+
+  /**
    * Holds the rows awaiting the delete confirmation, or null when it is closed.
    */
   public readonly deleteTargets: WritableSignal<readonly SolutionRow[] | null> = signal<
@@ -412,6 +418,9 @@ export class SolutionPanel {
       const renamed: FileOperationResult = await this.workspace.rename(path, commit.value);
       if (!renamed.success) {
         this.reportRenameFailure(renamed.error);
+      } else if (row.kind === 'file' && renamed.path !== undefined) {
+        // A file named after its type offers to rename the type too, once its server catches up.
+        void this.renameType.offer(path, renamed.path);
       }
       return;
     }

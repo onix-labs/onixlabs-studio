@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import type { MockInstance } from 'vitest';
+import { RenameTypeWithFile } from '@shared/angular/services/rename/rename-type-with-file';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
@@ -407,6 +408,9 @@ describe('SolutionPanel', () => {
       const rename: ReturnType<typeof vi.spyOn> = vi
         .spyOn(TestBed.inject(Workspace), 'rename')
         .mockResolvedValue({ success: true, path: '/root/A/Renamed.cs' });
+      const offer: MockInstance<RenameTypeWithFile['offer']> = vi
+        .spyOn(TestBed.inject(RenameTypeWithFile), 'offer')
+        .mockResolvedValue();
       const file: SolutionRow = makeRow({
         key: 'g',
         label: 'g.cs',
@@ -435,6 +439,8 @@ describe('SolutionPanel', () => {
       // The folder kept its name: nothing to do.
       expect(rename).toHaveBeenCalledTimes(1);
       expect(rename).toHaveBeenCalledWith('/root/A/g.cs', 'Renamed.cs');
+      // The renamed file's type is offered a rename to match (#1152).
+      expect(offer).toHaveBeenCalledExactlyOnceWith('/root/A/g.cs', '/root/A/Renamed.cs');
     });
 
     it('delete_asksFirst_thenDeletesEverySelectedFileThroughTheWorkspace', async () => {

@@ -60,6 +60,12 @@ export interface RenameConfirmationRequest {
   readonly confirmLabel?: string;
 
   /**
+   * Gets the label of the button that changes nothing, or undefined for "Cancel" — named when not
+   * going ahead still leaves something done, as a file renamed without its type (#1152).
+   */
+  readonly cancelLabel?: string;
+
+  /**
    * Gets the files it changes, in the order to list them.
    */
   readonly files: readonly RenameConfirmationFile[];

@@ -540,6 +540,14 @@ export interface LspDefinition {
 export type LspDocumentResolver = (path: string) => LspDocumentRef | null;
 
 /**
+ * Resolves a file path to the language-server document it is, whether or not an editor has it open
+ * (#1152): an open one as {@link LspDocumentResolver} resolves it, and a closed one by the session of
+ * the workspace and language it belongs to, which the server reads from disk. Null when the caller
+ * owns no running session for it.
+ */
+export type LspFileResolver = (path: string) => LspDocumentRef | null;
+
+/**
  * A zero-based Language Server Protocol position.
  */
 interface LspPosition {
@@ -815,6 +823,12 @@ export class LspFeatures {
   private readonly resolvers: Set<LspDocumentResolver> = new Set<LspDocumentResolver>();
 
   /**
+   * Holds the registered file resolvers contributed by the workspace clients, which also answer for
+   * files no editor has open (#1152).
+   */
+  private readonly fileResolvers: Set<LspFileResolver> = new Set<LspFileResolver>();
+
+  /**
    * Holds whether the Monaco providers have been registered, so registration happens once.
    */
   private registered: boolean = false;
@@ -963,6 +977,19 @@ export class LspFeatures {
     this.resolvers.add(resolver);
     return (): void => {
       this.resolvers.delete(resolver);
+    };
+  }
+
+  /**
+   * Registers a resolver that maps a file path to the document a workspace client's session knows it
+   * as, open in an editor or not (#1152).
+   * @param resolver The resolver to add.
+   * @returns Returns a function that removes the resolver.
+   */
+  public registerFiles(resolver: LspFileResolver): () => void {
+    this.fileResolvers.add(resolver);
+    return (): void => {
+      this.fileResolvers.delete(resolver);
     };
   }
 
@@ -2900,7 +2927,71 @@ export class LspFeatures {
     only?: readonly string[],
     automatic: boolean = false,
   ): Promise<readonly LspCodeAction[] | null> {
-    const ref: LspDocumentRef | null = this.resolve(model);
+    return this.codeActionsOf(this.resolve(model), range, only, automatic);
+  }
+
+  /**
+   * Determines whether a running language server that offers code actions knows a file (#1152), open
+   * in an editor or not: the session of the workspace and language it belongs to.
+   * @param path The file's absolute path.
+   * @returns Returns true when such a server knows it.
+   */
+  public servesFileCodeActions(path: string): boolean {
+    return (this.resolveFile(path)?.codeActions ?? 'none') !== 'none';
+  }
+
+  /**
+   * Asks the language server whose session a file belongs to for the code actions at a span in it
+   * (#1152), whether or not an editor has the file open — a closed one the server reads from disk.
+   * @param path The file's absolute path.
+   * @param range The span, one-based.
+   * @param only The kinds to ask for, or undefined for every kind.
+   * @returns Returns the actions, or null when no server that offers code actions knows the file.
+   */
+  public fileCodeActions(
+    path: string,
+    range: MonacoApi.IRange,
+    only?: readonly string[],
+  ): Promise<readonly LspCodeAction[] | null> {
+    return this.codeActionsOf(this.resolveFile(path), range, only, true);
+  }
+
+  /**
+   * Fills in a code action offered in a file by {@link fileCodeActions} (#1152), as
+   * {@link resolveCodeAction} does for one offered in an editor.
+   * @param path The file's absolute path.
+   * @param action The action.
+   * @returns Returns the action, filled in where the server filled it in.
+   */
+  public resolveFileCodeAction(path: string, action: LspCodeAction): Promise<LspCodeAction> {
+    return this.resolveCodeActionOf(this.resolveFile(path), action);
+  }
+
+  /**
+   * Reads the symbols the language server whose session a file belongs to reports for it (#1152),
+   * whether or not an editor has it open.
+   * @param path The file's absolute path.
+   * @returns Returns the file's top-level symbols, or null when no server knows the file or it could
+   * not answer.
+   */
+  public fileSymbols(path: string): Promise<readonly CodeSymbol[] | null> {
+    return this.symbolsOf(this.resolveFile(path));
+  }
+
+  /**
+   * Asks a document's server for the code actions at a span in it (#1016).
+   * @param ref The document, or null when no server serves it.
+   * @param range The span, one-based.
+   * @param only The kinds to ask for, or undefined for every kind.
+   * @param automatic Whether the request was made without the user asking.
+   * @returns Returns the actions, or null when no server that offers code actions serves it.
+   */
+  private async codeActionsOf(
+    ref: LspDocumentRef | null,
+    range: MonacoApi.IRange,
+    only: readonly string[] | undefined,
+    automatic: boolean,
+  ): Promise<readonly LspCodeAction[] | null> {
     if (ref === null || (ref.codeActions ?? 'none') === 'none') {
       return null;
     }
@@ -2945,7 +3036,19 @@ export class LspFeatures {
     model: MonacoApi.editor.ITextModel,
     action: LspCodeAction,
   ): Promise<LspCodeAction> {
-    const ref: LspDocumentRef | null = this.resolve(model);
+    return this.resolveCodeActionOf(this.resolve(model), action);
+  }
+
+  /**
+   * Fills in a code action's edit and command through its document's server (#1016).
+   * @param ref The document, or null when no server serves it.
+   * @param action The action.
+   * @returns Returns the action, filled in where the server filled it in.
+   */
+  private async resolveCodeActionOf(
+    ref: LspDocumentRef | null,
+    action: LspCodeAction,
+  ): Promise<LspCodeAction> {
     if (ref?.codeActions !== 'resolve' || isCommand(action.raw)) {
       return action;
     }
@@ -3136,7 +3239,16 @@ export class LspFeatures {
   public async documentSymbols(
     model: MonacoApi.editor.ITextModel,
   ): Promise<readonly CodeSymbol[] | null> {
-    const ref: LspDocumentRef | null = this.resolve(model);
+    return this.symbolsOf(this.resolve(model));
+  }
+
+  /**
+   * Reads the symbols a document's server reports for it.
+   * @param ref The document, or null when no server serves it.
+   * @returns Returns the document's top-level symbols, or null when no server serves it or it could
+   * not answer.
+   */
+  private async symbolsOf(ref: LspDocumentRef | null): Promise<readonly CodeSymbol[] | null> {
     if (ref === null || this.bridge === undefined) {
       return null;
     }
@@ -3188,6 +3300,22 @@ export class LspFeatures {
       return null;
     }
     for (const resolver of this.resolvers) {
+      const ref: LspDocumentRef | null = resolver(path);
+      if (ref !== null) {
+        return ref;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolves a file, open in an editor or not, to the document its session knows it as, by asking the
+   * registered file resolvers (#1152).
+   * @param path The file's absolute path.
+   * @returns Returns the document reference, or null when no session knows the file.
+   */
+  private resolveFile(path: string): LspDocumentRef | null {
+    for (const resolver of this.fileResolvers) {
       const ref: LspDocumentRef | null = resolver(path);
       if (ref !== null) {
         return ref;

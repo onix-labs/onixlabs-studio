@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { RenameTypeWithFile } from '@shared/angular/services/rename/rename-type-with-file';
 import {
   Workspace,
   WorkspaceTreeNode,
@@ -186,6 +187,11 @@ export class TreePanel {
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the offer to rename a renamed file's type with it (#1152).
+   */
+  private readonly renameType: RenameTypeWithFile = inject(RenameTypeWithFile);
 
   /**
    * Holds the version-control commands a row offers, shared with the Solution Explorer (#1041).
@@ -902,6 +908,11 @@ export class TreePanel {
       return;
     }
     this.workspace.select(result.path);
+    if (edit.kind === 'rename') {
+      // A file named after its type offers to rename the type too, once its server catches up
+      // (#1152); a folder, or a file named after nothing, is left alone.
+      void this.renameType.offer(edit.target, result.path);
+    }
     // A newly created file is what the user is about to type into, so open it; a new folder and a
     // rename have nothing to open.
     if (edit.kind === 'new-file') {

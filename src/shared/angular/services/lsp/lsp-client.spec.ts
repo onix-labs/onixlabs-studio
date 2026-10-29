@@ -283,8 +283,15 @@ class FakeFeatures {
   private servedListener: ((sessionId: string) => void) | null = null;
   public resolver: ((path: string) => LspDocumentRef | null) | null = null;
 
+  public fileResolver: ((path: string) => LspDocumentRef | null) | null = null;
+
   public registerDocuments(resolver: (path: string) => LspDocumentRef | null): () => void {
     this.resolver = resolver;
+    return (): void => undefined;
+  }
+
+  public registerFiles(resolver: (path: string) => LspDocumentRef | null): () => void {
+    this.fileResolver = resolver;
     return (): void => undefined;
   }
 
@@ -1605,6 +1612,30 @@ describe('LspClient', () => {
           },
         ],
       ]);
+    });
+
+    it('aClosedFile_resolvesToTheRunningSessionOfItsLanguage_andNoOtherDoes (#1152)', async () => {
+      lsp.startResult = {
+        success: true,
+        capabilities: { codeActionProvider: { resolveProvider: true } },
+      };
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+
+      // Nothing runs before a document opens, and asking never starts a session.
+      expect(features.fileResolver?.('/root/src/b.ts')).toBeNull();
+      await open(client);
+
+      expect(features.fileResolver?.('/root/src/b.ts')).toMatchObject({
+        sessionId: '/root::typescript',
+        uri: 'file:///root/src/b.ts',
+        codeActions: 'resolve',
+      });
+      // The open document resolves as its editor's does, with its catch-up hook.
+      expect(features.fileResolver?.('/root/src/a.ts')?.sync).toBeDefined();
+      // No session serves Python here, and a file outside the workspace belongs to none.
+      expect(features.fileResolver?.('/root/src/b.py')).toBeNull();
+      expect(features.fileResolver?.('/elsewhere/b.ts')).toBeNull();
     });
 
     it('documentRefs_carryTheSessionsCodeActions_itsCommands_andTheDiagnosticsWithTheirCodeAndData (#1016)', async () => {
