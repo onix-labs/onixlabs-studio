@@ -355,6 +355,12 @@ export class LspManager {
       const pushed: Record<string, unknown> | undefined = this.registry.pushedSettingsOf(
         change.serverId,
       );
+      // A bare announcement is `{ settings: null }`, which only a server that asks again can use: the
+      // JSON server never asks, reads the settings it is sent, and throws on null (#1219).
+      if (pushed === undefined && !this.registry.pullsSettings(change.serverId)) {
+        logger.debug('LspManager', `Settings changed; ${id} neither asks for nor is pushed them`);
+        continue;
+      }
       logger.info(
         'LspManager',
         pushed === undefined
