@@ -35,6 +35,9 @@
 // Options: --profile <Studio user-data folder> (default: the release profile, then the development one),
 // --server-path <path> (as the Settings path override), --settle <seconds> (how long to wait for the
 // server to finish loading, default 120), --node (run Node servers under this Node rather than Electron),
+// --init-options <json> (merged over the descriptor's initializationOptions) and --settings <json> (the
+// values to answer workspace/configuration with, looked up by section, and to push in
+// didChangeConfiguration) — both to try what a server would do once Studio sends its settings (#1204).
 // --errors (print the server's logged errors), --no-experimental (advertise none of a server's experimental client capabilities), --verbose (print
 // the server's stderr and every message it sends). A fixture marks what each check lands on with
 // `@probe type=Point member=area call=area interface=Shape value=origin completion=p` in comments.
@@ -918,6 +921,47 @@ function chooseServer() {
 }
 
 const SERVER = chooseServer();
+/**
+ * Parses a JSON argument.
+ * @param {string} name The argument name.
+ * @returns {any} Returns the value, or undefined when absent.
+ */
+function jsonOption(name) {
+  const raw = option(name);
+  if (raw === null) return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    console.error(`--${name} is not JSON: ${error.message}`);
+    exit(2);
+  }
+}
+const INIT_OPTIONS = jsonOption('init-options');
+const SETTINGS = jsonOption('settings');
+if (INIT_OPTIONS !== undefined && !SERVER.spec.error) {
+  SERVER.spec = {
+    ...SERVER.spec,
+    initializationOptions: { ...(SERVER.spec.initializationOptions ?? {}), ...INIT_OPTIONS },
+  };
+}
+
+/**
+ * Answers one workspace/configuration item from `--settings`: the whole object for no section, else
+ * the value at the section — as a literal key, then as a dotted path — or null (the server's default).
+ * @param {string | null | undefined} section The section asked for.
+ * @returns {unknown} Returns the value.
+ */
+function settingFor(section) {
+  if (SETTINGS === undefined) return null;
+  if (!section) return SETTINGS;
+  if (section in SETTINGS) return SETTINGS[section];
+  let value = SETTINGS;
+  for (const part of section.split('.')) {
+    if (value === null || typeof value !== 'object' || !(part in value)) return null;
+    value = value[part];
+  }
+  return value;
+}
 const reportPath = (version) =>
   path.resolve(
     option('out') ??
@@ -1105,7 +1149,8 @@ function handle(message) {
   if (message.id !== undefined) {
     // Answered as Studio's main process answers them (lsp-manager.ts): registrations acknowledged,
     // configuration with the user's values for the settings the server declares (the probe has no
-    // user, so null — the server's own default — for every section), edits refused (Studio's
+    // user, so null — the server's own default — for every section, unless --settings gives values),
+    // edits refused (Studio's
     // renderer would apply them; the probe applies nothing), anything else null.
     if (message.method === 'client/registerCapability') {
       registrations.push(...(message.params.registrations ?? []));
@@ -1121,7 +1166,7 @@ function handle(message) {
     }
     const result =
       message.method === 'workspace/configuration'
-        ? (message.params.items ?? []).map(() => null)
+        ? (message.params.items ?? []).map((item) => settingFor(item.section))
         : message.method === 'workspace/applyEdit'
           ? { applied: false, failureReason: 'The probe applies no edits.' }
           : null;
@@ -1398,6 +1443,10 @@ if (init?.__error) {
 }
 log(`initialized: ${init.serverInfo?.name ?? '?'} ${init.serverInfo?.version ?? ''}`);
 notify('initialized', {});
+// Settings given to try are pushed at once too, as a server that takes pushed settings is sent them.
+if (SETTINGS !== undefined) {
+  notify('workspace/didChangeConfiguration', { settings: SETTINGS });
+}
 for (const message of SERVER.spec.postInitialize ?? []) {
   log(`-> ${message.method}`);
   notify(message.method, message.params);
@@ -1972,7 +2021,7 @@ if (SERVER.id === 'csharp') {
 
 // What the server asks for once it is told its settings changed (the way Studio tells it, #1143).
 configurationPhase = 'after didChangeConfiguration';
-notify('workspace/didChangeConfiguration', { settings: null });
+notify('workspace/didChangeConfiguration', { settings: SETTINGS ?? null });
 await sleep(2000);
 
 // ---- The report --------------------------------------------------------------------------------
@@ -2017,6 +2066,7 @@ function writeReport() {
       initializationOptions: SERVER.spec.initializationOptions ?? null,
       postInitialize: SERVER.spec.postInitialize ?? null,
     },
+    settingsOverride: SETTINGS ?? null,
     experimentalClientCapabilities: capabilities.experimental ?? null,
     workspace: ROOT,
     file: FILE,
