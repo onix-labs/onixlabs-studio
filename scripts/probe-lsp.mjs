@@ -1505,7 +1505,7 @@ function marker(role) {
     const match = pattern.exec(lines[line]);
     if (!match) continue;
     const name = match[1];
-    const word = new RegExp(`(?<![\\w$])${name.replace(/\$/g, '\\$')}(?![\\w$])`);
+    const word = new RegExp(`(?<![\\w$])${name.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}(?![\\w$])`);
     const before = lines[line].slice(0, lines[line].indexOf('@probe'));
     const here = word.exec(before);
     if (here && !/^\s*(\/\/|#|--|\/\*|\*|<!--)\s*$/.test(before.slice(0, here.index))) {
