@@ -1,5 +1,5 @@
 {
-  "revision": 59,
+  "revision": 60,
   "plugins": [
     {
       "id": "pyright",
@@ -381,6 +381,23 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
             "command": {
               "kind": "node"
+            },
+            "settings": [
+              {
+                "section": "css.validate",
+                "label": "Check styles",
+                "description": "Report syntax errors and unknown properties in style blocks and style attributes.",
+                "default": true
+              },
+              {
+                "section": "html.validate.scripts",
+                "label": "Check scripts",
+                "description": "Report syntax errors in script blocks.",
+                "default": true
+              }
+            ],
+            "settingsDelivery": {
+              "push": ["css", "html"]
             }
           },
           {
@@ -391,6 +408,29 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {
               "kind": "node"
+            },
+            "settings": [
+              {
+                "section": "css.validate",
+                "label": "Check CSS",
+                "description": "Report syntax errors and unknown properties in CSS files.",
+                "default": true
+              },
+              {
+                "section": "scss.validate",
+                "label": "Check SCSS",
+                "description": "Report syntax errors and unknown properties in SCSS files.",
+                "default": true
+              },
+              {
+                "section": "less.validate",
+                "label": "Check Less",
+                "description": "Report syntax errors and unknown properties in Less files.",
+                "default": true
+              }
+            ],
+            "settingsDelivery": {
+              "push": ["css", "scss", "less"]
             }
           },
           {
@@ -401,6 +441,25 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
+            },
+            "settings": [
+              {
+                "section": "json.validate.enable",
+                "label": "Check JSON",
+                "description": "Report syntax errors, and values a file's schema does not allow.",
+                "default": true
+              },
+              {
+                "section": "http.proxyStrictSSL",
+                "label": "Check certificates",
+                "description": "Refuse a server whose certificate is not trusted when downloading a JSON schema.",
+                "default": true,
+                "advanced": true
+              }
+            ],
+            "settingsDelivery": {
+              "pull": false,
+              "push": ["json", "http"]
             }
           }
         ]

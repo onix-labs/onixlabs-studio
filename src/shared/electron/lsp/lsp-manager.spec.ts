@@ -272,7 +272,10 @@ describe('LspManager (#1015)', () => {
       } = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
-        { pushedSettingsOf: (): undefined => undefined } as unknown as LspServerRegistry,
+        {
+          pushedSettingsOf: (): undefined => undefined,
+          pullsSettings: (): boolean => true,
+        } as unknown as LspServerRegistry,
         new LspApplyEditForwarder(),
       ) as unknown as ManagerInternals & {
         announceConfigurationChange(changes: readonly unknown[]): void;
@@ -337,6 +340,8 @@ describe('LspManager (#1015)', () => {
         {
           pushedSettingsOf: (serverId: string): Record<string, unknown> | undefined =>
             serverId === 'typescript' ? pushed : undefined,
+          // A server shaped like the JSON server never asks for its settings (#1219).
+          pullsSettings: (serverId: string): boolean => serverId !== 'json',
         } as unknown as LspServerRegistry,
         new LspApplyEditForwarder(),
       ) as unknown as DeliveryInternals;
@@ -416,6 +421,61 @@ describe('LspManager (#1015)', () => {
         },
       ]);
       expect(forwarded).toEqual([]);
+    });
+
+    it('noPull_aServerThatNeverAsksAndIsPushedNothing_isNeverSentANullAnnouncement', () => {
+      // The JSON server reads the settings it is sent, and throws on `{ settings: null }` (#1219).
+      const internals: DeliveryInternals = manager(PUSHED);
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      hold(internals, '/a::json', 'json', sent);
+
+      internals.announceConfigurationChange([{ serverId: 'json', restart: false }]);
+
+      expect(sent).toEqual([]);
+    });
+
+    it('noPull_aServerThatNeverAsks_isPushedItsSettingsAfterInitialized_andOnEveryChange', async () => {
+      // The JSON server's own shape (#1219): `json.*` and `http.*`, never asked for.
+      const json: Record<string, unknown> = {
+        json: { validate: { enable: true } },
+        http: { proxyStrictSSL: true },
+      };
+      const internals: DeliveryInternals = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {
+          pushedSettingsOf: (): Record<string, unknown> => json,
+          pullsSettings: (): boolean => false,
+        } as unknown as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      ) as unknown as DeliveryInternals;
+      vi.spyOn(internals, 'forwardNotification').mockImplementation((): void => undefined);
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      const connection: unknown = {
+        sendRequest: (): Promise<unknown> => Promise.resolve({ capabilities: {} }),
+        sendNotification: (method: string, params: unknown): Promise<void> => {
+          sent.push({ session: 'starting', method, params });
+          return Promise.resolve();
+        },
+      };
+
+      await internals.initialize(connection, '/root', { command: 'server', args: [] }, json);
+      hold(internals, '/a::json', 'json', sent);
+      internals.announceConfigurationChange([{ serverId: 'json', restart: false }]);
+
+      expect(sent).toEqual([
+        { session: 'starting', method: 'initialized', params: {} },
+        {
+          session: 'starting',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: json },
+        },
+        {
+          session: '/a::json',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: json },
+        },
+      ]);
     });
 
     it('startup_aChangeToASettingReadOnlyAtStartUp_restartsTheSessions_insteadOfTellingThem', () => {
@@ -573,7 +633,10 @@ describe('LspManager (#1015)', () => {
       const manager: unknown = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
-        { pushedSettingsOf: (): undefined => undefined } as unknown as LspServerRegistry,
+        {
+          pushedSettingsOf: (): undefined => undefined,
+          pullsSettings: (): boolean => true,
+        } as unknown as LspServerRegistry,
         new LspApplyEditForwarder(),
       );
       const internals: ManagerInternals = manager as ManagerInternals;

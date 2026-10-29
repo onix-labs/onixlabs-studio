@@ -8,6 +8,10 @@ vi.mock('electron', () => ({
 }));
 
 const { LspServerRegistry } = await import('./lsp-server-registry');
+const { parsePluginManifest } = await import('@shared/api/plugin-manifest');
+const { toLanguageServerDescriptors } = await import('../contributions/plugins/plugin-loader');
+const { answerConfiguration } = await import('./lsp-server-settings');
+const { default: CURATED } = await import('../contributions/plugins/curated-plugins.json');
 type LanguageServerDescriptor = import('./lsp-server-registry').LanguageServerDescriptor;
 type LspSettingsChange = import('./lsp-server-registry').LspSettingsChange;
 type LspSettingsManager = import('./lsp-settings').LspSettingsManager;
@@ -165,6 +169,94 @@ describe('LspServerRegistry settings delivery (#1204)', () => {
     expect(registry.pushedSettingsOf('typescript')).not.toHaveProperty('preferences');
     expect(registry.pushedSettingsOf('java')).toMatchObject({
       java: { referencesCodeLens: { enabled: false } },
+    });
+  });
+});
+
+describe('LspServerRegistry: the web servers (#1218, #1219)', () => {
+  /**
+   * Builds a registry holding the curated HTML, CSS and JSON servers, as an install of
+   * `vscode-langservers-extracted` contributes them.
+   * @returns Returns the registry, and a way to change the user's values as Settings would.
+   */
+  function webServers(): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'vscode-langservers-extracted',
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const settings: ReturnType<typeof userSettings> = userSettings({});
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      settings.manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
+      registry.register(descriptor);
+    }
+    return { registry, settings };
+  }
+
+  it('css_answersEachLanguagesSectionWithAnObject_neverNull', () => {
+    // The server reads `settings.lint.validProperties` from the answer, and throws on null.
+    const { registry } = webServers();
+
+    expect(
+      answerConfiguration(registry.configurationOf('vscode-css-language-server'), [
+        { section: 'css' },
+        { section: 'scss' },
+        { section: 'less' },
+      ]),
+    ).toEqual([{ validate: true }, { validate: true }, { validate: true }]);
+  });
+
+  it('css_aChangeIsPushedForEveryLanguage_asTheServerReplacesWhatItHoldsPerLanguage', () => {
+    const { registry, settings } = webServers();
+    settings.change({ 'vscode-css-language-server': { 'scss.validate': false } });
+
+    expect(registry.pushedSettingsOf('vscode-css-language-server')).toEqual({
+      css: { validate: true },
+      scss: { validate: false },
+      less: { validate: true },
+    });
+  });
+
+  it('html_answersTheEmbeddedCssSectionWithAnObject_andLeavesTheScriptSectionsNull', () => {
+    // `js/ts` stays null: the server reads `js/ts.implicitProjectConfig.strictNullChecks` from any
+    // object it is given, so an object without it would throw.
+    const { registry } = webServers();
+
+    expect(
+      answerConfiguration(registry.configurationOf('vscode-html-language-server'), [
+        { section: 'css' },
+        { section: 'html' },
+        { section: 'javascript' },
+        { section: 'js/ts' },
+      ]),
+    ).toEqual([{ validate: true }, { validate: { scripts: true } }, null, null]);
+  });
+
+  it('json_neverAsks_andIsPushedItsJsonAndHttpSettings_withoutARestart', () => {
+    const { registry, settings } = webServers();
+    const heard: (readonly LspSettingsChange[])[] = [];
+    registry.onConfigurationChange(
+      (changes: readonly LspSettingsChange[]): void => void heard.push(changes),
+    );
+
+    expect(registry.pullsSettings('vscode-json-language-server')).toBe(false);
+    expect(registry.pushedSettingsOf('vscode-json-language-server')).toEqual({
+      json: { validate: { enable: true } },
+      http: { proxyStrictSSL: true },
+    });
+
+    settings.change({ 'vscode-json-language-server': { 'json.validate.enable': false } });
+
+    expect(heard).toEqual([[{ serverId: 'vscode-json-language-server', restart: false }]]);
+    expect(registry.pushedSettingsOf('vscode-json-language-server')).toEqual({
+      json: { validate: { enable: false } },
+      http: { proxyStrictSSL: true },
     });
   });
 });

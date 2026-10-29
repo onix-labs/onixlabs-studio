@@ -228,6 +228,16 @@ export class LspServerRegistry {
   }
 
   /**
+   * Determines whether a server asks for its settings through `workspace/configuration` (#1204), so a
+   * bare `didChangeConfiguration` tells it to ask again.
+   * @param serverId The server.
+   * @returns Returns true unless the server says it never asks.
+   */
+  public pullsSettings(serverId: LspServerId): boolean {
+    return this.descriptors.get(serverId)?.settingsDelivery?.pull !== false;
+  }
+
+  /**
    * Listens for changes to the user's values for servers' declared settings (#1143), each saying
    * whether the server must restart to take it (#1204).
    * @param listener The listener, given the servers whose values changed.
