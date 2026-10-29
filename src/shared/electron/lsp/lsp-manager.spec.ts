@@ -268,14 +268,14 @@ describe('LspManager (#1015)', () => {
 
     it('aChangedSetting_tellsThatServersSessionsToReadTheirConfigurationAgain_andNoOthers', () => {
       const manager: ManagerInternals & {
-        announceConfigurationChange(serverIds: readonly string[]): void;
+        announceConfigurationChange(changes: readonly unknown[]): void;
       } = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
-        {} as LspServerRegistry,
+        { pushedSettingsOf: (): undefined => undefined } as unknown as LspServerRegistry,
         new LspApplyEditForwarder(),
       ) as unknown as ManagerInternals & {
-        announceConfigurationChange(serverIds: readonly string[]): void;
+        announceConfigurationChange(changes: readonly unknown[]): void;
       };
       const sent: { session: string; method: string; params: unknown }[] = [];
       const session: (id: string, serverId: string) => unknown = (
@@ -294,7 +294,7 @@ describe('LspManager (#1015)', () => {
       manager.sessions.set('/b::csharp', session('/b::csharp', 'csharp'));
       manager.sessions.set('/a::typescript', session('/a::typescript', 'typescript'));
 
-      manager.announceConfigurationChange(['csharp']);
+      manager.announceConfigurationChange([{ serverId: 'csharp', restart: false }]);
 
       expect(sent).toEqual([
         {
@@ -308,6 +308,185 @@ describe('LspManager (#1015)', () => {
           params: { settings: null },
         },
       ]);
+    });
+  });
+
+  describe('settings delivery (#1204)', () => {
+    /**
+     * The manager's internals the delivery specs reach.
+     */
+    type DeliveryInternals = ManagerInternals & {
+      announceConfigurationChange(changes: readonly unknown[]): void;
+      initialize(
+        connection: unknown,
+        rootPath: string,
+        spec: unknown,
+        pushed?: Record<string, unknown>,
+      ): Promise<unknown>;
+    };
+
+    /**
+     * Builds a manager whose registry pushes the given settings to the TypeScript server only.
+     * @param pushed The settings the TypeScript server is pushed.
+     * @returns Returns its internals.
+     */
+    function manager(pushed: Record<string, unknown>): DeliveryInternals {
+      return new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {
+          pushedSettingsOf: (serverId: string): Record<string, unknown> | undefined =>
+            serverId === 'typescript' ? pushed : undefined,
+        } as unknown as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      ) as unknown as DeliveryInternals;
+    }
+
+    /**
+     * Holds a session of a server in a manager, recording what it is sent.
+     * @param internals The manager.
+     * @param id The session.
+     * @param serverId The server.
+     * @param sent Receives each notification sent.
+     */
+    function hold(
+      internals: DeliveryInternals,
+      id: string,
+      serverId: string,
+      sent: { session: string; method: string; params: unknown }[],
+    ): void {
+      internals.sessions.set(id, {
+        request: { sessionId: id, serverId, rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        connection: {
+          sendNotification: (method: string, params: unknown): Promise<void> => {
+            sent.push({ session: id, method, params });
+            return Promise.resolve();
+          },
+        },
+        workspaceDiagnostics: null,
+      });
+    }
+
+    const PUSHED: Record<string, unknown> = {
+      typescript: { referencesCodeLens: { enabled: true } },
+    };
+
+    it('push_aChangeSendsTheSettingsShapedAsTheServerExpects_andTheEditorsAskAgain', () => {
+      const internals: DeliveryInternals = manager(PUSHED);
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      const forwarded: string[] = [];
+      vi.spyOn(internals, 'forwardNotification').mockImplementation(
+        (id: string, method: string): void => void forwarded.push(`${id} ${method}`),
+      );
+      hold(internals, '/a::typescript', 'typescript', sent);
+      hold(internals, '/a::csharp', 'csharp', sent);
+
+      internals.announceConfigurationChange([{ serverId: 'typescript', restart: false }]);
+
+      expect(sent).toEqual([
+        {
+          session: '/a::typescript',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: PUSHED },
+        },
+      ]);
+      expect(forwarded).toEqual([
+        '/a::typescript workspace/codeLens/refresh',
+        '/a::typescript workspace/inlayHint/refresh',
+      ]);
+    });
+
+    it('pull_aChangeTellsTheServerToAskAgain_withNoSettings_andNoRefresh', () => {
+      const internals: DeliveryInternals = manager(PUSHED);
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      const forwarded: string[] = [];
+      vi.spyOn(internals, 'forwardNotification').mockImplementation(
+        (id: string, method: string): void => void forwarded.push(`${id} ${method}`),
+      );
+      hold(internals, '/a::csharp', 'csharp', sent);
+
+      internals.announceConfigurationChange([{ serverId: 'csharp', restart: false }]);
+
+      expect(sent).toEqual([
+        {
+          session: '/a::csharp',
+          method: 'workspace/didChangeConfiguration',
+          params: { settings: null },
+        },
+      ]);
+      expect(forwarded).toEqual([]);
+    });
+
+    it('startup_aChangeToASettingReadOnlyAtStartUp_restartsTheSessions_insteadOfTellingThem', () => {
+      const internals: DeliveryInternals = manager(PUSHED);
+      const sent: { session: string; method: string; params: unknown }[] = [];
+      const restarted: string[] = [];
+      vi.spyOn(internals, 'restart').mockImplementation((id: string): Promise<unknown> => {
+        restarted.push(id);
+        return Promise.resolve({ success: true });
+      });
+      hold(internals, '/a::java', 'java', sent);
+      hold(internals, '/b::java', 'java', sent);
+      hold(internals, '/a::typescript', 'typescript', sent);
+
+      internals.announceConfigurationChange([{ serverId: 'java', restart: true }]);
+
+      expect(restarted).toEqual(['/a::java', '/b::java']);
+      expect(sent).toEqual([]);
+    });
+
+    it('push_aStartingServerIsSentItsSettingsRightAfterInitialized_beforeWhatItIsToldToOpen', async () => {
+      const internals: DeliveryInternals = manager(PUSHED);
+      const calls: { kind: string; method: string; params: unknown }[] = [];
+      const connection: unknown = {
+        sendRequest: (method: string, params: unknown): Promise<unknown> => {
+          calls.push({ kind: 'request', method, params });
+          return Promise.resolve({ capabilities: {} });
+        },
+        sendNotification: (method: string, params: unknown): Promise<void> => {
+          calls.push({ kind: 'notification', method, params });
+          return Promise.resolve();
+        },
+      };
+      const spec: unknown = {
+        command: 'server',
+        args: [],
+        initializationOptions: { preferences: { includeCompletionsForModuleExports: false } },
+        postInitialize: [{ method: 'project/open', params: {} }],
+      };
+
+      await internals.initialize(connection, '/root', spec, PUSHED);
+
+      expect(calls.map((call): string => call.method)).toEqual([
+        'initialize',
+        'initialized',
+        'workspace/didChangeConfiguration',
+        'project/open',
+      ]);
+      expect((calls[0].params as { initializationOptions: unknown }).initializationOptions).toEqual(
+        { preferences: { includeCompletionsForModuleExports: false } },
+      );
+      expect(calls[2].params).toEqual({ settings: PUSHED });
+    });
+
+    it('pull_aStartingServerIsSentNothing_untilItAsks', async () => {
+      const internals: DeliveryInternals = manager(PUSHED);
+      const methods: string[] = [];
+      const connection: unknown = {
+        sendRequest: (method: string): Promise<unknown> => {
+          methods.push(method);
+          return Promise.resolve({ capabilities: {} });
+        },
+        sendNotification: (method: string): Promise<void> => {
+          methods.push(method);
+          return Promise.resolve();
+        },
+      };
+
+      await internals.initialize(connection, '/root', { command: 'server', args: [] });
+
+      expect(methods).toEqual(['initialize', 'initialized']);
     });
   });
 
@@ -389,12 +568,12 @@ describe('LspManager (#1015)', () => {
      */
     function holding(calls: string[]): ManagerInternals & {
       notify(id: unknown, method: unknown, params: unknown): void;
-      announceConfigurationChange(serverIds: readonly string[]): void;
+      announceConfigurationChange(changes: readonly unknown[]): void;
     } {
       const manager: unknown = new LspManager(
         (): BrowserWindow | null => null,
         new WorkspaceContext(),
-        {} as LspServerRegistry,
+        { pushedSettingsOf: (): undefined => undefined } as unknown as LspServerRegistry,
         new LspApplyEditForwarder(),
       );
       const internals: ManagerInternals = manager as ManagerInternals;
@@ -413,7 +592,7 @@ describe('LspManager (#1015)', () => {
       });
       return manager as ManagerInternals & {
         notify(id: unknown, method: unknown, params: unknown): void;
-        announceConfigurationChange(serverIds: readonly string[]): void;
+        announceConfigurationChange(changes: readonly unknown[]): void;
       };
     }
 
@@ -428,7 +607,7 @@ describe('LspManager (#1015)', () => {
 
     it('aSettingsChange_startsThePullOver', () => {
       const calls: string[] = [];
-      holding(calls).announceConfigurationChange(['csharp']);
+      holding(calls).announceConfigurationChange([{ serverId: 'csharp', restart: false }]);
 
       expect(calls).toEqual(['server:workspace/didChangeConfiguration', 'reset']);
     });

@@ -568,13 +568,16 @@ export interface LspServerSettingOption {
 
 /**
  * Describes a setting a language server declares (#1143): what the user sees in Settings › Language
- * Providers, and the `workspace/configuration` section the server is answered from. Plain data, so a
- * server contributed by a plugin declares its own the same way.
+ * Providers, and the configuration section the server reads it from — whether it asks for it through
+ * `workspace/configuration`, is sent it in `workspace/didChangeConfiguration`, or is given it in its
+ * `initializationOptions` (#1204). Plain data, so a server contributed by a plugin declares its own the
+ * same way.
  */
 export interface LspServerSettingDescriptor {
   /**
-   * Gets the configuration section the server asks for, such as
-   * `projects.dotnet_enable_automatic_restore`.
+   * Gets the configuration section the server reads, such as
+   * `projects.dotnet_enable_automatic_restore` or `typescript.referencesCodeLens.enabled`. Dotted, so
+   * settings sent to a server as an object are nested by it: `{ typescript: { referencesCodeLens: … } }`.
    */
   readonly section: string;
 
@@ -602,4 +605,10 @@ export interface LspServerSettingDescriptor {
    * Gets whether the setting is a finer one, offered folded away under "Advanced" (#1145).
    */
   readonly advanced?: boolean;
+
+  /**
+   * Gets whether the server reads the setting only when it starts (#1204), so a change to it restarts
+   * the server's sessions — which the setting's description says.
+   */
+  readonly startupOnly?: boolean;
 }

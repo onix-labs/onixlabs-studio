@@ -22,6 +22,51 @@ export interface LspPostInitialize {
 }
 
 /**
+ * Describes where a server is given its settings in `initializationOptions` (#1204): the settings
+ * under one section, without it, placed at one key.
+ */
+export interface LspStartupSettings {
+  /**
+   * Gets the section the settings sent at start-up are under, such as `java` or `preferences`; only
+   * the settings under it are sent, and without it.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the dotted key of `initializationOptions` they are placed at — `settings.java` for jdtls,
+   * which reads `initializationOptions.settings.java.*` — or undefined to merge them into its root.
+   */
+  readonly key?: string;
+}
+
+/**
+ * Describes how a server takes the settings it declares (#1204). Servers differ: Roslyn, gopls and
+ * rust-analyzer ask for them through `workspace/configuration`, and only need telling that they
+ * changed; typescript-language-server and jdtls never ask, and read what they are sent in
+ * `workspace/didChangeConfiguration` and in `initializationOptions`. A server may do any mix.
+ */
+export interface LspSettingsDelivery {
+  /**
+   * Gets whether the server asks for its settings through `workspace/configuration`, so a change is
+   * announced with a bare `didChangeConfiguration` for it to ask again. Defaults to true.
+   */
+  readonly pull?: boolean;
+
+  /**
+   * Gets the sections whose settings are pushed to the server in `didChangeConfiguration` — once it has
+   * started, and on every change — nested under each, as VS Code's `configurationSection` does: `java`
+   * sends `{ settings: { java: { … } } }`. Undefined for a server that is never pushed them.
+   */
+  readonly push?: readonly string[];
+
+  /**
+   * Gets where the server is given its settings in `initializationOptions`, or undefined when it is
+   * given none at start-up.
+   */
+  readonly startup?: LspStartupSettings;
+}
+
+/**
  * Describes how to spawn a language server. The command and arguments are decided entirely by the
  * main process; the renderer only ever names a server by its {@link LspServerId}.
  */
@@ -187,10 +232,16 @@ export interface LanguageServerDescriptor {
   readonly servesWorkspaceDiagnostics?: boolean;
 
   /**
-   * Gets the settings the server reads through `workspace/configuration` that the user is offered
-   * (#1143), on its language's page in Settings. Only settings a user would recognise.
+   * Gets the settings the server reads that the user is offered (#1143), on its language's page in
+   * Settings. Only settings a user would recognise.
    */
   readonly settings?: readonly LspServerSettingDescriptor[];
+
+  /**
+   * Gets how the server takes its {@link settings} (#1204), or undefined for a server that asks for
+   * them through `workspace/configuration` and nothing else.
+   */
+  readonly settingsDelivery?: LspSettingsDelivery;
 
   /**
    * Resolves the server into a spawn specification, provisioning it and detecting its runtime when

@@ -3,12 +3,18 @@ import * as path from 'node:path';
 import {
   LspBraceStyle,
   LspServerId,
+  LspServerSettingDescriptor,
   LspServerSummary,
   LspSettings,
 } from '@shared/api/lsp-channels';
 import {
+  changedSections,
   LspServerSettingValues,
+  mergeOptions,
+  pushedSettings,
+  readOnlyAtStartup,
   serversWithChangedSettings,
+  startupOptions,
   withDeclaredDefaults,
 } from './lsp-server-settings';
 import { logger } from '../logger';
@@ -32,6 +38,22 @@ export type {
   LspResolution,
   LspServerSpec,
 } from './language-server-descriptor';
+
+/**
+ * Describes a change to the user's values for one server's declared settings (#1204).
+ */
+export interface LspSettingsChange {
+  /**
+   * Gets the server whose values changed.
+   */
+  readonly serverId: LspServerId;
+
+  /**
+   * Gets whether a setting that changed is one the server reads only when it starts, so its sessions
+   * must restart for the change to take effect.
+   */
+  readonly restart: boolean;
+}
 
 /**
  * Provides a `require` rooted at this module, used to resolve bundled language-server packages from
@@ -163,7 +185,10 @@ export class LspServerRegistry {
     const resolution: LspResolution = await descriptor.resolve(this.context(rootPath, braceStyle));
     return resolution.spec === null
       ? resolution
-      : { spec: this.withExtraArgs(serverId, resolution.spec), error: null };
+      : {
+          spec: this.withStartupSettings(serverId, this.withExtraArgs(serverId, resolution.spec)),
+          error: null,
+        };
   }
 
   /**
@@ -190,19 +215,72 @@ export class LspServerRegistry {
   }
 
   /**
-   * Listens for changes to the user's values for servers' declared settings (#1143).
+   * Gets the settings to push to a server in `workspace/didChangeConfiguration` (#1204), shaped as it
+   * expects them.
+   * @param serverId The server.
+   * @returns Returns the settings, or undefined for a server that is not pushed them.
+   */
+  public pushedSettingsOf(serverId: LspServerId): Record<string, unknown> | undefined {
+    return pushedSettings(
+      this.descriptors.get(serverId)?.settingsDelivery,
+      this.configurationOf(serverId),
+    );
+  }
+
+  /**
+   * Listens for changes to the user's values for servers' declared settings (#1143), each saying
+   * whether the server must restart to take it (#1204).
    * @param listener The listener, given the servers whose values changed.
    */
-  public onConfigurationChange(listener: (serverIds: readonly LspServerId[]) => void): void {
+  public onConfigurationChange(listener: (changes: readonly LspSettingsChange[]) => void): void {
     this.settings.onChange((previous: LspSettings, next: LspSettings): void => {
-      const changed: LspServerId[] = serversWithChangedSettings(
+      const changes: LspSettingsChange[] = serversWithChangedSettings(
         previous.serverSettings,
         next.serverSettings,
-      );
-      if (changed.length > 0) {
-        listener(changed);
+      ).map((serverId: LspServerId): LspSettingsChange => ({
+        serverId,
+        restart: this.changeNeedsRestart(
+          serverId,
+          changedSections(previous.serverSettings[serverId], next.serverSettings[serverId]),
+        ),
+      }));
+      if (changes.length > 0) {
+        listener(changes);
       }
     });
+  }
+
+  /**
+   * Determines whether a change to some of a server's settings needs it restarted (#1204): one of
+   * them is a declared setting the server reads only when it starts.
+   * @param serverId The server.
+   * @param sections The sections that changed.
+   * @returns Returns true when its sessions must restart.
+   */
+  private changeNeedsRestart(serverId: LspServerId, sections: readonly string[]): boolean {
+    const descriptor: LanguageServerDescriptor | undefined = this.descriptors.get(serverId);
+    return (descriptor?.settings ?? []).some(
+      (setting: LspServerSettingDescriptor): boolean =>
+        sections.includes(setting.section) &&
+        readOnlyAtStartup(descriptor?.settingsDelivery, setting),
+    );
+  }
+
+  /**
+   * Gives a server the settings it reads at start-up in its `initializationOptions` (#1204), merged
+   * with the options its descriptor resolved.
+   * @param serverId The server.
+   * @param spec The resolved spawn specification.
+   * @returns Returns the specification with its settings' options merged in.
+   */
+  private withStartupSettings(serverId: LspServerId, spec: LspServerSpec): LspServerSpec {
+    const options: Record<string, unknown> | undefined = startupOptions(
+      this.descriptors.get(serverId)?.settingsDelivery,
+      this.configurationOf(serverId),
+    );
+    return options === undefined
+      ? spec
+      : { ...spec, initializationOptions: mergeOptions(spec.initializationOptions, options) };
   }
 
   /**

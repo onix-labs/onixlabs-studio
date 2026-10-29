@@ -656,6 +656,11 @@ export function toLanguageServerDescriptors(
       displayName: server.displayName,
       languages: server.languages,
       priority: server.priority,
+      // Declared as a first-party server declares them (#1204): the same shapes, so they pass as is.
+      ...(server.settings === undefined ? {} : { settings: server.settings }),
+      ...(server.settingsDelivery === undefined
+        ? {}
+        : { settingsDelivery: server.settingsDelivery }),
       resolve: (context: LanguageServerContext): LspResolution => {
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.

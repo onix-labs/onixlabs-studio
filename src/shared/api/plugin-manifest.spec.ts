@@ -1160,3 +1160,118 @@ describe('parsePluginManifest', () => {
     });
   });
 });
+
+describe('language server settings (1.21.0, #1204)', () => {
+  /**
+   * Builds a manifest whose server declares the given settings fields.
+   * @param fields The fields to add to the server.
+   * @returns Returns the parse result.
+   */
+  function withServer(fields: Record<string, unknown>): ManifestResult {
+    return parsePluginManifest({
+      ...manifest(),
+      id: 'yaml-language-server',
+      contributes: {
+        languageServers: [
+          {
+            id: 'yaml-language-server',
+            displayName: 'YAML Language Server',
+            languages: ['yaml'],
+            command: { kind: 'node' },
+            ...fields,
+          },
+        ],
+      },
+    });
+  }
+
+  it('acceptsSettings_andHowTheServerTakesThem', () => {
+    const result: ManifestResult = withServer({
+      settings: [
+        {
+          section: 'yaml.validate',
+          label: 'Validate',
+          description: 'Check YAML against its schema.',
+          default: true,
+        },
+        {
+          section: 'yaml.format.proseWrap',
+          label: 'Wrap prose',
+          description: 'How prose is wrapped.',
+          default: 'preserve',
+          options: [
+            { value: 'preserve', label: 'Preserve' },
+            { value: 'always', label: 'Always' },
+          ],
+          advanced: true,
+          startupOnly: true,
+        },
+      ],
+      settingsDelivery: {
+        pull: true,
+        push: ['yaml'],
+        startup: { section: 'yaml', key: 'settings' },
+      },
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.manifest?.contributes.languageServers?.[0]).toMatchObject({
+      settings: [
+        { section: 'yaml.validate', default: true },
+        {
+          section: 'yaml.format.proseWrap',
+          options: [
+            { value: 'preserve', label: 'Preserve' },
+            { value: 'always', label: 'Always' },
+          ],
+          advanced: true,
+          startupOnly: true,
+        },
+      ],
+      settingsDelivery: {
+        pull: true,
+        push: ['yaml'],
+        startup: { section: 'yaml', key: 'settings' },
+      },
+    });
+  });
+
+  it('leavesAServerThatDeclaresNone_withoutEither', () => {
+    const server: unknown = withServer({}).manifest?.contributes.languageServers?.[0];
+
+    expect(server).not.toHaveProperty('settings');
+    expect(server).not.toHaveProperty('settingsDelivery');
+  });
+
+  it('refusesAMalformedSetting_orDelivery', () => {
+    const paths: (fields: Record<string, unknown>) => string[] = (
+      fields: Record<string, unknown>,
+    ): string[] => withServer(fields).errors.map((error: ManifestError): string => error.path);
+    const base: Record<string, unknown> = {
+      section: 'yaml.validate',
+      label: 'Validate',
+      description: 'd',
+      default: true,
+    };
+
+    expect(paths({ settings: [{ ...base, section: 'yaml..validate' }] })).toEqual([
+      'contributes.languageServers[0].settings[0].section',
+    ]);
+    expect(paths({ settings: [{ ...base, default: 3 }] })).toEqual([
+      'contributes.languageServers[0].settings[0].default',
+    ]);
+    expect(paths({ settings: [{ ...base, options: [] }] })).toEqual([
+      'contributes.languageServers[0].settings[0].options',
+    ]);
+    expect(paths({ settings: [{ ...base, startupOnly: 'yes' }] })).toEqual([
+      'contributes.languageServers[0].settings[0].startupOnly',
+    ]);
+    expect(paths({ settingsDelivery: { push: 'yaml' } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.push',
+    ]);
+    expect(paths({ settingsDelivery: { pull: 'no', startup: { key: 'x' } } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.pull',
+      'contributes.languageServers[0].settingsDelivery.startup.section',
+    ]);
+  });
+});

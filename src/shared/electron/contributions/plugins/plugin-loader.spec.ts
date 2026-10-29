@@ -501,6 +501,44 @@ describe('plugin loader', () => {
       expect(resolution.spec?.command).toBe(own);
     });
 
+    it('declaresTheSettingsAServerTakes_andHow_asAFirstPartyServerDoes (#1204)', () => {
+      const settings: Record<string, unknown>[] = [
+        {
+          section: 'zls.enable_inlay_hints',
+          label: 'Inlay hints',
+          description: 'Show hints.',
+          default: true,
+        },
+      ];
+      const settingsDelivery: Record<string, unknown> = {
+        pull: true,
+        push: ['zls'],
+        startup: { section: 'zls' },
+      };
+      writePlugin(
+        'zls',
+        manifest({
+          contributes: {
+            languageServers: [
+              {
+                id: 'zls',
+                displayName: 'Zig Language Server',
+                languages: ['zig'],
+                command: { kind: 'executable' },
+                settings,
+                settingsDelivery,
+              },
+            ],
+          },
+        }),
+      );
+
+      const [descriptor] = toLanguageServerDescriptors(validManifests(discoverPlugins(root))[0]);
+
+      expect(descriptor.settings).toEqual(settings);
+      expect(descriptor.settingsDelivery).toEqual(settingsDelivery);
+    });
+
     it('saysWhereItLookedWhenTheOverridePathIsWrong', async () => {
       writePlugin('zls', manifest());
       const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
