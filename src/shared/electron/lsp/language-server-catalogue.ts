@@ -109,6 +109,78 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   displayName: 'TypeScript Language Server',
   languages: ['typescript', 'javascript'],
   priority: DEFAULT_PRIORITY,
+  // The server never asks for its settings (#1204): it reads the `typescript.*` and `javascript.*`
+  // it is pushed, live, and the tsserver preferences it is given in `initializationOptions` only when
+  // it starts. The defaults are the server's own.
+  settingsDelivery: {
+    pull: false,
+    push: ['typescript', 'javascript'],
+    startup: { section: 'preferences', key: 'preferences' },
+  },
+  settings: [
+    {
+      section: 'typescript.referencesCodeLens.enabled',
+      label: 'Reference counts in TypeScript',
+      description:
+        'Show how many references a TypeScript declaration has above it; clicking the count lists them. Each costs a line.',
+      default: false,
+    },
+    {
+      section: 'typescript.implementationsCodeLens.enabled',
+      label: 'Implementation counts in TypeScript',
+      description:
+        'Show how many implementations an interface or abstract member has above it; clicking the count lists them.',
+      default: false,
+    },
+    {
+      section: 'javascript.referencesCodeLens.enabled',
+      label: 'Reference counts in JavaScript',
+      description:
+        'Show how many references a JavaScript declaration has above it; clicking the count lists them. Each costs a line.',
+      default: false,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayParameterNameHints',
+      label: 'Parameter names in TypeScript',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayParameterNameHints',
+      label: 'Parameter names in JavaScript',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'none',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayFunctionLikeReturnTypeHints',
+      label: 'Return types in TypeScript',
+      description:
+        'Show the return type the compiler infers for a function that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'preferences.includeCompletionsForModuleExports',
+      label: 'Auto-import suggestions',
+      description:
+        'Suggest exports of modules the file does not import yet, adding the import when one is chosen. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+  ],
   resolve: (context: LanguageServerContext): LspResolution => {
     const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
     const initializationOptions: { tsserver: { path: string } } | undefined =
@@ -135,6 +207,60 @@ const JAVA: LanguageServerDescriptor = {
   displayName: 'Eclipse JDT Language Server',
   languages: ['java'],
   priority: DEFAULT_PRIORITY,
+  // jdtls never asks for its settings (#1204): it is given `java.*` in
+  // `initializationOptions.settings` when it starts and pushed them on a change, as vscode-java does.
+  // How it imports a project it reads only as it starts. The defaults are the server's own.
+  settingsDelivery: {
+    pull: false,
+    push: ['java'],
+    startup: { section: 'java', key: 'settings.java' },
+  },
+  settings: [
+    {
+      section: 'java.referencesCodeLens.enabled',
+      label: 'Reference counts',
+      description:
+        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
+      default: false,
+    },
+    {
+      section: 'java.inlayHints.parameterNames.enabled',
+      label: 'Parameter names',
+      description:
+        'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
+      default: 'literals',
+      options: [
+        { value: 'none', label: 'Off' },
+        { value: 'literals', label: 'Literals' },
+        { value: 'all', label: 'All arguments' },
+      ],
+    },
+    {
+      section: 'java.signatureHelp.enabled',
+      label: 'Signature help',
+      description: "Show a method's parameters as you type its arguments.",
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'java.import.gradle.enabled',
+      label: 'Import Gradle projects',
+      description:
+        'Load a folder built with Gradle as a Gradle project. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+    {
+      section: 'java.import.maven.enabled',
+      label: 'Import Maven projects',
+      description:
+        'Load a folder built with Maven as a Maven project. The server reads this only when it starts, so changing it restarts it.',
+      default: true,
+      startupOnly: true,
+      advanced: true,
+    },
+  ],
   resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
     const java: string | null = await context.provisioner.detectJava(
       context.settings.get().javaPath,

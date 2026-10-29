@@ -143,8 +143,13 @@ import {
  * database-engine protocol. Unkeyed, and unlike the container engine not a choose-one slot: every
  * installed engine is live at once, and each saved connection names the engine that makes it. Adds
  * only.
+ *
+ * `1.21.0` adds a language server's optional `settings` and `settingsDelivery` (#1204): the settings
+ * Studio offers the user for it, as a first-party server declares them, and how the server takes them
+ * — asked for through `workspace/configuration`, pushed in `didChangeConfiguration`, given at start-up
+ * in `initializationOptions`, or a mix. Absent means no settings, asked for, as before. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.20.0';
+export const PLUGIN_API_VERSION: string = '1.21.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -880,6 +885,109 @@ export interface ManifestLanguageServer {
    * contribution says which part of it to run.
    */
   readonly entryPoint?: string;
+
+  /**
+   * Gets the settings the server reads that Studio offers the user, on its language's page in
+   * Settings (1.21.0), or undefined for none.
+   */
+  readonly settings?: readonly ManifestServerSetting[];
+
+  /**
+   * Gets how the server takes its {@link settings} (1.21.0), or undefined for a server that asks for
+   * them through `workspace/configuration` and nothing else.
+   */
+  readonly settingsDelivery?: ManifestSettingsDelivery;
+}
+
+/**
+ * Describes one choice of a {@link ManifestServerSetting} offered as a choice.
+ */
+export interface ManifestServerSettingOption {
+  /**
+   * Gets the value the server is given when this choice is made.
+   */
+  readonly value: boolean | string;
+
+  /**
+   * Gets the choice as the user reads it.
+   */
+  readonly label: string;
+}
+
+/**
+ * Describes a setting a contributed language server reads, offered to the user in Settings.
+ */
+export interface ManifestServerSetting {
+  /**
+   * Gets the dotted configuration section the server reads, such as `yaml.validate`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the setting's name, as the user reads it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets what the setting does, in a sentence — saying so when changing it restarts the server.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the server's own default, shown while the user has set nothing.
+   */
+  readonly default: boolean | string;
+
+  /**
+   * Gets the choices, for a setting offered as a choice; undefined for a switch.
+   */
+  readonly options?: readonly ManifestServerSettingOption[];
+
+  /**
+   * Gets whether the setting is a finer one, offered folded away under "Advanced".
+   */
+  readonly advanced?: boolean;
+
+  /**
+   * Gets whether the server reads the setting only when it starts, so a change restarts it.
+   */
+  readonly startupOnly?: boolean;
+}
+
+/**
+ * Describes where a contributed server is given its settings in `initializationOptions`.
+ */
+export interface ManifestStartupSettings {
+  /**
+   * Gets the section whose settings are sent, without it, such as `yaml`.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the dotted key of `initializationOptions` they are placed at, or undefined for its root.
+   */
+  readonly key?: string;
+}
+
+/**
+ * Describes how a contributed server takes its settings: asked for, pushed, at start-up, or a mix.
+ */
+export interface ManifestSettingsDelivery {
+  /**
+   * Gets whether the server asks for its settings through `workspace/configuration`. Defaults to true.
+   */
+  readonly pull?: boolean;
+
+  /**
+   * Gets the sections whose settings are pushed in `didChangeConfiguration`, nested under each, or
+   * undefined for a server that is never pushed them.
+   */
+  readonly push?: readonly string[];
+
+  /**
+   * Gets where the server is given its settings at start-up, or undefined for nowhere.
+   */
+  readonly startup?: ManifestStartupSettings;
 }
 
 /**
@@ -1475,6 +1583,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+        ...readServerSettings(entry, path, errors),
       });
     },
   );
@@ -2232,6 +2341,191 @@ function readPriority(entry: Record<string, unknown>, path: string, errors: Erro
     return 100;
   }
   return value;
+}
+
+/**
+ * Reads a language server's optional settings and how it takes them (1.21.0).
+ * @param entry The server entry.
+ * @param path The dotted path of the entry, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the fields present, to spread into the server.
+ */
+function readServerSettings(
+  entry: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): Pick<ManifestLanguageServer, 'settings' | 'settingsDelivery'> {
+  const result: {
+    settings?: ManifestServerSetting[];
+    settingsDelivery?: ManifestSettingsDelivery;
+  } = {};
+  if (entry['settings'] !== undefined) {
+    const settings: ManifestServerSetting[] = [];
+    readContributionList(
+      entry['settings'],
+      `${path}.settings`,
+      errors,
+      (setting: Record<string, unknown>, at: string): void => {
+        const parsed: ManifestServerSetting | null = readServerSetting(setting, at, errors);
+        if (parsed !== null) {
+          settings.push(parsed);
+        }
+      },
+    );
+    result.settings = settings;
+  }
+  if (entry['settingsDelivery'] !== undefined) {
+    const delivery: ManifestSettingsDelivery | null = readSettingsDelivery(
+      entry['settingsDelivery'],
+      `${path}.settingsDelivery`,
+      errors,
+    );
+    if (delivery !== null) {
+      result.settingsDelivery = delivery;
+    }
+  }
+  return result;
+}
+
+/**
+ * Determines whether a value is a setting's value: a switch, or a choice's string.
+ * @param value The candidate.
+ * @returns Returns true when it is.
+ */
+function isSettingValue(value: unknown): value is boolean | string {
+  return typeof value === 'boolean' || typeof value === 'string';
+}
+
+/**
+ * Validates a dotted configuration section: non-empty names joined by dots.
+ * @param value The candidate.
+ * @returns Returns true when it is one.
+ */
+function isSection(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.split('.').every((name: string): boolean => name.length > 0)
+  );
+}
+
+/**
+ * Validates one setting a contributed server declares.
+ * @param source The setting entry.
+ * @param path The dotted path, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the setting, or null when invalid.
+ */
+function readServerSetting(
+  source: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): ManifestServerSetting | null {
+  const before: number = errors.items.length;
+  if (!isSection(source['section'])) {
+    errors.add(`${path}.section`, 'must be a dotted configuration section');
+  }
+  const label: string = readString(source, 'label', `${path}.`, errors);
+  const description: string = readString(source, 'description', `${path}.`, errors);
+  const fallback: unknown = source['default'];
+  if (!isSettingValue(fallback)) {
+    errors.add(`${path}.default`, 'must be a boolean or a string');
+  }
+  let options: ManifestServerSettingOption[] | undefined;
+  if (source['options'] !== undefined) {
+    if (!Array.isArray(source['options']) || source['options'].length === 0) {
+      errors.add(`${path}.options`, 'must be a non-empty array of choices');
+    } else {
+      options = [];
+      for (const option of source['options'] as unknown[]) {
+        const choice: Record<string, unknown> | null = readObject(
+          option,
+          `${path}.options`,
+          errors,
+        );
+        if (choice === null) {
+          continue;
+        }
+        if (!isSettingValue(choice['value'])) {
+          errors.add(`${path}.options`, 'must give each choice a boolean or string value');
+          continue;
+        }
+        options.push({
+          value: choice['value'],
+          label: readString(choice, 'label', `${path}.options.`, errors),
+        });
+      }
+    }
+  }
+  const advanced: boolean = readFlag(source['advanced'], `${path}.advanced`, errors);
+  const startupOnly: boolean = readFlag(source['startupOnly'], `${path}.startupOnly`, errors);
+  if (errors.items.length > before) {
+    return null;
+  }
+  return {
+    section: source['section'] as string,
+    label,
+    description,
+    default: fallback as boolean | string,
+    ...(options === undefined ? {} : { options }),
+    ...(advanced ? { advanced } : {}),
+    ...(startupOnly ? { startupOnly } : {}),
+  };
+}
+
+/**
+ * Validates how a contributed server takes its settings.
+ * @param value The candidate.
+ * @param path The dotted path, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the delivery, or null when invalid.
+ */
+function readSettingsDelivery(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): ManifestSettingsDelivery | null {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return null;
+  }
+  const before: number = errors.items.length;
+  const pull: unknown = source['pull'];
+  if (pull !== undefined && typeof pull !== 'boolean') {
+    errors.add(`${path}.pull`, 'must be a boolean');
+  }
+  const push: unknown = source['push'];
+  if (push !== undefined && (!Array.isArray(push) || !push.every(isSection))) {
+    errors.add(`${path}.push`, 'must be an array of dotted configuration sections');
+  }
+  let startup: ManifestStartupSettings | undefined;
+  if (source['startup'] !== undefined) {
+    const table: Record<string, unknown> | null = readObject(
+      source['startup'],
+      `${path}.startup`,
+      errors,
+    );
+    if (table !== null) {
+      if (!isSection(table['section'])) {
+        errors.add(`${path}.startup.section`, 'must be a dotted configuration section');
+      }
+      if (table['key'] !== undefined && !isSection(table['key'])) {
+        errors.add(`${path}.startup.key`, 'must be a dotted key when present');
+      }
+      startup = {
+        section: table['section'] as string,
+        ...(table['key'] === undefined ? {} : { key: table['key'] as string }),
+      };
+    }
+  }
+  if (errors.items.length > before) {
+    return null;
+  }
+  return {
+    ...(pull === undefined ? {} : { pull: pull as boolean }),
+    ...(push === undefined ? {} : { push: push as readonly string[] }),
+    ...(startup === undefined ? {} : { startup }),
+  };
 }
 
 /**

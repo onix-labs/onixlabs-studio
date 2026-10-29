@@ -39,6 +39,7 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.18.0': '791ccdb952a907c8b3c74d3d1f382933c4a71af100dc9ff3614d0ff5210dc552',
   '1.19.0': 'f04620539f8783ebe5d5d0e32acc8c5d08c556cf0d2b57694ae37cd627d60337',
   '1.20.0': '10c07ebba93084b2bb850e5e55ea7aaf707036a82f88063758c40cf7fe5b1d54',
+  '1.21.0': 'a264aaf1a111e6b8426362d0f1d35cd2fc2c386eedf28bfff1b6d4f037e56e7b',
 };
 
 /**

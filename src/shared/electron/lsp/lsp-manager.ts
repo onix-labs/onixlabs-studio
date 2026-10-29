@@ -31,7 +31,12 @@ import {
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
-import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
+import {
+  LspResolution,
+  LspServerRegistry,
+  LspServerSpec,
+  LspSettingsChange,
+} from './lsp-server-registry';
 import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
 import { LspServerTail } from './lsp-server-tail';
 import { ApplyEditResult, LspApplyEditForwarder } from './lsp-apply-edit';
@@ -269,9 +274,10 @@ export class LspManager {
       this.registry.catalogue(),
     );
     // A server reads its declared settings whenever it is told they changed, so a change reaches a
-    // running server at once rather than on its next start (#1143).
-    this.registry.onConfigurationChange((serverIds: readonly string[]): void =>
-      this.announceConfigurationChange(serverIds),
+    // running server at once rather than on its next start (#1143) — or restarts it, for a setting it
+    // reads only when it starts (#1204).
+    this.registry.onConfigurationChange((changes: readonly LspSettingsChange[]): void =>
+      this.announceConfigurationChange(changes),
     );
     this.applyEdits.register();
     this.attaches.register();
@@ -327,22 +333,46 @@ export class LspManager {
   }
 
   /**
-   * Tells each running session of the given servers that its configuration changed, so it asks for
-   * it again through `workspace/configuration` (#1143).
-   * @param serverIds The servers whose settings changed.
+   * Tells each running session of the given servers that its configuration changed (#1143): pushed
+   * the settings, for a server that is pushed them, or told to ask for them again through
+   * `workspace/configuration` (#1204). A server that reads a changed setting only when it starts is
+   * restarted instead, which is the only way it hears of it.
+   * @param changes The servers whose settings changed.
    */
-  private announceConfigurationChange(serverIds: readonly string[]): void {
-    for (const [id, session] of this.sessions) {
-      if (!serverIds.includes(session.request.serverId)) {
+  private announceConfigurationChange(changes: readonly LspSettingsChange[]): void {
+    for (const [id, session] of [...this.sessions]) {
+      const change: LspSettingsChange | undefined = changes.find(
+        (candidate: LspSettingsChange): boolean => candidate.serverId === session.request.serverId,
+      );
+      if (change === undefined) {
         continue;
       }
-      logger.info('LspManager', `Settings changed; telling session ${id} to read them again`);
+      if (change.restart) {
+        logger.info('LspManager', `Settings changed that ${id} reads at start-up; restarting it`);
+        void this.restart(id);
+        continue;
+      }
+      const pushed: Record<string, unknown> | undefined = this.registry.pushedSettingsOf(
+        change.serverId,
+      );
+      logger.info(
+        'LspManager',
+        pushed === undefined
+          ? `Settings changed; telling session ${id} to read them again`
+          : `Settings changed; pushing them to session ${id}`,
+      );
       void session.connection.sendNotification('workspace/didChangeConfiguration', {
-        settings: null,
+        settings: pushed ?? null,
       });
       // A setting may change what the server reports at all (its analysis scope): start the
       // workspace diagnostics over rather than keep what it no longer mentions (#1144).
       session.workspaceDiagnostics?.reset();
+      // A server that is pushed its settings rarely says its lenses and hints went stale with them
+      // (typescript-language-server does not), so the editors are told to ask again.
+      if (pushed !== undefined) {
+        this.forwardNotification(id, 'workspace/codeLens/refresh', undefined);
+        this.forwardNotification(id, 'workspace/inlayHint/refresh', undefined);
+      }
     }
   }
 
@@ -552,7 +582,12 @@ export class LspManager {
 
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
-    session.ready = this.initialize(connection, parsed.rootPath, spec)
+    session.ready = this.initialize(
+      connection,
+      parsed.rootPath,
+      spec,
+      this.registry.pushedSettingsOf(parsed.serverId),
+    )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
         return {
@@ -578,12 +613,15 @@ export class LspManager {
    * @param connection The server connection.
    * @param rootPath The absolute workspace root.
    * @param spec The server specification, supplying initialization options.
+   * @param pushed The settings to push once the server has started (#1204), or undefined for a
+   * server that is not pushed them.
    * @returns Returns the server's initialize result.
    */
   private async initialize(
     connection: MessageConnection,
     rootPath: string,
     spec: LspServerSpec,
+    pushed?: Record<string, unknown>,
   ): Promise<InitializeResult> {
     const rootUri: string = pathToFileURL(rootPath).href;
     const params: InitializeParams = {
@@ -600,6 +638,11 @@ export class LspManager {
     );
     logger.debug('LspManager', `Initialize complete: ${result.serverInfo?.name ?? 'server'}`);
     void connection.sendNotification('initialized', {});
+    // A server that never asks for its settings hears of them only when it is sent them, as VS Code
+    // does at once (#1204): until then typescript-language-server runs with none.
+    if (pushed !== undefined) {
+      void connection.sendNotification('workspace/didChangeConfiguration', { settings: pushed });
+    }
     // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
     // told which solution or project to open here, once the handshake has completed.
     for (const message of spec.postInitialize ?? []) {
