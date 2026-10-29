@@ -168,7 +168,8 @@ describe('LspServerRegistry settings delivery (#1204)', () => {
     });
     expect(registry.pushedSettingsOf('typescript')).not.toHaveProperty('preferences');
     expect(registry.pushedSettingsOf('java')).toMatchObject({
-      java: { referencesCodeLens: { enabled: false } },
+      // On by default, as jdtls itself has it.
+      java: { referencesCodeLens: { enabled: true } },
     });
   });
 });

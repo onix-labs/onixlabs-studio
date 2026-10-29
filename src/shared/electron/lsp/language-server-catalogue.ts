@@ -219,9 +219,8 @@ const JAVA: LanguageServerDescriptor = {
     {
       section: 'java.referencesCodeLens.enabled',
       label: 'Reference counts',
-      description:
-        'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
-      default: false,
+      description: 'Show how many references a type or member has above it. Each costs a line.',
+      default: true,
     },
     {
       section: 'java.inlayHints.parameterNames.enabled',

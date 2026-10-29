@@ -42,7 +42,7 @@
 // the server's stderr and every message it sends). A fixture marks what each check lands on with
 // `@probe type=Point member=area call=area interface=Shape value=origin completion=p` in comments.
 
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -220,14 +220,10 @@ function detectJava(override) {
     'java',
   ];
   for (const candidate of candidates.filter(Boolean)) {
-    try {
-      const out = execFileSync(candidate, ['-version'], { encoding: 'utf8', stdio: 'pipe' });
-      const version = /version "(\d+)/.exec(out)?.[1];
-      if (Number(version) >= 21) return candidate;
-    } catch (error) {
-      const version = /version "(\d+)/.exec(String(error?.stderr ?? ''))?.[1];
-      if (Number(version) >= 21) return candidate;
-    }
+    // `java -version` writes to stderr and exits 0, so read stderr (as lsp-provisioner.ts does).
+    const out = spawnSync(candidate, ['-version'], { encoding: 'utf8' });
+    const version = /version "(\d+)/.exec(`${out.stderr ?? ''}${out.stdout ?? ''}`)?.[1];
+    if (Number(version) >= 21) return candidate;
   }
   return null;
 }
@@ -1010,6 +1006,7 @@ const t0 = Date.now();
 let earlyExit = null;
 let init = null;
 let settled = null;
+const checks = {};
 const log = (...parts) => console.error(`[${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...parts);
 
 log(`server ${SERVER.id}: ${SERVER.spec.command} ${SERVER.spec.args.join(' ')}`);
@@ -1682,8 +1679,6 @@ const ADVERTISED = {
 
 // ---- The checks --------------------------------------------------------------------------------
 
-const checks = {};
-
 /**
  * Decides whether an answer carries anything.
  * @param {unknown} value The answer.
@@ -2035,8 +2030,16 @@ function writeReport() {
     registrations.find((r) => r.method === 'textDocument/semanticTokens')?.registerOptions
       ?.legend ??
     null;
-  const STANDARD_TOKENS = new Set(capabilities.textDocument.semanticTokens.tokenTypes);
-  const STANDARD_MODIFIERS = new Set(capabilities.textDocument.semanticTokens.tokenModifiers);
+  // The client capabilities are declared after the server starts, so a server that exits before then
+  // is reported without them rather than crashing the report.
+  let client = null;
+  try {
+    client = capabilities;
+  } catch {
+    // Not declared yet.
+  }
+  const STANDARD_TOKENS = new Set(client?.textDocument.semanticTokens.tokenTypes ?? []);
+  const STANDARD_MODIFIERS = new Set(client?.textDocument.semanticTokens.tokenModifiers ?? []);
   // Named by the version Studio installed (its pin), else by the version the server reports.
   const version =
     SERVER.spec.version ??
@@ -2067,7 +2070,7 @@ function writeReport() {
       postInitialize: SERVER.spec.postInitialize ?? null,
     },
     settingsOverride: SETTINGS ?? null,
-    experimentalClientCapabilities: capabilities.experimental ?? null,
+    experimentalClientCapabilities: client?.experimental ?? null,
     workspace: ROOT,
     file: FILE,
     languageId: LANGUAGE,
