@@ -2,7 +2,6 @@ import { TestBed } from '@angular/core/testing';
 
 import { Bridge } from '@shared/api/bridge';
 import { ExportPdfResult, PrintChannel } from '@shared/api/print-channels';
-import { Settings } from '@shared/angular/services/settings/settings';
 import { Printing } from './printing';
 
 /**
@@ -55,23 +54,33 @@ describe('Printing', () => {
       .forEach((element: Element): void => element.remove());
   });
 
-  it('pageRule_whenTheMarginSettingChanges_isRewritten', () => {
-    TestBed.inject(Printing);
-    const settings: Settings = TestBed.inject(Settings);
-    settings.set('application.printMargin', 'narrow');
-    TestBed.tick();
-    expect(pageRule()).toBe('@page { margin: 1.4cm 1cm; }');
+  it('pageRule_isWrittenFromTheMarginEachPrintIsGiven', () => {
+    // Each capability that prints has its own margin, so the rule follows the caller, not one setting.
+    vi.stubGlobal('print', vi.fn());
+    try {
+      const printing: Printing = TestBed.inject(Printing);
+      printing.print('narrow');
+      expect(pageRule()).toBe('@page { margin: 1.4cm 1cm; }');
 
-    settings.set('application.printMargin', 'wide');
-    TestBed.tick();
-    expect(pageRule()).toBe('@page { margin: 5.6cm 4cm; }');
+      printing.print('wide');
+      expect(pageRule()).toBe('@page { margin: 5.6cm 4cm; }');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('exportPdf_writesTheMarginBeforeRendering', async () => {
+    stubBridge({ success: true });
+    await TestBed.inject(Printing).exportPdf('notes.md', 'narrow');
+
+    expect(pageRule()).toBe('@page { margin: 1.4cm 1cm; }');
   });
 
   it('print_whenCalled_opensTheBrowserPrintDialog', () => {
     const printSpy: ReturnType<typeof vi.fn> = vi.fn();
     vi.stubGlobal('print', printSpy);
     try {
-      TestBed.inject(Printing).print();
+      TestBed.inject(Printing).print('regular');
 
       expect(printSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -84,7 +93,7 @@ describe('Printing', () => {
     stubBridge(outcome);
     const printing: Printing = TestBed.inject(Printing);
 
-    const result: ExportPdfResult = await printing.exportPdf('notes.md');
+    const result: ExportPdfResult = await printing.exportPdf('notes.md', 'regular');
 
     expect(invokes).toEqual([
       { channel: PrintChannel.ExportPdf, args: [{ defaultFileName: 'notes.pdf' }] },
@@ -96,7 +105,7 @@ describe('Printing', () => {
     stubBridge({ success: true });
     const printing: Printing = TestBed.inject(Printing);
 
-    await printing.exportPdf('   ');
+    await printing.exportPdf('   ', 'regular');
 
     expect(invokes[0].args).toEqual([{ defaultFileName: 'document.pdf' }]);
   });
@@ -105,7 +114,7 @@ describe('Printing', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
     const printing: Printing = TestBed.inject(Printing);
 
-    const result: ExportPdfResult = await printing.exportPdf('notes.md');
+    const result: ExportPdfResult = await printing.exportPdf('notes.md', 'regular');
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('PDF export is only available in the desktop app');

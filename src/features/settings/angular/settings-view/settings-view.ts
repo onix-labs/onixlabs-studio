@@ -29,13 +29,53 @@ import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers'
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import {
+  PendingSettingsImport,
+  SettingsFileRead,
+  SettingsTransfer,
+} from '@features/settings/angular/settings-transfer';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
+import { findSection } from '@shared/angular/services/settings/settings-registry';
+import type { SettingDef } from '@shared/angular/services/settings/settings-schema';
+
+/**
+ * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one
+ * `ai` section while the tree splits them across pages, so the search has to be told which page each
+ * lives on. A key named on neither (the connections, the CLI paths) is shown on no page the search can
+ * point at, so it matches nothing rather than the wrong page.
+ */
+const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<string>>>> = {
+  ai: new Set<string>([
+    'ai.autoScroll',
+    'ai.conversationTextSize',
+    'ai.reportBackgroundTasks',
+    'ai.tokenCap',
+    'ai.runTimeoutMinutes',
+    'ai.agentSessionLifetime',
+    'ai.agentShell',
+  ]),
+  'ai-security': new Set<string>([
+    'ai.permissionPosture',
+    'ai.remoteControlPosture',
+    'ai.toolPolicies',
+    'ai.blockHostCommandLine',
+    'ai.allowedWritePaths',
+    'ai.deniedWritePaths',
+    'ai.allowedNetworkLocations',
+    'ai.deniedNetworkLocations',
+  ]),
+};
 
 /**
  * Identifies a section in the settings navigation.
  */
 type SettingsSectionId =
-  | 'appearance'
   | 'application'
   | 'accessibility'
   | 'notifications'
@@ -59,7 +99,25 @@ type SettingsSectionId =
   | 'source-control'
   | 'language-providers'
   | 'security'
-  | 'workspaces';
+  | 'workspaces'
+  // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
+  // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
+  | `keyboard-${string}`;
+
+/**
+ * Maps each root to the keyboard catalogue view whose shortcuts its Keyboard leaf shows. A shortcut
+ * belongs with the rest of its capability's settings, rather than in one list covering every view.
+ */
+const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
+  workspaces: 'Workspace',
+  'text-editor': 'Code Editor',
+  markdown: 'Markdown Editor',
+  'image-viewer': 'Image Viewer',
+  terminal: 'Terminal',
+  ai: 'Agent',
+  'api-explorer': 'API Explorer',
+  'database-explorer': 'Database Explorer',
+};
 
 /**
  * Describes a node in the settings navigation tree. A node is either a selectable leaf — it names the
@@ -94,6 +152,11 @@ interface SettingsNavNode {
    * section and differ only by the language they are about. Absent everywhere else.
    */
   readonly language?: string;
+
+  /**
+   * Gets the keyboard catalogue view a capability's Keyboard leaf shows. Absent everywhere else.
+   */
+  readonly keyboardView?: string;
 
   /**
    * Gets the node's children, for a branch; absent for a leaf.
@@ -139,6 +202,9 @@ interface SettingsTreeData {
   selector: 'app-settings-view',
   imports: [
     Button,
+    ButtonRow,
+    Modal,
+    ModalContent,
     AiManagerLink,
     LanguageEditorOverrides,
     LanguageServerSettings,
@@ -148,6 +214,7 @@ interface SettingsTreeData {
     TerminalSettingsSection,
     SettingsSection,
     AppIcon,
+    TextField,
     TreeView,
   ],
   templateUrl: './settings-view.html',
@@ -187,10 +254,32 @@ export class SettingsView {
   private readonly providers: AiProviders = inject(AiProviders);
 
   /**
+   * Holds the keyboard catalogue, which decides the Keyboard leaves and lets search find a shortcut.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the settings export and import.
+   */
+  private readonly transfer: SettingsTransfer = inject(SettingsTransfer);
+
+  /**
+   * Holds the notifications service, which reports how an export or import went.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the settings file read for import, while the user decides what happens to the settings it
+   * does not mention; null when no import is waiting.
+   */
+  protected readonly pendingImport: WritableSignal<PendingSettingsImport | null> =
+    signal<PendingSettingsImport | null>(null);
+
+  /**
    * Holds the identifier of the section currently shown in the content pane.
    */
   private readonly section: WritableSignal<SettingsSectionId> =
-    signal<SettingsSectionId>('appearance');
+    signal<SettingsSectionId>('application');
 
   /**
    * Holds the language whose server settings are on show. Every Language Providers leaf shares one
@@ -248,7 +337,7 @@ export class SettingsView {
       icon: Icon.APPLICATION,
       children: [
         { id: 'application-general', label: 'General', sectionId: 'application' },
-        { id: 'application-appearance', label: 'Appearance', sectionId: 'appearance' },
+        // The app-wide shortcuts; each capability's own are on a Keyboard leaf under its root.
         { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },
         { id: 'application-accessibility', label: 'Accessibility', sectionId: 'accessibility' },
         { id: 'application-notifications', label: 'Notifications', sectionId: 'notifications' },
@@ -292,6 +381,13 @@ export class SettingsView {
       children: [{ id: 'markdown-general', label: 'General', sectionId: 'markdown' }],
     },
     {
+      // Image Viewer has no settings of its own yet; it carries its Keyboard leaf alone.
+      id: 'image-viewer',
+      label: 'Image Viewer',
+      icon: Icon.IMAGE_FILE,
+      children: [],
+    },
+    {
       id: 'terminal',
       label: 'Terminal',
       icon: Icon.TERMINAL,
@@ -302,6 +398,13 @@ export class SettingsView {
       label: 'System Monitor',
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
+    },
+    {
+      // API Explorer has no settings of its own yet; it carries its Keyboard leaf alone.
+      id: 'api-explorer',
+      label: 'API Explorer',
+      icon: Icon.API_EXPLORER,
+      children: [],
     },
     {
       id: 'database-explorer',
@@ -325,8 +428,42 @@ export class SettingsView {
    */
   protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
     (): readonly SettingsNavNode[] =>
-      this.withLanguageProviderPages(this.withProviderPages(this.staticSections)),
+      this.withLanguageProviderPages(
+        this.withProviderPages(this.withKeyboardPages(this.staticSections)),
+      ).filter((node: SettingsNavNode): boolean => (node.children?.length ?? 1) > 0),
   );
+
+  /**
+   * Puts a Keyboard leaf under each root whose capability has catalogued shortcuts, built from the
+   * catalogue so a capability with none (or not installed) gets no empty page. A root left with no
+   * children at all — API Explorer or Image Viewer when their shortcuts are absent — is dropped by
+   * {@link sections}.
+   * @param sections The sections.
+   * @returns Returns the sections with the Keyboard leaves appended.
+   */
+  private withKeyboardPages(sections: readonly SettingsNavNode[]): readonly SettingsNavNode[] {
+    const views: ReadonlySet<string> = new Set<string>(
+      this.keybindings.resolvedCatalogue().map((binding: ResolvedBinding): string => binding.view),
+    );
+    return sections.map((node: SettingsNavNode): SettingsNavNode => {
+      const view: string | undefined = KEYBOARD_PAGES[node.id];
+      if (view === undefined || !views.has(view)) {
+        return node;
+      }
+      return {
+        ...node,
+        children: [
+          ...(node.children ?? []),
+          {
+            id: `${node.id}-keyboard`,
+            label: 'Keyboard',
+            sectionId: `keyboard-${node.id}`,
+            keyboardView: view,
+          },
+        ],
+      };
+    });
+  }
 
   /**
    * Puts the Language Providers branch into the Text Editor section, built from the languages the
@@ -438,6 +575,15 @@ export class SettingsView {
   });
 
   /**
+   * Gets the keyboard catalogue view a capability's Keyboard leaf shows, or null when the selection
+   * is not one.
+   */
+  protected readonly selectedKeyboardView: Signal<string | null> = computed((): string | null => {
+    const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
+    return path?.[path.length - 1].keyboardView ?? null;
+  });
+
+  /**
    * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected
    * leaf (for example ["Application", "General"] or ["Artificial Intelligence", "Providers",
    * "Anthropic"]), rendered as static, non-clickable crumbs.
@@ -452,11 +598,165 @@ export class SettingsView {
    * following it only while it is expanded.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const expanded: ReadonlySet<string> = this.expandedNodes();
+    const words: readonly string[] = this.queryWords();
+    const nodes: readonly SettingsNavNode[] =
+      words.length === 0 ? this.sections() : this.matchingNodes(this.sections(), [], words);
+    // While searching, every branch left standing holds a match, so all of them are open: a match
+    // tucked inside a collapsed branch is a match the user cannot see. The user's own expansion is
+    // left alone underneath and is what they get back when the query is cleared.
+    const expanded: ReadonlySet<string> =
+      words.length === 0 ? this.expandedNodes() : this.branchIds(nodes);
     const rows: TreeRow[] = [];
-    this.appendRows(this.sections(), 0, expanded, rows);
+    this.appendRows(nodes, 0, expanded, rows);
     return rows;
   });
+
+  /**
+   * Holds the text typed into the search box above the tree.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the search query split into lower-cased words; empty when there is no query.
+   */
+  private readonly queryWords: Signal<readonly string[]> = computed((): readonly string[] =>
+    this.query()
+      .toLocaleLowerCase()
+      .split(/\s+/)
+      .filter((word: string): boolean => word !== ''),
+  );
+
+  /**
+   * Gets a value indicating whether a search is in force and nothing matches it.
+   */
+  protected readonly noMatches: Signal<boolean> = computed(
+    (): boolean => this.queryWords().length > 0 && this.rows().length === 0,
+  );
+
+  /**
+   * Prunes the tree to the leaves a search matches, keeping each one's ancestors so it stays in place.
+   * A branch survives only while something beneath it matches.
+   * @param nodes The nodes to prune.
+   * @param trail The ancestors of the nodes (empty at the root).
+   * @param words The lower-cased query words.
+   * @returns Returns the pruned nodes.
+   */
+  private matchingNodes(
+    nodes: readonly SettingsNavNode[],
+    trail: readonly SettingsNavNode[],
+    words: readonly string[],
+  ): readonly SettingsNavNode[] {
+    const kept: SettingsNavNode[] = [];
+    for (const node of nodes) {
+      if (node.children === undefined) {
+        if (this.leafMatches(node, trail, words)) {
+          kept.push(node);
+        }
+        continue;
+      }
+      const children: readonly SettingsNavNode[] = this.matchingNodes(
+        node.children,
+        [...trail, node],
+        words,
+      );
+      if (children.length > 0) {
+        kept.push({ ...node, children });
+      }
+    }
+    return kept;
+  }
+
+  /**
+   * Determines whether a leaf matches a search: every word must appear somewhere in the leaf's own
+   * label, its ancestors' labels, or the titles and descriptions of the settings on its page — so
+   * "font size" finds Text Editor › General, and "terminal" finds the leaf under Terminal.
+   * @param leaf The leaf.
+   * @param trail The leaf's ancestors.
+   * @param words The lower-cased query words.
+   * @returns Returns true when the leaf matches.
+   */
+  private leafMatches(
+    leaf: SettingsNavNode,
+    trail: readonly SettingsNavNode[],
+    words: readonly string[],
+  ): boolean {
+    const text: string = [
+      ...trail.map((node: SettingsNavNode): string => node.label),
+      leaf.label,
+      ...this.settingsOnPage(leaf).flatMap((setting: SettingDef): string[] => [
+        setting.title,
+        setting.description,
+      ]),
+      ...this.shortcutsOnPage(leaf),
+    ]
+      .join('\n')
+      .toLocaleLowerCase();
+    return words.every((word: string): boolean => text.includes(word));
+  }
+
+  /**
+   * Finds the registry settings a leaf's page shows, for the search to match against.
+   *
+   * Most pages render one registry section of the same id. The AI pages split the one `ai` section
+   * between them (see {@link AI_PAGE_KEYS}), and a language's page shows the editor settings a language
+   * may override. Pages built by hand from settings the registry does not hold — Version Control, a
+   * language's server rows, the provider pages — have none, and are found by their names alone.
+   * @param leaf The leaf.
+   * @returns Returns the settings on the leaf's page.
+   */
+  private settingsOnPage(leaf: SettingsNavNode): readonly SettingDef[] {
+    if (leaf.sectionId === undefined) {
+      return [];
+    }
+    if (leaf.sectionId === 'language-providers') {
+      return (findSection('text-editor')?.settings ?? []).filter(
+        (setting: SettingDef): boolean => setting.profileOverridable === true,
+      );
+    }
+    const keys: ReadonlySet<string> | undefined = AI_PAGE_KEYS[leaf.sectionId];
+    if (keys !== undefined) {
+      return (findSection('ai')?.settings ?? []).filter((setting: SettingDef): boolean =>
+        keys.has(setting.key),
+      );
+    }
+    return findSection(leaf.sectionId)?.settings ?? [];
+  }
+
+  /**
+   * Finds the shortcut descriptions a Keyboard leaf shows, so "zoom in" finds Image Viewer › Keyboard.
+   * @param leaf The leaf.
+   * @returns Returns the descriptions, or none for a leaf that is not a capability's Keyboard page.
+   */
+  private shortcutsOnPage(leaf: SettingsNavNode): readonly string[] {
+    if (leaf.keyboardView === undefined) {
+      return [];
+    }
+    return this.keybindings
+      .resolvedCatalogue()
+      .filter((binding: ResolvedBinding): boolean => binding.view === leaf.keyboardView)
+      .map((binding: ResolvedBinding): string => `${binding.description} shortcut`);
+  }
+
+  /**
+   * Collects the ids of every branch in a tree.
+   * @param nodes The nodes.
+   * @returns Returns the branch ids.
+   */
+  private branchIds(nodes: readonly SettingsNavNode[]): ReadonlySet<string> {
+    const ids: Set<string> = new Set<string>();
+    const visit: (list: readonly SettingsNavNode[]) => void = (
+      list: readonly SettingsNavNode[],
+    ): void => {
+      for (const node of list) {
+        if (node.children !== undefined) {
+          ids.add(node.id);
+          visit(node.children);
+        }
+      }
+    };
+    visit(nodes);
+    return ids;
+  }
 
   /**
    * Gets the id of the selected navigation row: the leaf whose content is on show, or null when none.
@@ -601,6 +901,72 @@ export class SettingsView {
       }
       return next;
     });
+  }
+
+  /**
+   * Exports the settings to a file the user chooses.
+   */
+  protected async exportSettings(): Promise<void> {
+    this.log.info('settings', 'Settings export requested');
+    const path: string | null = await this.transfer.exportToFile();
+    if (path !== null) {
+      this.notifications.notify({ severity: 'success', title: 'Settings exported', detail: path });
+    }
+  }
+
+  /**
+   * Reads a settings file the user chooses and asks what happens to the settings it does not
+   * mention, which is a question to put each time: the answer depends on the file.
+   */
+  protected async importSettings(): Promise<void> {
+    this.log.info('settings', 'Settings import requested');
+    const read: SettingsFileRead | null = await this.transfer.readFromFile();
+    if (read === null) {
+      return;
+    }
+    if (!read.ok) {
+      this.notifications.notify({
+        severity: 'error',
+        title: "Settings couldn't be imported",
+        detail: read.error,
+      });
+      return;
+    }
+    this.pendingImport.set(read.pending);
+  }
+
+  /**
+   * Applies the waiting import.
+   * @param replace Whether settings the file does not mention go back to their defaults.
+   */
+  protected confirmImport(replace: boolean): void {
+    const pending: PendingSettingsImport | null = this.pendingImport();
+    if (pending === null) {
+      return;
+    }
+    this.transfer.apply(pending, replace);
+    this.pendingImport.set(null);
+    this.notifications.notify({
+      severity: 'success',
+      title: 'Settings imported',
+      detail: pending.fileName,
+    });
+  }
+
+  /**
+   * Drops the waiting import without applying anything.
+   */
+  protected cancelImport(): void {
+    this.pendingImport.set(null);
+  }
+
+  /**
+   * Counts the settings an import applies.
+   * @param pending The checked import.
+   * @returns Returns the number of settings the file sets.
+   */
+  protected importCount(pending: PendingSettingsImport): number {
+    return this.transfer.countOf(pending);
   }
 
   /**

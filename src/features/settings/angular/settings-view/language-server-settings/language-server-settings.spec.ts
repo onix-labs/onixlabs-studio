@@ -150,7 +150,7 @@ describe('LanguageServerSettings', () => {
     selection = { cpp: 'clangd' };
     const element: HTMLElement = await render('cpp', 'C++');
 
-    expect(element.textContent).toContain('Custom clangd path');
+    expect(element.textContent).toContain('Custom clangd Path');
     const fields: NodeListOf<HTMLInputElement> = element.querySelectorAll('app-text-field input');
     expect([...fields].some((f: HTMLInputElement): boolean => f.value === '/usr/bin/clangd')).toBe(
       true,
@@ -183,7 +183,7 @@ describe('LanguageServerSettings', () => {
       settings: [
         {
           section: 'projects.dotnet_enable_automatic_restore',
-          label: 'Restore packages',
+          label: 'Restore Packages',
           description: 'Restore or ask first.',
           default: true,
           options: [
@@ -217,7 +217,7 @@ describe('LanguageServerSettings', () => {
       selection = { csharp: 'csharp' };
       const element: HTMLElement = await render('csharp', 'C#');
 
-      expect(row(element, 'Restore packages').querySelector('select')?.value).toBe('true');
+      expect(row(element, 'Restore Packages').querySelector('select')?.value).toBe('true');
       expect(
         row(element, 'File-based programs').querySelector<HTMLInputElement>('app-toggle input')
           ?.checked,
@@ -229,7 +229,7 @@ describe('LanguageServerSettings', () => {
       selection = { csharp: 'csharp' };
       stored = { 'projects.dotnet_enable_automatic_restore': false };
       const element: HTMLElement = await render('csharp', 'C#');
-      const select: HTMLSelectElement = row(element, 'Restore packages').querySelector('select')!;
+      const select: HTMLSelectElement = row(element, 'Restore Packages').querySelector('select')!;
       expect(select.value).toBe('false');
 
       select.value = 'true';
@@ -253,7 +253,7 @@ describe('LanguageServerSettings', () => {
               ...(ROSLYN.settings ?? []),
               {
                 section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
-                label: 'Names for other arguments',
+                label: 'Names for Other Arguments',
                 description: 'Every other argument.',
                 default: false,
                 advanced: true,
@@ -267,14 +267,14 @@ describe('LanguageServerSettings', () => {
       const accordion: HTMLElement | null = element.querySelector('app-accordion');
 
       expect(accordion?.textContent).toContain('Advanced');
-      expect(row(element, 'Restore packages').closest('app-accordion')).toBeNull();
-      expect(element.textContent).not.toContain('Names for other arguments');
+      expect(row(element, 'Restore Packages').closest('app-accordion')).toBeNull();
+      expect(element.textContent).not.toContain('Names for Other Arguments');
 
       accordion?.querySelector<HTMLElement>('button')?.click();
       await new Promise((resolve: (value: unknown) => void): unknown => setTimeout(resolve));
       TestBed.tick();
 
-      expect(row(element, 'Names for other arguments').closest('app-accordion')).toBe(accordion);
+      expect(row(element, 'Names for Other Arguments').closest('app-accordion')).toBe(accordion);
     });
 
     it('aServerThatDeclaresNone_showsNone', async () => {
@@ -282,7 +282,7 @@ describe('LanguageServerSettings', () => {
       selection = { python: 'pyright' };
       const element: HTMLElement = await render('python', 'Python');
 
-      expect(element.textContent).not.toContain('Restore packages');
+      expect(element.textContent).not.toContain('Restore Packages');
     });
   });
 });

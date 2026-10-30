@@ -3,6 +3,8 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
@@ -27,8 +29,8 @@ interface BindingGroup {
 }
 
 /**
- * Represents the Keyboard section of the settings view: every catalogued command grouped by its
- * owning view, each with an editable chord.
+ * Represents a Keyboard page of the settings view: one capability's catalogued commands (its
+ * {@link view}), or the app-wide ones on Application › Keyboard, each with an editable chord.
  *
  * Clicking a chord arms capture: the next key combination becomes the command's override (persisted
  * through the keybinding router into the `keyboard.overrides` setting and effective immediately),
@@ -69,12 +71,24 @@ export class KeyboardSettingsSection {
   } | null>(null);
 
   /**
-   * Gets the catalogued commands grouped under their owning view, in contribution order.
+   * Gets the catalogue view whose shortcuts the page shows, or null for Application › Keyboard: the
+   * shortcuts that belong to no one capability.
+   */
+  public readonly view: InputSignal<string | null> = input.required<string | null>();
+
+  /**
+   * Gets the page's catalogued commands grouped under their owning view, in contribution order. A
+   * capability's page holds a single group; the app-wide page holds the commands of no view, which
+   * the catalogue has none of yet (the menu's own shortcuts are fixed).
    */
   protected readonly groups: Signal<readonly BindingGroup[]> = computed(
     (): readonly BindingGroup[] => {
+      const view: string | null = this.view();
       const groups: Map<string, ResolvedBinding[]> = new Map<string, ResolvedBinding[]>();
       for (const binding of this.keybindings.resolvedCatalogue()) {
+        if (binding.view !== view) {
+          continue;
+        }
         groups.set(binding.view, [...(groups.get(binding.view) ?? []), binding]);
       }
       return [...groups.entries()].map(

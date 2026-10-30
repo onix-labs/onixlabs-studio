@@ -14,13 +14,13 @@ describe('SettingBindings', () => {
 
   it('resolve_whenSettingsOwned_readsAndWritesThroughTheStore', () => {
     const settings: Settings = TestBed.inject(Settings);
-    const binding: SettingBinding = bindings.resolve('application.undoStackSize', undefined);
+    const binding: SettingBinding = bindings.resolve('notifications.toastDuration', undefined);
 
-    expect(binding.value()).toBe(100);
-    binding.set(250);
+    expect(binding.value()).toBe(settings.get('notifications.toastDuration'));
+    binding.set(9000);
 
-    expect(settings.get('application.undoStackSize')).toBe(250);
-    expect(binding.value()).toBe(250);
+    expect(settings.get('notifications.toastDuration')).toBe(9000);
+    expect(binding.value()).toBe(9000);
   });
 
   it('resolve_whenLspServerEnabledKey_reflectsTheDisabledState', () => {

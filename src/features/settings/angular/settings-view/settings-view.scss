@@ -31,6 +31,64 @@
   background: var(--settings-nav-background-color);
 }
 
+// The search box sits above the first tree node and spans the nav. The field's own default width is
+// cleared so the column's stretch decides it, and it stands taller than a strip control so the text
+// has room inside the box.
+.settings__search {
+  --control-height: 2rem;
+
+  flex: 0 0 auto;
+  inline-size: auto;
+  margin: 0 0.5rem 0.5rem;
+}
+
+.settings__no-matches {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+// Import and Export sit at the foot of the nav; the tree above takes the rest of the column.
+.settings__transfer {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0;
+}
+
+.settings__transfer-button {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+// The import question: what happens to the settings the file does not mention.
+.settings-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.settings-import__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.settings-import__body,
+.settings-import__note {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.settings-import__note {
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.settings-import__actions {
+  margin-block-start: 0.4rem;
+}
+
 // The right pane shows the selected section's controls, with the restart banner pinned beneath them.
 .settings__content {
   display: flex;

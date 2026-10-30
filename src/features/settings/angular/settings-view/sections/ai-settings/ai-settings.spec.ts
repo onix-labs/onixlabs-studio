@@ -129,7 +129,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenGeneralView_offersTheConversationTextSizes', () => {
-    const select: HTMLSelectElement = rowSelect('Conversation text size');
+    const select: HTMLSelectElement = rowSelect('Conversation Text Size');
 
     expect(
       Array.from(select.options).map((option: HTMLOptionElement): string => option.text.trim()),
@@ -139,7 +139,7 @@ describe('AiSettingsSection', () => {
 
   it('render_whenSecurityView_rendersThePermissionPostureRow', () => {
     show('security');
-    expect(rowSelect('Permission posture')).toBeTruthy();
+    expect(rowSelect('Permission Posture')).toBeTruthy();
   });
 
   it('blockHostCommandLine_isOffByDefault_andPersistsWhenSwitchedOn', () => {
@@ -149,7 +149,7 @@ describe('AiSettingsSection', () => {
     const row: Element | undefined = Array.from(host.querySelectorAll('app-setting-row')).find(
       (element: Element): boolean =>
         element.querySelector('.setting-row__label')?.textContent?.trim() ===
-        "Keep agents off the code host's command-line tool",
+        "Keep Agents off the Code Host's Command-Line Tool",
     );
     const toggle: HTMLInputElement | null | undefined = row?.querySelector('input');
     expect(toggle).toBeTruthy();
@@ -179,7 +179,7 @@ describe('AiSettingsSection', () => {
   it('posture_whenChanged_persistsToSettings', () => {
     show('security');
     const settings: Settings = TestBed.inject(Settings);
-    const select: HTMLSelectElement = rowSelect('Permission posture');
+    const select: HTMLSelectElement = rowSelect('Permission Posture');
 
     select.value = 'auto-all';
     select.dispatchEvent(new Event('change'));

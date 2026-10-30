@@ -39,7 +39,7 @@ describe('SettingControl', () => {
   });
 
   it('render_whenSelectControl_rendersADropdownWithAnOptionPerChoice', async () => {
-    const element: HTMLElement = await render('application.printMargin');
+    const element: HTMLElement = await render('textEditor.printMargin');
     expect(element.querySelector('app-dropdown')).toBeTruthy();
     expect(element.querySelectorAll('option').length).toBe(3);
   });
@@ -104,22 +104,22 @@ describe('SettingControl', () => {
   });
 
   it('onChange_whenSelectionPicked_writesTheValueThroughTheService', async () => {
-    const element: HTMLElement = await render('application.printMargin');
+    const element: HTMLElement = await render('textEditor.printMargin');
 
     const select: HTMLSelectElement = element.querySelector<HTMLSelectElement>('select')!;
     select.value = 'wide';
     select.dispatchEvent(new Event('change'));
 
-    expect(settings.get('application.printMargin')).toBe('wide');
+    expect(settings.get('textEditor.printMargin')).toBe('wide');
   });
 
   it('onChange_whenNumericSelectionPicked_writesANumberThroughTheService', async () => {
-    const element: HTMLElement = await render('application.undoStackSize');
+    const element: HTMLElement = await render('systemMonitor.refreshRate');
 
     const select: HTMLSelectElement = element.querySelector<HTMLSelectElement>('select')!;
-    select.value = '200';
+    select.value = '4000';
     select.dispatchEvent(new Event('change'));
 
-    expect(settings.get('application.undoStackSize')).toBe(200);
+    expect(settings.get('systemMonitor.refreshRate')).toBe(4000);
   });
 });

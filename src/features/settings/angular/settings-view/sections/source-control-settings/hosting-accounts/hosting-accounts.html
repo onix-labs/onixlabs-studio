@@ -36,7 +36,7 @@
 } @empty {
   @if (loaded() && isAvailable) {
     <app-setting-row
-      label="Code hosting"
+      label="Code Hosting"
       description="No code-hosting plugin is installed, so pull requests, issues and workflow runs are unavailable. Install GitHub from the Plugin Manager."
     />
   }
@@ -44,11 +44,11 @@
 
 @if (rows().length > 0) {
   <app-setting-row
-    label="How tokens are stored"
+    label="How Tokens Are Stored"
     description="A token you save is encrypted with your operating system's secure storage and kept in the main process. Studio hands it only to the plugin that serves its host, and it is never readable from this page once saved."
   />
   <app-setting-row
-    label="Signing in"
+    label="Signing In"
     description="Automatic uses the host's command-line login when you are signed in with it, and the token saved here otherwise. Choose one to use only that."
   />
 }

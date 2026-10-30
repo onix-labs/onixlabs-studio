@@ -141,7 +141,40 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // Showing notifications over the ribbon was retired; the stack always sits bottom right.
   delete result['notifications.position'];
 
+  // "Undo history" read as the app's undo depth but bounded only the window-layout stack, which
+  // nothing offers to undo; it goes until undo is designed per capability.
+  delete result['application.undoStackSize'];
+
+  // The print margin moved from Application to each capability that prints. Both inherit the one
+  // margin the user had chosen, so nothing prints differently after the upgrade.
+  moveKey(result, 'application.printMargin', [
+    'textEditor.printMargin',
+    'markdownEditor.printMargin',
+  ]);
+
+  // The log level moved to System Monitor, beside the logs it governs.
+  moveKey(result, 'application.logLevel', ['systemMonitor.logLevel']);
+
   return dropGuessedContextWindows(result);
+}
+
+/**
+ * Moves a stored value from a retired key to the keys that replaced it, filling each only where the
+ * user has no value of its own, then removes the retired key.
+ * @param overrides The override map, updated in place.
+ * @param from The retired key.
+ * @param to The keys that replaced it.
+ */
+function moveKey(overrides: Record<string, unknown>, from: string, to: readonly string[]): void {
+  if (!(from in overrides)) {
+    return;
+  }
+  for (const key of to) {
+    if (!(key in overrides)) {
+      overrides[key] = overrides[from];
+    }
+  }
+  delete overrides[from];
 }
 
 /**

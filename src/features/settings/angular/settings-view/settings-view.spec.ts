@@ -8,6 +8,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 import { Theme } from '@shared/angular/services/theme/theme';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { SettingsView } from './settings-view';
 
 describe('SettingsView', () => {
@@ -166,5 +167,114 @@ describe('SettingsView', () => {
     const accent: HTMLSelectElement | null = dropdownWithOption(element, 'pink');
 
     expect(accent?.value).toBe('pink');
+  });
+
+  describe('keyboard pages', () => {
+    /**
+     * Gets the ids of the tree rows with every branch expanded.
+     * @returns Returns the row ids.
+     */
+    function allRowIds(): readonly string[] {
+      const view: {
+        expandedNodes: WritableSignal<ReadonlySet<string>>;
+        rows: () => readonly { id: string }[];
+      } = component as unknown as {
+        expandedNodes: WritableSignal<ReadonlySet<string>>;
+        rows: () => readonly { id: string }[];
+      };
+      view.expandedNodes.set(
+        new Set<string>(['application', 'text-editor', 'image-viewer', 'api-explorer', 'terminal']),
+      );
+      return view.rows().map((row: { id: string }): string => row.id);
+    }
+
+    it('render_eachCapabilityWithShortcuts_getsAKeyboardLeafUnderItsOwnRoot', () => {
+      TestBed.inject(Keybindings).contribute({
+        view: 'Code Editor',
+        bindings: [{ id: 'test.save', description: 'Save the thing', chord: 'Mod+S' }],
+      });
+      TestBed.inject(Keybindings).contribute({
+        view: 'Image Viewer',
+        bindings: [{ id: 'test.zoom', description: 'Zoom in', chord: 'Mod+=' }],
+      });
+
+      const ids: readonly string[] = allRowIds();
+
+      expect(ids).toContain('text-editor-keyboard');
+      expect(ids).toContain('image-viewer-keyboard');
+      // Application › Keyboard stays, for the shortcuts that belong to no one capability.
+      expect(ids).toContain('application-keyboard');
+    });
+
+    it('render_aRootWithNothingButAnAbsentKeyboardPage_isDropped', () => {
+      // API Explorer carries only its Keyboard leaf; with no shortcuts catalogued it would be empty.
+      const ids: readonly string[] = allRowIds();
+
+      expect(ids).not.toContain('api-explorer');
+      expect(ids).not.toContain('terminal-keyboard');
+    });
+  });
+
+  describe('search', () => {
+    /**
+     * Types a query into the search box above the tree and returns the ids of the rows left standing.
+     * @param query The text to type.
+     * @returns Returns the visible row ids, in order.
+     */
+    async function search(query: string): Promise<readonly string[]> {
+      const input: HTMLInputElement | null = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLInputElement>('.settings__search input');
+      input!.value = query;
+      input!.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      return (component as unknown as { rows: () => readonly { id: string }[] })
+        .rows()
+        .map((row: { id: string }): string => row.id);
+    }
+
+    it('search_byASettingsTitle_leavesTheLeafItLivesOnWithItsAncestorsOpen', async () => {
+      // "Font size" is a Text Editor setting: the search lands on the page it lives on, with the
+      // branch above it open even though the user never expanded it.
+      const ids: readonly string[] = await search('font size');
+
+      expect(ids).toContain('text-editor');
+      expect(ids).toContain('text-editor-general');
+      expect(ids).not.toContain('application-general');
+    });
+
+    it('search_byAnAiSecuritySetting_findsSecurityAndPermissionsNotGeneral', async () => {
+      // The registry holds every AI setting in one section that two pages share; a match has to land
+      // on the page that actually shows it.
+      const ids: readonly string[] = await search('permission posture');
+
+      expect(ids).toContain('ai-security-leaf');
+      expect(ids).not.toContain('ai-general');
+    });
+
+    it('search_byABranchName_keepsEveryLeafBeneathIt', async () => {
+      const ids: readonly string[] = await search('artificial');
+
+      expect(ids).toContain('ai-general');
+      expect(ids).toContain('ai-mission-control');
+      expect(ids).not.toContain('terminal');
+    });
+
+    it('search_whenNothingMatches_saysSo', async () => {
+      const ids: readonly string[] = await search('zzzz-nothing-is-called-this');
+
+      expect(ids).toEqual([]);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('No settings match.');
+    });
+
+    it('search_whenCleared_restoresTheUsersOwnExpansion', async () => {
+      await search('font size');
+      const ids: readonly string[] = await search('');
+
+      // Only Application starts expanded; the search's opened branches are not left behind.
+      expect(ids).toContain('application-general');
+      expect(ids).not.toContain('text-editor-general');
+    });
   });
 });

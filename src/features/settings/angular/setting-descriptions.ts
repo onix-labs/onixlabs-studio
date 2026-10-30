@@ -58,17 +58,16 @@ export class SettingDescriptions {
   }
 
   /**
-   * Builds the graphics-acceleration hint, naming what the automatic mode resolves to on this system
-   * (and the detected GPU, when known). Appended to the static description rather than replacing it,
-   * so the levels stay explained while the machine-specific part is added.
+   * Builds the graphics-acceleration hint, naming what the automatic mode resolves to on this system.
+   * Appended to the static description rather than replacing it, so the levels stay explained while
+   * the machine-specific part is added. The GPU's own name is not repeated here: it is a long driver
+   * string that belongs with the machine's other readings in the System Monitor.
    * @param base The static description the hint is appended to.
    * @returns Returns the hint text.
    */
   private graphicsAccelerationHint(base: string): string {
     const level: string =
       this.display.recommendedGraphicsAcceleration === 'full' ? 'Full' : 'Limited';
-    const gpu: string = this.display.gpuDescription;
-    const detail: string = gpu.length > 0 ? ` (${gpu} detected)` : '';
-    return `${base} Automatic resolves to ${level} on this system${detail}.`;
+    return `${base} Automatic resolves to ${level} on this system.`;
   }
 }

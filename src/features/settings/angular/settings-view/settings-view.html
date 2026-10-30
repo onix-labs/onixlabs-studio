@@ -1,5 +1,17 @@
 <div class="settings">
   <nav class="settings__nav" aria-label="Settings sections">
+    <app-text-field
+      class="settings__search"
+      kind="search"
+      placeholder="Search Settings"
+      ariaLabel="Search Settings"
+      [value]="query()"
+      (valueChange)="query.set($event)"
+      (escape)="query.set('')"
+    />
+    @if (noMatches()) {
+      <p class="settings__no-matches">No settings match.</p>
+    }
     <app-tree-view [rows]="rows()" [selectedId]="selectedRowId()" (rowClick)="onRowClick($event)">
       <ng-template let-row>
         @let node = dataOf(row);
@@ -9,6 +21,26 @@
         <span class="tree-name">{{ node.label }}</span>
       </ng-template>
     </app-tree-view>
+
+    <!-- Pinned beneath the tree, which takes the rest of the column, so they never scroll away. -->
+    <div class="settings__transfer">
+      <app-button
+        class="settings__transfer-button"
+        size="small"
+        label="Import"
+        [icon]="Icon.DOWNLOAD"
+        ariaLabel="Import settings from a file"
+        (click)="importSettings()"
+      />
+      <app-button
+        class="settings__transfer-button"
+        size="small"
+        label="Export"
+        [icon]="Icon.EXPORT"
+        ariaLabel="Export settings to a file"
+        (click)="exportSettings()"
+      />
+    </div>
   </nav>
 
   <div class="settings__content">
@@ -27,9 +59,6 @@
       </h2>
 
       @switch (selectedSection()) {
-        @case ('appearance') {
-          <app-settings-section sectionId="appearance" />
-        }
         @case ('application') {
           <app-settings-section sectionId="application" />
         }
@@ -55,7 +84,7 @@
           <app-source-control-settings />
         }
         @case ('keyboard') {
-          <app-keyboard-settings />
+          <app-keyboard-settings [view]="null" />
         }
         @case ('ai') {
           <app-ai-settings view="general" />
@@ -104,6 +133,9 @@
           @if (selectedProvider(); as providerId) {
             <app-ai-settings view="provider" [providerId]="providerId" />
           }
+          @if (selectedKeyboardView(); as view) {
+            <app-keyboard-settings [view]="view" />
+          }
         }
       }
     </section>
@@ -116,3 +148,30 @@
     }
   </div>
 </div>
+
+@if (pendingImport(); as pending) {
+  <app-modal [open]="true" [width]="30" ariaLabel="Import settings" (dismiss)="cancelImport()">
+    <ng-template appModalContent>
+      <div class="settings-import">
+        <h2 class="settings-import__title">Import Settings</h2>
+        <p class="settings-import__body">
+          <strong>{{ pending.fileName }}</strong> sets {{ importCount(pending) }}
+          {{ importCount(pending) === 1 ? 'setting' : 'settings' }}. What should happen to the
+          settings it doesn't mention?
+        </p>
+        @if (pending.skipped > 0) {
+          <p class="settings-import__note">
+            {{ pending.skipped }} {{ pending.skipped === 1 ? 'entry' : 'entries' }} in the file will
+            be skipped: Studio doesn't recognise {{ pending.skipped === 1 ? 'it' : 'them' }}, or the
+            value doesn't fit the setting.
+          </p>
+        }
+        <app-button-row class="settings-import__actions">
+          <app-button variant="solid" label="Keep them" (click)="confirmImport(false)" />
+          <app-button label="Reset them to default" (click)="confirmImport(true)" />
+          <app-button variant="none" label="Cancel" (click)="cancelImport()" />
+        </app-button-row>
+      </div>
+    </ng-template>
+  </app-modal>
+}

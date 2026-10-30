@@ -104,9 +104,6 @@ function renderProviders(): unknown[] {
         globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
         // The tool strip's button names itself through a tooltip, which reads this.
         value: (): Signal<boolean> => signal<boolean>(true),
-        // The panel asks the real DockState whether it is the active tab, and DockState bounds
-        // its undo history from here.
-        undoStackSize: signal<number>(50),
       },
     },
   ];

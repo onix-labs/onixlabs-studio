@@ -36,6 +36,13 @@ import {
 } from './dock-tree';
 
 /**
+ * The most layout snapshots the history keeps. It was the `application.undoStackSize` setting, which
+ * read as the app's undo depth while bounding only this stack; nothing offers layout undo yet, so it
+ * is fixed until undo is designed per capability.
+ */
+const LAYOUT_HISTORY_DEPTH: number = 100;
+
+/**
  * Holds the dock layout tree and exposes immutable mutations over it. Every mutation replaces the
  * tree signal with a structurally shared copy, so dependent views re-render with stable node ids.
  */
@@ -54,7 +61,7 @@ export class DockState {
   private readonly panels: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
-   * Holds the settings the history caretaker reads the bounded undo depth from.
+   * Holds the settings, read for where a document opens beside a filling panel.
    */
   private readonly settings: Settings = inject(Settings);
 
@@ -490,14 +497,13 @@ export class DockState {
 
   /**
    * Captures the current layout as a memento, then applies the next one. The undo stack is bounded to
-   * the configured undo depth (oldest snapshots dropped), and any redo history is discarded because a
+   * {@link LAYOUT_HISTORY_DEPTH} (oldest snapshots dropped), and any redo history is discarded because a
    * fresh mutation forks a new future.
    * @param next The layout tree to apply.
    */
   private commit(next: DockNode): void {
-    const limit: number = Math.max(0, Math.trunc(this.settings.undoStackSize()));
     const history: readonly DockNode[] = [...this.past(), this.tree()];
-    this.past.set(limit === 0 ? [] : history.slice(-limit));
+    this.past.set(history.slice(-LAYOUT_HISTORY_DEPTH));
     this.future.set([]);
     this.tree.set(next);
   }

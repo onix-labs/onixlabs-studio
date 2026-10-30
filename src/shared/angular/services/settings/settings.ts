@@ -286,16 +286,6 @@ export interface TextEditorSettingsWithOverrides {
  */
 export interface ApplicationSettings {
   /**
-   * Gets the maximum number of undo steps kept in history.
-   */
-  readonly undoStackSize: number;
-
-  /**
-   * Gets the page margin applied when printing or exporting a document.
-   */
-  readonly printMargin: PrintMargin;
-
-  /**
    * Gets how much of the application menu the title strip carries.
    */
   readonly menuMode: ApplicationMenuMode;
@@ -530,8 +520,6 @@ export class Settings {
    * Gets the application-level settings.
    */
   public readonly application: Signal<ApplicationSettings> = computed((): ApplicationSettings => ({
-    undoStackSize: this.read('application.undoStackSize'),
-    printMargin: this.read('application.printMargin'),
     menuMode: this.read('application.menuMode'),
     menuAppearance: this.read('application.menuAppearance'),
     showWindowLock: this.read('application.showWindowLock'),
@@ -578,11 +566,6 @@ export class Settings {
   public readonly workspaceTexture: Signal<WorkspaceTexture> = this.value(
     'appearance.workspaceTexture',
   );
-
-  /**
-   * Gets the undo stack size.
-   */
-  public readonly undoStackSize: Signal<number> = this.value('application.undoStackSize');
 
   /**
    * Gets the text editor settings with their per-language overrides.
@@ -906,6 +889,34 @@ export class Settings {
   }
 
   /**
+   * Gets the sparse override map: only the settings the user has changed from their defaults, which is
+   * what a settings export carries.
+   */
+  public readonly changed: Signal<SettingsOverrides> = this.overrides.asReadonly();
+
+  /**
+   * Applies a set of imported overrides, each validated as {@link set} would. Merging keeps every
+   * setting the import does not mention; replacing returns those to their defaults.
+   * @param overrides The imported overrides, already restricted to known Settings-owned keys.
+   * @param replace Whether settings the import does not mention go back to their defaults.
+   */
+  public applyOverrides(overrides: SettingsOverrides, replace: boolean): void {
+    const validated: SettingsOverrides = Object.fromEntries(
+      Object.entries(overrides).map(([key, value]: [string, unknown]): [string, unknown] => [
+        key,
+        this.validate(key as SettingsKey, value),
+      ]),
+    );
+    this.overrides.update((current: SettingsOverrides): SettingsOverrides =>
+      replace ? validated : { ...current, ...validated },
+    );
+    this.log.info('Settings', 'Applied imported settings', {
+      count: Object.keys(validated).length,
+      replace,
+    });
+  }
+
+  /**
    * Reads the current value of a setting, resolving the registry default when no override is set.
    * @param key The setting key.
    * @returns Returns the current value.
@@ -993,14 +1004,6 @@ export class Settings {
    */
   public setWorkspaceTexture(value: WorkspaceTexture): void {
     this.set('appearance.workspaceTexture', value);
-  }
-
-  /**
-   * Sets the undo stack size.
-   * @param size The requested undo stack size.
-   */
-  public setUndoStackSize(size: number): void {
-    this.set('application.undoStackSize', size);
   }
 
   /**

@@ -185,5 +185,5 @@ export async function setLogLevel(context: AgentRunContext, level: string): Prom
     return write.error ?? 'The log level could not be changed.';
   }
   logger.info('MonitorTools', `Log level set to ${level}`);
-  return `The log level is now "${level}" (it was "${write.previous ?? '?'}"). It is the Log level setting under Settings.`;
+  return `The log level is now "${level}" (it was "${write.previous ?? '?'}"). It is the Log Level setting under Settings › System Monitor.`;
 }
