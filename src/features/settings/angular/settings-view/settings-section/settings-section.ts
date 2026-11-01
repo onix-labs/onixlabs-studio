@@ -12,7 +12,11 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { findSection, SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
-import { SettingDef, VisibilityDef } from '@shared/angular/services/settings/settings-schema';
+import {
+  appliesToPlatform,
+  SettingDef,
+  VisibilityDef,
+} from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Renders a settings section entirely from the registry: every setting in the section becomes a
@@ -71,6 +75,7 @@ export class SettingsSection {
    * @returns Returns true when the setting should be rendered.
    */
   private isVisible(setting: SettingDef): boolean {
+    if (!appliesToPlatform(setting)) return false;
     const condition: VisibilityDef | undefined = setting.visibleWhen;
     if (condition === undefined) return true;
 

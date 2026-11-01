@@ -44,7 +44,10 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
 import { codeSettings, findSection } from '@shared/angular/services/settings/settings-registry';
-import type { SettingDef } from '@shared/angular/services/settings/settings-schema';
+import {
+  appliesToPlatform,
+  type SettingDef,
+} from '@shared/angular/services/settings/settings-schema';
 
 /**
  * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one
@@ -790,10 +793,9 @@ export class SettingsView {
       ...(group === undefined ? [] : [SETTINGS_GROUPS[group]]),
       ...trail.map((node: SettingsNavNode): string => node.label),
       leaf.label,
-      ...this.settingsOnPage(leaf).flatMap((setting: SettingDef): string[] => [
-        setting.title,
-        setting.description,
-      ]),
+      ...this.settingsOnPage(leaf)
+        .filter(appliesToPlatform)
+        .flatMap((setting: SettingDef): string[] => [setting.title, setting.description]),
       ...this.shortcutsOnPage(leaf),
     ]
       .join('\n')

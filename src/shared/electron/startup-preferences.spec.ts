@@ -11,6 +11,7 @@ vi.mock('electron', () => ({
 }));
 
 const { StartupPreferencesStore } = await import('./startup-preferences');
+const { DEFAULT_STARTUP_SETTINGS } = await import('@shared/api/startup-settings');
 
 /**
  * Holds the path the store reads and writes, under the stubbed user-data directory.
@@ -30,6 +31,7 @@ describe('StartupPreferencesStore', () => {
       graphicsAcceleration: 'limited',
       logLevel: 'debug',
       loadSideloadedPlugins: null,
+      settings: DEFAULT_STARTUP_SETTINGS,
     });
   });
 
@@ -40,6 +42,7 @@ describe('StartupPreferencesStore', () => {
       graphicsAcceleration: 'full',
       logLevel: null,
       loadSideloadedPlugins: null,
+      settings: DEFAULT_STARTUP_SETTINGS,
     });
   });
 
@@ -48,6 +51,7 @@ describe('StartupPreferencesStore', () => {
       graphicsAcceleration: null,
       logLevel: null,
       loadSideloadedPlugins: null,
+      settings: DEFAULT_STARTUP_SETTINGS,
     });
   });
 
@@ -61,5 +65,26 @@ describe('StartupPreferencesStore', () => {
     writeFileSync(FILE, JSON.stringify({ loadSideloadedPlugins: 'yes' }));
 
     expect(StartupPreferencesStore.read().loadSideloadedPlugins).toBeNull();
+  });
+
+  it('write_keepsTheMirroredSettings_andReadsThemBack', () => {
+    StartupPreferencesStore.write({
+      settings: { ...DEFAULT_STARTUP_SETTINGS, windowSizeOnLaunch: 'maximised' },
+    });
+    StartupPreferencesStore.write({ logLevel: 'info' });
+
+    expect(StartupPreferencesStore.read().settings.windowSizeOnLaunch).toBe('maximised');
+  });
+
+  it('read_whenAMirroredSettingIsNotOneItKnows_reportsItsDefault', () => {
+    writeFileSync(
+      FILE,
+      JSON.stringify({ settings: { cornerStyle: 'wavy', restoreFullScreen: false } }),
+    );
+
+    expect(StartupPreferencesStore.read().settings).toEqual({
+      ...DEFAULT_STARTUP_SETTINGS,
+      restoreFullScreen: false,
+    });
   });
 });

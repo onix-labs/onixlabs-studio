@@ -7,6 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Dormancy } from '@shared/angular/services/dormancy/dormancy';
 import { Log } from '@shared/angular/services/log/log';
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
@@ -150,6 +151,11 @@ export class WelcomeScreen {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds whether Studio is dormant, when the welcome screen stays away until it is woken.
+   */
+  private readonly dormancy: Dormancy = inject(Dormancy);
+
+  /**
    * Gets a value indicating whether the welcome screen can be dismissed. It can only be dismissed
    * when at least one tab is open behind it; at a cold start there is nothing to return to.
    */
@@ -176,6 +182,9 @@ export class WelcomeScreen {
    * and whenever it is explicitly summoned as a modal over the content, unless an action has just
    * dismissed it.
    *
+   * Nor is it shown while Studio is dormant — its window closed on macOS, kept running in the Dock —
+   * until the Dock icon wakes it.
+   *
    * The setup wizard takes precedence over all of it. Both want the same cold start, and both present
    * a freestanding window over a hidden main window, so showing them together would race two windows
    * for one launch. Setup comes first, and this reappears the moment it finishes.
@@ -183,6 +192,7 @@ export class WelcomeScreen {
   protected readonly visible: Signal<boolean> = computed(
     (): boolean =>
       !this.setupWizard.isOpen() &&
+      !this.dormancy.dormant() &&
       !this.dismissed() &&
       (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
   );

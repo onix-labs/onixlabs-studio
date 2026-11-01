@@ -30,6 +30,7 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Studio } from '@shared/angular/services/studio/studio';
 
@@ -382,6 +383,11 @@ export class SetupWizard {
   private readonly version: string | null = window.host?.versions.studio ?? null;
 
   /**
+   * Holds the settings, read for Run Setup After Updates.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the version the user last completed setup on, or null on a first run. Read once at
    * construction: it is the input to the gate, and a value written later by this very service must
    * not re-open the wizard it just closed.
@@ -574,6 +580,13 @@ export class SetupWizard {
       this.log.debug('SetupWizard', `Setup already completed for ${this.version}`);
       return;
     }
+    // After an update the wizard opens only when it has something new to show, and not at all when
+    // Run Setup After Updates says never. Either way the version is recorded, as finishing would.
+    if (this.mode === 'upgrade' && !this.opensAfterUpdate()) {
+      this.log.info('SetupWizard', `Not running setup for ${this.version}; recording it as seen`);
+      this.store.set<string>(LAST_SEEN_KEY, this.version);
+      return;
+    }
     this.log.info(
       'SetupWizard',
       `Running setup for ${this.version} (${this.mode}, last seen ${this.lastSeen ?? 'never'})`,
@@ -645,6 +658,24 @@ export class SetupWizard {
       return true;
     }
     return this.hasNewSettings(step, this.lastSeen);
+  }
+
+  /**
+   * Determines whether the wizard opens after an update: when Run Setup After Updates allows it and
+   * the update brings something new to it — release highlights, or a step with a setting newer than
+   * the version last set up.
+   * @returns Returns true when the wizard should open.
+   */
+  private opensAfterUpdate(): boolean {
+    if (this.settings.get('application.runSetupAfterUpdates') === 'never') {
+      return false;
+    }
+    const since: string | null = this.lastSeen;
+    return (
+      this.highlights.length > 0 ||
+      (since !== null &&
+        SETUP_STEPS.some((step: SetupStep): boolean => this.hasNewSettings(step, since)))
+    );
   }
 
   /**

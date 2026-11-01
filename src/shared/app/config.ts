@@ -18,6 +18,7 @@ import { LogLevelPreference } from '@shared/angular/services/log/log-level-prefe
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
+import { StartupSettingsMirror } from '@shared/angular/services/settings/startup-settings-mirror';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -57,6 +58,11 @@ export const config: ApplicationConfig = {
     // to the document (corners and decorative effects) before the first view renders.
     provideAppInitializer((): void => {
       inject(Display);
+    }),
+    // Mirror the startup settings to the main process from the start, so quitting, window restore
+    // and the first paint's corners follow what the settings say.
+    provideAppInitializer((): void => {
+      inject(StartupSettingsMirror);
     }),
     // Instantiate the Printing service at start-up so the persisted print-margin choice drives the
     // `@page` rule before the first document is printed or exported.

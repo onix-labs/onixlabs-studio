@@ -2,7 +2,9 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { LogChannel } from '@shared/api/log-channels';
 import type { DisplayStartup } from '@shared/api/host';
 import {
+  cornersAttribute,
   renderGraphicsAcceleration,
+  ResolvedGraphicsAcceleration,
   startupGraphicsAcceleration,
 } from '@shared/angular/services/display/display-policy';
 import { trackDevicePixel } from '@shared/angular/services/display/device-pixel';
@@ -12,22 +14,21 @@ import { warmIconFonts } from './icon-fonts';
 import { Root } from './root/root';
 
 /**
- * Resolves whether the heavier UI effects should be reduced for the first paint, mirroring the
- * Display service so the document is correct before Angular bootstraps (avoiding a squircle-to-round
- * flash). Anything below the full graphics-acceleration level reduces them. The policy itself lives
- * in `display-policy.ts`, shared with the Display service rather than restated here, so the two can
+ * Resolves the graphics level for the first paint, mirroring the Display service so the document is
+ * correct before Angular bootstraps (avoiding a squircle-to-round flash). Anything below the full
+ * graphics-acceleration level reduces the heavier effects. The policy itself lives in
+ * `display-policy.ts`, shared with the Display service rather than restated here, so the two can
  * never disagree — which is the whole point of running it twice. Once Angular boots, the Display
  * service takes over and keeps this in sync.
- * @returns Returns true when corners and decorative effects should be reduced.
+ * @returns Returns the resolved graphics-acceleration level.
  */
-function shouldReduceEffects(): boolean {
+function startupLevel(): ResolvedGraphicsAcceleration {
   const startup: DisplayStartup | undefined = window.host?.display;
-  const level: string = renderGraphicsAcceleration(
+  return renderGraphicsAcceleration(
     startupGraphicsAcceleration(startup),
     startup?.gpuRendering?.recommendReducedEffects ?? false,
     startup?.hardwareAccelerationEnabled ?? true,
   );
-  return level !== 'full';
 }
 
 // Apply the resolved display policy before bootstrap so it is in place for the first paint. The main
@@ -36,10 +37,20 @@ function shouldReduceEffects(): boolean {
 // to plain rounded rectangles (`:root[data-corners='round']`) and the frosted backdrops are dropped
 // (`:root[data-reduced-gpu='true']`) — both in shared/angular/styles/_variables.scss. No-op outside
 // Electron, where `window.host` is undefined and no override is persisted.
-if (shouldReduceEffects()) {
+// The corners follow the Corner Style setting, mirrored to the main process so it is known here.
+{
   const root: HTMLElement = document.documentElement;
-  root.setAttribute('data-corners', 'round');
-  root.setAttribute('data-reduced-gpu', 'true');
+  const level: ResolvedGraphicsAcceleration = startupLevel();
+  const corners: string | null = cornersAttribute(
+    window.host?.startupSettings.cornerStyle ?? 'automatic',
+    level,
+  );
+  if (corners !== null) {
+    root.setAttribute('data-corners', corners);
+  }
+  if (level !== 'full') {
+    root.setAttribute('data-reduced-gpu', 'true');
+  }
 }
 
 // Each platform dresses the window differently (see `WindowManager.chrome`): macOS insets its traffic

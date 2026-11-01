@@ -1,4 +1,5 @@
 import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
+import type { CornerStyle } from '@shared/api/startup-settings';
 
 // The graphics-acceleration policy, as plain functions over plain data. It lives apart from the
 // Display service because two callers need it and only one of them can afford Angular: the Display
@@ -105,4 +106,28 @@ export function startupGraphicsAcceleration(
   }
 
   return 'auto';
+}
+
+/**
+ * Resolves the corner style to the `data-corners` attribute the SCSS switches on: none for squircles
+ * (the stylesheet's own default), `round` for rounded corners and `square` for square ones. Automatic
+ * follows the graphics level, squircles only at `full`; the other styles hold whatever the level.
+ * @param style The chosen corner style.
+ * @param level The resolved graphics-acceleration level.
+ * @returns Returns the attribute value, or null to leave the attribute off.
+ */
+export function cornersAttribute(
+  style: CornerStyle,
+  level: ResolvedGraphicsAcceleration,
+): 'round' | 'square' | null {
+  switch (style) {
+    case 'squircle':
+      return null;
+    case 'rounded':
+      return 'round';
+    case 'square':
+      return 'square';
+    case 'automatic':
+      return level === 'full' ? null : 'round';
+  }
 }

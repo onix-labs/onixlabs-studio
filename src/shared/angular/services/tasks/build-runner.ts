@@ -26,6 +26,7 @@ import {
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { RunningWork } from '@shared/angular/services/running-work/running-work';
 import {
   ActiveRun,
   BuildActionOptions,
@@ -295,6 +296,11 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   private readonly unregisterProvider: () => void;
 
   /**
+   * Holds the function that takes this runner's runs out of the running-work count quitting reads.
+   */
+  private readonly unregisterRunningWork: () => void;
+
+  /**
    * Initializes the runner: registers its diagnostics provider and re-discovers tasks whenever the
    * workspace root changes.
    */
@@ -310,6 +316,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       },
     };
     this.unregisterProvider = this.diagnostics.register(provider);
+    this.unregisterRunningWork = inject(RunningWork).register({
+      count: computed((): number => this.runs().length),
+    });
 
     effect((): void => {
       // Re-discover whenever the workspace root changes (reading the signal registers the dependency).
@@ -333,6 +342,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
   public ngOnDestroy(): void {
     this.cancelAll();
     this.unregisterProvider();
+    this.unregisterRunningWork();
   }
 
   /**

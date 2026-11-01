@@ -32,6 +32,16 @@
   --tab-foot-reach: var(--hairline);
 }
 
+// Square corners, chosen in Corner Style: every box radius goes to zero. Pills (toggles, chips)
+// keep their fixed radii, since they are shapes rather than corners.
+:root[data-corners='square'] {
+  --app-corner-shape: round;
+  --border-radius-multiplier: 0;
+  --concave-border-radius-multiplier: 0;
+  --tab-foot-corner-shape: round;
+  --tab-foot-reach: var(--hairline);
+}
+
 // Reduced-GPU feature gate. Set by the Display service (data-reduced-gpu="true" on <html>) when the
 // user's "modern UI features" choice resolves to off — either chosen, or the automatic default on a
 // GPU flagged as a poor fit for the heavier effects. It strips the decorative effects that are cheap

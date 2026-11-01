@@ -3,6 +3,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { LOG_LEVEL_SETTINGS, LogLevelSetting } from '@shared/api/log-channels';
+import {
+  DEFAULT_STARTUP_SETTINGS,
+  parseStartupSettings,
+  StartupSettings,
+} from '@shared/api/startup-settings';
 import { logger } from './logger';
 
 /**
@@ -35,6 +40,12 @@ export interface StartupPreferences {
    * exists, and a choice made in a window could only ever arrive too late to keep one out.
    */
   readonly loadSideloadedPlugins: boolean | null;
+
+  /**
+   * Gets the settings the renderer mirrors here because the main process needs them before any
+   * window exists, or while none does (see `startup-settings.ts`). Defaults until first mirrored.
+   */
+  readonly settings: StartupSettings;
 }
 
 /**
@@ -59,6 +70,7 @@ const DEFAULT_STARTUP_PREFERENCES: StartupPreferences = {
   graphicsAcceleration: null,
   logLevel: null,
   loadSideloadedPlugins: null,
+  settings: DEFAULT_STARTUP_SETTINGS,
 };
 
 /**
@@ -98,6 +110,7 @@ export class StartupPreferencesStore {
         logLevel: StartupPreferencesStore.logLevel(parsed),
         loadSideloadedPlugins:
           typeof parsed.loadSideloadedPlugins === 'boolean' ? parsed.loadSideloadedPlugins : null,
+        settings: parseStartupSettings(parsed.settings),
       };
       logger.debug(
         'StartupPreferences',

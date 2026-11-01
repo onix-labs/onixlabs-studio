@@ -9,6 +9,11 @@ import type {
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
+  CornerStyle,
+  QuitWhenLastWindowCloses,
+  WindowSizeOnLaunch,
+} from '@shared/api/startup-settings';
+import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
   BraceStyle,
@@ -50,6 +55,18 @@ export type AiConnectionModels = Readonly<Record<string, string>>;
 export type TileScrollMode = 'into-view' | 'absolute-left';
 
 /**
+ * When quitting Studio asks first: always, only while work is running (agents, runs, builds or
+ * debugging), or never. Unsaved documents ask to be saved whatever this says.
+ */
+export type ConfirmBeforeQuitting = 'always' | 'when-working' | 'never';
+
+/**
+ * Whether the setup wizard opens after an update that brings something new to it, or never does
+ * (it stays reachable from Help).
+ */
+export type RunSetupAfterUpdates = 'when-new' | 'never';
+
+/**
  * Defines how large an agent conversation's text renders: its transcript and its prompt.
  */
 export type ConversationTextSize = 'small' | 'medium' | 'large';
@@ -84,6 +101,12 @@ export interface SettingsValues {
   readonly 'application.menuMode': ApplicationMenuMode;
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
+  readonly 'application.cornerStyle': CornerStyle;
+  readonly 'application.windowSizeOnLaunch': WindowSizeOnLaunch;
+  readonly 'application.restoreFullScreen': boolean;
+  readonly 'application.quitWhenLastWindowCloses': QuitWhenLastWindowCloses;
+  readonly 'application.confirmBeforeQuitting': ConfirmBeforeQuitting;
+  readonly 'application.runSetupAfterUpdates': RunSetupAfterUpdates;
 
   readonly 'accessibility.showTooltips': boolean;
 
@@ -207,6 +230,23 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         requiresRestart: true,
       },
       {
+        key: 'application.cornerStyle',
+        title: 'Corner Style',
+        description:
+          'The shape of corners across the interface. Automatic draws squircles when Graphics ' +
+          'Acceleration is at Full, and rounded corners below it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'squircle', label: 'Squircle' },
+            { value: 'rounded', label: 'Rounded' },
+            { value: 'square', label: 'Square' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
         key: 'appearance.themeMode',
         owner: 'theme',
         title: 'Theme',
@@ -275,6 +315,77 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'left',
+      },
+      {
+        key: 'application.windowSizeOnLaunch',
+        title: 'Window Size on Launch',
+        description:
+          'How large the window opens: as you last left it, at the default size in the middle ' +
+          'of the screen, or maximised.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'remember', label: 'Remember Last' },
+            { value: 'default', label: 'Default Size' },
+            { value: 'maximised', label: 'Always Maximised' },
+          ],
+        },
+        default: 'remember',
+      },
+      {
+        key: 'application.restoreFullScreen',
+        title: 'Restore Full Screen',
+        description: 'Open in full screen when Studio was last closed in full screen.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'application.quitWhenLastWindowCloses',
+        title: 'Quit When the Last Window Closes',
+        description:
+          'Closing the window keeps Studio running in the Dock, with your work as you left it, ' +
+          'or quits Studio.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'keep-running', label: 'Keep Running' },
+            { value: 'quit', label: 'Quit' },
+          ],
+        },
+        platforms: ['darwin'],
+        default: 'keep-running',
+      },
+      {
+        key: 'application.confirmBeforeQuitting',
+        title: 'Confirm Before Quitting',
+        description:
+          'Ask before Studio quits, or before its window closes while it keeps running: always, ' +
+          'only while agents, runs, builds or debugging are running, or never. Unsaved documents ' +
+          'always ask to be saved.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'when-working', label: 'When Work Is Running' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'when-working',
+      },
+      {
+        key: 'application.runSetupAfterUpdates',
+        title: 'Run Setup After Updates',
+        description:
+          'Open the setup wizard after an update that brings something new to it. It is always ' +
+          'there from the Help menu.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'when-new', label: "When Something's New" },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'when-new',
       },
       {
         key: 'application.showWindowLock',

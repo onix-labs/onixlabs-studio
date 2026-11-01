@@ -13,6 +13,7 @@ import { CHILD_WINDOW_NAME_PATTERN, MODAL_UNPARENTED_FEATURE } from '@shared/api
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
 import { logger } from './logger';
+import type { StartupSettings } from '@shared/api/startup-settings';
 
 /**
  * Describes the application-supplied pieces the window manager needs to build windows: where the
@@ -55,6 +56,13 @@ export interface WindowManagerOptions {
    * cleaning up after that would take them with it.
    */
   readonly onMainDidStartLoad: () => void;
+
+  /**
+   * Reads the startup settings in force (window size on launch, full-screen restore), as the renderer
+   * last mirrored them.
+   * @returns Returns the startup settings.
+   */
+  readonly startupSettings: () => StartupSettings;
 }
 
 /**
@@ -195,6 +203,12 @@ export class WindowManager {
   private mainStartsMaximized: boolean = false;
 
   /**
+   * Holds a value indicating whether the main window opens in full screen, applied when it is first
+   * shown for the same reason as {@link mainStartsMaximized}.
+   */
+  private mainStartsFullScreen: boolean = false;
+
+  /**
    * Holds the window the next modal window adopts as its parent, recorded when its options are
    * built and consumed the moment it is created. Null when the pending modal asked to stand alone,
    * or when none is pending.
@@ -282,6 +296,11 @@ export class WindowManager {
       this.mainStartsMaximized = false;
       window.maximize();
     }
+    if (window === this.main() && this.mainStartsFullScreen) {
+      logger.debug('WindowManager.showWindow', 'restoring persisted full screen for main window');
+      this.mainStartsFullScreen = false;
+      window.setFullScreen(true);
+    }
     // 🔥 `show()` activates the application on macOS; dropping the `focus()` that used to follow it
     // was not enough. Studio takes a while to boot, and a user who switched to something else while it
     // did had the window — and the application with it — yanked in front of them at the moment it
@@ -306,9 +325,12 @@ export class WindowManager {
    */
   public createMainWindow(): BrowserWindow {
     logger.trace('WindowManager.createMainWindow', 'creating main window');
+    const settings: StartupSettings = this.options.startupSettings();
     const stored: StoredWindowState | null = WindowStateStore.read('main');
+    // Only Remember Last restores the persisted bounds; the default size opens centred, which is
+    // what a window built without a position does.
     const restored: WindowRect | null =
-      stored === null
+      stored === null || settings.windowSizeOnLaunch !== 'remember'
         ? null
         : restoreWindowRect(
             stored,
@@ -341,7 +363,10 @@ export class WindowManager {
     // Maximizing a window that has not been shown SHOWS it on macOS, which would flash an empty
     // IDE window before the shell has decided whether to show it at all. The choice is remembered
     // and applied at the moment the window is shown.
-    this.mainStartsMaximized = stored?.maximized === true;
+    this.mainStartsMaximized =
+      settings.windowSizeOnLaunch === 'maximised' ||
+      (settings.windowSizeOnLaunch === 'remember' && stored?.maximized === true);
+    this.mainStartsFullScreen = settings.restoreFullScreen && stored?.fullScreen === true;
     logger.debug('WindowManager.createMainWindow', 'built main window', {
       restored: restored !== null,
       maximized: this.mainStartsMaximized,
@@ -429,7 +454,11 @@ export class WindowManager {
       requested === null
         ? null
         : restoreWindowRect(
-            { bounds: { x: requested.x, y: requested.y, width, height }, maximized: false },
+            {
+              bounds: { x: requested.x, y: requested.y, width, height },
+              maximized: false,
+              fullScreen: false,
+            },
             screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
             WindowManager.POPOUT_MIN_WIDTH,
             WindowManager.POPOUT_MIN_HEIGHT,
@@ -525,6 +554,7 @@ export class WindowManager {
           height: size.height,
         },
         maximized: false,
+        fullScreen: false,
       },
       screen.getAllDisplays().map((display: Display): WindowRect => display.workArea),
       minimum.width,
@@ -818,7 +848,7 @@ export class WindowManager {
   }
 
   /**
-   * Persists a window's current normal bounds and maximized flag.
+   * Persists a window's current normal bounds and its maximized and full-screen flags.
    * @param kind The window kind the bounds persist under.
    * @param window The window whose bounds to persist.
    */
@@ -831,6 +861,7 @@ export class WindowManager {
     WindowStateStore.write(kind, {
       bounds: window.getNormalBounds(),
       maximized: window.isMaximized(),
+      fullScreen: window.isFullScreen(),
     });
   }
 }
