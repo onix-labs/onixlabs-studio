@@ -17,6 +17,12 @@ export type WindowSizeOnLaunch = 'remember' | 'default' | 'maximised';
 export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
 
 /**
+ * When opening a link in the browser asks first: never, only for links from content Studio did not
+ * write (agent output, Markdown, web and server content), or always.
+ */
+export type ConfirmExternalLinks = 'never' | 'untrusted' | 'always';
+
+/**
  * Defines the settings the main process has to know before any window exists, or while none does.
  *
  * Settings live in the renderer's store, which the main process cannot reach at launch. Each of these
@@ -45,6 +51,12 @@ export interface StartupSettings {
    * change shape as the renderer starts.
    */
   readonly cornerStyle: CornerStyle;
+
+  /**
+   * Gets when opening a link in the browser asks first. The main process opens every link, including
+   * the ones a page navigates to by itself, so it is the one that asks.
+   */
+  readonly confirmExternalLinks: ConfirmExternalLinks;
 }
 
 /**
@@ -55,6 +67,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   windowSizeOnLaunch: 'remember',
   restoreFullScreen: true,
   cornerStyle: 'automatic',
+  confirmExternalLinks: 'never',
 };
 
 /**
@@ -99,6 +112,11 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       record['cornerStyle'],
       ['automatic', 'squircle', 'rounded', 'square'],
       defaults.cornerStyle,
+    ),
+    confirmExternalLinks: oneOf<ConfirmExternalLinks>(
+      record['confirmExternalLinks'],
+      ['never', 'untrusted', 'always'],
+      defaults.confirmExternalLinks,
     ),
   };
 }

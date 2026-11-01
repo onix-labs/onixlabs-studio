@@ -79,6 +79,39 @@ export class TrustedPaths {
   public has(target: unknown): boolean {
     return typeof target === 'string' && target.length > 0 && this.index.has(path.resolve(target));
   }
+
+  /**
+   * Lists the remembered paths, newest first.
+   * @returns Returns the paths.
+   */
+  public list(): readonly string[] {
+    return [...this.entries].reverse();
+  }
+
+  /**
+   * Forgets a remembered path, so reopening it needs a dialog again.
+   * @param target The path to forget.
+   */
+  public forget(target: unknown): void {
+    if (!this.has(target)) {
+      return;
+    }
+    const resolved: string = path.resolve(target as string);
+    logger.info('TrustedPaths', `Forgetting trusted path ${resolved}`);
+    this.entries = this.entries.filter((entry: string): boolean => entry !== resolved);
+    this.index = new Set<string>(this.entries);
+    save(this.file, this.entries);
+  }
+
+  /**
+   * Forgets every remembered path.
+   */
+  public clear(): void {
+    logger.info('TrustedPaths', `Forgetting all ${this.entries.length} trusted path(s)`);
+    this.entries = [];
+    this.index = new Set<string>();
+    save(this.file, this.entries);
+  }
 }
 
 /**

@@ -29,6 +29,7 @@ export class StartupSettingsMirror {
     windowSizeOnLaunch: this.settings.value('application.windowSizeOnLaunch')(),
     restoreFullScreen: this.settings.value('application.restoreFullScreen')(),
     cornerStyle: this.settings.value('application.cornerStyle')(),
+    confirmExternalLinks: this.settings.value('privacy.confirmExternalLinks')(),
   }));
 
   /**

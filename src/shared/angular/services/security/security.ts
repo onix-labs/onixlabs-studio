@@ -70,4 +70,40 @@ export class Security {
     this.log.info('Security', `Image-source policy set to '${stored}'`);
     return stored;
   }
+
+  /**
+   * Lists the files and folders Studio remembers you opened through a system dialog, newest first.
+   * @returns Returns the paths; empty outside Electron.
+   */
+  public async rememberedAccess(): Promise<readonly string[]> {
+    return (
+      (await this.bridge?.invoke<readonly string[]>(SecurityChannel.ListRememberedAccess)) ?? []
+    );
+  }
+
+  /**
+   * Forgets one remembered file or folder, so reopening it asks again.
+   * @param path The path to forget.
+   * @returns Returns the paths still remembered.
+   */
+  public async forgetRememberedAccess(path: string): Promise<readonly string[]> {
+    this.log.info('Security', 'Forgetting remembered file access', path);
+    return (
+      (await this.bridge?.invoke<readonly string[]>(
+        SecurityChannel.ForgetRememberedAccess,
+        path,
+      )) ?? []
+    );
+  }
+
+  /**
+   * Forgets every remembered file and folder.
+   * @returns Returns the paths still remembered (none).
+   */
+  public async clearRememberedAccess(): Promise<readonly string[]> {
+    this.log.info('Security', 'Forgetting all remembered file access');
+    return (
+      (await this.bridge?.invoke<readonly string[]>(SecurityChannel.ClearRememberedAccess)) ?? []
+    );
+  }
 }

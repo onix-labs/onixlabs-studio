@@ -15,6 +15,22 @@ export enum SecurityChannel {
    * Sets and persists the image-source policy; takes effect on the next window load (invoke).
    */
   SetImagePolicy = 'security:set-image-policy',
+
+  /**
+   * Lists the files and folders Studio remembers you opened through a system dialog, newest first,
+   * which it may reopen (a recent item) without asking again (invoke).
+   */
+  ListRememberedAccess = 'security:list-remembered-access',
+
+  /**
+   * Forgets one remembered file or folder; reopening it asks again (invoke).
+   */
+  ForgetRememberedAccess = 'security:forget-remembered-access',
+
+  /**
+   * Forgets every remembered file and folder (invoke).
+   */
+  ClearRememberedAccess = 'security:clear-remembered-access',
 }
 
 /**

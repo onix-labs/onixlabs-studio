@@ -1,0 +1,32 @@
+<div class="remembered-access">
+  <app-setting-row
+    label="Remembered File Access"
+    description="Files and folders you opened through a system dialog, which Studio reopens from the recent items without asking. Forget one and Studio asks again before reopening it."
+  >
+    <app-button
+      variant="solid"
+      label="Clear All"
+      [disabled]="paths().length === 0"
+      (click)="clear()"
+    />
+  </app-setting-row>
+
+  @if (paths().length) {
+    <ul class="remembered-access__list">
+      @for (path of paths(); track path) {
+        <li class="remembered-access__item">
+          <span class="remembered-access__path">{{ path }}</span>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="'Forget ' + path"
+            (click)="forget(path)"
+          />
+        </li>
+      }
+    </ul>
+  } @else {
+    <p class="remembered-access__empty">Nothing is remembered.</p>
+  }
+</div>

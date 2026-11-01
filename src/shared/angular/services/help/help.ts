@@ -186,14 +186,14 @@ export class Help {
    * Opens the documentation wiki.
    */
   public openDocumentation(): void {
-    void this.shell.openExternal(WIKI_URL);
+    void this.shell.openExternal(WIKI_URL, 'studio');
   }
 
   /**
    * Opens the releases page.
    */
   public openReleaseNotes(): void {
-    void this.shell.openExternal(RELEASES_URL);
+    void this.shell.openExternal(RELEASES_URL, 'studio');
   }
 
   /**
@@ -210,7 +210,7 @@ export class Help {
     if (os !== undefined) {
       query.set('os', os);
     }
-    void this.shell.openExternal(`${ISSUE_FORM_URL}?${query.toString()}`);
+    void this.shell.openExternal(`${ISSUE_FORM_URL}?${query.toString()}`, 'studio');
   }
 
   /**

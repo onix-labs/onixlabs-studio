@@ -22,6 +22,7 @@ import { TerminalSettingsSection } from './sections/terminal-settings/terminal-s
 import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
+import { RememberedFileAccess } from './sections/remembered-file-access/remembered-file-access';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import type { ProviderPage } from '@shared/api/ai-types';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
@@ -242,6 +243,7 @@ interface SettingsTreeData {
     ButtonRow,
     Modal,
     ModalContent,
+    RememberedFileAccess,
     LanguageEditorOverrides,
     LanguageServerSettings,
     AiSettingsSection,
