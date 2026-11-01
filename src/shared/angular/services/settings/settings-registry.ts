@@ -67,6 +67,18 @@ export type ConfirmBeforeQuitting = 'always' | 'when-working' | 'never';
 export type RunSetupAfterUpdates = 'when-new' | 'never';
 
 /**
+ * Whether motion is reduced: following the operating system's preference, or on or off whatever it
+ * says.
+ */
+export type ReduceMotion = 'system' | 'on' | 'off';
+
+/**
+ * How scroll bars are shown: slim bars that appear while an area is hovered or scrolled, or bars that
+ * are always there.
+ */
+export type ScrollBars = 'auto-hide' | 'always';
+
+/**
  * Defines how large an agent conversation's text renders: its transcript and its prompt.
  */
 export type ConversationTextSize = 'small' | 'medium' | 'large';
@@ -109,6 +121,9 @@ export interface SettingsValues {
   readonly 'application.runSetupAfterUpdates': RunSetupAfterUpdates;
 
   readonly 'accessibility.showTooltips': boolean;
+  readonly 'accessibility.tooltipDelay': number;
+  readonly 'accessibility.reduceMotion': ReduceMotion;
+  readonly 'accessibility.scrollBars': ScrollBars;
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
@@ -411,6 +426,53 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'name to everyone else. Controls with visible text are unaffected.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'accessibility.tooltipDelay',
+        title: 'Tooltip Delay',
+        description: 'How long the pointer rests on a control before its tooltip appears.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Instant' },
+            { value: '500', label: 'Short (½ second)' },
+            { value: '1000', label: 'Long (1 second)' },
+          ],
+        },
+        visibleWhen: { key: 'accessibility.showTooltips', equals: [true] },
+        default: 0,
+      },
+      {
+        key: 'accessibility.reduceMotion',
+        title: 'Reduce Motion',
+        description:
+          'Turn off animations, smooth scrolling and the smooth caret. Follow System does this ' +
+          'when the operating system is set to reduce motion.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'system', label: 'Follow System' },
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ],
+        },
+        default: 'system',
+      },
+      {
+        key: 'accessibility.scrollBars',
+        title: 'Scroll Bars',
+        description:
+          'Show scroll bars only while an area is hovered or scrolling, or always. Editors and ' +
+          'terminals draw their own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'auto-hide', label: 'Auto-Hide' },
+            { value: 'always', label: 'Always Show' },
+          ],
+        },
+        default: 'auto-hide',
       },
     ],
   },

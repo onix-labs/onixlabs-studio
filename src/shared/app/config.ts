@@ -11,6 +11,7 @@ import { ModelUpdates } from '@shared/angular/services/ai-connections/model-upda
 import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
@@ -58,6 +59,11 @@ export const config: ApplicationConfig = {
     // to the document (corners and decorative effects) before the first view renders.
     provideAppInitializer((): void => {
       inject(Display);
+    }),
+    // Instantiate the Accessibility service at start-up so Reduce Motion and Scroll Bars are applied to
+    // the document before the first view renders.
+    provideAppInitializer((): void => {
+      inject(Accessibility);
     }),
     // Mirror the startup settings to the main process from the start, so quitting, window restore
     // and the first paint's corners follow what the settings say.

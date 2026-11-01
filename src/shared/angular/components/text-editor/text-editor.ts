@@ -357,7 +357,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         stickyScroll: { enabled: resolved.stickyScroll },
         formatOnType: resolved.formatOnType,
         cursorBlinking: resolved.cursorBlinking,
-        cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
+        ...this.monaco.motionOptions(resolved),
         tabSize: resolved.tabSize,
         insertSpaces: resolved.insertSpaces,
         detectIndentation: false,
