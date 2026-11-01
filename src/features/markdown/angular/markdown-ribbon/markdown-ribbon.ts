@@ -16,6 +16,7 @@ import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contrib
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Printing } from '@shared/angular/services/printing/printing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   MarkdownPanels,
@@ -138,6 +139,11 @@ export class MarkdownRibbon {
    * Holds the printing service backing the Print and Export-to-PDF actions.
    */
   private readonly printing: Printing = inject(Printing);
+
+  /**
+   * Holds the settings, read for the Markdown print margin.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the tool-panel registry the Tools group toggles.
@@ -513,7 +519,10 @@ export class MarkdownRibbon {
     this.log.info('markdown.ribbon', 'Export to PDF requested', {
       name: this.activeDocumentName(),
     });
-    void this.printing.exportPdf(this.activeDocumentName());
+    void this.printing.exportPdf(
+      this.activeDocumentName(),
+      this.settings.get('markdownEditor.printMargin'),
+    );
   }
 
   /**
@@ -521,7 +530,7 @@ export class MarkdownRibbon {
    */
   protected onPrint(): void {
     this.log.info('markdown.ribbon', 'Print requested');
-    this.printing.print();
+    this.printing.print(this.settings.get('markdownEditor.printMargin'));
   }
 
   /**

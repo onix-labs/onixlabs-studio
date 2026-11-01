@@ -38,17 +38,9 @@ describe('Settings', () => {
   it('set_whenCalled_updatesTheSignal', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.set('application.printMargin', 'wide');
+    service.set('textEditor.printMargin', 'wide');
 
-    expect(service.get('application.printMargin')).toBe('wide');
-  });
-
-  it('setUndoStackSize_whenCalled_updatesTheSignal', () => {
-    const service: Settings = TestBed.inject(Settings);
-
-    service.setUndoStackSize(200);
-
-    expect(service.undoStackSize()).toBe(200);
+    expect(service.get('textEditor.printMargin')).toBe('wide');
   });
 
   it('updateTextEditorSettings_whenCalled_updatesGlobalSettings', () => {
@@ -118,7 +110,7 @@ describe('Settings', () => {
   it('settings_whenChanged_persistsChangedKeyToTheStore', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    service.setUndoStackSize(200);
+    service.set('notifications.toastDuration', 9);
     TestBed.inject(ApplicationRef).tick();
 
     // Persistence is a sparse, flat map keyed by the registry setting keys: only changed keys are
@@ -126,13 +118,13 @@ describe('Settings', () => {
     const stored: Record<string, unknown> = JSON.parse(
       localStorage.getItem('settings') ?? '{}',
     ) as Record<string, unknown>;
-    expect(stored['application.undoStackSize']).toBe(200);
+    expect(stored['notifications.toastDuration']).toBe(9);
   });
 
   it('settings_whenPersistedValuesExist_areRestoredOnCreation', () => {
-    localStorage.setItem('settings', JSON.stringify({ application: { undoStackSize: 250 } }));
+    localStorage.setItem('settings', JSON.stringify({ application: { showWindowLock: false } }));
 
-    expect(TestBed.inject(Settings).undoStackSize()).toBe(250);
+    expect(TestBed.inject(Settings).get('application.showWindowLock')).toBe(false);
   });
 
   it('settings_whenLegacyTextEditorFormatPersisted_migratesToGlobalKeys', () => {
@@ -261,20 +253,20 @@ describe('Settings', () => {
 
   it('externalChange_fromAnotherWindow_appliesTheStoredOverridesLive', () => {
     const service: Settings = TestBed.inject(Settings);
-    expect(service.get('application.printMargin')).not.toBe('wide');
+    expect(service.get('textEditor.printMargin')).not.toBe('wide');
 
     // Another window wrote the settings blob, then the browser notified this one.
-    localStorage.setItem('settings', JSON.stringify({ 'application.printMargin': 'wide' }));
+    localStorage.setItem('settings', JSON.stringify({ 'textEditor.printMargin': 'wide' }));
     globalThis.dispatchEvent(new StorageEvent('storage', { key: 'settings' }));
 
-    expect(service.get('application.printMargin')).toBe('wide');
+    expect(service.get('textEditor.printMargin')).toBe('wide');
   });
 
   it('externalChange_isNotEchoedBackToTheStore_butLocalEditsStillPersist', () => {
     const service: Settings = TestBed.inject(Settings);
     TestBed.inject(ApplicationRef).tick();
 
-    const external: string = JSON.stringify({ 'application.printMargin': 'wide' });
+    const external: string = JSON.stringify({ 'textEditor.printMargin': 'wide' });
     localStorage.setItem('settings', external);
     globalThis.dispatchEvent(new StorageEvent('storage', { key: 'settings' }));
     TestBed.inject(ApplicationRef).tick();
@@ -283,9 +275,9 @@ describe('Settings', () => {
     // (the guard suppresses the write, so the other window's exact blob remains).
     expect(localStorage.getItem('settings')).toBe(external);
 
-    service.set('application.printMargin', 'narrow');
+    service.set('textEditor.printMargin', 'narrow');
     TestBed.inject(ApplicationRef).tick();
-    expect(service.get('application.printMargin')).toBe('narrow');
+    expect(service.get('textEditor.printMargin')).toBe('narrow');
     expect(localStorage.getItem('settings')).not.toBe(external);
   });
 });

@@ -30,21 +30,21 @@ export interface GateableTool {
  * permission prompt, and the remembered-rule store.
  */
 export const GATEABLE_TOOLS: readonly GateableTool[] = [
-  { name: 'Write', label: 'Write file', description: 'Create or overwrite a file.' },
-  { name: 'Edit', label: 'Edit file', description: 'Modify part of an existing file.' },
+  { name: 'Write', label: 'Write File', description: 'Create or overwrite a file.' },
+  { name: 'Edit', label: 'Edit File', description: 'Modify part of an existing file.' },
   {
     name: 'MultiEdit',
-    label: 'Multi-edit file',
+    label: 'Multi-Edit File',
     description: 'Apply several edits to a file at once.',
   },
   {
     name: 'NotebookEdit',
-    label: 'Edit notebook',
+    label: 'Edit Notebook',
     description: 'Modify a Jupyter notebook cell.',
   },
-  { name: 'Bash', label: 'Run shell command', description: 'Execute a shell command.' },
+  { name: 'Bash', label: 'Run Shell Command', description: 'Execute a shell command.' },
   { name: 'WebFetch', label: 'Fetch a URL', description: 'Retrieve the contents of a web page.' },
-  { name: 'WebSearch', label: 'Web search', description: 'Search the web.' },
+  { name: 'WebSearch', label: 'Web Search', description: 'Search the web.' },
 ];
 
 /**

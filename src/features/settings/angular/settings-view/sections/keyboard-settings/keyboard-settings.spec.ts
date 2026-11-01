@@ -43,6 +43,7 @@ describe('KeyboardSettingsSection', () => {
 
     keybindings = TestBed.inject(Keybindings);
     fixture = TestBed.createComponent(KeyboardSettingsSection);
+    fixture.componentRef.setInput('view', 'Code Editor');
     await fixture.whenStable();
   });
 
@@ -50,14 +51,21 @@ describe('KeyboardSettingsSection', () => {
     window.localStorage.removeItem('settings');
   });
 
-  it('listsEveryCataloguedCommandGroupedByView', (): void => {
+  it('listsOnlyTheCommandsOfItsCapability', (): void => {
+    // Shortcuts live with their capability (Code › Keyboard), not in one list of every view.
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const views: string[] = Array.from(element.querySelectorAll('.keyboard__view')).map(
-      (heading: Element): string => heading.textContent?.trim() ?? '',
-    );
-    expect(views).toEqual(['Code Editor', 'Terminal']);
-    expect(element.querySelectorAll('.keyboard__row').length).toBe(3);
+    expect(element.querySelectorAll('.keyboard__row').length).toBe(2);
+    expect(element.textContent).not.toContain('Clear the terminal');
     expect(chordButton(0).textContent).toContain('Ctrl+S');
+  });
+
+  it('appWidePage_whenNothingIsAppWide_saysWhereTheShortcutsAre', async (): Promise<void> => {
+    fixture.componentRef.setInput('view', null);
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelectorAll('.keyboard__row').length).toBe(0);
+    expect(element.textContent).toContain('No app-wide shortcuts can be changed yet');
   });
 
   it('capture_persistsTheChordAndShowsReset', async (): Promise<void> => {
@@ -100,9 +108,11 @@ describe('KeyboardSettingsSection', () => {
   });
 
   it('capture_whenTerminalOverrideDropsShift_showsTheRejection', async (): Promise<void> => {
-    chordButton(2).click();
+    fixture.componentRef.setInput('view', 'Terminal');
     await fixture.whenStable();
-    chordButton(2).dispatchEvent(
+    chordButton(0).click();
+    await fixture.whenStable();
+    chordButton(0).dispatchEvent(
       new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, cancelable: true }),
     );
     await fixture.whenStable();
@@ -111,7 +121,7 @@ describe('KeyboardSettingsSection', () => {
     expect(element.querySelector('.keyboard__message--error')?.textContent).toContain(
       'Ctrl and Shift',
     );
-    expect(chordButton(2).textContent).toContain('Ctrl+Shift+K');
+    expect(chordButton(0).textContent).toContain('Ctrl+Shift+K');
   });
 
   it('conflictingChords_surfaceAWarning', async (): Promise<void> => {

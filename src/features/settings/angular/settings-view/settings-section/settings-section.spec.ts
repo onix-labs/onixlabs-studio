@@ -56,26 +56,26 @@ describe('SettingsSection', () => {
 
     const element: HTMLElement = await render('application');
 
-    expect(element.textContent).toContain('Application menu');
-    expect(element.textContent).not.toContain('Application menu appearance');
+    expect(element.textContent).toContain('Application Menu');
+    expect(element.textContent).not.toContain('Application Menu Appearance');
   });
 
   it('render_whenAForeignOwnedConditionFails_leavesTheDependentSettingOut', async () => {
-    // The workspace texture is painted only at the full graphics-acceleration level, so below it the
+    // The workspace texture (Workspaces › General) is painted only at the full graphics-acceleration level, so below it the
     // control goes rather than sitting there having no effect. The condition names a Display-owned
     // key, which resolves through the binding layer rather than the settings store.
     TestBed.inject(Display).setGraphicsAcceleration('limited');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
-    expect(element.textContent).toContain('Graphics Acceleration');
+    expect(element.textContent).toContain('Expand All Scope');
     expect(element.textContent).not.toContain('Workspace Texture');
   });
 
   it('render_whenAForeignOwnedConditionHolds_showsTheDependentSetting', async () => {
     TestBed.inject(Display).setGraphicsAcceleration('full');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
     expect(element.textContent).toContain('Workspace Texture');
   });
@@ -85,7 +85,7 @@ describe('SettingsSection', () => {
     // recommendation the automatic mode is the full level, so the texture applies and must be offered.
     TestBed.inject(Display).setGraphicsAcceleration('auto');
 
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('workspaces');
 
     expect(element.textContent).toContain('Workspace Texture');
   });
@@ -95,18 +95,21 @@ describe('SettingsSection', () => {
 
     const element: HTMLElement = await render('application');
 
-    expect(element.textContent).toContain('Application menu appearance');
+    expect(element.textContent).toContain('Application Menu Appearance');
   });
 
   it('render_whenSectionHasSettings_labelsEachRowFromTheRegistry', async () => {
     const element: HTMLElement = await render('application');
-    expect(element.textContent).toContain('Undo history');
-    expect(element.textContent).toContain('Print margins');
+    expect(element.textContent).toContain('Window Lock Switch');
+    // Undo history bounded nothing anyone could undo, and the print margin moved to each capability
+    // that prints, so neither is an application setting any more.
+    expect(element.textContent).not.toContain('Undo history');
+    expect(element.textContent).not.toContain('Print Margins');
   });
 
   it('render_whenMarkdownSection_rendersEverySetting', async () => {
     const element: HTMLElement = await render('markdown');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(8);
   });
 
   it('render_whenSectionUnknown_rendersNothing', async () => {
@@ -115,15 +118,21 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 17 scalar settings (Format on type, #1141, among them) plus a custom
+    // Code › Editing has five scalar settings (Format on Type, #1141, among them) plus a custom
     // "language overrides" entry, which is rendered by a bespoke host rather than this component.
-    const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(17);
+    const element: HTMLElement = await render('code-editing');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
   });
 
-  it('render_whenTextEditorSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
+  it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {
+    // How code looks wherever it appears, Print Margins among them.
+    const element: HTMLElement = await render('code-appearance');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+  });
+
+  it('render_whenCodeGeneralSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
     // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
-    const element: HTMLElement = await render('text-editor');
+    const element: HTMLElement = await render('code-general');
     const row: Element | undefined = Array.from(element.querySelectorAll('app-setting-row')).find(
       (candidate: Element): boolean =>
         candidate.querySelector('.setting-row__label')?.textContent?.trim().toLowerCase() ===
@@ -151,10 +160,12 @@ describe('SettingsSection', () => {
     );
   });
 
-  it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
-    // Graphics acceleration, theme, accent, ribbon alignment, workspace texture.
-    const element: HTMLElement = await render('appearance');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
+  it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
+    // Appearance merged into Application › General: graphics acceleration, theme, accent, the
+    // application menu and its appearance, ribbon alignment, the window lock. The workspace texture
+    // moved to Workspaces › General.
+    const element: HTMLElement = await render('application');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
@@ -162,11 +173,11 @@ describe('SettingsSection', () => {
     );
   });
 
-  it('render_whenAppearanceSection_keepsTheChosenSettingOrder', async () => {
+  it('render_whenApplicationSection_keepsTheChosenSettingOrder', async () => {
     // The section renders in registry order, and this order was chosen deliberately: the setting that
     // governs what the rest of them can do comes first. Nothing else pins it, so an edit that
     // reordered the registry entries would otherwise shuffle the page silently.
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('application');
     const titles: string[] = Array.from(element.querySelectorAll('app-setting-row')).map(
       (row: Element): string => row.querySelector('.setting-row__label')?.textContent?.trim() ?? '',
     );
@@ -175,13 +186,15 @@ describe('SettingsSection', () => {
       'Graphics Acceleration',
       'Theme',
       'Accent',
+      'Application Menu',
+      'Application Menu Appearance',
       'Ribbon Alignment',
-      'Workspace Texture',
+      'Window Lock Switch',
     ]);
   });
 
   it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {
-    const element: HTMLElement = await render('appearance');
+    const element: HTMLElement = await render('application');
     expect(element.textContent).toContain('Automatic resolves to');
   });
 });

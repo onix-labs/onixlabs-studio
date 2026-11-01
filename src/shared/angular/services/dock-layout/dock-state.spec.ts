@@ -1,7 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
-import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
@@ -342,12 +341,10 @@ describe('DockState', () => {
       expect(state.canRedo()).toBe(false);
     });
 
-    it('undoStackSize_boundsTheHistoryDepth', () => {
-      const settings: Settings = TestBed.inject(Settings);
-      settings.setUndoStackSize(10);
+    it('history_isBoundedToAHundredSteps', () => {
       const id: string = wellId();
 
-      for (let index: number = 0; index < 12; index++) {
+      for (let index: number = 0; index < 102; index++) {
         state.tabInto(id, `doc-${index}`);
       }
 
@@ -357,7 +354,7 @@ describe('DockState', () => {
         steps++;
       }
 
-      expect(steps).toBe(10);
+      expect(steps).toBe(100);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Diffs, OpenDiffEditor } from './diffs';
 
 /**
@@ -23,6 +24,8 @@ describe('Diffs', () => {
   let diffs: Diffs;
 
   beforeEach(() => {
+    // The layout follows a stored setting, so each test starts from the defaults.
+    localStorage.clear();
     TestBed.configureTestingModule({ providers: [Diffs] });
     diffs = TestBed.inject(Diffs);
   });
@@ -45,6 +48,20 @@ describe('Diffs', () => {
     diffs.toggleInline();
 
     expect(diffs.inlineDiff()).toBe(true);
+  });
+
+  it('inlineDiff_followsTheDefaultDiffLayout_untilTheSwitchIsUsed', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    expect(diffs.inlineDiff()).toBe(false);
+
+    settings.set('textEditor.diffLayout', 'inline');
+    expect(diffs.inlineDiff()).toBe(true);
+
+    // The switch wins from then on; it never changes the setting.
+    diffs.setInline(false);
+    settings.set('textEditor.diffLayout', 'inline');
+    expect(diffs.inlineDiff()).toBe(false);
+    expect(settings.get('textEditor.diffLayout')).toBe('inline');
   });
 
   it('setInline_asksForALayoutRatherThanForTheOtherOne', () => {

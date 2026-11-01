@@ -120,28 +120,28 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   settings: [
     {
       section: 'typescript.referencesCodeLens.enabled',
-      label: 'Reference counts in TypeScript',
+      label: 'Reference Counts in TypeScript',
       description:
         'Show how many references a TypeScript declaration has above it; clicking the count lists them. Each costs a line.',
       default: false,
     },
     {
       section: 'typescript.implementationsCodeLens.enabled',
-      label: 'Implementation counts in TypeScript',
+      label: 'Implementation Counts in TypeScript',
       description:
         'Show how many implementations an interface or abstract member has above it; clicking the count lists them.',
       default: false,
     },
     {
       section: 'javascript.referencesCodeLens.enabled',
-      label: 'Reference counts in JavaScript',
+      label: 'Reference Counts in JavaScript',
       description:
         'Show how many references a JavaScript declaration has above it; clicking the count lists them. Each costs a line.',
       default: false,
     },
     {
       section: 'typescript.inlayHints.includeInlayParameterNameHints',
-      label: 'Parameter names in TypeScript',
+      label: 'Parameter Names in TypeScript',
       description:
         'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
       default: 'none',
@@ -153,7 +153,7 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     },
     {
       section: 'javascript.inlayHints.includeInlayParameterNameHints',
-      label: 'Parameter names in JavaScript',
+      label: 'Parameter Names in JavaScript',
       description:
         'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
       default: 'none',
@@ -165,7 +165,7 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     },
     {
       section: 'typescript.inlayHints.includeInlayFunctionLikeReturnTypeHints',
-      label: 'Return types in TypeScript',
+      label: 'Return Types in TypeScript',
       description:
         'Show the return type the compiler infers for a function that does not name one.',
       default: false,
@@ -173,7 +173,7 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     },
     {
       section: 'preferences.includeCompletionsForModuleExports',
-      label: 'Auto-import suggestions',
+      label: 'Auto-Import Suggestions',
       description:
         'Suggest exports of modules the file does not import yet, adding the import when one is chosen. The server reads this only when it starts, so changing it restarts it.',
       default: true,
@@ -218,13 +218,13 @@ const JAVA: LanguageServerDescriptor = {
   settings: [
     {
       section: 'java.referencesCodeLens.enabled',
-      label: 'Reference counts',
+      label: 'Reference Counts',
       description: 'Show how many references a type or member has above it. Each costs a line.',
       default: true,
     },
     {
       section: 'java.inlayHints.parameterNames.enabled',
-      label: 'Parameter names',
+      label: 'Parameter Names',
       description:
         'Show the name of the parameter each argument is passed to, before the argument: for literal arguments only, or for all of them.',
       default: 'literals',
@@ -236,14 +236,14 @@ const JAVA: LanguageServerDescriptor = {
     },
     {
       section: 'java.signatureHelp.enabled',
-      label: 'Signature help',
+      label: 'Signature Help',
       description: "Show a method's parameters as you type its arguments.",
       default: true,
       advanced: true,
     },
     {
       section: 'java.import.gradle.enabled',
-      label: 'Import Gradle projects',
+      label: 'Import Gradle Projects',
       description:
         'Load a folder built with Gradle as a Gradle project. The server reads this only when it starts, so changing it restarts it.',
       default: true,
@@ -252,7 +252,7 @@ const JAVA: LanguageServerDescriptor = {
     },
     {
       section: 'java.import.maven.enabled',
-      label: 'Import Maven projects',
+      label: 'Import Maven Projects',
       description:
         'Load a folder built with Maven as a Maven project. The server reads this only when it starts, so changing it restarts it.',
       default: true,
@@ -365,7 +365,7 @@ const CSHARP: LanguageServerDescriptor = {
   settings: [
     {
       section: 'csharp|background_analysis.dotnet_compiler_diagnostics_scope',
-      label: 'Errors and warnings',
+      label: 'Errors and Warnings',
       description:
         'Which files the compiler checks for the Error List: the files you have open, or every file in the solution, open or not.',
       default: 'fullSolution',
@@ -376,7 +376,7 @@ const CSHARP: LanguageServerDescriptor = {
     },
     {
       section: 'csharp|background_analysis.dotnet_analyzer_diagnostics_scope',
-      label: 'Code analysis',
+      label: 'Code Analysis',
       description:
         'Which files code analysis — analyzer warnings and suggestions — runs on. The whole solution is thorough, but slow on a large one.',
       default: 'openFiles',
@@ -388,21 +388,21 @@ const CSHARP: LanguageServerDescriptor = {
     },
     {
       section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_parameters',
-      label: 'Parameter names',
+      label: 'Parameter Names',
       description:
         'Show the name of the parameter each argument is passed to, before the argument.',
       default: false,
     },
     {
       section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_types',
-      label: 'Inferred types',
+      label: 'Inferred Types',
       description:
         'Show the type the compiler infers where the code does not name it, such as after var.',
       default: false,
     },
     {
       section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_literal_parameters',
-      label: 'Names for literal arguments',
+      label: 'Names for Literal Arguments',
       description:
         'Show parameter names for arguments that are literals, such as numbers and strings.',
       default: true,
@@ -410,21 +410,21 @@ const CSHARP: LanguageServerDescriptor = {
     },
     {
       section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_object_creation_parameters',
-      label: 'Names in object creation',
+      label: 'Names in Object Creation',
       description: 'Show parameter names for the arguments of a new expression.',
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_indexer_parameters',
-      label: 'Names for indexer arguments',
+      label: 'Names for Indexer Arguments',
       description: 'Show parameter names for the arguments of an indexer.',
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|inlay_hints.dotnet_enable_inlay_hints_for_other_parameters',
-      label: 'Names for other arguments',
+      label: 'Names for Other Arguments',
       description:
         'Show parameter names for every other argument, such as variables and member accesses.',
       default: false,
@@ -432,42 +432,42 @@ const CSHARP: LanguageServerDescriptor = {
     },
     {
       section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_variable_types',
-      label: 'Types of var declarations',
+      label: 'Types of var Declarations',
       description: 'Show the inferred type of a variable declared with var.',
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_lambda_parameter_types',
-      label: 'Types of lambda parameters',
+      label: 'Types of Lambda Parameters',
       description: "Show the inferred types of a lambda expression's parameters.",
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_implicit_object_creation',
-      label: 'Types of target-typed new',
+      label: 'Types of Target-Typed new',
       description: 'Show the type a target-typed new() creates.',
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|inlay_hints.csharp_enable_inlay_hints_for_collection_expressions',
-      label: 'Types of collection expressions',
+      label: 'Types of Collection Expressions',
       description: 'Show the type a collection expression creates.',
       default: true,
       advanced: true,
     },
     {
       section: 'csharp|code_lens.dotnet_enable_references_code_lens',
-      label: 'Reference counts',
+      label: 'Reference Counts',
       description:
         'Show how many references a type or member has above it; clicking the count lists them. Each costs a line.',
       default: true,
     },
     {
       section: 'projects.dotnet_enable_automatic_restore',
-      label: 'Restore packages',
+      label: 'Restore Packages',
       description:
         "Restore a project's NuGet packages when it needs them — on opening the solution, or when a project file changes — or ask first.",
       default: true,
@@ -478,14 +478,14 @@ const CSHARP: LanguageServerDescriptor = {
     },
     {
       section: 'projects.dotnet_enable_file_based_programs',
-      label: 'File-based programs',
+      label: 'File-Based Programs',
       description:
         'Give a C# file that belongs to no project — a program run with `dotnet run app.cs` — full language support of its own.',
       default: true,
     },
     {
       section: 'navigation.dotnet_navigate_to_decompiled_sources',
-      label: 'Go to decompiled sources',
+      label: 'Go to Decompiled Sources',
       description:
         'Go to Definition on framework or package code opens its decompiled source, rather than only its signatures.',
       default: true,

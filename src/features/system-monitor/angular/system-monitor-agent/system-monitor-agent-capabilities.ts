@@ -316,8 +316,8 @@ export class SystemMonitorAgentCapabilities {
     if (!LOG_LEVEL_SETTINGS.includes(level as LogLevelSetting)) {
       return { ok: false, error: `"${String(level)}" is not a log level.` };
     }
-    const previous: LogLevelSetting = this.settings.value('application.logLevel')();
-    this.settings.set('application.logLevel', level as LogLevelSetting);
+    const previous: LogLevelSetting = this.settings.value('systemMonitor.logLevel')();
+    this.settings.set('systemMonitor.logLevel', level as LogLevelSetting);
     return { ok: true, previous };
   }
 }

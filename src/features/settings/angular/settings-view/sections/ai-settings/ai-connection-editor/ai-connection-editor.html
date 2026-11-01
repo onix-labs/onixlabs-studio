@@ -2,7 +2,7 @@
   <p class="conn-editor__hint">{{ credentialHint() }}</p>
 
   <app-setting-row
-    label="Display name"
+    label="Display Name"
     description="What this configuration is called in the agent provider picker (for example Anthropic (Claude))."
   >
     <app-text-field
@@ -19,7 +19,7 @@
   @if (!harness().runnable) {
     <app-setting-row
       class="conn-editor__harness"
-      label="Runs through"
+      label="Runs Through"
       description="No installed plugin runs this configuration, so it cannot be used by an agent."
     >
       <span class="conn-editor__controls">
@@ -53,7 +53,7 @@
   }
 
   @if (usesKey()) {
-    <app-setting-row label="API key" [description]="status().detail">
+    <app-setting-row label="API Key" [description]="status().detail">
       <span class="conn-editor__controls">
         <app-password-field
           class="conn-editor__wide"
@@ -90,7 +90,7 @@
 
     @if (showClaudePath()) {
       <app-setting-row
-        label="Claude CLI path"
+        label="Claude CLI Path"
         description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
       >
         <app-setting-control key="ai.claudeExecutablePath" />
@@ -109,7 +109,7 @@
 
     @if (showCodexPath()) {
       <app-setting-row
-        label="Codex CLI path"
+        label="Codex CLI Path"
         description="Absolute path to the codex executable, used when Codex CLI is set to Custom."
       >
         <app-setting-control key="ai.codexExecutablePath" />
@@ -166,7 +166,7 @@
   }
 
   <app-setting-row
-    label="Add a model"
+    label="Add a Model"
     description="Add a model by its id when discovery does not list it."
   >
     <span class="conn-editor__controls">

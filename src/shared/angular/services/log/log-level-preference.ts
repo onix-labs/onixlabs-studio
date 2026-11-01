@@ -4,7 +4,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
- * Applies the `application.logLevel` setting to the logging floor, in this window and in the main
+ * Applies the `systemMonitor.logLevel` setting to the logging floor, in this window and in the main
  * process, whenever it changes. A separate service because the Settings store itself logs through
  * {@link Log}, so the log service cannot depend on it in turn.
  *
@@ -26,7 +26,7 @@ export class LogLevelPreference {
   /**
    * Gets the chosen log level.
    */
-  private readonly level: Signal<LogLevelSetting> = this.settings.value('application.logLevel');
+  private readonly level: Signal<LogLevelSetting> = this.settings.value('systemMonitor.logLevel');
 
   /**
    * Initializes the service, applying the setting now and on every change.

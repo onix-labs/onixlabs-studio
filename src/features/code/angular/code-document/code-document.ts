@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   input,
@@ -21,7 +22,11 @@ import {
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import {
+  CodeDocument,
+  CodeViewToggles,
+  Documents,
+} from '@shared/angular/services/documents/documents';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { DebugLocation, Debugger } from '@shared/angular/services/debug/debugger';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
@@ -126,9 +131,21 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly editor: Signal<TextEditor | undefined> = viewChild<TextEditor>(TextEditor);
 
   /**
-   * Holds the editor options bound to the pane, enabling the glyph margin for the breakpoint gutter.
+   * Gets the editor options bound to the pane: the glyph margin for the breakpoint gutter, and any
+   * view toggle this tab set for itself from the ribbon or tool strip. The pane merges these last, so
+   * a toggle the tab set wins over the setting; an unset one leaves the setting in force.
    */
-  protected readonly editorOptions: MonacoApi.editor.IEditorOptions = CODE_EDITOR_OPTIONS;
+  protected readonly editorOptions: Signal<MonacoApi.editor.IEditorOptions> = computed(
+    (): MonacoApi.editor.IEditorOptions => {
+      const view: CodeViewToggles = this.backingDocument()?.view() ?? {};
+      return {
+        ...CODE_EDITOR_OPTIONS,
+        ...(view.wordWrap === undefined ? {} : { wordWrap: view.wordWrap ? 'on' : 'off' }),
+        ...(view.minimap === undefined ? {} : { minimap: { enabled: view.minimap } }),
+        ...(view.lineNumbers === undefined ? {} : { lineNumbers: view.lineNumbers ? 'on' : 'off' }),
+      };
+    },
+  );
 
   /**
    * Holds the backing document, or null before initialisation.

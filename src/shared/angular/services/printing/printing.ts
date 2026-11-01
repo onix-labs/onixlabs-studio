@@ -1,8 +1,7 @@
-import { DOCUMENT, effect, inject, Service } from '@angular/core';
+import { DOCUMENT, inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { ExportPdfRequest, ExportPdfResult, PrintChannel } from '@shared/api/print-channels';
 import { Log } from '@shared/angular/services/log/log';
-import { Settings } from '@shared/angular/services/settings/settings';
 import type { PrintMargin } from '@shared/angular/services/settings/settings';
 
 /**
@@ -17,22 +16,17 @@ const PRINT_MARGINS: Readonly<Record<PrintMargin, string>> = {
 };
 
 /**
- * Projects the user's print-margin setting onto the printed page.
+ * Prints the active document, or exports it to PDF, with the margin its capability's settings choose.
  *
  * The page margin belongs in an `@page` rule, but Chromium does not reliably honour a CSS custom
  * property inside `@page`, so the rule text cannot be driven by a projected variable the way the theme
  * colours are. Instead this service owns a single `<style>` element whose `@page` rule is rewritten
- * whenever the setting changes — the one authoritative source of the print margin (the print stylesheet
- * deliberately declares none). Instantiated at start-up so the margin is in place before the first
- * print.
+ * immediately before each print — the one authoritative source of the print margin (the print
+ * stylesheet deliberately declares none). The margin is the caller's: each capability that prints
+ * (code, Markdown) has its own, so there is no one margin to keep in sync.
  */
 @Service()
 export class Printing {
-  /**
-   * Holds the settings service the print margin is read from.
-   */
-  private readonly settings: Settings = inject(Settings);
-
   /**
    * Holds the structured logger.
    */
@@ -55,24 +49,21 @@ export class Printing {
   private readonly styleElement: HTMLStyleElement = this.document.createElement('style');
 
   /**
-   * Initialises the service, keeping the `@page` margin rule in sync with the setting.
+   * Initialises the service, placing the `@page` style element the margin is written into.
    */
   public constructor() {
     this.styleElement.dataset['printMargin'] = '';
     this.document.head.appendChild(this.styleElement);
-
-    effect((): void => {
-      const margin: string = PRINT_MARGINS[this.settings.value('application.printMargin')()];
-      this.styleElement.textContent = `@page { margin: ${margin}; }`;
-    });
   }
 
   /**
    * Prints the active document through the browser print dialog, which applies the print stylesheet
    * and the `@page` margin.
+   * @param margin The page margin the printing capability's settings choose.
    */
-  public print(): void {
-    this.log.info('Printing', 'Printing active document');
+  public print(margin: PrintMargin): void {
+    this.log.info('Printing', 'Printing active document', margin);
+    this.applyMargin(margin);
     this.document.defaultView?.print();
   }
 
@@ -82,9 +73,11 @@ export class Printing {
    * to a no-op reporting failure outside Electron, where no bridge is available.
    * @param documentName The active document's name (for example `notes.md`); its extension is swapped
    * for `.pdf` to seed the save dialog.
+   * @param margin The page margin the printing capability's settings choose.
    * @returns Returns the outcome describing success, cancellation, or failure.
    */
-  public async exportPdf(documentName: string): Promise<ExportPdfResult> {
+  public async exportPdf(documentName: string, margin: PrintMargin): Promise<ExportPdfResult> {
+    this.applyMargin(margin);
     const request: ExportPdfRequest = { defaultFileName: this.toPdfFileName(documentName) };
     this.log.info('Printing', 'Exporting document to PDF', request.defaultFileName);
     const result: ExportPdfResult = (await this.bridge?.invoke<ExportPdfResult>(
@@ -96,6 +89,14 @@ export class Printing {
     };
     this.log.debug('Printing', 'PDF export completed', result.success);
     return result;
+  }
+
+  /**
+   * Writes the `@page` margin rule for the print about to happen.
+   * @param margin The page margin.
+   */
+  private applyMargin(margin: PrintMargin): void {
+    this.styleElement.textContent = `@page { margin: ${PRINT_MARGINS[margin]}; }`;
   }
 
   /**

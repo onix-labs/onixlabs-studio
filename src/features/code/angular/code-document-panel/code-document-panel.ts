@@ -18,7 +18,12 @@ import {
   TextEditorCursor,
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
-import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import {
+  CodeDocument,
+  CodeViewToggles,
+  Documents,
+  effectiveViewToggles,
+} from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import {
@@ -290,24 +295,38 @@ export class CodeDocumentPanel {
   private readonly fileCommands: DocumentFileCommands = injectDocumentFileCommands();
 
   /**
-   * Gets whether long lines wrap, editor-wide — the same setting the ribbon's Word Wrap sets.
+   * Gets the view toggles in force in this document: those it set for itself, otherwise the settings
+   * as they apply to its file — the same rule the code tab's ribbon follows.
+   */
+  private readonly viewToggles: Signal<Required<CodeViewToggles>> = computed(
+    (): Required<CodeViewToggles> => {
+      const document: CodeDocument | undefined = this.document();
+      return effectiveViewToggles(
+        document?.view() ?? {},
+        document === undefined
+          ? this.settings.globalTextEditor()
+          : this.settings.resolveSettingsForLanguage(document.language()),
+      );
+    },
+  );
+
+  /**
+   * Gets whether long lines wrap in this document.
    */
   protected readonly wordWrap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().wordWrap,
+    (): boolean => this.viewToggles().wordWrap,
   );
 
   /**
-   * Gets whether the minimap shows, editor-wide — the same setting the ribbon's Minimap sets.
+   * Gets whether this document shows the minimap.
    */
-  protected readonly minimap: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showMinimap,
-  );
+  protected readonly minimap: Signal<boolean> = computed((): boolean => this.viewToggles().minimap);
 
   /**
-   * Gets whether line numbers show, editor-wide — the same setting the ribbon's Line Numbers sets.
+   * Gets whether this document shows line numbers.
    */
   protected readonly lineNumbers: Signal<boolean> = computed(
-    (): boolean => this.settings.globalTextEditor().showLineNumbers,
+    (): boolean => this.viewToggles().lineNumbers,
   );
 
   /**
@@ -728,10 +747,21 @@ export class CodeDocumentPanel {
   }
 
   /**
-   * Turns Word Wrap on or off, editor-wide, as the ribbon's Word Wrap does.
+   * Turns Word Wrap on or off in this document only; the setting is left alone.
    */
   private toggleWordWrap(): void {
-    this.settings.updateTextEditorSettings({ wordWrap: !this.wordWrap() });
+    this.setViewToggle({ wordWrap: !this.wordWrap() });
+  }
+
+  /**
+   * Records a view toggle on this document, for as long as it is open.
+   * @param toggle The toggle and its new state.
+   */
+  private setViewToggle(toggle: CodeViewToggles): void {
+    this.document()?.view.update((current: CodeViewToggles): CodeViewToggles => ({
+      ...current,
+      ...toggle,
+    }));
   }
 
   /**
@@ -753,10 +783,10 @@ export class CodeDocumentPanel {
         this.toggleWordWrap();
         break;
       case MENU_MINIMAP:
-        this.settings.updateTextEditorSettings({ showMinimap: !this.minimap() });
+        this.setViewToggle({ minimap: !this.minimap() });
         break;
       case MENU_LINE_NUMBERS:
-        this.settings.updateTextEditorSettings({ showLineNumbers: !this.lineNumbers() });
+        this.setViewToggle({ lineNumbers: !this.lineNumbers() });
         break;
       default:
         break;

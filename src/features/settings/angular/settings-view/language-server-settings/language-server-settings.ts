@@ -47,22 +47,22 @@ const PATH_OVERRIDES: Readonly<Record<string, PathOverride>> = {
  */
 const PATH_LABELS: Readonly<Record<PathOverride, { label: string; description: string }>> = {
   typescriptServer: {
-    label: 'Custom server path',
+    label: 'Custom Server Path',
     description:
       'Path to a custom typescript-language-server CLI module (its JavaScript entry point). Leave empty to use the copy installed under Plugins.',
   },
   java: {
-    label: 'Java runtime path',
+    label: 'Java Runtime Path',
     description:
       'The Java 21+ executable this language server runs on. Leave empty to detect it automatically.',
   },
   dotnet: {
-    label: '.NET SDK path',
+    label: '.NET SDK Path',
     description:
       'The .NET 10+ executable the language server runs on. Leave empty to detect it automatically.',
   },
   clangd: {
-    label: 'Custom clangd path',
+    label: 'Custom clangd Path',
     description: 'Your own clangd executable. Leave empty to use the copy installed under Plugins.',
   },
 };

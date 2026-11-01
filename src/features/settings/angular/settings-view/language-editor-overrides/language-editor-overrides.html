@@ -1,14 +1,13 @@
 <section class="language-editor-overrides">
   <header class="language-editor-overrides__header">
-    <h3 class="language-editor-overrides__title">Editor</h3>
     <p class="language-editor-overrides__subtitle">
-      How the text editor behaves in {{ languageName() }} files. Tick Override to give
-      {{ languageName() }} its own value; untick to follow the global setting.
+      Tick Override to give {{ languageName() }} files their own value; untick to follow
+      {{ globalPage() ?? 'the global setting' }}.
     </p>
   </header>
 
-  @for (setting of overridable; track setting.key) {
-    <app-setting-row [label]="setting.title" [description]="setting.description">
+  @for (setting of overridable(); track setting.key) {
+    <app-setting-row [label]="setting.title" [description]="describe(setting)">
       <span class="override">
         <!-- The label wraps the checkbox's projected native input, associating them at runtime; the
              lint rule cannot see through the component boundary to verify this statically. -->

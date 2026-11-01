@@ -15,6 +15,7 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
+  DiffLayout,
   DocumentDiffSwitch,
   DocumentWellPlacement,
   FileExplorerExpandAll,
@@ -80,12 +81,9 @@ export interface SettingsValues {
   readonly 'appearance.ribbonAlignment': RibbonAlignment;
   readonly 'appearance.workspaceTexture': WorkspaceTexture;
 
-  readonly 'application.undoStackSize': number;
-  readonly 'application.printMargin': PrintMargin;
   readonly 'application.menuMode': ApplicationMenuMode;
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
-  readonly 'application.logLevel': LogLevelSetting;
 
   readonly 'accessibility.showTooltips': boolean;
 
@@ -117,7 +115,9 @@ export interface SettingsValues {
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.goToStyle': GoToStyle;
+  readonly 'textEditor.diffLayout': DiffLayout;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
+  readonly 'textEditor.printMargin': PrintMargin;
 
   readonly 'markdownEditor.fontFamily': string;
   readonly 'markdownEditor.monospaceFontFamily': string;
@@ -126,6 +126,7 @@ export interface SettingsValues {
   readonly 'markdownEditor.imageSizing': ImageSizing;
   readonly 'markdownEditor.imageAlignment': ImageAlignment;
   readonly 'markdownEditor.selectAllScope': SelectAllScope;
+  readonly 'markdownEditor.printMargin': PrintMargin;
 
   readonly 'terminal.defaultShell': string;
 
@@ -158,6 +159,7 @@ export interface SettingsValues {
   readonly 'missionControl.tileScrollMode': TileScrollMode;
 
   readonly 'systemMonitor.refreshRate': number;
+  readonly 'systemMonitor.logLevel': LogLevelSetting;
 
   readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
   readonly 'databaseExplorer.gridlines': DatabaseGridlines;
@@ -176,8 +178,8 @@ export type SettingsKey = keyof SettingsValues;
  */
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
-    id: 'appearance',
-    label: 'Appearance',
+    id: 'application',
+    label: 'Application',
     settings: [
       {
         key: 'display.graphicsAcceleration',
@@ -187,11 +189,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         since: '2026.1.0-beta.4',
         title: 'Graphics Acceleration',
         description:
-          'How much of the GPU the interface uses. Full renders every visual feature; Limited keeps ' +
-          'hardware acceleration but drops squircle corners, the richer effects and the workspace ' +
-          'texture, for graphics hardware that renders them poorly; Off turns hardware acceleration ' +
-          'off entirely, which can fix rendering glitches but draws every pixel on the CPU and makes ' +
-          'the whole interface lag. Turning acceleration on or off restarts the application.',
+          'How much of the GPU the interface uses. Full shows every effect; Limited drops the ' +
+          'heavier ones for hardware that struggles; Off can fix rendering glitches but makes the ' +
+          'interface lag. Turning acceleration on or off restarts Studio.',
         shortDescription:
           'How much of the GPU the interface uses. Leave this automatic unless the interface ' +
           'renders oddly or lags; changing it restarts Studio.',
@@ -229,57 +229,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'accent' },
       },
       {
-        key: 'appearance.ribbonAlignment',
-        title: 'Ribbon Alignment',
-        description: "How the ribbon's controls are aligned within the ribbon strip.",
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'left', label: 'Left' },
-            { value: 'center', label: 'Center' },
-          ],
-        },
-        default: 'left',
-      },
-      {
-        key: 'appearance.workspaceTexture',
-        // Shown only at the full level, which is where the texture is actually painted. Below it the
-        // texture resolves to nothing regardless of the choice — a full-workspace masked layer is
-        // among the costliest things to draw — so the control would do nothing, which reads as broken
-        // rather than as inapplicable. The condition tests the *resolved* level, so the automatic mode
-        // shows or hides the row according to what it actually resolved to on this machine.
-        visibleWhen: { key: 'display.graphicsAcceleration', equals: ['full'] },
-        title: 'Workspace Texture',
-        description:
-          'A pattern tiled behind the workspace panes, painted in the accent colour. Patterns from Hero Patterns.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'none', label: 'None' },
-            { value: 'texture', label: 'Texture' },
-            { value: 'hideout', label: 'Hideout' },
-            { value: 'tiny-checkers', label: 'Tiny Checkers' },
-            { value: 'bubbles', label: 'Bubbles' },
-            { value: 'diagonal-stripes', label: 'Diagonal Stripes' },
-            { value: 'houndstooth', label: 'Houndstooth' },
-            { value: 'rain', label: 'Rain' },
-            { value: 'circuit-board', label: 'Circuit Board' },
-            { value: 'diagonal-lines', label: 'Diagonal Lines' },
-            { value: 'polka-dots', label: 'Polka Dots' },
-            { value: 'signal', label: 'Signal' },
-          ],
-        },
-        default: 'none',
-      },
-    ],
-  },
-  {
-    id: 'application',
-    label: 'Application',
-    settings: [
-      {
         key: 'application.menuMode',
-        title: 'Application menu',
+        title: 'Application Menu',
         description:
           'How much of the File, Edit and View menu the title strip carries. Hide it when the ' +
           'system already draws the menu itself; the button takes the least room; the full menu ' +
@@ -296,7 +247,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'application.menuAppearance',
-        title: 'Application menu appearance',
+        title: 'Application Menu Appearance',
         description:
           'How the menu button lays its sections out when opened: stacked as a list, or across a ' +
           'strip with each section opening beneath it.',
@@ -313,70 +264,26 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'vertical',
       },
       {
+        key: 'appearance.ribbonAlignment',
+        title: 'Ribbon Alignment',
+        description: "How the ribbon's controls are aligned within the ribbon strip.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'left', label: 'Left' },
+            { value: 'center', label: 'Center' },
+          ],
+        },
+        default: 'left',
+      },
+      {
         key: 'application.showWindowLock',
-        title: 'Window lock switch',
+        title: 'Window Lock Switch',
         description:
-          'Carry the switch at the start of the title strip that pins the window in place, so ' +
-          'dragging the strip no longer moves it. Turning this off releases the lock as well as ' +
-          'hiding the switch: the strip is the only place the lock can be released, so a window ' +
-          'left locked without it could never be moved again.',
+          'Show the switch at the start of the title strip that pins the window in place. ' +
+          'Turning this off also releases the lock.',
         control: { kind: 'toggle' },
         default: true,
-      },
-      {
-        key: 'application.undoStackSize',
-        title: 'Undo history',
-        description: 'Number of undo steps kept.',
-        control: {
-          kind: 'select',
-          valueType: 'number',
-          options: [
-            { value: '25', label: '25' },
-            { value: '50', label: '50' },
-            { value: '75', label: '75' },
-            { value: '100', label: '100' },
-            { value: '150', label: '150' },
-            { value: '200', label: '200' },
-          ],
-        },
-        default: 100,
-      },
-      {
-        key: 'application.printMargin',
-        title: 'Print margins',
-        description:
-          'The page margin applied when printing or exporting a document to PDF. Regular is double Narrow, and Wide is double Regular.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'narrow', label: 'Narrow' },
-            { value: 'regular', label: 'Regular' },
-            { value: 'wide', label: 'Wide' },
-          ],
-        },
-        default: 'regular',
-      },
-      {
-        key: 'application.logLevel',
-        title: 'Log level',
-        description:
-          'The least severe records Studio writes to its logs. Automatic keeps Info and above in ' +
-          'a release build and everything in a development build. Choose Trace or Debug while ' +
-          'investigating a problem, then set it back: those levels write many times more and ' +
-          'rotate the logs away sooner. The STUDIO_LOG_LEVEL environment variable overrides this ' +
-          'for a launch.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'auto', label: 'Automatic' },
-            { value: 'trace', label: 'Trace' },
-            { value: 'debug', label: 'Debug' },
-            { value: 'info', label: 'Info' },
-            { value: 'warning', label: 'Warning' },
-            { value: 'error', label: 'Error' },
-          ],
-        },
-        default: 'auto',
       },
     ],
   },
@@ -386,7 +293,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'accessibility.showTooltips',
-        title: 'Tooltips on icon-only controls',
+        title: 'Tooltips on Icon-Only Controls',
         description:
           'Name a control that shows only an icon, in a tooltip below it, on hover or keyboard ' +
           'focus. These controls always carry their name for a screen reader; this shows the same ' +
@@ -402,7 +309,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'notifications.toastDuration',
-        title: 'Toast duration',
+        title: 'Toast Duration',
         description:
           'How long a transient notification toast stays on screen. Hovering a toast pauses its ' +
           'timer, and error toasts always stay until dismissed.',
@@ -421,7 +328,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'notifications.agentRequestToasts',
-        title: 'Agent requests as toasts',
+        title: 'Agent Requests as Toasts',
         description:
           'Raise a toast when an agent in a background tab asks a question or requests permission. ' +
           'Answering stays in the conversation; the toast jumps to the asking tab.',
@@ -430,7 +337,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'notifications.desktop',
-        title: 'System notifications',
+        title: 'System Notifications',
         description:
           'While Studio is in the background, show errors, finished agents, runs and builds, and ' +
           "agents waiting on you in the system's notification centre. Clicking one brings Studio " +
@@ -470,7 +377,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'notifications.whenMuted',
-        title: 'When muted',
+        title: 'When Muted',
         description:
           'What still appears while notifications are muted from the tray. Muted notifications are ' +
           'still recorded in the tray.',
@@ -491,7 +398,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'workspaces.fileExplorerExpandAll',
-        title: 'Expand All scope',
+        title: 'Expand All Scope',
         description:
           "How the File Explorer's Expand All button behaves. Loaded folders only expands directories already read from disk; Entire tree reads and expands the whole workspace (slower on large folders).",
         control: {
@@ -505,7 +412,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'workspaces.documentDiffSwitch',
-        title: 'Switching between a file and its diff',
+        title: 'Switching Between a File and Its Diff',
         description:
           "What the Show Differences and Show File buttons on a file's and a diff's tool strips do with the tab you are leaving. Open as a separate tab keeps both, opening the other view beside it (or going to it when it is already open); Replace the current tab turns the tab into the other view, asking to save a file with unsaved changes first.",
         control: {
@@ -519,7 +426,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'workspaces.documentWellPlacement',
-        title: 'Opening a document beside a filling panel',
+        title: 'Opening a Document Beside a Filling Panel',
         description:
           'What happens when you open a document while a panel, such as an agent, fills the space documents open in. Split Horizontally puts the documents beside the panel; Split Vertically puts them above it; Collapse folds the panel into its tab strip, where it can still be opened over the documents, and gives the documents the whole space. Closing the last document gives the panel its space back.',
         control: {
@@ -532,15 +439,81 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'split-horizontal',
       },
+      {
+        key: 'appearance.workspaceTexture',
+        // Shown only at the full level, which is where the texture is actually painted. Below it the
+        // texture resolves to nothing regardless of the choice — a full-workspace masked layer is
+        // among the costliest things to draw — so the control would do nothing, which reads as broken
+        // rather than as inapplicable. The condition tests the *resolved* level, so the automatic mode
+        // shows or hides the row according to what it actually resolved to on this machine.
+        visibleWhen: { key: 'display.graphicsAcceleration', equals: ['full'] },
+        title: 'Workspace Texture',
+        description:
+          'A pattern tiled behind the workspace panes, painted in the accent colour. Patterns from Hero Patterns.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'texture', label: 'Texture' },
+            { value: 'hideout', label: 'Hideout' },
+            { value: 'tiny-checkers', label: 'Tiny Checkers' },
+            { value: 'bubbles', label: 'Bubbles' },
+            { value: 'diagonal-stripes', label: 'Diagonal Stripes' },
+            { value: 'houndstooth', label: 'Houndstooth' },
+            { value: 'rain', label: 'Rain' },
+            { value: 'circuit-board', label: 'Circuit Board' },
+            { value: 'diagonal-lines', label: 'Diagonal Lines' },
+            { value: 'polka-dots', label: 'Polka Dots' },
+            { value: 'signal', label: 'Signal' },
+          ],
+        },
+        default: 'none',
+      },
     ],
   },
   {
-    id: 'text-editor',
-    label: 'Text Editor',
+    // Code-wide behaviour that is neither how code looks nor how a language is edited.
+    id: 'code-general',
+    label: 'Code',
+    settings: [
+      {
+        key: 'textEditor.goToStyle',
+        title: 'Go to Style',
+        description:
+          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'quick-open', label: 'Quick-open box' },
+            { value: 'dialogs', label: 'Dialogs' },
+          ],
+        },
+        default: 'quick-open',
+      },
+      {
+        key: 'textEditor.diffLayout',
+        title: 'Default Diff Layout',
+        description:
+          "How a diff lays out the two versions it compares when it opens: side by side, or inline in one column. The diff's own Split and Inline switch changes it from there.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'side-by-side', label: 'Side by Side' },
+            { value: 'inline', label: 'Inline' },
+          ],
+        },
+        default: 'side-by-side',
+      },
+    ],
+  },
+  {
+    // How code looks wherever it appears: editor tabs, diffs, queries, request bodies, Markdown code blocks.
+    id: 'code-appearance',
+    label: 'Code Appearance',
     settings: [
       {
         key: 'textEditor.global.fontFamily',
-        title: 'Font family',
+        title: 'Font Family',
         description: 'The editor font family.',
         control: {
           kind: 'select',
@@ -550,7 +523,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.fontSize',
-        title: 'Font size',
+        title: 'Font Size',
         description: 'The editor font size in pixels.',
         control: {
           kind: 'select',
@@ -573,7 +546,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.lineHeight',
-        title: 'Line height',
+        title: 'Line Height',
         description:
           'The line height as a multiple of the font size; Auto derives it automatically.',
         control: {
@@ -594,29 +567,11 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
             { value: '2', label: '2.0' },
           ],
         },
-        profileOverridable: true,
         default: 0,
       },
       {
-        key: 'textEditor.global.tabSize',
-        title: 'Tab size',
-        description: 'The number of spaces a single indentation level occupies.',
-        control: {
-          kind: 'select',
-          valueType: 'number',
-          options: [
-            { value: '2', label: '2' },
-            { value: '4', label: '4' },
-            { value: '6', label: '6' },
-            { value: '8', label: '8' },
-          ],
-        },
-        profileOverridable: true,
-        default: 2,
-      },
-      {
         key: 'textEditor.global.currentLineHighlight',
-        title: 'Current line highlight',
+        title: 'Current Line Highlight',
         description: 'The highlight style applied to the current line.',
         control: {
           kind: 'select',
@@ -628,23 +583,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'outline',
       },
       {
-        key: 'textEditor.global.braceStyle',
-        title: 'Brace style',
-        description: 'The brace placement style the editor formats to.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'kr', label: 'K&R (same line)' },
-            { value: 'allman', label: 'Allman (own line)' },
-            { value: 'gnu', label: 'GNU (own line, indented)' },
-          ],
-        },
-        profileOverridable: true,
-        default: 'kr',
-      },
-      {
         key: 'textEditor.global.cursorBlinking',
-        title: 'Cursor blinking',
+        title: 'Cursor Blinking',
         description: 'The cursor blinking animation style.',
         control: {
           kind: 'select',
@@ -660,7 +600,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.cursorSmoothCaretAnimation',
-        title: 'Smooth caret animation',
+        title: 'Smooth Caret Animation',
         description: 'How the cursor animates as it moves between positions.',
         control: {
           kind: 'select',
@@ -674,7 +614,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.showLineNumbers',
-        title: 'Line numbers',
+        title: 'Line Numbers',
         description: 'Show line numbers in the gutter.',
         control: { kind: 'toggle' },
         profileOverridable: true,
@@ -690,7 +630,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.colorBrackets',
-        title: 'Coloured brackets',
+        title: 'Coloured Brackets',
         description: 'Colour matching bracket pairs by their nesting depth.',
         control: { kind: 'toggle' },
         profileOverridable: true,
@@ -698,33 +638,81 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'textEditor.global.accentSelection',
-        title: 'Accent selection',
+        title: 'Accent Selection',
         description:
           'Use the accent colour for selected text in the editor (off uses the default).',
         control: { kind: 'toggle' },
         default: true,
       },
       {
-        key: 'textEditor.global.wordWrap',
-        title: 'Word wrap',
-        description: 'Wrap long lines.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: false,
-      },
-      {
         key: 'textEditor.global.stickyScroll',
-        title: 'Sticky scroll',
+        title: 'Sticky Scroll',
         description: 'Pin scope context to the top while scrolling.',
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,
       },
       {
+        key: 'textEditor.printMargin',
+        title: 'Print Margins',
+        description:
+          'The page margin applied when printing or exporting a code document to PDF. Regular is double ' +
+          'Narrow, and Wide is double Regular.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'narrow', label: 'Narrow' },
+            { value: 'regular', label: 'Regular' },
+            { value: 'wide', label: 'Wide' },
+          ],
+        },
+        default: 'regular',
+      },
+    ],
+  },
+  {
+    // How code is edited; the per-language overrides are edited on each language's page under Code › Languages.
+    id: 'code-editing',
+    label: 'Code Editing',
+    settings: [
+      {
+        key: 'textEditor.global.tabSize',
+        title: 'Tab Size',
+        description: 'The number of spaces a single indentation level occupies.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '2', label: '2' },
+            { value: '4', label: '4' },
+            { value: '6', label: '6' },
+            { value: '8', label: '8' },
+          ],
+        },
+        profileOverridable: true,
+        default: 2,
+      },
+      {
+        key: 'textEditor.global.insertSpaces',
+        title: 'Insert Spaces',
+        description: 'Insert spaces instead of tabs when indenting.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.wordWrap',
+        title: 'Word Wrap',
+        description: 'Wrap long lines.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
         // On everywhere by default, overridable per language (Matthew's ruling on #1141) — switch it off
         // for, say, TypeScript in a project that a different formatter lays out.
         key: 'textEditor.global.formatOnType',
-        title: 'Format on type',
+        title: 'Format on Type',
         description:
           "Lay out the line as you type a closing brace, a semicolon or a new line, using the language's own formatter.",
         control: { kind: 'toggle' },
@@ -732,32 +720,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'textEditor.global.insertSpaces',
-        title: 'Insert spaces',
-        description: 'Insert spaces instead of tabs when indenting.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
-      },
-      {
-        key: 'textEditor.goToStyle',
-        title: 'Go to style',
-        description:
-          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
+        key: 'textEditor.global.braceStyle',
+        title: 'Brace Style',
+        description: 'The brace placement style the editor formats to.',
         control: {
           kind: 'select',
           options: [
-            { value: 'quick-open', label: 'Quick-open box' },
-            { value: 'dialogs', label: 'Dialogs' },
+            { value: 'kr', label: 'K&R (same line)' },
+            { value: 'allman', label: 'Allman (own line)' },
+            { value: 'gnu', label: 'GNU (own line, indented)' },
           ],
         },
-        default: 'quick-open',
+        profileOverridable: true,
+        default: 'kr',
       },
       {
         key: 'textEditor.languageOverrides',
-        title: 'Language overrides',
+        title: 'Language Overrides',
         description:
-          'Per-language overrides of the global editor settings, edited on each language page under Language Providers.',
+          'Per-language overrides of the code settings, edited on each language page under Code › Languages.',
         control: { kind: 'custom', component: 'language-editor-overrides' },
         // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
         // an ordinary override, so the user can change or clear it like any other (#1177).
@@ -771,7 +752,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'markdownEditor.fontFamily',
-        title: 'Body font',
+        title: 'Body Font',
         description: 'Font family used for body text.',
         control: {
           kind: 'select',
@@ -781,7 +762,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.monospaceFontFamily',
-        title: 'Monospace font',
+        title: 'Monospace Font',
         description: 'Font family used for code blocks.',
         control: {
           kind: 'select',
@@ -791,7 +772,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.fontSize',
-        title: 'Font size',
+        title: 'Font Size',
         description: 'Base font size in pixels.',
         control: {
           kind: 'select',
@@ -814,7 +795,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.marginSize',
-        title: 'Container width',
+        title: 'Container Width',
         description:
           'Maximum content width. Content is centred and capped at this width, and becomes fluid when the editor is narrower.',
         control: {
@@ -830,7 +811,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.imageSizing',
-        title: 'Image sizing',
+        title: 'Image Sizing',
         description: 'How images are sized in the document.',
         control: {
           kind: 'select',
@@ -843,7 +824,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.imageAlignment',
-        title: 'Image alignment',
+        title: 'Image Alignment',
         description: 'How images are horizontally aligned in the document.',
         control: {
           kind: 'select',
@@ -857,7 +838,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.selectAllScope',
-        title: 'Select all (Cmd/Ctrl+A)',
+        title: 'Select All (Cmd/Ctrl+A)',
         description:
           'What Select All selects first. The Shift chord (Cmd/Ctrl+Shift+A) selects the other one.',
         control: {
@@ -869,6 +850,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'block',
       },
+      {
+        key: 'markdownEditor.printMargin',
+        title: 'Print Margins',
+        description:
+          'The page margin applied when printing or exporting a Markdown document to PDF. Regular is double ' +
+          'Narrow, and Wide is double Regular.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'narrow', label: 'Narrow' },
+            { value: 'regular', label: 'Regular' },
+            { value: 'wide', label: 'Wide' },
+          ],
+        },
+        default: 'regular',
+      },
     ],
   },
   {
@@ -877,7 +874,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'terminal.defaultShell',
-        title: 'Default shell',
+        title: 'Default Shell',
         description:
           'The shell a new terminal starts with. Choose from the shells installed on your system, or use the system default.',
         control: { kind: 'custom', component: 'terminal-default-shell' },
@@ -912,14 +909,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.activeConnectionId',
-        title: 'Active connection',
+        title: 'Active Connection',
         description: 'The connection the agent runs turns through.',
         control: { kind: 'custom', component: 'ai-connections' },
         default: DEFAULT_CONNECTION_ID,
       },
       {
         key: 'ai.connectionModels',
-        title: 'Selected models',
+        title: 'Selected Models',
         description:
           "The model last selected per connection. A missing entry uses the connection's default.",
         control: { kind: 'custom', component: 'ai-connections' },
@@ -927,7 +924,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.connectionsFormat',
-        title: 'Connections format',
+        title: 'Connections Format',
         description:
           'The format the stored connections are in. Written by the settings migration, never by hand.',
         control: { kind: 'custom', component: 'ai-connections' },
@@ -935,7 +932,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.autoScroll',
-        title: 'Auto-scroll transcripts',
+        title: 'Auto-Scroll Transcripts',
         description:
           'Keep agent conversations pinned to the newest message as the response streams. Scrolling ' +
           'up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view.',
@@ -944,7 +941,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.conversationTextSize',
-        title: 'Conversation text size',
+        title: 'Conversation Text Size',
         description:
           'How large agent conversations render: the transcript, and the prompt you type into. ' +
           'Applies to every agent view.',
@@ -960,7 +957,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.reportBackgroundTasks',
-        title: 'Report background tasks back',
+        title: 'Report Background Tasks Back',
         description:
           'When a task the agent backgrounded finishes, let the agent pick the conversation back up ' +
           'and tell you what it found, rather than only noting that it finished. The agent resumes on ' +
@@ -970,7 +967,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.permissionPosture',
-        title: 'Permission posture',
+        title: 'Permission Posture',
         description: 'How much the agent may do without asking first.',
         control: {
           kind: 'select',
@@ -984,7 +981,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.remoteControlPosture',
-        title: 'Remote control posture',
+        title: 'Remote Control Posture',
         description:
           'How much a remote peer may do on an agent you expose. Each agent chooses only whether it ' +
           'is exposed; this decides what that exposure means.',
@@ -999,7 +996,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.toolPolicies',
-        title: 'Tool permissions',
+        title: 'Tool Permissions',
         description:
           'Default allow/ask/deny per tool. Deny blocks a tool even when the posture would ' +
           'auto-allow it; Allow skips the prompt; Ask uses the posture above.',
@@ -1008,7 +1005,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.blockHostCommandLine',
-        title: "Keep agents off the code host's command-line tool",
+        title: "Keep Agents off the Code Host's Command-Line Tool",
         description:
           "While a code-hosting plugin serves the repository, agents may not run that host's own " +
           'command-line tool (gh for GitHub) and go through the plugin instead, which asks before it ' +
@@ -1019,7 +1016,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.allowedWritePaths',
-        title: 'Allowed write paths',
+        title: 'Allowed Write Paths',
         description:
           'Extra directories the agent may write to beyond the workspace root (absolute paths).',
         control: { kind: 'custom', component: 'ai-write-paths' },
@@ -1027,7 +1024,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.deniedWritePaths',
-        title: 'Denied write paths',
+        title: 'Denied Write Paths',
         description:
           'Paths the agent may never write to, even inside the workspace: an absolute path, or a ' +
           'name matched anywhere in the path (e.g. .git, .env).',
@@ -1036,7 +1033,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.allowedNetworkLocations',
-        title: 'Allowed network locations',
+        title: 'Allowed Network Locations',
         description:
           'Hosts the agent may reach (e.g. api.example.com, *.corp.example). Empty allows any ' +
           'host, as before. Applies to the agent\u2019s shell and web access through the OS sandbox, ' +
@@ -1047,7 +1044,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.deniedNetworkLocations',
-        title: 'Denied network locations',
+        title: 'Denied Network Locations',
         description:
           'Hosts the agent may never reach, even when the allowed list would permit them.',
         control: { kind: 'custom', component: 'ai-network-locations' },
@@ -1055,7 +1052,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.tokenCap',
-        title: 'Token cap',
+        title: 'Token Cap',
         description: 'The per-request token budget.',
         control: {
           kind: 'select',
@@ -1074,7 +1071,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.runTimeoutMinutes',
-        title: 'Run time limit',
+        title: 'Run Time Limit',
         description:
           'Aborts a run after this long. The clock pauses while the agent waits for your input.',
         control: {
@@ -1094,7 +1091,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.agentSessionLifetime',
-        title: 'Keep agent sessions alive for',
+        title: 'Keep Agent Sessions Alive For',
         description:
           'How long an idle agent keeps its live session — and its background process — before it is ' +
           'reaped to free resources. The conversation reopens transparently on your next message, ' +
@@ -1114,7 +1111,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.agentShell',
-        title: 'Agent shell',
+        title: 'Agent Shell',
         description:
           'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
           'installed shell, or use the default login shell.',
@@ -1141,7 +1138,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.claudeExecutablePath',
-        title: 'Claude CLI path',
+        title: 'Claude CLI Path',
         description:
           'Absolute path to the claude executable, used when Claude CLI is set to Custom.',
         control: { kind: 'text', placeholder: '/usr/local/bin/claude' },
@@ -1167,7 +1164,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'ai.codexExecutablePath',
-        title: 'Codex CLI path',
+        title: 'Codex CLI Path',
         description: 'Absolute path to the codex executable, used when Codex CLI is set to Custom.',
         control: { kind: 'text', placeholder: '/usr/local/bin/codex' },
         default: '',
@@ -1180,7 +1177,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'missionControl.tileScrollMode',
-        title: 'Agent scroll behaviour',
+        title: 'Agent Scroll Behaviour',
         description:
           'How clicking an agent in the list brings its column into view: the shortest scroll that reveals it, or aligning its left edge to the start of the row (which can leave trailing space at the end).',
         control: {
@@ -1200,7 +1197,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'systemMonitor.refreshRate',
-        title: 'Refresh rate',
+        title: 'Refresh Rate',
         description:
           'How often the System Monitor reads the machine while it is showing. A faster rate shows ' +
           'changes sooner and costs a little more to gather; Paused keeps the last readings on ' +
@@ -1217,6 +1214,28 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 1000,
       },
+      {
+        key: 'systemMonitor.logLevel',
+        title: 'Log Level',
+        description:
+          'The least severe records Studio writes to its logs. Automatic keeps Info and above in ' +
+          'a release build and everything in a development build. Choose Trace or Debug while ' +
+          'investigating a problem, then set it back: those levels write many times more, so the ' +
+          'rolling studio.log rotates sooner. The STUDIO_LOG_LEVEL environment variable overrides ' +
+          'this for a launch.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'auto', label: 'Automatic' },
+            { value: 'trace', label: 'Trace' },
+            { value: 'debug', label: 'Debug' },
+            { value: 'info', label: 'Info' },
+            { value: 'warning', label: 'Warning' },
+            { value: 'error', label: 'Error' },
+          ],
+        },
+        default: 'auto',
+      },
     ],
   },
   {
@@ -1225,7 +1244,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     settings: [
       {
         key: 'databaseExplorer.selectAction',
-        title: 'Select actions',
+        title: 'Select Actions',
         description:
           'What happens when you choose an action that reads data from the Object Explorer, such as ' +
           'Select Top 1000 Rows or Match 25 Nodes. Open the query leaves it for you to run; Open and ' +
@@ -1242,7 +1261,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'databaseExplorer.gridlines',
-        title: 'Results gridlines',
+        title: 'Results Gridlines',
         description:
           'The lines drawn between the cells of a results grid: none, a line under each row, or a ' +
           'full grid between rows and columns.',
@@ -1258,7 +1277,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'databaseExplorer.gridlineTone',
-        title: 'Results gridline colour',
+        title: 'Results Gridline Colour',
         description:
           'How strongly the gridlines of a results grid are drawn: Light is a faint rule that stays ' +
           'out of the way of the data; Dark is a firm one that makes the grid easy to follow across a ' +
@@ -1283,7 +1302,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         // Owned by the main process, which reads it at launch before any plugin is resolved (#979), so
         // it is never in the renderer's settings store. Always on, and locked, in the development app.
         owner: 'plugins',
-        title: 'Load sideloaded plugins',
+        title: 'Load Sideloaded Plugins',
         description:
           "Load plugins placed in the plugins folder by hand. These skip Studio's integrity check " +
           'and can replace a plugin from the catalogue, so leave this off unless you put one there ' +
@@ -1300,7 +1319,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'security.imagePolicy',
         owner: 'security',
-        title: 'Remote images',
+        title: 'Remote Images',
         description:
           'Which image sources content (such as markdown) may load. Restricting this reduces exposure to remote tracking and untrusted content.',
         control: {
@@ -1335,6 +1354,26 @@ export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
     .filter(isSettingsOwned)
     .map((setting: SettingsOwnedDef): [SettingsKey, unknown] => [setting.key, setting.default]),
 ) as unknown as SettingsValues;
+
+/**
+ * The sections holding the code settings: code-wide behaviour, how code looks, and how it is edited.
+ * They were one Text Editor section; the language pages override a subset of them.
+ */
+export const CODE_SECTION_IDS: readonly string[] = [
+  'code-general',
+  'code-appearance',
+  'code-editing',
+];
+
+/**
+ * Lists every code setting, across the sections that hold them.
+ * @returns Returns the code settings, appearance first.
+ */
+export function codeSettings(): readonly SettingDef[] {
+  return CODE_SECTION_IDS.flatMap(
+    (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
+  );
+}
 
 /**
  * Returns the section with the given id, or undefined when it is unknown.

@@ -1,5 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { FileInfo } from '@shared/api/file-channels';
+import type { TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -30,6 +31,47 @@ const DEFAULT_LANGUAGE: string = 'plaintext';
  * Holds the encoding label assumed for a new, unsaved document.
  */
 const DEFAULT_ENCODING: string = 'UTF-8';
+
+/**
+ * The view toggles a code tab may set for itself — word wrap, the minimap, line numbers — each unset
+ * until the user flips it in that tab. An unset toggle follows the setting as it applies to the file
+ * (the global value, or the language's override); a set one holds for that tab only, and goes with
+ * it. Flipping one never changes a setting.
+ */
+export interface CodeViewToggles {
+  /**
+   * Gets whether long lines wrap in this tab, when the user has chosen.
+   */
+  readonly wordWrap?: boolean;
+
+  /**
+   * Gets whether this tab shows the minimap, when the user has chosen.
+   */
+  readonly minimap?: boolean;
+
+  /**
+   * Gets whether this tab shows line numbers, when the user has chosen.
+   */
+  readonly lineNumbers?: boolean;
+}
+
+/**
+ * Resolves the view toggles in force in a code tab: each one the tab set for itself, otherwise the
+ * setting as it applies to the file.
+ * @param view The toggles the tab set.
+ * @param settings The editor settings resolved for the file's language.
+ * @returns Returns every toggle's value in the tab.
+ */
+export function effectiveViewToggles(
+  view: CodeViewToggles,
+  settings: Pick<TextEditorSettings, 'wordWrap' | 'showMinimap' | 'showLineNumbers'>,
+): Required<CodeViewToggles> {
+  return {
+    wordWrap: view.wordWrap ?? settings.wordWrap,
+    minimap: view.minimap ?? settings.showMinimap,
+    lineNumbers: view.lineNumbers ?? settings.showLineNumbers,
+  };
+}
 
 /**
  * Represents the reactive state of a code document backing a code tab.
@@ -86,6 +128,12 @@ export interface CodeDocument {
    * never dirty, and it is never saved — a language server's decompiled source (#1133).
    */
   readonly readOnly: Signal<boolean>;
+
+  /**
+   * Gets the view toggles this tab has set for itself. Writable by the ribbon and the document's
+   * tool strip; it is view state of the open tab, never saved and never part of the file.
+   */
+  readonly view: WritableSignal<CodeViewToggles>;
 }
 
 /**
@@ -741,6 +789,7 @@ export class Documents implements UnsavedWorkSource {
       encoding: encoding.asReadonly(),
       hasBom: hasBom.asReadonly(),
       readOnly: readOnly.asReadonly(),
+      view: signal<CodeViewToggles>({}),
     };
     return {
       document,

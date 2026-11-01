@@ -2,21 +2,21 @@
 @if (view() === 'general') {
   <section class="ai-group">
     <app-setting-row
-      label="Auto-scroll transcripts"
+      label="Auto-Scroll Transcripts"
       description="Keep agent conversations pinned to the newest message as the response streams. Scrolling up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view."
     >
       <app-setting-control key="ai.autoScroll" />
     </app-setting-row>
 
     <app-setting-row
-      label="Conversation text size"
+      label="Conversation Text Size"
       description="How large agent conversations render: the transcript, and the prompt you type into. Applies to every agent view."
     >
       <app-setting-control key="ai.conversationTextSize" />
     </app-setting-row>
 
     <app-setting-row
-      label="Report background tasks back"
+      label="Report Background Tasks Back"
       description="When a task the agent backgrounded finishes, let the agent pick the conversation back up and tell you what it found, rather than only noting that it finished. The agent resumes on its own and spends tokens to do it, so turn this off to keep an idle conversation idle."
     >
       <app-setting-control key="ai.reportBackgroundTasks" />
@@ -25,28 +25,28 @@
     <app-ai-remote-notifications />
 
     <app-setting-row
-      label="Per-request token cap"
+      label="Per-Request Token Cap"
       description="Token budget per turn. 0 means no cap (the provider default)."
     >
       <app-setting-control key="ai.tokenCap" />
     </app-setting-row>
 
     <app-setting-row
-      label="Run timeout"
+      label="Run Timeout"
       description="How long a single agent run may take before it is cancelled, in minutes."
     >
       <app-setting-control key="ai.runTimeoutMinutes" />
     </app-setting-row>
 
     <app-setting-row
-      label="Keep agent sessions alive for"
+      label="Keep Agent Sessions Alive For"
       description="How long an idle agent keeps its live session — and its background process — before it is reaped to free resources. The conversation reopens transparently on your next message, keeping its context. 'Indefinitely' never reaps on idle."
     >
       <app-setting-control key="ai.agentSessionLifetime" />
     </app-setting-row>
 
     <app-setting-row
-      label="Agent shell"
+      label="Agent Shell"
       description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
     >
       <app-shell-picker
@@ -62,14 +62,14 @@
 @if (view() === 'security') {
   <section class="ai-group">
     <app-setting-row
-      label="Permission posture"
+      label="Permission Posture"
       description="How much the agent may do before asking you."
     >
       <app-setting-control key="ai.permissionPosture" />
     </app-setting-row>
 
     <app-setting-row
-      label="Remote control posture"
+      label="Remote Control Posture"
       description="How much a remote peer may do on an agent you expose via Remote Control. Each agent chooses only whether it is exposed; this decides what that exposure means. Full Control lets a peer drive the session; Read-Only lets them watch it."
     >
       <app-setting-control key="ai.remoteControlPosture" />
@@ -78,7 +78,7 @@
     <app-ai-tool-policies />
 
     <app-setting-row
-      label="Keep agents off the code host's command-line tool"
+      label="Keep Agents off the Code Host's Command-Line Tool"
       description="While a code-hosting plugin serves the repository, agents may not run that host's own command-line tool (gh for GitHub) and go through the plugin instead, which asks before it changes anything. Enforced for Claude and for providers that run commands through Studio's terminal; Codex is only told."
     >
       <app-setting-control key="ai.blockHostCommandLine" />

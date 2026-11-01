@@ -1,7 +1,6 @@
 @for (group of groups(); track group.view) {
+  <!-- One capability per page, so the page's breadcrumb names the view; no heading of its own. -->
   <section class="keyboard__group" [attr.aria-label]="group.view">
-    <h3 class="keyboard__view">{{ group.view }}</h3>
-
     @for (binding of group.bindings; track binding.id) {
       <div class="keyboard__row">
         <span class="keyboard__description">{{ binding.description }}</span>
@@ -48,7 +47,15 @@
   </section>
 }
 
-<p class="settings-section__hint">
-  Click a shortcut, then press the new key combination. Press Backspace while capturing to restore
-  the default.
-</p>
+@if (groups().length === 0) {
+  <p class="settings-section__hint">
+    No app-wide shortcuts can be changed yet. The menu's own shortcuts, such as Open and Close Tab,
+    are fixed for now. Each capability's shortcuts are on the Keyboard page under that capability,
+    for example Code › Keyboard.
+  </p>
+} @else {
+  <p class="settings-section__hint">
+    Click a shortcut, then press the new key combination. Press Backspace while capturing to restore
+    the default.
+  </p>
+}

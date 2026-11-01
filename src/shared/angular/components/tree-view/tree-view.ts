@@ -134,6 +134,14 @@ export interface TreeRow {
    * Gets the consumer's payload for the row, read by the projected row-content template.
    */
   readonly data: unknown;
+
+  /**
+   * Gets the text of a heading row, or undefined for an ordinary row. A heading labels the rows that
+   * follow it — a group of roots, say — and is not an item of the tree: the tree draws the text
+   * itself rather than projecting the row content, and the row cannot be clicked, selected, expanded
+   * or reached with the arrow keys.
+   */
+  readonly heading?: string;
 }
 
 /**
@@ -580,7 +588,10 @@ export class TreeView {
       return;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      const rows: readonly TreeRow[] = this.rows();
+      // Headings label the rows around them; they are not stops on the way through the tree.
+      const rows: readonly TreeRow[] = this.rows().filter(
+        (candidate: TreeRow): boolean => candidate.heading === undefined,
+      );
       const index: number = rows.findIndex(
         (candidate: TreeRow): boolean => candidate.id === row.id,
       );

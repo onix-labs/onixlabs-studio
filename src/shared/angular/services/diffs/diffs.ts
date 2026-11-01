@@ -1,6 +1,7 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 
 /**
@@ -40,10 +41,23 @@ export class Diffs {
   >(new Map<string, GitFileChange>());
 
   /**
-   * Holds whether diffs render inline (unified) rather than side by side. Shared across every open
-   * diff so the ribbon's toggle flips them together.
+   * Holds the settings, read for the default diff layout.
    */
-  private readonly inline: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the layout chosen with the diffs' own switch, or null until it is used. Shared across every
+   * open diff so the switch flips them together; until then the diffs follow the setting.
+   */
+  private readonly chosen: WritableSignal<boolean | null> = signal<boolean | null>(null);
+
+  /**
+   * Holds whether diffs render inline (unified) rather than side by side: as switched, otherwise as
+   * the Default Diff Layout setting says.
+   */
+  private readonly inline: Signal<boolean> = computed(
+    (): boolean => this.chosen() ?? this.settings.value('textEditor.diffLayout')() === 'inline',
+  );
 
   /**
    * Holds the structured logger.
@@ -58,7 +72,7 @@ export class Diffs {
   /**
    * Gets whether diffs render inline rather than side by side.
    */
-  public readonly inlineDiff: Signal<boolean> = this.inline.asReadonly();
+  public readonly inlineDiff: Signal<boolean> = this.inline;
 
   /**
    * Builds the stable dock panel id for a file's diff, so reopening the same file reuses its tab.
@@ -126,7 +140,7 @@ export class Diffs {
     if (this.inline() === inline) {
       return;
     }
-    this.inline.set(inline);
+    this.chosen.set(inline);
     this.log.debug('Diffs', `Diff layout set to ${inline ? 'inline' : 'side-by-side'}`);
   }
 

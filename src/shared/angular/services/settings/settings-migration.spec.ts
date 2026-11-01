@@ -15,7 +15,7 @@ describe('restoreOverrides', () => {
 
   it('flatDottedKeys_passThroughAsACopy', () => {
     const flat: Record<string, unknown> = {
-      'application.undoStackSize': 50,
+      'application.showWindowLock': false,
       'appearance.ribbonAlignment': 'left',
       ...MARKED,
     };
@@ -28,12 +28,12 @@ describe('restoreOverrides', () => {
 
   it('legacyNestedSections_areFlattenedToDottedKeys', () => {
     const legacy: Record<string, unknown> = {
-      application: { undoStackSize: 30 },
+      application: { showWindowLock: false },
       appearance: { ribbonAlignment: 'left' },
     };
 
     expect(restoreOverrides(legacy)).toEqual({
-      'application.undoStackSize': 30,
+      'application.showWindowLock': false,
       'appearance.ribbonAlignment': 'left',
       ...MARKED,
     });
@@ -130,8 +130,55 @@ describe('restoreOverrides', () => {
     expect('ai.models' in result).toBe(false);
   });
 
+  it('undoHistory_isDropped', () => {
+    // It bounded only the window-layout stack, which nothing offers to undo.
+    expect(restoreOverrides({ 'application.undoStackSize': 50 })).toEqual({ ...MARKED });
+  });
+
+  it('printMargin_movesToEveryCapabilityThatPrints', () => {
+    expect(restoreOverrides({ 'application.printMargin': 'wide' })).toEqual({
+      'textEditor.printMargin': 'wide',
+      'markdownEditor.printMargin': 'wide',
+      ...MARKED,
+    });
+  });
+
+  it('printMargin_neverOverwritesACapabilitysOwnMargin', () => {
+    expect(
+      restoreOverrides({
+        'application.printMargin': 'wide',
+        'markdownEditor.printMargin': 'narrow',
+      }),
+    ).toEqual({
+      'textEditor.printMargin': 'wide',
+      'markdownEditor.printMargin': 'narrow',
+      ...MARKED,
+    });
+  });
+
+  it('lineHeightOverrides_areDropped_andALanguageLeftWithNoneGoes', () => {
+    expect(
+      restoreOverrides({
+        'textEditor.languageOverrides': {
+          csharp: { braceStyle: 'allman', lineHeight: 1.6 },
+          rust: { lineHeight: 1.4 },
+        },
+      }),
+    ).toEqual({
+      'textEditor.languageOverrides': { csharp: { braceStyle: 'allman' } },
+      ...MARKED,
+    });
+  });
+
+  it('logLevel_movesToSystemMonitor', () => {
+    expect(restoreOverrides({ 'application.logLevel': 'debug' })).toEqual({
+      'systemMonitor.logLevel': 'debug',
+      ...MARKED,
+    });
+  });
+
   it('noAiChoices_addNoConnectionKeys', () => {
-    const result: SettingsOverrides = restoreOverrides({ 'application.undoStackSize': 50 });
+    const result: SettingsOverrides = restoreOverrides({ 'application.showWindowLock': false });
 
     expect('ai.activeConnectionId' in result).toBe(false);
     expect('ai.connectionModels' in result).toBe(false);
