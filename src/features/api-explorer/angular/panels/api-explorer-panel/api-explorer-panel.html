@@ -51,7 +51,7 @@
   (dismiss)="cancelRename()"
 >
   <ng-template appModalContent>
-    <h2 class="api-explorer__dialog-title">Rename “{{ renameTarget()?.label }}”</h2>
+    <h2 class="api-explorer__dialog-title">Rename {{ renameTarget()?.label }}</h2>
     <app-text-field
       class="api-explorer__dialog-input"
       placeholder="Name"
@@ -82,7 +82,7 @@
   (dismiss)="cancelDelete()"
 >
   <ng-template appModalContent>
-    <h2 class="api-explorer__dialog-title">Delete “{{ deleteTarget()?.label }}”?</h2>
+    <h2 class="api-explorer__dialog-title">Delete {{ deleteTarget()?.label }}?</h2>
     <p class="api-explorer__dialog-message">{{ deleteConsequence() }}</p>
     <app-button-row class="api-explorer__dialog-actions">
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />

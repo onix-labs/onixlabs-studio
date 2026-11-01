@@ -1,0 +1,102 @@
+// An AI's version of a skill, under review (#1263): editable fields on one tab, the changes on the
+// other. It fills the dialog it sits in, the instructions taking the height left over.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-block-size: 0;
+  flex: 1 1 auto;
+}
+
+.review__tabs {
+  flex: none;
+}
+
+.review__version {
+  // The same control width the skill editor uses, so the scope editor lines up with the fields.
+  --library-control-width: 18rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  // Nothing here scrolls: the instructions take what height is left and scroll inside their editor.
+  overflow: hidden;
+
+  > * {
+    flex: none;
+  }
+
+  app-text-field,
+  .review__tags {
+    inline-size: var(--library-control-width);
+  }
+}
+
+.review__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.review__version > .review__field--grow {
+  flex: 1 1 auto;
+  min-block-size: 6rem;
+}
+
+.review__label {
+  font-weight: 600;
+}
+
+.review__counts {
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+}
+
+.review__count {
+  font-variant-numeric: tabular-nums;
+  margin-inline-end: 0.25rem;
+}
+
+.review__count--added {
+  color: var(--success-color);
+}
+
+.review__count--removed {
+  color: var(--danger-color);
+}
+
+.review__changes {
+  flex: 1 1 auto;
+  min-block-size: 12rem;
+  margin: 0;
+  padding: 0.5rem 0;
+  overflow: auto;
+  background: var(--form-control-background-color);
+  border: var(--hairline) solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.review__line {
+  display: block;
+  padding-inline: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review__line--added {
+  background: rgba(var(--success-color-rgb), 0.14);
+}
+
+.review__line--removed {
+  background: rgba(var(--danger-color-rgb), 0.14);
+}
+
+.review__line--kept {
+  color: var(--form-muted-foreground-color);
+}

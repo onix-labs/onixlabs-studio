@@ -67,6 +67,14 @@ export const SKILL_NAME_PATTERN: RegExp = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?
 export const SKILL_DESCRIPTION_LIMIT: number = 1024;
 
 /**
+ * The length a drafted or AI-written description aims for (#1263). Every in-scope skill's
+ * description is in front of the model on every turn, so a library of hundreds of skills pays for
+ * each character hundreds of times; this keeps a description to a sentence or two while
+ * {@link SKILL_DESCRIPTION_LIMIT} stays the hard limit a hand-written one is held to.
+ */
+export const SKILL_DESCRIPTION_TARGET: number = 300;
+
+/**
  * A skill as the library holds it.
  */
 export interface Skill {

@@ -261,7 +261,7 @@ export class QuickFixes {
         const confirmed: boolean = await this.confirmation.ask({
           oldName: action.title,
           newName: '',
-          title: `Apply “${action.title}”?`,
+          title: `Apply ${action.title}?`,
           confirmLabel: 'Apply',
           files: confirmationFiles(edit.files, monaco, this.editors),
         });

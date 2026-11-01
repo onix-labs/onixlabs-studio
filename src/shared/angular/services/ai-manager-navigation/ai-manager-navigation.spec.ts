@@ -12,8 +12,28 @@ describe('AiManagerNavigation', () => {
     tabs = TestBed.inject(Tabs);
   });
 
-  it('section_startsOnModels', () => {
-    expect(navigation.section()).toBe('models');
+  it('section_startsWithNothingOpen', () => {
+    expect(navigation.section()).toBeNull();
+  });
+
+  it('begin_closesTheSection_unlessTheManagerWasOpenedAtOne', () => {
+    navigation.show('skills');
+    navigation.begin();
+    expect(navigation.section()).toBeNull();
+
+    navigation.open('profiles');
+    navigation.begin();
+    expect(navigation.section()).toBe('profiles');
+
+    navigation.begin();
+    expect(navigation.section()).toBeNull();
+  });
+
+  it('collapse_leavesNothingOpen', () => {
+    navigation.show('models');
+    navigation.collapse();
+
+    expect(navigation.section()).toBeNull();
   });
 
   it('show_changesTheSectionWithoutOpeningTheTab', () => {

@@ -63,7 +63,7 @@
   (dismiss)="cancelRemove()"
 >
   <ng-template appModalContent>
-    <h2 class="worktree-dialog__title">Remove “{{ removeLabel() }}”?</h2>
+    <h2 class="worktree-dialog__title">Remove {{ removeLabel() }}?</h2>
     <p class="worktree-dialog__message">
       Its directory moves to the Trash, including any uncommitted work. Commits that were pushed
       remain on the remote.

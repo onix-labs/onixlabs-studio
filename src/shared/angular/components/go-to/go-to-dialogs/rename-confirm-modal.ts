@@ -84,7 +84,7 @@ export class RenameConfirmModal {
     if (request === null) {
       return '';
     }
-    return request.title ?? `Rename “${request.oldName}” to “${request.newName}”?`;
+    return request.title ?? `Rename ${request.oldName} to ${request.newName}?`;
   });
 
   /**

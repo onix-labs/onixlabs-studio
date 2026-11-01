@@ -505,7 +505,7 @@ describe('QuickFixes (#1016)', () => {
     await choose(fixes, editor, 'Move to file');
     const request: RenameConfirmationRequest | null = confirmation.pending();
     expect(request).toMatchObject({
-      title: 'Apply “Move to file”?',
+      title: 'Apply Move to file?',
       confirmLabel: 'Apply',
       files: [
         { path: '/root/a.ts', name: 'a.ts', folder: '', edits: 1, open: false },

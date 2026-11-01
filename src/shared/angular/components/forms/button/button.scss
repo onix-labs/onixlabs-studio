@@ -47,19 +47,21 @@
   }
 }
 
-// The label's box is trimmed to the text it draws, so it is the same height as the glyph beside it
-// (which the icon atom already draws at `line-height: 1`). Without this the label carries the font's
-// default leading — more above the text than below — and the two boxes centre at slightly different
-// heights, which is what reads as an icon sitting a hair high next to its label.
+// The label's box is trimmed to the text it draws — from the capital height down to the baseline —
+// so the button centres the letters themselves, not the font's leading: `text-box` drops the
+// font's uneven space above and below, which is what read as text (and an icon beside it) sitting a
+// hair off centre. Descenders (the tail of a g or a y) hang below that box by design, so the label
+// clips only sideways: a vertical clip would cut them off.
 //
 // One line, always: the button's height is fixed, so a wrapped label spills out of it. A button
 // squeezed narrower than its label ellipsises instead.
 .button__label {
   min-inline-size: 0;
-  overflow: hidden;
-  line-height: 1;
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-box: trim-both cap alphabetic;
 }
 
 // A glyph with no label is a square: the height comes from the shared control height, and the width

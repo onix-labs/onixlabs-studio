@@ -75,7 +75,8 @@ export class Skills implements SkillClient {
    * @returns Returns the skills.
    */
   public async list(): Promise<readonly Skill[]> {
-    return (await this.bridge?.invoke<readonly Skill[]>(SkillChannel.List)) ?? [];
+    const skills: unknown = await this.bridge?.invoke<readonly Skill[]>(SkillChannel.List);
+    return Array.isArray(skills) ? (skills as readonly Skill[]) : [];
   }
 
   /**

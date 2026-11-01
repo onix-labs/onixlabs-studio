@@ -29,10 +29,11 @@ describe('AiManagerView (#948)', () => {
       ],
     });
     navigation = TestBed.inject(AiManagerNavigation);
-    // Local Models talks to the runtime; these tests are about the frame around the sub-views.
-    navigation.show('profiles');
     fixture = TestBed.createComponent(AiManagerView);
     fixture.componentRef.setInput('tabId', 'tab-1');
+    fixture.detectChanges();
+    // Local Models talks to the runtime; these tests are about the frame around the sub-views.
+    navigation.show('profiles');
     fixture.detectChanges();
   });
 
@@ -43,6 +44,14 @@ describe('AiManagerView (#948)', () => {
   function element(): HTMLElement {
     return fixture.nativeElement as HTMLElement;
   }
+
+  it('startsWithNothingOpen_showingTheOverview', () => {
+    navigation.collapse();
+    fixture.detectChanges();
+
+    expect(element().querySelector('.ai-manager__overview')).not.toBeNull();
+    expect(element().querySelector('app-prompt-profiles')).toBeNull();
+  });
 
   it('showsTheSubViewTheRibbonChose_andOnlyThatOne', () => {
     expect(element().querySelector('app-prompt-profiles')).not.toBeNull();

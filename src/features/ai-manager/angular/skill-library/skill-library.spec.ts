@@ -1,3 +1,4 @@
+import { By } from '@angular/platform-browser';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
@@ -5,6 +6,14 @@ import { Skills } from '@shared/angular/services/skills/skills';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
 import { SKILL_TAG_OPTIONS } from '../skill-tags/skill-tags';
 import { SkillLibrarySection } from './skill-library';
+import type { SkillImportDraft } from '@shared/api/skill-import-channels';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { SkillAssist, SkillAssistResult } from '../skill-assist/skill-assist';
+import {
+  openSidebarSection,
+  SkillsWithSidebar,
+} from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 /**
  * Builds a stored skill.
@@ -26,7 +35,7 @@ function skill(name: string): Skill {
 }
 
 describe('SkillLibrarySection', () => {
-  let fixture: ComponentFixture<SkillLibrarySection>;
+  let fixture: ComponentFixture<SkillsWithSidebar>;
   let stored: WritableSignal<readonly Skill[]>;
   let saved: SkillDraft[];
   let deleted: string[];
@@ -61,9 +70,21 @@ describe('SkillLibrarySection', () => {
       imports: [SkillLibrarySection],
       providers: [{ provide: Skills, useValue: skillsStub }],
     }).compileComponents();
-    fixture = TestBed.createComponent(SkillLibrarySection);
+    TestBed.inject(AiManagerNavigation).show('skills');
+    fixture = TestBed.createComponent(SkillsWithSidebar);
     await fixture.whenStable();
+    await openSidebarSection(fixture, 'Skills');
   });
+
+  /**
+   * Gets the section under test, inside its host.
+   * @returns Returns the section, typed loosely so a spec can reach its protected members.
+   */
+  function section(): never {
+    return fixture.debugElement
+      .query(By.directive(SkillLibrarySection))
+      .injector.get(SkillLibrarySection) as never;
+  }
 
   /**
    * Gets the rendered root.
@@ -119,7 +140,7 @@ describe('SkillLibrarySection', () => {
     expect(element().querySelector('.library__empty-text')?.textContent).toContain('No skills yet');
     expect(element().querySelector('.library__editor')).toBeNull();
     expect(button('New Skill')).toBeTruthy();
-    expect(button('Import…')).toBeTruthy();
+    expect(button('Import')).toBeTruthy();
   });
 
   it('sidePanel_listsEachSkill_flagsOneThatCannotBeOffered_andShowsTheSelectedOnesFiles', async () => {
@@ -144,10 +165,7 @@ describe('SkillLibrarySection', () => {
     const view: {
       selected(): unknown;
       edit(row: unknown, patch: Partial<SkillDraft>): void;
-    } = fixture.componentInstance as unknown as {
-      selected(): unknown;
-      edit(row: unknown, patch: Partial<SkillDraft>): void;
-    };
+    } = section();
     view.edit(view.selected(), patch);
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, 700);
@@ -198,10 +216,7 @@ describe('SkillLibrarySection', () => {
     const view: {
       selected(): unknown;
       setTags(row: unknown, ids: readonly string[]): void;
-    } = fixture.componentInstance as unknown as {
-      selected(): unknown;
-      setTags(row: unknown, ids: readonly string[]): void;
-    };
+    } = section();
 
     view.setTags(view.selected(), ['typescript', 'angular']);
     await editAndPause({});
@@ -223,11 +238,7 @@ describe('SkillLibrarySection', () => {
     stored.set([skill('a')]);
     fixture.detectChanges();
     await fixture.whenStable();
-    const dialog: { deleteTarget(): unknown; confirmDelete(): Promise<void> } =
-      fixture.componentInstance as unknown as {
-        deleteTarget(): unknown;
-        confirmDelete(): Promise<void>;
-      };
+    const dialog: { deleteTarget(): unknown; confirmDelete(): Promise<void> } = section();
 
     element().querySelector<HTMLButtonElement>('.category-list__action')?.click();
     expect(dialog.deleteTarget()).not.toBeNull();
@@ -237,5 +248,130 @@ describe('SkillLibrarySection', () => {
 
     expect(deleted).toEqual(['a']);
     expect(dialog.deleteTarget()).toBeNull();
+  });
+});
+
+describe('SkillLibrarySection › Improve with AI (#1263)', () => {
+  let fixture: ComponentFixture<SkillsWithSidebar>;
+  let saved: SkillDraft[];
+  let answer: SkillAssistResult;
+  let seen: SkillImportDraft[];
+
+  beforeEach(async () => {
+    saved = [];
+    seen = [];
+    answer = {
+      kind: 'draft',
+      draft: {
+        name: 'a',
+        description: 'Sharper.',
+        scope: { surfaces: [], languages: [] },
+        technologies: [],
+        enabled: true,
+        body: 'Better body.',
+      },
+    };
+    const skillsStub: Partial<Skills> = {
+      skills: signal<readonly Skill[]>([skill('a')]),
+      loading: signal<boolean>(false),
+      reload: (): Promise<void> => Promise.resolve(),
+      save: (draft: SkillDraft): Promise<SkillSaveResult> => {
+        saved.push(draft);
+        return Promise.resolve({ skill: skill(draft.name), error: null });
+      },
+    };
+    const assistStub: Partial<SkillAssist> = {
+      isAvailable: true,
+      improve: (draft: SkillImportDraft): Promise<SkillAssistResult> => {
+        seen.push(draft);
+        return Promise.resolve(answer);
+      },
+    };
+    const agentStub: Partial<Agent> = {
+      provider: signal('claude').asReadonly(),
+      model: signal('').asReadonly(),
+      providerLabel: signal<string | null>('Claude').asReadonly(),
+    };
+    await TestBed.configureTestingModule({
+      imports: [SkillLibrarySection],
+      providers: [
+        { provide: Skills, useValue: skillsStub },
+        { provide: SkillAssist, useValue: assistStub },
+        { provide: Agent, useValue: agentStub },
+      ],
+    }).compileComponents();
+    TestBed.inject(AiManagerNavigation).show('skills');
+    fixture = TestBed.createComponent(SkillsWithSidebar);
+    await fixture.whenStable();
+    await openSidebarSection(fixture, 'Skills');
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('.category-list__item')
+      ?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  /**
+   * Gets the section under test.
+   * @returns Returns it, typed loosely to reach its protected members.
+   */
+  function section(): {
+    selected(): unknown;
+    improve(row: unknown): Promise<void>;
+    improvement(): { draft: SkillImportDraft } | null;
+    reviseImprovement(draft: SkillImportDraft): void;
+    improvementProblem(): string | null;
+    acceptImprovement(): void;
+    discardImprovement(): void;
+    notice(): string | null;
+  } {
+    return fixture.debugElement
+      .query(By.directive(SkillLibrarySection))
+      .injector.get(SkillLibrarySection) as never;
+  }
+
+  it('improve_sendsTheSkillAsItStands_andShowsTheAiVersionForReview', async () => {
+    await section().improve(section().selected());
+
+    expect(seen[0]).toMatchObject({ name: 'a', description: 'd', body: 'b' });
+    expect(section().improvement()?.draft.description).toBe('Sharper.');
+  });
+
+  it('accept_appliesTheAiVersion_whichThenSavesItself', async () => {
+    await section().improve(section().selected());
+    section().acceptImprovement();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 700);
+    });
+
+    expect(section().improvement()).toBeNull();
+    expect(saved[0]).toMatchObject({ name: 'a', description: 'Sharper.', body: 'Better body.' });
+    expect(section().notice()).toContain('Applied');
+  });
+
+  it('discard_leavesTheSkillAsItWas', async () => {
+    await section().improve(section().selected());
+    section().discardImprovement();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 700);
+    });
+
+    expect(section().improvement()).toBeNull();
+    expect(saved).toEqual([]);
+  });
+
+  it('accept_whenTheEditedVersionIsInvalid_isRefused', async () => {
+    await section().improve(section().selected());
+    section().reviseImprovement({ ...section().improvement()!.draft, name: 'Not Valid' });
+
+    expect(section().improvementProblem()).toContain('lower-case');
+  });
+
+  it('improve_whenTheAiFails_saysSo_andChangesNothing', async () => {
+    answer = { kind: 'error', reason: 'The AI took too long to answer.' };
+    await section().improve(section().selected());
+
+    expect(section().improvement()).toBeNull();
+    expect(section().notice()).toContain('The AI took too long to answer.');
   });
 });
