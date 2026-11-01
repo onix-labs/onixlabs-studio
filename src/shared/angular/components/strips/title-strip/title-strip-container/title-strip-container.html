@@ -1,6 +1,7 @@
 <!-- The window-lock is a switch whose sliding knob carries the lock glyph. The native checkbox
      provides the semantics; the track and knob are drawn around it. Whether the strip carries it at
-     all is the user's choice; hiding it releases the lock, so the strip is never left unmovable. -->
+     all is the user's choice; hiding it releases the lock, so the strip is never left unmovable. It
+     also steps away while the window is in full screen, where there is nothing to drag. -->
 @if (showWindowLock()) {
   <label
     class="window-lock"

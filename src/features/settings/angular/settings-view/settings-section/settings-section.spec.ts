@@ -155,8 +155,8 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
-    // Appearance merged into Application › General: graphics acceleration, corner style, theme,
-    // accent, the application menu and its appearance, ribbon alignment, the window and quitting
+    // Appearance merged into Application › General: graphics acceleration, theme, accent, corner
+    // style, the application menu and its appearance, ribbon alignment, the window and quitting
     // behaviour, setup after updates, the window lock. The workspace texture
     // moved to Workspaces › General.
     const element: HTMLElement = await render('application');
@@ -179,9 +179,9 @@ describe('SettingsSection', () => {
 
     expect(titles).toEqual([
       'Graphics Acceleration',
-      'Corner Style',
       'Theme',
       'Accent',
+      'Corner Style',
       'Application Menu',
       'Application Menu Appearance',
       'Ribbon Alignment',

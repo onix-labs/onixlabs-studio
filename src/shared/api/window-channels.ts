@@ -63,6 +63,13 @@ export enum WindowChannel {
    * and never above the screen it is on.
    */
   SetMinimumSize = 'window:set-minimum-size',
+
+  /**
+   * Tells the main window whether it is in full screen (main→renderer, send; a boolean), on every
+   * change and after each load. macOS draws no traffic lights over a full-screen window's title
+   * strip, so the strip stops leaving room for them.
+   */
+  FullScreenChanged = 'window:full-screen-changed',
 }
 
 /**
