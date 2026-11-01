@@ -148,16 +148,10 @@ describe('SettingsSection', () => {
   it('render_whenForeignOwnedSection_rendersItsRows', async () => {
     // Security is owned by its own service rather than the Settings store, so this covers the
     // owner-adapter path the language-server section used to before it became a per-language page.
+    // Privacy & Content: the link confirmation and the (security-owned) remote image policy; the
+    // remembered file access list is a custom row drawn beside the section.
     const element: HTMLElement = await render('security');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
-  });
-
-  it('render_whenSectionHasFooter_rendersTheHint', async () => {
-    const element: HTMLElement = await render('security');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
-    expect(element.querySelector('.settings-section__hint')?.textContent).toContain(
-      'content-security policy',
-    );
+    expect(element.querySelectorAll('app-setting-row').length).toBe(2);
   });
 
   it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {

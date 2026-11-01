@@ -35,7 +35,19 @@ describe('Shell', () => {
 
     await TestBed.inject(Shell).openExternal('https://example.com');
 
-    expect(calls).toEqual([{ channel: ShellChannel.OpenExternal, args: ['https://example.com'] }]);
+    expect(calls).toEqual([
+      { channel: ShellChannel.OpenExternal, args: ['https://example.com', 'content'] },
+    ]);
+  });
+
+  it('openExternal_forOneOfStudiosOwnLinks_saysSo', async () => {
+    stubBridge();
+
+    await TestBed.inject(Shell).openExternal('https://example.com', 'studio');
+
+    expect(calls).toEqual([
+      { channel: ShellChannel.OpenExternal, args: ['https://example.com', 'studio'] },
+    ]);
   });
 
   it('openPath_whenBridgePresent_invokesTheChannel', async () => {

@@ -14,11 +14,13 @@ import {
   WindowOpenHandlerResponse,
 } from 'electron';
 import { pluginNodeRuntime } from './plugin-node-runtime';
+import { showMessageBox } from './dialog-parent';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AppChannel } from '@shared/api/app-channels';
 import { ShellChannel } from '@shared/api/shell-channels';
+import { SecurityChannel } from '@shared/api/security-channels';
 import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/window-channels';
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
@@ -1080,8 +1082,24 @@ class Program {
 
     ipcMain.handle(
       ShellChannel.OpenExternal,
-      (_event: IpcMainInvokeEvent, url: unknown): Promise<void> => this.openExternalUrl(url),
+      (event: IpcMainInvokeEvent, url: unknown, origin: unknown): Promise<void> =>
+        this.openExternalUrl(url, event.sender, origin === 'studio'),
     );
+
+    ipcMain.handle(SecurityChannel.ListRememberedAccess, (): readonly string[] =>
+      this.trustedPaths.list(),
+    );
+    ipcMain.handle(
+      SecurityChannel.ForgetRememberedAccess,
+      (_event: IpcMainInvokeEvent, target: unknown): readonly string[] => {
+        this.trustedPaths.forget(target);
+        return this.trustedPaths.list();
+      },
+    );
+    ipcMain.handle(SecurityChannel.ClearRememberedAccess, (): readonly string[] => {
+      this.trustedPaths.clear();
+      return this.trustedPaths.list();
+    });
 
     ipcMain.handle(ShellChannel.RevealPath, (_event: IpcMainInvokeEvent, target: unknown): void => {
       if (typeof target === 'string' && target.length > 0) {
@@ -1171,7 +1189,7 @@ class Program {
         return;
       }
       event.preventDefault();
-      void this.openExternalUrl(url);
+      void this.openExternalUrl(url, contents, false);
     });
 
     contents.setWindowOpenHandler((details: HandlerDetails): WindowOpenHandlerResponse => {
@@ -1195,7 +1213,7 @@ class Program {
           ),
         };
       }
-      void this.openExternalUrl(details.url);
+      void this.openExternalUrl(details.url, contents, false);
       return { action: 'deny' };
     });
 
@@ -1251,15 +1269,43 @@ class Program {
 
   /**
    * Opens a URL in the operating system's default browser when it is a safe external URL; otherwise
-   * does nothing.
+   * does nothing. Asks first when Confirm Before Opening External Links says to: always, or for any
+   * link that is not one of Studio's own.
    * @param url The candidate URL.
+   * @param sender The web contents the link was opened from, which the question is shown over.
+   * @param trusted Whether the link is one of Studio's own (help, releases) rather than content.
    * @returns Returns a promise that resolves once the URL has been opened (or rejected).
    */
-  private async openExternalUrl(url: unknown): Promise<void> {
+  private async openExternalUrl(
+    url: unknown,
+    sender: WebContents,
+    trusted: boolean,
+  ): Promise<void> {
     const safe: string | null = this.safeExternalUrl(url);
-    if (safe !== null) {
-      await shell.openExternal(safe);
+    if (safe === null) {
+      return;
     }
+    const confirm: string = this.startupSettings.confirmExternalLinks;
+    if (confirm === 'always' || (confirm === 'untrusted' && !trusted)) {
+      const answer: Electron.MessageBoxReturnValue = await showMessageBox(
+        sender,
+        (): BrowserWindow | null => this.windows.main(),
+        {
+          type: 'question',
+          buttons: ['Open', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1,
+          title: 'Open Link',
+          message: 'Open this link in your browser?',
+          detail: safe,
+        },
+      );
+      if (answer.response !== 0) {
+        this.logger.info('shell', 'Opening a link was cancelled');
+        return;
+      }
+    }
+    await shell.openExternal(safe);
   }
 
   /**

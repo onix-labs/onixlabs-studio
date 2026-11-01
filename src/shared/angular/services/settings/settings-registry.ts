@@ -9,6 +9,7 @@ import type {
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
+  ConfirmExternalLinks,
   CornerStyle,
   QuitWhenLastWindowCloses,
   WindowSizeOnLaunch,
@@ -137,6 +138,7 @@ export interface SettingsValues {
   readonly 'notifications.stacking': NotificationStacking;
   readonly 'notifications.colour': NotificationColour;
   readonly 'notifications.whenMuted': MutedNotifications;
+  readonly 'privacy.confirmExternalLinks': ConfirmExternalLinks;
   readonly 'notifications.maxToasts': number;
   readonly 'notifications.rememberMute': boolean;
   readonly 'notifications.errorsStay': boolean;
@@ -1576,11 +1578,30 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Security',
     settings: [
       {
+        key: 'privacy.confirmExternalLinks',
+        title: 'Confirm Before Opening External Links',
+        description:
+          "Ask before a link opens in your browser: never, only for links in content Studio didn't " +
+          'write (agent output, Markdown, web and server content), or always. ' +
+          "Studio's own help links are trusted.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'never', label: 'Never' },
+            { value: 'untrusted', label: 'Untrusted Only' },
+            { value: 'always', label: 'Always' },
+          ],
+        },
+        default: 'never',
+      },
+      {
         key: 'security.imagePolicy',
         owner: 'security',
         title: 'Remote Images',
         description:
-          'Which image sources content (such as markdown) may load. Restricting this reduces exposure to remote tracking and untrusted content.',
+          'Which image sources content (such as markdown) may load. Restricting this reduces ' +
+          'exposure to remote tracking and untrusted content. Takes effect the next time Studio ' +
+          'starts.',
         control: {
           kind: 'select',
           options: [
@@ -1590,8 +1611,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
       },
+      {
+        key: 'security.rememberedFileAccess',
+        // Owned by the main process, which enforces it; drawn by its own row on the page.
+        owner: 'security',
+        title: 'Remembered File Access',
+        description:
+          'Files and folders you opened through a system dialog, which Studio reopens from the ' +
+          'recent items without asking. Forget one and Studio asks again before reopening it.',
+        control: { kind: 'custom', component: 'remembered-file-access' },
+      },
     ],
-    footer: 'Changes to the content-security policy take effect the next time Studio starts.',
   },
 ];
 

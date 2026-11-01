@@ -13,12 +13,14 @@ describe('parseStartupSettings', () => {
         windowSizeOnLaunch: 'default',
         restoreFullScreen: false,
         cornerStyle: 'square',
+        confirmExternalLinks: 'always',
       }),
     ).toEqual({
       quitWhenLastWindowCloses: 'quit',
       windowSizeOnLaunch: 'default',
       restoreFullScreen: false,
       cornerStyle: 'square',
+      confirmExternalLinks: 'always',
     });
   });
 

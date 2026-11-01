@@ -12,7 +12,9 @@ export enum ShellChannel {
 
   /**
    * Opens an external URL in the operating system's default browser; only http/https/mailto are
-   * honoured, anything else is ignored (invoke).
+   * honoured, anything else is ignored. A second argument of `studio` marks one of Studio's own links
+   * (help, releases), which Confirm Before Opening External Links trusts; anything else is content
+   * (invoke).
    */
   OpenExternal = 'shell:open-external',
 
