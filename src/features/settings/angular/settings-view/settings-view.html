@@ -52,6 +52,7 @@
       @switch (selectedSection()) {
         @case ('application') {
           <app-settings-section sectionId="application" />
+          <app-spell-checking-languages />
         }
         @case ('accessibility') {
           <app-settings-section sectionId="accessibility" />
@@ -73,6 +74,7 @@
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
+          <app-personal-dictionary />
         }
         @case ('terminal') {
           <app-terminal-settings />

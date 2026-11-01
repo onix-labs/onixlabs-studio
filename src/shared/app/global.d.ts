@@ -1,5 +1,6 @@
 import type { Bridge } from '@shared/api/bridge';
 import type { HostEnv } from '@shared/api/host';
+import type { SpellingProbe } from '@shared/api/spelling-channels';
 
 declare global {
   interface Window {
@@ -16,5 +17,10 @@ declare global {
      * {@link bridge}, for values the async transport cannot provide before the first paint.
      */
     readonly host?: HostEnv;
+
+    /**
+     * Gets the window's spell checker, or undefined outside Electron.
+     */
+    readonly spelling?: SpellingProbe;
   }
 }
