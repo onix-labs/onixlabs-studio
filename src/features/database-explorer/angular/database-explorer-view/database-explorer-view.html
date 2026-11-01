@@ -24,7 +24,7 @@
           Edit Connection
         }
         @case ('secrets') {
-          Connect to “{{ prompts.name() }}”
+          Connect to {{ prompts.name() }}
         }
         @default {
           New Connection

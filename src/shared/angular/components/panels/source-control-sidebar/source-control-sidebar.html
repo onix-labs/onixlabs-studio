@@ -277,7 +277,7 @@
   (dismiss)="cancelRebase()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Rebase “{{ rebaseSubject() }}”?</h2>
+    <h2 class="rail__dialog-title">Rebase {{ rebaseSubject() }}?</h2>
     <p class="rail__dialog-message">
       Every commit on “{{ rebaseSubject() }}” is replayed on top of “{{
         pendingRebaseOnto()?.name

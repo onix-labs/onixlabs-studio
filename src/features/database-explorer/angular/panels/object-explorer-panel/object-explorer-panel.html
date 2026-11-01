@@ -104,7 +104,7 @@
   (dismiss)="deleteTarget.set(null)"
 >
   <ng-template appModalContent>
-    <h2 class="database-dialog__title">Delete “{{ deleteTarget()?.label }}”?</h2>
+    <h2 class="database-dialog__title">Delete {{ deleteTarget()?.label }}?</h2>
     <p class="database-dialog__message">
       @if (deleteTarget()?.kind === 'connection') {
         The connection and the queries written against it are removed from this document. Nothing on
