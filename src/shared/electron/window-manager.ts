@@ -9,7 +9,11 @@ import {
   StoredWindowState,
   WindowRect,
 } from './window-state';
-import { CHILD_WINDOW_NAME_PATTERN, MODAL_UNPARENTED_FEATURE } from '@shared/api/window-channels';
+import {
+  CHILD_WINDOW_NAME_PATTERN,
+  MODAL_UNPARENTED_FEATURE,
+  WindowChannel,
+} from '@shared/api/window-channels';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
 import { logger } from './logger';
@@ -404,6 +408,16 @@ export class WindowManager {
     // forever. Reset it on every load; content zoom belongs to the editors' own zoom controls.
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.webContents.on('did-start-loading', (): void => this.options.onMainDidStartLoad());
+    // The renderer is told whether the window is in full screen, where macOS draws no traffic lights
+    // over the title strip: on every change, and after each load for the state it starts in.
+    const reportFullScreen: () => void = (): void => {
+      if (!window.isDestroyed()) {
+        window.webContents.send(WindowChannel.FullScreenChanged, window.isFullScreen());
+      }
+    };
+    window.on('enter-full-screen', reportFullScreen);
+    window.on('leave-full-screen', reportFullScreen);
+    window.webContents.on('did-finish-load', reportFullScreen);
     // Bounds are saved on close as well as on the debounced move/resize, so the final arrangement
     // always wins — including on the quit path, where close follows the confirmed quit.
     window.on('close', (event: ElectronEvent): void => {

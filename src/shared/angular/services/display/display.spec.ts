@@ -3,6 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import { AppChannel } from '@shared/api/app-channels';
 import { Bridge } from '@shared/api/bridge';
 import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
+import { SettingOptions } from '@features/settings/angular/setting-options';
+import type { ChoiceOption } from '@shared/angular/services/settings/settings-schema';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Display } from './display';
 
 /**
@@ -237,5 +240,33 @@ describe('Display', () => {
     expect(display.resolvedGraphicsAcceleration()).toBe('full');
     expect(display.gpuDescription).toBe('');
     expect(display.restartRequired()).toBe(false);
+  });
+
+  it('cornerStyle_whenSquircleIsLeftBelowFull_goesBackToAutomatic', () => {
+    stubHost(startup(false, 'full'));
+    const display: Display = TestBed.inject(Display);
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('application.cornerStyle', 'squircle');
+    TestBed.tick();
+
+    display.setGraphicsAcceleration('limited');
+    TestBed.tick();
+
+    expect(settings.get('application.cornerStyle')).toBe('automatic');
+    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
+  });
+
+  it('cornerStyles_offerSquircleOnlyAtFull', () => {
+    stubHost(startup(true, 'auto'));
+    const options: SettingOptions = TestBed.inject(SettingOptions);
+    const values: () => readonly string[] = (): readonly string[] =>
+      (options.resolve('application.cornerStyle') ?? []).map(
+        (option: ChoiceOption): string => option.value,
+      );
+
+    // Automatic on a GPU that renders squircles badly resolves below Full.
+    expect(values()).toEqual(['automatic', 'rounded', 'square']);
+    TestBed.inject(Display).setGraphicsAcceleration('full');
+    expect(values()).toEqual(['automatic', 'squircle', 'rounded', 'square']);
   });
 });

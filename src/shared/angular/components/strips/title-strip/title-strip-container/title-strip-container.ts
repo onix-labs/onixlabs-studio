@@ -2,10 +2,12 @@ import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   inject,
   Signal,
 } from '@angular/core';
+import { FullScreen } from '@shared/angular/services/full-screen/full-screen';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -48,9 +50,19 @@ export class TitleStripContainer {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets a value indicating whether the strip carries the window-lock switch.
+   * Holds whether the window is in full screen.
    */
-  protected readonly showWindowLock: Signal<boolean> = this.settings.applicationShowWindowLock;
+  private readonly fullScreen: FullScreen = inject(FullScreen);
+
+  /**
+   * Gets a value indicating whether the strip carries the window-lock switch: when the user wants it,
+   * and only while the window can be dragged by the strip at all. A full-screen window cannot be, so
+   * the switch steps away until the window leaves full screen, keeping the lock as it was. A
+   * maximised window can still be dragged out (on Windows and Linux), so the switch stays.
+   */
+  protected readonly showWindowLock: Signal<boolean> = computed(
+    (): boolean => this.settings.applicationShowWindowLock() && !this.fullScreen.active(),
+  );
 
   /**
    * Initializes a new instance of the {@link TitleStripContainer} class, keeping the caption buttons

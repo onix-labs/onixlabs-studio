@@ -259,23 +259,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         requiresRestart: true,
       },
       {
-        key: 'application.cornerStyle',
-        title: 'Corner Style',
-        description:
-          'The shape of corners across the interface. Automatic draws squircles when Graphics ' +
-          'Acceleration is at Full, and rounded corners below it.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'automatic', label: 'Automatic' },
-            { value: 'squircle', label: 'Squircle' },
-            { value: 'rounded', label: 'Rounded' },
-            { value: 'square', label: 'Square' },
-          ],
-        },
-        default: 'automatic',
-      },
-      {
         key: 'appearance.themeMode',
         owner: 'theme',
         title: 'Theme',
@@ -296,6 +279,23 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
         control: { kind: 'accent' },
+      },
+      {
+        key: 'application.cornerStyle',
+        title: 'Corner Style',
+        description:
+          'The shape of corners across the interface. Automatic draws squircles when Graphics ' +
+          'Acceleration is at Full, and rounded corners below it; Squircle is only offered at Full.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'squircle', label: 'Squircle' },
+            { value: 'rounded', label: 'Rounded' },
+            { value: 'square', label: 'Square' },
+          ],
+        },
+        default: 'automatic',
       },
       {
         key: 'application.menuMode',
@@ -372,8 +372,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'application.quitWhenLastWindowCloses',
         title: 'Quit When the Last Window Closes',
         description:
-          'Closing the window keeps Studio running in the Dock, with your work as you left it, ' +
-          'or quits Studio.',
+          'Closing the window closes its tabs and keeps Studio running in the Dock, which opens ' +
+          'the welcome screen again; or it quits Studio.',
         control: {
           kind: 'select',
           options: [
@@ -420,8 +420,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'application.showWindowLock',
         title: 'Window Lock Switch',
         description:
-          'Show the switch at the start of the title strip that pins the window in place. ' +
-          'Turning this off also releases the lock.',
+          'Show the switch at the start of the title strip that pins the window in place. It ' +
+          'steps away in full screen, where the window cannot be moved. Turning this off also ' +
+          'releases the lock.',
         control: { kind: 'toggle' },
         default: true,
       },

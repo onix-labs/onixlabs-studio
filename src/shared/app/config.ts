@@ -12,6 +12,7 @@ import { PluginUpdates } from '@shared/angular/services/plugins/plugin-updates';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
+import { FullScreen } from '@shared/angular/services/full-screen/full-screen';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
@@ -64,6 +65,11 @@ export const config: ApplicationConfig = {
     // the document before the first view renders.
     provideAppInitializer((): void => {
       inject(Accessibility);
+    }),
+    // Follow the main window's full screen from the start, so the title strip drops the room it
+    // leaves for the macOS traffic lights while there are none.
+    provideAppInitializer((): void => {
+      inject(FullScreen);
     }),
     // Mirror the startup settings to the main process from the start, so quitting, window restore
     // and the first paint's corners follow what the settings say.

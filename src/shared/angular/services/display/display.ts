@@ -6,6 +6,7 @@ import {
   Service,
   signal,
   Signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { AppChannel } from '@shared/api/app-channels';
@@ -64,10 +65,15 @@ export class Display {
   public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
+   * Holds the settings the corner style is read from, and reset in when it can no longer apply.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the chosen corner style.
    */
   private readonly cornerStyle: Signal<CornerStyle> =
-    inject(Settings).value('application.cornerStyle');
+    this.settings.value('application.cornerStyle');
 
   /**
    * Holds whether the active GPU is flagged as likely to render the heavier effects poorly. Used to
@@ -146,6 +152,14 @@ export class Display {
 
     effect((): void => {
       this.applyDisplayPolicy(this.resolvedGraphicsAcceleration(), this.cornerStyle());
+    });
+
+    // Squircles are offered only at Full. A Squircle choice left behind when the level drops below it
+    // goes back to Automatic — which draws squircles again should the level return to Full.
+    effect((): void => {
+      if (this.cornerStyle() === 'squircle' && this.resolvedGraphicsAcceleration() !== 'full') {
+        untracked((): void => this.settings.set('application.cornerStyle', 'automatic'));
+      }
     });
   }
 

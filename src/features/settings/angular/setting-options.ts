@@ -1,6 +1,12 @@
 import { inject, Service } from '@angular/core';
+import { Display } from '@shared/angular/services/display/display';
 import { FontCatalog } from '@shared/angular/services/fonts/font-catalog';
-import type { ChoiceOption } from '@shared/angular/services/settings/settings-schema';
+import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
+import type {
+  ChoiceOption,
+  ControlDef,
+  SettingDef,
+} from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Resolves dynamic options for settings whose choices depend on runtime state, keyed by setting key. A
@@ -17,6 +23,11 @@ export class SettingOptions {
   private readonly fonts: FontCatalog = inject(FontCatalog);
 
   /**
+   * Holds the display policy, whose graphics level decides whether squircle corners are offered.
+   */
+  private readonly display: Display = inject(Display);
+
+  /**
    * Resolves the dynamic options for a setting key, or undefined when the registry's static options
    * should be used.
    * @param key The setting key.
@@ -29,8 +40,25 @@ export class SettingOptions {
         return this.fonts.monospaceFonts();
       case 'markdownEditor.fontFamily':
         return this.fonts.sansFonts();
+      case 'application.cornerStyle':
+        return this.cornerStyles();
       default:
         return undefined;
     }
+  }
+
+  /**
+   * Lists the corner styles on offer. Squircles are offered only while the graphics level in force
+   * is Full: below it — chosen, or the automatic level on a GPU that renders them badly — they are
+   * what the lower level exists to avoid.
+   * @returns Returns the corner styles, without Squircle below Full.
+   */
+  private cornerStyles(): readonly ChoiceOption[] {
+    const setting: SettingDef | undefined = SETTINGS_BY_KEY.get('application.cornerStyle');
+    const control: ControlDef | undefined = setting?.control;
+    const options: readonly ChoiceOption[] = control?.kind === 'select' ? control.options : [];
+    return this.display.resolvedGraphicsAcceleration() === 'full'
+      ? options
+      : options.filter((option: ChoiceOption): boolean => option.value !== 'squircle');
   }
 }
