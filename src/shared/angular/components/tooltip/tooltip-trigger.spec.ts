@@ -255,4 +255,41 @@ describe('TooltipTrigger', () => {
     // The setting exists to turn the names off, not to have to turn them on.
     expect(settings.value('accessibility.showTooltips')()).toBe(true);
   });
+
+  it('hover_withADelay_waitsBeforeOpening', () => {
+    vi.useFakeTimers();
+    try {
+      settings.assign('accessibility.tooltipDelay', 500);
+      control().dispatchEvent(new MouseEvent('mouseenter'));
+
+      expect(bubbleText()).toBeNull();
+      vi.advanceTimersByTime(500);
+      fixture.detectChanges();
+      expect(bubbleText()).toBe('New chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hover_withADelay_leavingFirst_opensNothing', () => {
+    vi.useFakeTimers();
+    try {
+      settings.assign('accessibility.tooltipDelay', 1000);
+      control().dispatchEvent(new MouseEvent('mouseenter'));
+      control().dispatchEvent(new MouseEvent('mouseleave'));
+      vi.advanceTimersByTime(1000);
+
+      expect(bubbleText()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keyboardFocus_withADelay_opensAtOnce', () => {
+    settings.assign('accessibility.tooltipDelay', 1000);
+    keyboardFocus();
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBe('New chat');
+  });
 });

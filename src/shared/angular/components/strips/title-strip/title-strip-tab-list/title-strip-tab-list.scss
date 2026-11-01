@@ -32,6 +32,8 @@
   // The strip has no room for a scroll bar and the tab menu already lists every tab, so none is drawn;
   // a trackpad swipe or shift-wheel still scrolls the tabs.
   --app-scrollbar: none;
+  // The same for the native bar, which Scroll Bars › Always Show brings back everywhere else.
+  scrollbar-width: none;
 }
 
 // The host strip is a drag region, and an inherited drag area swallows the wheel and pointer events

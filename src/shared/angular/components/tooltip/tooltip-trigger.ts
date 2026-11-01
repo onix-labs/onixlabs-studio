@@ -128,6 +128,17 @@ export class TooltipTrigger {
   private readonly enabled: Signal<boolean> = inject(Settings).value('accessibility.showTooltips');
 
   /**
+   * Gets how long, in milliseconds, the pointer rests on the control before the bubble opens.
+   */
+  private readonly delay: Signal<number> = inject(Settings).value('accessibility.tooltipDelay');
+
+  /**
+   * Holds the timer that opens the bubble once the pointer has rested for the delay, or null when
+   * none is pending.
+   */
+  private pending: ReturnType<typeof setTimeout> | null = null;
+
+  /**
    * Holds the open bubble's overlay, or null when none is showing.
    */
   private overlayRef: OverlayRef | null = null;
@@ -211,16 +222,34 @@ export class TooltipTrigger {
    */
   protected onFocus(): void {
     if (this.element.nativeElement.matches(':focus-visible')) {
-      this.onShow();
+      this.open();
     }
   }
 
   /**
-   * Opens the bubble, on the pointer arriving or on focus reaching the control. Immediately in both
-   * cases: the name is what the control was already unable to say for itself, so making the user wait
-   * for it is making them wait to find out what they are pointing at.
+   * Opens the bubble when the pointer arrives, once it has rested for the Tooltip Delay (instant by
+   * default: the name is what the control was already unable to say for itself, so making the user
+   * wait for it is making them wait to find out what they are pointing at). Keyboard focus never
+   * waits.
    */
   protected onShow(): void {
+    const delay: number = this.delay();
+    if (delay <= 0) {
+      this.open();
+      return;
+    }
+    if (this.pending === null && this.overlayRef === null) {
+      this.pending = setTimeout((): void => {
+        this.pending = null;
+        this.open();
+      }, delay);
+    }
+  }
+
+  /**
+   * Opens the bubble now, unless tooltips are off or there is nothing to say.
+   */
+  private open(): void {
     const text: string = this.appTooltip()?.trim() ?? '';
     if (
       !this.enabled() ||
@@ -252,6 +281,10 @@ export class TooltipTrigger {
    * Closes the bubble, and with it the listeners that existed to dismiss it.
    */
   protected onLeave(): void {
+    if (this.pending !== null) {
+      clearTimeout(this.pending);
+      this.pending = null;
+    }
     if (this.overlayRef !== null) {
       const doc: Document = this.element.nativeElement.ownerDocument;
       doc.removeEventListener('keydown', this.escapeHandler);

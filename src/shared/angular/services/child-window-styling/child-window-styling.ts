@@ -12,6 +12,8 @@ const MIRRORED_ROOT_ATTRIBUTES: readonly string[] = [
   'data-platform',
   'data-corners',
   'data-reduced-gpu',
+  'data-reduced-motion',
+  'data-scrollbars',
   'style',
 ];
 

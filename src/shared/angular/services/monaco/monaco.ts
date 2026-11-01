@@ -5,6 +5,7 @@ import {
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { Log } from '@shared/angular/services/log/log';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
@@ -199,6 +200,11 @@ export class Monaco {
    * Holds the theme service supplying the resolved light/dark mode.
    */
   private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds the accessibility settings, read for Reduce Motion.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
 
   /**
    * Holds the structured logger.
@@ -501,8 +507,7 @@ export class Monaco {
       // tab-size and tabs/spaces settings are authoritative.
       detectIndentation: false,
       cursorBlinking: resolved.cursorBlinking,
-      cursorSmoothCaretAnimation: resolved.cursorSmoothCaretAnimation,
-      smoothScrolling: true,
+      ...this.motionOptions(resolved),
       padding: { top: 16 },
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
       // the languages with a built-in Monaco worker.
@@ -518,6 +523,23 @@ export class Monaco {
       ...HOVER_EDITOR_OPTIONS,
       // No swatch click, inline suggestion, paste or drop opens Monaco's UI (#1024).
       ...WIDGET_GUARD_EDITOR_OPTIONS,
+    };
+  }
+
+  /**
+   * Builds the editor options Reduce Motion governs: smooth scrolling, and the smooth caret the code
+   * settings choose, both off while motion is reduced. Reads the setting reactively, so an effect
+   * that applies these follows it.
+   * @param resolved The code settings in force.
+   * @returns Returns the motion options.
+   */
+  public motionOptions(
+    resolved: TextEditorSettings,
+  ): Pick<MonacoApi.editor.IEditorOptions, 'smoothScrolling' | 'cursorSmoothCaretAnimation'> {
+    const reduced: boolean = this.accessibility.reducedMotion();
+    return {
+      smoothScrolling: !reduced,
+      cursorSmoothCaretAnimation: reduced ? 'off' : resolved.cursorSmoothCaretAnimation,
     };
   }
 
