@@ -49,6 +49,7 @@ import {
   DocumentStatusInfo,
   StatusChip,
 } from '@shared/angular/services/document-status/document-status';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
   DatabaseGridlines,
@@ -213,6 +214,7 @@ export class QueryPanel {
   private readonly monaco: Monaco = inject(Monaco);
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
   private readonly settings: Settings = inject(Settings);
+  private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
    * Gets which rules the results grid draws between its cells, from the user's setting.
@@ -804,7 +806,9 @@ export class QueryPanel {
   }
 
   /**
-   * Adds ⌘↵ to the editor once it is ready.
+   * Binds Execute to the editor once it is ready. The chord is matched on the editor's own key-down,
+   * ahead of Monaco's keybindings (⌘↵ is its "insert line below"), and read from the keyboard
+   * catalogue on every press, so a shortcut changed on Database Explorer › Keyboard applies at once.
    */
   protected onEditorReady(): void {
     const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
@@ -814,7 +818,13 @@ export class QueryPanel {
       return;
     }
     this.commandAdded = true;
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, (): void => this.execute());
+    editor.onKeyDown((event: MonacoApi.IKeyboardEvent): void => {
+      if (this.keybindings.matches(event.browserEvent, 'database.execute')) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.execute();
+      }
+    });
     this.completionProviders = QUERY_LANGUAGES.map((language: string): MonacoApi.IDisposable =>
       monaco.languages.registerCompletionItemProvider(language, this.completionProvider(monaco)),
     );

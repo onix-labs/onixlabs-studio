@@ -53,9 +53,20 @@ export interface ResolvedBinding {
   readonly chord: string;
 
   /**
+   * Gets the normalized default chord, which Reset restores.
+   */
+  readonly defaultChord: string;
+
+  /**
    * Gets a value indicating whether the effective chord is a user override rather than the default.
    */
   readonly overridden: boolean;
+
+  /**
+   * Gets a value indicating whether the command is application-wide (Application › Keyboard) rather
+   * than one view's.
+   */
+  readonly global: boolean;
 }
 
 /**
@@ -63,6 +74,45 @@ export interface ResolvedBinding {
  * regardless of which view is active, after the active view has had first refusal.
  */
 const GLOBAL_SCOPE: string = '__global__';
+
+/**
+ * Names the editing chords no command may take. The core menu carries them once as native roles,
+ * which Chromium routes to whatever holds focus, and the editors bind ⌘A to their own selection; a
+ * menu command overridden onto one would take it from every text box, editor and terminal.
+ */
+const EDITING_CHORDS: ReadonlySet<string> = new Set<string>([
+  'Mod+Z',
+  'Mod+Shift+Z',
+  'Mod+X',
+  'Mod+C',
+  'Mod+V',
+  'Mod+A',
+]);
+
+/**
+ * Maps the key names a normalized chord uses to Electron's accelerator names, where they differ.
+ */
+const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+};
+
+/**
+ * Maps the key names a normalized chord uses to the symbols a key cap shows, where they differ.
+ */
+const KEY_SYMBOLS: Readonly<Record<string, string>> = {
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+};
+
+/**
+ * Names the override value that leaves a command with no shortcut at all (Clear in Settings).
+ */
+const NO_CHORD: string = '';
 
 /**
  * Routes application keyboard accelerators to the active view's commands, without the shell knowing
@@ -169,18 +219,38 @@ export class Keybindings {
   );
 
   /**
-   * Gets the command ids whose effective chords collide with another binding in the same view. Only
-   * same-view collisions matter — a single scope dispatches at a time — and dispatch resolves a
-   * collision by registration order, so a conflict is surfaced as a warning rather than blocking.
+   * Gets the command ids whose effective chords collide with another binding that can be live at the
+   * same time: one in the same view (a single scope dispatches at a time), or an application-wide
+   * command against any view's, since the application's commands work whichever tab is in front.
+   * Dispatch resolves a collision — the view first, then registration order — so a conflict is
+   * surfaced as a warning rather than blocking.
    */
   public readonly conflictedIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
     this.catalogueVersion();
     const conflicted: Set<string> = new Set<string>();
+    const globals: readonly ResolvedBinding[] = this.catalogueEntries
+      .filter((entry: KeybindingCatalogueEntry): boolean => entry.global === true)
+      .flatMap((entry: KeybindingCatalogueEntry): readonly ResolvedBinding[] =>
+        entry.bindings.map((binding: CatalogueBinding): ResolvedBinding =>
+          this.resolve(binding, entry),
+        ),
+      );
     for (const entry of this.catalogueEntries) {
       const byChord: Map<string, string[]> = new Map<string, string[]>();
       for (const binding of entry.bindings) {
         const chord: string = this.resolve(binding, entry).chord;
-        byChord.set(chord, [...(byChord.get(chord) ?? []), binding.id]);
+        if (chord !== NO_CHORD) {
+          byChord.set(chord, [...(byChord.get(chord) ?? []), binding.id]);
+        }
+      }
+      if (entry.global !== true) {
+        for (const global of globals) {
+          const ids: string[] | undefined =
+            global.chord === NO_CHORD ? undefined : byChord.get(global.chord);
+          if (ids !== undefined) {
+            ids.push(global.id);
+          }
+        }
       }
       for (const ids of byChord.values()) {
         if (ids.length > 1) {
@@ -357,6 +427,45 @@ export class Keybindings {
   }
 
   /**
+   * Gets the chord currently in effect for a catalogued command — the user's override when one is set
+   * and valid, else the default — so a surface that shows or binds the chord itself (the application
+   * menu) agrees with dispatch. Reactive: it re-reads when an override changes or a lazily-loaded
+   * feature contributes the command.
+   * @param id The catalogued command identifier.
+   * @returns Returns the normalized effective chord (empty when the user cleared it), or null when the
+   * command is not catalogued.
+   */
+  public chordFor(id: string): string | null {
+    this.catalogueVersion();
+    return this.catalogueById.has(id) ? this.effectiveChord(id) : null;
+  }
+
+  /**
+   * Determines whether a catalogued command is application-wide rather than one view's.
+   * @param id The catalogued command identifier.
+   * @returns Returns true for a command of a `global` catalogue entry; false otherwise.
+   */
+  public isGlobal(id: string): boolean {
+    this.catalogueVersion();
+    return this.catalogueById.get(id)?.entry.global === true;
+  }
+
+  /**
+   * Converts a normalized chord to Electron's accelerator notation (`Mod+Shift+S` → `CmdOrCtrl+Shift+S`),
+   * for the application menu, which displays and binds accelerators in that notation.
+   * @param chord The normalized chord.
+   * @returns Returns the Electron accelerator.
+   */
+  public toAccelerator(chord: string): string {
+    return chord
+      .split('+')
+      .map((part: string): string =>
+        part === 'Mod' ? 'CmdOrCtrl' : (ACCELERATOR_KEYS[part] ?? part),
+      )
+      .join('+');
+  }
+
+  /**
    * Persists a chord override for a command, replacing its default. The chord is validated first; an
    * invalid chord is rejected and reported instead of applied.
    * @param id The catalogued command identifier.
@@ -373,6 +482,19 @@ export class Keybindings {
     this.settings.set('keyboard.overrides', next);
     this.log.info('Keybindings', `Override set for '${id}'`, next[id]);
     return null;
+  }
+
+  /**
+   * Leaves a command with no shortcut at all, persisted as an override, so neither the keyboard nor the
+   * menu runs it until a chord is set again or the default restored.
+   * @param id The catalogued command identifier.
+   */
+  public clearChord(id: string): void {
+    if (!this.catalogueById.has(id)) {
+      return;
+    }
+    this.settings.set('keyboard.overrides', { ...this.overrides(), [id]: NO_CHORD });
+    this.log.info('Keybindings', `Shortcut cleared for '${id}'`);
   }
 
   /**
@@ -403,6 +525,9 @@ export class Keybindings {
     if (key.length === 0 || key === 'Mod' || key === 'Alt' || key === 'Shift') {
       return 'A shortcut needs a key in addition to its modifiers.';
     }
+    if (EDITING_CHORDS.has(normalized)) {
+      return `${this.formatChord(normalized)} is kept for undo, redo, cut, copy, paste and select all in every text box.`;
+    }
     if (
       catalogued.entry.modShiftOnly === true &&
       !(normalized.includes('Mod+') && normalized.includes('Shift+'))
@@ -419,24 +544,31 @@ export class Keybindings {
    * @returns Returns the platform-formatted chord.
    */
   public formatChord(chord: string): string {
-    const parts: string[] = chord.split('+');
-    if (this.isMac) {
-      return parts
-        .map((part: string): string => {
-          if (part === 'Mod') {
-            return '⌘';
-          }
-          if (part === 'Alt') {
-            return '⌥';
-          }
-          if (part === 'Shift') {
-            return '⇧';
-          }
-          return part;
-        })
-        .join('');
+    return this.chordKeys(chord).join(this.isMac ? '' : '+');
+  }
+
+  /**
+   * Splits a normalized chord into the keys a person presses, as the current platform labels them —
+   * `⌘`, `⇧`, `T` on macOS and `Ctrl`, `Shift`, `T` elsewhere — for showing each as its own key cap.
+   * @param chord The normalized chord to split.
+   * @returns Returns the key labels in pressing order, or none for an empty chord.
+   */
+  public chordKeys(chord: string): readonly string[] {
+    if (chord === NO_CHORD) {
+      return [];
     }
-    return parts.map((part: string): string => (part === 'Mod' ? 'Ctrl' : part)).join('+');
+    return chord.split('+').map((part: string): string => {
+      if (part === 'Mod') {
+        return this.isMac ? '⌘' : 'Ctrl';
+      }
+      if (part === 'Alt') {
+        return this.isMac ? '⌥' : 'Alt';
+      }
+      if (part === 'Shift') {
+        return this.isMac ? '⇧' : 'Shift';
+      }
+      return KEY_SYMBOLS[part] ?? part;
+    });
   }
 
   /**
@@ -503,7 +635,9 @@ export class Keybindings {
       description: binding.description,
       view: entry.view,
       chord,
+      defaultChord: this.normalizeChord(binding.chord),
       overridden: chord !== this.normalizeChord(binding.chord),
+      global: entry.global === true,
     };
   }
 
@@ -511,7 +645,8 @@ export class Keybindings {
    * Derives the chord currently in effect for a command: the user's persisted override when it is
    * present and still valid, else the catalogued default.
    * @param id The catalogued command identifier.
-   * @returns Returns the normalized effective chord, or an empty string for an uncatalogued id.
+   * @returns Returns the normalized effective chord, or an empty string for an uncatalogued id or a
+   * cleared shortcut.
    */
   private effectiveChord(id: string): string {
     const catalogued: { entry: KeybindingCatalogueEntry; binding: CatalogueBinding } | undefined =
@@ -520,6 +655,9 @@ export class Keybindings {
       return '';
     }
     const override: string | undefined = this.overrides()[id];
+    if (override === NO_CHORD) {
+      return NO_CHORD;
+    }
     if (override !== undefined && this.validateOverride(id, override) === null) {
       return this.normalizeChord(override);
     }

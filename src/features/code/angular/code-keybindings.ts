@@ -11,6 +11,7 @@ export const CODE_KEYBINDINGS: KeybindingCatalogueEntry = {
   bindings: [
     { id: 'code.save', description: 'Save the active document', chord: 'Mod+S' },
     { id: 'code.saveAs', description: 'Save the active document as…', chord: 'Mod+Shift+S' },
+    { id: 'code.print', description: 'Print the active document', chord: 'Mod+P' },
     { id: 'code.run', description: 'Run the active document', chord: 'Mod+R' },
   ],
 };

@@ -1,0 +1,59 @@
+@if (binding(); as current) {
+  <app-modal [open]="true" [width]="26" ariaLabel="Set chord" (dismiss)="cancel()">
+    <ng-template appModalContent>
+      <div class="chord-modal">
+        <h2 class="chord-modal__title">Set Chord</h2>
+
+        <!-- Focused when the dialog opens, so the first key combination pressed is read here. -->
+        <div
+          class="chord-modal__reading"
+          tabindex="0"
+          role="status"
+          aria-live="polite"
+          data-modal-autofocus
+          data-testid="chord-reading"
+          [class.chord-modal__reading--invalid]="rejection() !== null"
+          (keydown)="onKeydown($event)"
+        >
+          @if (captured() === '') {
+            <span class="chord-modal__empty">No shortcut</span>
+          } @else {
+            <app-chord-keys [chord]="captured()" />
+          }
+        </div>
+
+        @if (rejection(); as message) {
+          <p class="chord-modal__error" role="alert">{{ message }}</p>
+        } @else {
+          <p class="chord-modal__hint">Press the key combination, then Enter to accept it.</p>
+        }
+
+        <p class="chord-modal__context">{{ current.description }} · {{ current.view }}</p>
+
+        <div class="chord-modal__footer">
+          <app-button
+            label="Clear"
+            [disabled]="captured() === ''"
+            data-testid="chord-clear"
+            (click)="clear()"
+          />
+          <app-button-row>
+            <app-button
+              variant="solid"
+              label="Accept"
+              [disabled]="rejection() !== null"
+              data-testid="chord-accept"
+              (click)="accept()"
+            />
+            <app-button
+              variant="none"
+              label="Cancel"
+              data-testid="chord-cancel"
+              (click)="cancel()"
+            />
+          </app-button-row>
+        </div>
+      </div>
+    </ng-template>
+  </app-modal>
+}

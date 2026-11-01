@@ -10,52 +10,50 @@
             <app-button
               class="keyboard__reset"
               variant="none"
-              size="small"
               label="Reset"
               [ariaLabel]="'Reset ' + binding.description + ' to its default shortcut'"
               (click)="reset(binding.id)"
             />
           }
-          <button
-            type="button"
-            class="keyboard__chord"
-            [class.keyboard__chord--editing]="isEditing(binding.id)"
-            [class.keyboard__chord--overridden]="binding.overridden"
-            [attr.aria-label]="'Change the shortcut for ' + binding.description"
-            (click)="beginCapture(binding.id)"
-            (blur)="cancelCapture()"
-            (keydown)="isEditing(binding.id) && onCaptureKeydown($event, binding.id)"
-          >
-            @if (isEditing(binding.id)) {
-              Press a key combination&hellip;
+          <span class="keyboard__chord" [attr.data-testid]="'chord-' + binding.id">
+            @if (binding.chord === '') {
+              <span class="keyboard__none">None</span>
             } @else {
-              <kbd>{{ format(binding.chord) }}</kbd>
+              <app-chord-keys [chord]="binding.chord" />
             }
-          </button>
+          </span>
+          <app-button
+            label="Set Chord"
+            [icon]="Icon.KEYBOARD_SHORTCUTS"
+            [ariaLabel]="'Set the shortcut for ' + binding.description"
+            [attr.data-testid]="'set-chord-' + binding.id"
+            (click)="setChord(binding)"
+          />
         </span>
       </div>
 
-      @if (rejectionFor(binding.id); as message) {
-        <p class="keyboard__message keyboard__message--error" role="alert">{{ message }}</p>
-      } @else if (conflicts().has(binding.id)) {
+      @if (conflicts().has(binding.id)) {
         <p class="keyboard__message keyboard__message--warning" role="status">
-          Another {{ group.view }} shortcut uses this key combination; the first registered command
-          wins.
+          @if (binding.global) {
+            A tab's own shortcut uses this key combination too; while that tab is in front, its
+            command wins.
+          } @else {
+            Another shortcut uses this key combination. Between two {{ group.view }} shortcuts the
+            first registered command wins; over an Application shortcut, this one wins while its tab
+            is in front.
+          }
         </p>
       }
     }
   </section>
 }
 
-@if (groups().length === 0) {
-  <p class="settings-section__hint">
-    No app-wide shortcuts can be changed yet. The menu's own shortcuts, such as Open and Close Tab,
-    are fixed for now. Each capability's shortcuts are on the Keyboard page under that capability,
-    for example Code › Keyboard.
-  </p>
-} @else {
-  <p class="settings-section__hint">
-    Click a shortcut, then press the new key combination. Press Backspace while capturing to restore
-    the default.
-  </p>
-}
+<p class="settings-section__hint">
+  Choose Set Chord, then press the new key combination. Reset restores a shortcut's default. The
+  menu shows whichever shortcut is in effect.
+  @if (view() === null) {
+    Each capability's own shortcuts are on its Keyboard page, for example Code › Keyboard.
+  }
+</p>
+
+<app-chord-modal [binding]="picking()" (closed)="picking.set(undefined)" />

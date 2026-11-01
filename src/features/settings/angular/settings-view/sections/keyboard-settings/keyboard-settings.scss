@@ -37,41 +37,18 @@
     flex: none;
   }
 
+  // The chord in effect, as key caps, right-aligned against its Set Chord button.
   &__chord {
+    display: inline-flex;
+    justify-content: flex-end;
     min-inline-size: 128px;
-    padding: 4px 10px;
-    border: 1px solid var(--form-control-border-color);
-    border-radius: calc(4px * var(--border-radius-multiplier, 1));
-    corner-shape: var(--app-corner-shape, squircle);
-    background: var(--form-control-background-color);
-    color: inherit;
-    font: inherit;
-    font-size: 12px;
-    text-align: center;
-    cursor: pointer;
-
-    &:hover {
-      border-color: var(--form-control-border-color--hover);
-    }
-
-    &:focus-visible {
-      outline: var(--focus-ring-width) solid var(--focus-ring-color);
-      outline-offset: 1px;
-    }
-
-    &--editing {
-      border-color: var(--accent-color);
-      color: var(--form-muted-foreground-color);
-    }
-
-    &--overridden {
-      border-color: var(--accent-surface-border-color);
-    }
-
-    kbd {
-      font-family: inherit;
-    }
   }
+
+  &__none {
+    font-size: 12px;
+    color: var(--form-muted-foreground-color);
+  }
+
   &__message {
     margin: 0 0 6px;
     font-size: 11px;

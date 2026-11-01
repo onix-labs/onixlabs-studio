@@ -1,4 +1,5 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
+import { AI_MANAGER_KEYBINDINGS } from './ai-manager-keybindings';
 import { AiManagerRibbon } from './ai-manager-ribbon/ai-manager-ribbon';
 import { AiManagerStatusStrip } from './ai-manager-status/ai-manager-status-strip';
 import { AiManagerView } from './ai-manager-view/ai-manager-view';
@@ -18,4 +19,5 @@ export const descriptor: FeatureDescriptor = {
   view: AiManagerView,
   ribbon: AiManagerRibbon,
   status: AiManagerStatusStrip,
+  keybindings: AI_MANAGER_KEYBINDINGS,
 };

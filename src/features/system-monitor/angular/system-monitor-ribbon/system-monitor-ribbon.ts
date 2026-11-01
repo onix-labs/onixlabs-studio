@@ -58,7 +58,7 @@ export class SystemMonitorRibbon {
           {
             id: 'monitor.refresh',
             label: 'Refresh',
-            accelerator: 'CmdOrCtrl+Shift+R',
+            binding: 'monitor.refresh',
             run: (): void => this.onRefresh(),
           },
           { id: 'monitor.clearFilters', label: 'Clear Filters', run: (): void => this.onClear() },

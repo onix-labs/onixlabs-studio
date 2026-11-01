@@ -179,13 +179,13 @@ export class DatabaseExplorerRibbon {
           {
             id: 'database.save',
             label: 'Save',
-            accelerator: 'CmdOrCtrl+S',
+            binding: 'database.save',
             run: (): void => this.commands.saveDocument(),
           },
           {
             id: 'database.saveAs',
             label: 'Save As',
-            accelerator: 'CmdOrCtrl+Shift+S',
+            binding: 'database.saveAs',
             run: (): void => this.commands.saveDocumentAs(),
           },
           MENU_SEPARATOR,

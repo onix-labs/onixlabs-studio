@@ -444,7 +444,7 @@ describe('DatabaseExplorerRibbon', () => {
       .map((candidate: MenuEntry): string | undefined => candidate.id);
 
     expect(ids).toEqual(['database.save', 'database.saveAs', 'database.setPassphrase']);
-    expect(entry('file', 'database.saveAs').accelerator).toBe('CmdOrCtrl+Shift+S');
+    expect(entry('file', 'database.saveAs').binding).toBe('database.saveAs');
     expect(entry('file', 'database.setPassphrase').label).toBe('Set Passphrase');
   });
 

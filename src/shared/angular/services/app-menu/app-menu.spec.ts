@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { AppMenu } from './app-menu';
 import { MENU_SEPARATOR, MenuContribution, MenuEntry } from './app-menu-model';
 
@@ -40,9 +42,38 @@ describe('AppMenu', () => {
   }
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [
+        provideKeybindingCatalogue({
+          view: 'Application',
+          global: true,
+          bindings: [{ id: 'app.closeTab', description: 'Close Tab', chord: 'Mod+W' }],
+        }),
+        provideKeybindingCatalogue({
+          view: 'Code Editor',
+          bindings: [
+            { id: 'code.save', description: 'Save', chord: 'Mod+S' },
+            { id: 'code.print', description: 'Print', chord: 'Mod+P' },
+          ],
+        }),
+      ],
+    });
     menu = TestBed.inject(AppMenu);
   });
+
+  afterEach(() => {
+    // Overrides persist through the Settings store into localStorage, which outlives each test.
+    window.localStorage.removeItem('settings');
+  });
+
+  /**
+   * Builds a key press with the Ctrl-based `Mod` used off macOS, where the tests run.
+   * @param key The event key.
+   * @returns Returns the keyboard event.
+   */
+  function modEvent(key: string): KeyboardEvent {
+    return new KeyboardEvent('keydown', { key, ctrlKey: true });
+  }
 
   it('sections_whenIdsMatch_foldsTheContributionIntoTheExistingSection', () => {
     menu.contribute(
@@ -254,5 +285,94 @@ describe('AppMenu', () => {
     menu.clearOwner('feature');
 
     expect(menu.sections().length).toBe(0);
+  });
+
+  it('sections_whenAnEntryNamesACataloguedCommand_showsItsEffectiveChord', () => {
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'file',
+          label: 'File',
+          items: [{ id: 'code.save', label: 'Save', binding: 'code.save' }],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+    expect(itemsOf('file')[0].accelerator).toBe('CmdOrCtrl+S');
+
+    TestBed.inject(Keybindings).setOverride('code.save', 'Mod+Alt+S');
+
+    expect(itemsOf('file')[0].accelerator).toBe('CmdOrCtrl+Alt+S');
+  });
+
+  it('sections_whenAnOverrideMovesOntoAnotherEntrysChord_keepsBothRowsAndOneShortcut', () => {
+    // Moving Print onto ⌘W must not take Close Tab out of the menu, nor leave two items bound to it.
+    menu.contribute(
+      'core',
+      [
+        {
+          id: 'file',
+          label: 'File',
+          items: [{ id: 'core.file.closeTab', label: 'Close Tab', binding: 'app.closeTab' }],
+        },
+      ],
+      CORE_PRIORITY,
+    );
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'file',
+          label: 'File',
+          items: [{ id: 'code.print', label: 'Print', binding: 'code.print' }],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+
+    TestBed.inject(Keybindings).setOverride('code.print', 'Mod+W');
+
+    expect(labelsOf('file')).toEqual(['Close Tab', 'Print']);
+    expect(itemsOf('file')[0].accelerator).toBeUndefined();
+    expect(itemsOf('file')[1].accelerator).toBe('CmdOrCtrl+W');
+  });
+
+  it('dispatchChord_runsTheEnabledEntryShowingTheChord', () => {
+    let closed: number = 0;
+    let printed: number = 0;
+    menu.contribute(
+      'core',
+      [
+        {
+          id: 'file',
+          label: 'File',
+          items: [
+            {
+              id: 'core.file.closeTab',
+              label: 'Close Tab',
+              binding: 'app.closeTab',
+              run: (): void => void (closed += 1),
+            },
+            {
+              id: 'code.print',
+              label: 'Print',
+              binding: 'code.print',
+              enabled: false,
+              run: (): void => void (printed += 1),
+            },
+          ],
+        },
+      ],
+      CORE_PRIORITY,
+    );
+    TestBed.tick();
+
+    expect(menu.dispatchChord(modEvent('w'))).toBe(true);
+    // A disabled command leaves its chord to the platform, and an unbound chord runs nothing.
+    expect(menu.dispatchChord(modEvent('p'))).toBe(false);
+    expect(menu.dispatchChord(modEvent('q'))).toBe(false);
+    expect(closed).toBe(1);
+    expect(printed).toBe(0);
   });
 });

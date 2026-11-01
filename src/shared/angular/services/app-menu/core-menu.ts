@@ -61,6 +61,9 @@ const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string 
  * itself, so `EditingChords` serves Cmd+A for the focused text box from the window's key listener
  * instead — which costs the menu a Select All row and keeps every editor's own.
  *
+ * Open File, Settings and Close Tab take their shortcuts from the keyboard catalogue
+ * (`APPLICATION_KEYBINDINGS`), so they are editable on Application › Keyboard.
+ *
  * Instantiated once by the shell.
  */
 @Service()
@@ -119,7 +122,7 @@ export class CoreMenu {
           {
             id: 'core.file.open',
             label: 'Open File',
-            accelerator: 'CmdOrCtrl+O',
+            binding: 'app.openFile',
             run: (): void => void this.documents.openFile(),
           },
           MENU_SEPARATOR,
@@ -173,14 +176,14 @@ export class CoreMenu {
             {
               id: 'core.file.settings',
               label: 'Settings',
-              accelerator: 'CmdOrCtrl+,',
+              binding: 'app.settings',
               run: (): void => void this.tabs.open('settings'),
             },
             MENU_SEPARATOR,
             {
               id: 'core.file.closeTab',
               label: 'Close Tab',
-              accelerator: 'CmdOrCtrl+W',
+              binding: 'app.closeTab',
               enabled: active !== undefined,
               run: (): void => {
                 const tab: Tab | undefined = this.activeTab();

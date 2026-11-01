@@ -8,5 +8,8 @@ import { KeybindingCatalogueEntry } from '@shared/angular/services/keybindings/k
 export const TERMINAL_KEYBINDINGS: KeybindingCatalogueEntry = {
   view: 'Terminal',
   modShiftOnly: true,
-  bindings: [{ id: 'terminal.clear', description: 'Clear the terminal', chord: 'Mod+Shift+K' }],
+  bindings: [
+    { id: 'terminal.clear', description: 'Clear the terminal', chord: 'Mod+Shift+K' },
+    { id: 'terminal.new', description: 'Open a new terminal', chord: 'Mod+Shift+T' },
+  ],
 };

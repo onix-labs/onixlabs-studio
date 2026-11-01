@@ -42,6 +42,14 @@ export interface KeybindingCatalogueEntry {
   readonly modShiftOnly?: boolean;
 
   /**
+   * Gets a value indicating whether the entry's commands are application-wide rather than one view's:
+   * the application menu's own commands (Open File, Settings, Close Tab), which work whichever tab is
+   * in front. They are listed on Application › Keyboard, and since the active view has first refusal
+   * of every chord, one that collides with any view's binding is surfaced as a conflict.
+   */
+  readonly global?: boolean;
+
+  /**
    * Gets the accelerators the view contributes.
    */
   readonly bindings: readonly CatalogueBinding[];

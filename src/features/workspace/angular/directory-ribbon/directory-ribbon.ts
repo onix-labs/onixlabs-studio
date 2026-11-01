@@ -133,7 +133,7 @@ export class DirectoryRibbon {
           {
             id: 'directory.save',
             label: 'Save',
-            accelerator: 'CmdOrCtrl+S',
+            binding: 'workspace.saveAll',
             run: (): void => this.onSave(),
           },
         ],
@@ -154,7 +154,7 @@ export class DirectoryRibbon {
           {
             id: 'directory.find',
             label: 'Find',
-            accelerator: 'CmdOrCtrl+F',
+            binding: 'workspace.find',
             run: (): void => this.onFind(),
           },
           // No accelerator: ⌘T / Ctrl+T is the workspace's own keybinding (#1146), which the user can

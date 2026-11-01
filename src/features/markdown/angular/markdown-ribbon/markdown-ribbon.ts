@@ -231,7 +231,7 @@ export class MarkdownRibbon {
           {
             id: 'markdown.print',
             label: 'Print',
-            accelerator: 'CmdOrCtrl+P',
+            binding: 'markdown.print',
             run: (): void => this.onPrint(),
           },
           {
@@ -254,7 +254,7 @@ export class MarkdownRibbon {
           {
             id: 'markdown.find',
             label: 'Find',
-            accelerator: 'CmdOrCtrl+F',
+            binding: 'markdown.find',
             run: (): void => this.onFind(),
           },
         ],

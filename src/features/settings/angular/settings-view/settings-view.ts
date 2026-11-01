@@ -150,6 +150,7 @@ const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
   ai: 'Agent',
   'api-explorer': 'API Explorer',
   'database-explorer': 'Database Explorer',
+  'system-monitor': 'System Monitor',
 };
 
 /**
@@ -836,15 +837,18 @@ export class SettingsView {
   /**
    * Finds the shortcut descriptions a Keyboard leaf shows, so "zoom in" finds Image Viewer › Keyboard.
    * @param leaf The leaf.
-   * @returns Returns the descriptions, or none for a leaf that is not a capability's Keyboard page.
+   * @returns Returns the descriptions, or none for a leaf that is not a Keyboard page.
    */
   private shortcutsOnPage(leaf: SettingsNavNode): readonly string[] {
-    if (leaf.keyboardView === undefined) {
+    const application: boolean = leaf.sectionId === 'keyboard';
+    if (leaf.keyboardView === undefined && !application) {
       return [];
     }
     return this.keybindings
       .resolvedCatalogue()
-      .filter((binding: ResolvedBinding): boolean => binding.view === leaf.keyboardView)
+      .filter((binding: ResolvedBinding): boolean =>
+        application ? binding.global : binding.view === leaf.keyboardView,
+      )
       .map((binding: ResolvedBinding): string => `${binding.description} shortcut`);
   }
 
