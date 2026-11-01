@@ -930,9 +930,7 @@ export class TreePanel {
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
-    return targets.length === 1
-      ? `Delete ${targets[0].name}?`
-      : `Delete ${targets.length} items?`;
+    return targets.length === 1 ? `Delete ${targets[0].name}?` : `Delete ${targets.length} items?`;
   });
 
   /**
