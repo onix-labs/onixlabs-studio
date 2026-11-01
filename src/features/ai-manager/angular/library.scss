@@ -49,6 +49,31 @@
   gap: 1rem;
 }
 
+.library__heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
+// An AI's improvement under review fills its dialog, the review taking the height left over.
+.library__review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  block-size: 100%;
+  min-block-size: 0;
+
+  > * {
+    flex: none;
+  }
+
+  app-skill-review {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
+}
+
 .library__title {
   // The shared `.section-label` sets the type; only the spacing is ours.
   margin: 0;

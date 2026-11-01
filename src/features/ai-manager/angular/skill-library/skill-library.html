@@ -35,15 +35,41 @@
             <h2 class="library__title section-label">
               {{ row.stored?.name ?? (row.draft.name || 'New skill') }}
             </h2>
-            @if (row.stored) {
+            <div class="library__heading-actions">
+              <!-- Improve with AI (#1263): any skill, at any time, since what it covers keeps moving.
+                   The AI's version is shown for review; nothing changes until it is accepted. -->
+              @if (improving() === row.key) {
+                <app-button
+                  variant="none"
+                  size="small"
+                  label="Cancel Improving"
+                  (click)="cancelImprove()"
+                />
+              }
               <app-button
                 variant="none"
                 size="small"
-                [icon]="Icon.FOLDER_OPEN"
-                [label]="openInFileSystemLabel"
-                (click)="reveal(row)"
+                [icon]="Icon.SPARKLE"
+                label="Improve with AI"
+                [loading]="improving() === row.key"
+                [disabled]="aiLabel() === null || improving() !== null || isIncomplete(row)"
+                [tooltip]="
+                  aiLabel() === null
+                    ? 'Connect an AI provider in the AI Manager to use this'
+                    : 'Have ' + aiLabel() + ' bring this skill up to date'
+                "
+                (click)="improve(row)"
               />
-            }
+              @if (row.stored) {
+                <app-button
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.FOLDER_OPEN"
+                  [label]="openInFileSystemLabel"
+                  (click)="reveal(row)"
+                />
+              }
+            </div>
           </div>
           <p class="library__subtitle">
             Instructions an agent loads when it decides a task needs them. Only the name and
@@ -172,7 +198,7 @@
         </p>
         <app-button-row align="start">
           <app-button variant="solid" [icon]="Icon.PLUS" label="New Skill" (click)="add()" />
-          <app-button [icon]="Icon.DOWNLOAD" label="Import…" (click)="import()" />
+          <app-button [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
         </app-button-row>
       </div>
     }
@@ -203,5 +229,37 @@
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
       <app-button label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
+  </ng-template>
+</app-modal>
+
+<!-- The import's dialogs (#1263). -->
+<app-skill-import-modal [aiLabel]="aiLabel()" />
+
+<!-- An AI's improvement of a library skill, under review (#1263). -->
+<app-modal
+  [open]="improvement() !== null"
+  [expandable]="true"
+  [width]="60"
+  [height]="37.5"
+  ariaLabel="Review the AI's improvements"
+  (dismiss)="discardImprovement()"
+>
+  <ng-template appModalContent>
+    @if (improvement(); as review) {
+      <div class="library__review">
+        <h2 class="library__dialog-title">
+          Review the AI's improvements to “{{ review.original.name }}”
+        </h2>
+        <app-skill-review
+          [original]="review.original"
+          [draft]="review.draft"
+          (draftChange)="reviseImprovement($event)"
+        />
+        <app-button-row>
+          <app-button variant="solid" label="Accept" (click)="acceptImprovement()" />
+          <app-button label="Discard" (click)="discardImprovement()" />
+        </app-button-row>
+      </div>
+    }
   </ng-template>
 </app-modal>

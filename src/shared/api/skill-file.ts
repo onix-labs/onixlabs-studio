@@ -1,15 +1,17 @@
-import { readPromptScope, type PromptScope } from '@shared/api/ai-types';
+import { readPromptScope, type PromptScope } from './ai/ai-prompt-scope';
 import {
   readSkillTechnologies,
   SKILL_DESCRIPTION_LIMIT,
   SKILL_NAME_PATTERN,
-} from '@shared/api/skill-channels';
+} from './skill-channels';
 
 // Reads and writes `SKILL.md`: YAML frontmatter between `---` fences, then a Markdown body. Only the
 // subset of YAML a skill file needs is understood — scalars, inline `[a, b]` lists and block `- item`
 // lists — because pulling a YAML library into the main bundle for four keys is not worth its weight,
 // and a file that uses more than this subset still round-trips: keys this module does not own are
-// kept as the lines they arrived as and written back unchanged.
+// kept as the lines they arrived as and written back unchanged. Platform-neutral, so the renderer can
+// read a `SKILL.md` an AI wrote (#1263) with the same rules the library reads its own with; the
+// prompt-profile files reuse the frontmatter half.
 
 /**
  * The frontmatter keys this module owns and rewrites on save. Everything else is preserved verbatim.
@@ -110,7 +112,10 @@ export interface SkillFileContent {
  * @param text The file text.
  * @returns Returns the frontmatter lines and the body.
  */
-function split(text: string): { readonly frontmatter: readonly string[]; readonly body: string } {
+export function splitFrontmatter(text: string): {
+  readonly frontmatter: readonly string[];
+  readonly body: string;
+} {
   const normalised: string = text.replace(/\r\n?/g, '\n');
   if (!normalised.startsWith('---\n') && normalised !== '---') {
     return { frontmatter: [], body: normalised };
@@ -126,11 +131,16 @@ function split(text: string): { readonly frontmatter: readonly string[]; readonl
 }
 
 /**
+ * A frontmatter value: a scalar or a list.
+ */
+export type FrontmatterValue = string | readonly string[];
+
+/**
  * Reads a YAML scalar: unquotes a quoted string, otherwise returns the trimmed text.
  * @param raw The scalar text.
  * @returns Returns the value.
  */
-function scalar(raw: string): string {
+export function scalar(raw: string): string {
   const trimmed: string = raw.trim();
   if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
     try {
@@ -161,9 +171,13 @@ function inlineList(raw: string): string[] {
 /**
  * Parses the frontmatter lines into owned values and foreign lines.
  * @param lines The frontmatter lines.
+ * @param ownedKeys The keys the caller reads; every other key is kept as foreign lines.
  * @returns Returns the owned values by key and the foreign lines.
  */
-function parseFrontmatter(lines: readonly string[]): {
+export function parseFrontmatter(
+  lines: readonly string[],
+  ownedKeys: readonly string[],
+): {
   readonly values: ReadonlyMap<string, string | readonly string[]>;
   readonly foreignLines: readonly string[];
 } {
@@ -193,7 +207,7 @@ function parseFrontmatter(lines: readonly string[]): {
         consumed += 1;
       }
     }
-    if (!OWNED_KEYS.includes(key)) {
+    if (!ownedKeys.includes(key)) {
       foreignLines.push(...lines.slice(index, consumed));
       index = consumed;
       continue;
@@ -216,8 +230,8 @@ function parseFrontmatter(lines: readonly string[]): {
  * @returns Returns the parsed file.
  */
 export function parseSkillFile(text: string): ParsedSkillFile {
-  const { frontmatter, body } = split(text);
-  const { values, foreignLines } = parseFrontmatter(frontmatter);
+  const { frontmatter, body } = splitFrontmatter(text);
+  const { values, foreignLines } = parseFrontmatter(frontmatter, OWNED_KEYS);
   const name: string | readonly string[] | undefined = values.get('name');
   const description: string | readonly string[] | undefined = values.get('description');
   const enabled: string | readonly string[] | undefined = values.get('enabled');
@@ -244,7 +258,7 @@ export function parseSkillFile(text: string): ParsedSkillFile {
  * @param items The items.
  * @returns Returns the lines.
  */
-function listLines(key: string, items: readonly string[]): string[] {
+export function listLines(key: string, items: readonly string[]): string[] {
   return items.length === 0
     ? [`${key}: []`]
     : [`${key}:`, ...items.map((item: string): string => `  - ${item}`)];

@@ -67,6 +67,14 @@
           (action)="onAdd('profiles')"
         />
       </app-ribbon-strip-group>
+      <app-ribbon-strip-group title="Library">
+        <app-ribbon-strip-button
+          [icon]="Icon.EXPORT"
+          label="Export"
+          [disabled]="!canTransfer"
+          (action)="onExportLibrary()"
+        />
+      </app-ribbon-strip-group>
     }
     @case ('skills') {
       <app-ribbon-strip-group title="Skills">
@@ -88,6 +96,12 @@
           [icon]="Icon.FOLDER_OPEN"
           label="Open Folder"
           (action)="onOpenSkillFolder()"
+        />
+        <app-ribbon-strip-button
+          [icon]="Icon.EXPORT"
+          label="Export"
+          [disabled]="!canTransfer"
+          (action)="onExportLibrary()"
         />
         <app-ribbon-strip-button
           [icon]="Icon.REFRESH"

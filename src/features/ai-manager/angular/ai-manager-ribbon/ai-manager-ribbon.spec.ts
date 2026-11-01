@@ -172,7 +172,14 @@ describe('AiManagerRibbon (#948)', () => {
     TestBed.inject(AiLibraryCommands).register('profiles', handler);
     mount('profiles');
 
-    expect(labels()).toEqual(['Local Models', 'Prompt Profiles', 'Skills', 'New Profile', 'Agent']);
+    expect(labels()).toEqual([
+      'Local Models',
+      'Prompt Profiles',
+      'Skills',
+      'New Profile',
+      'Export',
+      'Agent',
+    ]);
     press('New Profile');
     expect(add).toHaveBeenCalledTimes(1);
   });
@@ -190,6 +197,7 @@ describe('AiManagerRibbon (#948)', () => {
       'New Skill',
       'Import',
       'Open Folder',
+      'Export',
       'Refresh',
       'Agent',
     ]);

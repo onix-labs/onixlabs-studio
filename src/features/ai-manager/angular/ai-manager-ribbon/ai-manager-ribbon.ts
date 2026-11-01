@@ -15,6 +15,7 @@ import {
   AiManagerSection,
 } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { Skills } from '@shared/angular/services/skills/skills';
+import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
 import { AiLibraryCommands, AiLibrarySection } from '../ai-library-commands/ai-library-commands';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
@@ -62,6 +63,16 @@ export class AiManagerRibbon {
    * Holds the skill library, which the folder and refresh buttons act on directly.
    */
   private readonly skills: Skills = inject(Skills);
+
+  /**
+   * Holds the import and export client.
+   */
+  private readonly transfer: SkillTransfer = inject(SkillTransfer);
+
+  /**
+   * Gets whether the AI library can be exported here (the desktop app only).
+   */
+  protected readonly canTransfer: boolean = this.transfer.isAvailable;
 
   /**
    * Holds whether the docked agent is showing (#967).
@@ -190,6 +201,13 @@ export class AiManagerRibbon {
   }
 
   /**
+   * Exports the skills and prompt profiles to a folder the user picks (#1263).
+   */
+  protected onExportLibrary(): void {
+    void this.transfer.export();
+  }
+
+  /**
    * Opens the skill library's folder.
    */
   protected onOpenSkillFolder(): void {
@@ -258,9 +276,15 @@ export class AiManagerRibbon {
       },
       {
         id: 'skills.import',
-        label: 'Import Skill',
+        label: 'Import Skills',
         enabled: this.registered().has('skills'),
         run: (): void => this.onImportSkill(),
+      },
+      {
+        id: 'skills.export',
+        label: 'Export AI Library',
+        enabled: this.canTransfer,
+        run: (): void => this.onExportLibrary(),
       },
       MENU_SEPARATOR,
       {

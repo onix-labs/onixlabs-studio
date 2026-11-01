@@ -1,0 +1,54 @@
+<app-tab-list
+  class="review__tabs"
+  [tabs]="tabs"
+  [value]="tab()"
+  ariaLabel="Review"
+  (valueChange)="tab.set($event)"
+/>
+
+@if (tab() === 'version') {
+  <div class="review__version">
+    <app-setting-row label="Name" description="Lower-case letters, digits and hyphens.">
+      <app-text-field
+        [value]="draft().name"
+        ariaLabel="Skill name"
+        (valueChange)="edit({ name: $event })"
+      />
+    </app-setting-row>
+    <div class="review__field">
+      <span class="review__label">Description</span>
+      <app-markdown-field
+        [value]="draft().description"
+        [minRows]="3"
+        [expandable]="false"
+        ariaLabel="Skill description"
+        (valueChange)="edit({ description: $event })"
+      />
+    </div>
+    <div class="review__field review__field--grow">
+      <span class="review__label">Instructions</span>
+      <app-markdown-field
+        [value]="draft().body"
+        [minRows]="10"
+        [fill]="true"
+        [expandable]="false"
+        ariaLabel="Skill instructions"
+        (valueChange)="edit({ body: $event })"
+      />
+    </div>
+  </div>
+} @else {
+  <p class="review__counts">
+    <span class="review__count review__count--added">+{{ counts().added }}</span>
+    <span class="review__count review__count--removed">−{{ counts().removed }}</span>
+    lines
+  </p>
+  <div class="review__changes" role="region" aria-label="Changes">
+    @for (line of changes(); track $index) {
+      <span class="review__line review__line--{{ line.kind }}"
+        >{{ line.kind === 'added' ? '+ ' : line.kind === 'removed' ? '− ' : '  '
+        }}{{ line.text }}</span
+      >
+    }
+  </div>
+}

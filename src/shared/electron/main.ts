@@ -26,6 +26,9 @@ import { AgentConversationStore } from './ai/agent-conversation-store';
 import { useDevelopmentUserData } from './development-user-data';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
+import { PromptProfileLibrary } from './ai/prompt-profiles/prompt-profile-library';
+import { LibraryTransfer } from './ai/skills/library-transfer';
+import { LibraryTransferHandlers } from './ai/skills/library-transfer-handlers';
 import { SkillHandlers } from './ai/skills/skill-handlers';
 import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
@@ -405,6 +408,22 @@ class Program {
    */
   private readonly skillLibrary: SkillLibrary = new SkillLibrary(
     path.join(app.getPath('userData'), 'skills'),
+  );
+
+  /**
+   * Owns the user's prompt profiles (#1263): a folder of Markdown files beside the skill library.
+   */
+  private readonly promptProfileLibrary: PromptProfileLibrary = new PromptProfileLibrary(
+    path.join(app.getPath('userData'), 'prompt-profiles'),
+  );
+
+  /**
+   * Serves the prompt-profile library, and imports into and exports out of both libraries (#1263).
+   */
+  private readonly libraryTransferHandlers: LibraryTransferHandlers = new LibraryTransferHandlers(
+    this.promptProfileLibrary,
+    new LibraryTransfer(this.skillLibrary, this.promptProfileLibrary),
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -1130,6 +1149,7 @@ class Program {
     this.directoryWatcher.register();
     this.aiManager.register();
     this.skillHandlers.register();
+    this.libraryTransferHandlers.register();
     this.agentConversationStore.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();

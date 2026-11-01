@@ -119,7 +119,7 @@ describe('SkillLibrarySection', () => {
     expect(element().querySelector('.library__empty-text')?.textContent).toContain('No skills yet');
     expect(element().querySelector('.library__editor')).toBeNull();
     expect(button('New Skill')).toBeTruthy();
-    expect(button('Import…')).toBeTruthy();
+    expect(button('Import')).toBeTruthy();
   });
 
   it('sidePanel_listsEachSkill_flagsOneThatCannotBeOffered_andShowsTheSelectedOnesFiles', async () => {
