@@ -8,15 +8,10 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
 import { Settings } from '@shared/angular/services/settings/settings';
+import type { FinishNotifications } from '@shared/angular/services/settings/settings-registry';
 import { DesktopNotifications } from './desktop-notifications';
-
-/**
- * The maximum number of toasts held at once. An arrival beyond the cap evicts the oldest transient
- * toast (or the oldest outright when every toast is sticky), so a burst of events can never fill the
- * screen.
- */
-const MAX_TOASTS: number = 5;
 
 /**
  * The maximum number of notifications the history keeps. The history backs the status-strip
@@ -38,6 +33,22 @@ export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
  * would be stale as a record, such as an agent ask that retracts once answered).
  */
 export type NotificationRoute = 'default' | 'history-only' | 'toast-only';
+
+/**
+ * Describes the end of a piece of work a notification reports, so the Notify When … Finishes settings
+ * can decide whether it interrupts: an agent's turn or background task, or a run or build.
+ */
+export interface FinishedWork {
+  /**
+   * Gets what finished.
+   */
+  readonly kind: 'agent' | 'run';
+
+  /**
+   * Gets whether it failed.
+   */
+  readonly failed: boolean;
+}
 
 /**
  * Defines an action offered on a notification, rendered as a button on its toast.
@@ -115,6 +126,12 @@ export interface NotificationRequest {
    * answer (a language server's question, #1154) learn it will not come. Undefined when nothing waits.
    */
   readonly onDismiss?: () => void;
+
+  /**
+   * Gets the work whose end this notification reports, if it reports one. When the matching Notify
+   * When … Finishes setting does not want it, the notification is recorded in the tray only.
+   */
+  readonly finished?: FinishedWork;
 }
 
 /**
@@ -189,9 +206,20 @@ export class Notifications {
   private readonly desktop: DesktopNotifications = inject(DesktopNotifications);
 
   /**
-   * Holds whether notifications are muted. Session-only by design: Studio starts unmuted every launch.
+   * Holds the mute as last left, read at launch when Remember Mute Across Launches is on.
    */
-  private readonly mutedSignal: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly rememberedMute: WritableSignal<boolean> = inject(RememberedState).acrossLaunches(
+    'notifications.muted',
+    false,
+  );
+
+  /**
+   * Holds whether notifications are muted. Studio starts unmuted every launch, unless Remember Mute
+   * Across Launches is on, when it starts as it was left.
+   */
+  private readonly mutedSignal: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('notifications.rememberMute') && this.rememberedMute(),
+  );
 
   /**
    * Holds the identifier the next notification is assigned.
@@ -258,7 +286,9 @@ export class Notifications {
    * @param request The notification to raise.
    */
   public notify(request: NotificationRequest): void {
-    const route: NotificationRoute = request.route ?? 'default';
+    // Work whose end the user does not want to hear about is recorded, not announced.
+    const announced: boolean = request.finished === undefined || this.announces(request.finished);
+    const route: NotificationRoute = announced ? (request.route ?? 'default') : 'history-only';
     const notification: Notification = {
       id: this.nextId++,
       severity: request.severity,
@@ -266,7 +296,9 @@ export class Notifications {
       detail: request.detail,
       actions: request.actions ?? [],
       key: request.key,
-      sticky: request.sticky ?? request.severity === 'error',
+      sticky:
+        request.sticky ??
+        (request.severity === 'error' && this.settings.get('notifications.errorsStay')),
       timestamp: Date.now(),
     };
     if (route !== 'history-only' && !this.silenced(notification.severity)) {
@@ -279,7 +311,9 @@ export class Notifications {
     }
     // Muted means quiet everywhere: what would not pop up in Studio does not pop up on the desktop.
     if (
-      (request.desktop === true || notification.severity === 'error') &&
+      announced &&
+      (request.desktop === true ||
+        (notification.severity === 'error' && this.settings.get('notifications.desktopErrors'))) &&
       !this.silenced(notification.severity)
     ) {
       this.desktop.show(notification.title, notification.detail, request.reveal);
@@ -303,6 +337,7 @@ export class Notifications {
    */
   public setMuted(muted: boolean): void {
     this.mutedSignal.set(muted);
+    this.rememberedMute.set(muted);
     this.log.info('Notifications', muted ? 'Notifications muted' : 'Notifications unmuted');
     if (muted) {
       this.setToasts(
@@ -311,6 +346,19 @@ export class Notifications {
         ),
       );
     }
+  }
+
+  /**
+   * Gets whether the end of some work is announced, as the matching Notify When … Finishes setting
+   * says: always, for failures only, or never.
+   * @param finished The work that finished.
+   * @returns Returns true when the notification should interrupt.
+   */
+  private announces(finished: FinishedWork): boolean {
+    const choice: FinishNotifications = this.settings.get(
+      finished.kind === 'agent' ? 'notifications.agentFinished' : 'notifications.runFinished',
+    );
+    return choice === 'always' || (choice === 'failures' && finished.failed);
   }
 
   /**
@@ -424,8 +472,13 @@ export class Notifications {
         return next;
       }
     }
-    const appended: readonly Notification[] = [...current, notification];
-    return appended.length <= MAX_TOASTS ? appended : this.evict(appended);
+    // Maximum Toasts Shown caps the stack; lowering it trims a full stack at the next arrival.
+    const limit: number = Math.max(1, this.settings.get('notifications.maxToasts'));
+    let stack: readonly Notification[] = [...current, notification];
+    while (stack.length > limit) {
+      stack = this.evict(stack);
+    }
+    return stack;
   }
 
   /**

@@ -2400,6 +2400,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
+      finished: { kind: 'agent', failed },
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }
@@ -2458,6 +2459,7 @@ export class Agent {
       route: watching ? 'history-only' : 'default',
       // Seen on the desktop while the user is elsewhere, watching or not (#927).
       desktop: true,
+      finished: { kind: 'agent', failed: status === 'failed' },
       ...(tabId === undefined ? {} : { reveal: (): void => this.tabs.activate(tabId) }),
     });
   }

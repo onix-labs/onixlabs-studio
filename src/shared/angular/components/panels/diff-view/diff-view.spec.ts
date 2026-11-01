@@ -1,4 +1,8 @@
 import { signal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
@@ -50,7 +54,11 @@ describe('DiffView', () => {
         { provide: Theme, useValue: { resolvedMode: signal<ResolvedThemeMode>('dark') } },
         {
           provide: Settings,
-          useValue: { globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS) },
+          useValue: {
+            globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
+            // Everything else reads its default (the notifications service, for one).
+            get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
+          },
         },
       ],
     }).compileComponents();
