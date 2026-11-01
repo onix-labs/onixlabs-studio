@@ -79,6 +79,12 @@ export type ReduceMotion = 'system' | 'on' | 'off';
 export type ScrollBars = 'auto-hide' | 'always';
 
 /**
+ * When the end of a piece of work (an agent's turn, a run or build) is announced with a toast and a
+ * system notification: always, only when it failed, or never. It is recorded in the tray either way.
+ */
+export type FinishNotifications = 'always' | 'failures' | 'never';
+
+/**
  * Defines how large an agent conversation's text renders: its transcript and its prompt.
  */
 export type ConversationTextSize = 'small' | 'medium' | 'large';
@@ -131,6 +137,12 @@ export interface SettingsValues {
   readonly 'notifications.stacking': NotificationStacking;
   readonly 'notifications.colour': NotificationColour;
   readonly 'notifications.whenMuted': MutedNotifications;
+  readonly 'notifications.maxToasts': number;
+  readonly 'notifications.rememberMute': boolean;
+  readonly 'notifications.errorsStay': boolean;
+  readonly 'notifications.desktopErrors': boolean;
+  readonly 'notifications.agentFinished': FinishNotifications;
+  readonly 'notifications.runFinished': FinishNotifications;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
   readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
@@ -485,7 +497,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Toast Duration',
         description:
           'How long a transient notification toast stays on screen. Hovering a toast pauses its ' +
-          'timer, and error toasts always stay until dismissed.',
+          'timer; errors stay until dismissed while Errors Stay Until Dismissed is on.',
         control: {
           kind: 'select',
           valueType: 'number',
@@ -562,6 +574,80 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'nothing',
+      },
+      {
+        key: 'notifications.rememberMute',
+        title: 'Remember Mute Across Launches',
+        description: 'Start Studio muted when it was muted as it quit.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'notifications.maxToasts',
+        title: 'Maximum Toasts Shown',
+        description:
+          'How many notifications can be on screen at once. Beyond it, the oldest one that is ' +
+          'not an error makes way.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1' },
+            { value: '3', label: '3' },
+            { value: '5', label: '5' },
+            { value: '10', label: '10' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'notifications.errorsStay',
+        title: 'Errors Stay Until Dismissed',
+        description:
+          'Keep an error on screen until you dismiss it, rather than letting it time out.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'notifications.desktopErrors',
+        title: 'System Notifications for Errors',
+        description:
+          "Show every error in the system's notification centre while Studio is in the background.",
+        control: { kind: 'toggle' },
+        visibleWhen: { key: 'notifications.desktop', equals: [true] },
+        default: true,
+      },
+      {
+        key: 'notifications.agentFinished',
+        title: 'Notify When an Agent Finishes',
+        description:
+          'Announce an agent finishing its turn or a background task: always, only when it ' +
+          'fails, or never. It is recorded in the notification tray either way.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'failures', label: 'Failures Only' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'always',
+      },
+      {
+        key: 'notifications.runFinished',
+        title: 'Notify When a Run or Build Finishes',
+        description:
+          'Announce a run or build ending on its own: always, only when it fails, or never. It ' +
+          'is recorded in the notification tray either way.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'failures', label: 'Failures Only' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'always',
       },
     ],
   },

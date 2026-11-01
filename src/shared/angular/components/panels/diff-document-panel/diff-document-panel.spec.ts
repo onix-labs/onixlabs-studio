@@ -1,4 +1,8 @@
 import { DebugElement, signal, Signal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Icon } from '@shared/angular/icons/icon';
@@ -104,6 +108,8 @@ function renderProviders(): unknown[] {
         globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
         // The tool strip's button names itself through a tooltip, which reads this.
         value: (): Signal<boolean> => signal<boolean>(true),
+        // Everything else reads its default (the notifications service, for one).
+        get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
       },
     },
   ];

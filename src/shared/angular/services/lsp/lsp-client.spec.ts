@@ -1,4 +1,8 @@
 import { signal, WritableSignal } from '@angular/core';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+} from '@shared/angular/services/settings/settings-registry';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
@@ -1306,6 +1310,8 @@ describe('LspClient', () => {
                 ...global(),
                 ...overrides()[language],
               }),
+              // Everything else reads its default (the notifications a restart raises, for one).
+              get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
             },
           },
         ],

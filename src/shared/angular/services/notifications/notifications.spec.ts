@@ -12,6 +12,11 @@ describe('Notifications', () => {
     service = TestBed.inject(Notifications);
   });
 
+  afterEach(() => {
+    // Settings persist through localStorage; one test's choice must not reach the next.
+    localStorage.clear();
+  });
+
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
@@ -262,6 +267,49 @@ describe('Notifications', () => {
   it('startsUnmuted', () => {
     expect(service.muted()).toBe(false);
   });
+
+  it('notify_whenErrorsDoNotStay_letsAnErrorTimeOut', () => {
+    TestBed.inject(Settings).set('notifications.errorsStay', false);
+    service.notify({ severity: 'error', title: 'Push failed' });
+
+    expect(service.toasts()[0].sticky).toBe(false);
+  });
+
+  it('notify_beyondTheMaximumToastsShown_keepsOnlyThatMany', () => {
+    TestBed.inject(Settings).set('notifications.maxToasts', 1);
+    service.notify({ severity: 'info', title: 'First' });
+    service.notify({ severity: 'info', title: 'Second' });
+
+    expect(service.toasts().map((toast: Notification): string => toast.title)).toEqual(['Second']);
+  });
+
+  it('notify_whenAFinishIsNotWanted_recordsItWithoutAToast', () => {
+    TestBed.inject(Settings).set('notifications.runFinished', 'failures');
+    service.notify({
+      severity: 'success',
+      title: 'Build succeeded',
+      finished: { kind: 'run', failed: false },
+    });
+    service.notify({
+      severity: 'error',
+      title: 'Build failed',
+      finished: { kind: 'run', failed: true },
+    });
+
+    expect(service.toasts().map((toast: Notification): string => toast.title)).toEqual([
+      'Build failed',
+    ]);
+    expect(service.history()).toHaveLength(2);
+  });
+
+  it('muted_whenRememberedAcrossLaunches_startsMutedNextLaunch', () => {
+    TestBed.inject(Settings).set('notifications.rememberMute', true);
+    service.setMuted(true);
+    TestBed.tick();
+    TestBed.resetTestingModule();
+
+    expect(TestBed.inject(Notifications).muted()).toBe(true);
+  });
 });
 
 describe('Notifications on the desktop', () => {
@@ -292,6 +340,25 @@ describe('Notifications on the desktop', () => {
     service.notify({ severity: 'info', title: 'Fetched all remotes' });
 
     expect(shown).toEqual(['Build failed', 'Agent finished — Fix it']);
+  });
+
+  it('leavesErrorsOut_whenSystemNotificationsForErrorsIsOff', () => {
+    TestBed.inject(Settings).set('notifications.desktopErrors', false);
+    service.notify({ severity: 'error', title: 'Build failed' });
+
+    expect(shown).toEqual([]);
+  });
+
+  it('leavesAnUnwantedFinishOut', () => {
+    TestBed.inject(Settings).set('notifications.agentFinished', 'never');
+    service.notify({
+      severity: 'error',
+      title: 'Agent failed — Fix it',
+      desktop: true,
+      finished: { kind: 'agent', failed: true },
+    });
+
+    expect(shown).toEqual([]);
   });
 
   it('staysQuietWhileMuted_unlessErrorsAreLetThrough', () => {
