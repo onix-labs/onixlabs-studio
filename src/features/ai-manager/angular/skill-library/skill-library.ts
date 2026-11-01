@@ -3,15 +3,14 @@ import {
   Component,
   computed,
   DestroyRef,
-  effect,
   inject,
   Signal,
   signal,
-  untracked,
   WritableSignal,
 } from '@angular/core';
 import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
+import { skillProblem } from '@shared/api/skill-file';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import {
   MultiSelect,
@@ -45,10 +44,6 @@ import { SkillAssist, SkillAssistModel, SkillAssistResult } from '../skill-assis
 import { SkillImportModal } from '../skill-import/skill-import-modal';
 import { SkillImportSession } from '../skill-import/skill-import-session';
 import { SkillReview } from '../skill-review/skill-review';
-import {
-  AiManagerModalPreview,
-  sampleDraft,
-} from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { SKILL_TAG_OPTIONS, splitSkillTags } from '../skill-tags/skill-tags';
 
 /**
@@ -202,6 +197,16 @@ export class SkillLibrarySection {
   } | null>(null);
 
   /**
+   * Gets why the AI's version under review cannot be accepted, or null when it can.
+   */
+  protected readonly improvementProblem: Signal<string | null> = computed((): string | null => {
+    const review: { readonly draft: SkillImportDraft } | null = this.improvement();
+    return review === null
+      ? null
+      : skillProblem(review.draft.name.trim(), review.draft.description.trim());
+  });
+
+  /**
    * Holds the controller that cancels an improvement in flight.
    */
   private improveAbort: AbortController | null = null;
@@ -313,46 +318,6 @@ export class SkillLibrarySection {
       this.saveTimers.clear();
     });
     this.registerWithSidebar();
-    this.followModalPreviews();
-  }
-
-  /**
-   * ⚠️ TEMPORARY (modal preview): opens the modal the ribbon's preview menu asked for, with sample data.
-   */
-  private followModalPreviews(): void {
-    const preview: AiManagerModalPreview = inject(AiManagerModalPreview);
-    effect((): void => {
-      const id: string | null = preview.request();
-      if (id === null) {
-        return;
-      }
-      untracked((): void => {
-        const draft: SkillImportDraft = sampleDraft('preview-sample-skill');
-        if (id === 'skill-delete') {
-          preview.request.set(null);
-          this.deleteTarget.set({
-            key: 'preview',
-            stored: { ...draft, directory: '', files: [], problem: null },
-            draft,
-            error: null,
-            saving: false,
-          });
-        } else if (id === 'skill-improve-review') {
-          preview.request.set(null);
-          this.improvement.set({
-            key: 'preview',
-            original: draft,
-            draft: {
-              ...draft,
-              description: 'Sharper description from the AI.',
-              body: `${draft.body}\n\n## Added by the AI\n`,
-            },
-          });
-        } else if (this.importSession.previewModal(id)) {
-          preview.request.set(null);
-        }
-      });
-    });
   }
 
   /**

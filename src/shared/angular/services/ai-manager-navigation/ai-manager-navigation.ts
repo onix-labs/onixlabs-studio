@@ -26,15 +26,22 @@ export class AiManagerNavigation {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the section shown.
+   * Holds the section shown, or null when none is: every section of the sidebar is closed and the
+   * main area shows the overview.
    */
-  private readonly sectionState: WritableSignal<AiManagerSection> =
-    signal<AiManagerSection>('models');
+  private readonly sectionState: WritableSignal<AiManagerSection | null> =
+    signal<AiManagerSection | null>(null);
 
   /**
-   * Gets the section shown.
+   * Holds whether the AI Manager was opened at a section on purpose, so the view keeps it open rather
+   * than starting with every section closed.
    */
-  public readonly section: Signal<AiManagerSection> = this.sectionState.asReadonly();
+  private requested: boolean = false;
+
+  /**
+   * Gets the section shown, or null when none is.
+   */
+  public readonly section: Signal<AiManagerSection | null> = this.sectionState.asReadonly();
 
   /**
    * Shows a section in the AI Manager, without opening the tab.
@@ -45,12 +52,31 @@ export class AiManagerNavigation {
   }
 
   /**
+   * Closes whichever section is shown, leaving the overview.
+   */
+  public collapse(): void {
+    this.sectionState.set(null);
+  }
+
+  /**
    * Opens the AI Manager tab at a section. If the tab is already open it is activated.
    * @param section The section to show.
    */
   public open(section: AiManagerSection): void {
     this.sectionState.set(section);
+    this.requested = true;
     this.tabs.open('model-manager');
     this.log.info('AiManagerNavigation', `Opened the AI Manager at '${section}'`);
+  }
+
+  /**
+   * Starts a newly shown AI Manager with every section closed, unless it was opened at one on
+   * purpose; either way the next showing starts closed again.
+   */
+  public begin(): void {
+    if (!this.requested) {
+      this.sectionState.set(null);
+    }
+    this.requested = false;
   }
 }

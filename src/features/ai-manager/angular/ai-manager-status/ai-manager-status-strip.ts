@@ -64,6 +64,8 @@ export class AiManagerStatusStrip {
         return librarySegments('ai-profiles', 'profile', 'profiles', this.view.profileCounts());
       case 'skills':
         return librarySegments('ai-skills', 'skill', 'skills', this.view.skillCounts());
+      case null:
+        return { leading: [], trailing: [] };
     }
   });
 }

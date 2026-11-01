@@ -41,6 +41,7 @@ function entry(name: string, status: SkillImportEntry['status'] = 'ready'): Skil
     reason: status === 'ready' ? null : 'It is too short.',
     draft: draft(name),
     bundled: [],
+    links: [],
   };
 }
 
@@ -72,6 +73,10 @@ describe('SkillImportSession (#1263)', () => {
   let discarded: string[];
   let improved: string[];
   let chosen: SkillImportPlan;
+  let improveAnswers: SkillAssistResult[];
+  let repairAnswers: SkillAssistResult[];
+  let commitErrors: (string | null)[];
+  let signals: AbortSignal[];
 
   /**
    * Waits for the run to settle on its next question.
@@ -88,6 +93,10 @@ describe('SkillImportSession (#1263)', () => {
     commits = [];
     discarded = [];
     improved = [];
+    improveAnswers = [];
+    repairAnswers = [];
+    commitErrors = [];
+    signals = [];
     const transfer: Partial<SkillTransfer> = {
       choose: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
       chooseProfiles: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
@@ -101,18 +110,35 @@ describe('SkillImportSession (#1263)', () => {
           skills: commit.skills.length,
           profiles: commit.profiles.length,
           linksRewritten: 2,
-          error: null,
+          error: commitErrors.shift() ?? null,
         });
       },
     };
     const assist: Partial<SkillAssist> = {
       isAvailable: true,
-      improve: (original: SkillImportDraft): Promise<SkillAssistResult> => {
+      improve: (
+        original: SkillImportDraft,
+        _model: unknown,
+        signal?: AbortSignal,
+      ): Promise<SkillAssistResult> => {
         improved.push(original.name);
-        return Promise.resolve({ kind: 'draft', draft: { ...original, description: 'Improved.' } });
+        if (signal !== undefined) {
+          signals.push(signal);
+        }
+        return Promise.resolve(
+          improveAnswers.shift() ?? {
+            kind: 'draft',
+            draft: { ...original, description: 'Improved.' },
+          },
+        );
       },
       repair: (_source: string, original: SkillImportDraft): Promise<SkillAssistResult> =>
-        Promise.resolve({ kind: 'draft', draft: { ...original, description: 'Repaired.' } }),
+        Promise.resolve(
+          repairAnswers.shift() ?? {
+            kind: 'draft',
+            draft: { ...original, description: 'Repaired.' },
+          },
+        ),
     };
     TestBed.configureTestingModule({
       providers: [
@@ -131,11 +157,11 @@ describe('SkillImportSession (#1263)', () => {
     const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
 
     expect((await next())?.kind).toBe('improve');
-    session.answer('no');
+    session.answer({ choice: 'as-is', all: false });
     expect((await next())?.kind).toBe('repair');
     session.answer('ignore');
     expect((await next())?.kind).toBe('improve');
-    session.answer('no');
+    session.answer({ choice: 'as-is', all: false });
     const clash: ImportPrompt | null = await next();
     expect(clash).toMatchObject({
       kind: 'clash',
@@ -164,7 +190,7 @@ describe('SkillImportSession (#1263)', () => {
     const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
 
     await next();
-    session.answer('yes');
+    session.answer({ choice: 'improve', all: false });
     const review: ImportPrompt | null = await next();
     expect(review?.kind).toBe('review');
     session.answer({ action: 'accept', draft: { ...draft('alpha'), description: 'Edited.' } });
@@ -180,7 +206,7 @@ describe('SkillImportSession (#1263)', () => {
     const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
 
     await next();
-    session.answer('yes-all');
+    session.answer({ choice: 'improve', all: true });
     expect((await next())?.kind).toBe('summary');
     expect(session.accepted().map((skill) => skill.origin)).toEqual([
       'improved-auto',
@@ -201,7 +227,7 @@ describe('SkillImportSession (#1263)', () => {
     const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
 
     await next();
-    session.answer('no');
+    session.answer({ choice: 'as-is', all: false });
     await next();
     session.cancel();
 
@@ -276,5 +302,204 @@ describe('SkillImportSession (#1263)', () => {
       ['house', false],
     ]);
     expect(commits[0].skills).toEqual([]);
+  });
+
+  it('improve_whenTheAiFails_andTheDraftIsUsed_flagsTheFailureInTheSummary', async () => {
+    improveAnswers = [{ kind: 'error', reason: 'The AI took too long to answer.' }];
+    chosen = plan([entry('alpha')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer({ choice: 'improve', all: false });
+    expect(await next()).toMatchObject({ kind: 'ai-failed', canUseDraft: true });
+    session.answer({ action: 'draft' });
+    expect((await next())?.kind).toBe('summary');
+
+    expect(session.accepted()[0]).toMatchObject({
+      origin: 'as-drafted',
+      failure: 'The AI took too long to answer.',
+    });
+    session.answer('import');
+    await outcome;
+    expect(commits[0].skills[0].draft.description).toBe('About alpha.');
+  });
+
+  it('improve_whenTheAiFails_andTryAgain_asksTheAiAgain', async () => {
+    improveAnswers = [{ kind: 'error', reason: 'Busy.' }];
+    chosen = plan([entry('alpha')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer({ choice: 'improve', all: false });
+    await next();
+    session.answer('retry');
+    expect((await next())?.kind).toBe('review');
+    expect(improved).toEqual(['alpha', 'alpha']);
+    session.cancel();
+    await outcome;
+  });
+
+  it('review_whenDeclined_importsTheFileAsDrafted', async () => {
+    chosen = plan([entry('alpha')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer({ choice: 'improve', all: false });
+    await next();
+    session.answer({ action: 'draft' });
+    await next();
+    expect(session.accepted()[0]).toMatchObject({ origin: 'as-drafted', failure: null });
+    session.answer('import');
+    await outcome;
+  });
+
+  it('repair_whenAcceptedOrRefused_convertsOrLeavesItOutWithTheRightReason', async () => {
+    repairAnswers = [
+      { kind: 'draft', draft: { ...draft('stub'), description: 'Repaired.' } },
+      { kind: 'not-a-skill', reason: 'It is an index.' },
+    ];
+    chosen = plan([entry('stub', 'needs-ai'), entry('index', 'needs-ai')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer('ai');
+    expect(await next()).toMatchObject({ kind: 'review', purpose: 'repair' });
+    session.answer({ action: 'accept', draft: { ...draft('stub'), description: 'Repaired.' } });
+    await next();
+    session.answer('ai');
+    expect(await next()).toMatchObject({ kind: 'ai-failed', notASkill: true, canUseDraft: false });
+    session.answer({ action: 'ignore' });
+    expect((await next())?.kind).toBe('summary');
+
+    expect(session.accepted().map((skill) => [skill.draft.name, skill.origin])).toEqual([
+      ['stub', 'converted'],
+    ]);
+    expect(session.leftOut()).toEqual([
+      { label: 'index.md', kind: 'not-a-skill', reason: 'It is an index.' },
+    ]);
+    session.cancel();
+    await outcome;
+  });
+
+  it('clash_whenTheNameTypedIsUnusable_asksAgainSayingWhy', async () => {
+    chosen = plan([entry('taken')], { existingSkills: ['taken', 'taken-2'] });
+    const outcome: Promise<string | null> = session.start(null);
+
+    expect(await next()).toMatchObject({ kind: 'clash', suggested: 'taken-3', error: null });
+    session.answer({ action: 'rename', name: 'Not Valid', all: false });
+    expect(await next()).toMatchObject({
+      kind: 'clash',
+      attempted: 'Not Valid',
+      error: 'Use lower-case letters, digits and hyphens.',
+    });
+    session.answer({ action: 'rename', name: 'taken-2', all: false });
+    expect(await next()).toMatchObject({ error: 'taken-2 is taken too.' });
+    session.answer({ action: 'rename', name: 'fresh', all: false });
+    expect((await next())?.kind).toBe('summary');
+    expect(session.accepted()[0].draft.name).toBe('fresh');
+    session.cancel();
+    await outcome;
+  });
+
+  it('clash_whenRenameForAllRemaining_givesLaterClashesTheirSuggestedNames', async () => {
+    chosen = plan([entry('one'), entry('two')], { existingSkills: ['one', 'two'] });
+    const outcome: Promise<string | null> = session.start(null);
+
+    await next();
+    session.answer({ action: 'rename', name: 'one-renamed', all: true });
+    expect((await next())?.kind).toBe('summary');
+    expect(session.accepted().map((skill) => skill.draft.name)).toEqual(['one-renamed', 'two-2']);
+    session.cancel();
+    await outcome;
+  });
+
+  it('clash_whenTwoFilesShareAName_replacingKeepsOnlyTheLaterOne', async () => {
+    chosen = plan([
+      { ...entry('dup'), source: 'a/dup.md' },
+      { ...entry('dup'), source: 'b/dup.md' },
+    ]);
+    const outcome: Promise<string | null> = session.start(null);
+
+    expect(await next()).toMatchObject({ kind: 'clash', name: 'dup', withLibrary: false });
+    session.answer({ action: 'replace', all: false });
+    await next();
+    expect(session.accepted().map((skill) => [skill.source, skill.replace])).toEqual([
+      ['b/dup.md', false],
+    ]);
+    session.cancel();
+    await outcome;
+  });
+
+  it('summary_whenTheCommitFails_showsWhyAndLetsYouTryAgain', async () => {
+    commitErrors = ['The import could not be written, so nothing was changed.'];
+    chosen = plan([entry('alpha')]);
+    const outcome: Promise<string | null> = session.start(null);
+
+    await next();
+    session.answer('import');
+    expect((await next())?.kind).toBe('summary');
+    expect(session.error()).toBe('The import could not be written, so nothing was changed.');
+    session.answer('import');
+
+    expect(await outcome).toContain('Imported 1 skill');
+    expect(commits).toHaveLength(2);
+    expect(session.error()).toBeNull();
+  });
+
+  it('cancel_whileTheAiWorks_abortsItsRuns', async () => {
+    chosen = plan([entry('alpha'), entry('bravo')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer({ choice: 'improve', all: true });
+    await next();
+    session.cancel();
+
+    expect(await outcome).toBeNull();
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals.every((signal: AbortSignal): boolean => signal.aborted)).toBe(true);
+    expect(commits).toEqual([]);
+  });
+
+  it('start_whenPressedTwiceWhileTheDialogIsUp_opensOneDialog', async () => {
+    let opened: number = 0;
+    let resolve: (value: SkillImportPlan | null) => void = (): void => undefined;
+    const transfer: SkillTransfer = TestBed.inject(SkillTransfer);
+    transfer.choose = (): Promise<SkillImportPlan | null> => {
+      opened += 1;
+      return new Promise<SkillImportPlan | null>((done) => {
+        resolve = done;
+      });
+    };
+    const first: Promise<string | null> = session.start(null);
+    const second: Promise<string | null> = session.start(null);
+    resolve(null);
+
+    expect(await second).toBeNull();
+    expect(await first).toBeNull();
+    expect(opened).toBe(1);
+  });
+
+  it('improveQuestion_whenSkipped_leavesTheFileOut_andSkipForAllLeavesTheRestOut', async () => {
+    chosen = plan([entry('alpha'), entry('bravo'), entry('charlie'), entry('stub', 'needs-ai')]);
+    const outcome: Promise<string | null> = session.start({ providerId: 'claude', model: '' });
+
+    await next();
+    session.answer({ choice: 'skip', all: false });
+    await next();
+    session.answer({ choice: 'skip', all: true });
+    expect((await next())?.kind).toBe('repair');
+    session.answer('ignore');
+    expect((await next())?.kind).toBe('summary');
+
+    expect(session.accepted()).toEqual([]);
+    expect(session.leftOut().map((item) => [item.label, item.kind])).toEqual([
+      ['alpha.md', 'skipped'],
+      ['bravo.md', 'skipped'],
+      ['charlie.md', 'skipped'],
+      ['stub.md', 'ignored'],
+    ]);
+    session.cancel();
+    await outcome;
   });
 });

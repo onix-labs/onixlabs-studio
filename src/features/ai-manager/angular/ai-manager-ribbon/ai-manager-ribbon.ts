@@ -3,15 +3,6 @@ import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
-import {
-  RibbonMenuItem,
-  RibbonStripMenuButton,
-} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
-import {
-  AiManagerModalPreview,
-  MODAL_PREVIEWS,
-  ModalPreview,
-} from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Icon } from '@shared/angular/icons/icon';
@@ -51,7 +42,6 @@ import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-p
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripColumn,
-    RibbonStripMenuButton,
   ],
   templateUrl: './ai-manager-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -111,7 +101,7 @@ export class AiManagerRibbon {
   /**
    * Gets the sub-view shown.
    */
-  protected readonly section: Signal<AiManagerSection> = this.navigation.section;
+  protected readonly section: Signal<AiManagerSection | null> = this.navigation.section;
 
   /**
    * Gets whether the runtime's server is running, choosing between Start and Stop.
@@ -187,6 +177,8 @@ export class AiManagerRibbon {
           ];
         case 'skills':
           return [{ id: 'skills', label: 'Skills', items: this.skillItems() }];
+        case null:
+          return [];
       }
     },
   );
@@ -240,32 +232,6 @@ export class AiManagerRibbon {
   protected onImportProfiles(): void {
     this.library.importFrom('profiles');
   }
-
-  /**
-   * ⚠️ TEMPORARY (modal preview): every AI Manager modal, for the preview menu.
-   */
-  protected readonly modalPreviews: readonly RibbonMenuItem[] = MODAL_PREVIEWS.map(
-    (preview: ModalPreview): RibbonMenuItem => ({ id: preview.id, label: preview.label }),
-  );
-
-  /**
-   * ⚠️ TEMPORARY (modal preview): shows a modal's section, then asks it to open the modal.
-   * @param id The preview's id.
-   */
-  protected onPreviewModal(id: string): void {
-    const preview: ModalPreview | undefined = MODAL_PREVIEWS.find(
-      (candidate: ModalPreview): boolean => candidate.id === id,
-    );
-    if (preview !== undefined) {
-      this.navigation.show(preview.section);
-      this.modalPreview.request.set(id);
-    }
-  }
-
-  /**
-   * Holds the temporary modal preview's request channel.
-   */
-  private readonly modalPreview: AiManagerModalPreview = inject(AiManagerModalPreview);
 
   /**
    * Re-reads the prompt profiles, for a user editing them beside Studio.

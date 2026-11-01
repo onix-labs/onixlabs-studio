@@ -13,7 +13,10 @@ import {
   ModelGroupId,
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
-import { ModelsWithSidebar } from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import {
+  openSidebarSection,
+  ModelsWithSidebar,
+} from '../ai-manager-sidebar/ai-manager-sidebar.testing';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 /**
@@ -130,6 +133,7 @@ describe('ModelManagerView', () => {
       setTimeout(resolve, 0);
     });
     fixture.detectChanges();
+    await openSidebarSection(fixture, 'Local Models');
     return fixture;
   }
 

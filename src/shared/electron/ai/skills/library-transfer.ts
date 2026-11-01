@@ -97,6 +97,7 @@ export class LibraryTransfer {
         reason: entry.reason,
         draft: entry.draft,
         bundled: entry.bundled,
+        links: entry.links,
       })),
       profiles: found.profiles,
       existingSkills,

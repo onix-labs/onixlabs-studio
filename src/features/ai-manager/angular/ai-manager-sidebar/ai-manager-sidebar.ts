@@ -1,14 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  signal,
-  Signal,
-  untracked,
-  WritableSignal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import type { Skill } from '@shared/api/skill-channels';
 import { CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
@@ -85,11 +75,10 @@ export class AiManagerSidebar {
   private readonly skills: Skills = inject(Skills);
 
   /**
-   * Holds the open section, or null when the user has closed it. It follows the shown section, so
-   * opening the AI Manager at a section from elsewhere opens that section here too.
+   * Gets the open section, or null when none is: the section shown, which every showing of the AI
+   * Manager starts without unless it was opened at one.
    */
-  protected readonly open: WritableSignal<AiManagerSection | null> =
-    signal<AiManagerSection | null>(null);
+  protected readonly open: Signal<AiManagerSection | null> = this.navigation.section;
 
   /**
    * Gets the sections to list, with their counts; while searching, a library section with no matches
@@ -130,27 +119,16 @@ export class AiManagerSidebar {
   );
 
   /**
-   * Initializes the sidebar, opening whichever section is shown whenever that changes.
-   */
-  public constructor() {
-    effect((): void => {
-      const shown: AiManagerSection = this.navigation.section();
-      untracked((): void => this.open.set(shown));
-    });
-  }
-
-  /**
    * Opens or closes a section: opening one shows it (and closes the others); closing the open one
-   * folds the sidebar away and leaves the main area as it is.
+   * leaves the overview.
    * @param section The section.
    * @param expanded Whether it was opened.
    */
   protected setExpanded(section: AiManagerSection, expanded: boolean): void {
     if (expanded) {
-      this.open.set(section);
       this.navigation.show(section);
     } else if (this.open() === section) {
-      this.open.set(null);
+      this.navigation.collapse();
     }
   }
 }

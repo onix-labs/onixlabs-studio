@@ -10,6 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { skillProblem } from '@shared/api/skill-file';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
@@ -23,6 +24,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
 import { SkillReview } from '../skill-review/skill-review';
 import {
+  FileChoice,
   ImportAcceptedProfile,
   ImportAcceptedSkill,
   ImportLeftOut,
@@ -55,6 +57,7 @@ const LEFT_OUT_LABELS: Readonly<Record<ImportLeftOut['kind'], string>> = {
   'not-a-skill': 'Not a skill',
   ignored: 'Ignored',
   'name-taken': 'Name taken',
+  skipped: 'Skipped',
 };
 
 /**
@@ -126,6 +129,15 @@ export class SkillImportModal {
     signal<SkillImportDraft | null>(null);
 
   /**
+   * Gets why the version under review cannot be accepted — a name that is not a valid folder name, a
+   * missing or over-long description — or null when it can.
+   */
+  protected readonly reviewProblem: Signal<string | null> = computed((): string | null => {
+    const draft: SkillImportDraft | null = this.reviewed();
+    return draft === null ? null : skillProblem(draft.name.trim(), draft.description.trim());
+  });
+
+  /**
    * Holds the name typed for a rename.
    */
   protected readonly rename: WritableSignal<string> = signal<string>('');
@@ -133,7 +145,7 @@ export class SkillImportModal {
   /**
    * Holds whether the answer to the offer to improve applies to all remaining files.
    */
-  protected readonly improveAll: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly fileAll: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds whether a clash answer applies to all remaining clashes.
@@ -206,10 +218,10 @@ export class SkillImportModal {
         this.reviewed.set(prompt.proposed);
       }
       if (prompt?.kind === 'improve') {
-        this.improveAll.set(false);
+        this.fileAll.set(false);
       }
       if (prompt?.kind === 'clash') {
-        this.rename.set(prompt.suggested);
+        this.rename.set(prompt.attempted ?? prompt.suggested);
         this.clashAll.set(false);
       }
     });
@@ -241,6 +253,50 @@ export class SkillImportModal {
   );
 
   /**
+   * Gets, for each skill to import, the files it links to that will not be in the library — left
+   * out, unticked, or never part of the import — by its source.
+   */
+  protected readonly brokenLinks: Signal<ReadonlyMap<string, readonly string[]>> = computed(
+    (): ReadonlyMap<string, readonly string[]> => {
+      const coming: ReadonlySet<string> = new Set(
+        this.session
+          .accepted()
+          .filter((skill: ImportAcceptedSkill): boolean => skill.included)
+          .map((skill: ImportAcceptedSkill): string => skill.source),
+      );
+      const broken: Map<string, readonly string[]> = new Map<string, readonly string[]>();
+      for (const entry of this.session.plan()?.entries ?? []) {
+        const missing: readonly string[] = entry.links.filter(
+          (link: string): boolean => !coming.has(link),
+        );
+        if (missing.length > 0) {
+          broken.set(entry.source, missing);
+        }
+      }
+      return broken;
+    },
+  );
+
+  /**
+   * Gets the broken-links chip's label for a skill, or null when its links all hold.
+   * @param source The skill's source.
+   * @returns Returns the label.
+   */
+  protected brokenLabel(source: string): string | null {
+    const count: number = this.brokenLinks().get(source)?.length ?? 0;
+    return count === 0 ? null : `${count} broken link${count === 1 ? '' : 's'}`;
+  }
+
+  /**
+   * Gets the broken-links chip's tooltip: the files the links point at.
+   * @param source The skill's source.
+   * @returns Returns the tooltip.
+   */
+  protected brokenTitle(source: string): string {
+    return `Links to files that will not be imported: ${(this.brokenLinks().get(source) ?? []).join(', ')}`;
+  }
+
+  /**
    * Reads a summary row's entry.
    * @param row The row.
    * @returns Returns the entry.
@@ -269,12 +325,11 @@ export class SkillImportModal {
   }
 
   /**
-   * Answers the offer to improve a file, for it alone or for all remaining files.
-   * @param improve Whether to improve it.
+   * Answers the question about a file that can go straight in, for it alone or for all remaining.
+   * @param choice Improve it, import it as it is, or skip it.
    */
-  protected answerImprove(improve: boolean): void {
-    const all: boolean = this.improveAll();
-    this.session.answer(improve ? (all ? 'yes-all' : 'yes') : all ? 'no-all' : 'no');
+  protected answerImprove(choice: FileChoice): void {
+    this.session.answer({ choice, all: this.fileAll() });
   }
 
   /**

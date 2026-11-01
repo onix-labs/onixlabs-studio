@@ -67,9 +67,11 @@ describe('AiManagerSidebar', () => {
     await fixture.whenStable();
   }
 
-  it('sections_oneOpenAtATime_openingOneShowsIt', async () => {
-    expect(headings()).toEqual(['Local Models (open)', 'Prompt Profiles', 'Skills']);
+  it('sections_startClosed_thenOneOpenAtATime_openingOneShowsIt', async () => {
+    expect(headings()).toEqual(['Local Models', 'Prompt Profiles', 'Skills']);
 
+    await click('Prompt Profiles');
+    expect(headings()).toEqual(['Local Models', 'Prompt Profiles (open)', 'Skills']);
     await click('Skills');
 
     expect(navigation.section()).toBe('skills');
@@ -87,7 +89,7 @@ describe('AiManagerSidebar', () => {
     fixture.debugElement.injector.get(AiManagerSidebarState).query.set('gdp');
     await fixture.whenStable();
 
-    expect(headings()).toEqual(['Local Models (open)', 'Skills']);
+    expect(headings()).toEqual(['Local Models', 'Skills']);
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('.sidebar__count')?.textContent?.trim(),
     ).toBe('1');

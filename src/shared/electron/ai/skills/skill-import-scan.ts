@@ -5,7 +5,7 @@ import { profileIdFor, slugify } from '@shared/api/prompt-profile-channels';
 import { parseProfileFile } from '@shared/api/prompt-profile-file';
 import type { PromptProfile } from '@shared/api/prompt-profile-channels';
 import {
-  SKILL_DESCRIPTION_LIMIT,
+  SKILL_DESCRIPTION_TARGET,
   SKILL_FILE,
   SKILL_NAME_PATTERN,
 } from '@shared/api/skill-channels';
@@ -375,6 +375,8 @@ async function readSkillFolder(
       body: parsed.body,
     },
     bundled: await bundledFiles(folder),
+    // A skill folder's links are relative to its own layout, which import keeps as it is.
+    links: [],
     folder,
   };
 }
@@ -429,7 +431,15 @@ function entry(
   reason: string | null,
   draft: SkillImportDraft,
 ): ScannedEntry {
-  return { source, status, reason, draft, bundled: [], folder: null };
+  return {
+    source,
+    status,
+    reason,
+    draft,
+    bundled: [],
+    links: linkedFiles(draft.body, source),
+    folder: null,
+  };
 }
 
 /**
@@ -473,9 +483,9 @@ export function classify(
 }
 
 /**
- * Drafts a description from a Markdown body: the first paragraph after the title, followed by the
- * bullets of a "When to use" section when there is one, kept within the description limit by
- * dropping bullets first and then shortening the paragraph at a sentence.
+ * Drafts a description from a Markdown body: the first sentence after the title, followed by as
+ * many bullets of a "When to use" section as fit within {@link SKILL_DESCRIPTION_TARGET}; a first
+ * sentence longer than that is shortened at a word.
  * @param body The Markdown body.
  * @returns Returns the description, or empty when there is no introduction to draft from.
  */
@@ -508,15 +518,31 @@ export function draftDescription(body: string): string {
   if (intro.length === 0) {
     return '';
   }
-  const uses: string[] = whenToUse(lines);
-  for (let count: number = uses.length; count >= 0; count -= 1) {
-    const candidate: string =
-      count === 0 ? intro : `${intro} Use it when: ${uses.slice(0, count).join('; ')}.`;
-    if (candidate.length <= SKILL_DESCRIPTION_LIMIT) {
-      return candidate;
-    }
+  const first: string = firstSentence(intro);
+  if (first.length > SKILL_DESCRIPTION_TARGET) {
+    return shorten(first, SKILL_DESCRIPTION_TARGET);
   }
-  return shorten(intro, SKILL_DESCRIPTION_LIMIT);
+  let description: string = first;
+  const uses: string[] = whenToUse(lines);
+  for (let count: number = 1; count <= uses.length; count += 1) {
+    const candidate: string = `${first} Use it when: ${uses.slice(0, count).join('; ')}.`;
+    if (candidate.length > SKILL_DESCRIPTION_TARGET) {
+      break;
+    }
+    description = candidate;
+  }
+  return description;
+}
+
+/**
+ * Reads the first sentence of a paragraph: up to the first full stop, question or exclamation mark
+ * followed by a space and a capital, or the whole paragraph when there is none.
+ * @param paragraph The paragraph.
+ * @returns Returns the sentence.
+ */
+function firstSentence(paragraph: string): string {
+  const end: RegExpExecArray | null = /[.!?](?=\s+[A-Z(“"'])/.exec(paragraph);
+  return end === null ? paragraph : paragraph.slice(0, end.index + 1);
 }
 
 /**
@@ -599,28 +625,76 @@ export function rewriteSkillLinks(
   nameBySource: ReadonlyMap<string, string>,
 ): { readonly body: string; readonly rewritten: number } {
   let rewritten: number = 0;
-  const from: string = posix.dirname(source);
-  const retarget: (target: string) => string | null = (target: string): string | null => {
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('/') || target.startsWith('#')) {
-      return null;
-    }
-    const hash: number = target.indexOf('#');
-    const path: string = hash < 0 ? target : target.slice(0, hash);
-    const anchor: string = hash < 0 ? '' : target.slice(hash);
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(path);
-    } catch {
-      decoded = path;
-    }
-    const resolved: string = posix.normalize(posix.join(from, decoded));
-    const name: string | undefined = nameBySource.get(resolved);
-    if (name === undefined) {
+  const body2: string = replaceLinkTargets(body, (target: string): string | null => {
+    const resolved: { readonly path: string; readonly anchor: string } | null = resolveLink(
+      target,
+      source,
+    );
+    const name: string | undefined =
+      resolved === null ? undefined : nameBySource.get(resolved.path);
+    if (resolved === null || name === undefined) {
       return null;
     }
     rewritten += 1;
-    return `../${name}/${SKILL_FILE}${anchor}`;
+    return `../${name}/${SKILL_FILE}${resolved.anchor}`;
+  });
+  return { body: body2, rewritten };
+}
+
+/**
+ * Lists the Markdown files a body links to by relative path, resolved against the chosen root, so
+ * the summary can say which links will point nowhere once imported.
+ * @param body The body.
+ * @param source The body's source path, relative to the chosen root.
+ * @returns Returns the linked paths, each once, in the order first linked.
+ */
+export function linkedFiles(body: string, source: string): readonly string[] {
+  const found: Set<string> = new Set<string>();
+  replaceLinkTargets(body, (target: string): null => {
+    const resolved: { readonly path: string } | null = resolveLink(target, source);
+    if (resolved !== null && /\.(md|markdown)$/i.test(resolved.path)) {
+      found.add(resolved.path);
+    }
+    return null;
+  });
+  return [...found];
+}
+
+/**
+ * Resolves a link target against the file it is written in, when it is a relative path.
+ * @param target The link target as written.
+ * @param source The linking file's path, relative to the chosen root.
+ * @returns Returns the path relative to the chosen root and the anchor, or null for a link that is
+ * not a relative path (the web, an absolute path, an anchor on the same page).
+ */
+function resolveLink(
+  target: string,
+  source: string,
+): { readonly path: string; readonly anchor: string } | null {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('/') || target.startsWith('#')) {
+    return null;
+  }
+  const hash: number = target.indexOf('#');
+  const path: string = hash < 0 ? target : target.slice(0, hash);
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    decoded = path;
+  }
+  return {
+    path: posix.normalize(posix.join(posix.dirname(source), decoded)),
+    anchor: hash < 0 ? '' : target.slice(hash),
   };
+}
+
+/**
+ * Replaces the targets of a body's inline links and reference definitions.
+ * @param body The body.
+ * @param retarget Returns a target's replacement, or null to leave it.
+ * @returns Returns the body.
+ */
+function replaceLinkTargets(body: string, retarget: (target: string) => string | null): string {
   const inline: string = body.replace(
     /(\]\()(<[^>]+>|[^)\s]+)((?:\s+"[^"]*")?\))/g,
     (match: string, open: string, target: string, close: string): string => {
@@ -629,14 +703,13 @@ export function rewriteSkillLinks(
       return next === null ? match : `${open}${next}${close}`;
     },
   );
-  const referenced: string = inline.replace(
+  return inline.replace(
     /^(\s{0,3}\[[^\]]+\]:\s*)(\S+)/gm,
     (match: string, label: string, target: string): string => {
       const next: string | null = retarget(target);
       return next === null ? match : `${label}${next}`;
     },
   );
-  return { body: referenced, rewritten };
 }
 
 /**

@@ -105,17 +105,6 @@
     }
   }
 
-  <!-- ⚠️ TEMPORARY: opens each AI Manager modal with sample data, for a design review. -->
-  <app-ribbon-strip-group title="Preview (Temporary)">
-    <app-ribbon-strip-menu-button
-      [icon]="Icon.AGENT_VISIBLE"
-      label="Modals"
-      [items]="modalPreviews"
-      (action)="onPreviewModal(modalPreviews[0].id)"
-      (selected)="onPreviewModal($event)"
-    />
-  </app-ribbon-strip-group>
-
   <app-ribbon-strip-group title="Agent">
     <app-ribbon-strip-button
       [icon]="Icon.AGENT"

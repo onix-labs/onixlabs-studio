@@ -7,7 +7,10 @@ import { drainMilkdownTimers } from '@shared/angular/testing/drain-milkdown-time
 import { stubCrepeEnvironment } from '@shared/angular/testing/stub-crepe-environment';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
 import { PromptProfilesSection } from './prompt-profiles';
-import { ProfilesWithSidebar } from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import {
+  openSidebarSection,
+  ProfilesWithSidebar,
+} from '../ai-manager-sidebar/ai-manager-sidebar.testing';
 import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 describe('PromptProfilesSection', () => {
@@ -30,6 +33,7 @@ describe('PromptProfilesSection', () => {
     fixture = TestBed.createComponent(ProfilesWithSidebar);
     service = TestBed.inject(PromptProfiles);
     await fixture.whenStable();
+    await openSidebarSection(fixture, 'Prompt Profiles');
   });
 
   /**

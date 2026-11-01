@@ -133,6 +133,13 @@ export interface SkillImportEntry {
    * folder; empty for a lone Markdown file.
    */
   readonly bundled: readonly string[];
+
+  /**
+   * Gets the Markdown files the body links to by relative path, relative to the chosen folder, so the
+   * summary can flag links that will point nowhere once imported. Empty for a skill folder, whose
+   * links stay as they are.
+   */
+  readonly links: readonly string[];
 }
 
 /**

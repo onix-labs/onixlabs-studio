@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
 import type { PromptProfile } from '@shared/api/prompt-profile-channels';
-import { SKILL_DESCRIPTION_LIMIT } from '@shared/api/skill-channels';
+import { SKILL_DESCRIPTION_TARGET } from '@shared/api/skill-channels';
 import { LIBRARY_EXPORT_FORMAT, type SkillImportDraft } from '@shared/api/skill-import-channels';
 import {
   classify,
   commonFolder,
   draftDescription,
+  linkedFiles,
   rewriteSkillLinks,
   scanForSkills,
   scanProfiles,
@@ -39,23 +40,35 @@ const PLAIN_SKILL: string = [
 ].join('\n');
 
 describe('draftDescription', () => {
-  it('draftDescription_whenIntroAndWhenToUse_joinsThem', () => {
+  it('draftDescription_whenIntroAndWhenToUse_joinsTheFirstSentenceAndTheBullets', () => {
     expect(draftDescription(PLAIN_SKILL)).toBe(
-      'Account enumeration is when an attacker can tell whether an account exists. See GDPR. Use it when: login forms and login APIs; password reset flows.',
+      'Account enumeration is when an attacker can tell whether an account exists. Use it when: login forms and login APIs; password reset flows.',
     );
+  });
+
+  it('draftDescription_keepsToTheTarget_byDroppingBulletsThatDoNotFit', () => {
+    const bullets: string = Array.from(
+      { length: 20 },
+      (_: unknown, i: number): string => `- Case number ${i} of many.`,
+    ).join('\n');
+    const description: string = draftDescription(
+      `# T\n\nA short opening sentence.\n\n## When to use\n\n${bullets}\n`,
+    );
+    expect(description.length).toBeLessThanOrEqual(SKILL_DESCRIPTION_TARGET);
+    expect(
+      description.startsWith('A short opening sentence. Use it when: case number 0 of many'),
+    ).toBe(true);
   });
 
   it('draftDescription_whenNoIntroduction_isEmpty', () => {
     expect(draftDescription('# Title\n\n- just a list\n')).toBe('');
   });
 
-  it('draftDescription_whenTooLong_dropsBulletsThenShortensAtASentence', () => {
-    const sentence: string = 'This is a fairly long sentence about the subject. ';
-    const body: string = `# T\n\n${sentence.repeat(40)}\n\n## When to use\n\n- a\n`;
+  it('draftDescription_whenTheFirstSentenceIsTooLong_shortensItAtAWord', () => {
+    const body: string = `# T\n\n${'word '.repeat(120)}ends here.\n`;
     const description: string = draftDescription(body);
-    expect(description.length).toBeLessThanOrEqual(SKILL_DESCRIPTION_LIMIT);
-    expect(description.endsWith('subject.')).toBe(true);
-    expect(description).not.toContain('Use it when');
+    expect(description.length).toBeLessThanOrEqual(SKILL_DESCRIPTION_TARGET);
+    expect(description.endsWith('…')).toBe(true);
   });
 });
 
@@ -124,6 +137,22 @@ describe('rewriteSkillLinks', () => {
   it('rewriteSkillLinks_whenExternalOrUnknown_leavesIt', () => {
     const body: string = '[a](https://x.dev/a.md) [b](#top) [c](missing.md)';
     expect(rewriteSkillLinks(body, 'skills/acid.md', names)).toEqual({ body, rewritten: 0 });
+  });
+});
+
+describe('linkedFiles', () => {
+  it('linkedFiles_listsTheMarkdownFilesLinkedByRelativePath_once', () => {
+    const body: string = [
+      'See [GDPR](gdpr.md#scope) and [GDPR again](./gdpr.md).',
+      '[Clean](../../skills/clean-code.md) [web](https://x.dev/a.md) [img](pic.png) [top](#top)',
+      '[ref]: ../other/thing.md',
+    ].join('\n');
+
+    expect(linkedFiles(body, 'house-styles/skills/csharp.md')).toEqual([
+      'house-styles/skills/gdpr.md',
+      'skills/clean-code.md',
+      'house-styles/other/thing.md',
+    ]);
   });
 });
 

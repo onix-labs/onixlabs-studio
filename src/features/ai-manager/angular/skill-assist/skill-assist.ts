@@ -1,6 +1,10 @@
 import { inject, Service } from '@angular/core';
 import type { AiProviderId } from '@shared/api/ai-types';
-import { SKILL_DESCRIPTION_LIMIT, SKILL_NAME_PATTERN } from '@shared/api/skill-channels';
+import {
+  SKILL_DESCRIPTION_LIMIT,
+  SKILL_DESCRIPTION_TARGET,
+  SKILL_NAME_PATTERN,
+} from '@shared/api/skill-channels';
 import { parseSkillFile, type ParsedSkillFile } from '@shared/api/skill-file';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { AiOneShot, AiOneShotResult } from '@shared/angular/services/ai-runtime/ai-one-shot';
@@ -166,7 +170,7 @@ export class SkillAssist {
     return [
       'A skill is a SKILL.md file: YAML front-matter between --- lines, then a Markdown body. Front-matter keys:',
       `- name: lower-case letters, digits and hyphens, at most 64 characters. Suggested: "${name}".`,
-      `- description: one paragraph of at most ${SKILL_DESCRIPTION_LIMIT} characters, in double quotes, saying what the skill covers and WHEN an agent should load it. It is all the agent sees before deciding.`,
+      `- description: one or two sentences, at most ${SKILL_DESCRIPTION_TARGET} characters, in double quotes, saying what the skill covers and WHEN an agent should load it. It is all the agent sees before deciding, and it is sent on every turn, so keep it short.`,
       '- languages: an optional [list] of editor-language ids the skill is specifically about.',
       '- technologies: an optional [list] of technology ids the skill is specifically about.',
       `Language and technology ids must come from this list; leave them out when the skill is general: ${[...OFFERED_TAGS].join(', ')}`,

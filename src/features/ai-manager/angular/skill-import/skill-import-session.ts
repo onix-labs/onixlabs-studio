@@ -18,9 +18,7 @@ import type {
   SkillImportPlan,
   SkillImportResult,
 } from '@shared/api/skill-import-channels';
-import { GLOBAL_SCOPE } from '@shared/api/ai-types';
 import { Log } from '@shared/angular/services/log/log';
-import { sampleDraft, sampleEntry } from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
 import { SkillAssist, SkillAssistModel, SkillAssistResult } from '../skill-assist/skill-assist';
 
@@ -95,8 +93,9 @@ export interface ImportLeftOut {
    * - `not-a-skill`: a README, licence or the like, passed over.
    * - `ignored`: the user chose Ignore.
    * - `name-taken`: its name clashed and the user chose Skip.
+   * - `skipped`: it could have gone straight in, and the user chose Skip.
    */
-  readonly kind: 'not-a-skill' | 'ignored' | 'name-taken';
+  readonly kind: 'not-a-skill' | 'ignored' | 'name-taken' | 'skipped';
 
   /**
    * Gets why.
@@ -107,7 +106,13 @@ export interface ImportLeftOut {
 /**
  * The answer to the offer to improve a file that can go straight in.
  */
-export type ImproveAnswer = 'yes' | 'no' | 'yes-all' | 'no-all' | 'cancel';
+export type ImproveAnswer = { readonly choice: FileChoice; readonly all: boolean } | 'cancel';
+
+/**
+ * What to do with a file that can go straight in: improve it with AI first, import it as it is, or
+ * leave it out.
+ */
+export type FileChoice = 'improve' | 'as-is' | 'skip';
 
 /**
  * The answer to the offer to help with a file that cannot go straight in.
@@ -164,6 +169,8 @@ export type ImportPrompt =
       readonly name: string;
       readonly suggested: string;
       readonly withLibrary: boolean;
+      readonly attempted: string | null;
+      readonly error: string | null;
     }
   | { readonly kind: 'summary' }
   | { readonly kind: 'committing' };
@@ -260,6 +267,11 @@ export class SkillImportSession {
    * Holds the error the last commit returned, shown on the summary.
    */
   private readonly errorState: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether the file dialog is up, so a second press does not open another.
+   */
+  private choosing: boolean = false;
 
   /**
    * Holds the controller that aborts every AI run of the import.
@@ -373,166 +385,6 @@ export class SkillImportSession {
   }
 
   /**
-   * ⚠️ TEMPORARY (modal preview): shows one of the import's dialogs with sample data. Any answer, or
-   * Cancel, closes it; nothing is scanned or written.
-   * @param id The preview's id.
-   * @returns Returns true when the id was one of the import's dialogs.
-   */
-  public previewModal(id: string): boolean {
-    const entry: SkillImportEntry = sampleEntry();
-    const broken: SkillImportEntry = sampleEntry('needs-ai');
-    const improved: SkillImportDraft = {
-      ...entry.draft,
-      description:
-        'Stop attackers learning which accounts exist. Load when building or reviewing login, sign-up, password reset or user search.',
-      body: `${entry.draft.body}\n\n## Added by the AI\n\nA new section the AI wrote.`,
-    };
-    const prompts: Record<string, ImportPrompt> = {
-      'import-improve': { kind: 'improve', entry },
-      'import-repair': { kind: 'repair', entry: broken },
-      'import-working': { kind: 'working', entry, label: 'Improving with AI…' },
-      'import-failed': {
-        kind: 'ai-failed',
-        entry,
-        reason: 'The AI took too long to answer.',
-        notASkill: false,
-        canUseDraft: true,
-      },
-      'import-not-a-skill': {
-        kind: 'ai-failed',
-        entry: broken,
-        reason: 'It is an index of other files.',
-        notASkill: true,
-        canUseDraft: false,
-      },
-      'import-clash-skill': {
-        kind: 'clash',
-        subject: 'skill',
-        label: 'skills/account-enumeration.md',
-        name: 'account-enumeration',
-        suggested: 'account-enumeration-2',
-        withLibrary: true,
-      },
-      'import-clash-profile': {
-        kind: 'clash',
-        subject: 'profile',
-        label: 'profile "British English"',
-        name: 'british-english',
-        suggested: 'british-english-2',
-        withLibrary: true,
-      },
-      'import-committing': { kind: 'committing' },
-      'import-review-improve': {
-        kind: 'review',
-        entry,
-        original: entry.draft,
-        proposed: improved,
-        purpose: 'improve',
-      },
-      'import-review-repair': {
-        kind: 'review',
-        entry: broken,
-        original: broken.draft,
-        proposed: improved,
-        purpose: 'repair',
-      },
-      'import-summary': { kind: 'summary' },
-    };
-    const prompt: ImportPrompt | undefined = prompts[id];
-    if (prompt === undefined || this.planState() !== null) {
-      return false;
-    }
-    this.reset({
-      id: 'preview',
-      root: '/preview',
-      kind: 'convert',
-      entries: Array.from({ length: 252 }, (): SkillImportEntry => entry),
-      profiles: [],
-      existingSkills: [],
-      existingProfiles: [],
-    });
-    this.positionState.set(12);
-    if (id === 'import-summary') {
-      this.acceptedState.set([
-        {
-          source: 'skills/acid.md',
-          draft: sampleDraft('acid'),
-          replace: false,
-          origin: 'as-drafted',
-          failure: null,
-          included: true,
-        },
-        {
-          source: 'skills/account-enumeration.md',
-          draft: improved,
-          replace: true,
-          origin: 'improved',
-          failure: null,
-          included: true,
-        },
-        {
-          source: 'skills/gdpr.md',
-          draft: sampleDraft('gdpr'),
-          replace: false,
-          origin: 'improved-auto',
-          failure: null,
-          included: true,
-        },
-        {
-          source: 'skills/backups.md',
-          draft: sampleDraft('backups'),
-          replace: false,
-          origin: 'as-drafted',
-          failure: 'The AI took too long to answer.',
-          included: true,
-        },
-      ]);
-      this.acceptedProfilesState.set([
-        {
-          profile: {
-            id: 'terse',
-            name: 'Terse',
-            scope: GLOBAL_SCOPE,
-            instructions: 'Be terse.',
-            enabled: true,
-          },
-          replace: false,
-          included: true,
-        },
-      ]);
-      this.leftOutState.set([
-        {
-          label: 'README.md',
-          kind: 'not-a-skill',
-          reason: 'README.md looks like a repository file, not a skill.',
-        },
-        {
-          label: 'skills/stub.md',
-          kind: 'ignored',
-          reason: 'The file is too short to stand as a skill on its own.',
-        },
-        {
-          label: 'skills/caching.md',
-          kind: 'name-taken',
-          reason: 'A skill named caching already exists.',
-        },
-      ]);
-    }
-    this.pendingState.set({
-      prompt,
-      resolve: (): void => {
-        this.planState.set(null);
-        this.pendingState.set(null);
-      },
-    });
-    if (id === 'import-committing') {
-      // It has no buttons, so it closes itself.
-      setTimeout((): void => this.cancel(), 3000);
-    }
-    return true;
-  }
-
-  /**
    * Asks what to import and walks the user through importing it.
    * @param model Where AI help runs, or null when no AI is to be offered.
    * @param what Whether skills or prompt profiles are being imported.
@@ -542,11 +394,18 @@ export class SkillImportSession {
     model: SkillAssistModel | null,
     what: 'skills' | 'profiles' = 'skills',
   ): Promise<string | null> {
-    if (this.planState() !== null) {
+    // One import at a time: a second press while the dialog is up or a run is going does nothing.
+    if (this.planState() !== null || this.choosing) {
       return null;
     }
-    const plan: SkillImportPlan | null =
-      what === 'skills' ? await this.transfer.choose() : await this.transfer.chooseProfiles();
+    this.choosing = true;
+    let plan: SkillImportPlan | null;
+    try {
+      plan =
+        what === 'skills' ? await this.transfer.choose() : await this.transfer.chooseProfiles();
+    } finally {
+      this.choosing = false;
+    }
     if (plan === null) {
       return null;
     }
@@ -581,7 +440,9 @@ export class SkillImportSession {
    * @returns Returns the summary line.
    */
   private async run(plan: SkillImportPlan, model: SkillAssistModel | null): Promise<string | null> {
-    let improveAll: boolean | null = plan.kind === 'restore' || model === null ? false : null;
+    // What to do with every remaining file that can go straight in, once the user has said so; a
+    // restore and a run without AI import them as they are without asking.
+    let fileAll: FileChoice | null = plan.kind === 'restore' || model === null ? 'as-is' : null;
     let clashAll: 'replace' | 'skip' | 'rename' | null = null;
     for (let index: number = 0; index < plan.entries.length; index += 1) {
       const entry: SkillImportEntry = plan.entries[index];
@@ -590,24 +451,28 @@ export class SkillImportSession {
       let origin: ImportOrigin = plan.kind === 'restore' ? 'restored' : 'as-drafted';
       let failure: string | null = null;
       if (entry.status === 'ready') {
-        if (improveAll === null) {
+        let choice: FileChoice | null = fileAll;
+        if (choice === null) {
           const answer: ImproveAnswer = await this.ask<ImproveAnswer>({ kind: 'improve', entry });
           this.throwIfCancelled(answer);
-          if (answer === 'yes-all' || answer === 'no-all') {
-            improveAll = answer === 'yes-all';
-            if (improveAll && model !== null) {
+          if (answer === 'cancel') {
+            throw new ImportCancelled();
+          }
+          choice = answer.choice;
+          if (answer.all) {
+            fileAll = choice;
+            if (choice === 'improve' && model !== null) {
               this.prefetch(plan.entries.slice(index), model);
             }
-          }
-          if (answer === 'yes' && model !== null) {
-            const reviewed: { draft: SkillImportDraft; origin: ImportOrigin } | null =
-              await this.improveWithReview(entry, model);
-            if (reviewed !== null) {
-              ({ draft, origin } = reviewed);
-            }
+          } else if (choice === 'improve' && model !== null) {
+            ({ draft, origin, failure } = await this.improveWithReview(entry, model));
           }
         }
-        if (improveAll === true && model !== null) {
+        if (choice === 'skip') {
+          this.leaveOut(entry.source, 'skipped', 'Left out when asked whether to improve it.');
+          continue;
+        }
+        if (fileAll === 'improve' && model !== null) {
           this.showWorking(entry, 'Improving with AI…');
           const result: SkillAssistResult = await (this.prefetched.get(entry.source) ??
             this.assist.improve(entry.draft, model, this.abort.signal));
@@ -635,9 +500,10 @@ export class SkillImportSession {
           );
           continue;
         }
-        const repaired: SkillImportDraft | null = await this.repairWithReview(entry, model);
-        if (repaired === null) {
-          this.leaveOut(entry.source, 'ignored', entry.reason ?? 'Ignored.');
+        const repaired: SkillImportDraft | Omit<ImportLeftOut, 'label'> =
+          await this.repairWithReview(entry, model);
+        if ('kind' in repaired) {
+          this.leaveOut(entry.source, repaired.kind, repaired.reason);
           continue;
         }
         draft = repaired;
@@ -677,7 +543,7 @@ export class SkillImportSession {
     let profileClashAll: 'replace' | 'skip' | 'rename' | null = null;
     for (const profile of plan.profiles) {
       const settled: { name: string; replace: boolean } | null = await this.settleName(
-        `profile "${profile.name}"`,
+        profile.name,
         profile.id,
         'profile',
         profileClashAll,
@@ -713,6 +579,7 @@ export class SkillImportSession {
           draft,
           replace,
         }));
+      this.errorState.set(null);
       this.pendingState.set({ prompt: { kind: 'committing' }, resolve: (): void => undefined });
       const result: SkillImportResult = await this.transfer.commit({
         planId: plan.id,
@@ -735,12 +602,12 @@ export class SkillImportSession {
    * Improves a file with AI and has the user review the result.
    * @param entry The file.
    * @param model Where to run.
-   * @returns Returns the draft to use and how it came about, or null to use the file as drafted.
+   * @returns Returns the draft to use, how it came about, and why the AI failed when it did.
    */
   private async improveWithReview(
     entry: SkillImportEntry,
     model: SkillAssistModel,
-  ): Promise<{ draft: SkillImportDraft; origin: ImportOrigin } | null> {
+  ): Promise<{ draft: SkillImportDraft; origin: ImportOrigin; failure: string | null }> {
     for (;;) {
       this.showWorking(entry, 'Improving with AI…');
       const result: SkillAssistResult = await this.assist.improve(
@@ -761,7 +628,8 @@ export class SkillImportSession {
         if (retry === 'retry') {
           continue;
         }
-        return null;
+        // Imported as drafted, and the summary says the improvement failed.
+        return { draft: entry.draft, origin: 'as-drafted', failure: result.reason };
       }
       const review: ReviewAnswer = await this.ask<ReviewAnswer>({
         kind: 'review',
@@ -771,7 +639,9 @@ export class SkillImportSession {
         purpose: 'improve',
       });
       this.throwIfCancelled(review);
-      return review.action === 'accept' ? { draft: review.draft, origin: 'improved' } : null;
+      return review.action === 'accept'
+        ? { draft: review.draft, origin: 'improved', failure: null }
+        : { draft: entry.draft, origin: 'as-drafted', failure: null };
     }
   }
 
@@ -779,12 +649,12 @@ export class SkillImportSession {
    * Converts a file the importer could not use with AI, and has the user review the result.
    * @param entry The file.
    * @param model Where to run.
-   * @returns Returns the draft to use, or null to ignore the file.
+   * @returns Returns the draft to use, or why the file is left out.
    */
   private async repairWithReview(
     entry: SkillImportEntry,
     model: SkillAssistModel,
-  ): Promise<SkillImportDraft | null> {
+  ): Promise<SkillImportDraft | Omit<ImportLeftOut, 'label'>> {
     for (;;) {
       this.showWorking(entry, 'Converting with AI…');
       const result: SkillAssistResult = await this.assist.repair(
@@ -807,7 +677,10 @@ export class SkillImportSession {
         if (retry === 'retry') {
           continue;
         }
-        return null;
+        return {
+          kind: result.kind === 'not-a-skill' ? 'not-a-skill' : 'ignored',
+          reason: result.reason,
+        };
       }
       const review: ReviewAnswer = await this.ask<ReviewAnswer>({
         kind: 'review',
@@ -817,7 +690,9 @@ export class SkillImportSession {
         purpose: 'repair',
       });
       this.throwIfCancelled(review);
-      return review.action === 'accept' ? review.draft : null;
+      return review.action === 'accept'
+        ? review.draft
+        : { kind: 'ignored', reason: entry.reason ?? 'Ignored.' };
     }
   }
 
@@ -860,6 +735,8 @@ export class SkillImportSession {
           ? { name, replace: true }
           : { name: suggested, replace: false };
     }
+    let attempted: string | null = null;
+    let error: string | null = null;
     for (;;) {
       const answer: ClashAnswer = await this.ask<ClashAnswer>({
         kind: 'clash',
@@ -868,6 +745,8 @@ export class SkillImportSession {
         name,
         suggested,
         withLibrary: library.includes(name),
+        attempted,
+        error,
       });
       this.throwIfCancelled(answer);
       if (answer.action === 'cancel') {
@@ -884,6 +763,11 @@ export class SkillImportSession {
       if (SKILL_NAME_PATTERN.test(chosen) && !taken(chosen)) {
         return { name: chosen, replace: false };
       }
+      // Asked again, saying why, with what was typed kept for correcting.
+      attempted = answer.name;
+      error = !SKILL_NAME_PATTERN.test(chosen)
+        ? 'Use lower-case letters, digits and hyphens.'
+        : `${chosen} is taken too.`;
     }
   }
 

@@ -3,14 +3,12 @@ import {
   Component,
   computed,
   DestroyRef,
-  effect,
   inject,
   Signal,
   signal,
-  untracked,
   WritableSignal,
 } from '@angular/core';
-import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
+import { PromptScope } from '@shared/api/ai-types';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -37,7 +35,6 @@ import {
   AiManagerSidebarState,
 } from '../ai-manager-sidebar/ai-manager-sidebar-state';
 import { SkillImportModal } from '../skill-import/skill-import-modal';
-import { AiManagerModalPreview } from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { SkillImportSession } from '../skill-import/skill-import-session';
 
 /**
@@ -171,34 +168,6 @@ export class PromptProfilesSection {
     commands.register('profiles', this.commandHandler);
     inject(DestroyRef).onDestroy((): void => commands.unregister('profiles', this.commandHandler));
     this.registerWithSidebar();
-    this.followModalPreviews();
-  }
-
-  /**
-   * ⚠️ TEMPORARY (modal preview): opens the modal the ribbon's preview menu asked for, with sample data.
-   */
-  private followModalPreviews(): void {
-    const preview: AiManagerModalPreview = inject(AiManagerModalPreview);
-    effect((): void => {
-      const id: string | null = preview.request();
-      if (id === null) {
-        return;
-      }
-      untracked((): void => {
-        if (id === 'profile-delete') {
-          preview.request.set(null);
-          this.deleteTarget.set({
-            id: 'preview-sample-profile',
-            name: 'British English',
-            scope: GLOBAL_SCOPE,
-            instructions: 'Write in British English.',
-            enabled: true,
-          });
-        } else if (this.importSession.previewModal(id)) {
-          preview.request.set(null);
-        }
-      });
-    });
   }
 
   /**

@@ -24,6 +24,16 @@
       @case ('skills') {
         <app-skill-library />
       }
+      @default {
+        <!-- Nothing open: the sidebar's sections are all closed. -->
+        <div class="ai-manager__overview">
+          <app-icon class="ai-manager__overview-icon" [icon]="Icon.AI_MODELS" />
+          <p class="ai-manager__overview-title">AI Manager</p>
+          <p class="ai-manager__overview-hint">
+            Open Local Models, Prompt Profiles or Skills in the sidebar.
+          </p>
+        </div>
+      }
     }
   </div>
 

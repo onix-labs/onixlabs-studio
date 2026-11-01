@@ -230,8 +230,16 @@
           [draft]="review.draft"
           (draftChange)="reviseImprovement($event)"
         />
+        @if (improvementProblem(); as problem) {
+          <p class="library__error" role="alert">{{ problem }}</p>
+        }
         <app-button-row>
-          <app-button variant="solid" label="Accept" (click)="acceptImprovement()" />
+          <app-button
+            variant="solid"
+            label="Accept"
+            [disabled]="improvementProblem() !== null"
+            (click)="acceptImprovement()"
+          />
           <app-button label="Discard" (click)="discardImprovement()" />
         </app-button-row>
       </div>
