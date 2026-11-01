@@ -15,6 +15,27 @@
         (valueChange)="edit({ name: $event })"
       />
     </app-setting-row>
+    <app-prompt-scope-editor
+      [scope]="draft().scope"
+      [showLanguages]="false"
+      (scopeChange)="edit({ scope: $event })"
+    />
+    <app-setting-row
+      label="Languages & technologies"
+      description="In the editor, offered only for these languages. Leave empty for any."
+    >
+      <app-multi-select
+        class="review__tags"
+        [fullWidth]="true"
+        [searchable]="true"
+        searchPlaceholder="Search languages and technologies…"
+        [options]="tagOptions"
+        [value]="tags()"
+        placeholder="Any"
+        ariaLabel="Languages and technologies"
+        (valueChange)="setTags($event)"
+      />
+    </app-setting-row>
     <div class="review__field">
       <span class="review__label">Description</span>
       <app-markdown-field
@@ -29,7 +50,7 @@
       <span class="review__label">Instructions</span>
       <app-markdown-field
         [value]="draft().body"
-        [minRows]="10"
+        [minRows]="3"
         [fill]="true"
         [expandable]="false"
         ariaLabel="Skill instructions"

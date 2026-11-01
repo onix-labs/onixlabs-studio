@@ -1,3 +1,4 @@
+import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it, beforeEach, Mock, vi } from 'vitest';
@@ -64,6 +65,11 @@ describe('AiManagerRibbon (#948)', () => {
             loading: signal<boolean>(false),
           },
         },
+        // Import and export need the desktop app; the stub says it is there.
+        {
+          provide: SkillTransfer,
+          useValue: { isAvailable: true, export: (): Promise<null> => Promise.resolve(null) },
+        },
       ],
     });
     navigation = TestBed.inject(AiManagerNavigation);
@@ -85,7 +91,9 @@ describe('AiManagerRibbon (#948)', () => {
    */
   function labels(): string[] {
     return Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('app-ribbon-strip-button'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll(
+        'app-ribbon-strip-button, app-ribbon-strip-button-small',
+      ),
       (button: Element) => button.textContent?.trim() ?? '',
     );
   }
@@ -97,7 +105,7 @@ describe('AiManagerRibbon (#948)', () => {
   function press(label: string): void {
     Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
-        'app-ribbon-strip-button button',
+        'app-ribbon-strip-button button, app-ribbon-strip-button-small button',
       ),
     )
       .find((button: HTMLElement) => button.textContent?.trim() === label)
@@ -109,21 +117,12 @@ describe('AiManagerRibbon (#948)', () => {
    * Gets the labels of the pressed toggles.
    * @returns Returns the labels.
    */
-  function pressed(): string[] {
-    return Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[aria-pressed="true"]'),
-      (button: HTMLElement) => button.textContent?.trim() ?? '',
-    );
-  }
+  it('view_isChosenInTheSidebar_soTheRibbonHasNoViewGroup', () => {
+    mount('skills');
 
-  it('view_chooseTheSubView_andShowsWhichIsShown', () => {
-    mount('models');
-    expect(pressed()).toEqual(['Local Models']);
-
-    press('Skills');
-
-    expect(navigation.section()).toBe('skills');
-    expect(pressed()).toEqual(['Skills']);
+    expect(labels()).not.toContain('Local Models');
+    expect(labels()).not.toContain('Prompt Profiles');
+    expect(labels()).not.toContain('Skills');
   });
 
   it('localModels_offerStartWhenStopped_andForwardTheRuntimeActions', () => {
@@ -131,14 +130,7 @@ describe('AiManagerRibbon (#948)', () => {
     TestBed.inject(ModelManagerCommands).register(handler);
     mount('models');
 
-    expect(labels()).toEqual([
-      'Local Models',
-      'Prompt Profiles',
-      'Skills',
-      'Start',
-      'Refresh',
-      'Agent',
-    ]);
+    expect(labels()).toEqual(['Start', 'Refresh', 'Agent']);
     press('Start');
     press('Refresh');
     expect(calls).toEqual(['start', 'refresh']);
@@ -173,11 +165,11 @@ describe('AiManagerRibbon (#948)', () => {
     mount('profiles');
 
     expect(labels()).toEqual([
-      'Local Models',
-      'Prompt Profiles',
-      'Skills',
       'New Profile',
+      'Refresh',
+      'Import',
       'Export',
+      'Open Folder',
       'Agent',
     ]);
     press('New Profile');
@@ -190,17 +182,7 @@ describe('AiManagerRibbon (#948)', () => {
     TestBed.inject(AiLibraryCommands).register('skills', { add, importFrom });
     mount('skills');
 
-    expect(labels()).toEqual([
-      'Local Models',
-      'Prompt Profiles',
-      'Skills',
-      'New Skill',
-      'Import',
-      'Open Folder',
-      'Export',
-      'Refresh',
-      'Agent',
-    ]);
+    expect(labels()).toEqual(['New Skill', 'Refresh', 'Import', 'Export', 'Open Folder', 'Agent']);
     press('New Skill');
     press('Import');
     press('Open Folder');

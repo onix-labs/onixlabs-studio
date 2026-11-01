@@ -1,7 +1,7 @@
 import { promises as fs, Dirent, Stats } from 'node:fs';
 import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
-import { slugify } from '@shared/api/prompt-profile-channels';
+import { profileIdFor, slugify } from '@shared/api/prompt-profile-channels';
 import { parseProfileFile } from '@shared/api/prompt-profile-file';
 import type { PromptProfile } from '@shared/api/prompt-profile-channels';
 import {
@@ -231,6 +231,60 @@ export function commonFolder(paths: readonly string[]): string {
     shared.push(part);
   }
   return shared.join(sep) || sep;
+}
+
+/**
+ * Scans what the user picked for prompt profiles (#1263): each Markdown file is one profile, named by
+ * its frontmatter, else its title, else its file name; a Studio export contributes its profiles.
+ * Repository files (a README, a licence) are passed over. Ids are made unique within the pick.
+ * @param paths The absolute paths picked.
+ * @returns Returns the profiles, in path order.
+ */
+export async function scanProfiles(paths: readonly string[]): Promise<readonly PromptProfile[]> {
+  const files: string[] = [];
+  const exported: PromptProfile[] = [];
+  for (const path of paths) {
+    const stat: Stats = await fs.stat(path);
+    if (stat.isFile()) {
+      files.push(path);
+    } else if (await isExport(path)) {
+      exported.push(...(await readProfiles(join(path, 'profiles'))));
+    } else if (stat.isDirectory()) {
+      files.push(...(await findMarkdown(path)).files);
+    }
+  }
+  const taken: string[] = exported.map((profile: PromptProfile): string => profile.id);
+  const profiles: PromptProfile[] = [...exported];
+  for (const file of [...new Set(files)].sort()) {
+    const stem: string = basename(file).replace(/\.(md|markdown)$/i, '');
+    if (
+      REPOSITORY_FILES.includes(stem.toLowerCase()) ||
+      AGENT_INSTRUCTION_FILES.includes(basename(file))
+    ) {
+      continue;
+    }
+    const text: string = await fs.readFile(file, 'utf8');
+    const parsed: PromptProfile = parseProfileFile(stem, text);
+    const titled: string | null = parsed.name === stem ? titleOf(parsed.instructions) : null;
+    const name: string = titled ?? parsed.name;
+    if (parsed.instructions.trim().length === 0) {
+      continue;
+    }
+    const id: string = profileIdFor(name, taken);
+    taken.push(id);
+    profiles.push({ ...parsed, id, name });
+  }
+  return profiles;
+}
+
+/**
+ * Reads a Markdown body's first-level title.
+ * @param body The body.
+ * @returns Returns the title, or null when it has none.
+ */
+function titleOf(body: string): string | null {
+  const heading: RegExpExecArray | null = /^#\s+(.+?)\s*#*\s*$/m.exec(body);
+  return heading === null ? null : heading[1];
 }
 
 /**

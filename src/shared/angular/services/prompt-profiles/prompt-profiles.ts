@@ -131,6 +131,10 @@ export class PromptProfiles {
       this.log.warn('PromptProfiles', 'Could not read the profile folder', error);
       return;
     }
+    if (listing === null || typeof listing !== 'object' || !Array.isArray(listing.profiles)) {
+      this.log.warn('PromptProfiles', 'The profile folder could not be listed');
+      return;
+    }
     let profiles: readonly PromptProfile[] = listing.profiles;
     if (migrate && !listing.existed) {
       profiles = await this.migrate(profiles);
@@ -143,6 +147,14 @@ export class PromptProfiles {
     this.profilesState.set(
       profiles.map((profile: PromptProfile): PromptProfile => pending.get(profile.id) ?? profile),
     );
+  }
+
+  /**
+   * Opens the profile folder in the file manager, for a user who would rather work on disk.
+   * @returns Resolves once the request is issued.
+   */
+  public async openFolder(): Promise<void> {
+    await this.bridge?.invoke<void>(PromptProfileChannel.OpenFolder);
   }
 
   /**

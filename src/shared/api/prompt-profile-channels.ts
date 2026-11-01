@@ -26,6 +26,11 @@ export enum PromptProfileChannel {
   Delete = 'prompt-profile:delete',
 
   /**
+   * Opens the library folder in the platform file manager, creating it first when missing.
+   */
+  OpenFolder = 'prompt-profile:open-folder',
+
+  /**
    * Main → renderer: the library changed, so every window re-reads it.
    */
   Changed = 'prompt-profile:changed',

@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
+import type { PromptProfile } from '@shared/api/prompt-profile-channels';
 import type {
   SkillImportCommit,
   SkillImportDraft,
@@ -89,6 +90,7 @@ describe('SkillImportSession (#1263)', () => {
     improved = [];
     const transfer: Partial<SkillTransfer> = {
       choose: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
+      chooseProfiles: (): Promise<SkillImportPlan> => Promise.resolve(chosen),
       discard: (id: string): Promise<void> => {
         discarded.push(id);
         return Promise.resolve();
@@ -143,7 +145,9 @@ describe('SkillImportSession (#1263)', () => {
     });
     session.answer({ action: 'rename', name: 'taken-2', all: false });
     expect((await next())?.kind).toBe('summary');
-    expect(session.leftOut()).toEqual([{ label: 'stub.md', reason: 'It is too short.' }]);
+    expect(session.leftOut()).toEqual([
+      { label: 'stub.md', kind: 'ignored', reason: 'It is too short.' },
+    ]);
     session.answer('import');
 
     expect(await outcome).toBe('Imported 2 skills, with 2 links between them updated; 1 left out.');
@@ -243,5 +247,34 @@ describe('SkillImportSession (#1263)', () => {
     await outcome;
 
     expect(commits[0].skills).toHaveLength(1);
+  });
+
+  it('start_whenImportingProfiles_asksOnlyClashesAndHonoursUnticking', async () => {
+    const profile: (id: string) => PromptProfile = (id: string): PromptProfile => ({
+      id,
+      name: id,
+      scope: GLOBAL_SCOPE,
+      instructions: 'x',
+      enabled: true,
+    });
+    chosen = plan([], {
+      kind: 'restore',
+      profiles: [profile('terse'), profile('tone'), profile('house')],
+      existingProfiles: ['terse'],
+    });
+    const outcome: Promise<string | null> = session.start(null, 'profiles');
+
+    expect(await next()).toMatchObject({ kind: 'clash', subject: 'profile', name: 'terse' });
+    session.answer({ action: 'rename', name: 'terse-2', all: false });
+    expect((await next())?.kind).toBe('summary');
+    session.includeProfile('tone', false);
+    session.answer('import');
+    await outcome;
+
+    expect(commits[0].profiles.map((item) => [item.profile.id, item.replace])).toEqual([
+      ['terse-2', false],
+      ['house', false],
+    ]);
+    expect(commits[0].skills).toEqual([]);
   });
 });

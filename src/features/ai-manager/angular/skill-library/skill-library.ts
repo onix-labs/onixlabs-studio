@@ -3,9 +3,11 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   inject,
-  signal,
   Signal,
+  signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
@@ -24,10 +26,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { CategoryItem } from '@shared/angular/components/category-list/category-list';
 import { Icon } from '@shared/angular/icons/icon';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Log } from '@shared/angular/services/log/log';
@@ -38,10 +37,18 @@ import {
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
+import {
+  AiManagerSidebarList,
+  AiManagerSidebarState,
+} from '../ai-manager-sidebar/ai-manager-sidebar-state';
 import { SkillAssist, SkillAssistModel, SkillAssistResult } from '../skill-assist/skill-assist';
 import { SkillImportModal } from '../skill-import/skill-import-modal';
 import { SkillImportSession } from '../skill-import/skill-import-session';
 import { SkillReview } from '../skill-review/skill-review';
+import {
+  AiManagerModalPreview,
+  sampleDraft,
+} from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { SKILL_TAG_OPTIONS, splitSkillTags } from '../skill-tags/skill-tags';
 
 /**
@@ -98,12 +105,9 @@ export interface SkillRow {
     AppIcon,
     Button,
     ButtonRow,
-    CategoryList,
     MarkdownField,
     Modal,
     ModalContent,
-    Panel,
-    PanelLayout,
     PromptScopeEditor,
     SettingRow,
     MultiSelect,
@@ -124,19 +128,22 @@ export class SkillLibrarySection {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the sub-view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
-
-  /**
    * Gets the options of a skill's languages and technologies.
    */
   protected readonly tagOptions: readonly MultiSelectItem[] = SKILL_TAG_OPTIONS;
 
   /**
-   * Holds the side panel's search text.
+   * Holds the AI Manager's sidebar, which lists this section's entries and owns the search; absent
+   * outside the AI Manager view.
    */
-  protected readonly query: WritableSignal<string> = signal<string>('');
+  private readonly sidebar: AiManagerSidebarState | null = inject(AiManagerSidebarState, {
+    optional: true,
+  });
+
+  /**
+   * Gets the sidebar's search text, which narrows the entries.
+   */
+  protected readonly query: Signal<string> = this.sidebar?.query ?? signal<string>('').asReadonly();
 
   /**
    * Gets the label for showing a skill's folder in the file system.
@@ -305,6 +312,68 @@ export class SkillLibrarySection {
       }
       this.saveTimers.clear();
     });
+    this.registerWithSidebar();
+    this.followModalPreviews();
+  }
+
+  /**
+   * ⚠️ TEMPORARY (modal preview): opens the modal the ribbon's preview menu asked for, with sample data.
+   */
+  private followModalPreviews(): void {
+    const preview: AiManagerModalPreview = inject(AiManagerModalPreview);
+    effect((): void => {
+      const id: string | null = preview.request();
+      if (id === null) {
+        return;
+      }
+      untracked((): void => {
+        const draft: SkillImportDraft = sampleDraft('preview-sample-skill');
+        if (id === 'skill-delete') {
+          preview.request.set(null);
+          this.deleteTarget.set({
+            key: 'preview',
+            stored: { ...draft, directory: '', files: [], problem: null },
+            draft,
+            error: null,
+            saving: false,
+          });
+        } else if (id === 'skill-improve-review') {
+          preview.request.set(null);
+          this.improvement.set({
+            key: 'preview',
+            original: draft,
+            draft: {
+              ...draft,
+              description: 'Sharper description from the AI.',
+              body: `${draft.body}\n\n## Added by the AI\n`,
+            },
+          });
+        } else if (this.importSession.previewModal(id)) {
+          preview.request.set(null);
+        }
+      });
+    });
+  }
+
+  /**
+   * Puts the skills in the AI Manager's sidebar while this section is shown.
+   */
+  private registerWithSidebar(): void {
+    const sidebar: AiManagerSidebarState | null = this.sidebar;
+    if (sidebar === null) {
+      return;
+    }
+    const list: AiManagerSidebarList = {
+      items: this.items,
+      selectedId: computed((): string | null => this.selected()?.key ?? null),
+      select: (key: string): void => this.select(key),
+      action: (key: string): void => this.askDelete(key),
+      emptyText: computed((): string =>
+        this.query().trim().length > 0 ? 'No skills match.' : 'No skills yet.',
+      ),
+    };
+    sidebar.register('skills', list);
+    inject(DestroyRef).onDestroy((): void => sidebar.unregister(list));
   }
 
   /**

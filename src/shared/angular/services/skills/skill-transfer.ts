@@ -53,6 +53,17 @@ export class SkillTransfer {
   }
 
   /**
+   * Asks the user for Markdown files, a folder of them or an export to import prompt profiles from,
+   * and scans them.
+   * @returns Returns the plan, holding profiles only, or null when the dialog was cancelled.
+   */
+  public async chooseProfiles(): Promise<SkillImportPlan | null> {
+    return (
+      (await this.bridge?.invoke<SkillImportPlan | null>(SkillImportChannel.ChooseProfiles)) ?? null
+    );
+  }
+
+  /**
    * Writes what the user accepted, then re-reads the libraries.
    * @param commit What was accepted.
    * @returns Returns the outcome.

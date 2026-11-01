@@ -643,6 +643,11 @@ export class Icon {
   public static readonly REFRESH: Icon = new Icon('ph ph-arrow-clockwise');
 
   /**
+   * Gets the refresh icon in the duotone weight, for a ribbon's Refresh action.
+   */
+  public static readonly REFRESH_DUOTONE: Icon = new Icon('ph-duotone ph-arrow-clockwise');
+
+  /**
    * Gets the check icon, shown on the Review panel's primary suggestion.
    */
   public static readonly CHECK: Icon = new Icon('ph ph-check');
@@ -2287,6 +2292,11 @@ export class Icon {
    * for Remove beside it.
    */
   public static readonly DOWNLOAD_DUOTONE: Icon = new Icon('ph-duotone ph-download');
+
+  /**
+   * Gets the upload icon, for an Export action — the counterpart of {@link DOWNLOAD} on Import.
+   */
+  public static readonly UPLOAD_SIMPLE: Icon = new Icon('ph ph-upload-simple');
 
   /**
    * Gets the select-all (double check) icon.

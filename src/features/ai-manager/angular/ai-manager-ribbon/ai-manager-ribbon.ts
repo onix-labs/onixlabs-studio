@@ -1,6 +1,17 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
+import {
+  RibbonMenuItem,
+  RibbonStripMenuButton,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
+import {
+  AiManagerModalPreview,
+  MODAL_PREVIEWS,
+  ModalPreview,
+} from '../ai-manager-modal-preview/ai-manager-modal-preview';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Icon } from '@shared/angular/icons/icon';
@@ -16,6 +27,7 @@ import {
 } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { SkillTransfer } from '@shared/angular/services/skills/skill-transfer';
+import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { AiLibraryCommands, AiLibrarySection } from '../ai-library-commands/ai-library-commands';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
@@ -33,7 +45,14 @@ import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-p
  */
 @Component({
   selector: 'app-ai-manager-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripColumn,
+    RibbonStripMenuButton,
+  ],
   templateUrl: './ai-manager-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,7 +64,7 @@ export class AiManagerRibbon {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the section state the View group reads and sets.
+   * Holds the section state, chosen in the sidebar, whose groups the ribbon shows.
    */
   private readonly navigation: AiManagerNavigation = inject(AiManagerNavigation);
 
@@ -63,6 +82,11 @@ export class AiManagerRibbon {
    * Holds the skill library, which the folder and refresh buttons act on directly.
    */
   private readonly skills: Skills = inject(Skills);
+
+  /**
+   * Holds the prompt profiles, whose folder the ribbon opens.
+   */
+  private readonly profiles: PromptProfiles = inject(PromptProfiles);
 
   /**
    * Holds the import and export client.
@@ -140,6 +164,24 @@ export class AiManagerRibbon {
                   enabled: this.registered().has('profiles'),
                   run: (): void => this.onAdd('profiles'),
                 },
+                {
+                  id: 'profiles.import',
+                  label: 'Import Profiles',
+                  enabled: this.registered().has('profiles') && this.canTransfer,
+                  run: (): void => this.onImportProfiles(),
+                },
+                {
+                  id: 'profiles.export',
+                  label: 'Export AI Library',
+                  enabled: this.canTransfer,
+                  run: (): void => this.onExportLibrary(),
+                },
+                MENU_SEPARATOR,
+                {
+                  id: 'profiles.open-folder',
+                  label: 'Open Profiles Folder',
+                  run: (): void => this.onOpenProfileFolder(),
+                },
               ],
             },
           ];
@@ -148,14 +190,6 @@ export class AiManagerRibbon {
       }
     },
   );
-
-  /**
-   * Shows a sub-view.
-   * @param section The sub-view to show.
-   */
-  protected onShow(section: AiManagerSection): void {
-    this.navigation.show(section);
-  }
 
   /**
    * Reloads the models and the runtime's status.
@@ -198,6 +232,53 @@ export class AiManagerRibbon {
    */
   protected onImportSkill(): void {
     this.library.importFrom('skills');
+  }
+
+  /**
+   * Imports prompt profiles through the platform dialog (#1263).
+   */
+  protected onImportProfiles(): void {
+    this.library.importFrom('profiles');
+  }
+
+  /**
+   * ⚠️ TEMPORARY (modal preview): every AI Manager modal, for the preview menu.
+   */
+  protected readonly modalPreviews: readonly RibbonMenuItem[] = MODAL_PREVIEWS.map(
+    (preview: ModalPreview): RibbonMenuItem => ({ id: preview.id, label: preview.label }),
+  );
+
+  /**
+   * ⚠️ TEMPORARY (modal preview): shows a modal's section, then asks it to open the modal.
+   * @param id The preview's id.
+   */
+  protected onPreviewModal(id: string): void {
+    const preview: ModalPreview | undefined = MODAL_PREVIEWS.find(
+      (candidate: ModalPreview): boolean => candidate.id === id,
+    );
+    if (preview !== undefined) {
+      this.navigation.show(preview.section);
+      this.modalPreview.request.set(id);
+    }
+  }
+
+  /**
+   * Holds the temporary modal preview's request channel.
+   */
+  private readonly modalPreview: AiManagerModalPreview = inject(AiManagerModalPreview);
+
+  /**
+   * Re-reads the prompt profiles, for a user editing them beside Studio.
+   */
+  protected onRefreshProfiles(): void {
+    void this.profiles.reload();
+  }
+
+  /**
+   * Opens the prompt-profile folder.
+   */
+  protected onOpenProfileFolder(): void {
+    void this.profiles.openFolder();
   }
 
   /**

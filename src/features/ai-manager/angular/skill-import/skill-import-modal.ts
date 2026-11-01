@@ -10,10 +10,12 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { SkillImportDraft, SkillImportEntry } from '@shared/api/skill-import-channels';
+import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { Chip } from '@shared/angular/components/chip/chip';
+import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -21,21 +23,38 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
 import { SkillReview } from '../skill-review/skill-review';
 import {
+  ImportAcceptedProfile,
   ImportAcceptedSkill,
-  ImportOrigin,
+  ImportLeftOut,
   ImportPrompt,
   SkillImportSession,
 } from './skill-import-session';
 
 /**
- * The labels an accepted skill's origin is shown with in the summary.
+ * One row of the summary's table: a skill or profile to import, or a file left out.
  */
-const ORIGIN_LABELS: Readonly<Record<ImportOrigin, string | null>> = {
-  'as-drafted': null,
-  improved: 'Improved with AI',
-  'improved-auto': 'Improved with AI, not reviewed',
-  converted: 'Converted with AI',
-  restored: null,
+type SummaryEntry =
+  | { readonly kind: 'skill'; readonly skill: ImportAcceptedSkill }
+  | { readonly kind: 'profile'; readonly item: ImportAcceptedProfile }
+  | { readonly kind: 'left-out'; readonly item: ImportLeftOut };
+
+/**
+ * The summary table's columns.
+ */
+const SUMMARY_COLUMNS: readonly TableColumn[] = [
+  { id: 'include', header: '', width: '2.75rem' },
+  { id: 'name', header: 'Name', width: '24%' },
+  { id: 'file', header: 'File' },
+  { id: 'info', header: 'Info', width: '36%' },
+];
+
+/**
+ * The chip each kind of left-out entry is shown with in the summary.
+ */
+const LEFT_OUT_LABELS: Readonly<Record<ImportLeftOut['kind'], string>> = {
+  'not-a-skill': 'Not a skill',
+  ignored: 'Ignored',
+  'name-taken': 'Name taken',
 };
 
 /**
@@ -46,7 +65,19 @@ const ORIGIN_LABELS: Readonly<Record<ImportOrigin, string | null>> = {
  */
 @Component({
   selector: 'app-skill-import-modal',
-  imports: [AppIcon, Button, ButtonRow, Checkbox, Modal, ModalContent, SkillReview, TextField],
+  imports: [
+    AppIcon,
+    Button,
+    ButtonRow,
+    Checkbox,
+    Chip,
+    Modal,
+    ModalContent,
+    SkillReview,
+    Table,
+    TableRowDef,
+    TextField,
+  ],
   templateUrl: './skill-import-modal.html',
   styleUrl: './skill-import-modal.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -129,11 +160,40 @@ export class SkillImportModal {
    * Gets the summary's opening line: how many skills are selected, and the profiles coming with them.
    */
   protected readonly selectionLine: Signal<string> = computed((): string => {
-    const profiles: number = this.session.acceptedProfiles().length;
-    const skills: string = `${this.included()} of ${this.session.accepted().length} skills selected`;
-    return profiles === 0
-      ? `${skills}.`
-      : `${skills}, and ${profiles} prompt profile${profiles === 1 ? '' : 's'}.`;
+    const parts: string[] = [];
+    if (this.session.accepted().length > 0) {
+      parts.push(`${this.included()} of ${this.session.accepted().length} skills`);
+    }
+    if (this.session.acceptedProfiles().length > 0) {
+      parts.push(
+        `${this.includedProfiles()} of ${this.session.acceptedProfiles().length} prompt profiles`,
+      );
+    }
+    return `${parts.join(' and ')} selected.`;
+  });
+
+  /**
+   * Gets the accepted profiles still included.
+   */
+  protected readonly includedProfiles: Signal<number> = computed(
+    (): number =>
+      this.session
+        .acceptedProfiles()
+        .filter((item: ImportAcceptedProfile): boolean => item.included).length,
+  );
+
+  /**
+   * Gets the summary's Import button label: what it will write.
+   */
+  protected readonly importLabel: Signal<string> = computed((): string => {
+    const skills: number = this.included();
+    const profiles: number = this.includedProfiles();
+    if (skills > 0 && profiles > 0) {
+      return 'Import';
+    }
+    return profiles > 0
+      ? `Import ${profiles} ${profiles === 1 ? 'Profile' : 'Profiles'}`
+      : `Import ${skills} ${skills === 1 ? 'Skill' : 'Skills'}`;
   });
 
   /**
@@ -156,21 +216,46 @@ export class SkillImportModal {
   }
 
   /**
-   * Gets the label shown for an accepted skill's origin.
-   * @param origin The origin.
-   * @returns Returns the label, or null for none.
+   * Gets the summary table's columns.
    */
-  protected originLabel(origin: ImportOrigin): string | null {
-    return ORIGIN_LABELS[origin];
+  protected readonly summaryColumns: readonly TableColumn[] = SUMMARY_COLUMNS;
+
+  /**
+   * Gets the summary table's rows: the skills, then the profiles, then what was left out.
+   */
+  protected readonly summaryRows: Signal<readonly TableRow[]> = computed(
+    (): readonly TableRow[] => [
+      ...this.session.accepted().map((skill: ImportAcceptedSkill): TableRow => ({
+        id: `skill:${skill.source}`,
+        data: { kind: 'skill', skill } satisfies SummaryEntry,
+      })),
+      ...this.session.acceptedProfiles().map((item: ImportAcceptedProfile): TableRow => ({
+        id: `profile:${item.profile.id}`,
+        data: { kind: 'profile', item } satisfies SummaryEntry,
+      })),
+      ...this.session.leftOut().map((item: ImportLeftOut, index: number): TableRow => ({
+        id: `left-out:${index}`,
+        data: { kind: 'left-out', item } satisfies SummaryEntry,
+      })),
+    ],
+  );
+
+  /**
+   * Reads a summary row's entry.
+   * @param row The row.
+   * @returns Returns the entry.
+   */
+  protected summaryOf(row: TableRow): SummaryEntry {
+    return row.data as SummaryEntry;
   }
 
   /**
-   * Gets the entry a prompt is about, or null.
-   * @param prompt The prompt.
-   * @returns Returns the entry.
+   * Gets the chip a left-out entry is shown with.
+   * @param kind Why it was left out.
+   * @returns Returns the chip's label.
    */
-  protected entryOf(prompt: ImportPrompt): SkillImportEntry | null {
-    return 'entry' in prompt ? prompt.entry : null;
+  protected leftOutLabel(kind: ImportLeftOut['kind']): string {
+    return LEFT_OUT_LABELS[kind];
   }
 
   /**

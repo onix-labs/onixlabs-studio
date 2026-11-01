@@ -13,7 +13,8 @@ import {
   ModelGroupId,
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
-import { ModelManagerView } from './model-manager-view';
+import { ModelsWithSidebar } from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 /**
  * A recorded bridge invocation.
@@ -121,9 +122,9 @@ describe('ModelManagerView', () => {
    * Creates the view with its inputs set and its first load settled.
    * @returns Returns the component fixture.
    */
-  async function createView(): Promise<ComponentFixture<ModelManagerView>> {
-    const fixture: ComponentFixture<ModelManagerView> = TestBed.createComponent(ModelManagerView);
-    fixture.componentRef.setInput('isActive', true);
+  async function createView(): Promise<ComponentFixture<ModelsWithSidebar>> {
+    TestBed.inject(AiManagerNavigation).show('models');
+    const fixture: ComponentFixture<ModelsWithSidebar> = TestBed.createComponent(ModelsWithSidebar);
     fixture.detectChanges();
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, 0);
@@ -137,7 +138,7 @@ describe('ModelManagerView', () => {
    * @param fixture The view.
    * @param group The list to show.
    */
-  function openGroup(fixture: ComponentFixture<ModelManagerView>, group: ModelGroupId): void {
+  function openGroup(fixture: ComponentFixture<ModelsWithSidebar>, group: ModelGroupId): void {
     sideEntry(fixture, group)?.click();
     fixture.detectChanges();
   }
@@ -149,7 +150,7 @@ describe('ModelManagerView', () => {
    * @returns Returns the entry's button, or undefined.
    */
   function sideEntry(
-    fixture: ComponentFixture<ModelManagerView>,
+    fixture: ComponentFixture<ModelsWithSidebar>,
     group: ModelGroupId,
   ): HTMLElement | undefined {
     const labels: Readonly<Record<ModelGroupId, string>> = {
@@ -172,9 +173,9 @@ describe('ModelManagerView', () => {
    * @param fixture The view.
    * @param text The search text.
    */
-  function search(fixture: ComponentFixture<ModelManagerView>, text: string): void {
+  function search(fixture: ComponentFixture<ModelsWithSidebar>, text: string): void {
     const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector(
-      '.category-list__search input',
+      '.sidebar__search input',
     )!;
     input.value = text;
     input.dispatchEvent(new Event('input'));
@@ -199,7 +200,7 @@ describe('ModelManagerView', () => {
   it('offers to install the runtime when no binary is present', async () => {
     stubBridge({ available: false }, { kind: 'absent', executable: '', version: '' });
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain("Ollama isn't installed");
@@ -214,7 +215,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain("Ollama isn't running");
@@ -229,7 +230,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('qwen2.5-coder:7b');
@@ -257,7 +258,7 @@ describe('ModelManagerView', () => {
           : original.invoke<T>(channel, ...args),
     };
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain("llama.cpp isn't running");
@@ -270,7 +271,7 @@ describe('ModelManagerView', () => {
       { kind: 'managed', executable: '/userData/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Managed by Studio');
   });
@@ -281,7 +282,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('4.4 GB on disk');
   });
@@ -307,7 +308,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     openGroup(fixture, 'available');
 
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
@@ -332,7 +333,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     openGroup(fixture, 'available');
 
     // The Hugging Face entry's size depends on the quantisation Ollama picks, so it is unknown here.
@@ -367,7 +368,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     openGroup(fixture, 'available');
 
     // INSTALLED is qwen2.5-coder:7b, so the catalogue leaves it out, as an installed plugin is left
@@ -385,7 +386,7 @@ describe('ModelManagerView', () => {
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
 
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Partial results');
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('huggingface');
@@ -396,7 +397,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     openGroup(fixture, 'available');
 
     const install: HTMLButtonElement | undefined = [
@@ -437,7 +438,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const row: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
       'tr.table-row',
@@ -452,7 +453,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     const cells: () => string[] = (): string[] =>
       [...host.querySelectorAll<HTMLElement>('tr.table-row')].map(
@@ -476,7 +477,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     const heading: () => string = (): string =>
       host.querySelector('.model-manager__heading-title')?.textContent?.trim() ?? '';
@@ -486,7 +487,7 @@ describe('ModelManagerView', () => {
         (label: HTMLElement): string => label.textContent?.trim() ?? '',
       ),
     ).toEqual(['Installed', 'Available', 'Loaded']);
-    expect(host.querySelector('app-accordion')).toBeNull();
+    expect(host.querySelector('app-model-manager-view app-accordion')).toBeNull();
     expect(host.querySelectorAll('app-table')).toHaveLength(1);
     expect(heading()).toBe('Installed Models');
 
@@ -501,7 +502,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     expect(sideEntry(fixture, 'loaded')?.closest('.list-row')?.getAttribute('aria-disabled')).toBe(
       'true',
@@ -516,7 +517,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('.model-manager__headline')?.textContent,
@@ -528,7 +529,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14' },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
 
     search(fixture, 'QWEN');
@@ -544,7 +545,7 @@ describe('ModelManagerView', () => {
       { available: true, version: '0.32.14', startedByStudio: true },
       { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
     );
-    const fixture: ComponentFixture<ModelManagerView> = await createView();
+    const fixture: ComponentFixture<ModelsWithSidebar> = await createView();
 
     const remove: HTMLButtonElement | null = (
       fixture.nativeElement as HTMLElement

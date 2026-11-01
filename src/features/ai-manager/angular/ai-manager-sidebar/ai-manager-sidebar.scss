@@ -1,0 +1,45 @@
+// The AI Manager's sidebar: the search, then a section per accordion. The open section takes the
+// height left over and its list scrolls; the closed ones sit as headings beneath it.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  block-size: 100%;
+  min-block-size: 0;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.sidebar__search {
+  flex: none;
+  margin-block-end: 0.25rem;
+
+  app-text-field {
+    inline-size: 100%;
+  }
+}
+
+.sidebar__section {
+  flex: none;
+}
+
+.sidebar__section--open {
+  flex: 1 1 auto;
+  min-block-size: 0;
+
+  app-category-list {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: auto;
+  }
+}
+
+.sidebar__count {
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}

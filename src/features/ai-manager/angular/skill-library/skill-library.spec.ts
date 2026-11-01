@@ -1,3 +1,4 @@
+import { By } from '@angular/platform-browser';
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
@@ -5,6 +6,8 @@ import { Skills } from '@shared/angular/services/skills/skills';
 import { AiLibraryCommands } from '../ai-library-commands/ai-library-commands';
 import { SKILL_TAG_OPTIONS } from '../skill-tags/skill-tags';
 import { SkillLibrarySection } from './skill-library';
+import { SkillsWithSidebar } from '../ai-manager-sidebar/ai-manager-sidebar.testing';
+import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
 
 /**
  * Builds a stored skill.
@@ -26,7 +29,7 @@ function skill(name: string): Skill {
 }
 
 describe('SkillLibrarySection', () => {
-  let fixture: ComponentFixture<SkillLibrarySection>;
+  let fixture: ComponentFixture<SkillsWithSidebar>;
   let stored: WritableSignal<readonly Skill[]>;
   let saved: SkillDraft[];
   let deleted: string[];
@@ -61,9 +64,20 @@ describe('SkillLibrarySection', () => {
       imports: [SkillLibrarySection],
       providers: [{ provide: Skills, useValue: skillsStub }],
     }).compileComponents();
-    fixture = TestBed.createComponent(SkillLibrarySection);
+    TestBed.inject(AiManagerNavigation).show('skills');
+    fixture = TestBed.createComponent(SkillsWithSidebar);
     await fixture.whenStable();
   });
+
+  /**
+   * Gets the section under test, inside its host.
+   * @returns Returns the section, typed loosely so a spec can reach its protected members.
+   */
+  function section(): never {
+    return fixture.debugElement
+      .query(By.directive(SkillLibrarySection))
+      .injector.get(SkillLibrarySection) as never;
+  }
 
   /**
    * Gets the rendered root.
@@ -144,10 +158,7 @@ describe('SkillLibrarySection', () => {
     const view: {
       selected(): unknown;
       edit(row: unknown, patch: Partial<SkillDraft>): void;
-    } = fixture.componentInstance as unknown as {
-      selected(): unknown;
-      edit(row: unknown, patch: Partial<SkillDraft>): void;
-    };
+    } = section();
     view.edit(view.selected(), patch);
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, 700);
@@ -198,10 +209,7 @@ describe('SkillLibrarySection', () => {
     const view: {
       selected(): unknown;
       setTags(row: unknown, ids: readonly string[]): void;
-    } = fixture.componentInstance as unknown as {
-      selected(): unknown;
-      setTags(row: unknown, ids: readonly string[]): void;
-    };
+    } = section();
 
     view.setTags(view.selected(), ['typescript', 'angular']);
     await editAndPause({});
@@ -223,11 +231,7 @@ describe('SkillLibrarySection', () => {
     stored.set([skill('a')]);
     fixture.detectChanges();
     await fixture.whenStable();
-    const dialog: { deleteTarget(): unknown; confirmDelete(): Promise<void> } =
-      fixture.componentInstance as unknown as {
-        deleteTarget(): unknown;
-        confirmDelete(): Promise<void>;
-      };
+    const dialog: { deleteTarget(): unknown; confirmDelete(): Promise<void> } = section();
 
     element().querySelector<HTMLButtonElement>('.category-list__action')?.click();
     expect(dialog.deleteTarget()).not.toBeNull();

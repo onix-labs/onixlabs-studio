@@ -1,0 +1,37 @@
+<div class="sidebar">
+  <div class="sidebar__search">
+    <app-text-field
+      kind="search"
+      placeholder="Search AI library"
+      ariaLabel="Search AI library"
+      [value]="state.query()"
+      (valueChange)="state.query.set($event)"
+      (escape)="state.query.set('')"
+    />
+  </div>
+  @for (section of sections(); track section.id) {
+    <app-accordion
+      class="sidebar__section"
+      [class.sidebar__section--open]="open() === section.id"
+      [heading]="section.label"
+      [icon]="section.icon"
+      [section]="true"
+      [fill]="open() === section.id"
+      [expanded]="open() === section.id"
+      (expandedChange)="setExpanded(section.id, $event)"
+    >
+      @if (section.count !== null) {
+        <span accordionActions class="sidebar__count">{{ section.count }}</span>
+      }
+      @if (list(); as list) {
+        <app-category-list
+          [items]="list.items()"
+          [selectedId]="list.selectedId()"
+          [emptyText]="list.emptyText()"
+          (selectedIdChange)="list.select($event)"
+          (actionClick)="list.action?.($event)"
+        />
+      }
+    </app-accordion>
+  }
+</div>

@@ -20,6 +20,7 @@ import type { PromptProfileLibrary } from '../prompt-profiles/prompt-profile-lib
 import {
   rewriteSkillLinks,
   commonFolder,
+  scanProfiles,
   scanSelection,
   type ScannedEntry,
   type ScannedFolder,
@@ -101,20 +102,53 @@ export class LibraryTransfer {
       existingSkills,
       existingProfiles: listing.profiles.map((profile: PromptProfile): string => profile.id),
     };
+    this.hold(plan, found.entries);
+    logger.info(
+      'LibraryTransfer.scan',
+      `Scanned ${path}: ${plan.kind}, ${plan.entries.length} skill candidate(s), ${plan.profiles.length} profile(s)${found.truncated ? ' (truncated)' : ''}`,
+    );
+    return plan;
+  }
+
+  /**
+   * Holds a plan until it is committed or discarded, dropping the oldest beyond the limit.
+   * @param plan The plan.
+   * @param entries The scanned entries behind it.
+   * @returns Returns the plan.
+   */
+  private hold(plan: SkillImportPlan, entries: readonly ScannedEntry[]): SkillImportPlan {
     while (this.plans.size >= HELD_PLAN_LIMIT) {
       this.plans.delete(this.plans.keys().next().value!);
     }
     this.plans.set(plan.id, {
       plan,
       entries: new Map(
-        found.entries.map((entry: ScannedEntry): [string, ScannedEntry] => [entry.source, entry]),
+        entries.map((entry: ScannedEntry): [string, ScannedEntry] => [entry.source, entry]),
       ),
     });
-    logger.info(
-      'LibraryTransfer.scan',
-      `Scanned ${path}: ${plan.kind}, ${plan.entries.length} skill candidate(s), ${plan.profiles.length} profile(s)${found.truncated ? ' (truncated)' : ''}`,
-    );
     return plan;
+  }
+
+  /**
+   * Scans what the user picked for prompt profiles into a plan with no skills, and holds it.
+   * @param paths The absolute paths picked.
+   * @returns Returns the plan.
+   */
+  public async scanForProfiles(paths: readonly string[]): Promise<SkillImportPlan> {
+    const profiles: readonly PromptProfile[] = await scanProfiles(paths);
+    const listing: PromptProfileListing = await this.profiles.list();
+    return this.hold(
+      {
+        id: randomUUID(),
+        root: paths.length === 1 ? paths[0] : commonFolder(paths),
+        kind: 'restore',
+        entries: [],
+        profiles,
+        existingSkills: [],
+        existingProfiles: listing.profiles.map((profile: PromptProfile): string => profile.id),
+      },
+      [],
+    );
   }
 
   /**

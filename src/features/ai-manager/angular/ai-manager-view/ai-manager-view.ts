@@ -38,6 +38,9 @@ import {
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { AiManagerAgentCapabilities } from '../ai-manager-agent/ai-manager-agent-capabilities';
 import { AiManagerAgentPanelState } from '../ai-manager-agent/ai-manager-agent-panel-state';
+import { AiManagerSidebar } from '../ai-manager-sidebar/ai-manager-sidebar';
+import { AiManagerSidebarState } from '../ai-manager-sidebar/ai-manager-sidebar-state';
+import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 
 /**
  * How many entries a library sub-view holds, and how many of them are switched on.
@@ -63,6 +66,7 @@ export interface LibraryCounts {
 @Component({
   selector: 'app-ai-manager-view',
   imports: [
+    AiManagerSidebar,
     ModelManagerView,
     PromptProfilesSection,
     SkillLibrarySection,
@@ -77,6 +81,7 @@ export interface LibraryCounts {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'models' },
     AiManagerAgentCapabilities,
+    AiManagerSidebarState,
   ],
   templateUrl: './ai-manager-view.html',
   styleUrl: './ai-manager-view.scss',
@@ -115,6 +120,11 @@ export class AiManagerView implements OnInit {
   private readonly agentCapabilities: AiManagerAgentCapabilities = inject(
     AiManagerAgentCapabilities,
   );
+
+  /**
+   * Gets the edges the sidebar may sit on: only its own, since it is part of the view.
+   */
+  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
 
   /**
    * Holds whether the docked agent is showing, shared with the ribbon.

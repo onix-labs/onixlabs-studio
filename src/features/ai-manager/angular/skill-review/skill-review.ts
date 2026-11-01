@@ -13,9 +13,15 @@ import {
 import { diffLines } from 'diff';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
+import {
+  MultiSelect,
+  MultiSelectItem,
+} from '@shared/angular/components/forms/multi-select/multi-select';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
+import { SKILL_TAG_OPTIONS, splitSkillTags } from '../skill-tags/skill-tags';
 
 /**
  * One line of the changes view.
@@ -43,7 +49,7 @@ const CONTEXT_LINES: number = 3;
  */
 @Component({
   selector: 'app-skill-review',
-  imports: [MarkdownField, SettingRow, TabList, TextField],
+  imports: [MarkdownField, MultiSelect, PromptScopeEditor, SettingRow, TabList, TextField],
   templateUrl: './skill-review.html',
   styleUrl: './skill-review.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -58,6 +64,19 @@ export class SkillReview {
    * Gets or sets the version being reviewed, as the user edits it.
    */
   public readonly draft: ModelSignal<SkillImportDraft> = model.required<SkillImportDraft>();
+
+  /**
+   * Gets the options of a skill's languages and technologies.
+   */
+  protected readonly tagOptions: readonly MultiSelectItem[] = SKILL_TAG_OPTIONS;
+
+  /**
+   * Gets the version's languages and technologies as one selection, languages first, as the skill
+   * editor shows them.
+   */
+  protected readonly tags: Signal<readonly string[]> = computed((): readonly string[] => [
+    ...new Set<string>([...this.draft().scope.languages, ...this.draft().technologies]),
+  ]);
 
   /**
    * Gets the tabs.
@@ -114,6 +133,23 @@ export class SkillReview {
       return { added, removed };
     },
   );
+
+  /**
+   * Sets the languages and technologies from the one selection, split as the skill editor splits them.
+   * @param ids The ids ticked.
+   */
+  protected setTags(ids: readonly string[]): void {
+    const draft: SkillImportDraft = this.draft();
+    const split: { languages: readonly string[]; technologies: readonly string[] } = splitSkillTags(
+      ids,
+      draft.scope.languages,
+      draft.technologies,
+    );
+    this.edit({
+      scope: { ...draft.scope, languages: split.languages },
+      technologies: split.technologies,
+    });
+  }
 
   /**
    * Changes one field of the version being reviewed.

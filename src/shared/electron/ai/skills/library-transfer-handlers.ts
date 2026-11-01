@@ -107,6 +107,35 @@ export class LibraryTransferHandlers {
         return this.transfer.scan(result.filePaths);
       },
     );
+    ipcMain.handle(
+      SkillImportChannel.ChooseProfiles,
+      async (event: IpcMainInvokeEvent): Promise<SkillImportPlan | null> => {
+        const result: OpenDialogReturnValue = await showOpenDialog(
+          event.sender,
+          this.windowGetter,
+          {
+            title: 'Import Prompt Profiles',
+            message:
+              'Choose Markdown files, a folder of them, or a Studio export. Each file becomes a profile.',
+            buttonLabel: 'Import',
+            properties: ['openFile', 'openDirectory', 'multiSelections'],
+            filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
+          },
+        );
+        if (result.canceled || result.filePaths.length === 0) {
+          return null;
+        }
+        return this.transfer.scanForProfiles(result.filePaths);
+      },
+    );
+    ipcMain.handle(PromptProfileChannel.OpenFolder, async (): Promise<void> => {
+      const { mkdir } = await import('node:fs/promises');
+      await mkdir(this.profiles.directory, { recursive: true });
+      const failure: string = await shell.openPath(this.profiles.directory);
+      if (failure.length > 0) {
+        logger.warn('LibraryTransferHandlers', `Could not open the profile folder: ${failure}`);
+      }
+    });
     ipcMain.handle(SkillImportChannel.Discard, (_event: IpcMainInvokeEvent, id: unknown): void => {
       if (typeof id === 'string') {
         this.transfer.discard(id);

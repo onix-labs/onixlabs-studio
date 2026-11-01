@@ -9,13 +9,11 @@ import {
   InputSignal,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { CategoryItem } from '@shared/angular/components/category-list/category-list';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
@@ -38,6 +36,10 @@ import {
   ModelManagerCommands,
 } from '../model-manager-commands/model-manager-commands';
 import { ModelRuntimes } from '../model-runtime/model-runtimes';
+import {
+  AiManagerSidebarList,
+  AiManagerSidebarState,
+} from '../ai-manager-sidebar/ai-manager-sidebar-state';
 import { Chip } from '@shared/angular/components/chip/chip';
 import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
 
@@ -146,17 +148,7 @@ function referenceKey(reference: string): string {
  */
 @Component({
   selector: 'app-model-manager-view',
-  imports: [
-    AppIcon,
-    Button,
-    CategoryList,
-    Chip,
-    Panel,
-    PanelLayout,
-    ProgressBar,
-    Table,
-    TableRowDef,
-  ],
+  imports: [AppIcon, Button, Chip, ProgressBar, Table, TableRowDef],
   templateUrl: './model-manager-view.html',
   styleUrl: './model-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -443,11 +435,6 @@ export class ModelManagerView {
   );
 
   /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the sub-view.
-   */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
-
-  /**
    * Holds the list the user chose in the side panel. Installed is shown to begin with.
    */
   private readonly selectedGroup: WritableSignal<ModelGroupId> = signal<ModelGroupId>('installed');
@@ -597,6 +584,27 @@ export class ModelManagerView {
       }
     });
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
+
+    // The lists to choose between, and the search, live in the AI Manager's one sidebar.
+    const sidebar: AiManagerSidebarState | null = inject(AiManagerSidebarState, { optional: true });
+    if (sidebar !== null) {
+      const list: AiManagerSidebarList = {
+        items: this.groupItems,
+        selectedId: this.shownGroup,
+        select: (id: string): void => this.selectGroup(id),
+        emptyText: signal<string>('').asReadonly(),
+      };
+      sidebar.register('models', list);
+      destroy.onDestroy((): void => sidebar.unregister(list));
+      effect((): void => {
+        const query: string = sidebar.query();
+        untracked((): void => {
+          if (query !== this.searchText()) {
+            this.onSearchChange(query);
+          }
+        });
+      });
+    }
 
     effect((): void => {
       if (this.isActive()) {

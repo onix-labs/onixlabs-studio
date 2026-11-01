@@ -3,25 +3,22 @@
 <app-modal [open]="questionOpen()" [dismissable]="false" [width]="40" ariaLabel="Import skills">
   <ng-template appModalContent>
     @if (prompt(); as prompt) {
-      @if (entryOf(prompt); as entry) {
-        <p class="import__progress">
-          File {{ session.position() }} of {{ total() }} ·
-          <span class="import__source">{{ entry.source }}</span>
-        </p>
-      }
       @switch (prompt.kind) {
         @case ('improve') {
-          <h2 class="import__title">Improve “{{ prompt.entry.draft.name }}” with AI?</h2>
+          <h2 class="import__title">Improve {{ prompt.entry.draft.name }} with AI?</h2>
           <p class="import__message">
             It can be imported as it is. An AI can bring it up to date and sharpen its description
             first; you'll review what it changes.
           </p>
-          <p class="import__description">{{ prompt.entry.draft.description }}</p>
           <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
           <label class="import__check">
             <app-checkbox [checked]="improveAll()" (checkedChange)="improveAll.set($event)" />
             Do the same for all remaining files
           </label>
+          <p class="import__progress import__progress--foot">
+            File {{ session.position() }} of {{ total() }} ·
+            <span class="import__source">{{ prompt.entry.source }}</span>
+          </p>
           <app-button-row class="import__buttons">
             <app-button
               variant="solid"
@@ -34,13 +31,18 @@
           </app-button-row>
         }
         @case ('repair') {
-          <h2 class="import__title">“{{ prompt.entry.source }}” can't be imported as it is</h2>
-          <p class="import__message">{{ prompt.entry.reason }}</p>
-          <p class="import__message">An AI can turn it into a skill; you'll review the result.</p>
+          <h2 class="import__title">{{ prompt.entry.source }} can't be imported as it is</h2>
+          <p class="import__message">
+            {{ prompt.entry.reason }} An AI can turn it into a skill; you'll review the result.
+          </p>
+          <p class="import__progress import__progress--foot">
+            File {{ session.position() }} of {{ total() }} ·
+            <span class="import__source">{{ prompt.entry.source }}</span>
+          </p>
           <app-button-row class="import__buttons">
             <app-button
               variant="solid"
-              label="Import with AI Help"
+              label="Import with AI"
               [disabled]="aiLabel() === null"
               (click)="session.answer('ai')"
             />
@@ -49,25 +51,32 @@
           </app-button-row>
         }
         @case ('working') {
-          <div class="import__working">
-            <app-icon class="import__spinner" [icon]="spinner" />
-            <h2 class="import__title">{{ prompt.label }}</h2>
-          </div>
+          <h2 class="import__title">{{ prompt.label }}</h2>
           <p class="import__message">
             “{{ prompt.entry.draft.name || prompt.entry.source }}” is with
             {{ aiLabel() ?? 'the AI' }}. A long skill can take a few minutes.
           </p>
-          <app-button-row class="import__buttons">
-            <app-button label="Cancel Import" (click)="cancel()" />
-          </app-button-row>
+          <p class="import__progress import__progress--foot">
+            File {{ session.position() }} of {{ total() }} ·
+            <span class="import__source">{{ prompt.entry.source }}</span>
+          </p>
+          <div class="import__footer">
+            <app-icon class="import__spinner" [icon]="spinner" />
+            <app-button-row>
+              <app-button label="Cancel Import" (click)="cancel()" />
+            </app-button-row>
+          </div>
         }
         @case ('ai-failed') {
           <h2 class="import__title">
             {{ prompt.notASkill ? 'The AI says this isn’t a skill' : 'The AI couldn’t do it' }}
           </h2>
           <p class="import__message">{{ prompt.reason }}</p>
+          <p class="import__progress import__progress--foot">
+            File {{ session.position() }} of {{ total() }} ·
+            <span class="import__source">{{ prompt.entry.source }}</span>
+          </p>
           <app-button-row class="import__buttons">
-            <app-button label="Try Again" (click)="session.answer('retry')" />
             @if (prompt.canUseDraft) {
               <app-button
                 variant="solid"
@@ -81,19 +90,17 @@
                 (click)="session.answer({ action: 'ignore' })"
               />
             }
+            <app-button label="Try Again" (click)="session.answer('retry')" />
             <app-button label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         }
         @case ('clash') {
           <h2 class="import__title">
-            {{ prompt.subject === 'skill' ? 'A skill' : 'A prompt profile' }} named “{{
-              prompt.name
-            }}”
+            {{ prompt.subject === 'skill' ? 'A skill' : 'A prompt profile' }} named
+            {{ prompt.name }}
             {{ prompt.withLibrary ? 'is already in your library' : 'is already being imported' }}
           </h2>
-          <p class="import__message">
-            Replace it with {{ prompt.label }}, import this one under another name, or skip it.
-          </p>
+          <p class="import__message">Replace it, import this one under another name, or skip it.</p>
           <div class="import__rename">
             <app-text-field
               [value]="rename()"
@@ -106,9 +113,15 @@
             <app-checkbox [checked]="clashAll()" (checkedChange)="clashAll.set($event)" />
             Do the same for all remaining clashes
           </label>
+          @if (prompt.subject === 'skill') {
+            <p class="import__progress import__progress--foot">
+              File {{ session.position() }} of {{ total() }} ·
+              <span class="import__source">{{ prompt.label }}</span>
+            </p>
+          }
           <app-button-row class="import__buttons">
-            <app-button label="Replace" (click)="resolveClash('replace')" />
             <app-button variant="solid" label="Rename" (click)="resolveClash('rename')" />
+            <app-button label="Replace" (click)="resolveClash('replace')" />
             <app-button label="Skip" (click)="resolveClash('skip')" />
             <app-button label="Cancel Import" (click)="cancel()" />
           </app-button-row>
@@ -128,24 +141,24 @@
   [dismissable]="false"
   [expandable]="true"
   [width]="60"
-  [height]="37.5"
+  [height]="45"
   ariaLabel="Import skills"
 >
   <ng-template appModalContent>
     @if (prompt(); as prompt) {
       @if (prompt.kind === 'review') {
         <div class="import__large">
-          <p class="import__progress">
-            File {{ session.position() }} of {{ total() }} ·
-            <span class="import__source">{{ prompt.entry.source }}</span>
-          </p>
-          <h2 class="import__title">
+          <h2 class="import__title import__title--above-progress">
             {{
               prompt.purpose === 'improve'
                 ? 'Review the AI’s improvements'
                 : 'Review the AI’s conversion'
             }}
           </h2>
+          <p class="import__progress">
+            File {{ session.position() }} of {{ total() }} ·
+            <span class="import__source">{{ prompt.entry.source }}</span>
+          </p>
           @if (reviewed(); as draft) {
             <app-skill-review
               [original]="prompt.original"
@@ -170,58 +183,98 @@
             {{ selectionLine() }} Nothing has been written yet. Untick anything you'd rather leave
             out.
           </p>
-          <ul class="import__list">
-            @for (skill of session.accepted(); track skill.source) {
-              <li class="import__item">
-                <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-                <label class="import__check">
-                  <app-checkbox
-                    [checked]="skill.included"
-                    (checkedChange)="session.include(skill.source, $event)"
-                  />
-                  <span class="import__name">{{ skill.draft.name }}</span>
-                </label>
-                <span class="import__source">{{ skill.source }}</span>
-                @if (originLabel(skill.origin); as origin) {
-                  <span class="import__chip">{{ origin }}</span>
+          <!-- Everything the run found, in one table: what will be imported (tick to keep), and what
+               was left out and why, which cannot be ticked back in. -->
+          <div class="import__table">
+            <app-table
+              [columns]="summaryColumns"
+              [striped]="true"
+              rowSize="comfortable"
+              [rows]="summaryRows()"
+              emptyText="Nothing to import."
+            >
+              <ng-template appTableRow let-row>
+                @let entry = summaryOf(row);
+                @switch (entry.kind) {
+                  @case ('skill') {
+                    <td class="import__cell-check">
+                      <app-checkbox
+                        [checked]="entry.skill.included"
+                        (checkedChange)="session.include(entry.skill.source, $event)"
+                      />
+                    </td>
+                    <td class="import__name">{{ entry.skill.draft.name }}</td>
+                    <td class="import__source">{{ entry.skill.source }}</td>
+                    <td>
+                      <span class="import__chips">
+                        @switch (entry.skill.origin) {
+                          @case ('improved') {
+                            <app-chip tone="accent">Improved with AI</app-chip>
+                          }
+                          @case ('improved-auto') {
+                            <app-chip tone="accent">Improved with AI</app-chip>
+                            <app-chip tone="info">Not reviewed</app-chip>
+                          }
+                          @case ('converted') {
+                            <app-chip tone="accent">Converted with AI</app-chip>
+                          }
+                        }
+                        @if (entry.skill.failure; as failure) {
+                          <app-chip tone="danger" [attr.title]="failure"
+                            >AI improvement failed</app-chip
+                          >
+                          <app-chip tone="warning">Import as draft</app-chip>
+                        }
+                        @if (entry.skill.replace) {
+                          <app-chip tone="warning">Replaces existing</app-chip>
+                        }
+                      </span>
+                    </td>
+                  }
+                  @case ('profile') {
+                    <td class="import__cell-check">
+                      <app-checkbox
+                        [checked]="entry.item.included"
+                        (checkedChange)="session.includeProfile(entry.item.profile.id, $event)"
+                      />
+                    </td>
+                    <td class="import__name">{{ entry.item.profile.name }}</td>
+                    <td class="import__muted">—</td>
+                    <td>
+                      <span class="import__chips">
+                        <app-chip>Prompt profile</app-chip>
+                        @if (entry.item.replace) {
+                          <app-chip tone="warning">Replaces existing</app-chip>
+                        }
+                      </span>
+                    </td>
+                  }
+                  @case ('left-out') {
+                    <td class="import__cell-check">
+                      <app-checkbox [checked]="false" [disabled]="true" />
+                    </td>
+                    <td class="import__muted">—</td>
+                    <td class="import__source import__muted">{{ entry.item.label }}</td>
+                    <td>
+                      <span class="import__chips">
+                        <app-chip [attr.title]="entry.item.reason">{{
+                          leftOutLabel(entry.item.kind)
+                        }}</app-chip>
+                      </span>
+                    </td>
+                  }
                 }
-                @if (skill.replace) {
-                  <span class="import__chip import__chip--warning">Replaces existing</span>
-                }
-                @if (skill.note; as note) {
-                  <span class="import__note">{{ note }}</span>
-                }
-              </li>
-            }
-            @for (item of session.acceptedProfiles(); track item.profile.id) {
-              <li class="import__item">
-                <span class="import__name">Profile: {{ item.profile.name }}</span>
-                @if (item.replace) {
-                  <span class="import__chip import__chip--warning">Replaces existing</span>
-                }
-              </li>
-            }
-          </ul>
-          @if (session.leftOut().length > 0) {
-            <details class="import__left-out">
-              <summary>{{ session.leftOut().length }} left out</summary>
-              <ul>
-                @for (item of session.leftOut(); track $index) {
-                  <li>
-                    <span class="import__source">{{ item.label }}</span> — {{ item.reason }}
-                  </li>
-                }
-              </ul>
-            </details>
-          }
+              </ng-template>
+            </app-table>
+          </div>
           @if (session.error(); as error) {
             <p class="import__error" role="alert">{{ error }}</p>
           }
           <app-button-row class="import__buttons">
             <app-button
               variant="solid"
-              [label]="'Import ' + included() + (included() === 1 ? ' Skill' : ' Skills')"
-              [disabled]="included() === 0 && session.acceptedProfiles().length === 0"
+              [label]="importLabel()"
+              [disabled]="included() === 0 && includedProfiles() === 0"
               (click)="session.answer('import')"
             />
             <app-button label="Cancel Import" (click)="cancel()" />

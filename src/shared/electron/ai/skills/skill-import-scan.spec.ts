@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GLOBAL_SCOPE } from '@shared/api/ai-types';
+import type { PromptProfile } from '@shared/api/prompt-profile-channels';
 import { SKILL_DESCRIPTION_LIMIT } from '@shared/api/skill-channels';
 import { LIBRARY_EXPORT_FORMAT, type SkillImportDraft } from '@shared/api/skill-import-channels';
 import {
@@ -11,6 +12,7 @@ import {
   draftDescription,
   rewriteSkillLinks,
   scanForSkills,
+  scanProfiles,
   scanSelection,
   type ScannedFolder,
 } from './skill-import-scan';
@@ -229,6 +231,42 @@ describe('scanForSkills', () => {
       'skills/acid.md',
       'skills/gdpr.md',
     ]);
+  });
+});
+
+describe('scanProfiles', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'profile-scan-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('scanProfiles_whenMarkdownAndExport_namesEachAndKeepsIdsUnique', async () => {
+    mkdirSync(join(root, 'mine'));
+    writeFileSync(join(root, 'mine/README.md'), '# Index\n');
+    writeFileSync(join(root, 'mine/terse.md'), '# Be Terse\n\nShort answers.\n');
+    writeFileSync(join(root, 'mine/plain.md'), 'No heading here.\n');
+    writeFileSync(join(root, 'mine/empty.md'), '');
+    mkdirSync(join(root, 'export/profiles'), { recursive: true });
+    writeFileSync(
+      join(root, 'export/manifest.json'),
+      JSON.stringify({ format: LIBRARY_EXPORT_FORMAT }),
+    );
+    writeFileSync(join(root, 'export/profiles/be-terse.md'), '---\nname: "Be Terse"\n---\nOld.\n');
+    const profiles: readonly PromptProfile[] = await scanProfiles([
+      join(root, 'mine'),
+      join(root, 'export'),
+    ]);
+    expect(profiles.map((profile) => [profile.id, profile.name])).toEqual([
+      ['be-terse', 'Be Terse'],
+      ['plain', 'plain'],
+      ['be-terse-2', 'Be Terse'],
+    ]);
+    expect(profiles[2].instructions).toBe('# Be Terse\n\nShort answers.');
   });
 });
 

@@ -3,12 +3,14 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   inject,
-  signal,
   Signal,
+  signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
-import { PromptScope } from '@shared/api/ai-types';
+import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -18,10 +20,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Panel } from '@shared/angular/components/panel-layout/panel';
-import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
-import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
+import { CategoryItem } from '@shared/angular/components/category-list/category-list';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
 import {
@@ -33,6 +32,13 @@ import {
   AiLibraryCommands,
 } from '../ai-library-commands/ai-library-commands';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
+import {
+  AiManagerSidebarList,
+  AiManagerSidebarState,
+} from '../ai-manager-sidebar/ai-manager-sidebar-state';
+import { SkillImportModal } from '../skill-import/skill-import-modal';
+import { AiManagerModalPreview } from '../ai-manager-modal-preview/ai-manager-modal-preview';
+import { SkillImportSession } from '../skill-import/skill-import-session';
 
 /**
  * The AI Manager's Prompt Profiles sub-view (#300, #948): the user's profiles listed in its side
@@ -46,17 +52,16 @@ import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
     AppIcon,
     Button,
     ButtonRow,
-    CategoryList,
     MarkdownField,
     Modal,
     ModalContent,
-    Panel,
-    PanelLayout,
     PromptScopeEditor,
     SettingRow,
+    SkillImportModal,
     TextField,
     Toggle,
   ],
+  providers: [SkillImportSession],
   templateUrl: './prompt-profiles.html',
   styleUrl: '../library.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -68,14 +73,17 @@ export class PromptProfilesSection {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the edges the side panel may sit on: only its own, since it is part of the sub-view.
+   * Holds the AI Manager's sidebar, which lists this section's entries and owns the search; absent
+   * outside the AI Manager view.
    */
-  protected readonly sideEdges: readonly PanelEdge[] = ['left'];
+  private readonly sidebar: AiManagerSidebarState | null = inject(AiManagerSidebarState, {
+    optional: true,
+  });
 
   /**
-   * Holds the side panel's search text.
+   * Gets the sidebar's search text, which narrows the entries.
    */
-  protected readonly query: WritableSignal<string> = signal<string>('');
+  protected readonly query: Signal<string> = this.sidebar?.query ?? signal<string>('').asReadonly();
 
   /**
    * Holds the profiles service.
@@ -142,7 +150,18 @@ export class PromptProfilesSection {
    */
   private readonly commandHandler: AiLibraryCommandHandler = {
     add: (): void => this.add(),
+    importFrom: (): void => void this.import(),
   };
+
+  /**
+   * Holds the import session the import dialogs show.
+   */
+  private readonly importSession: SkillImportSession = inject(SkillImportSession);
+
+  /**
+   * Holds the outcome of the last import, shown above the editor until the next action.
+   */
+  protected readonly notice: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Initializes the section, registering it with the ribbon while it is shown.
@@ -151,6 +170,56 @@ export class PromptProfilesSection {
     const commands: AiLibraryCommands = inject(AiLibraryCommands);
     commands.register('profiles', this.commandHandler);
     inject(DestroyRef).onDestroy((): void => commands.unregister('profiles', this.commandHandler));
+    this.registerWithSidebar();
+    this.followModalPreviews();
+  }
+
+  /**
+   * ⚠️ TEMPORARY (modal preview): opens the modal the ribbon's preview menu asked for, with sample data.
+   */
+  private followModalPreviews(): void {
+    const preview: AiManagerModalPreview = inject(AiManagerModalPreview);
+    effect((): void => {
+      const id: string | null = preview.request();
+      if (id === null) {
+        return;
+      }
+      untracked((): void => {
+        if (id === 'profile-delete') {
+          preview.request.set(null);
+          this.deleteTarget.set({
+            id: 'preview-sample-profile',
+            name: 'British English',
+            scope: GLOBAL_SCOPE,
+            instructions: 'Write in British English.',
+            enabled: true,
+          });
+        } else if (this.importSession.previewModal(id)) {
+          preview.request.set(null);
+        }
+      });
+    });
+  }
+
+  /**
+   * Puts the profiles in the AI Manager's sidebar while this section is shown.
+   */
+  private registerWithSidebar(): void {
+    const sidebar: AiManagerSidebarState | null = this.sidebar;
+    if (sidebar === null) {
+      return;
+    }
+    const list: AiManagerSidebarList = {
+      items: this.items,
+      selectedId: computed((): string | null => this.selected()?.id ?? null),
+      select: (id: string): void => this.select(id),
+      action: (id: string): void => this.askDelete(id),
+      emptyText: computed((): string =>
+        this.query().trim().length > 0 ? 'No profiles match.' : 'No profiles yet.',
+      ),
+    };
+    sidebar.register('profiles', list);
+    inject(DestroyRef).onDestroy((): void => sidebar.unregister(list));
   }
 
   /**
@@ -162,9 +231,23 @@ export class PromptProfilesSection {
   }
 
   /**
+   * Imports prompt profiles from Markdown files, a folder of them or an export the user picks
+   * (#1263), asking only about name clashes.
+   * @returns Resolves once the import has finished or been cancelled.
+   */
+  protected async import(): Promise<void> {
+    this.notice.set(null);
+    const outcome: string | null = await this.importSession.start(null, 'profiles');
+    if (outcome !== null) {
+      this.notice.set(outcome);
+    }
+  }
+
+  /**
    * Creates a new profile and selects it.
    */
   protected add(): void {
+    this.notice.set(null);
     const created: PromptProfile = this.service.create();
     this.selectedId.set(created.id);
     this.log.info('aiManager.promptProfiles', 'Prompt profile created', created.id);

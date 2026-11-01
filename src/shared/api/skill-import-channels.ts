@@ -19,6 +19,12 @@ export enum SkillImportChannel {
   Choose = 'skill-import:choose',
 
   /**
+   * Asks for Markdown files, a folder of them or a Studio export through the platform dialog and
+   * scans them into a plan of prompt profiles only; null when the dialog was cancelled.
+   */
+  ChooseProfiles = 'skill-import:choose-profiles',
+
+  /**
    * Writes the accepted part of a plan to the libraries, all or nothing.
    */
   Commit = 'skill-import:commit',

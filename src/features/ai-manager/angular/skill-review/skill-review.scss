@@ -13,15 +13,24 @@
 }
 
 .review__version {
+  // The same control width the skill editor uses, so the scope editor lines up with the fields.
+  --library-control-width: 18rem;
+
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   flex: 1 1 auto;
   min-block-size: 0;
-  overflow: auto;
+  // Nothing here scrolls: the instructions take what height is left and scroll inside their editor.
+  overflow: hidden;
 
-  app-text-field {
-    inline-size: 18rem;
+  > * {
+    flex: none;
+  }
+
+  app-text-field,
+  .review__tags {
+    inline-size: var(--library-control-width);
   }
 }
 
@@ -31,9 +40,9 @@
   gap: 0.25rem;
 }
 
-.review__field--grow {
+.review__version > .review__field--grow {
   flex: 1 1 auto;
-  min-block-size: 12rem;
+  min-block-size: 6rem;
 }
 
 .review__label {
@@ -64,6 +73,7 @@
   margin: 0;
   padding: 0.5rem 0;
   overflow: auto;
+  background: var(--form-control-background-color);
   border: var(--hairline) solid var(--form-control-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
