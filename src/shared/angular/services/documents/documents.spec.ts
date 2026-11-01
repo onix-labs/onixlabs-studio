@@ -10,7 +10,7 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
-import { CodeDocument, Documents } from './documents';
+import { CodeDocument, Documents, effectiveViewToggles } from './documents';
 
 /**
  * A sample file used by the open-from-info tests.
@@ -423,6 +423,27 @@ describe('Documents', () => {
 
       expect(registry.get(id)?.title).toBe('notes.md');
       expect(registry.get(id)?.icon).toBe(Icon.MARKDOWN);
+    });
+  });
+});
+
+describe('effectiveViewToggles', () => {
+  it('followsTheSettingsUntilTheTabSetsItsOwn', () => {
+    const settings: { wordWrap: boolean; showMinimap: boolean; showLineNumbers: boolean } = {
+      wordWrap: false,
+      showMinimap: true,
+      showLineNumbers: true,
+    };
+
+    expect(effectiveViewToggles({}, settings)).toEqual({
+      wordWrap: false,
+      minimap: true,
+      lineNumbers: true,
+    });
+    expect(effectiveViewToggles({ minimap: false }, settings)).toEqual({
+      wordWrap: false,
+      minimap: false,
+      lineNumbers: true,
     });
   });
 });

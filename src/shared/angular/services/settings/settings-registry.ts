@@ -15,6 +15,7 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
+  DiffLayout,
   DocumentDiffSwitch,
   DocumentWellPlacement,
   FileExplorerExpandAll,
@@ -114,6 +115,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.goToStyle': GoToStyle;
+  readonly 'textEditor.diffLayout': DiffLayout;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
   readonly 'textEditor.printMargin': PrintMargin;
 
@@ -470,8 +472,44 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
-    id: 'text-editor',
-    label: 'Text Editor',
+    // Code-wide behaviour that is neither how code looks nor how a language is edited.
+    id: 'code-general',
+    label: 'Code',
+    settings: [
+      {
+        key: 'textEditor.goToStyle',
+        title: 'Go to Style',
+        description:
+          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'quick-open', label: 'Quick-open box' },
+            { value: 'dialogs', label: 'Dialogs' },
+          ],
+        },
+        default: 'quick-open',
+      },
+      {
+        key: 'textEditor.diffLayout',
+        title: 'Default Diff Layout',
+        description:
+          "How a diff lays out the two versions it compares when it opens: side by side, or inline in one column. The diff's own Split and Inline switch changes it from there.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'side-by-side', label: 'Side by Side' },
+            { value: 'inline', label: 'Inline' },
+          ],
+        },
+        default: 'side-by-side',
+      },
+    ],
+  },
+  {
+    // How code looks wherever it appears: editor tabs, diffs, queries, request bodies, Markdown code blocks.
+    id: 'code-appearance',
+    label: 'Code Appearance',
     settings: [
       {
         key: 'textEditor.global.fontFamily',
@@ -529,25 +567,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
             { value: '2', label: '2.0' },
           ],
         },
-        profileOverridable: true,
         default: 0,
-      },
-      {
-        key: 'textEditor.global.tabSize',
-        title: 'Tab Size',
-        description: 'The number of spaces a single indentation level occupies.',
-        control: {
-          kind: 'select',
-          valueType: 'number',
-          options: [
-            { value: '2', label: '2' },
-            { value: '4', label: '4' },
-            { value: '6', label: '6' },
-            { value: '8', label: '8' },
-          ],
-        },
-        profileOverridable: true,
-        default: 2,
       },
       {
         key: 'textEditor.global.currentLineHighlight',
@@ -561,21 +581,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'outline',
-      },
-      {
-        key: 'textEditor.global.braceStyle',
-        title: 'Brace Style',
-        description: 'The brace placement style the editor formats to.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'kr', label: 'K&R (same line)' },
-            { value: 'allman', label: 'Allman (own line)' },
-            { value: 'gnu', label: 'GNU (own line, indented)' },
-          ],
-        },
-        profileOverridable: true,
-        default: 'kr',
       },
       {
         key: 'textEditor.global.cursorBlinking',
@@ -640,63 +645,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'textEditor.global.wordWrap',
-        title: 'Word Wrap',
-        description: 'Wrap long lines.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: false,
-      },
-      {
         key: 'textEditor.global.stickyScroll',
         title: 'Sticky Scroll',
         description: 'Pin scope context to the top while scrolling.',
         control: { kind: 'toggle' },
         profileOverridable: true,
         default: true,
-      },
-      {
-        // On everywhere by default, overridable per language (Matthew's ruling on #1141) — switch it off
-        // for, say, TypeScript in a project that a different formatter lays out.
-        key: 'textEditor.global.formatOnType',
-        title: 'Format on Type',
-        description:
-          "Lay out the line as you type a closing brace, a semicolon or a new line, using the language's own formatter.",
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
-      },
-      {
-        key: 'textEditor.global.insertSpaces',
-        title: 'Insert Spaces',
-        description: 'Insert spaces instead of tabs when indenting.',
-        control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
-      },
-      {
-        key: 'textEditor.goToStyle',
-        title: 'Go to Style',
-        description:
-          'How Go to Symbol and Go to Line ask where to go: a quick-open box at the top of the window, or a dialog.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'quick-open', label: 'Quick-open box' },
-            { value: 'dialogs', label: 'Dialogs' },
-          ],
-        },
-        default: 'quick-open',
-      },
-      {
-        key: 'textEditor.languageOverrides',
-        title: 'Language Overrides',
-        description:
-          'Per-language overrides of the global editor settings, edited on each language page under Language Providers.',
-        control: { kind: 'custom', component: 'language-editor-overrides' },
-        // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
-        // an ordinary override, so the user can change or clear it like any other (#1177).
-        default: { csharp: { braceStyle: 'allman' } },
       },
       {
         key: 'textEditor.printMargin',
@@ -713,6 +667,82 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'regular',
+      },
+    ],
+  },
+  {
+    // How code is edited; the per-language overrides are edited on each language's page under Code › Languages.
+    id: 'code-editing',
+    label: 'Code Editing',
+    settings: [
+      {
+        key: 'textEditor.global.tabSize',
+        title: 'Tab Size',
+        description: 'The number of spaces a single indentation level occupies.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '2', label: '2' },
+            { value: '4', label: '4' },
+            { value: '6', label: '6' },
+            { value: '8', label: '8' },
+          ],
+        },
+        profileOverridable: true,
+        default: 2,
+      },
+      {
+        key: 'textEditor.global.insertSpaces',
+        title: 'Insert Spaces',
+        description: 'Insert spaces instead of tabs when indenting.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.wordWrap',
+        title: 'Word Wrap',
+        description: 'Wrap long lines.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        // On everywhere by default, overridable per language (Matthew's ruling on #1141) — switch it off
+        // for, say, TypeScript in a project that a different formatter lays out.
+        key: 'textEditor.global.formatOnType',
+        title: 'Format on Type',
+        description:
+          "Lay out the line as you type a closing brace, a semicolon or a new line, using the language's own formatter.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.braceStyle',
+        title: 'Brace Style',
+        description: 'The brace placement style the editor formats to.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'kr', label: 'K&R (same line)' },
+            { value: 'allman', label: 'Allman (own line)' },
+            { value: 'gnu', label: 'GNU (own line, indented)' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'kr',
+      },
+      {
+        key: 'textEditor.languageOverrides',
+        title: 'Language Overrides',
+        description:
+          'Per-language overrides of the code settings, edited on each language page under Code › Languages.',
+        control: { kind: 'custom', component: 'language-editor-overrides' },
+        // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
+        // an ordinary override, so the user can change or clear it like any other (#1177).
+        default: { csharp: { braceStyle: 'allman' } },
       },
     ],
   },
@@ -1324,6 +1354,26 @@ export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
     .filter(isSettingsOwned)
     .map((setting: SettingsOwnedDef): [SettingsKey, unknown] => [setting.key, setting.default]),
 ) as unknown as SettingsValues;
+
+/**
+ * The sections holding the code settings: code-wide behaviour, how code looks, and how it is edited.
+ * They were one Text Editor section; the language pages override a subset of them.
+ */
+export const CODE_SECTION_IDS: readonly string[] = [
+  'code-general',
+  'code-appearance',
+  'code-editing',
+];
+
+/**
+ * Lists every code setting, across the sections that hold them.
+ * @returns Returns the code settings, appearance first.
+ */
+export function codeSettings(): readonly SettingDef[] {
+  return CODE_SECTION_IDS.flatMap(
+    (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
+  );
+}
 
 /**
  * Returns the section with the given id, or undefined when it is unknown.

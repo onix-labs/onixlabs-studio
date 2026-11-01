@@ -1,14 +1,25 @@
 <div class="settings">
   <nav class="settings__nav" aria-label="Settings sections">
-    <app-text-field
-      class="settings__search"
-      kind="search"
-      placeholder="Search Settings"
-      ariaLabel="Search Settings"
-      [value]="query()"
-      (valueChange)="query.set($event)"
-      (escape)="query.set('')"
-    />
+    <div class="settings__search-row">
+      <app-text-field
+        class="settings__search"
+        kind="search"
+        placeholder="Search Settings"
+        ariaLabel="Search Settings"
+        [value]="query()"
+        (valueChange)="query.set($event)"
+        (escape)="query.set('')"
+      />
+      <app-button
+        variant="none"
+        [icon]="Icon.DOTS_THREE_BOLD"
+        ariaLabel="More Actions"
+        tooltip="More Actions"
+        [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+        [cdkMenuPosition]="moreMenu.position()"
+      />
+      <app-menu #moreMenu [items]="menuItems" placement="down-end" (selected)="onMenu($event)" />
+    </div>
     @if (noMatches()) {
       <p class="settings__no-matches">No settings match.</p>
     }
@@ -21,26 +32,6 @@
         <span class="tree-name">{{ node.label }}</span>
       </ng-template>
     </app-tree-view>
-
-    <!-- Pinned beneath the tree, which takes the rest of the column, so they never scroll away. -->
-    <div class="settings__transfer">
-      <app-button
-        class="settings__transfer-button"
-        size="small"
-        label="Import"
-        [icon]="Icon.DOWNLOAD"
-        ariaLabel="Import settings from a file"
-        (click)="importSettings()"
-      />
-      <app-button
-        class="settings__transfer-button"
-        size="small"
-        label="Export"
-        [icon]="Icon.EXPORT"
-        ariaLabel="Export settings to a file"
-        (click)="exportSettings()"
-      />
-    </div>
   </nav>
 
   <div class="settings__content">
@@ -71,8 +62,14 @@
         @case ('workspaces') {
           <app-settings-section sectionId="workspaces" />
         }
-        @case ('text-editor') {
-          <app-settings-section sectionId="text-editor" />
+        @case ('code-general') {
+          <app-settings-section sectionId="code-general" />
+        }
+        @case ('code-appearance') {
+          <app-settings-section sectionId="code-appearance" />
+        }
+        @case ('code-editing') {
+          <app-settings-section sectionId="code-editing" />
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
@@ -92,12 +89,6 @@
         @case ('ai-security') {
           <app-ai-settings view="security" />
         }
-        @case ('ai-prompts') {
-          <app-ai-manager-link section="profiles" />
-        }
-        @case ('ai-skills') {
-          <app-ai-manager-link section="skills" />
-        }
         @case ('mission-control') {
           <app-settings-section sectionId="mission-control" />
         }
@@ -111,17 +102,31 @@
           <app-settings-section sectionId="plugins" />
         }
         @case ('language-providers') {
-          <!-- One language's page: which server serves it, then how the editor behaves in its files.
-               The server half is the same component the setup wizard shows, so it carries no editor
-               rows of its own. -->
-          <app-language-server-settings
-            [language]="activeLanguage()"
-            [languageName]="activeLanguageName()"
-          />
-          <app-language-editor-overrides
-            [language]="activeLanguage()"
-            [languageName]="activeLanguageName()"
-          />
+          <!-- One language's page, in three collapsible sections, all open to begin with: which server
+               serves it, then the Code › Appearance and Code › Editing settings the language may give
+               values of its own. The server section is the same component the setup wizard shows. -->
+          <div class="settings__language">
+            <app-accordion heading="Language Server" [section]="true" [expanded]="true">
+              <app-language-server-settings
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+            <app-accordion heading="Appearance" [section]="true" [expanded]="true">
+              <app-language-editor-overrides
+                section="code-appearance"
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+            <app-accordion heading="Editing" [section]="true" [expanded]="true">
+              <app-language-editor-overrides
+                section="code-editing"
+                [language]="activeLanguage()"
+                [languageName]="activeLanguageName()"
+              />
+            </app-accordion>
+          </div>
         }
         @case ('security') {
           <app-settings-section sectionId="security" />

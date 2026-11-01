@@ -118,15 +118,21 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 18 scalar settings (Format on type, #1141, and Print margins among them) plus a custom
+    // Code › Editing has five scalar settings (Format on Type, #1141, among them) plus a custom
     // "language overrides" entry, which is rendered by a bespoke host rather than this component.
-    const element: HTMLElement = await render('text-editor');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(18);
+    const element: HTMLElement = await render('code-editing');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
   });
 
-  it('render_whenTextEditorSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
+  it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {
+    // How code looks wherever it appears, Print Margins among them.
+    const element: HTMLElement = await render('code-appearance');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+  });
+
+  it('render_whenCodeGeneralSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
     // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
-    const element: HTMLElement = await render('text-editor');
+    const element: HTMLElement = await render('code-general');
     const row: Element | undefined = Array.from(element.querySelectorAll('app-setting-row')).find(
       (candidate: Element): boolean =>
         candidate.querySelector('.setting-row__label')?.textContent?.trim().toLowerCase() ===

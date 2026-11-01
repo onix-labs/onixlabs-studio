@@ -1,18 +1,11 @@
-// One language's editor overrides: the second group on a Language Providers page, beneath the
-// server settings, headed the same way.
+// One language's overrides of a code settings page: the Appearance or Editing section of its page
+// under Code › Languages. The section's accordion heads it.
 :host {
   display: block;
-  margin-block-start: 1.5rem;
 }
 
 .language-editor-overrides__header {
   margin-block-end: 0.75rem;
-}
-
-.language-editor-overrides__title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
 }
 
 .language-editor-overrides__subtitle {

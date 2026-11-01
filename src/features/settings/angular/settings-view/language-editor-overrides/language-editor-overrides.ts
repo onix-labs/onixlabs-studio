@@ -17,7 +17,9 @@ import {
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
-import { findSection } from '@shared/angular/services/settings/settings-registry';
+import { codeSettings, findSection } from '@shared/angular/services/settings/settings-registry';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import type { LspServerSummary } from '@shared/api/lsp-channels';
 import {
   ChoiceOption,
   ControlDef,
@@ -30,8 +32,26 @@ import {
 type EditorField = keyof TextEditorSettings;
 
 /**
- * Edits one language's overrides of the global text editor settings: the Editor half of a Language
- * Providers page. Rows are driven by the same registry metadata as the global editor settings — every
+ * Names the code settings page whose overridable settings a block of overrides shows.
+ */
+export type CodeOverrideSection = 'code-appearance' | 'code-editing';
+
+/**
+ * Names each code settings page as the user sees it, for the line saying where the global values live.
+ */
+const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
+  'code-appearance': 'Code › Appearance',
+  'code-editing': 'Code › Editing',
+};
+
+/**
+ * The key of the brace-style setting, which only a language server that takes it can honour.
+ */
+const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
+
+/**
+ * Edits one language's overrides of the code settings: the Appearance or Editing section of a
+ * language's page under Code › Languages. Rows are driven by the same registry metadata as the global editor settings — every
  * setting marked `profileOverridable` gets a row with an Override tick and the setting's own control,
  * disabled until the override is on. An overridden setting falls back to the global value the moment
  * its override is cleared, so nothing here can strand a language on a stale value.
@@ -55,16 +75,69 @@ export class LanguageEditorOverrides {
   public readonly languageName: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the code settings page whose overridable settings are shown, or undefined for all of them.
+   */
+  public readonly section: InputSignal<CodeOverrideSection | undefined> = input<
+    CodeOverrideSection | undefined
+  >(undefined);
+
+  /**
    * Holds the settings service the overrides are read from and written to.
    */
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Gets the editor settings that may be overridden per language, from the registry.
+   * Holds the language-server settings, read for whether this language's server takes a brace style.
    */
-  protected readonly overridable: readonly SettingDef[] = (
-    findSection('text-editor')?.settings ?? []
-  ).filter((setting: SettingDef): boolean => setting.profileOverridable === true);
+  private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Gets the settings that may be overridden per language, from the registry: those of the chosen
+   * page, or every code setting.
+   */
+  protected readonly overridable: Signal<readonly SettingDef[]> = computed(
+    (): readonly SettingDef[] => {
+      const section: CodeOverrideSection | undefined = this.section();
+      return (
+        section === undefined ? codeSettings() : (findSection(section)?.settings ?? [])
+      ).filter((setting: SettingDef): boolean => setting.profileOverridable === true);
+    },
+  );
+
+  /**
+   * Gets where the global values of the shown settings live, for the line explaining the Override
+   * tick; undefined when every code setting is shown.
+   */
+  protected readonly globalPage: Signal<string | undefined> = computed((): string | undefined => {
+    const section: CodeOverrideSection | undefined = this.section();
+    return section === undefined ? undefined : SECTION_NAMES[section];
+  });
+
+  /**
+   * Gets a value indicating whether the server serving this language honours a brace style. Only some
+   * do yet; the setting stays overridable everywhere, but says so where it would do nothing.
+   */
+  private readonly takesBraceStyle: Signal<boolean> = computed((): boolean => {
+    const server: string | null = this.lspSettings.serverForLanguage(this.language());
+    return this.lspSettings
+      .catalogue()
+      .some(
+        (summary: LspServerSummary): boolean =>
+          summary.id === server && summary.takesBraceStyle === true,
+      );
+  });
+
+  /**
+   * Gets the description shown for a setting: its own, plus a note where this language's server
+   * cannot honour it yet.
+   * @param setting The setting.
+   * @returns Returns the description.
+   */
+  protected describe(setting: SettingDef): string {
+    return setting.key === BRACE_STYLE_KEY && !this.takesBraceStyle()
+      ? `${setting.description} Not supported by this language's server yet.`
+      : setting.description;
+  }
 
   /**
    * Gets this language's overrides, or an empty set when it has none.

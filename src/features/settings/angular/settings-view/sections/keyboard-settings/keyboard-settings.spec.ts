@@ -52,7 +52,7 @@ describe('KeyboardSettingsSection', () => {
   });
 
   it('listsOnlyTheCommandsOfItsCapability', (): void => {
-    // Shortcuts live with their capability (Text Editor › Keyboard), not in one list of every view.
+    // Shortcuts live with their capability (Code › Keyboard), not in one list of every view.
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelectorAll('.keyboard__row').length).toBe(2);
     expect(element.textContent).not.toContain('Clear the terminal');

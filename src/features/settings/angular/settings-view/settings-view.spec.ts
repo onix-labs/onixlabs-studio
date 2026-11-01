@@ -3,12 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ProviderPage } from '@shared/api/ai-types';
 import type { LspServerSummary } from '@shared/api/lsp-channels';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { AiManagerNavigation } from '@shared/angular/services/ai-manager-navigation/ai-manager-navigation';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 import { Theme } from '@shared/angular/services/theme/theme';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import type { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { SettingsView } from './settings-view';
 
 describe('SettingsView', () => {
@@ -59,25 +58,25 @@ describe('SettingsView', () => {
     expect(page?.textContent).toContain('Echoes prompts back.');
   });
 
-  it('render_theAiLibraryEntries_linkToTheAiManagerSectionThatHoldsThem', async () => {
-    // #948. Prompt profiles and skills moved to the AI Manager; Settings keeps an entry for each
-    // that says where they went and opens it there.
-    (component as unknown as { section: WritableSignal<string> }).section.set('ai-skills');
-    fixture.detectChanges();
-    await fixture.whenStable();
+  it('render_artificialIntelligence_carriesNoLinksToTheAiManager', () => {
+    // Prompt profiles and skills are managed in the AI Manager (#948); Settings no longer points at them.
+    const view: {
+      expandedNodes: WritableSignal<ReadonlySet<string>>;
+      rows: () => readonly TreeRow[];
+    } = component as unknown as {
+      expandedNodes: WritableSignal<ReadonlySet<string>>;
+      rows: () => readonly TreeRow[];
+    };
+    view.expandedNodes.set(new Set<string>(['ai']));
+    const ids: readonly string[] = view.rows().map((row: TreeRow): string => row.id);
 
-    const page: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      'app-ai-manager-link',
-    );
-    expect(page?.textContent).toContain('managed in the AI Manager');
-    page?.querySelector<HTMLButtonElement>('button')?.click();
-
-    expect(TestBed.inject(AiManagerNavigation).section()).toBe('skills');
-    expect(TestBed.inject(Tabs).activeTab()?.type).toBe('model-manager');
+    expect(ids).toContain('ai-general');
+    expect(ids).not.toContain('ai-prompts-leaf');
+    expect(ids).not.toContain('ai-skills-leaf');
   });
 
-  it('render_whenServersAreInstalled_nestsALanguageProvidersBranchUnderTextEditor', async () => {
-    // A leaf per language an installed server serves, under Text Editor — the same install-driven
+  it('render_whenServersAreInstalled_nestsALanguagesBranchUnderCode', async () => {
+    // A leaf per language an installed server serves, under Code — the same install-driven
     // rule as AI › Providers. Each leaf shows both the server rows and the editor overrides.
     // Drive the service's own catalogue signal rather than stubbing installedLanguages(): the tree is
     // a computed over that signal, and a stubbed method would leave it cached on the empty list.
@@ -94,10 +93,10 @@ describe('SettingsView', () => {
         (row: Element): string => row.textContent?.trim() ?? '',
       );
 
-    expect(rows()).not.toContain('Language Providers');
-    (component as unknown as { toggleNode: (id: string) => void }).toggleNode('text-editor');
+    expect(rows()).not.toContain('Languages');
+    (component as unknown as { toggleNode: (id: string) => void }).toggleNode('code');
     fixture.detectChanges();
-    expect(rows()).toContain('Language Providers');
+    expect(rows()).toContain('Languages');
 
     (component as unknown as { toggleNode: (id: string) => void }).toggleNode('language-providers');
     fixture.detectChanges();
@@ -115,9 +114,11 @@ describe('SettingsView', () => {
     expect(element.querySelector('app-language-editor-overrides')?.textContent).toContain(
       'C++ files',
     );
-    expect(
-      element.querySelector('.settings__section-title')?.textContent?.replace(/\s+/g, ' '),
-    ).toContain('Text Editor');
+    // The trail names the language selected, not the first one in the branch.
+    const crumbs: string[] = Array.from(element.querySelectorAll('.settings__crumb')).map(
+      (crumb: Element): string => crumb.textContent?.trim() ?? '',
+    );
+    expect(crumbs).toEqual(['Code', 'Languages', 'C++']);
   });
 
   /**
@@ -169,6 +170,43 @@ describe('SettingsView', () => {
     expect(accent?.value).toBe('pink');
   });
 
+  it('render_headsEachGroupOfRoots_studioDocumentsCapabilitiesTools', () => {
+    const ids: readonly string[] = (component as unknown as { rows: () => readonly TreeRow[] })
+      .rows()
+      .filter((row: TreeRow): boolean => row.heading !== undefined)
+      .map((row: TreeRow): string => row.heading ?? '');
+
+    expect(ids).toEqual(['Studio', 'Documents', 'Capabilities', 'Tools']);
+  });
+
+  it('moreActions_offersImportAndExport_andRunsThem', () => {
+    const view: {
+      menuItems: readonly { id: string; label: string }[];
+      onMenu(id: string): void;
+      transfer: { exportToFile(): Promise<string | null>; readFromFile(): Promise<unknown> };
+    } = component as unknown as {
+      menuItems: readonly { id: string; label: string }[];
+      onMenu(id: string): void;
+      transfer: { exportToFile(): Promise<string | null>; readFromFile(): Promise<unknown> };
+    };
+    const exported: ReturnType<typeof vi.spyOn> = vi
+      .spyOn(view.transfer, 'exportToFile')
+      .mockResolvedValue(null);
+    const imported: ReturnType<typeof vi.spyOn> = vi
+      .spyOn(view.transfer, 'readFromFile')
+      .mockResolvedValue(null);
+
+    expect(view.menuItems.map((item: { label: string }): string => item.label)).toEqual([
+      'Import Settings',
+      'Export Settings',
+    ]);
+    view.onMenu('settings.import');
+    view.onMenu('settings.export');
+
+    expect(imported).toHaveBeenCalledTimes(1);
+    expect(exported).toHaveBeenCalledTimes(1);
+  });
+
   describe('keyboard pages', () => {
     /**
      * Gets the ids of the tree rows with every branch expanded.
@@ -183,7 +221,7 @@ describe('SettingsView', () => {
         rows: () => readonly { id: string }[];
       };
       view.expandedNodes.set(
-        new Set<string>(['application', 'text-editor', 'image-viewer', 'api-explorer', 'terminal']),
+        new Set<string>(['application', 'code', 'images', 'api-explorer', 'terminal']),
       );
       return view.rows().map((row: { id: string }): string => row.id);
     }
@@ -200,8 +238,8 @@ describe('SettingsView', () => {
 
       const ids: readonly string[] = allRowIds();
 
-      expect(ids).toContain('text-editor-keyboard');
-      expect(ids).toContain('image-viewer-keyboard');
+      expect(ids).toContain('code-keyboard');
+      expect(ids).toContain('images-keyboard');
       // Application › Keyboard stays, for the shortcuts that belong to no one capability.
       expect(ids).toContain('application-keyboard');
     });
@@ -239,8 +277,11 @@ describe('SettingsView', () => {
       // branch above it open even though the user never expanded it.
       const ids: readonly string[] = await search('font size');
 
-      expect(ids).toContain('text-editor');
-      expect(ids).toContain('text-editor-general');
+      expect(ids).toContain('code');
+      expect(ids).toContain('code-appearance-leaf');
+      // The heading of the group holding the match stays; a group with no match loses its heading.
+      expect(ids).toContain('group-documents');
+      expect(ids).not.toContain('group-studio');
       expect(ids).not.toContain('application-general');
     });
 
@@ -274,7 +315,7 @@ describe('SettingsView', () => {
 
       // Only Application starts expanded; the search's opened branches are not left behind.
       expect(ids).toContain('application-general');
-      expect(ids).not.toContain('text-editor-general');
+      expect(ids).not.toContain('code-appearance-leaf');
     });
   });
 });

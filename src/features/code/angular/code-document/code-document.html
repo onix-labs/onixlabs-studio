@@ -1,7 +1,7 @@
 <app-text-editor
   [content]="doc()?.content() ?? ''"
   [language]="doc()?.language() ?? 'plaintext'"
-  [options]="editorOptions"
+  [options]="editorOptions()"
   [readOnly]="doc()?.readOnly() ?? false"
   [isActive]="isActive()"
   (ready)="onReady()"

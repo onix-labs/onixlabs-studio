@@ -155,6 +155,10 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   // The log level moved to System Monitor, beside the logs it governs.
   moveKey(result, 'application.logLevel', ['systemMonitor.logLevel']);
 
+  // Line height stopped being something a language can override: it is a multiple of the font size,
+  // and the font is global. A stored override would sit there unseen, so it goes.
+  dropLanguageOverride(result, 'lineHeight');
+
   return dropGuessedContextWindows(result);
 }
 
@@ -175,6 +179,31 @@ function moveKey(overrides: Record<string, unknown>, from: string, to: readonly 
     }
   }
   delete overrides[from];
+}
+
+/**
+ * Removes one field from every language's stored overrides, dropping a language left with none.
+ * @param overrides The override map, updated in place.
+ * @param field The per-language field that can no longer be overridden.
+ */
+function dropLanguageOverride(overrides: Record<string, unknown>, field: string): void {
+  const stored: unknown = overrides['textEditor.languageOverrides'];
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) {
+    return;
+  }
+  const kept: Record<string, unknown> = {};
+  for (const [language, values] of Object.entries(stored as Record<string, unknown>)) {
+    if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+      kept[language] = values;
+      continue;
+    }
+    const rest: Record<string, unknown> = { ...(values as Record<string, unknown>) };
+    delete rest[field];
+    if (Object.keys(rest).length > 0) {
+      kept[language] = rest;
+    }
+  }
+  overrides['textEditor.languageOverrides'] = kept;
 }
 
 /**

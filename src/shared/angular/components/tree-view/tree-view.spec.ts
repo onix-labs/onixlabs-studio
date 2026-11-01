@@ -74,6 +74,28 @@ describe('TreeView', () => {
     return Array.from(host.querySelectorAll<HTMLElement>('.tree-row'));
   }
 
+  it('heading_drawsItsTextAndIsNoItemOfTheTree', () => {
+    component.rows.set([
+      { id: 'h', depth: 0, expandable: false, expanded: false, data: null, heading: 'Studio' },
+      makeRow('root', 0, false, false),
+    ]);
+    fixture.detectChanges();
+
+    const heading: HTMLElement | null = host.querySelector<HTMLElement>('.tree-heading');
+    expect(heading?.textContent?.trim()).toBe('Studio');
+    // The tree draws the heading itself: the consumer's row template is not projected into it.
+    expect(heading?.querySelector('.probe-label')).toBeNull();
+    expect(heading?.getAttribute('role')).toBe('none');
+    expect(
+      rowElements().map((row: HTMLElement): string | null => row.dataset['treeId'] ?? null),
+    ).toEqual(['root']);
+
+    heading?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(component.clicked).toEqual([]);
+    expect(component.backgroundClicks).toBe(1);
+  });
+
   it('enter_clicksAndActivatesTheRow_whileSpaceOnlyClicksIt', () => {
     // #1047: Enter is the keyboard's double click; a tree where a click only selects opens on it.
     const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.tree-row'));
@@ -670,5 +692,46 @@ describe('observeSize (#1182 follow-up: explorer trees sized to a fraction of th
     expect((): void =>
       observeSize(document.createElement('div'), (): void => undefined)(),
     ).not.toThrow();
+  });
+});
+
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows"
+      [multiSelect]="true"
+      [selectedIds]="[]"
+      (rowSelect)="moves.push($event.row.id)"
+    >
+      <ng-template let-row
+        ><span>{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class HeadingHost {
+  public readonly rows: readonly TreeRow[] = [
+    { id: 'first', depth: 0, expandable: false, expanded: false, data: null, heading: 'First' },
+    makeRow('a', 0, false, false),
+    { id: 'second', depth: 0, expandable: false, expanded: false, data: null, heading: 'Second' },
+    makeRow('b', 0, false, false),
+  ];
+  public readonly moves: string[] = [];
+}
+
+describe('TreeView headings', () => {
+  it('arrowKeys_stepOverHeadings', async () => {
+    await TestBed.configureTestingModule({ imports: [HeadingHost] }).compileComponents();
+    const fixture: ComponentFixture<HeadingHost> = TestBed.createComponent(HeadingHost);
+    fixture.detectChanges();
+    const rows: HTMLElement[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    );
+
+    rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    rows[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    expect(fixture.componentInstance.moves).toEqual(['b', 'a']);
   });
 });

@@ -311,8 +311,9 @@ describe('CodeDocumentPanel', () => {
     expect(labels.slice(0, 7)).toEqual(['Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Type', 'Member']);
   });
 
-  it('theMenusViewOptions_areTheEditorWideSettings_theRibbonsCheckboxesSet', async () => {
-    // #882: Word Wrap moved off the strip into the menu, beside the ribbon's other two checkboxes.
+  it('theMenusViewOptions_changeThisDocumentOnly_neverTheSettings', async () => {
+    // #882: Word Wrap moved off the strip into the menu, beside the ribbon's other two checkboxes. The
+    // three start from the settings and, once flipped, hold for this document alone.
     const fixture: ComponentFixture<CodeDocumentPanel> = await built();
     const settings: Settings = TestBed.inject(Settings);
     const panel: {
@@ -339,10 +340,12 @@ describe('CodeDocumentPanel', () => {
     panel.onMenu('code.minimap');
     panel.onMenu('code.lineNumbers');
 
-    expect(settings.globalTextEditor().wordWrap).toBe(!before.wordWrap);
-    expect(settings.globalTextEditor().showMinimap).toBe(!before.showMinimap);
-    expect(settings.globalTextEditor().showLineNumbers).toBe(!before.showLineNumbers);
+    expect(checked('Word Wrap')).toBe(!before.wordWrap);
     expect(checked('Minimap')).toBe(!before.showMinimap);
+    expect(checked('Line Numbers')).toBe(!before.showLineNumbers);
+    expect(settings.globalTextEditor().wordWrap).toBe(before.wordWrap);
+    expect(settings.globalTextEditor().showMinimap).toBe(before.showMinimap);
+    expect(settings.globalTextEditor().showLineNumbers).toBe(before.showLineNumbers);
   });
 
   it('theMenu_offersTheFilesOwnCommands_onlyOnceItHasAPath', async () => {

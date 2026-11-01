@@ -174,6 +174,12 @@ export type DocumentWellPlacement = 'split-horizontal' | 'split-vertical' | 'col
 export type GoToStyle = 'quick-open' | 'dialogs';
 
 /**
+ * Identifies how a diff lays out the two versions it compares: `side-by-side`, the original and the
+ * changed text in two columns; `inline`, one column with removed and added lines interleaved.
+ */
+export type DiffLayout = 'side-by-side' | 'inline';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -262,7 +268,7 @@ export type PartialTextEditorSettings = Partial<TextEditorSettings>;
 /**
  * Maps a Monaco language identifier to the text editor settings overridden for that language. A
  * language absent from the map, or a field absent from its entry, falls back to the global setting.
- * Each language's overrides are edited on its own page under Text Editor › Language Providers.
+ * Each language's overrides are edited on its own page under Code › Languages.
  */
 export type LanguageOverrides = Readonly<Record<string, PartialTextEditorSettings>>;
 

@@ -1,62 +1,70 @@
 <!-- One row, shared by both rendering modes so their markup can never diverge. A row being named is
      inert to the keys and clicks that would activate it: its field stops them before they get here. -->
 <ng-template #rowTemplate let-row>
-  <div
-    class="tree-row"
-    role="treeitem"
-    tabindex="0"
-    [attr.data-tree-id]="row.id"
-    [class.active]="selection().has(row.id)"
-    [class.tree-row--disabled]="row.disabled === true"
-    [class]="row.tone !== undefined ? 'tree-row--tone-' + row.tone : ''"
-    [class.tree-row--strong]="row.strong === true"
-    [class.tree-row--squiggle]="row.squiggle === true"
-    [attr.title]="row.hint ?? null"
-    [attr.aria-description]="row.hint ?? null"
-    [style.padding-left.px]="indentFor(row.depth)"
-    [attr.aria-expanded]="row.expandable ? row.expanded : null"
-    [attr.aria-selected]="selection().size > 0 ? selection().has(row.id) : null"
-    [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
-    [appMenuSubject]="row"
-    [cdkContextMenuDisabled]="!rowHasMenu(row)"
-    (click)="onRowClick($event, row)"
-    (contextmenu)="onRowContextMenu(row)"
-    (keydown)="onRowKeydown($event, row)"
-    (dblclick)="rowDoubleClick.emit(row)"
-    (keydown.enter)="activate($event, row, true)"
-    (keydown.space)="activate($event, row)"
-  >
-    @if (row.expandable) {
-      <app-icon
-        class="tree-chevron"
-        [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
-      />
-    } @else {
-      <span class="tree-spacer"></span>
-    }
-    <!-- The content template is told when its row is being named, so it can drop the label and the
+  @if (row.heading !== undefined) {
+    <!-- A heading labels the group of rows beneath it. It is no item of the tree — nothing to click,
+         select or step onto — so it stands outside the tree's item roles, keeping its text readable. -->
+    <div class="tree-heading" role="none" [attr.data-tree-id]="row.id">
+      <span class="tree-heading__label">{{ row.heading }}</span>
+    </div>
+  } @else {
+    <div
+      class="tree-row"
+      role="treeitem"
+      tabindex="0"
+      [attr.data-tree-id]="row.id"
+      [class.active]="selection().has(row.id)"
+      [class.tree-row--disabled]="row.disabled === true"
+      [class]="row.tone !== undefined ? 'tree-row--tone-' + row.tone : ''"
+      [class.tree-row--strong]="row.strong === true"
+      [class.tree-row--squiggle]="row.squiggle === true"
+      [attr.title]="row.hint ?? null"
+      [attr.aria-description]="row.hint ?? null"
+      [style.padding-left.px]="indentFor(row.depth)"
+      [attr.aria-expanded]="row.expandable ? row.expanded : null"
+      [attr.aria-selected]="selection().size > 0 ? selection().has(row.id) : null"
+      [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
+      [appMenuSubject]="row"
+      [cdkContextMenuDisabled]="!rowHasMenu(row)"
+      (click)="onRowClick($event, row)"
+      (contextmenu)="onRowContextMenu(row)"
+      (keydown)="onRowKeydown($event, row)"
+      (dblclick)="rowDoubleClick.emit(row)"
+      (keydown.enter)="activate($event, row, true)"
+      (keydown.space)="activate($event, row)"
+    >
+      @if (row.expandable) {
+        <app-icon
+          class="tree-chevron"
+          [icon]="row.expanded ? Icon.CARET_DOWN_FILL : Icon.CARET_RIGHT_FILL"
+        />
+      } @else {
+        <span class="tree-spacer"></span>
+      }
+      <!-- The content template is told when its row is being named, so it can drop the label and the
          decorations the field takes the place of; its leading icon stays, so the row keeps its shape. -->
-    @let editing = isEditing(row);
-    <ng-container
-      [ngTemplateOutlet]="content() ?? null"
-      [ngTemplateOutletContext]="{ $implicit: row, editing }"
-    />
-    <!-- Keyed on the edit session, so every edit gets a field of its own. The virtual scroller keeps
+      @let editing = isEditing(row);
+      <ng-container
+        [ngTemplateOutlet]="content() ?? null"
+        [ngTemplateOutletContext]="{ $implicit: row, editing }"
+      />
+      <!-- Keyed on the edit session, so every edit gets a field of its own. The virtual scroller keeps
          the views of removed rows and hands them to the next rows it inserts; without the key, a
          placeholder opened after another was cancelled would inherit the finished field — one that
          has already reported its edit and never takes focus again. -->
-    @if (editing) {
-      @for (session of [editSession()]; track session) {
-        <app-row-edit-field
-          [initial]="editValue()"
-          [selection]="editSelection()"
-          [(value)]="editDraft"
-          (commit)="onEditCommit(row, $event)"
-          (abandon)="editCancel.emit(row)"
-        />
+      @if (editing) {
+        @for (session of [editSession()]; track session) {
+          <app-row-edit-field
+            [initial]="editValue()"
+            [selection]="editSelection()"
+            [(value)]="editDraft"
+            (commit)="onEditCommit(row, $event)"
+            (abandon)="editCancel.emit(row)"
+          />
+        }
       }
-    }
-  </div>
+    </div>
+  }
 </ng-template>
 
 @if (virtualActive()) {

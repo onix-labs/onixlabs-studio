@@ -156,6 +156,20 @@ describe('restoreOverrides', () => {
     });
   });
 
+  it('lineHeightOverrides_areDropped_andALanguageLeftWithNoneGoes', () => {
+    expect(
+      restoreOverrides({
+        'textEditor.languageOverrides': {
+          csharp: { braceStyle: 'allman', lineHeight: 1.6 },
+          rust: { lineHeight: 1.4 },
+        },
+      }),
+    ).toEqual({
+      'textEditor.languageOverrides': { csharp: { braceStyle: 'allman' } },
+      ...MARKED,
+    });
+  });
+
   it('logLevel_movesToSystemMonitor', () => {
     expect(restoreOverrides({ 'application.logLevel': 'debug' })).toEqual({
       'systemMonitor.logLevel': 'debug',
