@@ -73,7 +73,7 @@ export class ApiExplorerRibbon {
           {
             id: 'api.save',
             label: 'Save',
-            accelerator: 'CmdOrCtrl+S',
+            binding: 'api.save',
             run: (): void => this.onSave(),
           },
         ],

@@ -10,5 +10,6 @@ export const MARKDOWN_KEYBINDINGS: KeybindingCatalogueEntry = {
   bindings: [
     { id: 'markdown.saveAs', description: 'Save the document as…', chord: 'Mod+Shift+S' },
     { id: 'markdown.find', description: 'Find & replace', chord: 'Mod+F' },
+    { id: 'markdown.print', description: 'Print the document', chord: 'Mod+P' },
   ],
 };

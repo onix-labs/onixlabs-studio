@@ -1,4 +1,5 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
+import { SYSTEM_MONITOR_KEYBINDINGS } from './system-monitor-keybindings';
 import { SystemMonitorRibbon } from './system-monitor-ribbon/system-monitor-ribbon';
 import { SystemMonitorStatusStrip } from './system-monitor-status/system-monitor-status-strip';
 import { SystemMonitorView } from './system-monitor-view/system-monitor-view';
@@ -20,4 +21,5 @@ export const descriptor: FeatureDescriptor = {
   view: SystemMonitorView,
   ribbon: SystemMonitorRibbon,
   status: SystemMonitorStatusStrip,
+  keybindings: SYSTEM_MONITOR_KEYBINDINGS,
 };

@@ -126,7 +126,7 @@ export class ContainersRibbon {
           {
             id: 'containers.refresh',
             label: 'Refresh',
-            accelerator: 'CmdOrCtrl+Shift+R',
+            binding: 'containers.refresh',
             run: (): void => this.onRefresh(),
           },
         ],

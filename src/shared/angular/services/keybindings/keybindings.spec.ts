@@ -321,4 +321,72 @@ describe('Keybindings', () => {
   it('formatChord_offMac_usesCtrlStyle', (): void => {
     expect(keybindings.formatChord('Mod+Shift+S')).toBe('Ctrl+Shift+S');
   });
+
+  it('validateOverride_whenTheChordIsAnEditingChord_rejectsIt', (): void => {
+    // The editing chords are the native roles' in every text box; a command moved onto one would take
+    // it from the menu's Copy or Paste.
+    for (const chord of ['Mod+Z', 'Mod+Shift+Z', 'Mod+X', 'Mod+C', 'Mod+V', 'Mod+A']) {
+      expect(keybindings.validateOverride('code.save', chord)).not.toBeNull();
+    }
+    expect(keybindings.setOverride('code.save', 'mod+c')).not.toBeNull();
+    expect(keybindings.chordFor('code.save')).toBe('Mod+S');
+  });
+
+  it('chordFor_followsTheOverrideAndIsNullForAnUncataloguedCommand', (): void => {
+    expect(keybindings.chordFor('code.saveAs')).toBe('Mod+Shift+S');
+    expect(keybindings.chordFor('unknown.command')).toBeNull();
+
+    keybindings.setOverride('code.saveAs', 'Mod+Alt+S');
+
+    expect(keybindings.chordFor('code.saveAs')).toBe('Mod+Alt+S');
+  });
+
+  it('toAccelerator_writesTheChordInElectronsNotation', (): void => {
+    expect(keybindings.toAccelerator('Mod+Shift+S')).toBe('CmdOrCtrl+Shift+S');
+    expect(keybindings.toAccelerator('Mod+Alt+ArrowUp')).toBe('CmdOrCtrl+Alt+Up');
+    expect(keybindings.toAccelerator('Mod+Enter')).toBe('CmdOrCtrl+Enter');
+    expect(keybindings.toAccelerator('Mod+,')).toBe('CmdOrCtrl+,');
+  });
+
+  it('conflictedIds_whenAnApplicationCommandSharesAViewsChord_flagsBoth', (): void => {
+    keybindings.contribute({
+      view: 'Application',
+      global: true,
+      bindings: [{ id: 'app.closeTab', description: 'Close Tab', chord: 'Mod+W' }],
+    });
+    expect(keybindings.isGlobal('app.closeTab')).toBe(true);
+    expect(keybindings.isGlobal('code.save')).toBe(false);
+    expect(keybindings.conflictedIds().size).toBe(0);
+
+    keybindings.setOverride('code.save', 'Mod+W');
+
+    expect([...keybindings.conflictedIds()].sort()).toEqual(['app.closeTab', 'code.save']);
+    const closeTab: ResolvedBinding | undefined = keybindings
+      .resolvedCatalogue()
+      .find((binding: ResolvedBinding): boolean => binding.id === 'app.closeTab');
+    expect(closeTab?.global).toBe(true);
+  });
+
+  it('chordKeys_splitsAChordIntoTheKeysPressed', (): void => {
+    // Off macOS, where the tests run, the modifiers are named.
+    expect(keybindings.chordKeys('Mod+Shift+T')).toEqual(['Ctrl', 'Shift', 'T']);
+    expect(keybindings.chordKeys('Mod+ArrowDown')).toEqual(['Ctrl', '↓']);
+    expect(keybindings.chordKeys('')).toEqual([]);
+    expect(keybindings.formatChord('Mod+Shift+T')).toBe('Ctrl+Shift+T');
+  });
+
+  it('clearChord_leavesTheCommandWithNoShortcutUntilReset', (): void => {
+    keybindings.register('tab-1', [{ id: 'code.save', command: (): void => undefined }]);
+
+    keybindings.clearChord('code.save');
+
+    expect(keybindings.chordFor('code.save')).toBe('');
+    expect(keybindings.dispatch(modEvent('s'))).toBe(false);
+    expect(keybindings.matches(modEvent('s'), 'code.save')).toBe(false);
+    expect(keybindings.conflictedIds().size).toBe(0);
+
+    keybindings.clearOverride('code.save');
+
+    expect(keybindings.chordFor('code.save')).toBe('Mod+S');
+  });
 });

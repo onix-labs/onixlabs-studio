@@ -1,4 +1,5 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
+import { CONTAINERS_KEYBINDINGS } from './containers-keybindings';
 import { ContainersRibbon } from './containers-ribbon/containers-ribbon';
 import { ContainersStatusStrip } from './containers-status/containers-status-strip';
 import { ContainersView } from './containers-view/containers-view';
@@ -15,4 +16,5 @@ export const descriptor: FeatureDescriptor = {
   view: ContainersView,
   ribbon: ContainersRibbon,
   status: ContainersStatusStrip,
+  keybindings: CONTAINERS_KEYBINDINGS,
 };

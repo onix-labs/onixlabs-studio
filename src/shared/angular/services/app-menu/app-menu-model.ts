@@ -23,9 +23,18 @@ export interface MenuEntry {
   readonly kind?: AppMenuItemKind;
 
   /**
-   * Gets the accelerator shown against the entry, in Electron's notation.
+   * Gets a fixed accelerator shown against the entry, in Electron's notation. Only for a chord the
+   * user cannot change — one an embedded editor owns (Monaco's Find, Milkdown's Bold), or a native
+   * editing role. A command the user can rebind names its {@link binding} instead.
    */
   readonly accelerator?: string;
+
+  /**
+   * Gets the keyboard catalogue command whose effective chord the entry shows and binds, so changing
+   * the shortcut on a Keyboard settings page changes the menu with it. Takes precedence over
+   * {@link accelerator}.
+   */
+  readonly binding?: string;
 
   /**
    * Gets whether the entry can be chosen. Defaults to enabled. A command that does not apply right now

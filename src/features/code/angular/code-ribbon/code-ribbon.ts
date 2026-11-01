@@ -238,20 +238,20 @@ export class CodeRibbon {
         {
           id: 'code.save',
           label: 'Save',
-          accelerator: 'CmdOrCtrl+S',
+          binding: 'code.save',
           run: (): void => this.onSave(),
         },
         {
           id: 'code.saveAs',
           label: 'Save As',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          binding: 'code.saveAs',
           run: (): void => this.onSaveVariant(VARIANT_SAVE_AS),
         },
         MENU_SEPARATOR,
         {
           id: 'code.print',
           label: 'Print',
-          accelerator: 'CmdOrCtrl+P',
+          binding: 'code.print',
           run: (): void => this.onPrint(),
         },
         { id: 'code.exportPdf', label: 'Export to PDF', run: (): void => this.onExportPdf() },
@@ -324,7 +324,7 @@ export class CodeRibbon {
         {
           id: 'code.run',
           label: 'Start',
-          accelerator: 'CmdOrCtrl+R',
+          binding: 'code.run',
           enabled: this.canRun(),
           run: (): void => this.onRun(),
         },

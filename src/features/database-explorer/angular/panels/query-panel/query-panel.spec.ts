@@ -870,7 +870,7 @@ describe('QueryPanel', () => {
    */
   function ready(text: string): MonacoApi.editor.ITextModel {
     const model: MonacoApi.editor.ITextModel = lineModel(text);
-    const editor: object = { addCommand: (): void => undefined, getModel: () => model };
+    const editor: object = { onKeyDown: (): void => undefined, getModel: () => model };
     (component as unknown as { editor: () => object }).editor = (): object => ({
       getEditor: () => editor,
       getModel: () => model,

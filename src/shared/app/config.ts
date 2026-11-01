@@ -29,6 +29,8 @@ import {
   registerFeatureContribution,
 } from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
+import { APPLICATION_KEYBINDINGS } from '@shared/angular/services/app-menu/core-keybindings';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideImageFeature } from '@features/image/angular/image.feature';
@@ -114,6 +116,9 @@ export const config: ApplicationConfig = {
     provideAppInitializer((): void => {
       inject(CoreMenu);
     }),
+    // The menu's own commands (Open File, Settings, Close Tab), catalogued ahead of every feature so
+    // Application › Keyboard lists them and the menu shows whatever chord is in effect.
+    provideKeybindingCatalogue(APPLICATION_KEYBINDINGS),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.
     provideTerminalFeature(),

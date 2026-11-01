@@ -303,7 +303,7 @@ export class AiManagerRibbon {
       {
         id: 'models.refresh',
         label: 'Refresh',
-        accelerator: 'CmdOrCtrl+Shift+R',
+        binding: 'models.refresh',
         run: (): void => this.onRefresh(),
       },
     ];
