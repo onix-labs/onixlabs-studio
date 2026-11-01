@@ -1,11 +1,13 @@
-import { effect, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { effect, inject, Service, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { RememberedState } from '@shared/angular/services/remembered-state/remembered-state';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Represents the window-lock state, controlling whether the frameless window may be moved by
- * dragging the title strip. Locking pins the window in its current position.
+ * dragging the title strip. Locking pins the window in its current position, and the lock is
+ * remembered across launches.
  */
 @Service()
 export class WindowLock {
@@ -20,9 +22,12 @@ export class WindowLock {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the backing state for {@link locked}.
+   * Holds the backing state for {@link locked}, remembered across launches.
    */
-  private readonly lockedState: WritableSignal<boolean> = signal<boolean>(false);
+  private readonly lockedState: WritableSignal<boolean> = inject(RememberedState).acrossLaunches(
+    'windowLock.locked',
+    false,
+  );
 
   /**
    * Gets a value indicating whether the window is locked in its current position.
@@ -46,6 +51,15 @@ export class WindowLock {
       this.setLocked(false);
     }
   });
+
+  /**
+   * Initializes the service, pinning the window again when it was left locked.
+   */
+  public constructor() {
+    if (this.lockedState()) {
+      this.studio.setWindowMovable(false);
+    }
+  }
 
   /**
    * Sets whether the window is locked in place, updating the underlying window movability.

@@ -92,6 +92,7 @@ import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
 import { runSetupProbes } from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
+import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
@@ -242,6 +243,7 @@ class Program {
     indexHtml: Program.INDEX_HTML,
     applySecurity: (contents: WebContents): void => this.applyWebContentsSecurity(contents),
     onMainClose: (event: ElectronEvent): void => this.onWindowClose(event),
+    startupSettings: (): StartupSettings => this.startupSettings,
     onMainDidStartLoad: (): void => {
       // A (re)loading page has no listeners yet: OS-open paths queue again until the fresh renderer
       // drains them over TakePendingOpenPaths.
@@ -284,6 +286,18 @@ class Program {
   private graphicsAcceleration: GraphicsAcceleration | null = null;
 
   /**
+   * Holds the startup settings as the renderer last mirrored them, read from the startup preferences
+   * before the app is ready and kept current by {@link AppChannel.SetStartupSettings}.
+   */
+  private startupSettings: StartupSettings = parseStartupSettings(undefined);
+
+  /**
+   * Holds a value indicating whether the main window was closed on macOS while Studio keeps running:
+   * it is hidden rather than destroyed, with everything in it intact, and the dock brings it back.
+   */
+  private mainParked: boolean = false;
+
+  /**
    * Holds whether GPU hardware acceleration is enabled for this launch. Follows the level, except
    * that the `STUDIO_DISABLE_GPU` diagnostic forces it off — so the renderer is told what actually
    * happened rather than what was asked for.
@@ -294,6 +308,18 @@ class Program {
    * Holds the resolver for the in-flight close request, or null when none is pending.
    */
   private pendingClose: ((proceed: boolean) => void) | null = null;
+
+  /**
+   * Holds the resolver of the in-flight park request (the window closing while Studio keeps
+   * running), or null when none is pending.
+   */
+  private pendingPark: ((proceed: boolean) => void) | null = null;
+
+  /**
+   * Holds a value indicating whether the quit in progress was asked for as a relaunch, so Studio
+   * starts again once it is confirmed (and not when it is cancelled).
+   */
+  private relaunchOnQuit: boolean = false;
 
   /**
    * Holds the file paths the operating system asked the application to open before the renderer was
@@ -690,6 +716,7 @@ class Program {
     // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
+    this.startupSettings = startupPreferences.settings;
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -798,7 +825,11 @@ class Program {
     for (const filePath of openFilePathsFromArgv(argv, process.defaultApp === true)) {
       this.dispatchOpenPath(filePath);
     }
-    this.windows.focusMain();
+    // A dormant Studio wakes to its welcome screen; focusing the hidden main window would show it
+    // empty.
+    if (!this.unparkMain()) {
+      this.windows.focusMain();
+    }
   }
 
   /**
@@ -913,6 +944,12 @@ class Program {
       this.resolveClose(proceed === true);
     });
 
+    ipcMain.on(AppChannel.ConfirmPark, (_event: IpcMainEvent, proceed: unknown): void => {
+      const resolver: ((proceed: boolean) => void) | null = this.pendingPark;
+      this.pendingPark = null;
+      resolver?.(proceed === true);
+    });
+
     ipcMain.on(AppChannel.GetDisplayStartup, (event: IpcMainEvent): void => {
       // Synchronous: every value was resolved before the window (and thus this preload) was created.
       event.returnValue = {
@@ -925,6 +962,11 @@ class Program {
         // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
         // wizard decides whether to run before the first paint, which is too early for the bridge.
         skipSetup: process.env['STUDIO_SKIP_SETUP'] === '1',
+        // Mirrored settings that shape the first paint (the corner style) are needed before the
+        // renderer has read its own store.
+        startupSettings: this.startupSettings,
+        // Development-only menu items (developer tools, reload) are left out of a packaged build.
+        packaged: app.isPackaged,
         // The versions ride with the startup facts because only main can read the app's own version,
         // and the About dialog needs all four together.
         versions: {
@@ -981,6 +1023,18 @@ class Program {
     );
 
     ipcMain.handle(
+      AppChannel.SetStartupSettings,
+      (_event: IpcMainInvokeEvent, settings: unknown): void => {
+        const parsed: StartupSettings = parseStartupSettings(settings);
+        if (JSON.stringify(parsed) === JSON.stringify(this.startupSettings)) {
+          return;
+        }
+        this.startupSettings = parsed;
+        StartupPreferencesStore.write({ settings: parsed });
+      },
+    );
+
+    ipcMain.handle(
       LogChannel.SetLevel,
       (_event: IpcMainInvokeEvent, setting: unknown): Severity => {
         if (!LOG_LEVEL_SETTINGS.includes(setting as LogLevelSetting)) {
@@ -1009,9 +1063,10 @@ class Program {
     });
 
     ipcMain.on(AppChannel.Relaunch, (): void => {
-      // Relaunch then quit through the normal close path, so the renderer's unsaved-work confirmation
-      // still runs before the process exits.
-      app.relaunch();
+      // Quit through the normal close path, so the renderer's confirmations still run, and relaunch
+      // only once they have: relaunching first started a second Studio even when the quit was
+      // cancelled.
+      this.relaunchOnQuit = true;
       app.quit();
     });
 
@@ -1440,7 +1495,77 @@ class Program {
       return;
     }
     event.preventDefault();
+    if (
+      process.platform === 'darwin' &&
+      this.startupSettings.quitWhenLastWindowCloses === 'keep-running'
+    ) {
+      void this.beginPark();
+      return;
+    }
     void this.beginQuit();
+  }
+
+  /**
+   * Closes the main window the macOS way, keeping Studio running in the Dock. The renderer is asked
+   * first: it confirms running work and unsaved changes as quitting does, closes every tab and goes
+   * dormant, so nothing is on screen until the Dock icon wakes it to the welcome screen. The window
+   * itself is hidden rather than destroyed, since the renderer in it is Studio. A cancellation leaves
+   * the window open.
+   * @returns Returns a promise that resolves once the decision has been handled.
+   */
+  private async beginPark(): Promise<void> {
+    const window: BrowserWindow | null = this.windows.main();
+    if (this.confirming || window === null || window.isDestroyed()) {
+      return;
+    }
+    this.confirming = true;
+    const proceed: boolean = await new Promise<boolean>(
+      (resolve: (proceed: boolean) => void): void => {
+        // A renderer that does not answer keeps its window: hiding it would hide its tabs too.
+        const timer: NodeJS.Timeout = setTimeout((): void => {
+          this.pendingPark = null;
+          resolve(false);
+        }, Program.CLOSE_CONFIRM_TIMEOUT_MS);
+        this.pendingPark = (answer: boolean): void => {
+          clearTimeout(timer);
+          resolve(answer);
+        };
+        window.webContents.send(AppChannel.RequestPark);
+      },
+    );
+    this.confirming = false;
+    if (!proceed || window.isDestroyed()) {
+      return;
+    }
+    this.logger.info('lifecycle', 'Main window closed; Studio keeps running');
+    this.mainParked = true;
+    // Anything that shows the window again (a file opened from the Finder) ends the dormancy.
+    window.once('show', (): void => {
+      this.mainParked = false;
+    });
+    // A full-screen window hidden in place leaves an empty space behind; it leaves full screen first.
+    if (window.isFullScreen()) {
+      window.once('leave-full-screen', (): void => window.hide());
+      window.setFullScreen(false);
+      return;
+    }
+    window.hide();
+  }
+
+  /**
+   * Wakes Studio after its window was closed while it kept running: the renderer shows the welcome
+   * screen, as at a cold start, rather than the main window.
+   * @returns Returns true when Studio was dormant and has been woken.
+   */
+  private unparkMain(): boolean {
+    const window: BrowserWindow | null = this.windows.main();
+    if (!this.mainParked || window === null || window.isDestroyed()) {
+      return false;
+    }
+    this.mainParked = false;
+    this.logger.info('lifecycle', 'Studio woken from the Dock');
+    window.webContents.send(AppChannel.Wake);
+    return true;
   }
 
   /**
@@ -1475,8 +1600,12 @@ class Program {
     this.confirming = false;
     if (proceed) {
       this.quitConfirmed = true;
+      if (this.relaunchOnQuit) {
+        app.relaunch();
+      }
       app.quit();
     }
+    this.relaunchOnQuit = false;
   }
 
   /**
@@ -1516,6 +1645,9 @@ class Program {
    * Handles the app onActivate event.
    */
   private onActivate(): void {
+    if (this.unparkMain()) {
+      return;
+    }
     if (this.windows.main() === null) this.windows.createMainWindow();
   }
 

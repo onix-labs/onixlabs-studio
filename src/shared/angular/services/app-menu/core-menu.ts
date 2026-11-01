@@ -197,8 +197,18 @@ export class CoreMenu {
           items: [
             MENU_SEPARATOR,
             { id: 'core.view.fullscreen', label: 'Toggle Full Screen', role: 'togglefullscreen' },
-            { id: 'core.view.devtools', label: 'Toggle Developer Tools', role: 'toggleDevTools' },
-            { id: 'core.view.reload', label: 'Reload', role: 'forceReload' },
+            // Development aids, left out of a packaged build: a reload there throws away the session's
+            // state for nothing, and the developer tools are no use to someone using Studio.
+            ...(window.host?.packaged === true
+              ? []
+              : [
+                  {
+                    id: 'core.view.devtools',
+                    label: 'Toggle Developer Tools',
+                    role: 'toggleDevTools' as const,
+                  },
+                  { id: 'core.view.reload', label: 'Reload', role: 'forceReload' as const },
+                ]),
           ],
         },
         {

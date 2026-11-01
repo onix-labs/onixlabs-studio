@@ -1,5 +1,6 @@
 import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
 import {
+  cornersAttribute,
   renderGraphicsAcceleration,
   resolveGraphicsAcceleration,
   startupGraphicsAcceleration,
@@ -89,5 +90,17 @@ describe('display-policy', () => {
 
   it('startupGraphicsAcceleration_whenOutsideElectron_fallsBackToAuto', () => {
     expect(startupGraphicsAcceleration(undefined)).toBe('auto');
+  });
+
+  it('cornersAttribute_whenAutomatic_followsTheGraphicsLevel', () => {
+    expect(cornersAttribute('automatic', 'full')).toBeNull();
+    expect(cornersAttribute('automatic', 'limited')).toBe('round');
+    expect(cornersAttribute('automatic', 'off')).toBe('round');
+  });
+
+  it('cornersAttribute_whenChosen_holdsWhateverTheGraphicsLevel', () => {
+    expect(cornersAttribute('squircle', 'off')).toBeNull();
+    expect(cornersAttribute('rounded', 'full')).toBe('round');
+    expect(cornersAttribute('square', 'full')).toBe('square');
   });
 });

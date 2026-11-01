@@ -11,7 +11,10 @@ import {
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
+import type { CornerStyle } from '@shared/api/startup-settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
+  cornersAttribute,
   renderGraphicsAcceleration,
   ResolvedGraphicsAcceleration,
   resolveGraphicsAcceleration,
@@ -59,6 +62,12 @@ export class Display {
    * changed when it is, since it is persisted by the main process.
    */
   public readonly isAvailable: boolean = this.bridge !== undefined;
+
+  /**
+   * Gets the chosen corner style.
+   */
+  private readonly cornerStyle: Signal<CornerStyle> =
+    inject(Settings).value('application.cornerStyle');
 
   /**
    * Holds whether the active GPU is flagged as likely to render the heavier effects poorly. Used to
@@ -136,7 +145,7 @@ export class Display {
     }
 
     effect((): void => {
-      this.applyDisplayPolicy(this.resolvedGraphicsAcceleration());
+      this.applyDisplayPolicy(this.resolvedGraphicsAcceleration(), this.cornerStyle());
     });
   }
 
@@ -176,16 +185,23 @@ export class Display {
    * `corner-shape: squircle` on 100+ declarations and the decorative effects are large blurs — which
    * is a poor trade on a GPU that renders them badly (`limited`), and an outright waste of a CPU core
    * when there is no GPU in the path at all (`off`).
+   *
+   * The corners follow the Corner Style setting, whose automatic choice is the policy above.
    * @param level The resolved graphics-acceleration level to apply.
+   * @param style The chosen corner style.
    */
-  private applyDisplayPolicy(level: ResolvedGraphicsAcceleration): void {
+  private applyDisplayPolicy(level: ResolvedGraphicsAcceleration, style: CornerStyle): void {
     const root: HTMLElement = this.document.documentElement;
+    const corners: string | null = cornersAttribute(style, level);
 
-    if (level === 'full') {
+    if (corners === null) {
       root.removeAttribute('data-corners');
+    } else {
+      root.setAttribute('data-corners', corners);
+    }
+    if (level === 'full') {
       root.removeAttribute('data-reduced-gpu');
     } else {
-      root.setAttribute('data-corners', 'round');
       root.setAttribute('data-reduced-gpu', 'true');
     }
   }

@@ -156,6 +156,12 @@ interface BaseSettingDef {
    * binding reports when a change is actually pending (see `SettingBinding.restartPending`).
    */
   readonly requiresRestart?: boolean;
+
+  /**
+   * Gets the platforms (Node `process.platform` values) the setting applies to, or undefined for one
+   * that applies on every platform. Elsewhere it is not shown.
+   */
+  readonly platforms?: readonly string[];
 }
 
 /**
@@ -236,4 +242,15 @@ export interface SectionDef {
  */
 export function isSettingsOwned(def: SettingDef): def is SettingsOwnedDef {
   return def.owner === undefined || def.owner === 'settings';
+}
+
+/**
+ * Determines whether a setting applies on the platform Studio is running on. Outside Electron, where
+ * the platform is unknown, every setting does.
+ * @param def The setting definition.
+ * @returns Returns true when the setting applies here.
+ */
+export function appliesToPlatform(def: SettingDef): boolean {
+  const platform: string | undefined = window.host?.platform;
+  return def.platforms === undefined || platform === undefined || def.platforms.includes(platform);
 }

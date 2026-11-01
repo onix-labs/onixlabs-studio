@@ -17,6 +17,25 @@ export enum AppChannel {
   ConfirmClose = 'app:confirm-close',
 
   /**
+   * The main process asks the renderer to close the main window the macOS way, keeping Studio
+   * running (main→renderer, send): the renderer confirms running work and unsaved changes, closes
+   * every tab and goes dormant, then answers with {@link AppChannel.ConfirmPark}.
+   */
+  RequestPark = 'app:request-park',
+
+  /**
+   * The renderer tells the main process whether the window may close while Studio keeps running
+   * (renderer→main, send).
+   */
+  ConfirmPark = 'app:confirm-park',
+
+  /**
+   * The main process wakes a dormant renderer — the Dock icon was clicked, or Studio was launched
+   * again — so it shows the welcome screen (main→renderer, send).
+   */
+  Wake = 'app:wake',
+
+  /**
    * Synchronously reports the display startup snapshot (the GPU rendering recommendation and whether
    * hardware acceleration is enabled), read once by the preload before the first paint to build
    * `window.host`. This is the one `sendSync` channel; it is not reached over the async {@link Bridge}.
@@ -29,6 +48,12 @@ export enum AppChannel {
    * hardware acceleration can only be toggled before the app is ready (invoke).
    */
   SetGraphicsAcceleration = 'app:set-graphics-acceleration',
+
+  /**
+   * Mirrors the startup settings (see `startup-settings.ts`) to the main process, which persists them
+   * beside the other startup preferences and applies them from then on (invoke).
+   */
+  SetStartupSettings = 'app:set-startup-settings',
 
   /**
    * Relaunches the application so a startup-only preference change can take effect (send).

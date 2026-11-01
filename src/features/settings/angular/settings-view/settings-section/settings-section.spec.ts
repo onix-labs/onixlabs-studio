@@ -161,11 +161,12 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
-    // Appearance merged into Application › General: graphics acceleration, theme, accent, the
-    // application menu and its appearance, ribbon alignment, the window lock. The workspace texture
+    // Appearance merged into Application › General: graphics acceleration, corner style, theme,
+    // accent, the application menu and its appearance, ribbon alignment, the window and quitting
+    // behaviour, setup after updates, the window lock. The workspace texture
     // moved to Workspaces › General.
     const element: HTMLElement = await render('application');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(13);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
@@ -184,11 +185,17 @@ describe('SettingsSection', () => {
 
     expect(titles).toEqual([
       'Graphics Acceleration',
+      'Corner Style',
       'Theme',
       'Accent',
       'Application Menu',
       'Application Menu Appearance',
       'Ribbon Alignment',
+      'Window Size on Launch',
+      'Restore Full Screen',
+      'Quit When the Last Window Closes',
+      'Confirm Before Quitting',
+      'Run Setup After Updates',
       'Window Lock Switch',
     ]);
   });

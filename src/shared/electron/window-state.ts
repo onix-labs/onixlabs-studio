@@ -28,7 +28,7 @@ export interface WindowRect {
 
 /**
  * Describes the persisted state of a window: its last normal (unmaximized) bounds and whether it
- * was maximized when last saved.
+ * was maximized or in full screen when last saved.
  */
 export interface StoredWindowState {
   /**
@@ -40,6 +40,11 @@ export interface StoredWindowState {
    * Gets a value indicating whether the window was maximized.
    */
   readonly maximized: boolean;
+
+  /**
+   * Gets a value indicating whether the window was in full screen.
+   */
+  readonly fullScreen: boolean;
 }
 
 /**
@@ -93,7 +98,11 @@ export function parseStoredWindowState(value: unknown): StoredWindowState | null
     logger.warn('WindowState.parse', 'persisted bounds are not finite/positive; ignoring');
     return null;
   }
-  return { bounds: { x, y, width, height }, maximized: record['maximized'] === true };
+  return {
+    bounds: { x, y, width, height },
+    maximized: record['maximized'] === true,
+    fullScreen: record['fullScreen'] === true,
+  };
 }
 
 /**
