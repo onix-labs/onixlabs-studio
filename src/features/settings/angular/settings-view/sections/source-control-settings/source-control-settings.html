@@ -16,6 +16,13 @@
     <app-settings-section sectionId="vc-history" />
   </app-accordion>
 
+  <app-accordion heading="Cloning" [section]="true" [expanded]="true">
+    <!-- The folder is the main process's to remember, chosen in its own dialog, so it is a row of its
+         own rather than a registry setting. -->
+    <app-clone-folder />
+    <app-settings-section sectionId="vc-cloning" />
+  </app-accordion>
+
   <app-accordion heading="Git" [section]="true" [expanded]="true">
     <app-version-control-plugins />
   </app-accordion>

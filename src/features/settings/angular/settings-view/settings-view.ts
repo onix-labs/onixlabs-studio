@@ -61,6 +61,7 @@ const VERSION_CONTROL_SECTIONS: readonly string[] = [
   'vc-commits',
   'vc-history',
   'vc-hosting',
+  'vc-cloning',
 ];
 
 /**

@@ -1189,8 +1189,9 @@ export class GitVersionControl {
   }
 
   /**
-   * Copies a repository into a new directory, then checks out a branch when one is named — creating
-   * it from the default branch when asked to.
+   * Copies a repository into a new directory — with its submodules, and with only the latest commit
+   * of each branch, when asked — then checks out a branch when one is named, creating it from the
+   * default branch when asked to.
    * @param params The clone's parameters, untrusted.
    * @returns Returns the outcome.
    */
@@ -1204,10 +1205,26 @@ export class GitVersionControl {
     if (branch !== undefined && !isSafeOperand(branch)) {
       return fail('Invalid branch name');
     }
+    const depth: unknown = params['depth'];
+    if (
+      depth !== undefined &&
+      !(typeof depth === 'number' && Number.isInteger(depth) && depth > 0)
+    ) {
+      return fail('Invalid clone depth');
+    }
     const target: string = path.resolve(directory);
     const cloned: GitRun = await this.git(
       path.dirname(target),
-      ['clone', '--', url, path.basename(target)],
+      [
+        'clone',
+        ...(params['recurseSubmodules'] === true ? ['--recurse-submodules'] : []),
+        // A shallow clone otherwise fetches the default branch alone, and the branch checked out next
+        // would not be found; every branch's latest commit is fetched instead.
+        ...(depth === undefined ? [] : ['--depth', String(depth), '--no-single-branch']),
+        '--',
+        url,
+        path.basename(target),
+      ],
       GIT_CLONE_TIMEOUT_MS,
       GIT_NETWORK_ENV,
     );

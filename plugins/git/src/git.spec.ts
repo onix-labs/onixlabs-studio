@@ -433,6 +433,40 @@ describe('GitVersionControl', () => {
     });
   });
 
+  it('clone_withDepth_fetchesOnlyTheLatestCommit_butEveryBranch', GIT_TEST_TIMEOUT, async () => {
+    await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+    await git(repo, 'commit', '-am', 'second');
+    await git(repo, 'branch', 'other');
+    const target: string = path.join(base, 'shallow');
+
+    // A local path ignores --depth, so the source is named as a file URL, as a remote would be.
+    expect(
+      await vcs.request('clone', undefined, {
+        url: `file://${repo}`,
+        directory: target,
+        branch: 'other',
+        depth: 1,
+        recurseSubmodules: true,
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect((await git(target, 'rev-list', '--count', 'HEAD')).trim()).toBe('1');
+    const status: VersionControlResponse<'status'> = await vcs.request('status', target, {});
+    expect(status.ok && status.result.branch).toBe('other');
+  });
+
+  it('clone_refusesADepthThatIsNotAPositiveWholeNumber', GIT_TEST_TIMEOUT, async () => {
+    for (const depth of [0, -1, 1.5, '1']) {
+      expect(
+        await vcs.request('clone', undefined, {
+          url: repo,
+          directory: path.join(base, 'never'),
+          depth,
+        } as unknown as VcsParams<'clone'>),
+      ).toMatchObject({ ok: false, error: 'Invalid clone depth' });
+    }
+  });
+
   it('init_makesAnEmptyRepository_inANewDirectory', GIT_TEST_TIMEOUT, async () => {
     const target: string = path.join(base, 'fresh');
 

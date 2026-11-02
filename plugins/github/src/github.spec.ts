@@ -373,6 +373,7 @@ describe('GitHubHosting', () => {
         private: true,
         default_branch: 'main',
         clone_url: 'https://github.com/onix-labs/studio.git',
+        ssh_url: 'git@github.com:onix-labs/studio.git',
         html_url: 'https://github.com/onix-labs/studio',
         updated_at: '2026-10-05T10:00:00Z',
       };
@@ -402,6 +403,7 @@ describe('GitHubHosting', () => {
             private: true,
             defaultBranch: 'main',
             cloneUrl: 'https://github.com/onix-labs/studio.git',
+            sshUrl: 'git@github.com:onix-labs/studio.git',
             webUrl: 'https://github.com/onix-labs/studio',
             updatedAt: '2026-10-05T10:00:00Z',
             starred: false,

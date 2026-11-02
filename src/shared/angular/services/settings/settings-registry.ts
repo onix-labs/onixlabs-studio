@@ -1,4 +1,5 @@
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
+import type { CloneLayout } from '@shared/api/clone-channels';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -252,6 +253,11 @@ export interface SettingsValues {
   readonly 'versionControl.hostingListSize': number;
   readonly 'versionControl.ciRunsScope': 'branch' | 'all';
   readonly 'versionControl.pullRequestAndIssueStates': 'open' | 'all';
+  readonly 'versionControl.askWhereToClone': boolean;
+  readonly 'versionControl.cloneLayout': 'ask' | CloneLayout;
+  readonly 'versionControl.cloneProtocol': 'https' | 'ssh';
+  readonly 'versionControl.cloneSubmodules': boolean;
+  readonly 'versionControl.shallowClone': 'full' | 'latest';
   readonly 'ai.autoCompactThreshold': number;
   readonly 'ai.autoCompactMode': AskOrAutomatic;
   readonly 'ai.deleteConversationsAfterDays': number;
@@ -1487,6 +1493,72 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'open',
+      },
+    ],
+  },
+  {
+    id: 'vc-cloning',
+    label: 'Cloning',
+    settings: [
+      {
+        key: 'versionControl.askWhereToClone',
+        title: 'Ask Where to Clone Each Time',
+        description:
+          'Choose the folder for every clone. When off, clones go straight into the Default Clone ' +
+          'Folder.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.cloneLayout',
+        title: 'Default Clone Layout',
+        description: 'How a clone is laid out on disk, or Ask to choose for each clone.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'flat', label: 'Flat Repository' },
+            { value: 'worktree', label: 'Worktree Repository' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'versionControl.cloneProtocol',
+        title: 'Clone Protocol',
+        description:
+          'Which address a repository from a signed-in host clones from. SSH needs a key the host ' +
+          'knows; a typed URL is cloned as typed.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'https', label: 'HTTPS' },
+            { value: 'ssh', label: 'SSH' },
+          ],
+        },
+        default: 'https',
+      },
+      {
+        key: 'versionControl.cloneSubmodules',
+        title: 'Include Submodules',
+        description: "Clone a repository's submodules along with it.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.shallowClone',
+        title: 'Shallow Clone',
+        description:
+          'Fetch the full history, or only the latest commit of each branch: faster for large ' +
+          'repositories, with older history left out.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'full', label: 'Full History' },
+            { value: 'latest', label: 'Latest Commit Only' },
+          ],
+        },
+        default: 'full',
       },
     ],
   },

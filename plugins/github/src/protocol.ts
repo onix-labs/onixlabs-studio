@@ -253,6 +253,11 @@ export interface HostedRepository {
   readonly cloneUrl: string;
 
   /**
+   * Gets the SSH address to clone it from, or undefined when the host gave none.
+   */
+  readonly sshUrl?: string;
+
+  /**
    * Gets the URL of its page in a browser.
    */
   readonly webUrl: string;

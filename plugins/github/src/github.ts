@@ -139,6 +139,7 @@ interface RawRepository {
   readonly private?: unknown;
   readonly default_branch?: unknown;
   readonly clone_url?: unknown;
+  readonly ssh_url?: unknown;
   readonly html_url?: unknown;
   readonly updated_at?: unknown;
   readonly has_issues?: unknown;
@@ -1138,6 +1139,7 @@ function toRepository(host: string, raw: RawRepository, starred?: boolean): Host
     private: raw.private === true,
     defaultBranch: defaultBranch.length === 0 ? null : defaultBranch,
     cloneUrl: asString(raw.clone_url),
+    ...(typeof raw.ssh_url === 'string' && raw.ssh_url.length > 0 ? { sshUrl: raw.ssh_url } : {}),
     webUrl: asString(raw.html_url),
     updatedAt: asString(raw.updated_at),
     // The 1.2 details (#805). Each is left out when GitHub did not send it, so a reader can tell "not a

@@ -1,0 +1,9 @@
+<app-setting-row label="Default Clone Folder" [description]="description()">
+  <app-button
+    label="Choose Folder"
+    [icon]="Icon.FOLDER_OPEN"
+    [disabled]="!cloner.isAvailable"
+    data-testid="clone-folder-choose"
+    (click)="choose()"
+  />
+</app-setting-row>

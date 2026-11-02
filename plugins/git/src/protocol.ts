@@ -811,7 +811,8 @@ export interface VersionControlOperations {
 
   /**
    * Copies a repository into a new directory, optionally checking out a branch (created from the
-   * default branch when `createBranch` is set). The directory must not exist yet.
+   * default branch when `createBranch` is set), with its submodules and with only the latest history
+   * when asked. The directory must not exist yet.
    */
   readonly clone: {
     readonly params: {
@@ -819,6 +820,14 @@ export interface VersionControlOperations {
       readonly directory: string;
       readonly branch?: string;
       readonly createBranch?: boolean;
+      /**
+       * Gets whether submodules are cloned too (Include Submodules), or absent for not.
+       */
+      readonly recurseSubmodules?: boolean;
+      /**
+       * Gets how many commits of history to fetch (Shallow Clone), or absent for all of it.
+       */
+      readonly depth?: number;
     };
     readonly result: Done;
   };

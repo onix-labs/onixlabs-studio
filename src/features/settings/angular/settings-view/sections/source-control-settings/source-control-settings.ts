@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { SetupStepCommitIdentity } from '../../../setup-wizard/setup-step-commit-identity';
 import { SettingsSection } from '../../settings-section/settings-section';
+import { CloneFolder } from './clone-folder/clone-folder';
 import { HostingAccounts } from './hosting-accounts/hosting-accounts';
 import { VersionControlPlugins } from './version-control-plugins/version-control-plugins';
 
@@ -14,6 +15,7 @@ import { VersionControlPlugins } from './version-control-plugins/version-control
   selector: 'app-source-control-settings',
   imports: [
     Accordion,
+    CloneFolder,
     HostingAccounts,
     SettingsSection,
     SetupStepCommitIdentity,

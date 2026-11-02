@@ -13,6 +13,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Settings } from '@shared/angular/services/settings/settings';
 import type { TabType } from '@shared/angular/services/tabs/tab';
 import {
   HostedAccount,
@@ -95,6 +96,7 @@ describe('WelcomeSourceControl', () => {
   let plugins: WritableSignal<readonly PluginSummary[]>;
   let hosts: ForgeHostAccount[];
   let picked: string | null;
+  let remembered: string | null;
   let clones: CloneRequest[];
   let cloneOutcome: CloneOutcome;
   let reopened: string[];
@@ -108,6 +110,7 @@ describe('WelcomeSourceControl', () => {
     ]);
     hosts = [];
     picked = '/Users/me/Development';
+    remembered = '/Users/me/Remembered';
     clones = [];
     cloneOutcome = { ok: true, path: '/Users/me/Development/repo' };
     reopened = [];
@@ -142,6 +145,7 @@ describe('WelcomeSourceControl', () => {
         {
           provide: Clone,
           useValue: {
+            parent: (): Promise<string | null> => Promise.resolve(remembered),
             pickParent: (): Promise<string | null> => Promise.resolve(picked),
             clone: (request: CloneRequest): Promise<CloneOutcome> => {
               clones.push(request);
@@ -169,6 +173,11 @@ describe('WelcomeSourceControl', () => {
         },
       ],
     }).compileComponents();
+  });
+
+  afterEach(() => {
+    // Settings a spec changed persist in localStorage.
+    localStorage.removeItem('settings');
   });
 
   /**
@@ -398,6 +407,41 @@ describe('WelcomeSourceControl', () => {
     }
   });
 
+  it('startsOnTheDefaultCloneLayout_andSendsTheCloneOptions', async () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('versionControl.cloneLayout', 'flat');
+    settings.set('versionControl.cloneSubmodules', false);
+    settings.set('versionControl.shallowClone', 'latest');
+    await render();
+
+    // No layout to pick: the URL alone is enough.
+    await type('Repository URL', 'https://github.com/owner/repo.git');
+    host.querySelector<HTMLButtonElement>('.source__clone')!.click();
+    await fixture.whenStable();
+
+    expect(clones).toEqual([
+      expect.objectContaining({ layout: 'flat', submodules: false, shallow: true }),
+    ]);
+  });
+
+  it('withoutAskWhereToClone_skipsTheDialog_unlessNoFolderIsChosenYet', async () => {
+    TestBed.inject(Settings).set('versionControl.askWhereToClone', false);
+    picked = null;
+    await render();
+    await type('Repository URL', 'https://github.com/owner/repo.git');
+    await choose('Clone as', 'flat');
+
+    host.querySelector<HTMLButtonElement>('.source__clone')!.click();
+    await fixture.whenStable();
+    expect(clones).toHaveLength(1);
+
+    // With no folder remembered the dialog asks after all, and cancelling it clones nothing.
+    remembered = null;
+    host.querySelector<HTMLButtonElement>('.source__clone')!.click();
+    await fixture.whenStable();
+    expect(clones).toHaveLength(1);
+  });
+
   it('clones_inTheChosenLayout_thenOpensTheResultAndStepsAside', async () => {
     await render();
     await type('Repository URL', 'https://github.com/owner/repo.git');
@@ -412,6 +456,9 @@ describe('WelcomeSourceControl', () => {
         // The folder is named after the repository.
         name: 'repo',
         layout: 'worktree',
+        // Include Submodules is on and Shallow Clone off by default.
+        submodules: true,
+        shallow: false,
       },
     ]);
     expect(reopened).toEqual(['/Users/me/Development/repo']);
@@ -606,10 +653,34 @@ describe('WelcomeSourceControl', () => {
       await fixture.whenStable();
 
       expect(clones).toEqual([
-        { url: 'https://github.com/matthew/aero.git', name: 'aero', layout: 'worktree' },
+        {
+          url: 'https://github.com/matthew/aero.git',
+          name: 'aero',
+          layout: 'worktree',
+          submodules: true,
+          shallow: false,
+        },
       ]);
       expect(reopened).toEqual(['/Users/me/Development/repo']);
       expect(openedCount).toBe(1);
+    });
+
+    it('detailsClone_usesTheSshAddress_whenCloneProtocolIsSsh', async () => {
+      TestBed.inject(Settings).set('versionControl.cloneProtocol', 'ssh');
+      internals.repositories.set([
+        repository('aero', { sshUrl: 'git@github.com:matthew/aero.git' }),
+      ]);
+      await fixture.whenStable();
+      host.querySelector<HTMLButtonElement>('.welcome__repository')!.click();
+      await fixture.whenStable();
+      await choose('Clone details as', 'flat');
+
+      host.querySelector<HTMLButtonElement>('.source__detail .source__clone')!.click();
+      await fixture.whenStable();
+
+      expect(clones).toEqual([
+        expect.objectContaining({ url: 'git@github.com:matthew/aero.git', name: 'aero' }),
+      ]);
     });
 
     it('detailsClone_asksWhere_andCancellingClonesNothing', async () => {
