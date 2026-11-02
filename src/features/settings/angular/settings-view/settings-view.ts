@@ -53,6 +53,12 @@ import {
 } from '@shared/angular/services/settings/settings-schema';
 
 /**
+ * Names the registry sections Version Control › General draws, in page order, each under its own
+ * heading, so the page's search finds every one of them.
+ */
+const VERSION_CONTROL_SECTIONS: readonly string[] = ['vc-fetch', 'vc-commits', 'vc-history'];
+
+/**
  * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one
  * `ai` section while the tree splits them across pages, so the search has to be told which page each
  * lives on. A key named on neither (the connections, the CLI paths) is shown on no page the search can
@@ -842,6 +848,11 @@ export class SettingsView {
     if (leaf.sectionId === 'language-providers') {
       return codeSettings().filter(
         (setting: SettingDef): boolean => setting.profileOverridable === true,
+      );
+    }
+    if (leaf.sectionId === 'source-control') {
+      return VERSION_CONTROL_SECTIONS.flatMap(
+        (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
       );
     }
     const keys: ReadonlySet<string> | undefined = AI_PAGE_KEYS[leaf.sectionId];

@@ -1,2 +1,26 @@
-<app-version-control-plugins />
-<app-hosting-accounts />
+<!-- The registry's version-control settings, a section each under its own heading, as a language's
+     page groups its settings; then the per-plugin git executable and the code-host accounts. -->
+<div class="source-control">
+  <app-accordion heading="Fetch, Pull and Push" [section]="true" [expanded]="true">
+    <app-settings-section sectionId="vc-fetch" />
+  </app-accordion>
+
+  <app-accordion heading="Commits and Branches" [section]="true" [expanded]="true">
+    <app-settings-section sectionId="vc-commits" />
+    <!-- The commit name and email live in git's own global configuration, not in Studio's settings,
+         so they are edited here as the setup wizard edits them rather than through the registry. -->
+    <app-setup-step-commit-identity systemName="git" />
+  </app-accordion>
+
+  <app-accordion heading="History" [section]="true" [expanded]="true">
+    <app-settings-section sectionId="vc-history" />
+  </app-accordion>
+
+  <app-accordion heading="Git" [section]="true" [expanded]="true">
+    <app-version-control-plugins />
+  </app-accordion>
+
+  <app-accordion heading="Hosting" [section]="true" [expanded]="true">
+    <app-hosting-accounts />
+  </app-accordion>
+</div>

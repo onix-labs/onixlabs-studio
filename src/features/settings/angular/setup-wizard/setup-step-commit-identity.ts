@@ -40,12 +40,12 @@ import { SetupProbes } from '@shared/angular/services/setup-probes/setup-probes'
         Version control cannot be configured outside the desktop application.
       </p>
     } @else {
-      <app-setting-row label="Commit name" description="The name your commits are attributed to.">
+      <app-setting-row label="Commit Name" description="The name your commits are attributed to.">
         <app-text-field placeholder="Your name" ariaLabel="Commit name" [(value)]="name" />
       </app-setting-row>
 
       <app-setting-row
-        label="Commit email"
+        label="Commit Email"
         description="The email address your commits are attributed to."
       >
         <app-text-field placeholder="you@example.com" ariaLabel="Commit email" [(value)]="email" />

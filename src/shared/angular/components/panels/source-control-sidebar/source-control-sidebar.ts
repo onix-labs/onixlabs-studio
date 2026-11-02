@@ -10,6 +10,7 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import type { HostingCapability } from '@shared/api/hosting-protocol';
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
@@ -624,6 +625,11 @@ export class SourceControlSidebar implements OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings store, for Check Out New Branch by Default.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds this workspace's forge-backed view of the repository, behind the Pull Requests section.
@@ -1477,7 +1483,7 @@ export class SourceControlSidebar implements OnDestroy {
   protected openBranchDialog(target: RepositoryWorktree | null = null): void {
     this.branchTarget.set(target);
     this.branchName.set('');
-    this.branchCheckout.set(true);
+    this.branchCheckout.set(this.settings.get('versionControl.checkOutNewBranch'));
     this.branchDialogOpen.set(true);
   }
 

@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
@@ -53,7 +54,7 @@ function makeCommit(hash: string, parents: readonly string[]): GitCommit {
     author: 'Test',
     email: 't@example.com',
     relativeDate: 'now',
-    isoDate: 'now',
+    isoDate: '2026-11-02T12:00:00Z',
     parents: [...parents],
     refs: [],
     files: [],
@@ -297,6 +298,19 @@ describe('CommitGraph', () => {
     expect(rows.length).toBe(2);
     expect(element.textContent).toContain('Commit c2');
     expect(element.textContent).toContain('Commit c1');
+  });
+
+  it('render_showsDatesInTheHistoryDateFormat', async () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.graph__date')?.textContent?.trim()).toBe('now');
+
+    TestBed.inject(Settings).set('versionControl.historyDateFormat', 'both');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // An absolute date in the user's locale, with the relative one after it.
+    expect(element.querySelector('.graph__date')?.textContent?.trim()).toMatch(/\(now\)$/);
+    localStorage.removeItem('settings');
   });
 
   it('render_whenWorkingTreeDirty_addsNoRowOfItsOwn', () => {

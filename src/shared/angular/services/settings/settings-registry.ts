@@ -74,6 +74,11 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
 export type ReduceMotion = 'system' | 'on' | 'off';
 
 /**
+ * Names how dates read in the commit history.
+ */
+export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
+
+/**
  * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
  */
 export type AskOrAutomatic = 'ask' | 'automatic';
@@ -226,6 +231,13 @@ export interface SettingsValues {
   readonly 'ai.maxLiveSessions': number;
   readonly 'ai.defaultReasoningEffort': DefaultReasoningEffort;
   readonly 'ai.maxStepsPerTurn': number;
+  readonly 'versionControl.autoFetchMinutes': number;
+  readonly 'versionControl.fetchOnLoad': boolean;
+  readonly 'versionControl.defaultRemote': string;
+  readonly 'versionControl.includeUntrackedInCommit': boolean;
+  readonly 'versionControl.checkOutNewBranch': boolean;
+  readonly 'versionControl.historyDateFormat': HistoryDateFormat;
+  readonly 'versionControl.historyPageSize': number;
   readonly 'ai.autoCompactThreshold': number;
   readonly 'ai.autoCompactMode': AskOrAutomatic;
   readonly 'ai.deleteConversationsAfterDays': number;
@@ -1193,6 +1205,105 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           "the system's own dictionary on macOS and Windows.",
         control: { kind: 'custom', component: 'personal-dictionary' },
         default: [],
+      },
+    ],
+  },
+  {
+    id: 'vc-fetch',
+    label: 'Fetch, Pull and Push',
+    settings: [
+      {
+        key: 'versionControl.autoFetchMinutes',
+        title: 'Auto-Fetch Interval',
+        description:
+          'How often an open repository fetches its remotes in the background, so ahead and behind ' +
+          'counts stay current.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '5', label: 'Every 5 minutes' },
+            { value: '15', label: 'Every 15 minutes' },
+            { value: '30', label: 'Every 30 minutes' },
+          ],
+        },
+        default: 15,
+      },
+      {
+        key: 'versionControl.fetchOnLoad',
+        title: 'Fetch on Load',
+        description: 'Fetch as soon as a repository opens, whatever the interval.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.defaultRemote',
+        title: 'Default Remote',
+        description:
+          'The remote a branch with no upstream is pushed to, and the one whose code host is used ' +
+          'when a repository has several. Falls back to the first remote when it has none by this name.',
+        control: { kind: 'text', placeholder: 'origin' },
+        default: 'origin',
+      },
+    ],
+  },
+  {
+    id: 'vc-commits',
+    label: 'Commits and Branches',
+    settings: [
+      {
+        key: 'versionControl.includeUntrackedInCommit',
+        title: 'Include Untracked Files in Commit by Default',
+        description:
+          'Tick new files git is not yet tracking when the commit panel opens. You can always tick ' +
+          'or untick each file.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.checkOutNewBranch',
+        title: 'Check Out New Branch by Default',
+        description: 'Start the New Branch dialog with Check Out ticked.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
+    id: 'vc-history',
+    label: 'History',
+    settings: [
+      {
+        key: 'versionControl.historyDateFormat',
+        title: 'History Date Format',
+        description: 'How commit dates read in the history.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'relative', label: 'Relative (3 days ago)' },
+            { value: 'absolute', label: 'Absolute (date and time)' },
+            { value: 'both', label: 'Both' },
+          ],
+        },
+        default: 'relative',
+      },
+      {
+        key: 'versionControl.historyPageSize',
+        title: 'History Page Size',
+        description:
+          'How many commits the history loads at a time; Load More brings the next page.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '100', label: '100 commits' },
+            { value: '250', label: '250 commits' },
+            { value: '500', label: '500 commits' },
+            { value: '1000', label: '1,000 commits' },
+          ],
+        },
+        default: 500,
       },
     ],
   },

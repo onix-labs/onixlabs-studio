@@ -1,4 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
+import { SetupStepCommitIdentity } from '../../../setup-wizard/setup-step-commit-identity';
+import { SettingsSection } from '../../settings-section/settings-section';
 import { HostingAccounts } from './hosting-accounts/hosting-accounts';
 import { VersionControlPlugins } from './version-control-plugins/version-control-plugins';
 
@@ -9,9 +12,15 @@ import { VersionControlPlugins } from './version-control-plugins/version-control
  */
 @Component({
   selector: 'app-source-control-settings',
-  imports: [HostingAccounts, VersionControlPlugins],
+  imports: [
+    Accordion,
+    HostingAccounts,
+    SettingsSection,
+    SetupStepCommitIdentity,
+    VersionControlPlugins,
+  ],
   templateUrl: './source-control-settings.html',
-  styleUrls: ['../section.scss'],
+  styleUrls: ['../section.scss', './source-control-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SourceControlSettingsSection {}

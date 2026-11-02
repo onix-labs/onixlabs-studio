@@ -8,8 +8,10 @@ import {
   InputSignal,
   Signal,
   signal,
+  untracked as untrackedRead,
   WritableSignal,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GitOperationKind, GitOperationState } from '@shared/api/source-control-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -117,6 +119,11 @@ export class CommitDetail {
    * Holds the prompt that knows when the folder is a repository no installed plugin can read.
    */
   private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Holds the settings store, for Include Untracked Files in Commit by Default.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets whether the folder is a repository no installed plugin can read, so the panel shows only its
@@ -409,8 +416,8 @@ export class CommitDetail {
   /**
    * Initializes a new instance of the {@link CommitDetail} class, keeping the checked set in step
    * with the working tree: a still-present path keeps the user's choice, a newly-appeared tracked
-   * file defaults to checked, a newly-appeared untracked file defaults to unchecked, and a vanished
-   * path is dropped.
+   * file defaults to checked, a newly-appeared untracked file defaults to unchecked (checked when
+   * Include Untracked Files in Commit by Default is on), and a vanished path is dropped.
    */
   public constructor() {
     effect((): void => {
@@ -423,8 +430,12 @@ export class CommitDetail {
             next.add(file.path);
           }
         }
+        // Read without subscribing: the default applies to files as they appear, not retroactively.
+        const includeUntracked: boolean = untrackedRead((): boolean =>
+          this.settings.get('versionControl.includeUntrackedInCommit'),
+        );
         for (const file of untracked) {
-          if (this.knownPaths.has(file.path) && current.has(file.path)) {
+          if (this.knownPaths.has(file.path) ? current.has(file.path) : includeUntracked) {
             next.add(file.path);
           }
         }

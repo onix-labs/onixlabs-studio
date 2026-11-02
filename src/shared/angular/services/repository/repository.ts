@@ -10,6 +10,7 @@ import {
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   NotificationAction,
   Notifications,
@@ -45,6 +46,17 @@ export const WORKING_NODE_ID: string = 'working';
  * The number of commits the history loads at first, and how many more each Load More adds (#882).
  */
 const LOG_PAGE: number = 500;
+
+/**
+ * Holds how often, in milliseconds, the auto-fetch clock looks whether a background fetch is due. The
+ * interval itself is the Auto-Fetch Interval setting, read on every tick so a change applies at once.
+ */
+const AUTO_FETCH_TICK_MS: number = 60_000;
+
+/**
+ * Holds the milliseconds in a minute.
+ */
+const MINUTE_MS: number = 60_000;
 
 /**
  * The storage key remembering whether the history shows every branch or the checked-out one (#882).
@@ -139,6 +151,22 @@ export class Repository {
    * Holds the source-control client the serving plugin's capabilities are read through.
    */
   private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
+   * Holds the settings store: auto-fetch, the default remote, and the history page size.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the auto-fetch clock while a repository is bound, or null.
+   */
+  private autoFetchTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Holds when the bound repository was last fetched (epoch milliseconds), by the user or in the
+   * background, so the next background fetch waits a whole interval from it.
+   */
+  private lastFetchAt: number = 0;
 
   /**
    * Holds what the plugin serving the bound repository can do, or null while unknown.
@@ -538,7 +566,7 @@ export class Repository {
     this.infoSignal.set(info);
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
-    this.historyLimitSignal.set(LOG_PAGE);
+    this.historyLimitSignal.set(this.logPage());
     this.historyPathSignal.set(null);
     this.watchDisposer?.();
     this.watchDisposer = this.directoryWatch.watch(info.root, (event: DirectoryChangeEvent): void =>
@@ -547,6 +575,76 @@ export class Repository {
     this.capabilitiesSignal.set(null);
     void this.loadCapabilities(info.root);
     void this.refresh();
+    this.startAutoFetch(info.root);
+  }
+
+  /**
+   * Starts fetching the bound repository in the background: once now when Fetch on Load is on, then
+   * whenever the Auto-Fetch Interval has passed since the last fetch.
+   * @param root The bound repository's root.
+   */
+  private startAutoFetch(root: string): void {
+    this.stopAutoFetch();
+    this.lastFetchAt = Date.now();
+    if (this.settings.get('versionControl.fetchOnLoad')) {
+      void this.backgroundFetch(root);
+    }
+    this.autoFetchTimer = setInterval((): void => {
+      const minutes: number = this.settings.get('versionControl.autoFetchMinutes');
+      if (minutes > 0 && Date.now() - this.lastFetchAt >= minutes * MINUTE_MS) {
+        void this.backgroundFetch(root);
+      }
+    }, AUTO_FETCH_TICK_MS);
+  }
+
+  /**
+   * Stops the auto-fetch clock.
+   */
+  private stopAutoFetch(): void {
+    if (this.autoFetchTimer !== null) {
+      clearInterval(this.autoFetchTimer);
+      this.autoFetchTimer = null;
+    }
+  }
+
+  /**
+   * Fetches the bound repository quietly: no toast and no error banner, because the user did not ask.
+   * A failure — offline, say — is logged and tried again at the next interval.
+   * @param root The repository root the fetch was scheduled for; a fetch for one since closed is
+   * dropped.
+   * @returns Returns a promise that resolves once the fetch and reload are done.
+   */
+  private async backgroundFetch(root: string): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null || this.infoSignal()?.root !== root) {
+      return;
+    }
+    this.lastFetchAt = Date.now();
+    let result: MutationResult;
+    try {
+      result = await provider.fetch();
+    } catch (error: unknown) {
+      this.log.info('Repository', 'Background fetch failed; will retry', error);
+      return;
+    }
+    if (this.infoSignal()?.root !== root) {
+      return;
+    }
+    if (result.success) {
+      this.log.debug('Repository', 'Background fetch done', root);
+      await this.refresh();
+    } else {
+      this.log.info('Repository', 'Background fetch failed; will retry', result.error);
+    }
+  }
+
+  /**
+   * Gets how many commits the history loads at a time (History Page Size).
+   * @returns Returns the page size.
+   */
+  private logPage(): number {
+    const size: number = this.settings.get('versionControl.historyPageSize');
+    return size > 0 ? size : LOG_PAGE;
   }
 
   /**
@@ -706,6 +804,7 @@ export class Repository {
    */
   public async close(): Promise<void> {
     this.log.info('Repository', 'Closed repository', this.infoSignal()?.root);
+    this.stopAutoFetch();
     this.watchDisposer?.();
     this.watchDisposer = null;
     if (this.externalRefreshTimer !== null) {
@@ -797,7 +896,7 @@ export class Repository {
     }
     this.historyScopeSignal.set(scope);
     writeHistoryScope(scope);
-    this.historyLimitSignal.set(LOG_PAGE);
+    this.historyLimitSignal.set(this.logPage());
     void this.reloadHistory();
   }
 
@@ -809,7 +908,7 @@ export class Repository {
     if (!this.hasMoreHistory() || this.loadingMoreSignal()) {
       return;
     }
-    this.historyLimitSignal.update((limit: number): number => limit + LOG_PAGE);
+    this.historyLimitSignal.update((limit: number): number => limit + this.logPage());
     this.loadingMoreSignal.set(true);
     try {
       await this.reloadHistory();
@@ -848,7 +947,7 @@ export class Repository {
   public async showHistoryOf(path: string): Promise<void> {
     this.log.info('Repository', 'History narrowed to a path', path);
     this.historyPathSignal.set(path);
-    this.historyLimitSignal.set(LOG_PAGE);
+    this.historyLimitSignal.set(this.logPage());
     this.selectedNodeSignal.set(null);
     this.selectedFileSignal.set(null);
     await this.reloadHistory();
@@ -863,7 +962,7 @@ export class Repository {
       return;
     }
     this.historyPathSignal.set(null);
-    this.historyLimitSignal.set(LOG_PAGE);
+    this.historyLimitSignal.set(this.logPage());
     await this.reloadHistory();
   }
 
@@ -1253,6 +1352,7 @@ export class Repository {
    */
   public async fetch(): Promise<MutationResult> {
     this.log.info('Repository', 'Fetching all remotes', this.infoSignal()?.root);
+    this.lastFetchAt = Date.now();
     const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.fetch(),
     );
@@ -1775,13 +1875,19 @@ export class Repository {
   }
 
   /**
-   * Gets the remote to act on when the caller names none: the first configured one, or `origin` for a
-   * repository that has no remotes at all — where the push will fail and say so, which is a better
+   * Gets the remote to act on when the caller names none: the Default Remote setting when the
+   * repository has a remote of that name, else the first configured one, else the setting's name for
+   * a repository with no remotes at all — where the push will fail and say so, which is a better
    * answer than refusing locally for a repository that may well have just been given one.
    * @returns Returns the remote name.
    */
   private defaultRemote(): string {
-    return this.remotesSignal()[0]?.name ?? 'origin';
+    const preferred: string = this.settings.get('versionControl.defaultRemote').trim() || 'origin';
+    const remotes: readonly { readonly name: string }[] = this.remotesSignal();
+    if (remotes.some((remote: { readonly name: string }): boolean => remote.name === preferred)) {
+      return preferred;
+    }
+    return remotes[0]?.name ?? preferred;
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Forge } from '@shared/angular/services/forge/forge';
@@ -120,6 +121,11 @@ export class ForgeRepository {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings store, whose Default Remote is tried first.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the plugin client, watched for hosting plugins arriving or leaving.
@@ -251,8 +257,10 @@ export class ForgeRepository {
    */
   public async detect(): Promise<ForgeRepositoryRef | null> {
     const remotes: readonly GitRemote[] = this.repository.remotes();
+    const preferred: string = this.settings.get('versionControl.defaultRemote').trim();
     const ordered: readonly GitRemote[] = [...remotes].sort(
-      (left: GitRemote, right: GitRemote): number => rank(left.name) - rank(right.name),
+      (left: GitRemote, right: GitRemote): number =>
+        rank(left.name, preferred) - rank(right.name, preferred),
     );
     for (const remote of ordered) {
       if (remote.url.length === 0) {
@@ -628,11 +636,16 @@ export class ForgeRepository {
 }
 
 /**
- * Ranks a remote name against the preferred order, so `origin` is tried before anything else.
+ * Ranks a remote name against the preferred order — the Default Remote setting first, then `origin`
+ * and `upstream` — so the remote the user pushes to is tried before anything else.
  * @param name The remote name.
+ * @param preferred The Default Remote setting, or empty for none.
  * @returns Returns the rank; unlisted remotes sort last.
  */
-function rank(name: string): number {
+function rank(name: string, preferred: string): number {
+  if (preferred.length > 0 && name === preferred) {
+    return -1;
+  }
   const index: number = PREFERRED_REMOTES.indexOf(name);
   return index === -1 ? PREFERRED_REMOTES.length : index;
 }
