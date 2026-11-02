@@ -81,6 +81,22 @@ export type ReduceMotion = 'system' | 'on' | 'off';
 export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
 
 /**
+ * Names the shape of a terminal's cursor.
+ */
+export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
+
+/**
+ * Names how a terminal draws: on the GPU (WebGL), where Graphics Acceleration allows, or with the
+ * standard renderer.
+ */
+export type TerminalRenderer = 'gpu' | 'standard';
+
+/**
+ * Holds the Font Family value that follows Code › Appearance's font.
+ */
+export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
+
+/**
  * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
  */
 export type AskOrAutomatic = 'ask' | 'automatic';
@@ -206,6 +222,12 @@ export interface SettingsValues {
   readonly 'markdownEditor.printMargin': PrintMargin;
 
   readonly 'terminal.defaultShell': string;
+  readonly 'terminal.fontFamily': string;
+  readonly 'terminal.fontSize': number;
+  readonly 'terminal.scrollback': number;
+  readonly 'terminal.cursorStyle': TerminalCursorStyle;
+  readonly 'terminal.cursorBlink': boolean;
+  readonly 'terminal.renderer': TerminalRenderer;
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
@@ -1573,6 +1595,96 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'The shell a new terminal starts with. Choose from the shells installed on your system, or use the system default.',
         control: { kind: 'custom', component: 'terminal-default-shell' },
         default: '',
+      },
+      {
+        key: 'terminal.fontFamily',
+        title: 'Font Family',
+        description:
+          "The terminal's font: the one Code › Appearance uses, or a monospace font of its own. " +
+          'Only installed fonts are offered.',
+        control: {
+          kind: 'select',
+          options: [{ value: TERMINAL_FONT_SAME_AS_CODE, label: 'Same as Code' }],
+        },
+        default: TERMINAL_FONT_SAME_AS_CODE,
+      },
+      {
+        key: 'terminal.fontSize',
+        title: 'Font Size',
+        description:
+          "The terminal's font size: Code's, or a size of its own. Either way it follows the " +
+          'editor zoom.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Same as Code' },
+            { value: '10', label: '10' },
+            { value: '11', label: '11' },
+            { value: '12', label: '12' },
+            { value: '13', label: '13' },
+            { value: '14', label: '14' },
+            { value: '16', label: '16' },
+            { value: '18', label: '18' },
+            { value: '20', label: '20' },
+            { value: '24', label: '24' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'terminal.scrollback',
+        title: 'Scrollback Lines',
+        description:
+          'How many lines of output a terminal keeps above the screen. More lines use more memory.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '10000', label: '10,000' },
+            { value: '50000', label: '50,000' },
+          ],
+        },
+        default: 5000,
+      },
+      {
+        key: 'terminal.cursorStyle',
+        title: 'Cursor Style',
+        description: "The shape of the terminal's cursor.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'block', label: 'Block' },
+            { value: 'bar', label: 'Bar' },
+            { value: 'underline', label: 'Underline' },
+          ],
+        },
+        default: 'block',
+      },
+      {
+        key: 'terminal.cursorBlink',
+        title: 'Cursor Blink',
+        description: "Blink the terminal's cursor. A read-only task's console never blinks.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'terminal.renderer',
+        title: 'Renderer',
+        description:
+          'Draw terminals on the GPU, which keeps heavy output smooth, or with the standard ' +
+          'renderer, which can fix drawing glitches. The GPU is used only while Graphics ' +
+          'Acceleration is on.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'gpu', label: 'GPU' },
+            { value: 'standard', label: 'Standard' },
+          ],
+        },
+        default: 'gpu',
       },
     ],
   },

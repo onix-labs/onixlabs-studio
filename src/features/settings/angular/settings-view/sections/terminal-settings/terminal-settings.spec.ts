@@ -30,20 +30,22 @@ describe('TerminalSettingsSection', () => {
   });
 
   it('render_leadsWithSystemDefaultThenEachInstalledShell', () => {
-    const labels: string[] = Array.from(host.querySelectorAll('option')).map(
-      (option: HTMLOptionElement): string => option.textContent?.trim() ?? '',
-    );
+    const labels: string[] = Array.from(
+      host.querySelectorAll<HTMLOptionElement>('app-shell-picker option'),
+    ).map((option: HTMLOptionElement): string => option.textContent?.trim() ?? '');
     expect(labels).toEqual(['System default', 'zsh', 'bash']);
   });
 
   it('defaultShell_defaultsToTheSystemDefault', () => {
-    const select: HTMLSelectElement | null = host.querySelector('select');
+    const select: HTMLSelectElement | null =
+      host.querySelector<HTMLSelectElement>('app-shell-picker select');
     expect(select?.value).toBe('');
   });
 
   it('onChange_whenShellChosen_persistsThePathToSettings', () => {
     const settings: Settings = TestBed.inject(Settings);
-    const select: HTMLSelectElement | null = host.querySelector('select');
+    const select: HTMLSelectElement | null =
+      host.querySelector<HTMLSelectElement>('app-shell-picker select');
     if (select === null) {
       throw new Error('No shell select rendered');
     }

@@ -1,7 +1,10 @@
 import { inject, Service } from '@angular/core';
 import { Display } from '@shared/angular/services/display/display';
 import { FontCatalog } from '@shared/angular/services/fonts/font-catalog';
-import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
+import {
+  SETTINGS_BY_KEY,
+  TERMINAL_FONT_SAME_AS_CODE,
+} from '@shared/angular/services/settings/settings-registry';
 import type {
   ChoiceOption,
   ControlDef,
@@ -40,6 +43,11 @@ export class SettingOptions {
         return this.fonts.monospaceFonts();
       case 'markdownEditor.fontFamily':
         return this.fonts.sansFonts();
+      case 'terminal.fontFamily':
+        return [
+          { value: TERMINAL_FONT_SAME_AS_CODE, label: 'Same as Code' },
+          ...this.fonts.monospaceFonts(),
+        ];
       case 'application.cornerStyle':
         return this.cornerStyles();
       default:

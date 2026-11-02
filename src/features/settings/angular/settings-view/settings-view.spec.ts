@@ -273,9 +273,9 @@ describe('SettingsView', () => {
     }
 
     it('search_byASettingsTitle_leavesTheLeafItLivesOnWithItsAncestorsOpen', async () => {
-      // "Font size" is a Text Editor setting: the search lands on the page it lives on, with the
-      // branch above it open even though the user never expanded it.
-      const ids: readonly string[] = await search('font size');
+      // "Line height" is a Code › Appearance setting: the search lands on the page it lives on, with
+      // the branch above it open even though the user never expanded it.
+      const ids: readonly string[] = await search('line height');
 
       expect(ids).toContain('code');
       expect(ids).toContain('code-appearance-leaf');

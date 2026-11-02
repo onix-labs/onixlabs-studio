@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -20,10 +21,14 @@ import {
 } from '@angular/core';
 import { FitAddon } from '@xterm/addon-fit';
 import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Display } from '@shared/angular/services/display/display';
+import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
@@ -33,6 +38,7 @@ import {
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
+import { TerminalAppearance, terminalAppearance, terminalPalette } from './terminal-appearance';
 import { TerminalLinkDecorator } from './terminal-link-decorator';
 import { TerminalLinkProvider, TerminalLinkTarget } from './terminal-link-provider';
 
@@ -146,6 +152,21 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly pathLinks: TerminalPathLinks | null = inject(TERMINAL_PATH_LINKS, {
     optional: true,
   });
+
+  /**
+   * Holds the settings the terminal's look and behaviour are read from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the editor zoom, which the terminal's font size follows.
+   */
+  private readonly zoom: EditorZoom = inject(EditorZoom);
+
+  /**
+   * Holds the display policy, whose graphics level decides whether the GPU renderer may be used.
+   */
+  private readonly display: Display = inject(Display);
 
   /**
    * Holds the change detector, run before a link's hint opens so the hint reads the link's text.
@@ -306,6 +327,31 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly terminalReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Gets the terminal's look as its settings, Code's font, the editor zoom and the graphics level
+   * make it.
+   */
+  private readonly appearance: Signal<TerminalAppearance> = computed((): TerminalAppearance =>
+    terminalAppearance({
+      fontFamily: this.settings.value('terminal.fontFamily')(),
+      fontSize: this.settings.value('terminal.fontSize')(),
+      codeFontFamily: this.settings.value('textEditor.global.fontFamily')(),
+      codeFontSize: this.settings.value('textEditor.global.fontSize')(),
+      zoomPercent: this.zoom.percent(),
+      scrollback: this.settings.value('terminal.scrollback')(),
+      cursorStyle: this.settings.value('terminal.cursorStyle')(),
+      cursorBlink: this.settings.value('terminal.cursorBlink')(),
+      renderer: this.settings.value('terminal.renderer')(),
+      graphics: this.display.resolvedGraphicsAcceleration(),
+      readOnly: this.kind() === 'task',
+    }),
+  );
+
+  /**
+   * Holds the GPU renderer while the terminal draws with it, or null for the standard renderer.
+   */
+  private webgl: WebglAddon | null = null;
+
+  /**
    * Holds the shell the next spawn should use, overriding the {@link shell} input. Set to the shell a
    * new session is started with, and refreshed to the shell actually spawned, so a plain {@link restart}
    * reuses the current shell. Null falls back to the {@link shell} input (the configured default).
@@ -422,6 +468,16 @@ export class Terminal implements AfterViewInit, OnDestroy {
         this.xterm.options.theme = theme;
       }
     });
+
+    // A changed setting reaches every open terminal at once; a font change re-fits the grid to it.
+    effect((): void => {
+      const look: TerminalAppearance = this.appearance();
+      const xterm: Xterm | null = this.terminalReady() ? this.xterm : null;
+      if (xterm === null) {
+        return;
+      }
+      untracked((): void => this.applyAppearance(xterm, look));
+    });
   }
 
   /**
@@ -457,6 +513,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
+    this.disposeWebgl();
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -744,6 +801,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
+    this.disposeWebgl();
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -764,14 +822,16 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const id: string = this.terminalId();
     const host: HTMLDivElement = this.container().nativeElement;
 
+    const look: TerminalAppearance = untracked((): TerminalAppearance => this.appearance());
     const xterm: Xterm = new Xterm({
-      fontFamily: '"JetBrains Mono", "Menlo", "Consolas", monospace',
-      fontSize: 13,
+      fontFamily: look.fontFamily,
+      fontSize: look.fontSize,
       theme: this.buildTheme(),
       // A read-only task console has no meaningful caret; a blinking one would suggest typing works.
-      cursorBlink: this.kind() !== 'task',
+      cursorBlink: look.cursorBlink,
+      cursorStyle: look.cursorStyle,
       allowProposedApi: true,
-      scrollback: 5000,
+      scrollback: look.scrollback,
       // Hyperlinks a program marks up itself (OSC 8) behave as the links found in its text do; left to
       // xterm, a click would ask with a confirm() and then window.open the address.
       linkHandler: {
@@ -821,6 +881,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.xterm = xterm;
     this.fitAddon = fitAddon;
     this.searchAddon = searchAddon;
+    this.useRenderer(xterm, look.gpu);
 
     // Intercept the find chord before xterm forwards it to the PTY so it opens the find panel instead
     // of reaching the shell. Cmd+F on macOS; Ctrl+Shift+F elsewhere (bare Ctrl+F is a shell binding).
@@ -1098,6 +1159,66 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Applies a changed look to the running terminal, re-fitting the grid when the font moved.
+   * @param xterm The terminal.
+   * @param look The look to apply.
+   */
+  private applyAppearance(xterm: Xterm, look: TerminalAppearance): void {
+    const resized: boolean =
+      xterm.options.fontFamily !== look.fontFamily || xterm.options.fontSize !== look.fontSize;
+    xterm.options.fontFamily = look.fontFamily;
+    xterm.options.fontSize = look.fontSize;
+    xterm.options.scrollback = look.scrollback;
+    xterm.options.cursorStyle = look.cursorStyle;
+    xterm.options.cursorBlink = look.cursorBlink;
+    this.useRenderer(xterm, look.gpu);
+    if (resized) {
+      this.handleResize();
+    }
+  }
+
+  /**
+   * Draws the terminal on the GPU or with the standard renderer. A GPU that cannot start WebGL, or
+   * loses its context later, leaves the terminal on the standard renderer rather than blank.
+   * @param xterm The terminal.
+   * @param gpu Whether to draw on the GPU.
+   */
+  private useRenderer(xterm: Xterm, gpu: boolean): void {
+    if (!gpu) {
+      this.disposeWebgl();
+      return;
+    }
+    if (this.webgl !== null) {
+      return;
+    }
+    try {
+      const webgl: WebglAddon = new WebglAddon();
+      webgl.onContextLoss((): void => {
+        this.log.warn('Terminal', `GPU renderer lost its context for '${this.terminalId()}'`);
+        this.disposeWebgl();
+      });
+      xterm.loadAddon(webgl);
+      this.webgl = webgl;
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'GPU renderer unavailable; using the standard renderer', error);
+      this.webgl = null;
+    }
+  }
+
+  /**
+   * Stops drawing on the GPU, returning the terminal to the standard renderer.
+   */
+  private disposeWebgl(): void {
+    const webgl: WebglAddon | null = this.webgl;
+    this.webgl = null;
+    try {
+      webgl?.dispose();
+    } catch {
+      // A context already lost can fail to tear down; the standard renderer takes over regardless.
+    }
+  }
+
+  /**
    * Builds the end-of-process banner. A signal-terminated process often reports exit code 0, so the
    * signal is named when present — a stopped run must not read as a success.
    * @param exitCode The process exit code.
@@ -1163,7 +1284,8 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
   /**
    * Builds the xterm theme from the application's palette primitives, keyed by the current resolved
-   * mode and accent so the terminal stays in sync with the appearance settings.
+   * mode and accent so the terminal stays in sync with the appearance settings, its sixteen ANSI
+   * colours matched to the mode: a dark screen's yellow is unreadable on a light one.
    * @returns Returns the xterm theme.
    */
   private buildTheme(): ITheme {
@@ -1174,6 +1296,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const light: string = read('--gray-100');
     const ink: string = read('--gray-900');
     return {
+      ...terminalPalette(dark),
       background: dark ? ink : light,
       foreground: dark ? light : ink,
       cursor: this.themeService.accentHex(),
