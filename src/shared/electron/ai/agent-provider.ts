@@ -201,6 +201,11 @@ export interface AgentRunContext {
   readonly tokenCap: number;
 
   /**
+   * Gets the most steps the turn may take before the agentic loop stops, or 0 for no limit.
+   */
+  readonly maxSteps: number;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's environment is sourced from
    * (#318), or null to inherit the process environment (already hydrated from the default login shell
    * at startup, #317). Lets the agent's Bash use a different shell's `PATH`/exports than the

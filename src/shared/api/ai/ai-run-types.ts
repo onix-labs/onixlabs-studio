@@ -172,6 +172,13 @@ export interface AiRunRequest {
   readonly tokenCap: number;
 
   /**
+   * Gets the most steps (model turns plus tool round-trips) the turn may take before the agentic loop
+   * stops (Maximum Agent Steps per Turn), or 0 for no limit. Honoured by harnesses that run the loop
+   * themselves (the API-key providers); absent means the harness's own default of 16.
+   */
+  readonly maxSteps?: number;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's Bash environment is sourced
    * from (#318), or absent/empty to inherit the process environment (hydrated from the default login
    * shell at startup, #317). Only an absolute path is honoured; anything else falls back to the

@@ -66,6 +66,8 @@ describe('Agent', () => {
     contextPaths: readonly AgentContextRef[];
     runTimeoutMs: number;
     effort: AiEffort | undefined;
+    maxSteps: number | undefined;
+    maxLiveSessions: number | undefined;
     remoteControl: AiRemoteControlMode | undefined;
     language: string | undefined;
     systemPromptExtra: string | undefined;
@@ -167,6 +169,8 @@ describe('Agent', () => {
           contextPaths: options.contextPaths ?? [],
           runTimeoutMs: options.runTimeoutMs ?? 0,
           effort: options.effort,
+          maxSteps: options.maxSteps,
+          maxLiveSessions: options.maxLiveSessions,
           remoteControl: options.remoteControl,
           language: options.language,
           systemPromptExtra: options.systemPromptExtra,
@@ -785,6 +789,37 @@ describe('Agent', () => {
     agent.setEffort(null);
     agent.send('once more');
     expect(runCalls[2].effort).toBeUndefined();
+  });
+
+  it('send_usesTheDefaultReasoningEffort_atTheNearestLevelTheProviderOffers', async () => {
+    providers = [{ ...PROVIDERS[0], supportedEfforts: ['low', 'high'] }];
+    await TestBed.inject(AgentEngine).loadProviders();
+    TestBed.inject(Settings).set('ai.defaultReasoningEffort', 'high');
+
+    agent.send('hello');
+    expect(runCalls[0].effort).toBe('high');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    // Medium is missing: low and high are equally near, and the cheaper wins.
+    TestBed.inject(Settings).set('ai.defaultReasoningEffort', 'medium');
+    agent.send('again');
+    expect(runCalls[1].effort).toBe('low');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    // A level chosen with /effort wins over the default.
+    agent.setEffort('high');
+    agent.send('once more');
+    expect(runCalls[2].effort).toBe('high');
+  });
+
+  it('send_carriesTheStepAndLiveSessionLimits', () => {
+    TestBed.inject(Settings).set('ai.maxStepsPerTurn', 0);
+    TestBed.inject(Settings).set('ai.maxLiveSessions', 32);
+
+    agent.send('hello');
+
+    expect(runCalls[0].maxSteps).toBe(0);
+    expect(runCalls[0].maxLiveSessions).toBe(32);
   });
 
   it('send_carriesTheRemoteControlPosture_andOmitsOffByDefault', () => {

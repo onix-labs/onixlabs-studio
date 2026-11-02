@@ -66,6 +66,8 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.tokenCap',
     'ai.runTimeoutMinutes',
     'ai.agentSessionLifetime',
+    'ai.defaultReasoningEffort',
+    'ai.maxStepsPerTurn',
     'ai.maxLiveSessions',
     'ai.sendMessageWith',
     'ai.maxImagesPerMessage',

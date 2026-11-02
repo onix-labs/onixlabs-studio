@@ -5,3 +5,9 @@
   display: flex;
   flex-direction: column;
 }
+
+// The default provider beside its model, each a dropdown.
+.ai-default-model {
+  display: flex;
+  gap: 8px;
+}

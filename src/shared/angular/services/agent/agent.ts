@@ -39,6 +39,7 @@ import type {
 import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
+import { defaultEffort } from './default-effort';
 import { Log } from '@shared/angular/services/log/log';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import {
@@ -1051,6 +1052,20 @@ export class Agent {
   public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
 
   /**
+   * Gets the reasoning-effort level the conversation's runs actually use: the level chosen with
+   * `/effort`, else the Default Reasoning Effort setting resolved against what the provider offers,
+   * else null for the provider's own default.
+   */
+  public readonly effectiveEffort: Signal<AiEffort | null> = computed(
+    (): AiEffort | null =>
+      this.effortState() ??
+      defaultEffort(
+        this.settings.value('ai.defaultReasoningEffort')(),
+        this.providerInfo()?.supportedEfforts ?? [],
+      ),
+  );
+
+  /**
    * Gets whether this conversation's session is exposed via Remote Control (#331) — the on/off state
    * the agent's own toggle drives.
    */
@@ -1499,6 +1514,7 @@ export class Agent {
       allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
       deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
       tokenCap: this.settings.aiTokenCap(),
+      maxSteps: this.settings.get('ai.maxStepsPerTurn'),
       agentShell: this.settings.aiAgentShell(),
       claudeExecutable: {
         mode: this.settings.aiClaudeExecutable(),
@@ -1514,7 +1530,7 @@ export class Agent {
       owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
       mode: this.modeState(),
-      ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
+      ...(this.effectiveEffort() === null ? {} : { effort: this.effectiveEffort()! }),
       ...(this.remoteControl() === 'off' ? {} : { remoteControl: this.remoteControl() }),
       contextPaths: attached,
       resumeSessionId: this.sessionIdState(),
@@ -1742,6 +1758,7 @@ export class Agent {
       model: this.model(),
       permissionPosture: 'prompt',
       tokenCap: this.settings.aiTokenCap(),
+      maxSteps: this.settings.get('ai.maxStepsPerTurn'),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       mode: 'chat',
     });

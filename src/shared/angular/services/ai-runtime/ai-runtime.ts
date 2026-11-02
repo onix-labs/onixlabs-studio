@@ -102,6 +102,11 @@ export interface AiRunOptions {
   readonly tokenCap?: number;
 
   /**
+   * Gets the most steps the turn may take, or 0 for no limit.
+   */
+  readonly maxSteps?: number;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's environment is sourced from,
    * or omitted/empty to inherit the process environment (hydrated from the default login shell at
    * startup).
@@ -297,6 +302,7 @@ export class AiRuntime {
       allowedNetworkLocations: options.allowedNetworkLocations ?? [],
       deniedNetworkLocations: options.deniedNetworkLocations ?? [],
       tokenCap: options.tokenCap ?? 0,
+      ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
       agentShell: options.agentShell ?? '',
       ...(options.claudeExecutable === undefined
         ? {}

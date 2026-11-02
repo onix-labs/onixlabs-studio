@@ -74,6 +74,11 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
 export type ReduceMotion = 'system' | 'on' | 'off';
 
 /**
+ * Names the reasoning effort a new conversation starts at: the provider's own default, or a level.
+ */
+export type DefaultReasoningEffort = 'provider' | 'low' | 'medium' | 'high';
+
+/**
  * Names the key that sends an agent message; the other two insert a new line.
  */
 export type SendMessageWith = 'enter' | 'mod-enter' | 'shift-enter';
@@ -212,6 +217,8 @@ export interface SettingsValues {
   readonly 'ai.agentSessionLifetime': number;
   readonly 'ai.agentShell': string;
   readonly 'ai.maxLiveSessions': number;
+  readonly 'ai.defaultReasoningEffort': DefaultReasoningEffort;
+  readonly 'ai.maxStepsPerTurn': number;
   readonly 'ai.sendMessageWith': SendMessageWith;
   readonly 'ai.maxImagesPerMessage': number;
   readonly 'ai.maxImageSizeMb': number;
@@ -1418,6 +1425,42 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 60,
+      },
+      {
+        key: 'ai.defaultReasoningEffort',
+        title: 'Default Reasoning Effort',
+        description:
+          'How hard a new conversation thinks before it answers. Where a provider lacks the level, ' +
+          'the nearest one it offers is used. /effort changes it for one conversation.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'provider', label: 'Provider default' },
+            { value: 'low', label: 'Low' },
+            { value: 'medium', label: 'Medium' },
+            { value: 'high', label: 'High' },
+          ],
+        },
+        default: 'provider',
+      },
+      {
+        key: 'ai.maxStepsPerTurn',
+        title: 'Maximum Agent Steps per Turn',
+        description:
+          'How many steps, each a model reply or a tool call, one turn may take before the agent ' +
+          'stops. Applies to OpenAI, Gemini, DeepSeek, Grok, Ollama and other compatible ' +
+          'providers; Claude and Codex run their own loop.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '16', label: '16' },
+            { value: '32', label: '32' },
+            { value: '64', label: '64' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 16,
       },
       {
         key: 'ai.maxLiveSessions',

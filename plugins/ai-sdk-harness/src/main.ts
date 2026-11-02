@@ -65,7 +65,8 @@ import {
 
 /**
  * The maximum number of steps — model turns plus tool round-trips — one run may take before the AI SDK
- * stops the agentic loop.
+ * stops the agentic loop, when the turn names no limit of its own (a host older than Maximum Agent
+ * Steps per Turn).
  */
 const MAX_STEPS: number = 16;
 
@@ -383,7 +384,13 @@ async function runTurn(turn: TurnRequest): Promise<void> {
       system,
       ...inputFor(turn, promptFor(turn)),
       abortSignal: controller.signal,
-      stopWhen: stepCountIs(MAX_STEPS),
+      // Maximum Agent Steps per Turn: 0 means no limit, and a host that predates it sends none.
+      stopWhen:
+        turn.maxSteps === 0
+          ? (): boolean => false
+          : stepCountIs(
+              turn.maxSteps !== undefined && turn.maxSteps > 0 ? turn.maxSteps : MAX_STEPS,
+            ),
       // Cap the output tokens when the user set a per-request budget; 0 leaves the model default.
       ...(turn.tokenCap > 0 ? { maxOutputTokens: turn.tokenCap } : {}),
       tools,
