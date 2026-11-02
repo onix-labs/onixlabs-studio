@@ -9,6 +9,7 @@ import {
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Plugins } from './plugins';
+import { PluginSuggestions } from './plugin-suggestions';
 
 /**
  * Offers to install a version-control plugin when a workspace is a repository nothing installed can
@@ -30,6 +31,11 @@ export class VersionControlPrompt {
    * Holds the notifications service the offer is made through.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds whether plugin offers may be made, and which were turned down for good.
+   */
+  private readonly suggestions: PluginSuggestions = inject(PluginSuggestions);
 
   /**
    * Holds the structured logger.
@@ -97,6 +103,11 @@ export class VersionControlPrompt {
     if (plugin === undefined) {
       return;
     }
+    // Suggest Plugins for Missing Support off, or this offer turned down for good: say nothing.
+    const suggestion: string = 'version-control-support';
+    if (!this.suggestions.allows(suggestion)) {
+      return;
+    }
     this.offered = true;
     this.log.info('VersionControlPrompt', `Offering ${plugin.id}`);
     this.notifications.notify({
@@ -113,6 +124,7 @@ export class VersionControlPrompt {
             void this.plugins.installWithConsent(plugin.id);
           },
         },
+        this.suggestions.dontSuggestAgain(suggestion),
       ],
     });
   }

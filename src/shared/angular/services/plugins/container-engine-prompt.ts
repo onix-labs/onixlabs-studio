@@ -8,6 +8,7 @@ import {
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Plugins } from './plugins';
+import { PluginSuggestions } from './plugin-suggestions';
 
 /**
  * Offers to install a container engine at the moment one is missed.
@@ -32,6 +33,11 @@ export class ContainerEnginePrompt {
    * Holds the notification surface the offer is raised on.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds whether plugin offers may be made, and which were turned down for good.
+   */
+  private readonly suggestions: PluginSuggestions = inject(PluginSuggestions);
 
   /**
    * Holds the structured logger.
@@ -91,6 +97,11 @@ export class ContainerEnginePrompt {
     // here would be asking the user to compare two things they have not installed; choosing between
     // engines belongs in the Containers surface, once more than one is installed.
     const plugin: PluginSummary = candidates[0];
+    // Suggest Plugins for Missing Support off, or this offer turned down for good: say nothing.
+    const suggestion: string = 'container-engine-support';
+    if (!this.suggestions.allows(suggestion)) {
+      return;
+    }
     this.offered = true;
     this.log.info('ContainerEnginePrompt', `Offering ${plugin.id}`);
     this.notifications.notify({
@@ -110,6 +121,7 @@ export class ContainerEnginePrompt {
             void this.plugins.installWithConsent(plugin.id);
           },
         },
+        this.suggestions.dontSuggestAgain(suggestion),
       ],
     });
   }

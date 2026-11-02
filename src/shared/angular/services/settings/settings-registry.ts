@@ -250,6 +250,8 @@ export interface SettingsValues {
 
   readonly 'plugins.notifyUpdates': boolean;
   readonly 'plugins.showUnsupported': boolean;
+  readonly 'plugins.suggestPlugins': boolean;
+  readonly 'plugins.dismissedSuggestions': readonly string[];
   readonly 'terminal.defaultShell': string;
   readonly 'terminal.fontFamily': string;
   readonly 'terminal.fontSize': number;
@@ -2506,6 +2508,23 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'installed without you; the Plugin Manager always shows them.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'plugins.suggestPlugins',
+        title: 'Suggest Plugins for Missing Support',
+        description:
+          'Offer a plugin when Studio meets something it cannot handle yet: a language without ' +
+          "language support, a file it can't decode, a repository or containers with no plugin. " +
+          "Each offer can also be turned off on its own with Don't Suggest This Again.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'plugins.dismissedSuggestions',
+        title: 'Turned-Down Suggestions',
+        description: "The plugin offers turned off with Don't Suggest This Again.",
+        control: { kind: 'custom', component: 'plugin-suggestions-dismissed' },
+        default: [],
       },
       {
         key: 'plugins.showUnsupported',

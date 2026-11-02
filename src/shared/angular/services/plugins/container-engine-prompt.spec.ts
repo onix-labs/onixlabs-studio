@@ -102,7 +102,11 @@ describe('ContainerEnginePrompt', () => {
     // Offering a choice would be asking the user to compare two things they have not installed.
     build().offer();
 
-    expect(raised[0]?.actions).toHaveLength(1);
+    // One install, and the offer's own Don't Suggest This Again.
+    expect(raised[0]?.actions?.map((action) => action.label)).toEqual([
+      expect.stringMatching(/^Install /) as unknown as string,
+      "Don't Suggest This Again",
+    ]);
   });
 
   it('offer_actionInstallsThroughConsent', () => {
