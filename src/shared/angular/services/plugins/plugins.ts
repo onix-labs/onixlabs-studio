@@ -1,6 +1,7 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
 import { PluginConsent } from './plugin-consent';
 
@@ -97,6 +98,11 @@ export class Plugins {
   private readonly consent: PluginConsent = inject(PluginConsent);
 
   /**
+   * Holds the file system client, whose native dialog asks before a plugin is removed.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Installs a plugin **after** its terms have been accepted. This is the path every user-facing
    * entry point takes: verification proves a payload was not tampered with, it has never claimed the
    * code is good, and that residual risk is the user's to accept — from whichever surface they
@@ -134,7 +140,31 @@ export class Plugins {
   }
 
   /**
-   * Uninstalls a plugin.
+   * Removes a plugin **after** the user confirms it, naming what goes with it. The path every
+   * user-facing Remove takes; declining removes nothing.
+   * @param plugin The plugin to remove.
+   * @returns Returns what happened: removed, or declined.
+   */
+  public async uninstallWithConsent(plugin: PluginSummary): Promise<'removed' | 'declined'> {
+    const confirmed: boolean = await this.fileSystem.confirmDestructive({
+      title: 'Remove plugin?',
+      message: `Remove ${plugin.name}?`,
+      detail:
+        'What it provides stops working until it is installed again. You can install it again ' +
+        'from the Plugin Manager.',
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) {
+      this.log.debug('Plugins', 'Removal declined', plugin.id);
+      return 'declined';
+    }
+    await this.uninstall(plugin.id);
+    return 'removed';
+  }
+
+  /**
+   * Uninstalls a plugin without asking. For callers that have already asked through
+   * {@link uninstallWithConsent}, or that act on the user's explicit request elsewhere.
    * @param id The plugin identifier.
    * @returns Returns a promise that resolves once the uninstall has finished.
    */

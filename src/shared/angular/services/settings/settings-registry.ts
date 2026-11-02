@@ -248,6 +248,8 @@ export interface SettingsValues {
   readonly 'markdownEditor.selectAllScope': SelectAllScope;
   readonly 'markdownEditor.printMargin': PrintMargin;
 
+  readonly 'plugins.notifyUpdates': boolean;
+  readonly 'plugins.showUnsupported': boolean;
   readonly 'terminal.defaultShell': string;
   readonly 'terminal.fontFamily': string;
   readonly 'terminal.fontSize': number;
@@ -2495,6 +2497,24 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'yourself. Takes effect after a restart.',
         control: { kind: 'toggle' },
         requiresRestart: true,
+      },
+      {
+        key: 'plugins.notifyUpdates',
+        title: 'Notify About Plugin Updates',
+        description:
+          'Say when a newer version of an installed plugin is available. Updates are never ' +
+          'installed without you; the Plugin Manager always shows them.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'plugins.showUnsupported',
+        title: 'Show Unsupported Plugins',
+        description:
+          'List plugins that publish no build for this computer in the Plugin Manager, marked Not ' +
+          'Supported. Off hides them.',
+        control: { kind: 'toggle' },
+        default: true,
       },
     ],
   },

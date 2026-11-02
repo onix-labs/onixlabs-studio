@@ -3,6 +3,7 @@ import { signal, WritableSignal } from '@angular/core';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ALL_PLUGINS,
   AVAILABLE_PLUGINS,
@@ -65,6 +66,24 @@ describe('PluginBrowse', () => {
       providers: [{ provide: Plugins, useValue: { plugins: catalogue } }],
     });
     browse = TestBed.inject(PluginBrowse);
+  });
+
+  it('showUnsupportedPluginsOff_hidesThePluginsThisComputerCannotRun', () => {
+    catalogue.update((plugins: readonly PluginSummary[]): readonly PluginSummary[] => [
+      ...plugins,
+      plugin({ id: 'mac-only', name: 'Mac Only', state: 'unavailable' }),
+    ]);
+    expect(browse.all().map((item: PluginSummary): string => item.id)).toContain('mac-only');
+
+    try {
+      TestBed.inject(Settings).set('plugins.showUnsupported', false);
+      expect(browse.all().map((item: PluginSummary): string => item.id)).not.toContain('mac-only');
+      expect(browse.visible().map((item: PluginSummary): string => item.id)).not.toContain(
+        'mac-only',
+      );
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('visible_whenNothingIsNarrowed_isEverythingByName', () => {

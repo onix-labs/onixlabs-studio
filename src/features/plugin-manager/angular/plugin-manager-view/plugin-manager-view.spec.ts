@@ -78,9 +78,10 @@ describe('PluginManagerView', () => {
         }
         return 'declined';
       },
-      uninstall: (id: string): Promise<void> => {
-        stub.uninstalled.push(id);
-        return Promise.resolve();
+      // The real client's confirmed removal, reduced to its shape: the user confirms, then it goes.
+      uninstallWithConsent: (plugin: PluginSummary): Promise<'removed' | 'declined'> => {
+        stub.uninstalled.push(plugin.id);
+        return Promise.resolve('removed');
       },
     };
     TestBed.configureTestingModule({
@@ -570,7 +571,7 @@ describe('PluginManagerView', () => {
 
   it('uninstall_isNotGatedByTheTerms', () => {
     // The terms are about running someone else's code. Removing it is not that, and asking again
-    // would be consent theatre.
+    // would be consent theatre; Remove asks only whether to remove (Plugins.uninstallWithConsent).
     render([summary({ state: 'installed' })]);
 
     click('Remove');

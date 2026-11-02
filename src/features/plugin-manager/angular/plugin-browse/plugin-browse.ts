@@ -8,6 +8,7 @@ import { canUpdate } from '@shared/angular/components/plugin-action/plugin-actio
 import type { TableSort } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * One row of the categories panel: what it is called, how many plugins it holds, and the glyph that
@@ -95,6 +96,11 @@ export class PluginBrowse {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
+   * Holds the settings, read for whether plugins this computer cannot run are listed.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the search text, empty when nothing is being searched for.
    */
   public readonly query: WritableSignal<string> = signal<string>('');
@@ -111,9 +117,16 @@ export class PluginBrowse {
   public readonly sort: WritableSignal<TableSort | null> = signal<TableSort | null>(null);
 
   /**
-   * Gets every known plugin.
+   * Gets every known plugin — less the ones this computer cannot run, when Show Unsupported Plugins
+   * is off.
    */
-  public readonly all: Signal<readonly PluginSummary[]> = this.plugins.plugins;
+  public readonly all: Signal<readonly PluginSummary[]> = computed((): readonly PluginSummary[] =>
+    this.settings.value('plugins.showUnsupported')()
+      ? this.plugins.plugins()
+      : this.plugins
+          .plugins()
+          .filter((plugin: PluginSummary): boolean => plugin.state !== 'unavailable'),
+  );
 
   /**
    * Gets the categories present in the catalogue, in display order, each with how many plugins it holds.

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
 import { PluginConsent } from './plugin-consent';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Plugins } from './plugins';
 
 /**
@@ -79,6 +80,31 @@ describe('Plugins', () => {
     await service.uninstall('rust-analyzer');
 
     expect(invoked).toContainEqual({ channel: PluginChannel.Uninstall, id: 'rust-analyzer' });
+  });
+
+  it('uninstallWithConsent_asksFirst_andRemovesOnlyWhenConfirmed', async () => {
+    let answer: boolean = false;
+    const asked: string[] = [];
+    TestBed.overrideProvider(FileSystem, {
+      useValue: {
+        confirmDestructive: (request: { readonly message: string }): Promise<boolean> => {
+          asked.push(request.message);
+          return Promise.resolve(answer);
+        },
+      },
+    });
+    const service: Plugins = TestBed.inject(Plugins);
+    const target: PluginSummary = plugin('rust-analyzer', 'installed');
+
+    expect(await service.uninstallWithConsent(target)).toBe('declined');
+    expect(invoked.some((call) => call.channel === (PluginChannel.Uninstall as string))).toBe(
+      false,
+    );
+
+    answer = true;
+    expect(await service.uninstallWithConsent(target)).toBe('removed');
+    expect(invoked).toContainEqual({ channel: PluginChannel.Uninstall, id: 'rust-analyzer' });
+    expect(asked[0]).toContain('rust-analyzer');
   });
 
   it('installWithConsent_accepted_installs', async () => {

@@ -1,3 +1,5 @@
+import { shell } from 'electron';
+import * as fs from 'node:fs/promises';
 import {
   PluginActionResult,
   PluginChannel,
@@ -10,7 +12,7 @@ import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { pluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { contributedPlugins, pluginIndex, pluginStore } from './contributed';
-import { setSideloading, sideloadingState } from './sideloaded';
+import { setSideloading, sideloadDirectory, sideloadingState } from './sideloaded';
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -86,6 +88,13 @@ export class PluginsContribution implements MainContribution {
       (_event: unknown, value: unknown): Promise<SideloadingState> =>
         Promise.resolve(setSideloading(value)),
     );
+    // Opens main's own folder, never one the renderer names; made first, so the button works before
+    // anything was ever sideloaded.
+    context.handle(PluginChannel.OpenFolder, async (): Promise<string> => {
+      const directory: string = sideloadDirectory();
+      await fs.mkdir(directory, { recursive: true });
+      return shell.openPath(directory);
+    });
     context.log.info(
       `Plugin catalogue ready (${pluginCatalogue().length} first-party, ` +
         `${contributedPlugins().length} contributed)`,
