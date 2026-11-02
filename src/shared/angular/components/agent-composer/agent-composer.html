@@ -142,6 +142,27 @@
     </div>
   }
 
+  @if (compactOffered()) {
+    <!-- Auto-Compact, At Threshold = Ask: the context window is filling, so offer the summary that
+         would make room. Dismissed, it stays away until the context next fills. -->
+    <div class="agent__compact-banner" role="status">
+      <app-icon [icon]="Icon.ARROWS_IN" aria-hidden="true" />
+      <span class="agent__edit-text">
+        This conversation has used {{ contextPercent() }}% of its context. Compacting replaces it
+        with a summary.
+      </span>
+      <app-button size="small" variant="solid" label="Compact" (click)="compactNow()" />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.CLOSE"
+        ariaLabel="Not now"
+        tooltip="Not now"
+        (click)="dismissCompactOffer()"
+      />
+    </div>
+  }
+
   @if (suggestions().length > 0) {
     <!-- The `/` command and `@` mention popup: keyboard-navigable (arrows + Enter/Tab), rows
          accept on click without stealing the textarea's focus. -->

@@ -74,6 +74,11 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
 export type ReduceMotion = 'system' | 'on' | 'off';
 
 /**
+ * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
+ */
+export type AskOrAutomatic = 'ask' | 'automatic';
+
+/**
  * Names the reasoning effort a new conversation starts at: the provider's own default, or a level.
  */
 export type DefaultReasoningEffort = 'provider' | 'low' | 'medium' | 'high';
@@ -219,6 +224,10 @@ export interface SettingsValues {
   readonly 'ai.maxLiveSessions': number;
   readonly 'ai.defaultReasoningEffort': DefaultReasoningEffort;
   readonly 'ai.maxStepsPerTurn': number;
+  readonly 'ai.autoCompactThreshold': number;
+  readonly 'ai.autoCompactMode': AskOrAutomatic;
+  readonly 'ai.deleteConversationsAfterDays': number;
+  readonly 'ai.deleteConversationsMode': AskOrAutomatic;
   readonly 'ai.sendMessageWith': SendMessageWith;
   readonly 'ai.maxImagesPerMessage': number;
   readonly 'ai.maxImageSizeMb': number;
@@ -1461,6 +1470,69 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 16,
+      },
+      {
+        key: 'ai.autoCompactThreshold',
+        title: 'Auto-Compact Threshold',
+        description:
+          "How full a conversation's context window gets before it is compacted into a summary. " +
+          'Only where the window is known.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '75', label: '75% of the context window' },
+            { value: '90', label: '90% of the context window' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'ai.autoCompactMode',
+        title: 'At Threshold',
+        description:
+          'Ask first, with a Compact button above the message box, or compact on its own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'automatic', label: 'Automatic' },
+          ],
+        },
+        visibleWhen: { key: 'ai.autoCompactThreshold', equals: [75, 90] },
+        default: 'ask',
+      },
+      {
+        key: 'ai.deleteConversationsAfterDays',
+        title: 'Delete Conversations After',
+        description:
+          'Delete saved conversations that have had no new messages for this long. Checked when Studio starts.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Never' },
+            { value: '30', label: '30 days' },
+            { value: '90', label: '90 days' },
+            { value: '365', label: '365 days' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'ai.deleteConversationsMode',
+        title: 'When Conversations Are Due',
+        description: 'Ask first, offering to review which go, or delete them on their own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'automatic', label: 'Automatic' },
+          ],
+        },
+        visibleWhen: { key: 'ai.deleteConversationsAfterDays', equals: [30, 90, 365] },
+        default: 'ask',
       },
       {
         key: 'ai.maxLiveSessions',

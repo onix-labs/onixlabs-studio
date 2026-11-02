@@ -436,6 +436,28 @@ export class AgentComposer {
   protected readonly editing: WritableSignal<AgentItem | null> = signal<AgentItem | null>(null);
 
   /**
+   * Gets a value indicating whether to offer compaction: Auto-Compact's threshold is reached and At
+   * Threshold is Ask.
+   */
+  protected readonly compactOffered: Signal<boolean> = computed((): boolean =>
+    this.agent.compactOffered(),
+  );
+
+  /**
+   * Compacts the conversation, as offered.
+   */
+  protected compactNow(): void {
+    this.agent.compact();
+  }
+
+  /**
+   * Dismisses the offer to compact until the context fills again.
+   */
+  protected dismissCompactOffer(): void {
+    this.agent.dismissCompactOffer();
+  }
+
+  /**
    * Holds the images attached to the draft (pasted or dropped), shown as thumbnail chips and sent
    * with the next message.
    */
