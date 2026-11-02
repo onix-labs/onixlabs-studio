@@ -1701,6 +1701,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'keep',
       },
+    ],
+  },
+  {
+    id: 'terminal-appearance',
+    label: 'Terminal Appearance',
+    settings: [
       {
         key: 'terminal.fontFamily',
         title: 'Font Family',
@@ -1791,6 +1797,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'gpu',
       },
+    ],
+  },
+  {
+    id: 'terminal-input',
+    label: 'Terminal Input',
+    settings: [
       {
         key: 'terminal.optionAsMeta',
         title: 'Use Option as Meta',

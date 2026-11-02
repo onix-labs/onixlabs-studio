@@ -112,6 +112,8 @@ type SettingsSectionId =
   | 'code-editing'
   | 'markdown'
   | 'terminal'
+  | 'terminal-appearance'
+  | 'terminal-input'
   | 'keyboard'
   | 'ai'
   | 'ai-security'
@@ -442,7 +444,11 @@ export class SettingsView {
       group: 'studio',
       label: 'Terminal',
       icon: Icon.TERMINAL,
-      children: [{ id: 'terminal-general', label: 'General', sectionId: 'terminal' }],
+      children: [
+        { id: 'terminal-general', label: 'General', sectionId: 'terminal' },
+        { id: 'terminal-appearance-leaf', label: 'Appearance', sectionId: 'terminal-appearance' },
+        { id: 'terminal-input-leaf', label: 'Input', sectionId: 'terminal-input' },
+      ],
     },
     {
       id: 'plugins',

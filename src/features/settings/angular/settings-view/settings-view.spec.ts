@@ -312,6 +312,14 @@ describe('SettingsView', () => {
       expect(ids).not.toContain('ai-general');
     });
 
+    it('search_byATerminalSetting_findsItsOwnTerminalPage', async () => {
+      expect(await search('scrollback')).toContain('terminal-appearance-leaf');
+      expect(await search('copy on select')).toContain('terminal-input-leaf');
+      const general: readonly string[] = await search('when the shell exits');
+      expect(general).toContain('terminal-general');
+      expect(general).not.toContain('terminal-input-leaf');
+    });
+
     it('search_byABranchName_keepsEveryLeafBeneathIt', async () => {
       const ids: readonly string[] = await search('artificial');
 

@@ -79,6 +79,12 @@
         @case ('terminal') {
           <app-terminal-settings />
         }
+        @case ('terminal-appearance') {
+          <app-settings-section sectionId="terminal-appearance" />
+        }
+        @case ('terminal-input') {
+          <app-settings-section sectionId="terminal-input" />
+        }
         @case ('source-control') {
           <app-source-control-settings view="general" />
         }
