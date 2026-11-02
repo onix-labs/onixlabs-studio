@@ -17,6 +17,7 @@ import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-a
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
+import { ConversationRetentionPrompt } from '@shared/angular/components/conversation-retention-prompt/conversation-retention-prompt';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
 import { GoToDialogHost } from '@shared/angular/components/go-to/go-to-dialogs/go-to-dialog-host';
@@ -44,6 +45,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     RepositoryTrustHost,
     GoToDialogHost,
     AboutHost,
+    ConversationRetentionPrompt,
     SetupWizardHost,
     WelcomeScreen,
     ConfigureDialogPanel,

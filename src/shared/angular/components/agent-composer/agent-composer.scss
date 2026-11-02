@@ -243,7 +243,8 @@
 }
 
 // The composer's edit-mode banner: sending now rewinds the conversation to the message under edit.
-.agent__edit-banner {
+.agent__edit-banner,
+.agent__compact-banner {
   display: flex;
   align-items: center;
   gap: 0.4rem;

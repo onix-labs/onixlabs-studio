@@ -1,0 +1,54 @@
+.retention {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.retention__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.retention__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.retention__context {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// The list scrolls when long; the title, context and buttons stay put.
+.retention__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-block-size: 18rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.retention__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0;
+}
+
+.retention__name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retention__date {
+  flex: none;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}

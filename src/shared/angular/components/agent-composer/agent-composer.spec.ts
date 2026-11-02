@@ -143,6 +143,8 @@ describe('AgentComposer', () => {
       mode: signal<AgentMode>('agent'),
       effort: signal<AiEffort | null>(null),
       effectiveEffort: signal<AiEffort | null>(null),
+      compactOffered: signal<boolean>(false),
+      dismissCompactOffer: (): void => undefined,
       discoveredCommands,
       compact: (): void => void (compacted += 1),
       clear: (): void => void (clearedChats += 1),

@@ -129,6 +129,19 @@ export class AiSettingsSection {
   }
 
   /**
+   * Gets the Auto-Compact threshold, as a percentage of the context window; 0 is Off.
+   */
+  protected readonly autoCompactThreshold: Signal<number> =
+    this.settings.value('ai.autoCompactThreshold');
+
+  /**
+   * Gets how many days a conversation may go unopened before it is due for deletion; 0 is Never.
+   */
+  protected readonly deleteConversationsAfterDays: Signal<number> = this.settings.value(
+    'ai.deleteConversationsAfterDays',
+  );
+
+  /**
    * Gets the persisted agent shell (the empty string for the default login shell).
    */
   protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;

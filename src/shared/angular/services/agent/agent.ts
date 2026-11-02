@@ -1145,6 +1145,42 @@ export class Agent {
   });
 
   /**
+   * Gets a value indicating whether the conversation has filled its context window to the Auto-Compact
+   * threshold. Never true while the threshold is Off or the window is unknown: a percentage of a
+   * guessed window would compact on a guess.
+   */
+  public readonly contextAtThreshold: Signal<boolean> = computed((): boolean => {
+    const threshold: number = this.settings.value('ai.autoCompactThreshold')();
+    const window: number = this.contextWindow();
+    return threshold > 0 && window > 0 && (this.contextTokens() / window) * 100 >= threshold;
+  });
+
+  /**
+   * Holds a value indicating whether the user dismissed the offer to compact; cleared once the
+   * context drops below the threshold again, so the next time it fills the offer returns.
+   */
+  private readonly compactOfferDismissed: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets a value indicating whether to offer compaction (Auto-Compact's At Threshold is Ask): the
+   * context is at the threshold, nothing is running, and the offer has not been dismissed.
+   */
+  public readonly compactOffered: Signal<boolean> = computed(
+    (): boolean =>
+      this.contextAtThreshold() &&
+      this.settings.value('ai.autoCompactMode')() === 'ask' &&
+      !this.busy() &&
+      !this.compactOfferDismissed(),
+  );
+
+  /**
+   * Dismisses the offer to compact until the context next fills to the threshold.
+   */
+  public dismissCompactOffer(): void {
+    this.compactOfferDismissed.set(true);
+  }
+
+  /**
    * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.
    */
   public readonly costUsd: Signal<number> = this.costUsdState.asReadonly();
@@ -1749,6 +1785,7 @@ export class Agent {
     if (this.busy() || history.length === 0) {
       return;
     }
+    this.compactOfferDismissed.set(false);
     this.compacting = true;
     this.compactionText = '';
     this.busy.set(true);
@@ -1791,6 +1828,7 @@ export class Agent {
     this.contextPathsState.set([]);
     this.sessionIdState.set(null);
     this.contextTokensState.set(0);
+    this.compactOfferDismissed.set(false);
     this.costUsdState.set(0);
     this.queueState.set([]);
   }
@@ -1837,6 +1875,7 @@ export class Agent {
     );
     // Usage is not persisted with the conversation; it refills from the next turn's reported counts.
     this.contextTokensState.set(0);
+    this.compactOfferDismissed.set(false);
     this.costUsdState.set(0);
     this.discardStream();
     this.sequence = items.reduce((max: number, item: AgentItem): number => {
@@ -2258,8 +2297,15 @@ export class Agent {
     }
     this.notifyRunEnded(state, detail);
     // A completed run dispatches the next queued message; a failed or stopped run holds the queue so
-    // messages never fire into a broken or deliberately-stopped conversation.
+    // messages never fire into a broken or deliberately-stopped conversation. A run that filled the
+    // context to the Auto-Compact threshold compacts first when At Threshold is Automatic; the queue
+    // carries on once the compaction lands.
     if (state === 'completed') {
+      if (this.contextAtThreshold() && this.settings.get('ai.autoCompactMode') === 'automatic') {
+        this.logger.info('Agent', 'Context at the Auto-Compact threshold; compacting');
+        this.compact();
+        return;
+      }
       this.dispatchQueue();
     }
   }
@@ -2891,6 +2937,9 @@ export class Agent {
       this.sessionIdState.set(null);
       this.contextTokensState.set(0);
       this.pendingContextSeed = summary;
+      this.compactOfferDismissed.set(false);
+      // Messages queued while the summary was written go out now, onto the fresh session.
+      this.dispatchQueue();
     }
   }
 

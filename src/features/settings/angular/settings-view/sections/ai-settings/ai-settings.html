@@ -140,6 +140,40 @@
 
   <section class="ai-group">
     <app-setting-row
+      label="Auto-Compact Threshold"
+      description="How full a conversation's context window gets before it is compacted into a summary. Only where the window is known."
+    >
+      <app-setting-control key="ai.autoCompactThreshold" />
+    </app-setting-row>
+
+    @if (autoCompactThreshold() > 0) {
+      <app-setting-row
+        label="At Threshold"
+        description="Ask first, with a Compact button above the message box, or compact on its own."
+      >
+        <app-setting-control key="ai.autoCompactMode" />
+      </app-setting-row>
+    }
+
+    <app-setting-row
+      label="Delete Conversations After"
+      description="Delete saved conversations that have had no new messages for this long. Checked when Studio starts."
+    >
+      <app-setting-control key="ai.deleteConversationsAfterDays" />
+    </app-setting-row>
+
+    @if (deleteConversationsAfterDays() > 0) {
+      <app-setting-row
+        label="When Conversations Are Due"
+        description="Ask first, offering to review which go, or delete them on their own."
+      >
+        <app-setting-control key="ai.deleteConversationsMode" />
+      </app-setting-row>
+    }
+  </section>
+
+  <section class="ai-group">
+    <app-setting-row
       label="Agent Shell"
       description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
     >

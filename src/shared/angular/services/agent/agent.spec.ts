@@ -2570,6 +2570,77 @@ describe('Agent', () => {
     expect(agent.items()).toHaveLength(1);
   });
 
+  /**
+   * Runs a turn that leaves the conversation using the given share of the 1,000,000-token window.
+   * @param text The message.
+   * @param tokens The tokens the turn reports in use.
+   */
+  function turnUsing(text: string, tokens: number): void {
+    agent.send(text);
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'usage',
+      inputTokens: tokens,
+      outputTokens: 0,
+      costUsd: null,
+    });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+  }
+
+  it('autoCompact_whenOff_neitherOffersNorCompacts', async () => {
+    await TestBed.inject(AgentEngine).loadProviders();
+    expect(agent.contextWindow()).toBe(1_000_000);
+    turnUsing('hi', 950_000);
+
+    expect(agent.contextAtThreshold()).toBe(false);
+    expect(agent.compactOffered()).toBe(false);
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('autoCompact_whenAsk_offersOnceTheThresholdIsReached_untilDismissed', async () => {
+    await TestBed.inject(AgentEngine).loadProviders();
+    expect(agent.contextWindow()).toBe(1_000_000);
+    TestBed.inject(Settings).set('ai.autoCompactThreshold', 75);
+
+    turnUsing('hi', 700_000);
+    expect(agent.compactOffered()).toBe(false);
+
+    turnUsing('more', 800_000);
+    expect(agent.compactOffered()).toBe(true);
+    // Asking compacts nothing on its own.
+    expect(runCalls).toHaveLength(2);
+
+    agent.dismissCompactOffer();
+    expect(agent.compactOffered()).toBe(false);
+  });
+
+  it('autoCompact_whenAutomatic_compactsAfterTheTurnThatReachedTheThreshold', async () => {
+    await TestBed.inject(AgentEngine).loadProviders();
+    expect(agent.contextWindow()).toBe(1_000_000);
+    TestBed.inject(Settings).set('ai.autoCompactThreshold', 90);
+    TestBed.inject(Settings).set('ai.autoCompactMode', 'automatic');
+
+    turnUsing('hi', 950_000);
+
+    // The second run is the summarisation, not a user turn.
+    expect(runCalls).toHaveLength(2);
+    expect(runCalls[1].prompt).toContain('Summarise');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'The gist.' });
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.contextTokens()).toBe(0);
+  });
+
+  it('autoCompact_whenTheWindowIsUnknown_neverTriggers', async () => {
+    providers = [{ ...PROVIDERS[0], models: [{ id: 'claude-opus-4-8', label: 'Opus 4.8' }] }];
+    await TestBed.inject(AgentEngine).loadProviders();
+    TestBed.inject(Settings).set('ai.autoCompactThreshold', 75);
+
+    turnUsing('hi', 950_000);
+
+    expect(agent.contextWindow()).toBe(0);
+    expect(agent.contextAtThreshold()).toBe(false);
+  });
+
   it('compact_startsAFreshSessionSeededWithTheSummary_soTheNextTurnDoesNotRefillToFull', () => {
     agent.send('hi');
     const firstSession: string | undefined = runCalls[0].agentSessionId;
