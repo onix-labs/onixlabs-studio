@@ -8,6 +8,10 @@
 
 // Splits the view into a left section navigation and a right content pane.
 .settings {
+  // Rows light on hover, one shade brighter than the page, in place of dividers between them.
+  --setting-row-hover-background: var(--settings-row-background-color--hover);
+  --setting-row-inset: 0.6rem;
+
   display: flex;
   gap: 1rem;
   block-size: 100%;
@@ -103,6 +107,8 @@
 .settings__section {
   flex: 1;
   min-block-size: 0;
+  // Room for a row's hover highlight, which reaches this far past the text on either side.
+  padding-inline: var(--setting-row-inset);
   overflow: auto;
 }
 

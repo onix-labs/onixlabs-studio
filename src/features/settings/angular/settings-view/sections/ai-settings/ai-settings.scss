@@ -5,9 +5,3 @@
   display: flex;
   flex-direction: column;
 }
-
-// The first setting row in a group needs no top divider (the shared section rule would otherwise add
-// one to every non-first-child row).
-.ai-group app-setting-row:first-of-type {
-  border-block-start: none;
-}
