@@ -1058,6 +1058,9 @@ export class AiManager {
       request.maxSteps >= 0
         ? Math.floor(request.maxSteps)
         : DEFAULT_MAX_STEPS;
+    // Require OS Sandbox defaults to on and Auto-Allow to off: only an explicit boolean changes either.
+    const requireSandbox: boolean = request.requireSandbox !== false;
+    const autoAllowSandboxedShell: boolean = request.autoAllowSandboxedShell === true;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
     // Honour the requested reasoning effort only when the provider actually offers it (#330); an
     // unknown or unsupported level from the renderer falls back to the provider default.
@@ -1141,6 +1144,8 @@ export class AiManager {
       deniedNetworkLocations,
       tokenCap,
       maxSteps,
+      requireSandbox,
+      autoAllowSandboxedShell,
       agentShell,
       claudeExecutable,
       codexExecutable,
@@ -2297,6 +2302,9 @@ export class AiManager {
       (record['agentSessionLifetimeMs'] === undefined ||
         typeof record['agentSessionLifetimeMs'] === 'number') &&
       (record['maxLiveSessions'] === undefined || typeof record['maxLiveSessions'] === 'number') &&
+      (record['requireSandbox'] === undefined || typeof record['requireSandbox'] === 'boolean') &&
+      (record['autoAllowSandboxedShell'] === undefined ||
+        typeof record['autoAllowSandboxedShell'] === 'boolean') &&
       (record['effort'] === undefined || typeof record['effort'] === 'string') &&
       (record['remoteControl'] === undefined || typeof record['remoteControl'] === 'string')
     );

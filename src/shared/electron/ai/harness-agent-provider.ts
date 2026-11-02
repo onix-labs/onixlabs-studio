@@ -1002,6 +1002,8 @@ export function toTurnRequest(
     deniedNetworkLocations: context.deniedNetworkLocations,
     tokenCap: context.tokenCap,
     maxSteps: context.maxSteps,
+    requireSandbox: context.requireSandbox,
+    autoAllowSandboxedShell: context.autoAllowSandboxedShell,
     resumeSessionId: context.resumeSessionId,
     forkSession: context.forkSession,
     resumeSessionAt: context.resumeSessionAt,

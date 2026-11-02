@@ -206,6 +206,16 @@ export interface AgentRunContext {
   readonly maxSteps: number;
 
   /**
+   * Gets a value indicating whether shell commands are refused where there is no OS sandbox.
+   */
+  readonly requireSandbox: boolean;
+
+  /**
+   * Gets a value indicating whether a sandboxed shell command runs without asking.
+   */
+  readonly autoAllowSandboxedShell: boolean;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's environment is sourced from
    * (#318), or null to inherit the process environment (already hydrated from the default login shell
    * at startup, #317). Lets the agent's Bash use a different shell's `PATH`/exports than the

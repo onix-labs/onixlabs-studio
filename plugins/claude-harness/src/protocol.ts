@@ -108,6 +108,8 @@ export interface TurnRequest {
   readonly allowedNetworkLocations: readonly string[];
   readonly deniedNetworkLocations: readonly string[];
   readonly tokenCap: number;
+  readonly requireSandbox?: boolean;
+  readonly autoAllowSandboxedShell?: boolean;
   readonly resumeSessionId: string | null;
   readonly forkSession: boolean;
   readonly resumeSessionAt: string | null;

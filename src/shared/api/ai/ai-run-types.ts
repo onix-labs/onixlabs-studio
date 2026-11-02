@@ -179,6 +179,18 @@ export interface AiRunRequest {
   readonly maxSteps?: number;
 
   /**
+   * Gets a value indicating whether shell commands are refused where the machine has no OS sandbox
+   * (Require OS Sandbox). Absent means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that runs inside the OS sandbox goes ahead without
+   * asking (Auto-Allow Sandboxed Shell Commands). Absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's Bash environment is sourced
    * from (#318), or absent/empty to inherit the process environment (hydrated from the default login
    * shell at startup, #317). Only an absolute path is honoured; anything else falls back to the

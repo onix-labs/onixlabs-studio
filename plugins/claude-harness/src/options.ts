@@ -39,6 +39,7 @@ import { resolveExecutable, runEnvironment } from './environment';
 import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format';
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
+import { osSandboxAvailable, shellRule, ShellRuleOutcome } from './sandbox-rules';
 import { STUDIO_TOOL_PREFIX } from './tools';
 import type { Choice, ProposedChange, Selection, TurnRequest } from './protocol';
 
@@ -461,7 +462,10 @@ async function decidePermission(
  *  5. **write confinement**, checked *before* the auto-allow below so an `auto-all` posture is confined
  *     too. A deliberate hard boundary that approving cannot widen: a single yes must not be able to
  *     escape the allowed area, and widening it is a settings decision;
- *  6. the per-tool **policy**, then the **posture**, then the prompt.
+ *  6. **Require OS Sandbox**: with no OS sandbox on this machine, the shell is refused — ahead of the
+ *     policy and posture, so an Allowed or auto-all shell still cannot run unprotected;
+ *  7. the per-tool **policy** (a Deny stands), then **Auto-Allow Sandboxed Shell Commands**, then the
+ *     **posture**, then the prompt.
  * @param gate What the gate can reach.
  * @param open The turn the session opened with, which fixes the structural scope.
  * @returns Returns the gate.
@@ -476,6 +480,8 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
   const confinementRoots: readonly string[] = hasWorkspace
     ? [open.workspaceRoot!, ...open.allowedWritePaths]
     : [];
+  // Read once per session: whether a sandbox is installed does not change under a running agent.
+  const sandboxAvailable: boolean = osSandboxAvailable();
   return async (toolName: string, input: Record<string, unknown>): Promise<PermissionResult> => {
     const turn: TurnRequest = gate.getTurn();
     if (toolName === ASK_USER_QUESTION_TOOL) {
@@ -533,6 +539,10 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
         };
       }
     }
+    const shell: ShellRuleOutcome = shellRule(toolName, input, turn, sandboxAvailable);
+    if (shell.kind === 'deny') {
+      return { behavior: 'deny', message: shell.message };
+    }
     const displayName: string = prettyToolName(toolName);
     const policy: 'allow' | 'ask' | 'deny' = turn.toolPolicies[displayName] ?? 'ask';
     if (policy === 'deny') {
@@ -540,6 +550,9 @@ export function buildGate(gate: GateContext, open: TurnRequest): CanUseTool {
         behavior: 'deny',
         message: `Blocked: the ${displayName} tool is set to Deny in your agent settings.`,
       };
+    }
+    if (shell.kind === 'allow') {
+      return { behavior: 'allow', updatedInput: input };
     }
     if (
       policy === 'allow' ||

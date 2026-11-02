@@ -212,6 +212,20 @@
       <app-setting-control key="ai.blockHostCommandLine" />
     </app-setting-row>
 
+    <app-setting-row
+      label="Require OS Sandbox"
+      description="Refuse the agent's shell commands on a machine with no OS sandbox, and say why, rather than run them unprotected. macOS always has one; Linux needs bubblewrap and socat; Windows has none. Applies to Claude; Codex always runs in its own sandbox."
+    >
+      <app-setting-control key="ai.requireOsSandbox" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Auto-Allow Sandboxed Shell Commands"
+      description="Let a shell command that runs inside the OS sandbox go ahead without asking. A command that asks to leave the sandbox still asks, and a tool set to Deny stays denied. Applies to Claude."
+    >
+      <app-setting-control key="ai.autoAllowSandboxedShell" />
+    </app-setting-row>
+
     <app-ai-write-paths />
 
     <app-ai-network-locations />
