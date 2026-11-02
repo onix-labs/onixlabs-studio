@@ -105,6 +105,17 @@ export class TerminalBridge {
   }
 
   /**
+   * Gets the program a session runs in the foreground, when it is not the shell itself.
+   * @param id The terminal identifier.
+   * @returns Returns the program's name, or null when only the shell runs or the session has ended.
+   */
+  public foreground(id: string): Promise<string | null> {
+    return (
+      this.bridge?.invoke<string | null>(TerminalChannel.GetForeground, id) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
    * Lists the shells installed on the host, for the shell picker.
    * @returns Returns the installed shells, most-preferred first, or an empty list outside Electron.
    */

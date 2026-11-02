@@ -11,7 +11,6 @@ import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai/ai-provider-typ
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Log } from '@shared/angular/services/log/log';
-import { ShellPicker } from '@shared/angular/components/forms/shell-picker/shell-picker';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingControl } from '../../setting-control/setting-control';
@@ -37,7 +36,6 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
   selector: 'app-ai-settings',
   imports: [
     Dropdown,
-    ShellPicker,
     SettingRow,
     SettingControl,
     AiProviderConfigurations,
@@ -140,22 +138,4 @@ export class AiSettingsSection {
   protected readonly deleteConversationsAfterDays: Signal<number> = this.settings.value(
     'ai.deleteConversationsAfterDays',
   );
-
-  /**
-   * Gets the persisted agent shell (the empty string for the default login shell).
-   */
-  protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;
-
-  /**
-   * Persists the chosen agent shell.
-   * @param value The chosen shell path, or the empty string for the default login shell.
-   */
-  protected onAgentShellChange(value: string): void {
-    this.log.info(
-      'settings.ai',
-      'Agent shell changed',
-      value === '' ? 'default login shell' : value,
-    );
-    this.settings.set('ai.agentShell', value);
-  }
 }

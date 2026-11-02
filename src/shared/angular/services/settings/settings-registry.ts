@@ -81,6 +81,49 @@ export type ReduceMotion = 'system' | 'on' | 'off';
 export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
 
 /**
+ * Names the shape of a terminal's cursor.
+ */
+export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
+
+/**
+ * Names how a terminal draws: on the GPU (WebGL), where Graphics Acceleration allows, or with the
+ * standard renderer.
+ */
+export type TerminalRenderer = 'gpu' | 'standard';
+
+/**
+ * Names what a right-click in a terminal does: open its menu, paste, or select the word under it.
+ */
+export type TerminalRightClick = 'menu' | 'paste' | 'select-word';
+
+/**
+ * Names how a link in a terminal opens: with ⌘ (Ctrl elsewhere) held, with a plain click, or not at
+ * all.
+ */
+export type TerminalLinkOpening = 'modifier' | 'click' | 'off';
+
+/**
+ * Names what a terminal does when a program rings its bell.
+ */
+export type TerminalBell = 'none' | 'sound' | 'visual';
+
+/**
+ * Names when closing a terminal asks first: every time, only while a program runs in it, or never.
+ */
+export type TerminalConfirmClose = 'always' | 'running' | 'never';
+
+/**
+ * Names what happens to a terminal when its shell exits: it stays open with its output, it closes, or
+ * it closes only when the shell exited cleanly (code 0).
+ */
+export type TerminalOnShellExit = 'keep' | 'close' | 'close-if-clean';
+
+/**
+ * Holds the Font Family value that follows Code › Appearance's font.
+ */
+export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
+
+/**
  * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
  */
 export type AskOrAutomatic = 'ask' | 'automatic';
@@ -206,6 +249,22 @@ export interface SettingsValues {
   readonly 'markdownEditor.printMargin': PrintMargin;
 
   readonly 'terminal.defaultShell': string;
+  readonly 'terminal.fontFamily': string;
+  readonly 'terminal.fontSize': number;
+  readonly 'terminal.scrollback': number;
+  readonly 'terminal.cursorStyle': TerminalCursorStyle;
+  readonly 'terminal.cursorBlink': boolean;
+  readonly 'terminal.renderer': TerminalRenderer;
+  readonly 'terminal.optionAsMeta': boolean;
+  readonly 'terminal.copyOnSelect': boolean;
+  readonly 'terminal.rightClick': TerminalRightClick;
+  readonly 'terminal.warnMultiLinePaste': boolean;
+  readonly 'terminal.linkOpening': TerminalLinkOpening;
+  readonly 'terminal.bell': TerminalBell;
+  readonly 'terminal.shellArguments': string;
+  readonly 'terminal.loginShell': boolean;
+  readonly 'terminal.confirmClose': TerminalConfirmClose;
+  readonly 'terminal.onShellExit': TerminalOnShellExit;
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
@@ -298,6 +357,13 @@ export type SettingsKey = keyof SettingsValues;
  */
 const MOD_LABEL: string =
   typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘' : 'Ctrl+';
+
+/**
+ * Holds how a click with the command modifier is written in an option label: ⌘-click on macOS,
+ * Ctrl-click elsewhere.
+ */
+const MODIFIER_CLICK: string =
+  typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
 
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
@@ -1574,6 +1640,240 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'custom', component: 'terminal-default-shell' },
         default: '',
       },
+      {
+        // Keyed under ai., where it began, so a choice made before it moved to Terminal is kept.
+        key: 'ai.agentShell',
+        title: 'Agent Shell',
+        description:
+          'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
+          'installed shell, or use the default login shell.',
+        control: { kind: 'custom', component: 'ai-agent-shell' },
+        default: '',
+      },
+      {
+        key: 'terminal.shellArguments',
+        title: 'Shell Arguments',
+        description:
+          'Arguments a new terminal starts its shell with, written as on a command line, such as ' +
+          '--norc. Quote an argument that holds spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+        default: '',
+      },
+      {
+        key: 'terminal.loginShell',
+        title: 'Start as Login Shell',
+        description:
+          'Start the shell as a login shell, so it reads your login profile (.zprofile, ' +
+          '.bash_profile) as well.',
+        platforms: ['darwin', 'linux'],
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'terminal.confirmClose',
+        title: 'Confirm Before Closing a Running Terminal',
+        description:
+          'Ask before closing a terminal: every time, only while a program other than the shell is ' +
+          'running in it, or never.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'running', label: 'When Running' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'running',
+      },
+      {
+        key: 'terminal.onShellExit',
+        title: 'When the Shell Exits',
+        description:
+          'Keep a terminal open with its output when its shell exits, close it, or close it only ' +
+          'when the shell exited without an error. A run or task always stays, to show how it ended.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'keep', label: 'Keep Open' },
+            { value: 'close', label: 'Close' },
+            { value: 'close-if-clean', label: 'Close If Clean' },
+          ],
+        },
+        default: 'keep',
+      },
+    ],
+  },
+  {
+    id: 'terminal-appearance',
+    label: 'Terminal Appearance',
+    settings: [
+      {
+        key: 'terminal.fontFamily',
+        title: 'Font Family',
+        description:
+          "The terminal's font: the one Code › Appearance uses, or a monospace font of its own. " +
+          'Only installed fonts are offered.',
+        control: {
+          kind: 'select',
+          options: [{ value: TERMINAL_FONT_SAME_AS_CODE, label: 'Same as Code' }],
+        },
+        default: TERMINAL_FONT_SAME_AS_CODE,
+      },
+      {
+        key: 'terminal.fontSize',
+        title: 'Font Size',
+        description:
+          "The terminal's font size: Code's, or a size of its own. Either way it follows the " +
+          'editor zoom.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Same as Code' },
+            { value: '10', label: '10' },
+            { value: '11', label: '11' },
+            { value: '12', label: '12' },
+            { value: '13', label: '13' },
+            { value: '14', label: '14' },
+            { value: '16', label: '16' },
+            { value: '18', label: '18' },
+            { value: '20', label: '20' },
+            { value: '24', label: '24' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'terminal.scrollback',
+        title: 'Scrollback Lines',
+        description:
+          'How many lines of output a terminal keeps above the screen. More lines use more memory.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '10000', label: '10,000' },
+            { value: '50000', label: '50,000' },
+          ],
+        },
+        default: 5000,
+      },
+      {
+        key: 'terminal.cursorStyle',
+        title: 'Cursor Style',
+        description: "The shape of the terminal's cursor.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'block', label: 'Block' },
+            { value: 'bar', label: 'Bar' },
+            { value: 'underline', label: 'Underline' },
+          ],
+        },
+        default: 'block',
+      },
+      {
+        key: 'terminal.cursorBlink',
+        title: 'Cursor Blink',
+        description: "Blink the terminal's cursor. A read-only task's console never blinks.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'terminal.renderer',
+        title: 'Renderer',
+        description:
+          'Draw terminals on the GPU, which keeps heavy output smooth, or with the standard ' +
+          'renderer, which can fix drawing glitches. The GPU is used only while Graphics ' +
+          'Acceleration is on.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'gpu', label: 'GPU' },
+            { value: 'standard', label: 'Standard' },
+          ],
+        },
+        default: 'gpu',
+      },
+    ],
+  },
+  {
+    id: 'terminal-input',
+    label: 'Terminal Input',
+    settings: [
+      {
+        key: 'terminal.optionAsMeta',
+        title: 'Use Option as Meta',
+        description:
+          'Send Option-key chords to the shell as Meta (Alt), for word movement and shortcuts in ' +
+          'programs like Emacs. Off types the characters Option makes, such as # and €.',
+        platforms: ['darwin'],
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'terminal.copyOnSelect',
+        title: 'Copy on Select',
+        description: 'Copy text to the clipboard as soon as it is selected in a terminal.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'terminal.rightClick',
+        title: 'Right-Click',
+        description:
+          "What a right-click in a terminal does. A right-click on a link always opens the link's " +
+          'menu.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'menu', label: 'Menu (Copy, Paste, Clear, Find)' },
+            { value: 'paste', label: 'Paste' },
+            { value: 'select-word', label: 'Select Word' },
+          ],
+        },
+        default: 'menu',
+      },
+      {
+        key: 'terminal.warnMultiLinePaste',
+        title: 'Warn Before Multi-Line Paste',
+        description:
+          'Ask before pasting text of more than one line, which a shell may run line by line as ' +
+          'soon as it arrives.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'terminal.linkOpening',
+        title: 'Link Opening',
+        description:
+          'How addresses and file paths in terminal output open. Off leaves them as plain text.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'modifier', label: MODIFIER_CLICK },
+            { value: 'click', label: 'Click' },
+            { value: 'off', label: 'Off' },
+          ],
+        },
+        default: 'modifier',
+      },
+      {
+        key: 'terminal.bell',
+        title: 'Bell',
+        description: 'What a terminal does when a program rings its bell.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'sound', label: 'Sound' },
+            { value: 'visual', label: 'Visual (Flash the Terminal)' },
+          ],
+        },
+        default: 'none',
+      },
     ],
   },
   {
@@ -2003,15 +2303,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Ask before conversations are deleted from the conversation list.',
         control: { kind: 'toggle' },
         default: true,
-      },
-      {
-        key: 'ai.agentShell',
-        title: 'Agent Shell',
-        description:
-          'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
-          'installed shell, or use the default login shell.',
-        control: { kind: 'custom', component: 'ai-agent-shell' },
-        default: '',
       },
       {
         key: 'ai.claudeExecutable',

@@ -273,9 +273,9 @@ describe('SettingsView', () => {
     }
 
     it('search_byASettingsTitle_leavesTheLeafItLivesOnWithItsAncestorsOpen', async () => {
-      // "Font size" is a Text Editor setting: the search lands on the page it lives on, with the
-      // branch above it open even though the user never expanded it.
-      const ids: readonly string[] = await search('font size');
+      // "Line height" is a Code › Appearance setting: the search lands on the page it lives on, with
+      // the branch above it open even though the user never expanded it.
+      const ids: readonly string[] = await search('line height');
 
       expect(ids).toContain('code');
       expect(ids).toContain('code-appearance-leaf');
@@ -302,6 +302,22 @@ describe('SettingsView', () => {
       const general: readonly string[] = await search('auto fetch');
       expect(general).toContain('source-control-general');
       expect(general).not.toContain('source-control-cloning');
+    });
+
+    it('search_byAgentShell_findsTerminalNotArtificialIntelligence', async () => {
+      // Agent Shell moved from AI › General to Terminal, keeping its ai. key.
+      const ids: readonly string[] = await search('agent shell');
+
+      expect(ids).toContain('terminal-general');
+      expect(ids).not.toContain('ai-general');
+    });
+
+    it('search_byATerminalSetting_findsItsOwnTerminalPage', async () => {
+      expect(await search('scrollback')).toContain('terminal-appearance-leaf');
+      expect(await search('copy on select')).toContain('terminal-input-leaf');
+      const general: readonly string[] = await search('when the shell exits');
+      expect(general).toContain('terminal-general');
+      expect(general).not.toContain('terminal-input-leaf');
     });
 
     it('search_byABranchName_keepsEveryLeafBeneathIt', async () => {

@@ -18,6 +18,7 @@ import { ContentHost } from '@shared/angular/components/content-host/content-hos
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { AboutHost } from '@shared/angular/components/about-modal/about-host';
 import { UpstreamConfirmModal } from '@shared/angular/components/upstream-confirm-modal/upstream-confirm-modal';
+import { TerminalConfirmModal } from '@shared/angular/components/terminal-confirm-modal/terminal-confirm-modal';
 import { ConversationRetentionPrompt } from '@shared/angular/components/conversation-retention-prompt/conversation-retention-prompt';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { RepositoryTrustHost } from '@shared/angular/components/repository-trust-modal/repository-trust-host';
@@ -48,6 +49,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     AboutHost,
     ConversationRetentionPrompt,
     UpstreamConfirmModal,
+    TerminalConfirmModal,
     SetupWizardHost,
     WelcomeScreen,
     ConfigureDialogPanel,

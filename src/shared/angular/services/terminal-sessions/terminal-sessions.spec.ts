@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
@@ -67,16 +68,59 @@ describe('TerminalSessions', () => {
     expect(settled?.name).toBe(quiet.name);
   });
 
-  it('create_addsASessionWithADistinctNameAndMakesItActive', () => {
+  it('aShellThatExits_closesItsTerminal_asWhenTheShellExitsSays', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    try {
+      const kept: TerminalSession = sessions.create();
+      fireExit(kept.id, 0);
+      expect(sessions.sessions().map((s: TerminalSession): string => s.id)).toContain(kept.id);
+
+      settings.set('terminal.onShellExit', 'close-if-clean');
+      const failed: TerminalSession = sessions.create();
+      fireExit(failed.id, 1);
+      const clean: TerminalSession = sessions.create();
+      fireExit(clean.id, 0);
+
+      const ids: readonly string[] = sessions.sessions().map((s: TerminalSession): string => s.id);
+      expect(ids).toContain(failed.id);
+      expect(ids).not.toContain(clean.id);
+    } finally {
+      localStorage.removeItem('settings');
+    }
+  });
+
+  it('create_addsASessionAndMakesItActive', () => {
     const first: TerminalSession = sessions.create();
     const second: TerminalSession = sessions.create();
 
     expect(sessions.sessions().map((s: TerminalSession): string => s.name)).toEqual([
-      'Terminal 1',
-      'Terminal 2',
+      'Terminal',
+      'Terminal',
     ]);
     expect(first.id).not.toBe(second.id);
     expect(sessions.activeId()).toBe(second.id);
+  });
+
+  it('aShellSession_isNamedAfterItsShell_thenItsTitle_untilTheUserNamesIt', () => {
+    const session: TerminalSession = sessions.create();
+    const name: () => string | undefined = (): string | undefined =>
+      sessions.sessions().find((s: TerminalSession): boolean => s.id === session.id)?.name;
+
+    sessions.setShell(session.id, '/bin/zsh');
+    expect(name()).toBe('zsh');
+
+    sessions.setTitle(session.id, 'me@mac:~/code');
+    expect(name()).toBe('me@mac:~/code');
+    // A restart reports the shell again; the title it set still names the session.
+    sessions.setShell(session.id, '/bin/zsh');
+    expect(name()).toBe('me@mac:~/code');
+    sessions.setTitle(session.id, '   ');
+    expect(name()).toBe('me@mac:~/code');
+
+    sessions.rename(session.id, 'Build');
+    sessions.setTitle(session.id, 'me@mac:~/elsewhere');
+    sessions.setShell(session.id, '/bin/bash');
+    expect(name()).toBe('Build');
   });
 
   it('setRoot_opensNothingItself_andEnsureShellOpensTheFirstShell', () => {
@@ -151,10 +195,10 @@ describe('TerminalSessions', () => {
     expect(dispose).toHaveBeenCalledWith(old);
     expect(sessions.sessions()).toHaveLength(0);
 
-    // The panel's next ensureShell opens the new folder's shell, with naming restarted.
+    // The panel's next ensureShell opens the new folder's shell.
     sessions.ensureShell();
     expect(sessions.sessions()[0].cwd).toBe('/other');
-    expect(sessions.sessions()[0].name).toBe('Terminal 1');
+    expect(sessions.sessions()[0].name).toBe('Terminal');
   });
 
   it('setRoot_whenTheFolderCloses_disposesEverySession', () => {

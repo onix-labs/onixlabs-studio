@@ -8,3 +8,16 @@
     (valueChange)="onChange($event)"
   />
 </app-setting-row>
+
+<app-setting-row
+  label="Agent Shell"
+  description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
+>
+  <app-shell-picker
+    defaultLabel="Default login shell"
+    [value]="agentShell()"
+    (valueChange)="onAgentShellChange($event)"
+  />
+</app-setting-row>
+
+<app-settings-section sectionId="terminal" />

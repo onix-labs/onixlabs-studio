@@ -4,6 +4,7 @@ import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agen
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { TerminalCloseGuard } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 
 /**
@@ -41,16 +42,28 @@ export class TabCloser {
   private readonly agentHosts: AgentHosts = inject(AgentHosts);
 
   /**
+   * Holds the guard that asks before a terminal tab closes while a program runs in it.
+   */
+  private readonly terminalGuard: TerminalCloseGuard = inject(TerminalCloseGuard);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
 
   /**
-   * Closes a tab, confirming a running agent and resolving unsaved changes first.
+   * Closes a tab, confirming a running agent, a terminal's running program and resolving unsaved
+   * changes first.
    * @param id The tab identifier.
    * @returns Returns a promise that resolves once the close has been resolved either way.
    */
   public async close(id: string): Promise<void> {
+    // A terminal tab's PTY shares the tab's id; closing the tab stops whatever runs in it.
+    const tab: { readonly type: string; readonly title: string } | undefined = this.tabs.get(id);
+    if (tab?.type === 'terminal' && !(await this.terminalGuard.mayClose([id], tab.title))) {
+      this.log.debug('TabCloser', 'Tab close cancelled at terminal prompt', id);
+      return;
+    }
     // A workspace tab may host a live agent; closing it ends the agent's session. Confirm first when
     // one is mid-run — via the native dialog — rather than silently killing the work, then stop the
     // run so it ends cleanly ahead of teardown.
