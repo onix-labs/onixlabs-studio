@@ -1510,6 +1510,7 @@ export class Agent {
       },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
+      maxLiveSessions: this.settings.aiMaxLiveSessions(),
       owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
       mode: this.modeState(),

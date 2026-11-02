@@ -469,6 +469,32 @@ describe('AgentChat', () => {
     expect(box!.querySelector('.agent__action-caret')).toBeNull();
   });
 
+  it('thinking_whenExpandThinkingIsOff_foldsBehindItsLabel', () => {
+    TestBed.inject(Settings).set('ai.expandThinking', false);
+    items.set([{ id: 'item-1', kind: 'thinking', text: 'weighing the two options carefully' }]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const fold: HTMLDetailsElement | null = host.querySelector<HTMLDetailsElement>(
+      'details.agent__thinking-fold',
+    );
+    expect(fold).not.toBeNull();
+    expect(fold!.open).toBe(false);
+    expect(fold!.querySelector('.agent__thinking-body')?.textContent).toContain('weighing');
+  });
+
+  it('toolCalls_openWhenExpandToolCallsIsOn', () => {
+    items.set([{ id: 'item-1', kind: 'tool', text: '', toolName: 'Read', toolState: 'ok' }]);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector<HTMLDetailsElement>('details.agent__action')?.open).toBe(false);
+
+    TestBed.inject(Settings).set('ai.expandToolCalls', true);
+    fixture.detectChanges();
+
+    expect(host.querySelector<HTMLDetailsElement>('details.agent__action')?.open).toBe(true);
+  });
+
   it('thinking_whenTheModelKeptItToItself_isTheLabelAloneWithNothingToOpen', () => {
     // Reasoning the model did not surface arrives as an empty item: no words, no count, no caret —
     // a "0 words" expander that opened onto nothing said less than the label alone does.

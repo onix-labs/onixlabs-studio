@@ -131,6 +131,11 @@ export interface AiRunOptions {
   readonly agentSessionLifetimeMs?: number;
 
   /**
+   * Gets the most live sessions kept open at once, or 0 for no limit.
+   */
+  readonly maxLiveSessions?: number;
+
+  /**
    * Gets the reasoning-effort level to run at (#330), or omitted for the provider default. Applied only
    * by providers that offer it.
    */
@@ -301,6 +306,9 @@ export class AiRuntime {
         : { codexExecutable: options.codexExecutable }),
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
+      ...(options.maxLiveSessions === undefined
+        ? {}
+        : { maxLiveSessions: options.maxLiveSessions }),
       ...(options.effort === undefined ? {} : { effort: options.effort }),
       ...(options.remoteControl === undefined ? {} : { remoteControl: options.remoteControl }),
       owningTabId: options.owningTabId ?? null,

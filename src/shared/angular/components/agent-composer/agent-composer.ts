@@ -45,17 +45,13 @@ import { AgentTasksMenu } from '@shared/angular/components/agent-tasks-menu/agen
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
 
 /**
- * The most images a single turn can carry.
+ * Holds the bytes in a megabyte, for the Size per Image setting.
  */
-const MAX_IMAGES: number = 4;
-
-/**
- * The largest accepted image file (bytes). Base64 inflates this by ~4/3 on the wire and in the
- * persisted transcript, and the main process backstops at a slightly larger cap.
- */
-const MAX_IMAGE_BYTES: number = 4 * 1024 * 1024;
+const BYTES_PER_MB: number = 1024 * 1024;
 
 /**
  * The image media types accepted by the composer (the types the providers accept).
@@ -211,6 +207,11 @@ export class AgentComposer {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the settings store: the send key and the image limits.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the transcript-performance probe, so the cost of a keystroke is measured rather than guessed.
@@ -1208,12 +1209,16 @@ export class AgentComposer {
         this.showImageHint('Only PNG, JPEG, WebP, and GIF images can be attached.');
         continue;
       }
-      if (file.size > MAX_IMAGE_BYTES) {
-        this.showImageHint('Images larger than 4 MB cannot be attached.');
+      // Base64 inflates an image by ~4/3 on the wire and in the persisted transcript; the main process
+      // backstops at the largest choice.
+      const maxMb: number = this.settings.get('ai.maxImageSizeMb');
+      if (file.size > maxMb * BYTES_PER_MB) {
+        this.showImageHint(`Images larger than ${maxMb} MB cannot be attached.`);
         continue;
       }
-      if (this.pendingImages().length >= MAX_IMAGES) {
-        this.showImageHint(`At most ${MAX_IMAGES} images can be attached to one message.`);
+      const maxImages: number = this.settings.get('ai.maxImagesPerMessage');
+      if (this.pendingImages().length >= maxImages) {
+        this.showImageHint(`At most ${maxImages} images can be attached to one message.`);
         return;
       }
       const data: string | null = await this.readAsBase64(file);
@@ -1418,11 +1423,34 @@ export class AgentComposer {
       this.onHistoryKey(event);
       return;
     }
-    if (event.key !== 'Enter' || event.shiftKey) {
+    if (event.key !== 'Enter' || event.altKey) {
       return;
     }
-    event.preventDefault();
-    this.send();
+    // Send Message With names the one Enter that sends; the other two insert a new line. Shift+Enter
+    // and plain Enter do that natively in a text area, but ⌘Enter does not, so it is inserted here.
+    const mod: boolean = window.host?.platform === 'darwin' ? event.metaKey : event.ctrlKey;
+    const pressed: SendMessageWith = mod ? 'mod-enter' : event.shiftKey ? 'shift-enter' : 'enter';
+    if (mod && event.shiftKey) {
+      return;
+    }
+    if (pressed === this.settings.get('ai.sendMessageWith')) {
+      event.preventDefault();
+      this.send();
+      return;
+    }
+    if (pressed === 'mod-enter') {
+      event.preventDefault();
+      this.insertNewLine(event.target as HTMLTextAreaElement);
+    }
+  }
+
+  /**
+   * Inserts a new line at the caret, replacing any selection, as plain Enter would.
+   * @param area The composer text area.
+   */
+  private insertNewLine(area: HTMLTextAreaElement): void {
+    area.setRangeText('\n', area.selectionStart, area.selectionEnd, 'end');
+    area.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   /**

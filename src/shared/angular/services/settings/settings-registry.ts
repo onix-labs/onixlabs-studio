@@ -74,6 +74,11 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
 export type ReduceMotion = 'system' | 'on' | 'off';
 
 /**
+ * Names the key that sends an agent message; the other two insert a new line.
+ */
+export type SendMessageWith = 'enter' | 'mod-enter' | 'shift-enter';
+
+/**
  * How scroll bars are shown: slim bars that appear while an area is hovered or scrolled, or bars that
  * are always there.
  */
@@ -206,6 +211,13 @@ export interface SettingsValues {
   readonly 'ai.runTimeoutMinutes': number;
   readonly 'ai.agentSessionLifetime': number;
   readonly 'ai.agentShell': string;
+  readonly 'ai.maxLiveSessions': number;
+  readonly 'ai.sendMessageWith': SendMessageWith;
+  readonly 'ai.maxImagesPerMessage': number;
+  readonly 'ai.maxImageSizeMb': number;
+  readonly 'ai.expandToolCalls': boolean;
+  readonly 'ai.expandThinking': boolean;
+  readonly 'ai.confirmDeleteConversations': boolean;
   readonly 'ai.claudeExecutable': ClaudeExecutableMode;
   readonly 'ai.claudeExecutablePath': string;
   readonly 'ai.codexExecutable': CodexExecutableMode;
@@ -231,6 +243,12 @@ export type SettingsKey = keyof SettingsValues;
  * its defaults, and how it is rendered. Adding a scalar setting is one entry here plus its line in
  * {@link SettingsValues}.
  */
+/**
+ * Holds how the platform's command modifier is written in an option label: ⌘ on macOS, Ctrl elsewhere.
+ */
+const MOD_LABEL: string =
+  typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘' : 'Ctrl+';
+
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
     id: 'application',
@@ -1400,6 +1418,92 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 60,
+      },
+      {
+        key: 'ai.maxLiveSessions',
+        title: 'Maximum Live Agent Sessions',
+        description:
+          'How many agent conversations keep a live session, and its background process, open at ' +
+          'once. Beyond this the least recently used is closed; it reopens on its next message.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '4', label: '4' },
+            { value: '8', label: '8' },
+            { value: '16', label: '16' },
+            { value: '32', label: '32' },
+            { value: '64', label: '64' },
+            { value: '0', label: 'Unlimited' },
+          ],
+        },
+        default: 16,
+      },
+      {
+        key: 'ai.sendMessageWith',
+        title: 'Send Message With',
+        description: 'The key that sends a message. The other two insert a new line.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'enter', label: 'Enter' },
+            { value: 'mod-enter', label: `${MOD_LABEL}Enter` },
+            { value: 'shift-enter', label: 'Shift+Enter' },
+          ],
+        },
+        default: 'enter',
+      },
+      {
+        key: 'ai.maxImagesPerMessage',
+        title: 'Images per Message',
+        description: "The most images one message can carry. A provider's own limit still applies.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '4', label: '4' },
+            { value: '8', label: '8' },
+            { value: '16', label: '16' },
+          ],
+        },
+        default: 4,
+      },
+      {
+        key: 'ai.maxImageSizeMb',
+        title: 'Size per Image',
+        description:
+          "The largest image that can be attached. A provider's own limit still applies.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '4', label: '4 MB' },
+            { value: '8', label: '8 MB' },
+            { value: '16', label: '16 MB' },
+          ],
+        },
+        default: 4,
+      },
+      {
+        key: 'ai.expandToolCalls',
+        title: 'Expand Tool Calls',
+        description: 'Show each tool call open, with its input and output, rather than folded.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'ai.expandThinking',
+        title: 'Expand Thinking',
+        description: "Show the agent's reasoning open, rather than folded behind its label.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'ai.confirmDeleteConversations',
+        title: 'Confirm Before Deleting Conversations',
+        description: 'Ask before conversations are deleted from the conversation list.',
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'ai.agentShell',

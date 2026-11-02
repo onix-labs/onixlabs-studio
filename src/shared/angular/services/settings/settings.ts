@@ -798,6 +798,11 @@ export class Settings {
     this.value('ai.agentSessionLifetime');
 
   /**
+   * Gets the most agent sessions kept live at once, or 0 for no limit.
+   */
+  public readonly aiMaxLiveSessions: Signal<number> = this.value('ai.maxLiveSessions');
+
+  /**
    * Gets the shell whose login profile the agent sources its environment from (an absolute path), or
    * the empty string to inherit the default login shell's environment.
    */

@@ -46,6 +46,59 @@
     </app-setting-row>
 
     <app-setting-row
+      label="Maximum Live Agent Sessions"
+      description="How many agent conversations keep a live session, and its background process, open at once. Beyond this the least recently used is closed; it reopens on its next message."
+    >
+      <app-setting-control key="ai.maxLiveSessions" />
+    </app-setting-row>
+  </section>
+
+  <section class="ai-group">
+    <app-setting-row
+      label="Send Message With"
+      description="The key that sends a message. The other two insert a new line."
+    >
+      <app-setting-control key="ai.sendMessageWith" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Images per Message"
+      description="The most images one message can carry. A provider's own limit still applies."
+    >
+      <app-setting-control key="ai.maxImagesPerMessage" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Size per Image"
+      description="The largest image that can be attached. A provider's own limit still applies."
+    >
+      <app-setting-control key="ai.maxImageSizeMb" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Expand Tool Calls"
+      description="Show each tool call open, with its input and output, rather than folded."
+    >
+      <app-setting-control key="ai.expandToolCalls" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Expand Thinking"
+      description="Show the agent's reasoning open, rather than folded behind its label."
+    >
+      <app-setting-control key="ai.expandThinking" />
+    </app-setting-row>
+
+    <app-setting-row
+      label="Confirm Before Deleting Conversations"
+      description="Ask before conversations are deleted from the conversation list."
+    >
+      <app-setting-control key="ai.confirmDeleteConversations" />
+    </app-setting-row>
+  </section>
+
+  <section class="ai-group">
+    <app-setting-row
       label="Agent Shell"
       description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
     >

@@ -397,6 +397,16 @@ export class AgentChat implements OnInit {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Gets a value indicating whether tool calls render open (Expand Tool Calls).
+   */
+  protected readonly expandToolCalls: Signal<boolean> = this.settings.value('ai.expandToolCalls');
+
+  /**
+   * Gets a value indicating whether the agent's reasoning renders open (Expand Thinking).
+   */
+  protected readonly expandThinking: Signal<boolean> = this.settings.value('ai.expandThinking');
+
+  /**
    * Holds the transcript-performance probe (GitHub #408 instrumentation): times each rows rebuild and
    * counts how many transcript views are mounted at once (the Mission Control multiplier).
    */

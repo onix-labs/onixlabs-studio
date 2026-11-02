@@ -4,6 +4,7 @@ import {
   AgentComposerShortcuts,
   COMPOSER_SHORTCUT_GROUPS,
   localiseModifiers,
+  withSendKey,
   ComposerShortcut,
   ComposerShortcutGroup,
 } from './agent-composer-shortcuts';
@@ -52,6 +53,36 @@ describe('localiseModifiers', () => {
   });
 });
 
+describe('withSendKey', () => {
+  /**
+   * Reads the composer group's send and new-line rows.
+   * @param groups The rewritten groups.
+   * @returns Returns each row as its keys joined, then what it does.
+   */
+  function sendRows(groups: readonly ComposerShortcutGroup[]): readonly string[] {
+    return groups[0].shortcuts
+      .filter((shortcut: ComposerShortcut): boolean =>
+        /to send|for a new line/.test(shortcut.description),
+      )
+      .map(
+        (shortcut: ComposerShortcut): string => `${shortcut.keys.join('')} ${shortcut.description}`,
+      );
+  }
+
+  it('listsTheChosenKeyToSend_andTheOtherTwoForANewLine', () => {
+    expect(sendRows(withSendKey(COMPOSER_SHORTCUT_GROUPS, 'enter', true))).toEqual([
+      '↵ to send',
+      '⌘↵ for a new line',
+      '⇧↵ for a new line',
+    ]);
+    expect(sendRows(withSendKey(COMPOSER_SHORTCUT_GROUPS, 'mod-enter', false))).toEqual([
+      'Ctrl↵ to send',
+      '↵ for a new line',
+      '⇧↵ for a new line',
+    ]);
+  });
+});
+
 describe('AgentComposerShortcuts', () => {
   it('render_beforeOpening_isAnIconButtonNamingItself', () => {
     const fixture: ComponentFixture<AgentComposerShortcuts> = mount();
@@ -75,7 +106,8 @@ describe('AgentComposerShortcuts', () => {
     const rows: readonly Element[] = Array.from(
       document.querySelectorAll('.agent-shortcuts__item'),
     );
-    expect(rows.length).toBe(allShortcuts().length);
+    // One more row than written: Send Message With lists both of the keys that insert a new line.
+    expect(rows.length).toBe(allShortcuts().length + 1);
     const text: string = rows.map((row: Element): string => row.textContent ?? '').join(' | ');
     expect(text).toContain('to send');
     expect(text).toContain('for the previous message');

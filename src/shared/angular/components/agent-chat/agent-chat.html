@@ -184,7 +184,20 @@
                  word count ticking up as progress. Reasoning the model kept to itself arrives as
                  an empty item; that is the label alone, since a box with nothing in it and a caret
                  that opens onto nothing both say less than the label does. -->
-            @if (row.item!.text.trim().length > 0) {
+            @if (row.item!.text.trim().length > 0 && !expandThinking()) {
+              <!-- Expand Thinking off: the reasoning folds behind its label, as a tool call does. -->
+              <details class="agent__action agent__thinking-fold">
+                <summary class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <span class="agent__lane-meta">{{ row.meta }}</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
+                </summary>
+                <app-markdown-renderer
+                  class="agent__action-detail agent__thinking-body agent__markdown"
+                  [text]="row.item!.text"
+                />
+              </details>
+            } @else if (row.item!.text.trim().length > 0) {
               <div class="agent__action agent__thinking">
                 <span class="agent__thinking-head">
                   <span class="agent__action-label">{{ row.label }}</span>
@@ -292,6 +305,7 @@
               <details
                 class="agent__action agent__lane"
                 [class.agent__action--error]="row.item!.toolState === 'error'"
+                [open]="expandToolCalls()"
               >
                 <summary class="agent__action-summary agent__lane-summary">
                   <app-icon class="agent__lane-icon" [icon]="Icon.SUBAGENT" aria-hidden="true" />
@@ -323,6 +337,7 @@
               <details
                 class="agent__action"
                 [class.agent__action--error]="row.item!.toolState === 'error'"
+                [open]="expandToolCalls()"
               >
                 <summary class="agent__action-summary">
                   <span class="agent__action-label">{{ row.label }}</span>
