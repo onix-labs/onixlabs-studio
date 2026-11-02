@@ -206,6 +206,13 @@ export interface AiRunRequest {
   readonly agentSessionLifetimeMs?: number;
 
   /**
+   * Gets the most live sessions kept open at once (Maximum Live Agent Sessions), or 0 for no limit.
+   * Beyond it the least recently used session is reaped. Carried on every turn so the cap tracks the
+   * current setting; absent keeps the previous cap.
+   */
+  readonly maxLiveSessions?: number;
+
+  /**
    * Gets the reasoning-effort level to run at (#330), or absent for the provider default. Honoured only
    * when the resolved provider declares it in `supportedEfforts`; ignored otherwise.
    */

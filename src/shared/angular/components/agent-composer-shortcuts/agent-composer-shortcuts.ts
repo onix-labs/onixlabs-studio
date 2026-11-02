@@ -1,9 +1,11 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Icon } from '@shared/angular/icons/icon';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { SendMessageWith } from '@shared/angular/services/settings/settings-registry';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
@@ -69,10 +71,55 @@ export function localiseModifiers(
   }));
 }
 
+/**
+ * Rewrites the composer's send and new-line rows for the Send Message With setting: the chosen key
+ * sends, and each of the other two inserts a new line.
+ * @param groups The groups as written.
+ * @param send The key that sends.
+ * @param isMac Whether the platform is macOS, where the command modifier is ⌘ rather than Ctrl.
+ * @returns Returns the groups with the send key applied.
+ */
+export function withSendKey(
+  groups: readonly ComposerShortcutGroup[],
+  send: SendMessageWith,
+  isMac: boolean,
+): readonly ComposerShortcutGroup[] {
+  const keys: Readonly<Record<SendMessageWith, readonly string[]>> = {
+    enter: ['↵'],
+    'mod-enter': [isMac ? '⌘' : 'Ctrl', '↵'],
+    'shift-enter': ['⇧', '↵'],
+  };
+  const order: readonly SendMessageWith[] = ['enter', 'mod-enter', 'shift-enter'];
+  const sendRows: readonly ComposerShortcut[] = [
+    { keys: keys[send], description: 'to send' },
+    ...order
+      .filter((key: SendMessageWith): boolean => key !== send)
+      .map((key: SendMessageWith): ComposerShortcut => ({
+        keys: keys[key],
+        description: 'for a new line',
+      })),
+  ];
+  return groups.map((group: ComposerShortcutGroup, index: number): ComposerShortcutGroup =>
+    index === 0
+      ? {
+          ...group,
+          shortcuts: [
+            ...sendRows,
+            ...group.shortcuts.filter(
+              (shortcut: ComposerShortcut): boolean =>
+                shortcut.description !== 'to send' && shortcut.description !== 'for a new line',
+            ),
+          ],
+        }
+      : group,
+  );
+}
+
 export const COMPOSER_SHORTCUT_GROUPS: readonly ComposerShortcutGroup[] = [
   {
     title: 'Composer',
     shortcuts: [
+      // The send and new-line keys follow Send Message With; see withSendKey.
       { keys: ['↵'], description: 'to send' },
       { keys: ['⇧', '↵'], description: 'for a new line' },
       // Alt, not Shift: Shift+arrows extends the selection, which the composer must not take.
@@ -117,11 +164,28 @@ export class AgentComposerShortcuts {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the shortcut groups listed by the menu.
+   * Holds a value indicating whether the platform is macOS, which names its modifiers with symbols.
    */
-  protected readonly groups: readonly ComposerShortcutGroup[] = localiseModifiers(
-    COMPOSER_SHORTCUT_GROUPS,
-    inject(Studio).platform === 'darwin',
+  private readonly isMac: boolean = inject(Studio).platform === 'darwin';
+
+  /**
+   * Holds the settings store, for the key that sends.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets the shortcut groups listed by the menu, with the send key the setting names.
+   */
+  protected readonly groups: Signal<readonly ComposerShortcutGroup[]> = computed(
+    (): readonly ComposerShortcutGroup[] =>
+      localiseModifiers(
+        withSendKey(
+          COMPOSER_SHORTCUT_GROUPS,
+          this.settings.value('ai.sendMessageWith')(),
+          this.isMac,
+        ),
+        this.isMac,
+      ),
   );
 
   /**

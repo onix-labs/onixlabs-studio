@@ -7,6 +7,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { AgentCategories } from '@shared/angular/services/agent-categories/agent-categories';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { AgentConversationList } from './agent-conversation-list';
 
 describe('AgentConversationList', () => {
@@ -15,6 +16,7 @@ describe('AgentConversationList', () => {
   let summaries: WritableSignal<readonly AgentConversationSummary[]>;
   let categories: WritableSignal<readonly AgentCategory[]>;
   let opened: string[];
+  let deleted: string[];
   let renamed: { id: string; title: string }[];
   let windows: FakeModalWindows;
 
@@ -64,6 +66,8 @@ describe('AgentConversationList', () => {
   }
 
   beforeEach(async () => {
+    localStorage.clear();
+    deleted = [];
     opened = [];
     renamed = [];
     windows = new FakeModalWindows();
@@ -83,7 +87,10 @@ describe('AgentConversationList', () => {
       },
       setCategory: (): Promise<void> => Promise.resolve(),
       duplicate: (): Promise<void> => Promise.resolve(),
-      delete: (): Promise<void> => Promise.resolve(),
+      delete: (ids: readonly string[]): Promise<void> => {
+        deleted.push(...ids);
+        return Promise.resolve();
+      },
     };
     const categoriesStub: Partial<AgentCategories> = {
       categories,
@@ -252,6 +259,20 @@ describe('AgentConversationList', () => {
     const content: HTMLElement = windows.contentHost!;
     expect(content.querySelector('.history__modal-title')?.textContent).toContain('New category');
     expect(content.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
+  });
+
+  it('delete_whenConfirmationIsTurnedOff_deletesWithoutAsking', async () => {
+    TestBed.inject(Settings).set('ai.confirmDeleteConversations', false);
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+    itemChecks()[0].click();
+    fixture.detectChanges();
+
+    tool('Delete').click();
+    await fixture.whenStable();
+
+    expect(windows.openWindows).toBe(0);
+    expect(deleted).toEqual([SUMMARY.id]);
   });
 
   it('delete_whenConfirmed_promptsWithTheCheckedCount', () => {

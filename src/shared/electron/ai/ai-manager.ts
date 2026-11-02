@@ -146,12 +146,17 @@ const MAX_RUN_TIMEOUT_MS: number = 7_200_000;
 const MAX_SESSION_LIFETIME_MS: number = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * The most live-harness sessions kept open at once (#328). Beyond this the least-recently-used session
- * is reaped — a memory-pressure safety valve that applies even under an "indefinite" lifetime, so a
- * held-open session can never exhaust the machine. A reaped session reopens transparently on its next
- * turn.
+ * The most live-harness sessions kept open at once (#328) until a run says otherwise — the Maximum Live
+ * Agent Sessions setting's default. Beyond this the least-recently-used session is reaped, a
+ * memory-pressure safety valve that applies even under an "indefinite" lifetime. A reaped session
+ * reopens transparently on its next turn.
  */
-const MAX_LIVE_SESSIONS: number = 8;
+const DEFAULT_MAX_LIVE_SESSIONS: number = 16;
+
+/**
+ * The largest cap a run request may set, bounding untrusted input (the largest offered setting is 64).
+ */
+const MAX_LIVE_SESSIONS_CEILING: number = 64;
 
 /**
  * The window streamed deltas merge over before the renderer sees them (see `emit`). Matches the
@@ -311,6 +316,12 @@ export class AiManager {
    * Holds the abort controllers of in-flight runs, keyed by request id.
    */
   private readonly runs: Map<string, AbortController> = new Map<string, AbortController>();
+
+  /**
+   * Holds the most live sessions kept open at once, as the latest run request set it (Maximum Live
+   * Agent Sessions), or 0 for no limit.
+   */
+  private liveSessionCap: number = DEFAULT_MAX_LIVE_SESSIONS;
 
   /**
    * Holds the held-open live sessions of live-harness agents (#327), keyed by the renderer's stable
@@ -1270,6 +1281,7 @@ export class AiManager {
     ) {
       return null;
     }
+    this.liveSessionCap = this.liveSessionCapFor(request);
     const existing: LiveSessionEntry | undefined = this.liveSessions.get(key);
     if (existing !== undefined) {
       // Continue the held-open session only when it is still alive AND compatible. A session whose
@@ -1322,7 +1334,7 @@ export class AiManager {
         this.endSession(key, entry, reason);
       }
     });
-    // Memory-pressure valve: keep at most MAX_LIVE_SESSIONS open, reaping the least-recently-used.
+    // Memory-pressure valve: keep at most the cap open, reaping the least-recently-used.
     this.reapOverflow(key);
     return this.runLiveTurn(key, entry, context);
   }
@@ -1364,6 +1376,20 @@ export class AiManager {
         this.armReap(key, current);
       }
     });
+  }
+
+  /**
+   * Reads the live-session cap a run request carries (Maximum Live Agent Sessions): 0 for no limit, a
+   * whole number up to {@link MAX_LIVE_SESSIONS_CEILING}, or the current cap when the request names none.
+   * @param request The run request.
+   * @returns Returns the cap, or 0 for no limit.
+   */
+  private liveSessionCapFor(request: AiRunRequest): number {
+    const value: number | undefined = request.maxLiveSessions;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return this.liveSessionCap;
+    }
+    return Math.min(Math.floor(value), MAX_LIVE_SESSIONS_CEILING);
   }
 
   /**
@@ -1479,13 +1505,13 @@ export class AiManager {
   }
 
   /**
-   * Reaps the least-recently-used live sessions until at most {@link MAX_LIVE_SESSIONS} remain — the
-   * memory-pressure safety valve (#328), applied even under an indefinite lifetime. The just-opened
-   * session (identified by key) is never the victim.
+   * Reaps the least-recently-used live sessions until at most {@link liveSessionCap} remain — the
+   * memory-pressure safety valve (#328), applied even under an indefinite lifetime; a cap of 0 (no
+   * limit) reaps nothing. The just-opened session (identified by key) is never the victim.
    * @param keepKey The key of the session that must stay open (the one just opened).
    */
   private reapOverflow(keepKey: string): void {
-    while (this.liveSessions.size > MAX_LIVE_SESSIONS) {
+    while (this.liveSessionCap > 0 && this.liveSessions.size > this.liveSessionCap) {
       let oldestKey: string | null = null;
       let oldest: LiveSessionEntry | null = null;
       for (const [entryKey, entry] of this.liveSessions) {
@@ -1509,7 +1535,7 @@ export class AiManager {
       }
       logger.debug(
         'AiManager.reapOverflow',
-        `Live session cap (${MAX_LIVE_SESSIONS}) exceeded; reaping least-recently-used session ${oldestKey}`,
+        `Live session cap (${this.liveSessionCap}) exceeded; reaping least-recently-used session ${oldestKey}`,
       );
       this.dropSession(oldestKey, oldest, 'evicted');
     }
@@ -2256,6 +2282,7 @@ export class AiManager {
       (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number') &&
       (record['agentSessionLifetimeMs'] === undefined ||
         typeof record['agentSessionLifetimeMs'] === 'number') &&
+      (record['maxLiveSessions'] === undefined || typeof record['maxLiveSessions'] === 'number') &&
       (record['effort'] === undefined || typeof record['effort'] === 'string') &&
       (record['remoteControl'] === undefined || typeof record['remoteControl'] === 'string')
     );
@@ -2272,25 +2299,29 @@ export class AiManager {
       return [];
     }
     const allowedTypes: readonly string[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-    // ~6 MB of base64 (~4.5 MB of image) per image; the composer enforces a smaller cap already.
-    const maxDataLength: number = 6_000_000;
-    return value
-      .filter((entry: unknown): entry is AiImageRef => {
-        if (entry === null || typeof entry !== 'object') {
-          return false;
-        }
-        const record: Record<string, unknown> = entry as Record<string, unknown>;
-        return (
-          typeof record['mediaType'] === 'string' &&
-          allowedTypes.includes(record['mediaType']) &&
-          typeof record['data'] === 'string' &&
-          record['data'].length > 0 &&
-          record['data'].length <= maxDataLength &&
-          /^[A-Za-z0-9+/=]+$/.test(record['data']) &&
-          (record['name'] === undefined || typeof record['name'] === 'string')
-        );
-      })
-      .slice(0, 6);
+    // The largest Size per Image choice (16 MB) as base64, which inflates by ~4/3, plus a little
+    // slack; the composer enforces the chosen, usually smaller, cap already.
+    const maxDataLength: number = 22_500_000;
+    return (
+      value
+        .filter((entry: unknown): entry is AiImageRef => {
+          if (entry === null || typeof entry !== 'object') {
+            return false;
+          }
+          const record: Record<string, unknown> = entry as Record<string, unknown>;
+          return (
+            typeof record['mediaType'] === 'string' &&
+            allowedTypes.includes(record['mediaType']) &&
+            typeof record['data'] === 'string' &&
+            record['data'].length > 0 &&
+            record['data'].length <= maxDataLength &&
+            /^[A-Za-z0-9+/=]+$/.test(record['data']) &&
+            (record['name'] === undefined || typeof record['name'] === 'string')
+          );
+        })
+        // The largest Images per Message choice; the composer enforces the chosen count already.
+        .slice(0, 16)
+    );
   }
 
   /**

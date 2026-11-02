@@ -124,8 +124,9 @@ describe('AiSettingsSection', () => {
 
   it('render_whenGeneralView_rendersARowPerGlobalControl', () => {
     // Auto-scroll, conversation text size, report-background-tasks, remote-control notifications,
-    // token cap, run timeout, session lifetime, agent shell.
-    expect(host.querySelectorAll('app-setting-row').length).toBe(8);
+    // token cap, run timeout, session lifetime, live session cap, send key, images per message, size
+    // per image, expand tool calls, expand thinking, confirm deleting conversations, agent shell.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(15);
   });
 
   it('render_whenGeneralView_offersTheConversationTextSizes', () => {

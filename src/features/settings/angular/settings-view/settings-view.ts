@@ -66,6 +66,13 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.tokenCap',
     'ai.runTimeoutMinutes',
     'ai.agentSessionLifetime',
+    'ai.maxLiveSessions',
+    'ai.sendMessageWith',
+    'ai.maxImagesPerMessage',
+    'ai.maxImageSizeMb',
+    'ai.expandToolCalls',
+    'ai.expandThinking',
+    'ai.confirmDeleteConversations',
     'ai.agentShell',
   ]),
   'ai-security': new Set<string>([

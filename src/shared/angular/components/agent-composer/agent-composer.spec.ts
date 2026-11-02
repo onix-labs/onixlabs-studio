@@ -27,6 +27,7 @@ import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-promp
 import { Search } from '@shared/angular/services/search/search';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { FakeIntersectionObserver } from '@shared/angular/testing/fake-intersection-observer';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { AgentComposer } from './agent-composer';
 
 /**
@@ -326,6 +327,31 @@ describe('AgentComposer', () => {
     component.onInput('hi');
     component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
 
+    expect(sent).toEqual(['hi']);
+  });
+
+  it('onKeydown_whenSendMessageWithIsModEnter_sendsOnlyOnModEnter', () => {
+    TestBed.inject(Settings).set('ai.sendMessageWith', 'mod-enter');
+    component.onInput('hi');
+
+    // Off macOS, where the tests run, the command modifier is Ctrl.
+    const plain: KeyboardEvent = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    component.onKeydown(plain);
+    expect(sent).toHaveLength(0);
+    expect(plain.defaultPrevented).toBe(false);
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+    expect(sent).toEqual(['hi']);
+  });
+
+  it('onKeydown_whenSendMessageWithIsShiftEnter_sendsOnShiftEnter', () => {
+    TestBed.inject(Settings).set('ai.sendMessageWith', 'shift-enter');
+    component.onInput('hi');
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(sent).toHaveLength(0);
+
+    component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }));
     expect(sent).toEqual(['hi']);
   });
 
@@ -649,6 +675,19 @@ describe('AgentComposer', () => {
     expect(host.querySelector('.agent__image-hint')?.textContent).toContain(
       'does not accept images',
     );
+  });
+
+  it('images_followTheImageSizeSetting', async () => {
+    TestBed.inject(Settings).set('ai.maxImageSizeMb', 8);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const big: File = new File([new Uint8Array(8 * 1024 * 1024 + 1)], 'big.png', {
+      type: 'image/png',
+    });
+
+    await component.addImageFiles([big]);
+    fixture.detectChanges();
+
+    expect(host.querySelector('.agent__image-hint')?.textContent).toContain('8 MB');
   });
 
   it('images_whenOversizeOrWrongType_rejectsWithAHint', async () => {

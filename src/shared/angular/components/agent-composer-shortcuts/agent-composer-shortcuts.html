@@ -14,7 +14,7 @@
      is nothing here to activate, so nothing to focus. -->
 <ng-template #menu>
   <div class="agent-shortcuts__panel" cdkMenu>
-    @for (group of groups; track group.title) {
+    @for (group of groups(); track group.title) {
       <p class="agent-shortcuts__heading">{{ group.title }}</p>
       @for (shortcut of group.shortcuts; track shortcut.keys.join('') + shortcut.description) {
         <div class="agent-shortcuts__item">
