@@ -15,6 +15,7 @@ import { HostingDescriptor, HostingResolution } from './hosting-descriptor';
 import { HostingEndpoint } from './hosting-endpoint';
 import { HostingHost } from './hosting-host';
 import { asIssueNumber, asRepository, HostingManager } from './hosting-manager';
+import { CustomHosts } from './custom-hosts';
 import { HostingSettings } from './hosting-settings';
 
 /**
@@ -97,8 +98,9 @@ describe('HostingManager', () => {
   function build(
     answers: Partial<Record<HostingOp, HostingResponse>> = {},
     protocol: string = '1.0',
+    acceptsHosts: boolean = false,
   ): void {
-    const descriptor: HostingDescriptor = {
+    const base: HostingDescriptor = {
       id: 'onixlabs.github',
       displayName: 'GitHub',
       priority: 100,
@@ -121,7 +123,12 @@ describe('HostingManager', () => {
         installed
           ? { available: true, spec: { command: 'github', args: [] } }
           : { available: false, reason: 'GitHub is not installed.' },
+      ...(acceptsHosts ? { customHosts: true } : {}),
     };
+    // As the main process wires it: hosts the user added are served beside the declared ones.
+    const custom: CustomHosts = new CustomHosts(path.join(directory, 'hosting-hosts.json'));
+    const descriptor: () => HostingDescriptor = (): HostingDescriptor =>
+      acceptsHosts ? { ...base, hosts: [...base.hosts, ...custom.hostsFor(base.id)] } : base;
     endpoint = new FakeEndpoint(
       {
         describeRepository: {
@@ -141,12 +148,12 @@ describe('HostingManager', () => {
     });
     settings = new HostingSettings(path.join(directory, 'hosting.json'));
     const host: HostingHost = new HostingHost({
-      descriptors: () => [descriptor],
+      descriptors: () => [descriptor()],
       authFor: (pluginId: string) => settings.authFor(pluginId),
       credential: (name: string) => Promise.resolve(store.token(name)),
       createClient: () => endpoint,
     });
-    manager = new HostingManager(host, store, settings);
+    manager = new HostingManager(host, store, settings, custom);
   }
 
   beforeEach(() => {
@@ -359,6 +366,8 @@ describe('HostingManager', () => {
             identity: { login: 'matthew', name: null },
             detail: "Signed in as matthew using the GitHub CLI's login.",
           },
+          custom: false,
+          customHosts: false,
         },
       ]);
       expect(endpoint.sent[0]).toEqual({ op: 'authStatus', params: { host: 'github.com' } });
@@ -369,6 +378,33 @@ describe('HostingManager', () => {
       installed = false;
 
       expect(await manager.hosts()).toEqual([]);
+    });
+  });
+
+  describe('addHost (#1233)', () => {
+    it('refusesAHost_forAPluginThatDoesNotAcceptThem', async () => {
+      expect(await manager.addHost('onixlabs.github', 'github.example.com')).toBeNull();
+    });
+
+    it('addsAnEnterpriseHost_listsIt_andRemovesIt', async () => {
+      build({}, '1.0', true);
+
+      const added: ForgeHostAccount | null = await manager.addHost(
+        'onixlabs.github',
+        'https://GitHub.example.com/',
+      );
+
+      expect(added?.host).toBe('github.example.com');
+      expect(added?.custom).toBe(true);
+      expect(
+        (await manager.hosts()).map((account: ForgeHostAccount): string => account.host),
+      ).toEqual(['github.com', 'github.example.com']);
+      expect(await manager.addHost('onixlabs.github', 'not a host')).toBeNull();
+
+      expect(manager.removeHost('onixlabs.github', 'github.example.com')).toBe(true);
+      expect(
+        (await manager.hosts()).map((account: ForgeHostAccount): string => account.host),
+      ).toEqual(['github.com']);
     });
   });
 

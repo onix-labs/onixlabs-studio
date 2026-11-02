@@ -1,2 +1,23 @@
-<app-version-control-plugins />
-<app-hosting-accounts />
+<!-- Version Control's pages, one per tree leaf, each a flat list like every other page: the registry's
+     settings, then the rows built by hand for what the registry does not hold. -->
+@switch (view()) {
+  @case ('general') {
+    <app-settings-section sectionId="vc-fetch" />
+    <app-settings-section sectionId="vc-commits" />
+    <!-- The commit name and email live in git's own global configuration, not in Studio's settings,
+         so they are edited here as the setup wizard edits them rather than through the registry. -->
+    <app-setup-step-commit-identity systemName="git" />
+    <app-settings-section sectionId="vc-history" />
+    <app-version-control-plugins />
+  }
+  @case ('hosting') {
+    <app-settings-section sectionId="vc-hosting" />
+    <app-hosting-accounts />
+  }
+  @case ('cloning') {
+    <!-- The folder is the main process's to remember, chosen in its own dialog, so it is a row of its
+         own rather than a registry setting. -->
+    <app-clone-folder />
+    <app-settings-section sectionId="vc-cloning" />
+  }
+}

@@ -1229,6 +1229,7 @@
             "displayName": "GitHub",
             "priority": 100,
             "hosts": ["github.com", "www.github.com"],
+            "customHosts": true,
             "capabilities": [
               "accounts",
               "listRepositories",

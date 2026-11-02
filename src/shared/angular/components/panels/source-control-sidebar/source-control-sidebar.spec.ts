@@ -453,6 +453,32 @@ class FakeForgeRepository {
 
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+
+  /**
+   * Holds which pull requests and issues are listed, and records the lists Load More was asked for.
+   */
+  public readonly listState: WritableSignal<'open' | 'all'> = signal<'open' | 'all'>('open');
+
+  public readonly loadedMore: string[] = [];
+
+  /**
+   * Holds whether each list offers Load More.
+   */
+  public moreAvailable: ReadonlySet<string> = new Set<string>();
+
+  public canLoadMore(kind: string): boolean {
+    return this.moreAvailable.has(kind);
+  }
+
+  public loadMore(kind: string): Promise<void> {
+    this.loadedMore.push(kind);
+    return Promise.resolve();
+  }
+
+  public setListState(state: 'open' | 'all'): Promise<void> {
+    this.listState.set(state);
+    return Promise.resolve();
+  }
   public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
     this.runSection.asReadonly();
 
@@ -3021,8 +3047,13 @@ describe('SourceControlSidebar', () => {
       expect(sectionLabels('remote')).toEqual(['Add Remote', 'Fetch All']);
       expect(sectionLabels('tags')[0]).toBe('New Tag');
       expect(sectionLabels('stashes')).toEqual(['Stash Changes']);
-      expect(sectionLabels('pullRequests')).toEqual(['Refresh']);
-      expect(sectionLabels('issues')).toEqual(['Refresh']);
+      // Open or all is the session switch beside Refresh (PR and Issue States).
+      expect(sectionLabels('pullRequests')).toEqual([
+        'Refresh',
+        'Show Open Only',
+        'Show All States',
+      ]);
+      expect(sectionLabels('issues')).toEqual(['Refresh', 'Show Open Only', 'Show All States']);
       expect(sectionLabels('actions')).toEqual(['Refresh']);
     });
 

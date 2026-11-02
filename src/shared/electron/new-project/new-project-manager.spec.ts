@@ -17,6 +17,15 @@ import type { PickedDocuments } from '@shared/api/new-project-channels';
 import { NewProjectManager, parseProjectRequest, readDocuments } from './new-project-manager';
 
 describe('parseProjectRequest', () => {
+  it('keepsASafeDefaultBranch_andDropsOneThatCouldBeAnOption', () => {
+    expect(
+      parseProjectRequest({ name: 'todo', repository: { kind: 'none' }, defaultBranch: 'trunk' }),
+    ).toEqual({ name: 'todo', repository: { kind: 'none' }, defaultBranch: 'trunk' });
+    expect(
+      parseProjectRequest({ name: 'todo', repository: { kind: 'none' }, defaultBranch: '--bad' }),
+    ).toEqual({ name: 'todo', repository: { kind: 'none' } });
+  });
+
   const hosted: Record<string, unknown> = {
     kind: 'hosted',
     host: 'github.com',

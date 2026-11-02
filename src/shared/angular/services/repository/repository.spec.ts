@@ -1,3 +1,6 @@
+import { vi } from 'vitest';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { UpstreamConfirmation } from '@shared/angular/services/upstream-confirmation/upstream-confirmation';
 import { TestBed } from '@angular/core/testing';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
@@ -426,6 +429,45 @@ describe('Repository', () => {
     await repository.refresh();
   });
 
+  afterEach(async () => {
+    // Stops the auto-fetch clock, and drops settings a test changed: they persist in localStorage.
+    await repository.close();
+    localStorage.removeItem('settings');
+  });
+
+  it('bind_fetchesOnLoad_unlessFetchOnLoadIsOff', async () => {
+    expect(provider.calls).toContain('fetch');
+
+    await repository.close();
+    TestBed.inject(Settings).set('versionControl.fetchOnLoad', false);
+    repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+    await repository.refresh();
+
+    expect(provider.calls).not.toContain('fetch');
+  });
+
+  it('autoFetch_fetchesOnceTheIntervalHasPassed_andNotWhenOff', async () => {
+    vi.useFakeTimers();
+    try {
+      TestBed.inject(Settings).set('versionControl.fetchOnLoad', false);
+      TestBed.inject(Settings).set('versionControl.autoFetchMinutes', 5);
+      await repository.close();
+      repository.bind({ root: '/repo', name: 'repo', trust: 'trusted' });
+
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(provider.calls).not.toContain('fetch');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(provider.calls).toContain('fetch');
+
+      provider.calls.length = 0;
+      TestBed.inject(Settings).set('versionControl.autoFetchMinutes', 0);
+      await vi.advanceTimersByTimeAsync(30 * 60_000);
+      expect(provider.calls).not.toContain('fetch');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('bind_thenRefresh_loadsBranchesCommitsStatusAndName', () => {
     expect(repository.isBound()).toBe(true);
     expect(repository.repoName()).toBe('repo');
@@ -655,7 +697,19 @@ describe('Repository', () => {
     expect(provider.calls).toContain('push:origin/main:false');
   });
 
-  it('push_whenCurrentBranchHasNoUpstream_setsUpstreamToTheFirstRemote', async () => {
+  it('push_whenCurrentBranchHasNoUpstream_setsUpstreamToTheDefaultRemote', async () => {
+    // Default Remote (origin) wins when the repository has it, wherever it is listed.
+    provider.upstream = undefined;
+    provider.remoteNames = ['upstream', 'origin'];
+    await repository.refresh();
+
+    await repository.push();
+
+    expect(provider.calls).toContain('push:origin/main:true');
+  });
+
+  it('push_whenTheDefaultRemoteIsMissing_setsUpstreamToTheFirstRemote', async () => {
+    TestBed.inject(Settings).set('versionControl.defaultRemote', 'fork');
     provider.upstream = undefined;
     provider.remoteNames = ['upstream', 'origin'];
     await repository.refresh();
@@ -663,6 +717,50 @@ describe('Repository', () => {
     await repository.push();
 
     expect(provider.calls).toContain('push:upstream/main:true');
+  });
+
+  it('push_whenTheDefaultRemoteIsChanged_usesIt', async () => {
+    TestBed.inject(Settings).set('versionControl.defaultRemote', 'upstream');
+    provider.upstream = undefined;
+    provider.remoteNames = ['origin', 'upstream'];
+    await repository.refresh();
+
+    await repository.push();
+
+    expect(provider.calls).toContain('push:upstream/main:true');
+  });
+
+  it('push_whenSetUpstreamIsAsk_asksFirst_andPushOnlyLeavesTheUpstreamUnset', async () => {
+    TestBed.inject(Settings).set('versionControl.setUpstreamOnPush', 'ask');
+    provider.upstream = undefined;
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    const confirmation: UpstreamConfirmation = TestBed.inject(UpstreamConfirmation);
+
+    const pushed: Promise<MutationResult> = repository.push();
+    await Promise.resolve();
+    expect(confirmation.pending()).toEqual({ branch: 'main', remote: 'origin' });
+    confirmation.answer('push-only');
+    await pushed;
+
+    expect(provider.calls).toContain('push:origin/main:false');
+  });
+
+  it('push_whenTheUpstreamQuestionIsCancelled_pushesNothingAndSaysNothing', async () => {
+    TestBed.inject(Settings).set('versionControl.setUpstreamOnPush', 'ask');
+    provider.upstream = undefined;
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    const before: number = notifications.history().length;
+
+    const pushed: Promise<MutationResult> = repository.push();
+    await Promise.resolve();
+    TestBed.inject(UpstreamConfirmation).answer('cancel');
+    const outcome: MutationResult = await pushed;
+
+    expect(outcome.code).toBe('cancelled');
+    expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
+    expect(notifications.history().length).toBe(before);
   });
 
   it('push_whenNoUpstreamAndNoRemotes_defaultsTheUpstreamToOrigin', async () => {
@@ -1164,22 +1262,22 @@ describe('Repository', () => {
       expect(notifications.toasts()[0].title).toBe('Deleted tag v0.9.0 on origin');
     });
 
-    it('deleteTagEverywhere_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+    it('deleteTagEverywhere_whenNoRemoteIsNamed_usesTheDefaultRemote', async () => {
       provider.remoteNames = ['upstream', 'origin'];
       await repository.refresh();
 
       await repository.deleteTagEverywhere('v0.9.0');
 
-      expect(provider.calls).toContain('deleteRemoteTag:upstream:v0.9.0');
+      expect(provider.calls).toContain('deleteRemoteTag:origin:v0.9.0');
     });
 
-    it('pushTag_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+    it('pushTag_whenNoRemoteIsNamed_usesTheDefaultRemote', async () => {
       provider.remoteNames = ['upstream', 'origin'];
       await repository.refresh();
 
       await repository.pushTag('v1.0.0');
 
-      expect(provider.calls).toContain('pushTag:upstream:v1.0.0');
+      expect(provider.calls).toContain('pushTag:origin:v1.0.0');
     });
 
     it('pushTag_whenARemoteIsNamed_pushesToThatOne', async () => {

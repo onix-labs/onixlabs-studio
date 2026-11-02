@@ -30,6 +30,15 @@
           <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
         }
         <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+        @if (row.account.custom === true) {
+          <app-button
+            variant="none"
+            label="Remove"
+            [ariaLabel]="'Remove ' + row.account.host"
+            [disabled]="busy() !== null"
+            (click)="removeHost(row)"
+          />
+        }
       </app-button-row>
     </span>
   </app-setting-row>
@@ -39,6 +48,50 @@
       label="Code Hosting"
       description="No code-hosting plugin is installed, so pull requests, issues and workflow runs are unavailable. Install GitHub from the Plugin Manager."
     />
+  }
+}
+
+<!-- Enterprise servers: offered only for plugins that can serve hosts beyond their own. -->
+@if (hostPlugins().length > 0) {
+  <app-setting-row
+    label="Enterprise Hosts"
+    description="Add a self-hosted server, such as GitHub Enterprise, to sign in to and work with like any other host."
+  >
+    @if (addingHost() === null) {
+      <app-button label="Add Host" data-testid="add-host" (click)="openAddHost()" />
+    } @else {
+      <span class="hosting-accounts__controls">
+        <app-text-field
+          placeholder="github.example.com"
+          ariaLabel="Server address"
+          data-testid="add-host-address"
+          [value]="addingHost() ?? ''"
+          (valueChange)="addingHost.set($event)"
+          (enter)="addHost()"
+        />
+        @if (hostPlugins().length > 1) {
+          <app-dropdown
+            ariaLabel="Served by"
+            [options]="hostPlugins()"
+            [value]="addingPlugin()"
+            (valueChange)="addingPlugin.set($event)"
+          />
+        }
+        <app-button-row align="start">
+          <app-button
+            variant="solid"
+            label="Add"
+            data-testid="add-host-confirm"
+            [disabled]="(addingHost() ?? '').trim() === '' || busy() !== null"
+            (click)="addHost()"
+          />
+          <app-button variant="none" label="Cancel" (click)="addingHost.set(null)" />
+        </app-button-row>
+      </span>
+    }
+  </app-setting-row>
+  @if (addError(); as error) {
+    <p class="hosting-accounts__error" role="alert">{{ error }}</p>
   }
 }
 

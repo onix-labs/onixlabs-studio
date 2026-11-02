@@ -167,6 +167,7 @@ export class CloneManager {
         url: request.url,
         directory: destination,
         ...(request.branch === undefined ? {} : { branch: request.branch }),
+        ...cloneFlags(request),
       },
     );
     return cloned.ok ? { ok: true, path: destination } : { ok: false, error: cloned.error };
@@ -197,6 +198,7 @@ export class CloneManager {
         url: request.url,
         directory: path.join(destination, id),
         ...(request.branch === undefined ? {} : { branch: request.branch }),
+        ...cloneFlags(request),
       },
     );
     if (!cloned.ok) {
@@ -234,7 +236,7 @@ export function parseRequest(value: unknown): CloneRequest | string {
   if (typeof value !== 'object' || value === null) {
     return 'No clone was described.';
   }
-  const { url, name, layout, branch } = value as Record<string, unknown>;
+  const { url, name, layout, branch, submodules, shallow } = value as Record<string, unknown>;
   if (typeof url !== 'string' || !REMOTE_URL.test(url.trim()) || /\s/.test(url.trim())) {
     return 'That is not a repository URL Studio can clone.';
   }
@@ -247,11 +249,32 @@ export function parseRequest(value: unknown): CloneRequest | string {
   if (branch !== undefined && (typeof branch !== 'string' || !/^[^-\s][^\s]*$/.test(branch))) {
     return 'That is not a branch name.';
   }
+  if (
+    (submodules !== undefined && typeof submodules !== 'boolean') ||
+    (shallow !== undefined && typeof shallow !== 'boolean')
+  ) {
+    return 'The clone options are not understood.';
+  }
   return {
     url: url.trim(),
     name,
     layout: layout,
     ...(branch === undefined ? {} : { branch }),
+    ...(submodules === true ? { submodules } : {}),
+    ...(shallow === true ? { shallow } : {}),
+  };
+}
+
+/**
+ * Maps a clone's options onto the version-control plugin's clone parameters: submodules cloned too,
+ * and a shallow clone fetching one commit of history.
+ * @param request The clone.
+ * @returns Returns the parameters to add.
+ */
+function cloneFlags(request: CloneRequest): { recurseSubmodules?: boolean; depth?: number } {
+  return {
+    ...(request.submodules === true ? { recurseSubmodules: true } : {}),
+    ...(request.shallow === true ? { depth: 1 } : {}),
   };
 }
 

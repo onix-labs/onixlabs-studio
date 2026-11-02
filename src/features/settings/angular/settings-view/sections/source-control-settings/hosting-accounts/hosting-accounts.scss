@@ -10,3 +10,9 @@
 .hosting-accounts__token {
   min-inline-size: 18rem;
 }
+
+.hosting-accounts__error {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--error-foreground-color, #e5484d);
+}

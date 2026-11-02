@@ -13,6 +13,7 @@ import { ForgeHostAccount } from '@shared/api/forge-types';
 import { HostingAuthMode } from '@shared/api/hosting-protocol';
 import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
@@ -60,7 +61,7 @@ interface AccountRow {
  */
 @Component({
   selector: 'app-hosting-accounts',
-  imports: [Button, ButtonRow, Dropdown, PasswordField, SettingRow],
+  imports: [Button, ButtonRow, Dropdown, PasswordField, SettingRow, TextField],
   templateUrl: './hosting-accounts.html',
   styleUrl: './hosting-accounts.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -239,6 +240,86 @@ export class HostingAccounts {
       return;
     }
     await this.apply(row, () => this.forge.clearToken(row.account.pluginId, row.account.host));
+  }
+
+  /**
+   * Gets the plugins that accept hosts the user adds, offered by Add Host.
+   */
+  protected readonly hostPlugins: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => {
+      const seen: Map<string, string> = new Map<string, string>();
+      for (const row of this.rows()) {
+        if (row.account.customHosts === true) {
+          seen.set(row.account.pluginId, row.account.provider);
+        }
+      }
+      return [...seen].map(([value, label]: [string, string]): DropdownOption => ({
+        value,
+        label,
+      }));
+    },
+  );
+
+  /**
+   * Holds the server address being added, or null while Add Host is closed.
+   */
+  protected readonly addingHost: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the plugin chosen to serve the host being added.
+   */
+  protected readonly addingPlugin: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds why the last Add Host was refused, or null.
+   */
+  protected readonly addError: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Opens Add Host, choosing the only plugin that accepts hosts when there is one.
+   */
+  protected openAddHost(): void {
+    this.addingHost.set('');
+    this.addError.set(null);
+    this.addingPlugin.set(this.hostPlugins()[0]?.value ?? '');
+  }
+
+  /**
+   * Adds the host typed, then shows it for signing in like any other.
+   */
+  protected async addHost(): Promise<void> {
+    const host: string = (this.addingHost() ?? '').trim();
+    const plugin: string = this.addingPlugin();
+    if (host.length === 0 || plugin.length === 0) {
+      return;
+    }
+    this.busy.set('');
+    try {
+      const account: ForgeHostAccount | null = await this.forge.addHost(plugin, host);
+      if (account === null) {
+        this.addError.set(`${host} is not a server address Studio can use.`);
+        return;
+      }
+      this.addingHost.set(null);
+      this.addError.set(null);
+    } finally {
+      this.busy.set(null);
+    }
+    await this.refresh();
+  }
+
+  /**
+   * Removes a host the user added.
+   * @param row The host's row.
+   */
+  protected async removeHost(row: AccountRow): Promise<void> {
+    this.busy.set(this.keyOf(row));
+    try {
+      await this.forge.removeHost(row.account.pluginId, row.account.host);
+    } finally {
+      this.busy.set(null);
+    }
+    await this.refresh();
   }
 
   /**

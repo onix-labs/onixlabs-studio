@@ -54,6 +54,16 @@ export interface CloneRequest {
    * Gets the branch to check out, or undefined for the repository's default.
    */
   readonly branch?: string;
+
+  /**
+   * Gets whether the repository's submodules are cloned too, or undefined for not.
+   */
+  readonly submodules?: boolean;
+
+  /**
+   * Gets whether only the latest commit of each branch is fetched, or undefined for the full history.
+   */
+  readonly shallow?: boolean;
 }
 
 /**

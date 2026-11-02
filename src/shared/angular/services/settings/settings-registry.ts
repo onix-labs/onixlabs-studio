@@ -1,3 +1,5 @@
+import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
+import type { CloneLayout } from '@shared/api/clone-channels';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -72,6 +74,11 @@ export type RunSetupAfterUpdates = 'when-new' | 'never';
  * says.
  */
 export type ReduceMotion = 'system' | 'on' | 'off';
+
+/**
+ * Names how dates read in the commit history.
+ */
+export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
 
 /**
  * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
@@ -226,6 +233,31 @@ export interface SettingsValues {
   readonly 'ai.maxLiveSessions': number;
   readonly 'ai.defaultReasoningEffort': DefaultReasoningEffort;
   readonly 'ai.maxStepsPerTurn': number;
+  readonly 'versionControl.autoFetchMinutes': number;
+  readonly 'versionControl.fetchOnLoad': boolean;
+  readonly 'versionControl.defaultRemote': string;
+  readonly 'versionControl.pruneOnFetch': boolean;
+  readonly 'versionControl.pullMode': VcsPullMode;
+  readonly 'versionControl.setUpstreamOnPush': AskOrAutomatic;
+  readonly 'versionControl.networkTimeoutMinutes': number;
+  readonly 'versionControl.signCommits': VcsSignCommits;
+  readonly 'versionControl.signOff': boolean;
+  readonly 'versionControl.runCommitHooks': boolean;
+  readonly 'versionControl.stashIncludesUntracked': boolean;
+  readonly 'versionControl.defaultBranchName': string;
+  readonly 'versionControl.includeUntrackedInCommit': boolean;
+  readonly 'versionControl.checkOutNewBranch': boolean;
+  readonly 'versionControl.historyDateFormat': HistoryDateFormat;
+  readonly 'versionControl.historyPageSize': number;
+  readonly 'versionControl.hostingRefreshSeconds': number;
+  readonly 'versionControl.hostingListSize': number;
+  readonly 'versionControl.ciRunsScope': 'branch' | 'all';
+  readonly 'versionControl.pullRequestAndIssueStates': 'open' | 'all';
+  readonly 'versionControl.askWhereToClone': boolean;
+  readonly 'versionControl.cloneLayout': 'ask' | CloneLayout;
+  readonly 'versionControl.cloneProtocol': 'https' | 'ssh';
+  readonly 'versionControl.cloneSubmodules': boolean;
+  readonly 'versionControl.shallowClone': 'full' | 'latest';
   readonly 'ai.autoCompactThreshold': number;
   readonly 'ai.autoCompactMode': AskOrAutomatic;
   readonly 'ai.deleteConversationsAfterDays': number;
@@ -1193,6 +1225,340 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           "the system's own dictionary on macOS and Windows.",
         control: { kind: 'custom', component: 'personal-dictionary' },
         default: [],
+      },
+    ],
+  },
+  {
+    id: 'vc-fetch',
+    label: 'Fetch, Pull and Push',
+    settings: [
+      {
+        key: 'versionControl.autoFetchMinutes',
+        title: 'Auto-Fetch Interval',
+        description:
+          'How often an open repository fetches its remotes in the background, so ahead and behind ' +
+          'counts stay current.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '5', label: 'Every 5 minutes' },
+            { value: '15', label: 'Every 15 minutes' },
+            { value: '30', label: 'Every 30 minutes' },
+          ],
+        },
+        default: 15,
+      },
+      {
+        key: 'versionControl.fetchOnLoad',
+        title: 'Fetch on Load',
+        description: 'Fetch as soon as a repository opens, whatever the interval.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.defaultRemote',
+        title: 'Default Remote',
+        description:
+          'The remote a branch with no upstream is pushed to, and the one whose code host is used ' +
+          'when a repository has several. Falls back to the first remote when it has none by this name.',
+        control: { kind: 'text', placeholder: 'origin' },
+        default: 'origin',
+      },
+      {
+        key: 'versionControl.pruneOnFetch',
+        title: 'Prune on Fetch',
+        description:
+          'Remove remote-tracking branches that were deleted on the remote whenever you fetch. Off ' +
+          'by default because it deletes; Prune on a remote still does it on request.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.pullMode',
+        title: 'Pull Mode',
+        description: "How a pull brings in the upstream's commits.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'config', label: "Follow git's configuration" },
+            { value: 'merge', label: 'Merge' },
+            { value: 'rebase', label: 'Rebase' },
+            { value: 'ff-only', label: 'Fast-forward only' },
+          ],
+        },
+        default: 'config',
+      },
+      {
+        key: 'versionControl.setUpstreamOnPush',
+        title: 'Set Upstream Automatically on Push',
+        description:
+          'When a branch with no upstream is first pushed, set the remote branch as its upstream, or ' +
+          'ask first.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'ask', label: 'Ask' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'versionControl.networkTimeoutMinutes',
+        title: 'Git Network Timeout',
+        description:
+          'How long a fetch, pull or push may take before it is stopped. Cloning keeps its own, longer limit.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 minute' },
+            { value: '2', label: '2 minutes' },
+            { value: '5', label: '5 minutes' },
+            { value: '10', label: '10 minutes' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 2,
+      },
+    ],
+  },
+  {
+    id: 'vc-commits',
+    label: 'Commits and Branches',
+    settings: [
+      {
+        key: 'versionControl.includeUntrackedInCommit',
+        title: 'Include Untracked Files in Commit by Default',
+        description:
+          'Tick new files git is not yet tracking when the commit panel opens. You can always tick ' +
+          'or untick each file.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.checkOutNewBranch',
+        title: 'Check Out New Branch by Default',
+        description: 'Start the New Branch dialog with Check Out ticked.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.signCommits',
+        title: 'Sign Commits',
+        description:
+          "Sign each commit with your GPG or SSH signing key, or leave it to git's configuration.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'config', label: "Follow git's configuration" },
+            { value: 'always', label: 'Always' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'config',
+      },
+      {
+        key: 'versionControl.signOff',
+        title: 'Add Signed-off-by',
+        description: 'Add a Signed-off-by line with your name and email to each commit message.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.runCommitHooks',
+        title: 'Run Commit Hooks',
+        description: "Run the repository's pre-commit and commit-msg hooks when committing.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.stashIncludesUntracked',
+        title: 'Stash Includes Untracked Files',
+        description: 'Stash new files git is not tracking along with your other changes.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.defaultBranchName',
+        title: 'Default Branch Name for New Repositories',
+        description:
+          "The first branch of a repository Studio creates. Leave empty to use git's own default.",
+        control: { kind: 'text', placeholder: 'main' },
+        default: 'main',
+      },
+    ],
+  },
+  {
+    id: 'vc-history',
+    label: 'History',
+    settings: [
+      {
+        key: 'versionControl.historyDateFormat',
+        title: 'History Date Format',
+        description: 'How commit dates read in the history.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'relative', label: 'Relative (3 days ago)' },
+            { value: 'absolute', label: 'Absolute (date and time)' },
+            { value: 'both', label: 'Both' },
+          ],
+        },
+        default: 'relative',
+      },
+      {
+        key: 'versionControl.historyPageSize',
+        title: 'History Page Size',
+        description:
+          'How many commits the history loads at a time; Load More brings the next page.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '100', label: '100 commits' },
+            { value: '250', label: '250 commits' },
+            { value: '500', label: '500 commits' },
+            { value: '1000', label: '1,000 commits' },
+          ],
+        },
+        default: 500,
+      },
+    ],
+  },
+  {
+    id: 'vc-hosting',
+    label: 'Hosting',
+    settings: [
+      {
+        key: 'versionControl.hostingRefreshSeconds',
+        title: 'Hosting Refresh Interval',
+        description:
+          'How often the pull requests, issues and CI runs you have open are re-read from the code ' +
+          'host. Unchanged lists cost nothing against its rate limit.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '30', label: 'Every 30 seconds' },
+            { value: '60', label: 'Every minute' },
+            { value: '300', label: 'Every 5 minutes' },
+          ],
+        },
+        default: 60,
+      },
+      {
+        key: 'versionControl.hostingListSize',
+        title: 'Hosting List Size',
+        description:
+          'How many pull requests, issues or CI runs a list shows; Load More brings more.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '25', label: '25' },
+            { value: '50', label: '50' },
+            { value: '100', label: '100' },
+          ],
+        },
+        default: 50,
+      },
+      {
+        key: 'versionControl.ciRunsScope',
+        title: 'CI Runs Scope',
+        description: "Show CI runs for every branch, or only the checked-out branch's.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'all', label: 'All branches' },
+            { value: 'branch', label: 'Current branch' },
+          ],
+        },
+        default: 'all',
+      },
+      {
+        key: 'versionControl.pullRequestAndIssueStates',
+        title: 'PR and Issue States',
+        description:
+          'Show only open pull requests and issues, or every state. The panel can switch for the ' +
+          'session without changing this.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'open', label: 'Open' },
+            { value: 'all', label: 'All' },
+          ],
+        },
+        default: 'open',
+      },
+    ],
+  },
+  {
+    id: 'vc-cloning',
+    label: 'Cloning',
+    settings: [
+      {
+        key: 'versionControl.askWhereToClone',
+        title: 'Ask Where to Clone Each Time',
+        description:
+          'Choose the folder for every clone. When off, clones go straight into the Default Clone ' +
+          'Folder.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.cloneLayout',
+        title: 'Default Clone Layout',
+        description: 'How a clone is laid out on disk, or Ask to choose for each clone.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'flat', label: 'Flat Repository' },
+            { value: 'worktree', label: 'Worktree Repository' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'versionControl.cloneProtocol',
+        title: 'Clone Protocol',
+        description:
+          'Which address a repository from a signed-in host clones from. SSH needs a key the host ' +
+          'knows; a typed URL is cloned as typed.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'https', label: 'HTTPS' },
+            { value: 'ssh', label: 'SSH' },
+          ],
+        },
+        default: 'https',
+      },
+      {
+        key: 'versionControl.cloneSubmodules',
+        title: 'Include Submodules',
+        description: "Clone a repository's submodules along with it.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.shallowClone',
+        title: 'Shallow Clone',
+        description:
+          'Fetch the full history, or only the latest commit of each branch: faster for large ' +
+          'repositories, with older history left out.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'full', label: 'Full History' },
+            { value: 'latest', label: 'Latest Commit Only' },
+          ],
+        },
+        default: 'full',
       },
     ],
   },

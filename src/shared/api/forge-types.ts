@@ -141,6 +141,16 @@ export interface ForgeHostAccount {
    * Gets how the plugin is signed in to the host now.
    */
   readonly status: ForgeAuthStatus;
+
+  /**
+   * Gets whether the user added this host (Add Host), so it can be removed again.
+   */
+  readonly custom?: boolean;
+
+  /**
+   * Gets whether the plugin serving it accepts hosts the user adds.
+   */
+  readonly customHosts?: boolean;
 }
 
 /**

@@ -699,7 +699,15 @@ export interface VersionControlOperations {
   readonly discard: { readonly params: Paths; readonly result: Done };
   readonly stage: { readonly params: Paths; readonly result: Done };
   readonly unstage: { readonly params: Paths; readonly result: Done };
-  readonly commit: { readonly params: { readonly message: string }; readonly result: Done };
+  readonly commit: {
+    readonly params: {
+      readonly message: string;
+      readonly sign?: 'config' | 'always' | 'never';
+      readonly signoff?: boolean;
+      readonly hooks?: boolean;
+    };
+    readonly result: Done;
+  };
 
   /**
    * Adds rules to the repository's ignore list, skipping any it already has (1.2, #1043). Gated by
@@ -716,7 +724,10 @@ export interface VersionControlOperations {
    */
   readonly stopTracking: { readonly params: Paths; readonly result: Done };
 
-  readonly stash: { readonly params: Empty; readonly result: Done };
+  readonly stash: {
+    readonly params: { readonly includeUntracked?: boolean };
+    readonly result: Done;
+  };
   readonly stashApply: { readonly params: StashIndex; readonly result: Done };
   readonly stashPop: { readonly params: StashIndex; readonly result: Done };
   readonly stashDrop: { readonly params: StashIndex; readonly result: Done };
@@ -739,7 +750,10 @@ export interface VersionControlOperations {
     readonly result: Done;
   };
 
-  readonly fetch: { readonly params: Empty; readonly result: Done };
+  readonly fetch: {
+    readonly params: { readonly prune?: boolean; readonly timeoutMs?: number };
+    readonly result: Done;
+  };
   readonly fetchRef: {
     readonly params: {
       readonly remote: string;
@@ -748,9 +762,15 @@ export interface VersionControlOperations {
     };
     readonly result: Done;
   };
-  readonly pull: { readonly params: Empty; readonly result: Done };
+  readonly pull: {
+    readonly params: {
+      readonly mode?: 'config' | 'merge' | 'rebase' | 'ff-only';
+      readonly timeoutMs?: number;
+    };
+    readonly result: Done;
+  };
   readonly push: {
-    readonly params: { readonly target: VcsPushTarget | null };
+    readonly params: { readonly target: VcsPushTarget | null; readonly timeoutMs?: number };
     readonly result: Done;
   };
   readonly fetchRemote: { readonly params: RemoteName; readonly result: Done };
@@ -791,7 +811,8 @@ export interface VersionControlOperations {
 
   /**
    * Copies a repository into a new directory, optionally checking out a branch (created from the
-   * default branch when `createBranch` is set). The directory must not exist yet.
+   * default branch when `createBranch` is set), with its submodules and with only the latest history
+   * when asked. The directory must not exist yet.
    */
   readonly clone: {
     readonly params: {
@@ -799,6 +820,14 @@ export interface VersionControlOperations {
       readonly directory: string;
       readonly branch?: string;
       readonly createBranch?: boolean;
+      /**
+       * Gets whether submodules are cloned too (Include Submodules), or absent for not.
+       */
+      readonly recurseSubmodules?: boolean;
+      /**
+       * Gets how many commits of history to fetch (Shallow Clone), or absent for all of it.
+       */
+      readonly depth?: number;
     };
     readonly result: Done;
   };
@@ -808,7 +837,7 @@ export interface VersionControlOperations {
    * (1.1, #806). Gated by `init`.
    */
   readonly init: {
-    readonly params: { readonly directory: string };
+    readonly params: { readonly directory: string; readonly defaultBranch?: string };
     readonly result: Done;
   };
 

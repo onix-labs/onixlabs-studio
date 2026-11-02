@@ -294,6 +294,16 @@ describe('SettingsView', () => {
       expect(ids).not.toContain('ai-general');
     });
 
+    it('search_byAVersionControlSetting_findsThePageItLivesOn', async () => {
+      // Version Control is three pages: General draws several registry sections, Hosting and Cloning
+      // one each.
+      expect(await search('shallow clone')).toContain('source-control-cloning');
+      expect(await search('ci runs scope')).toContain('source-control-hosting');
+      const general: readonly string[] = await search('auto fetch');
+      expect(general).toContain('source-control-general');
+      expect(general).not.toContain('source-control-cloning');
+    });
+
     it('search_byABranchName_keepsEveryLeafBeneathIt', async () => {
       const ids: readonly string[] = await search('artificial');
 

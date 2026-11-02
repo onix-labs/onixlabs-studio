@@ -1,0 +1,21 @@
+.upstream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.upstream__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.upstream__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.upstream__context {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}

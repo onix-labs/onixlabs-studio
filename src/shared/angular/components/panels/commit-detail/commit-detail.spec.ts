@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { computed, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
@@ -434,6 +435,19 @@ describe('CommitDetail', () => {
     expect(checks[0].checked).toBe(true); // a.ts (tracked)
     expect(checks[1].checked).toBe(true); // b.ts (tracked)
     expect(checks[2].checked).toBe(false); // new.ts (untracked)
+  });
+
+  it('render_whenIncludeUntrackedIsOn_ticksNewUntrackedFilesToo', () => {
+    TestBed.inject(Settings).set('versionControl.includeUntrackedInCommit', true);
+    repository.isWorkingSelected.set(true);
+    repository.unstaged.set([makeFile('b.ts', 'modified'), makeFile('new.ts', 'added', true)]);
+    fixture.detectChanges();
+
+    const checks: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+    );
+    expect(checks.map((check: HTMLInputElement): boolean => check.checked)).toEqual([true, true]);
+    localStorage.removeItem('settings');
   });
 
   it('commit_isGatedOnAMessageAndChecks_thenCommitsExactlyTheCheckedFiles', () => {

@@ -115,6 +115,8 @@ import {
 } from '@shared/electron/contributions/plugins/plugin-install-events';
 import { HostingHost } from '@shared/electron/hosting/hosting-host';
 import { HostingAgentAccess } from '@shared/electron/hosting/hosting-agent-access';
+import type { HostingDescriptor } from '@shared/electron/hosting/hosting-descriptor';
+import { CustomHosts } from '@shared/electron/hosting/custom-hosts';
 import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
 import { HostingManager } from '@shared/electron/hosting/hosting-manager';
 import { HostingCredentialStore } from '@shared/electron/hosting/hosting-credential-store';
@@ -475,12 +477,29 @@ class Program {
   );
 
   /**
+   * Holds the hosts the user added to hosting plugins that accept them — enterprise servers — from
+   * Settings › Version Control.
+   */
+  private readonly customHosts: CustomHosts = new CustomHosts(
+    path.join(app.getPath('userData'), 'hosting-hosts.json'),
+  );
+
+  /**
    * Hosts the code-hosting plugins (#819, #820): picks the one serving each repository's host, hands it
-   * a credential only for a host it declares, and refuses what it or the repository does not allow.
-   * Core talks to no host of its own — GitHub is a plugin.
+   * a credential only for a host it declares (or the user added for it), and refuses what it or the
+   * repository does not allow. Core talks to no host of its own — GitHub is a plugin.
    */
   private readonly hostingHost: HostingHost = new HostingHost({
-    descriptors: () => contributedHosting(versionControlNodeRuntime),
+    descriptors: () =>
+      contributedHosting(versionControlNodeRuntime).map(
+        (descriptor: HostingDescriptor): HostingDescriptor =>
+          descriptor.customHosts === true
+            ? {
+                ...descriptor,
+                hosts: [...descriptor.hosts, ...this.customHosts.hostsFor(descriptor.id)],
+              }
+            : descriptor,
+      ),
     authFor: (pluginId: string) => this.hostingSettings.authFor(pluginId),
     credential: (host: string): Promise<string | null> =>
       Promise.resolve(this.hostingCredentials.token(host)),
@@ -493,6 +512,7 @@ class Program {
     this.hostingHost,
     this.hostingCredentials,
     this.hostingSettings,
+    this.customHosts,
   );
 
   /**

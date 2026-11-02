@@ -22,6 +22,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
@@ -111,6 +112,11 @@ export interface HostedRepository {
    * Gets the URL it clones from.
    */
   readonly cloneUrl: string;
+
+  /**
+   * Gets the SSH address it clones from, or undefined when the host gave none.
+   */
+  readonly sshUrl?: string;
 
   /**
    * Gets the URL of its page in a browser, or empty when the host gave none.
@@ -292,6 +298,11 @@ export class WelcomeSourceControl implements OnInit {
   private readonly shell: Shell = inject(Shell);
 
   /**
+   * Holds the settings, read for how clones are made.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets every browse view, in order. The ones whose data no repository carries are not offered.
    */
   private readonly allViews: readonly BrowseEntry[] = [
@@ -370,11 +381,13 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly cloneUrl: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds how the repository will be laid out once cloned, or null until the user picks. Studio has
-   * no default of its own: the layout is the user's choice, made before cloning, so the field starts
-   * on "Clone As…" and Clone waits for an answer.
+   * Holds how the repository will be laid out once cloned, or null until the user picks. The field
+   * starts on Default Clone Layout; when that is Ask it starts on "Clone As…" and Clone waits for an
+   * answer.
    */
-  protected readonly layout: WritableSignal<CloneLayout | null> = signal<CloneLayout | null>(null);
+  protected readonly layout: WritableSignal<CloneLayout | null> = signal<CloneLayout | null>(
+    this.defaultLayout(),
+  );
 
   /**
    * Gets the layout choices.
@@ -722,6 +735,30 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
+   * Finds the folder a clone goes into: the Default Clone Folder when Ask Where to Clone Each Time is
+   * off and one is chosen, otherwise the user's answer in the folder dialog.
+   * @returns Resolves with the folder, or null when the dialog was cancelled.
+   */
+  private async destination(): Promise<string | null> {
+    if (!this.settings.get('versionControl.askWhereToClone')) {
+      const remembered: string | null = await this.cloner.parent();
+      if (remembered !== null) {
+        return remembered;
+      }
+    }
+    return this.chooseParent();
+  }
+
+  /**
+   * Reads the layout a clone starts on from Default Clone Layout.
+   * @returns Returns the layout, or null when the user is asked each time.
+   */
+  private defaultLayout(): CloneLayout | null {
+    const layout: 'ask' | CloneLayout = this.settings.get('versionControl.cloneLayout');
+    return layout === 'ask' ? null : layout;
+  }
+
+  /**
    * Asks where the clone goes — the folder dialog opens on the folder used last — then clones the URL
    * in the field into it, opens the result and steps aside. Cancelling the dialog clones nothing.
    * @returns Resolves once the clone has settled, however it settled.
@@ -740,19 +777,23 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected async cloneRepository(repository: HostedRepository): Promise<void> {
     if (this.detailCloneReady()) {
-      await this.cloneInto(repository.cloneUrl);
+      const ssh: boolean = this.settings.get('versionControl.cloneProtocol') === 'ssh';
+      await this.cloneInto(
+        ssh && repository.sshUrl !== undefined ? repository.sshUrl : repository.cloneUrl,
+      );
     }
   }
 
   /**
-   * Asks where the clone goes, clones a URL into it in the chosen layout, opens the result and steps
-   * aside. Cancelling the dialog clones nothing.
+   * Asks where the clone goes — unless Ask Where to Clone Each Time is off and a folder is already
+   * chosen — clones a URL into it in the chosen layout, opens the result and steps aside. Cancelling
+   * the dialog clones nothing.
    * @param url The URL to clone.
    * @returns Resolves once the clone has settled, however it settled.
    */
   private async cloneInto(url: string): Promise<void> {
     const layout: CloneLayout | null = this.layout();
-    if (layout === null || (await this.chooseParent()) === null) {
+    if (layout === null || (await this.destination()) === null) {
       return;
     }
     this.cloning.set(true);
@@ -762,6 +803,8 @@ export class WelcomeSourceControl implements OnInit {
         url,
         name: nameFromUrl(url),
         layout,
+        submodules: this.settings.get('versionControl.cloneSubmodules'),
+        shallow: this.settings.get('versionControl.shallowClone') === 'latest',
       });
       if (!outcome.ok) {
         this.cloneError.set(outcome.error);
@@ -942,6 +985,7 @@ function toView(repository: ProtocolRepository, accountId: string): HostedReposi
     updatedAt: Number.isFinite(updated) ? updated : 0,
     private: repository.private,
     cloneUrl: repository.cloneUrl,
+    ...(repository.sshUrl === undefined ? {} : { sshUrl: repository.sshUrl }),
     webUrl: repository.webUrl,
     ...(repository.defaultBranch === null ? {} : { defaultBranch: repository.defaultBranch }),
     ...optional,
