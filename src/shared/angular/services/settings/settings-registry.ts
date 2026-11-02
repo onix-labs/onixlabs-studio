@@ -92,6 +92,22 @@ export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
 export type TerminalRenderer = 'gpu' | 'standard';
 
 /**
+ * Names what a right-click in a terminal does: open its menu, paste, or select the word under it.
+ */
+export type TerminalRightClick = 'menu' | 'paste' | 'select-word';
+
+/**
+ * Names how a link in a terminal opens: with ⌘ (Ctrl elsewhere) held, with a plain click, or not at
+ * all.
+ */
+export type TerminalLinkOpening = 'modifier' | 'click' | 'off';
+
+/**
+ * Names what a terminal does when a program rings its bell.
+ */
+export type TerminalBell = 'none' | 'sound' | 'visual';
+
+/**
  * Holds the Font Family value that follows Code › Appearance's font.
  */
 export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
@@ -228,6 +244,12 @@ export interface SettingsValues {
   readonly 'terminal.cursorStyle': TerminalCursorStyle;
   readonly 'terminal.cursorBlink': boolean;
   readonly 'terminal.renderer': TerminalRenderer;
+  readonly 'terminal.optionAsMeta': boolean;
+  readonly 'terminal.copyOnSelect': boolean;
+  readonly 'terminal.rightClick': TerminalRightClick;
+  readonly 'terminal.warnMultiLinePaste': boolean;
+  readonly 'terminal.linkOpening': TerminalLinkOpening;
+  readonly 'terminal.bell': TerminalBell;
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
@@ -320,6 +342,13 @@ export type SettingsKey = keyof SettingsValues;
  */
 const MOD_LABEL: string =
   typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘' : 'Ctrl+';
+
+/**
+ * Holds how a click with the command modifier is written in an option label: ⌘-click on macOS,
+ * Ctrl-click elsewhere.
+ */
+const MODIFIER_CLICK: string =
+  typeof window !== 'undefined' && window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
 
 export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   {
@@ -1685,6 +1714,77 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'gpu',
+      },
+      {
+        key: 'terminal.optionAsMeta',
+        title: 'Use Option as Meta',
+        description:
+          'Send Option-key chords to the shell as Meta (Alt), for word movement and shortcuts in ' +
+          'programs like Emacs. Off types the characters Option makes, such as # and €.',
+        platforms: ['darwin'],
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'terminal.copyOnSelect',
+        title: 'Copy on Select',
+        description: 'Copy text to the clipboard as soon as it is selected in a terminal.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'terminal.rightClick',
+        title: 'Right-Click',
+        description:
+          "What a right-click in a terminal does. A right-click on a link always opens the link's " +
+          'menu.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'menu', label: 'Menu (Copy, Paste, Clear, Find)' },
+            { value: 'paste', label: 'Paste' },
+            { value: 'select-word', label: 'Select Word' },
+          ],
+        },
+        default: 'menu',
+      },
+      {
+        key: 'terminal.warnMultiLinePaste',
+        title: 'Warn Before Multi-Line Paste',
+        description:
+          'Ask before pasting text of more than one line, which a shell may run line by line as ' +
+          'soon as it arrives.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'terminal.linkOpening',
+        title: 'Link Opening',
+        description:
+          'How addresses and file paths in terminal output open. Off leaves them as plain text.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'modifier', label: MODIFIER_CLICK },
+            { value: 'click', label: 'Click' },
+            { value: 'off', label: 'Off' },
+          ],
+        },
+        default: 'modifier',
+      },
+      {
+        key: 'terminal.bell',
+        title: 'Bell',
+        description: 'What a terminal does when a program rings its bell.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'sound', label: 'Sound' },
+            { value: 'visual', label: 'Visual (Flash the Terminal)' },
+          ],
+        },
+        default: 'none',
       },
     ],
   },

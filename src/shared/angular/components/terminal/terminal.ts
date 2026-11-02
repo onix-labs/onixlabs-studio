@@ -29,6 +29,7 @@ import { Display } from '@shared/angular/services/display/display';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { TerminalConfirmation } from '@shared/angular/services/terminal-confirmation/terminal-confirmation';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
@@ -39,6 +40,12 @@ import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { TerminalCreateResult, TerminalKind, TerminalReplay } from '@shared/api/terminal-channels';
 import { TerminalAppearance, terminalAppearance, terminalPalette } from './terminal-appearance';
+import {
+  BELL_FLASH_MS,
+  isMultiLinePaste,
+  multiLinePasteQuestion,
+  ringBell,
+} from './terminal-input';
 import { TerminalLinkDecorator } from './terminal-link-decorator';
 import { TerminalLinkProvider, TerminalLinkTarget } from './terminal-link-provider';
 
@@ -94,10 +101,20 @@ const CWD_TTL_MS: number = 2000;
 const LINK_COLOUR_FALLBACK: string = '#0dcaec';
 
 /**
- * The shape of the context the link menu is opened with: the link right-clicked rides as `$implicit`.
+ * Holds what the menu is opened for when the right-click was on the terminal rather than on a link.
+ */
+const TERMINAL_MENU: unique symbol = Symbol('terminal-menu');
+
+/**
+ * Names what the right-click menu was opened for: a link, or the terminal itself.
+ */
+type MenuSubject = TerminalLinkTarget | typeof TERMINAL_MENU;
+
+/**
+ * The shape of the context the menu is opened with: what was right-clicked rides as `$implicit`.
  */
 interface LinkMenuContext {
-  $implicit: TerminalLinkTarget | undefined;
+  $implicit: MenuSubject | undefined;
 }
 
 /**
@@ -167,6 +184,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds the display policy, whose graphics level decides whether the GPU renderer may be used.
    */
   private readonly display: Display = inject(Display);
+
+  /**
+   * Holds the questions a terminal asks before it acts, such as pasting several lines.
+   */
+  private readonly confirmation: TerminalConfirmation = inject(TerminalConfirmation);
 
   /**
    * Holds the change detector, run before a link's hint opens so the hint reads the link's text.
@@ -287,6 +309,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private readonly linkMenuContext: LinkMenuContext = { $implicit: undefined };
 
   /**
+   * Holds how printed paths resolve to files, or null when this terminal links addresses only.
+   */
+  private resolvePath: ((path: string) => Promise<string | null>) | null = null;
+
+  /**
    * Holds the link under the pointer, or null when the pointer is on none. A right-click here opens
    * the link's menu; anywhere else it does what it always did.
    */
@@ -298,17 +325,25 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private cwdCache: { readonly at: number; readonly cwd: Promise<string | null> } | null = null;
 
   /**
-   * Resolves the rows of a link's right-click menu: open, and copy what it points at. Choosing a
-   * browser for a link waits on #1060.
-   * @param data The trigger's data: the link right-clicked.
+   * Resolves the rows of the right-click menu: for a link, open it and copy what it points at
+   * (choosing a browser for a link waits on #1060); for the terminal, Copy, Paste, Clear and Find.
+   * @param data The trigger's data: what was right-clicked.
    * @returns Returns the rows.
    */
   protected readonly linkMenuItemsFor: (data: unknown) => readonly MenuItem[] = (
     data: unknown,
   ): readonly MenuItem[] => {
-    const target: TerminalLinkTarget | undefined = data as TerminalLinkTarget | undefined;
+    const target: MenuSubject | undefined = data as MenuSubject | undefined;
     if (target === undefined) {
       return [];
+    }
+    if (target === TERMINAL_MENU) {
+      return [
+        { id: 'copy', label: 'Copy', disabled: this.xterm?.hasSelection() !== true },
+        { id: 'paste', label: 'Paste', disabled: this.kind() === 'task' },
+        { id: 'clear', label: 'Clear' },
+        { id: 'find', label: 'Find' },
+      ];
     }
     return target.kind === 'url'
       ? [
@@ -350,6 +385,23 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * Holds the GPU renderer while the terminal draws with it, or null for the standard renderer.
    */
   private webgl: WebglAddon | null = null;
+
+  /**
+   * Gets how links in the output open: with the modifier, with a plain click, or not at all.
+   */
+  private readonly linkOpening: Signal<'modifier' | 'click' | 'off'> =
+    this.settings.value('terminal.linkOpening');
+
+  /**
+   * Gets what a right-click on the terminal does.
+   */
+  private readonly rightClick: Signal<'menu' | 'paste' | 'select-word'> =
+    this.settings.value('terminal.rightClick');
+
+  /**
+   * Holds the visual bell's pending end, or null when the terminal is not flashing.
+   */
+  private bellFlash: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Holds the shell the next spawn should use, overriding the {@link shell} input. Set to the shell a
@@ -478,6 +530,19 @@ export class Terminal implements AfterViewInit, OnDestroy {
       }
       untracked((): void => this.applyAppearance(xterm, look));
     });
+
+    effect((): void => {
+      const optionAsMeta: boolean = this.settings.value('terminal.optionAsMeta')();
+      const selectWord: boolean = this.rightClick() === 'select-word';
+      const linksOn: boolean = this.linkOpening() !== 'off';
+      const xterm: Xterm | null = this.terminalReady() ? this.xterm : null;
+      if (xterm === null) {
+        return;
+      }
+      xterm.options.macOptionIsMeta = optionAsMeta;
+      xterm.options.rightClickSelectsWord = selectWord;
+      untracked((): void => this.decorateLinks(xterm, linksOn));
+    });
   }
 
   /**
@@ -503,6 +568,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
+    this.container().nativeElement.removeEventListener('paste', this.onPasteEvent, true);
     if (this.resizeDebounce !== null) {
       clearTimeout(this.resizeDebounce);
       this.resizeDebounce = null;
@@ -514,6 +580,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.linkDecorator?.dispose();
     this.linkDecorator = null;
     this.disposeWebgl();
+    if (this.bellFlash !== null) {
+      clearTimeout(this.bellFlash);
+      this.bellFlash = null;
+    }
     this.xterm?.dispose();
     this.xterm = null;
     this.fitAddon = null;
@@ -730,15 +800,35 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Pastes the clipboard contents into the terminal's input stream.
+   * Pastes the clipboard contents into the terminal's input stream, asking first when they run to
+   * more than one line and Warn Before Multi-Line Paste is on.
    */
   public paste(): void {
-    const id: string = this.terminalId();
-    void navigator.clipboard.readText().then((text: string): void => {
-      if (text.length > 0) {
-        void this.bridge.write(id, text);
-      }
-    });
+    void navigator.clipboard.readText().then((text: string): Promise<void> => this.pasteText(text));
+    this.xterm?.focus();
+  }
+
+  /**
+   * Pastes text as typed input — bracketed, when the program asked for that — asking first when it
+   * runs to more than one line and Warn Before Multi-Line Paste is on.
+   * @param text The text to paste.
+   * @returns Resolves once the text is pasted, or the user declined.
+   */
+  private async pasteText(text: string): Promise<void> {
+    const xterm: Xterm | null = this.xterm;
+    if (xterm === null || text.length === 0) {
+      return;
+    }
+    if (
+      this.settings.get('terminal.warnMultiLinePaste') &&
+      isMultiLinePaste(text) &&
+      !(await this.confirmation.ask(multiLinePasteQuestion(text)))
+    ) {
+      xterm.focus();
+      return;
+    }
+    // The terminal may have restarted while the question was open; the text goes to the one there now.
+    this.xterm?.paste(text);
     this.xterm?.focus();
   }
 
@@ -851,21 +941,35 @@ export class Terminal implements AfterViewInit, OnDestroy {
         ? null
         : async (path: string): Promise<string | null> =>
             pathLinks.resolve(path, await this.currentCwd());
-    xterm.registerLinkProvider(
-      new TerminalLinkProvider((): Xterm['buffer']['active'] => xterm.buffer.active, {
+    const provider: TerminalLinkProvider = new TerminalLinkProvider(
+      (): Xterm['buffer']['active'] => xterm.buffer.active,
+      {
         resolvePath,
         activate: (event: MouseEvent, target: TerminalLinkTarget): void =>
           this.activateLink(event, target),
         hover: (event: MouseEvent, target: TerminalLinkTarget): void =>
           this.enterLink(event, target),
         leave: (): void => this.leaveLink(),
-      }),
+      },
     );
+    // With Link Opening Off, nothing in the output is a link: not underlined, not hinted, not opened.
+    xterm.registerLinkProvider({
+      provideLinks: (
+        line: number,
+        callback: Parameters<TerminalLinkProvider['provideLinks']>[1],
+      ) =>
+        untracked((): boolean => this.linkOpening() === 'off')
+          ? callback(undefined)
+          : provider.provideLinks(line, callback),
+    });
     // Output scrolling under a still pointer moves the link out from under its hint.
     xterm.onScroll((): void => this.leaveLink());
-    // And they are drawn in the info colour as they are printed, so they read as links unhovered.
-    this.linkDecorator = new TerminalLinkDecorator(xterm, resolvePath, (): string =>
-      this.linkColour(),
+    // And they are drawn in the info colour as they are printed, so they read as links unhovered —
+    // unless Link Opening is Off, when they are plain text.
+    this.resolvePath = resolvePath;
+    this.decorateLinks(
+      xterm,
+      untracked((): boolean => this.linkOpening() !== 'off'),
     );
 
     const fitAddon: FitAddon = new FitAddon();
@@ -997,6 +1101,18 @@ export class Terminal implements AfterViewInit, OnDestroy {
       this.titleChange.emit(title);
     });
 
+    xterm.onSelectionChange((): void => {
+      if (this.settings.get('terminal.copyOnSelect') && xterm.hasSelection()) {
+        void navigator.clipboard.writeText(xterm.getSelection());
+      }
+    });
+
+    xterm.onBell((): void => this.onBell());
+
+    // A paste — ⌘V, the Edit menu, a middle click — goes through the multi-line check before xterm
+    // sends it on. Caught before xterm's own listener, on the way down to its text area.
+    host.addEventListener('paste', this.onPasteEvent, true);
+
     this.resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? null
@@ -1043,6 +1159,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @returns Returns true when the click opens the link.
    */
   private isLinkGesture(event: MouseEvent): boolean {
+    const opening: 'modifier' | 'click' | 'off' = this.linkOpening();
+    if (opening !== 'modifier') {
+      return opening === 'click';
+    }
     return window.host?.platform === 'darwin' ? event.metaKey : event.ctrlKey;
   }
 
@@ -1068,6 +1188,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @param target What the link points at.
    */
   private enterLink(event: MouseEvent, target: TerminalLinkTarget): void {
+    if (this.linkOpening() === 'off') {
+      return;
+    }
     this.hoveredLink = target;
     const xterm: Xterm | null = this.xterm;
     const screen: Element | null | undefined = xterm?.element?.querySelector('.xterm-screen');
@@ -1086,7 +1209,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }px)`;
     anchor.style.blockSize = `${rowHeight}px`;
 
-    const gesture: string = window.host?.platform === 'darwin' ? '⌘-click' : 'Ctrl-click';
+    const gesture: string =
+      this.linkOpening() === 'click'
+        ? 'click'
+        : window.host?.platform === 'darwin'
+          ? '⌘-click'
+          : 'Ctrl-click';
     const shown: string =
       target.kind === 'url'
         ? target.url
@@ -1121,14 +1249,23 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Opens a link's menu for a right-click on a link. A right-click anywhere else is left alone.
+   * Handles a right-click: on a link, opens the link's menu; elsewhere, does what Right-Click says —
+   * opens the terminal's menu, pastes, or leaves xterm to select the word under the pointer.
    * @param event The right-click, which places the menu; the trigger consumes it.
    */
   protected onContextMenu(event: MouseEvent): void {
-    const target: TerminalLinkTarget | null = this.hoveredLink;
-    if (target === null) {
+    const link: TerminalLinkTarget | null = this.hoveredLink;
+    if (link === null && this.xterm === null) {
       return;
     }
+    if (link === null && this.rightClick() !== 'menu') {
+      if (this.rightClick() === 'paste') {
+        event.preventDefault();
+        this.paste();
+      }
+      return;
+    }
+    const target: MenuSubject = link ?? TERMINAL_MENU;
     this.linkAnchorTooltip().hide();
     this.linkMenuContext.$implicit = target;
     const trigger: CdkContextMenuTrigger = this.linkMenuTrigger();
@@ -1144,8 +1281,12 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * @param choice The chosen row and the link the menu was opened for.
    */
   protected onLinkMenuChosen(choice: MenuChoice): void {
-    const target: TerminalLinkTarget | undefined = choice.data as TerminalLinkTarget | undefined;
+    const target: MenuSubject | undefined = choice.data as MenuSubject | undefined;
     if (target === undefined) {
+      return;
+    }
+    if (target === TERMINAL_MENU) {
+      queueMicrotask((): void => this.runTerminalMenu(choice.id));
       return;
     }
     queueMicrotask((): void => {
@@ -1216,6 +1357,86 @@ export class Terminal implements AfterViewInit, OnDestroy {
     } catch {
       // A context already lost can fail to tear down; the standard renderer takes over regardless.
     }
+  }
+
+  /**
+   * Runs a row of the terminal's own right-click menu.
+   * @param id The row chosen.
+   */
+  private runTerminalMenu(id: string): void {
+    switch (id) {
+      case 'copy':
+        this.copy();
+        return;
+      case 'paste':
+        this.paste();
+        return;
+      case 'clear':
+        this.clear();
+        return;
+      case 'find':
+        this.findRequested.emit();
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Catches a paste on its way to xterm, so a multi-line one is asked about first. A paste that
+   * needs no question is left to xterm.
+   * @param event The paste.
+   */
+  private readonly onPasteEvent: (event: ClipboardEvent) => void = (
+    event: ClipboardEvent,
+  ): void => {
+    const text: string = event.clipboardData?.getData('text/plain') ?? '';
+    if (!this.settings.get('terminal.warnMultiLinePaste') || !isMultiLinePaste(text)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void this.pasteText(text);
+  };
+
+  /**
+   * Rings the bell as Bell says: a short tone, a flash of the terminal, or nothing.
+   */
+  private onBell(): void {
+    const bell: 'none' | 'sound' | 'visual' = this.settings.get('terminal.bell');
+    if (bell === 'sound') {
+      ringBell();
+      return;
+    }
+    if (bell !== 'visual') {
+      return;
+    }
+    const host: HTMLDivElement = this.container().nativeElement;
+    host.classList.add('terminal--bell');
+    if (this.bellFlash !== null) {
+      clearTimeout(this.bellFlash);
+    }
+    this.bellFlash = setTimeout((): void => {
+      this.bellFlash = null;
+      host.classList.remove('terminal--bell');
+    }, BELL_FLASH_MS);
+  }
+
+  /**
+   * Colours the links in the output as they are printed, or stops, as Link Opening is on or Off.
+   * @param xterm The terminal.
+   * @param on Whether links are coloured.
+   */
+  private decorateLinks(xterm: Xterm, on: boolean): void {
+    if (!on) {
+      this.linkDecorator?.dispose();
+      this.linkDecorator = null;
+      this.leaveLink();
+      return;
+    }
+    this.linkDecorator ??= new TerminalLinkDecorator(xterm, this.resolvePath, (): string =>
+      this.linkColour(),
+    );
   }
 
   /**

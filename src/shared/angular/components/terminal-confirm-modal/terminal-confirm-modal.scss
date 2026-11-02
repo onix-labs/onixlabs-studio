@@ -1,0 +1,35 @@
+.terminal-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.terminal-confirm__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.terminal-confirm__body {
+  margin: 0;
+  line-height: 1.5;
+}
+
+// The lines about to be pasted: a few rows of them, scrolled, never the whole clipboard at once.
+.terminal-confirm__detail {
+  max-block-size: 8rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  overflow: auto;
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre;
+}
+
+.terminal-confirm__context {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
