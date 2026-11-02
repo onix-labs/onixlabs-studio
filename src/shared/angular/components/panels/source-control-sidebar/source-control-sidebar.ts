@@ -21,6 +21,7 @@ import { VersionControlPrompt } from '@shared/angular/services/plugins/version-c
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
+  ForgeListKind,
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
@@ -106,6 +107,8 @@ interface RepoNode {
   /**
    * Gets the kind of row, which drives click behaviour and any extra decorations.
    */
+  readonly listKind?: ForgeListKind;
+
   readonly kind:
     | 'section'
     | 'branch'
@@ -118,6 +121,7 @@ interface RepoNode {
     | 'pr'
     | 'issue'
     | 'action'
+    | 'load-more'
     | 'empty';
 
   /**
@@ -454,6 +458,16 @@ const ACTION_DELETE_WORKTREE_BRANCH: string = 'worktree.deleteBranch';
  * Identifies the Refresh command on a forge-backed section's context menu (#939).
  */
 const ACTION_REFRESH_SECTION: string = 'section.refresh';
+
+/**
+ * Names the section command that shows only open pull requests and issues, for this session.
+ */
+const ACTION_SHOW_OPEN: string = 'section.show-open';
+
+/**
+ * Names the section command that shows pull requests and issues in every state, for this session.
+ */
+const ACTION_SHOW_ALL: string = 'section.show-all';
 
 /**
  * Identifies the Rename command on a worktree's context menu.
@@ -851,7 +865,7 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private matches(row: TreeRow, needle: string): boolean {
     const node: RepoNode = this.nodeOf(row);
-    if (node.kind === 'empty') {
+    if (node.kind === 'empty' || node.kind === 'load-more') {
       return false;
     }
     // A worktree stays while any branch beneath it matches, so a match is never shown without the
@@ -1019,6 +1033,21 @@ export class SourceControlSidebar implements OnDestroy {
         return this.grouped('stashes', [[this.stashItem()]]);
       case 'pullRequests':
       case 'issues':
+        // Open or all is a session choice made here; PR and Issue States in Settings is the default.
+        return [
+          { id: ACTION_REFRESH_SECTION, label: 'Refresh', icon: Icon.REFRESH },
+          { id: 'section.state-separator', label: '', separator: true },
+          {
+            id: ACTION_SHOW_OPEN,
+            label: 'Show Open Only',
+            active: this.forge.listState() === 'open',
+          },
+          {
+            id: ACTION_SHOW_ALL,
+            label: 'Show All States',
+            active: this.forge.listState() === 'all',
+          },
+        ];
       case 'actions':
         return [{ id: ACTION_REFRESH_SECTION, label: 'Refresh', icon: Icon.REFRESH }];
       default:
@@ -1220,6 +1249,11 @@ export class SourceControlSidebar implements OnDestroy {
       case 'remote-branch':
         if (node.commit !== undefined) {
           this.repository.selectNode(node.commit);
+        }
+        break;
+      case 'load-more':
+        if (node.listKind !== undefined) {
+          void this.forge.loadMore(node.listKind);
         }
         break;
       default:
@@ -2375,9 +2409,15 @@ export class SourceControlSidebar implements OnDestroy {
       ];
     }
     if (section.items.length === 0) {
-      return [this.emptyRow('pullRequests', Icon.GIT_PULL_REQUEST, 'No open pull requests')];
+      return [
+        this.emptyRow(
+          'pullRequests',
+          Icon.GIT_PULL_REQUEST,
+          this.forge.listState() === 'all' ? 'No pull requests' : 'No open pull requests',
+        ),
+      ];
     }
-    return section.items.map((pull: ForgePullRequest): TreeRow => ({
+    const rows: readonly TreeRow[] = section.items.map((pull: ForgePullRequest): TreeRow => ({
       id: `pr:${pull.number}`,
       depth: 1,
       expandable: false,
@@ -2385,13 +2425,39 @@ export class SourceControlSidebar implements OnDestroy {
       data: {
         kind: 'pr',
         icon: Icon.GIT_PULL_REQUEST,
-        label: `#${pull.number} ${pull.title}${pull.draft ? ' (draft)' : ''}`,
+        label: `#${pull.number} ${pull.title}${pull.draft ? ' (draft)' : ''}${
+          pull.state === 'merged' ? ' (merged)' : pull.state === 'closed' ? ' (closed)' : ''
+        }`,
         pullRequest: pull,
         // A pull request whose checks have not reported gets no badge at all, rather than one
         // implying work is in flight.
         ...(pull.checks === 'none' ? {} : { status: pull.checks }),
       },
     }));
+    return this.withLoadMore(rows, 'pullRequests');
+  }
+
+  /**
+   * Ends a hosting list with a Load More row when it came back as full as it was asked to be, so
+   * there may be more to read.
+   * @param rows The list's rows.
+   * @param kind The list.
+   * @returns Returns the rows, with Load More after them when it is worth offering.
+   */
+  private withLoadMore(rows: readonly TreeRow[], kind: ForgeListKind): readonly TreeRow[] {
+    if (!this.forge.canLoadMore(kind)) {
+      return rows;
+    }
+    return [
+      ...rows,
+      {
+        id: `load-more:${kind}`,
+        depth: 1,
+        expandable: false,
+        expanded: false,
+        data: { kind: 'load-more', icon: Icon.CARET_DOWN, label: 'Load More', listKind: kind },
+      },
+    ];
   }
 
   /**
@@ -2875,6 +2941,8 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.kind === 'section' && node.sectionKey !== undefined) {
       if (choice.itemId === ACTION_REFRESH_SECTION) {
         this.loadSection(node.sectionKey, true);
+      } else if (choice.itemId === ACTION_SHOW_OPEN || choice.itemId === ACTION_SHOW_ALL) {
+        void this.forge.setListState(choice.itemId === ACTION_SHOW_ALL ? 'all' : 'open');
       } else {
         this.onMoreAction(choice.itemId);
       }
@@ -3102,9 +3170,15 @@ export class SourceControlSidebar implements OnDestroy {
       ];
     }
     if (section.items.length === 0) {
-      return [this.emptyRow('issues', Icon.INFO, 'No open issues')];
+      return [
+        this.emptyRow(
+          'issues',
+          Icon.INFO,
+          this.forge.listState() === 'all' ? 'No issues' : 'No open issues',
+        ),
+      ];
     }
-    return section.items.map((issue: ForgeIssue): TreeRow => ({
+    const rows: readonly TreeRow[] = section.items.map((issue: ForgeIssue): TreeRow => ({
       id: `issue:${issue.number}`,
       depth: 1,
       expandable: false,
@@ -3112,10 +3186,11 @@ export class SourceControlSidebar implements OnDestroy {
       data: {
         kind: 'issue',
         icon: Icon.INFO,
-        label: `#${issue.number} ${issue.title}`,
+        label: `#${issue.number} ${issue.title}${issue.state === 'closed' ? ' (closed)' : ''}`,
         issue,
       },
     }));
+    return this.withLoadMore(rows, 'issues');
   }
 
   /**
@@ -3144,7 +3219,7 @@ export class SourceControlSidebar implements OnDestroy {
     if (section.items.length === 0) {
       return [this.emptyRow('actions', Icon.PLAY, 'No recent workflow runs')];
     }
-    return section.items.map((run: ForgeWorkflowRun): TreeRow => ({
+    const rows: readonly TreeRow[] = section.items.map((run: ForgeWorkflowRun): TreeRow => ({
       id: `action:${run.id}`,
       depth: 1,
       expandable: false,
@@ -3159,6 +3234,7 @@ export class SourceControlSidebar implements OnDestroy {
         status: run.status,
       },
     }));
+    return this.withLoadMore(rows, 'runs');
   }
 
   /**

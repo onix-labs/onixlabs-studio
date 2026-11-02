@@ -1,3 +1,4 @@
+import type { HostingListOptions } from '@shared/api/hosting-protocol';
 import { inject, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
@@ -141,30 +142,69 @@ export class Forge implements ForgeClient {
   }
 
   /**
-   * Lists a repository's open pull requests.
+   * Adds a host — an enterprise server — for a plugin that accepts them.
+   * @param pluginId The plugin to serve it.
+   * @param host The host name, or the server's address.
+   * @returns Returns the new host's account, or null when the plugin does not accept hosts or the
+   * name is not a host.
+   */
+  public addHost(pluginId: string, host: string): Promise<ForgeHostAccount | null> {
+    this.log.info('forge', `Adding host ${host} for ${pluginId}`);
+    return (
+      this.bridge?.invoke<ForgeHostAccount | null>(ForgeChannel.AddHost, pluginId, host) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Removes a host the user added.
+   * @param pluginId The plugin serving it.
+   * @param host The host.
+   * @returns Returns true when it was one the user added.
+   */
+  public removeHost(pluginId: string, host: string): Promise<boolean> {
+    this.log.info('forge', `Removing host ${host} from ${pluginId}`);
+    return (
+      this.bridge?.invoke<boolean>(ForgeChannel.RemoveHost, pluginId, host) ??
+      Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Lists a repository's pull requests: the open ones, or every state.
    * @param repository The repository to read.
+   * @param options How many to read and which; absent for the plugin's own page of open ones.
    * @returns Returns the pull requests, or the reason they could not be read.
    */
   public pullRequests(
     repository: ForgeRepositoryRef,
+    options: HostingListOptions = {},
   ): Promise<ForgeResult<readonly ForgePullRequest[]>> {
     return (
       this.bridge?.invoke<ForgeResult<readonly ForgePullRequest[]>>(
         ForgeChannel.PullRequests,
         repository,
+        options,
       ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 
   /**
-   * Lists a repository's open issues.
+   * Lists a repository's issues: the open ones, or every state.
    * @param repository The repository to read.
+   * @param options How many to read and which; absent for the plugin's own page of open ones.
    * @returns Returns the issues, or the reason they could not be read.
    */
-  public issues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>> {
+  public issues(
+    repository: ForgeRepositoryRef,
+    options: HostingListOptions = {},
+  ): Promise<ForgeResult<readonly ForgeIssue[]>> {
     return (
-      this.bridge?.invoke<ForgeResult<readonly ForgeIssue[]>>(ForgeChannel.Issues, repository) ??
-      Promise.resolve(UNAVAILABLE_RESULT)
+      this.bridge?.invoke<ForgeResult<readonly ForgeIssue[]>>(
+        ForgeChannel.Issues,
+        repository,
+        options,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 
@@ -240,17 +280,20 @@ export class Forge implements ForgeClient {
   }
 
   /**
-   * Lists a repository's recent CI/CD workflow runs.
+   * Lists a repository's recent CI/CD workflow runs: every branch's, or one branch's.
    * @param repository The repository to read.
+   * @param options How many to read, and the branch; absent for the plugin's own page of all.
    * @returns Returns the runs, or the reason they could not be read.
    */
   public workflowRuns(
     repository: ForgeRepositoryRef,
+    options: HostingListOptions = {},
   ): Promise<ForgeResult<readonly ForgeWorkflowRun[]>> {
     return (
       this.bridge?.invoke<ForgeResult<readonly ForgeWorkflowRun[]>>(
         ForgeChannel.WorkflowRuns,
         repository,
+        options,
       ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }

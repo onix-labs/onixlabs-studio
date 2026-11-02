@@ -248,6 +248,10 @@ export interface SettingsValues {
   readonly 'versionControl.checkOutNewBranch': boolean;
   readonly 'versionControl.historyDateFormat': HistoryDateFormat;
   readonly 'versionControl.historyPageSize': number;
+  readonly 'versionControl.hostingRefreshSeconds': number;
+  readonly 'versionControl.hostingListSize': number;
+  readonly 'versionControl.ciRunsScope': 'branch' | 'all';
+  readonly 'versionControl.pullRequestAndIssueStates': 'open' | 'all';
   readonly 'ai.autoCompactThreshold': number;
   readonly 'ai.autoCompactMode': AskOrAutomatic;
   readonly 'ai.deleteConversationsAfterDays': number;
@@ -1415,6 +1419,74 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 500,
+      },
+    ],
+  },
+  {
+    id: 'vc-hosting',
+    label: 'Hosting',
+    settings: [
+      {
+        key: 'versionControl.hostingRefreshSeconds',
+        title: 'Hosting Refresh Interval',
+        description:
+          'How often the pull requests, issues and CI runs you have open are re-read from the code ' +
+          'host. Unchanged lists cost nothing against its rate limit.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '30', label: 'Every 30 seconds' },
+            { value: '60', label: 'Every minute' },
+            { value: '300', label: 'Every 5 minutes' },
+          ],
+        },
+        default: 60,
+      },
+      {
+        key: 'versionControl.hostingListSize',
+        title: 'Hosting List Size',
+        description:
+          'How many pull requests, issues or CI runs a list shows; Load More brings more.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '25', label: '25' },
+            { value: '50', label: '50' },
+            { value: '100', label: '100' },
+          ],
+        },
+        default: 50,
+      },
+      {
+        key: 'versionControl.ciRunsScope',
+        title: 'CI Runs Scope',
+        description: "Show CI runs for every branch, or only the checked-out branch's.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'all', label: 'All branches' },
+            { value: 'branch', label: 'Current branch' },
+          ],
+        },
+        default: 'all',
+      },
+      {
+        key: 'versionControl.pullRequestAndIssueStates',
+        title: 'PR and Issue States',
+        description:
+          'Show only open pull requests and issues, or every state. The panel can switch for the ' +
+          'session without changing this.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'open', label: 'Open' },
+            { value: 'all', label: 'All' },
+          ],
+        },
+        default: 'open',
       },
     ],
   },

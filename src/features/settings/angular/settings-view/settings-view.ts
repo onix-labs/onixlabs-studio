@@ -56,7 +56,12 @@ import {
  * Names the registry sections Version Control › General draws, in page order, each under its own
  * heading, so the page's search finds every one of them.
  */
-const VERSION_CONTROL_SECTIONS: readonly string[] = ['vc-fetch', 'vc-commits', 'vc-history'];
+const VERSION_CONTROL_SECTIONS: readonly string[] = [
+  'vc-fetch',
+  'vc-commits',
+  'vc-history',
+  'vc-hosting',
+];
 
 /**
  * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one

@@ -1,3 +1,5 @@
+import type { HostingListOptions } from '@shared/api/hosting-protocol';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -109,7 +111,20 @@ class FakeForge {
    */
   public readonly readCounts: { pullRequests: number } = { pullRequests: 0 };
 
-  public pullRequests(): Promise<ForgeResult<readonly ForgePullRequest[]>> {
+  /**
+   * Holds the list options each list read was made with, by list.
+   */
+  public readonly options: Record<string, HostingListOptions[]> = {
+    pullRequests: [],
+    issues: [],
+    runs: [],
+  };
+
+  public pullRequests(
+    _reference?: ForgeRepositoryRef,
+    options: HostingListOptions = {},
+  ): Promise<ForgeResult<readonly ForgePullRequest[]>> {
+    this.options['pullRequests'].push(options);
     this.readCounts.pullRequests += 1;
     return Promise.resolve(this.pullRequestResult);
   }
@@ -146,11 +161,19 @@ class FakeForge {
    */
   public readonly commands: string[] = [];
 
-  public issues(): Promise<ForgeResult<readonly ForgeIssue[]>> {
+  public issues(
+    _reference?: ForgeRepositoryRef,
+    options: HostingListOptions = {},
+  ): Promise<ForgeResult<readonly ForgeIssue[]>> {
+    this.options['issues'].push(options);
     return Promise.resolve(this.issueResult);
   }
 
-  public workflowRuns(): Promise<ForgeResult<readonly ForgeWorkflowRun[]>> {
+  public workflowRuns(
+    _reference?: ForgeRepositoryRef,
+    options: HostingListOptions = {},
+  ): Promise<ForgeResult<readonly ForgeWorkflowRun[]>> {
+    this.options['runs'].push(options);
     return Promise.resolve(this.runResult);
   }
 
@@ -206,6 +229,12 @@ class FakeRepository {
     return this.bound();
   }
 
+  public readonly current: WritableSignal<string> = signal<string>('main');
+
+  public currentBranch(): { readonly name: string } | undefined {
+    return { name: this.current() };
+  }
+
   public checkoutRef(remote: string, sourceRef: string, local: string): Promise<MutationResult> {
     this.checkouts.push({ remote, sourceRef, local });
     return Promise.resolve({ success: true });
@@ -228,6 +257,54 @@ describe('ForgeRepository', () => {
       ],
     });
     service = TestBed.inject(ForgeRepository);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  describe('list options (#1233)', () => {
+    beforeEach(() => {
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+    });
+
+    it('readsTheListSize_ofOpenItems_byDefault', async () => {
+      await service.loadPullRequests();
+      await service.loadIssues();
+      await service.loadWorkflowRuns();
+
+      expect(forge.options['pullRequests'][0]).toEqual({ limit: 50, state: 'open' });
+      expect(forge.options['issues'][0]).toEqual({ limit: 50, state: 'open' });
+      expect(forge.options['runs'][0]).toEqual({ limit: 50 });
+    });
+
+    it('loadMore_asksForAnotherPage', async () => {
+      TestBed.inject(Settings).set('versionControl.hostingListSize', 25);
+
+      await service.loadMore('issues');
+
+      expect(forge.options['issues'].at(-1)).toEqual({ limit: 50, state: 'open' });
+    });
+
+    it('setListState_showsAllForTheSession_withoutChangingTheSetting', async () => {
+      await service.setListState('all');
+
+      expect(service.listState()).toBe('all');
+      expect(forge.options['pullRequests'].at(-1)?.state).toBe('all');
+      expect(forge.options['issues'].at(-1)?.state).toBe('all');
+      expect(TestBed.inject(Settings).get('versionControl.pullRequestAndIssueStates')).toBe('open');
+    });
+
+    it('ciRunsScope_currentBranch_asksForThatBranchsRuns', async () => {
+      TestBed.inject(Settings).set('versionControl.ciRunsScope', 'branch');
+      repository.current.set('feature/x');
+
+      await service.loadWorkflowRuns();
+
+      expect(forge.options['runs'][0]).toEqual({ limit: 50, branch: 'feature/x' });
+    });
   });
 
   describe('detect', () => {

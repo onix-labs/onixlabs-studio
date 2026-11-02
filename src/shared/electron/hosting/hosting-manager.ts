@@ -12,6 +12,7 @@ import {
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 import {
+  HostingListOptions,
   HostedAccount,
   HostedAuthStatus,
   HostedCloseReason,
@@ -28,6 +29,7 @@ import { logger } from '../logger';
 import { HostingCredentialStore } from './hosting-credential-store';
 import { HostingDescriptor } from './hosting-descriptor';
 import { HostedRepositoryDescription, HostingHost } from './hosting-host';
+import { CustomHosts } from './custom-hosts';
 import { HostingSettings } from './hosting-settings';
 import { HostingCaller } from './hosting-write-gate';
 
@@ -59,6 +61,7 @@ export class HostingManager {
     private readonly host: HostingHost,
     private readonly store: HostingCredentialStore,
     private readonly settings: HostingSettings,
+    private readonly customHosts: CustomHosts = new CustomHosts(''),
   ) {}
 
   /**
@@ -79,6 +82,19 @@ export class HostingManager {
       ): Promise<ForgeRepositoryCapabilities | null> => this.describe(repository),
     );
     ipcMain.handle(ForgeChannel.Hosts, (): Promise<readonly ForgeHostAccount[]> => this.hosts());
+    ipcMain.handle(
+      ForgeChannel.AddHost,
+      (
+        _event: IpcMainInvokeEvent,
+        pluginId: unknown,
+        host: unknown,
+      ): Promise<ForgeHostAccount | null> => this.addHost(pluginId, host),
+    );
+    ipcMain.handle(
+      ForgeChannel.RemoveHost,
+      (_event: IpcMainInvokeEvent, pluginId: unknown, host: unknown): boolean =>
+        this.removeHost(pluginId, host),
+    );
     ipcMain.handle(
       ForgeChannel.SetAuthMode,
       (
@@ -111,16 +127,24 @@ export class HostingManager {
       (
         _event: IpcMainInvokeEvent,
         repository: unknown,
+        options: unknown,
       ): Promise<ForgeResult<readonly ForgePullRequest[]>> =>
-        this.read(repository, 'listPullRequests', (target) => ({ repository: target })),
+        this.read(repository, 'listPullRequests', (target) => ({
+          repository: target,
+          ...asListOptions(options),
+        })),
     );
     ipcMain.handle(
       ForgeChannel.Issues,
       (
         _event: IpcMainInvokeEvent,
         repository: unknown,
+        options: unknown,
       ): Promise<ForgeResult<readonly ForgeIssue[]>> =>
-        this.read(repository, 'listIssues', (target) => ({ repository: target })),
+        this.read(repository, 'listIssues', (target) => ({
+          repository: target,
+          ...asListOptions(options),
+        })),
     );
     ipcMain.handle(
       ForgeChannel.IssueComments,
@@ -161,8 +185,12 @@ export class HostingManager {
       (
         _event: IpcMainInvokeEvent,
         repository: unknown,
+        options: unknown,
       ): Promise<ForgeResult<readonly ForgeWorkflowRun[]>> =>
-        this.read(repository, 'listCiRuns', (target) => ({ repository: target })),
+        this.read(repository, 'listCiRuns', (target) => ({
+          repository: target,
+          ...asListOptions(options),
+        })),
     );
     ipcMain.handle(
       ForgeChannel.RerunWorkflowRun,
@@ -446,7 +474,51 @@ export class HostingManager {
       authModes: descriptor.authModes,
       authMode: this.settings.authFor(descriptor.id)[host] ?? null,
       status: await this.authStatus(host),
+      custom: this.customHosts.hostsFor(descriptor.id).includes(host),
+      customHosts: descriptor.customHosts === true,
     };
+  }
+
+  /**
+   * Adds an enterprise host for a plugin that accepts them (Add Host in Settings).
+   * @param pluginId The untrusted plugin id.
+   * @param host The untrusted host name, or a server URL.
+   * @returns Returns the new host's account, or null when the plugin does not accept hosts or the
+   * name is not a host.
+   */
+  public async addHost(pluginId: unknown, host: unknown): Promise<ForgeHostAccount | null> {
+    if (typeof pluginId !== 'string' || typeof host !== 'string') {
+      return null;
+    }
+    const descriptor: HostingDescriptor | undefined = this.host
+      .preferredOrder()
+      .find((candidate: HostingDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor?.customHosts !== true) {
+      return null;
+    }
+    const added: string | null = this.customHosts.add(pluginId, host);
+    if (added === null) {
+      return null;
+    }
+    logger.info('HostingManager', `Host ${added} added for ${pluginId}`);
+    return this.account(descriptor, added);
+  }
+
+  /**
+   * Removes a host the user added.
+   * @param pluginId The untrusted plugin id.
+   * @param host The untrusted host name.
+   * @returns Returns true when it was one the user added.
+   */
+  public removeHost(pluginId: unknown, host: unknown): boolean {
+    if (typeof pluginId !== 'string' || typeof host !== 'string') {
+      return false;
+    }
+    const removed: boolean = this.customHosts.remove(pluginId, host);
+    if (removed) {
+      logger.info('HostingManager', `Host ${host} removed from ${pluginId}`);
+    }
+    return removed;
   }
 
   /**
@@ -706,4 +778,27 @@ export function asRepository(value: unknown): HostedRepositoryRef | null {
     return null;
   }
   return { host: host.toLowerCase(), owner, name };
+}
+
+/**
+ * Reads the list options the renderer sent, keeping only well-formed ones: a positive whole limit (at
+ * most 1,000), a known state, and a branch name.
+ * @param value The options, untrusted.
+ * @returns Returns the options to pass to the plugin.
+ */
+export function asListOptions(value: unknown): HostingListOptions {
+  if (value === null || typeof value !== 'object') {
+    return {};
+  }
+  const record: Record<string, unknown> = value as Record<string, unknown>;
+  const limit: unknown = record['limit'];
+  const state: unknown = record['state'];
+  const branch: unknown = record['branch'];
+  return {
+    ...(typeof limit === 'number' && Number.isInteger(limit) && limit > 0 && limit <= 1000
+      ? { limit }
+      : {}),
+    ...(state === 'open' || state === 'all' ? { state } : {}),
+    ...(typeof branch === 'string' && branch.length > 0 && branch.length <= 255 ? { branch } : {}),
+  };
 }

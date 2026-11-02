@@ -528,6 +528,12 @@ export interface ManifestHosting {
   readonly authModes: readonly HostingAuthMode[];
 
   /**
+   * Gets whether the plugin can serve hosts the user adds in Settings — a GitHub Enterprise server
+   * beside github.com — as well as the ones named in {@link hosts}. Optional; absent means no.
+   */
+  readonly customHosts?: boolean;
+
+  /**
    * Gets the host's own command-line tools — `gh` for GitHub — by command name, or empty when it has
    * none (#853). Optional: Studio uses it only to keep agents off them when the user asks it to, so an
    * agent goes through the plugin instead. Core names no tool of its own; the plugin says.
@@ -1755,6 +1761,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
           errors,
         ),
         authModes: readAuthModes(entry['authModes'], `${path}.authModes`, errors),
+        ...(entry['customHosts'] === true ? { customHosts: true } : {}),
         commandLineTools: readCommandLineTools(
           entry['commandLineTools'],
           `${path}.commandLineTools`,

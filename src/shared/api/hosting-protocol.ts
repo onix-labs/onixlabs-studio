@@ -339,6 +339,28 @@ export interface HostedRepository {
 export type HostedCheckStatus = 'running' | 'succeeded' | 'failed' | 'none';
 
 /**
+ * Carries how much of a list to read and which of it (#1233). Every field is optional, so a host older
+ * than these settings sends none and the plugin keeps its own page.
+ */
+export interface HostingListOptions {
+  /**
+   * Gets the most items to return (Hosting List Size, grown by Load More); a plugin may read several
+   * pages to reach it.
+   */
+  readonly limit?: number;
+
+  /**
+   * Gets which pull requests or issues to list: only open ones, or every state.
+   */
+  readonly state?: 'open' | 'all';
+
+  /**
+   * Gets the branch to list CI runs for (CI Runs Scope: Current Branch), or absent for all.
+   */
+  readonly branch?: string;
+}
+
+/**
  * Describes a pull (merge) request.
  */
 export interface HostedPullRequest {
@@ -346,6 +368,12 @@ export interface HostedPullRequest {
    * Gets its number within the repository.
    */
   readonly number: number;
+
+  /**
+   * Gets whether it is open, closed without merging, or merged. Absent from a plugin that predates
+   * listing closed pull requests, where every one listed is open.
+   */
+  readonly state?: 'open' | 'closed' | 'merged';
 
   /**
    * Gets its title.
@@ -659,12 +687,12 @@ export interface HostingOperations {
   };
 
   readonly listPullRequests: {
-    readonly params: RepositoryParams;
+    readonly params: RepositoryParams & HostingListOptions;
     readonly result: readonly HostedPullRequest[];
   };
 
   readonly listIssues: {
-    readonly params: RepositoryParams;
+    readonly params: RepositoryParams & HostingListOptions;
     readonly result: readonly HostedIssue[];
   };
 
@@ -679,7 +707,7 @@ export interface HostingOperations {
   };
 
   readonly listCiRuns: {
-    readonly params: RepositoryParams;
+    readonly params: RepositoryParams & HostingListOptions;
     readonly result: readonly HostedCiRun[];
   };
 

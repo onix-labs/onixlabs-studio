@@ -1,6 +1,7 @@
 // The GitHub REST client behind the hosting protocol (#820). Moved from core's forge contribution
 // (#432), which it replaces: the same requests, entity-tag cache and rate-limit ledger, now answering
 // the protocol's host-neutral types, plus the account and repository listing #805 is built against.
+import type { HostingListOptions } from './protocol';
 import { Clock, EtagCache, RateLimitLedger } from './budget';
 import { GitHubAuth, ResolvedCredential } from './auth';
 import { debug } from './log';
@@ -27,6 +28,16 @@ import {
  * what is open, not a browser, and paging would cost rate-limit budget for rows nobody scrolls to.
  */
 const PAGE_SIZE: number = 50;
+
+/**
+ * Holds the most items GitHub returns in one page; a larger limit is read a page at a time.
+ */
+const MAX_PER_PAGE: number = 100;
+
+/**
+ * Holds the largest list a request may ask for, bounding untrusted input.
+ */
+const MAX_LIST_LIMIT: number = 1000;
 
 /**
  * How many repositories each page of a listing asks for: GitHub's maximum.
@@ -142,6 +153,8 @@ interface RawPullRequest {
   readonly title?: unknown;
   readonly html_url?: unknown;
   readonly draft?: unknown;
+  readonly state?: unknown;
+  readonly merged_at?: unknown;
   readonly user?: RawUser;
   readonly head?: { readonly ref?: unknown; readonly sha?: unknown };
 }
@@ -559,17 +572,18 @@ export class GitHubHosting {
    */
   public async listPullRequests(
     repository: HostedRepositoryRef,
+    options: HostingListOptions = {},
   ): Promise<Outcome<readonly HostedPullRequest[]>> {
-    const listed: Outcome<unknown> = await this.get(
+    const listed: Outcome<readonly unknown[]> = await this.getPages(
       repository.host,
-      `${repoPath(repository)}/pulls?state=open&sort=updated&direction=desc&per_page=${PAGE_SIZE}`,
+      `${repoPath(repository)}/pulls?state=${options.state === 'all' ? 'all' : 'open'}&sort=updated&direction=desc`,
+      options.limit,
+      (body: unknown): readonly unknown[] => (Array.isArray(body) ? body : []),
     );
     if (!listed.ok) {
       return listed;
     }
-    const raw: readonly RawPullRequest[] = Array.isArray(listed.result)
-      ? (listed.result as readonly RawPullRequest[])
-      : [];
+    const raw: readonly RawPullRequest[] = listed.result as readonly RawPullRequest[];
     // Checks are a request per pull request, so they are fetched together rather than in series.
     const checks: readonly HostedCheckStatus[] = await Promise.all(
       raw.map((pull: RawPullRequest): Promise<HostedCheckStatus> => {
@@ -594,10 +608,13 @@ export class GitHubHosting {
    */
   public async listIssues(
     repository: HostedRepositoryRef,
+    options: HostingListOptions = {},
   ): Promise<Outcome<readonly HostedIssue[]>> {
-    const listed: Outcome<unknown> = await this.get(
+    const listed: Outcome<readonly unknown[]> = await this.getPages(
       repository.host,
-      `${repoPath(repository)}/issues?state=open&sort=updated&direction=desc&per_page=${PAGE_SIZE}`,
+      `${repoPath(repository)}/issues?state=${options.state === 'all' ? 'all' : 'open'}&sort=updated&direction=desc`,
+      options.limit,
+      (body: unknown): readonly unknown[] => (Array.isArray(body) ? body : []),
     );
     return listed.ok ? { ok: true, result: toIssues(listed.result) } : listed;
   }
@@ -649,18 +666,26 @@ export class GitHubHosting {
    */
   public async listCiRuns(
     repository: HostedRepositoryRef,
+    options: HostingListOptions = {},
   ): Promise<Outcome<readonly HostedCiRun[]>> {
-    const listed: Outcome<unknown> = await this.get(
+    const branch: string =
+      options.branch === undefined ? '' : `?branch=${encodeURIComponent(options.branch)}`;
+    const listed: Outcome<readonly unknown[]> = await this.getPages(
       repository.host,
-      `${repoPath(repository)}/actions/runs?per_page=${PAGE_SIZE}`,
+      `${repoPath(repository)}/actions/runs${branch}`,
+      options.limit,
+      (body: unknown): readonly unknown[] => {
+        const runs: unknown =
+          body !== null && typeof body === 'object'
+            ? (body as { readonly workflow_runs?: unknown }).workflow_runs
+            : undefined;
+        return Array.isArray(runs) ? runs : [];
+      },
     );
     if (!listed.ok) {
       return listed;
     }
-    const body: { readonly workflow_runs?: unknown } = listed.result ?? {};
-    const raw: readonly RawWorkflowRun[] = Array.isArray(body.workflow_runs)
-      ? (body.workflow_runs as readonly RawWorkflowRun[])
-      : [];
+    const raw: readonly RawWorkflowRun[] = listed.result as readonly RawWorkflowRun[];
     return {
       ok: true,
       result: raw.map((run: RawWorkflowRun): HostedCiRun => ({
@@ -973,6 +998,43 @@ export class GitHubHosting {
    * @param path The API path, including any query string.
    * @returns Returns the parsed body, or why it could not be read.
    */
+  /**
+   * Reads a list a page at a time until it has the items asked for or GitHub has no more: up to
+   * {@link MAX_PER_PAGE} a page, so a limit of 50 is one request and 250 is three. Each page is its
+   * own conditional request, so an unchanged list still costs no rate-limit budget.
+   * @param host The host.
+   * @param path The list's path, with any query already on it.
+   * @param limit The most items wanted, or undefined for the plugin's own page.
+   * @param itemsOf Reads the items out of one page's body.
+   * @returns Returns the items, at most `limit` of them.
+   */
+  private async getPages(
+    host: string,
+    path: string,
+    limit: number | undefined,
+    itemsOf: (body: unknown) => readonly unknown[],
+  ): Promise<Outcome<readonly unknown[]>> {
+    const wanted: number = clampLimit(limit);
+    const perPage: number = Math.min(wanted, MAX_PER_PAGE);
+    const joiner: string = path.includes('?') ? '&' : '?';
+    const items: unknown[] = [];
+    for (let page: number = 1; items.length < wanted; page++) {
+      const read: Outcome<unknown> = await this.get(
+        host,
+        `${path}${joiner}per_page=${perPage}${page > 1 ? `&page=${page}` : ''}`,
+      );
+      if (!read.ok) {
+        return read;
+      }
+      const batch: readonly unknown[] = itemsOf(read.result);
+      items.push(...batch);
+      if (batch.length < perPage) {
+        break;
+      }
+    }
+    return { ok: true, result: items.slice(0, wanted) };
+  }
+
   private async get(host: string, path: string): Promise<Outcome<unknown>> {
     const credential: ResolvedCredential | null = await this.auth.resolve(host);
     if (credential === null) {
@@ -1165,6 +1227,12 @@ function toPullRequest(pull: RawPullRequest, checks: HostedCheckStatus): HostedP
     author: asString(pull.user?.login, 'unknown'),
     url: asString(pull.html_url),
     draft: pull.draft === true,
+    state:
+      asString(pull.state) === 'closed'
+        ? typeof pull.merged_at === 'string'
+          ? 'merged'
+          : 'closed'
+        : 'open',
     headRef: asString(pull.head?.ref),
     // GitHub publishes every pull request's head under this ref on the base repository, which is
     // what makes a fork's pull request checkoutable at all.
@@ -1313,4 +1381,34 @@ function failure(status: number, mode: HostingAuthMode): Outcome<never> {
  */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Bounds a requested list length: the plugin's own page when none is given, and never more than
+ * {@link MAX_LIST_LIMIT}.
+ * @param limit The requested length, untrusted.
+ * @returns Returns the length to read.
+ */
+function clampLimit(limit: number | undefined): number {
+  return typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+    ? Math.min(Math.floor(limit), MAX_LIST_LIMIT)
+    : PAGE_SIZE;
+}
+
+/**
+ * Reads the list options a request carries, keeping only well-formed ones.
+ * @param params The request's parameters, untrusted.
+ * @returns Returns the options.
+ */
+export function listOptions(params: unknown): HostingListOptions {
+  const record: Record<string, unknown> =
+    params !== null && typeof params === 'object' ? (params as Record<string, unknown>) : {};
+  const limit: unknown = record['limit'];
+  const state: unknown = record['state'];
+  const branch: unknown = record['branch'];
+  return {
+    ...(typeof limit === 'number' && limit > 0 ? { limit } : {}),
+    ...(state === 'open' || state === 'all' ? { state } : {}),
+    ...(typeof branch === 'string' && branch.length > 0 ? { branch } : {}),
+  };
 }

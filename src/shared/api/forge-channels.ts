@@ -60,6 +60,17 @@ export enum ForgeChannel {
   ClearToken = 'forge:clear-token',
 
   /**
+   * Adds a host — an enterprise server — for a plugin that accepts them to serve, and returns its
+   * account, or null when the plugin does not accept hosts or the name is not one (invoke).
+   */
+  AddHost = 'forge:add-host',
+
+  /**
+   * Removes a host the user added, returning whether it was one (invoke).
+   */
+  RemoveHost = 'forge:remove-host',
+
+  /**
    * Lists a repository's open pull requests (invoke).
    */
   PullRequests = 'forge:pull-requests',
