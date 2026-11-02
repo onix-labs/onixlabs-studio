@@ -1,9 +1,6 @@
-// Shared layout for every settings section: a vertical stack of setting rows, divided by a hairline.
+// Shared layout for every settings section: a vertical stack of setting rows. No dividers: a row
+// lights on hover instead (see the settings view), which reads the same whichever component draws it.
 :host {
   display: flex;
   flex-direction: column;
-}
-
-app-setting-row:not(:first-child) {
-  border-block-start: 0.0625rem solid var(--settings-border-color);
 }

@@ -2,12 +2,24 @@
   display: block;
 }
 
+// A surface that wants rows to light on hover (Settings) sets --setting-row-hover-background and an
+// inset: the row then reaches past its text into the gutter by as much as it pads, so the text stays
+// aligned with everything else on the page while the highlight has room around it. Elsewhere both are
+// unset and the row lays out as a plain line.
 .setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.6rem 0;
+  margin-inline: calc(-1 * var(--setting-row-inset, 0rem));
+  padding: 0.6rem var(--setting-row-inset, 0rem);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier, 1));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: var(--hover-transition);
+
+  &:hover {
+    background: var(--setting-row-hover-background, transparent);
+  }
 }
 
 .setting-row__text {
