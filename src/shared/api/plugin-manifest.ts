@@ -148,8 +148,12 @@ import {
  * Studio offers the user for it, as a first-party server declares them, and how the server takes them
  * — asked for through `workspace/configuration`, pushed in `didChangeConfiguration`, given at start-up
  * in `initializationOptions`, or a mix. Absent means no settings, asked for, as before. Adds only.
+ *
+ * `1.22.0` adds a hosting contribution's optional `customHosts` (#1233): whether the plugin can serve
+ * hosts the user adds in Settings, such as a GitHub Enterprise server, beside the ones it names.
+ * Absent means no, as before. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.21.0';
+export const PLUGIN_API_VERSION: string = '1.22.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

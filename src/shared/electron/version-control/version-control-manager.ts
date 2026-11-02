@@ -13,7 +13,6 @@ import {
   VersionControlExecutableChoice,
   VersionControlOp,
   VersionControlResponse,
-  VcsParams,
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
 import { RepositoryTrust } from '../repository-trust';
@@ -285,6 +284,6 @@ export class VersionControlManager {
         code: 'refused',
       });
     }
-    return this.host.request(root, op as VersionControlOp, params as VcsParams<VersionControlOp>);
+    return this.host.request(root, op as VersionControlOp, params);
   }
 }
