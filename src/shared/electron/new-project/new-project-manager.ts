@@ -33,6 +33,12 @@ import type { VersionControlHost } from '../version-control/version-control-host
  * The folder names a project may have: one path segment, nothing a shell or git would read as more. The
  * same rule as a clone's.
  */
+/**
+ * Matches a branch name safe to hand to `git init --initial-branch`: no leading dash, no spaces, and
+ * none of the characters git refuses in a ref.
+ */
+const BRANCH_NAME: RegExp = /^(?!-)[^\s~^:?*[\\]{1,100}$/;
+
 const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
 
 /**
@@ -115,7 +121,7 @@ export class NewProjectManager {
       parsed.repository.kind === 'hosted'
         ? await this.createHosted(parsed, parsed.repository)
         : parsed.repository.kind === 'local'
-          ? await this.createLocal(destination, parsed.repository.layout)
+          ? await this.createLocal(destination, parsed.repository.layout, parsed.defaultBranch)
           : this.createFolder(destination);
     if (outcome.ok) {
       logger.info('NewProjectManager', `Created ${outcome.path}`);
@@ -151,7 +157,11 @@ export class NewProjectManager {
    * @param layout How the repository is laid out.
    * @returns Returns the outcome.
    */
-  private async createLocal(destination: string, layout: CloneLayout): Promise<NewProjectOutcome> {
+  private async createLocal(
+    destination: string,
+    layout: CloneLayout,
+    defaultBranch: string | undefined,
+  ): Promise<NewProjectOutcome> {
     const plugin: VersionControlDescriptor | null = this.versionControl.preferredPlugin();
     if (plugin === null) {
       return {
@@ -168,7 +178,9 @@ export class NewProjectManager {
     }
     const made: VersionControlResponse<'init'> = await this.versionControl.initInChosenFolder(
       plugin.id,
-      { directory: repository },
+      defaultBranch === undefined
+        ? { directory: repository }
+        : { directory: repository, defaultBranch },
     );
     if (!made.ok) {
       fs.rmSync(destination, { recursive: true, force: true });
@@ -240,7 +252,7 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   if (typeof value !== 'object' || value === null) {
     return 'No project was described.';
   }
-  const { name, repository, handoff } = value as Record<string, unknown>;
+  const { name, repository, handoff, defaultBranch } = value as Record<string, unknown>;
   if (typeof name !== 'string' || !FOLDER_NAME.test(name)) {
     return 'The project name must be a single folder name, without slashes.';
   }
@@ -250,8 +262,13 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   ) {
     return 'The handoff is not one that can be written.';
   }
-  const withHandoff: Pick<NewProjectRequest, 'handoff'> =
-    typeof handoff === 'string' ? { handoff } : {};
+  // A branch name is passed to git as an operand, so one that could be read as an option is dropped.
+  const withHandoff: Pick<NewProjectRequest, 'handoff' | 'defaultBranch'> = {
+    ...(typeof handoff === 'string' ? { handoff } : {}),
+    ...(typeof defaultBranch === 'string' && BRANCH_NAME.test(defaultBranch)
+      ? { defaultBranch }
+      : {}),
+  };
   if (typeof repository !== 'object' || repository === null) {
     return 'Choose a repository, or none.';
   }

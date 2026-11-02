@@ -15,11 +15,14 @@ import {
   VcsResult,
 } from './protocol';
 import {
+  commitOptions,
   confinedPaths,
   GitVersionControl,
   ignoreLine,
   isSafeOperand,
   MAX_READ_FILE_BYTES,
+  networkTimeout,
+  pullOptions,
   revisionSpec,
 } from './git';
 
@@ -443,6 +446,34 @@ describe('GitVersionControl', () => {
     });
   });
 
+  it('init_namesTheFirstBranch_whenGivenADefaultBranch', GIT_TEST_TIMEOUT, async () => {
+    const target: string = path.join(base, 'trunked');
+
+    expect(
+      await vcs.request('init', undefined, { directory: target, defaultBranch: 'trunk' }),
+    ).toMatchObject({ ok: true });
+
+    expect((await git(target, 'symbolic-ref', 'HEAD')).trim()).toBe('refs/heads/trunk');
+  });
+
+  it('commit_addsSignedOffBy_whenAsked', GIT_TEST_TIMEOUT, async () => {
+    await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+    await git(repo, 'add', 'README.md');
+
+    await result('commit', { message: 'docs: two', signoff: true, hooks: false });
+
+    expect(await git(repo, 'log', '-1', '--format=%B')).toContain('Signed-off-by:');
+  });
+
+  it('stash_takesUntrackedFiles_onlyWhenAsked', GIT_TEST_TIMEOUT, async () => {
+    await fs.writeFile(path.join(repo, 'README.md'), 'two\n', 'utf8');
+    await fs.writeFile(path.join(repo, 'new.txt'), 'new\n', 'utf8');
+
+    await result('stash', { includeUntracked: true });
+
+    await expect(fs.access(path.join(repo, 'new.txt'))).rejects.toThrow();
+  });
+
   it('init_refusesARelativeDirectory', GIT_TEST_TIMEOUT, async () => {
     expect(await vcs.request('init', undefined, { directory: 'fresh' })).toMatchObject({
       ok: false,
@@ -452,5 +483,32 @@ describe('GitVersionControl', () => {
   it('request_whenNotStarted_fails', async () => {
     const idle: GitVersionControl = new GitVersionControl();
     expect(await idle.request('status', repo, {})).toMatchObject({ ok: false });
+  });
+});
+
+describe('git command options', () => {
+  it('pullOptions_mapsEachModeToItsFlag', () => {
+    expect(pullOptions('merge')).toEqual(['--no-rebase']);
+    expect(pullOptions('rebase')).toEqual(['--rebase']);
+    expect(pullOptions('ff-only')).toEqual(['--ff-only']);
+    expect(pullOptions('config')).toEqual([]);
+    expect(pullOptions(undefined)).toEqual([]);
+  });
+
+  it('commitOptions_leavesGitInChargeOfWhatIsNotSet', () => {
+    expect(commitOptions({})).toEqual([]);
+    expect(commitOptions({ sign: 'always', signoff: true, hooks: false })).toEqual([
+      '--gpg-sign',
+      '--signoff',
+      '--no-verify',
+    ]);
+    expect(commitOptions({ sign: 'never', hooks: true })).toEqual(['--no-gpg-sign']);
+  });
+
+  it('networkTimeout_readsTheRequest_andKeepsTheDefaultWhenAbsent', () => {
+    expect(networkTimeout({ timeoutMs: 300_000 })).toBe(300_000);
+    expect(networkTimeout({ timeoutMs: 0 })).toBe(0);
+    expect(networkTimeout({})).toBe(120_000);
+    expect(networkTimeout({ timeoutMs: -1 })).toBe(120_000);
   });
 });

@@ -1,3 +1,4 @@
+import type { GitCommandSettings } from './git-command-settings';
 import { SourceControlClient } from '@shared/api/source-control-channels';
 import {
   VcsFileVersion,
@@ -188,6 +189,54 @@ describe('VersionControlProvider', () => {
     expect(recorded.map((request: Recorded): unknown => request.params)).toEqual([
       { limit: 50, all: true, path: 'src/a.ts' },
       { limit: 50 },
+    ]);
+  });
+
+  it('gitOperations_carryTheVersionControlSettings', async () => {
+    const recorded: Recorded[] = [];
+    const settings: GitCommandSettings = {
+      prune: false,
+      pullMode: 'rebase',
+      networkTimeoutMs: 300_000,
+      sign: 'always',
+      signoff: true,
+      hooks: false,
+      stashUntracked: true,
+    };
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({ fetch: {}, pull: {}, push: {}, commit: {}, stash: {} }, recorded),
+      (): GitCommandSettings => settings,
+    );
+
+    await provider.fetch();
+    await provider.pull();
+    await provider.push();
+    await provider.commit('feat: x');
+    await provider.stash();
+
+    expect(recorded.map((request: Recorded): unknown => request.params)).toEqual([
+      { prune: false, timeoutMs: 300_000 },
+      { mode: 'rebase', timeoutMs: 300_000 },
+      { target: null, timeoutMs: 300_000 },
+      { message: 'feat: x', sign: 'always', signoff: true, hooks: false },
+      { includeUntracked: true },
+    ]);
+  });
+
+  it('gitOperations_withoutSettings_sendNoOptions', async () => {
+    const recorded: Recorded[] = [];
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({ fetch: {}, commit: {} }, recorded),
+    );
+
+    await provider.fetch();
+    await provider.commit('feat: x');
+
+    expect(recorded.map((request: Recorded): unknown => request.params)).toEqual([
+      {},
+      { message: 'feat: x' },
     ]);
   });
 

@@ -12,6 +12,10 @@ import { DirectoryWatch } from '@shared/angular/services/directory-watch/directo
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
+  UpstreamChoice,
+  UpstreamConfirmation,
+} from '@shared/angular/services/upstream-confirmation/upstream-confirmation';
+import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
@@ -156,6 +160,11 @@ export class Repository {
    * Holds the settings store: auto-fetch, the default remote, and the history page size.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the question Set Upstream Automatically on Push asks when it is Ask.
+   */
+  private readonly upstreamConfirmation: UpstreamConfirmation = inject(UpstreamConfirmation);
 
   /**
    * Holds the auto-fetch clock while a repository is bound, or null.
@@ -1506,9 +1515,34 @@ export class Repository {
       branch: target.name,
       setUpstream: upstream === null,
     };
+    if (upstream === null && this.settings.get('versionControl.setUpstreamOnPush') === 'ask') {
+      return this.pushAfterAsking(push);
+    }
     this.log.info('Repository', `Pushing '${target.name}'`, this.infoSignal()?.root);
     return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
       provider.push(push),
+    );
+  }
+
+  /**
+   * Pushes a branch with no upstream after asking whether to set one (Set Upstream Automatically on
+   * Push is Ask). Cancelling pushes nothing and reports as cancelled, which raises no toast.
+   * @param push The push, as it would run with its upstream set.
+   * @returns Returns the outcome.
+   */
+  private async pushAfterAsking(push: PushTarget): Promise<MutationResult> {
+    const choice: UpstreamChoice = await this.upstreamConfirmation.ask({
+      branch: push.branch,
+      remote: push.remote,
+    });
+    if (choice === 'cancel') {
+      this.log.info('Repository', `Push of '${push.branch}' cancelled`);
+      return { success: false, code: 'cancelled' };
+    }
+    const chosen: PushTarget = { ...push, setUpstream: choice === 'set' };
+    this.log.info('Repository', `Pushing '${push.branch}'`, chosen.setUpstream);
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.push(chosen),
     );
   }
 
@@ -1923,6 +1957,10 @@ export class Repository {
     result: MutationResult,
     subject?: string,
   ): void {
+    // A push the user cancelled at the upstream question is no news.
+    if (result.code === 'cancelled') {
+      return;
+    }
     if (result.success) {
       this.notifyNetworkSuccess(operation, subject);
     } else {

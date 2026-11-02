@@ -1,3 +1,4 @@
+import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -234,6 +235,15 @@ export interface SettingsValues {
   readonly 'versionControl.autoFetchMinutes': number;
   readonly 'versionControl.fetchOnLoad': boolean;
   readonly 'versionControl.defaultRemote': string;
+  readonly 'versionControl.pruneOnFetch': boolean;
+  readonly 'versionControl.pullMode': VcsPullMode;
+  readonly 'versionControl.setUpstreamOnPush': AskOrAutomatic;
+  readonly 'versionControl.networkTimeoutMinutes': number;
+  readonly 'versionControl.signCommits': VcsSignCommits;
+  readonly 'versionControl.signOff': boolean;
+  readonly 'versionControl.runCommitHooks': boolean;
+  readonly 'versionControl.stashIncludesUntracked': boolean;
+  readonly 'versionControl.defaultBranchName': string;
   readonly 'versionControl.includeUntrackedInCommit': boolean;
   readonly 'versionControl.checkOutNewBranch': boolean;
   readonly 'versionControl.historyDateFormat': HistoryDateFormat;
@@ -1246,6 +1256,63 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'text', placeholder: 'origin' },
         default: 'origin',
       },
+      {
+        key: 'versionControl.pruneOnFetch',
+        title: 'Prune on Fetch',
+        description:
+          'Remove remote-tracking branches that were deleted on the remote whenever you fetch. Off ' +
+          'by default because it deletes; Prune on a remote still does it on request.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.pullMode',
+        title: 'Pull Mode',
+        description: "How a pull brings in the upstream's commits.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'config', label: "Follow git's configuration" },
+            { value: 'merge', label: 'Merge' },
+            { value: 'rebase', label: 'Rebase' },
+            { value: 'ff-only', label: 'Fast-forward only' },
+          ],
+        },
+        default: 'config',
+      },
+      {
+        key: 'versionControl.setUpstreamOnPush',
+        title: 'Set Upstream Automatically on Push',
+        description:
+          'When a branch with no upstream is first pushed, set the remote branch as its upstream, or ' +
+          'ask first.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'ask', label: 'Ask' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'versionControl.networkTimeoutMinutes',
+        title: 'Git Network Timeout',
+        description:
+          'How long a fetch, pull or push may take before it is stopped. Cloning keeps its own, longer limit.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 minute' },
+            { value: '2', label: '2 minutes' },
+            { value: '5', label: '5 minutes' },
+            { value: '10', label: '10 minutes' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 2,
+      },
     ],
   },
   {
@@ -1267,6 +1334,50 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Start the New Branch dialog with Check Out ticked.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'versionControl.signCommits',
+        title: 'Sign Commits',
+        description:
+          "Sign each commit with your GPG or SSH signing key, or leave it to git's configuration.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'config', label: "Follow git's configuration" },
+            { value: 'always', label: 'Always' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'config',
+      },
+      {
+        key: 'versionControl.signOff',
+        title: 'Add Signed-off-by',
+        description: 'Add a Signed-off-by line with your name and email to each commit message.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.runCommitHooks',
+        title: 'Run Commit Hooks',
+        description: "Run the repository's pre-commit and commit-msg hooks when committing.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'versionControl.stashIncludesUntracked',
+        title: 'Stash Includes Untracked Files',
+        description: 'Stash new files git is not tracking along with your other changes.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'versionControl.defaultBranchName',
+        title: 'Default Branch Name for New Repositories',
+        description:
+          "The first branch of a repository Studio creates. Leave empty to use git's own default.",
+        control: { kind: 'text', placeholder: 'main' },
+        default: 'main',
       },
     ],
   },

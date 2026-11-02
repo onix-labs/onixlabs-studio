@@ -160,6 +160,12 @@ export interface NewProjectRequest {
    * project had a home, for the project's own agent to start from. Omitted for none.
    */
   readonly handoff?: string;
+
+  /**
+   * Gets the first branch's name for a repository made here (Default Branch Name for New
+   * Repositories), or absent for git's own default. A hosted repository keeps the host's.
+   */
+  readonly defaultBranch?: string;
 }
 
 /**

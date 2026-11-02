@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { UpstreamConfirmation } from '@shared/angular/services/upstream-confirmation/upstream-confirmation';
 import { TestBed } from '@angular/core/testing';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
@@ -727,6 +728,39 @@ describe('Repository', () => {
     await repository.push();
 
     expect(provider.calls).toContain('push:upstream/main:true');
+  });
+
+  it('push_whenSetUpstreamIsAsk_asksFirst_andPushOnlyLeavesTheUpstreamUnset', async () => {
+    TestBed.inject(Settings).set('versionControl.setUpstreamOnPush', 'ask');
+    provider.upstream = undefined;
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    const confirmation: UpstreamConfirmation = TestBed.inject(UpstreamConfirmation);
+
+    const pushed: Promise<MutationResult> = repository.push();
+    await Promise.resolve();
+    expect(confirmation.pending()).toEqual({ branch: 'main', remote: 'origin' });
+    confirmation.answer('push-only');
+    await pushed;
+
+    expect(provider.calls).toContain('push:origin/main:false');
+  });
+
+  it('push_whenTheUpstreamQuestionIsCancelled_pushesNothingAndSaysNothing', async () => {
+    TestBed.inject(Settings).set('versionControl.setUpstreamOnPush', 'ask');
+    provider.upstream = undefined;
+    provider.remoteNames = ['origin'];
+    await repository.refresh();
+    const before: number = notifications.history().length;
+
+    const pushed: Promise<MutationResult> = repository.push();
+    await Promise.resolve();
+    TestBed.inject(UpstreamConfirmation).answer('cancel');
+    const outcome: MutationResult = await pushed;
+
+    expect(outcome.code).toBe('cancelled');
+    expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
+    expect(notifications.history().length).toBe(before);
   });
 
   it('push_whenNoUpstreamAndNoRemotes_defaultsTheUpstreamToOrigin', async () => {

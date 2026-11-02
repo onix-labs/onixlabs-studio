@@ -458,10 +458,15 @@ export class GitVersionControl {
         );
       case 'commit':
         return typeof params['message'] === 'string' && params['message'].trim().length > 0
-          ? this.mutate(root, ['commit', '-m', params['message']])
+          ? this.mutate(root, ['commit', ...commitOptions(params), '-m', params['message']])
           : Promise.resolve(fail('A commit message is required'));
       case 'stash':
-        return this.mutate(root, ['stash', 'push']);
+        return this.mutate(
+          root,
+          params['includeUntracked'] === true
+            ? ['stash', 'push', '--include-untracked']
+            : ['stash', 'push'],
+        );
       case 'stashApply':
         return this.stashCommand(root, 'apply', params['index']);
       case 'stashPop':
@@ -483,13 +488,18 @@ export class GitVersionControl {
       case 'setUpstream':
         return this.setUpstream(root, params['branch'], params['upstream']);
       case 'fetch':
-        return this.network(root, ['fetch', '--all', '--prune']);
+        // Prune on Fetch; a host that says nothing keeps the old always-prune.
+        return this.network(
+          root,
+          params['prune'] === false ? ['fetch', '--all'] : ['fetch', '--all', '--prune'],
+          networkTimeout(params),
+        );
       case 'fetchRef':
         return this.fetchRef(root, params['remote'], params['sourceRef'], params['localBranch']);
       case 'pull':
-        return this.network(root, ['pull']);
+        return this.network(root, ['pull', ...pullOptions(params['mode'])], networkTimeout(params));
       case 'push':
-        return this.push(root, params['target']);
+        return this.push(root, params['target'], networkTimeout(params));
       case 'fetchRemote':
         return isSafeOperand(params['remote'])
           ? this.network(root, ['fetch', params['remote']])
@@ -988,9 +998,9 @@ export class GitVersionControl {
    * @param target Where to push, or null for the upstream.
    * @returns Returns the outcome.
    */
-  private push(root: string, target: unknown): Promise<Outcome> {
+  private push(root: string, target: unknown, timeoutMs: number): Promise<Outcome> {
     if (target === null || target === undefined) {
-      return this.network(root, ['push']);
+      return this.network(root, ['push'], timeoutMs);
     }
     const where: Record<string, unknown> =
       typeof target === 'object' ? (target as Record<string, unknown>) : {};
@@ -1002,6 +1012,7 @@ export class GitVersionControl {
       where['setUpstream'] === false
         ? ['push', where['remote'], where['branch']]
         : ['push', '--set-upstream', where['remote'], where['branch']],
+      timeoutMs,
     );
   }
 
@@ -1162,8 +1173,15 @@ export class GitVersionControl {
       return fail('Invalid directory');
     }
     const target: string = path.resolve(directory);
+    // Default Branch Name for New Repositories; without one, git's own init.defaultBranch applies.
+    const branch: unknown = params['defaultBranch'];
+    const named: readonly string[] =
+      typeof branch === 'string' && branch.trim().length > 0 && isSafeOperand(branch.trim())
+        ? ['--initial-branch', branch.trim()]
+        : [];
     const made: GitRun = await this.git(path.dirname(target), [
       'init',
+      ...named,
       '--',
       path.basename(target),
     ]);
@@ -1283,8 +1301,12 @@ export class GitVersionControl {
    * @param args The git arguments.
    * @returns Returns the outcome.
    */
-  private async network(root: string, args: readonly string[]): Promise<Outcome> {
-    const run: GitRun = await this.git(root, args, GIT_NETWORK_TIMEOUT_MS, GIT_NETWORK_ENV);
+  private async network(
+    root: string,
+    args: readonly string[],
+    timeoutMs: number = GIT_NETWORK_TIMEOUT_MS,
+  ): Promise<Outcome> {
+    const run: GitRun = await this.git(root, args, timeoutMs, GIT_NETWORK_ENV);
     if (!run.success) {
       debug('GitVersionControl', `Network git ${args[0]} failed`);
     }
@@ -1416,4 +1438,57 @@ function ok(result: unknown): Outcome {
  */
 function fail(error: string, code?: VcsErrorCode): Outcome {
   return { ok: false, error, ...(code === undefined ? {} : { code }) };
+}
+
+/**
+ * Reads the network timeout a request carries (Git Network Timeout): a whole number of milliseconds,
+ * 0 for no limit, or the plugin's own default when the host sends none.
+ * @param params The request's parameters, untrusted.
+ * @returns Returns the timeout in milliseconds; 0 runs without one.
+ */
+export function networkTimeout(params: Record<string, unknown>): number {
+  const value: unknown = params['timeoutMs'];
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : GIT_NETWORK_TIMEOUT_MS;
+}
+
+/**
+ * Builds the flags a pull takes for its mode (Pull Mode). Following git's configuration takes none.
+ * @param mode The requested mode, untrusted.
+ * @returns Returns the flags.
+ */
+export function pullOptions(mode: unknown): readonly string[] {
+  switch (mode) {
+    case 'merge':
+      return ['--no-rebase'];
+    case 'rebase':
+      return ['--rebase'];
+    case 'ff-only':
+      return ['--ff-only'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Builds the flags a commit takes for Sign Commits, Add Signed-off-by and Run Commit Hooks. Anything
+ * absent leaves git's configuration and the repository's hooks in charge.
+ * @param params The request's parameters, untrusted.
+ * @returns Returns the flags.
+ */
+export function commitOptions(params: Record<string, unknown>): readonly string[] {
+  const flags: string[] = [];
+  if (params['sign'] === 'always') {
+    flags.push('--gpg-sign');
+  } else if (params['sign'] === 'never') {
+    flags.push('--no-gpg-sign');
+  }
+  if (params['signoff'] === true) {
+    flags.push('--signoff');
+  }
+  if (params['hooks'] === false) {
+    flags.push('--no-verify');
+  }
+  return flags;
 }

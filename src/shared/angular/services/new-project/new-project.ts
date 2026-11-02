@@ -8,6 +8,7 @@ import {
   PickedDocuments,
 } from '@shared/api/new-project-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * The renderer client for creating a new project from the welcome screen (#806): a thin, typed wrapper
@@ -27,14 +28,24 @@ export class NewProject implements NewProjectClient {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings store, for the Default Branch Name for New Repositories.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Creates a new project's folder in the chosen parent folder.
    * @param request The project to make.
    * @returns Returns where it is, or why there is none.
    */
   public create(request: NewProjectRequest): Promise<NewProjectOutcome> {
     this.log.info('new-project', `Creating ${request.name} (${request.repository.kind})`);
+    const defaultBranch: string = this.settings.get('versionControl.defaultBranchName').trim();
+    const sent: NewProjectRequest =
+      defaultBranch.length > 0 && request.defaultBranch === undefined
+        ? { ...request, defaultBranch }
+        : request;
     return (
-      this.bridge?.invoke<NewProjectOutcome>(NewProjectChannel.Create, request) ??
+      this.bridge?.invoke<NewProjectOutcome>(NewProjectChannel.Create, sent) ??
       Promise.resolve({
         ok: false,
         error: 'Creating a project is unavailable outside the desktop application.',
