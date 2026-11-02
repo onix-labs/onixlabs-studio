@@ -8,6 +8,11 @@ import { logger } from './logger';
 const INTERRUPT: string = '\x03';
 
 /**
+ * Holds the most arguments Shell Arguments may give a shell; anything longer is not a set of options.
+ */
+const MAX_SHELL_ARGUMENTS: number = 64;
+
+/**
  * The executable and argument vector a pseudo-terminal spawns.
  */
 export interface SpawnSpec {
@@ -31,6 +36,7 @@ export interface SpawnSpec {
  * @param shell The resolved shell executable (the interactive shell, and the `-c` host for commands).
  * @param command The command line (or executable) to run, or undefined for an interactive shell.
  * @param args The argument vector for a direct spawn, or undefined to run the command via the shell.
+ * @param shellArgs The arguments an interactive shell starts with (see {@link interactiveShellArgs}).
  * @returns Returns the spawn spec.
  */
 export function buildSpawnSpec(
@@ -38,10 +44,11 @@ export function buildSpawnSpec(
   shell: string,
   command?: string,
   args?: readonly string[],
+  shellArgs: readonly string[] = [],
 ): SpawnSpec {
   if (command === undefined) {
     logger.trace('terminal-spawn.buildSpawnSpec', `Interactive shell spawn: ${shell}`);
-    return { file: shell, args: [] };
+    return { file: shell, args: shellArgs };
   }
   if (args !== undefined) {
     logger.trace('terminal-spawn.buildSpawnSpec', `Direct command spawn: ${command}`);
@@ -63,4 +70,86 @@ export function buildSpawnSpec(
  */
 export function allowsInput(kind: TerminalKind, data: string): boolean {
   return kind !== 'task' || data === INTERRUPT;
+}
+
+/**
+ * Builds the arguments an interactive shell starts with: `-l` first when it starts as a login shell
+ * (outside Windows, which has none), then Shell Arguments.
+ * @param platform The process platform.
+ * @param shellArguments Shell Arguments as written, or undefined for none.
+ * @param login Whether the shell starts as a login shell.
+ * @returns Returns the arguments, or null when Shell Arguments cannot be read.
+ */
+export function interactiveShellArgs(
+  platform: NodeJS.Platform,
+  shellArguments: string | undefined,
+  login: boolean,
+): readonly string[] | null {
+  const written: readonly string[] | null = splitShellArguments(shellArguments ?? '');
+  if (written === null) {
+    return null;
+  }
+  return login && platform !== 'win32' ? ['-l', ...written] : written;
+}
+
+/**
+ * Splits arguments written as on a command line: separated by spaces, grouped by single or double
+ * quotes, with a backslash taking the next character literally outside single quotes. Nothing is
+ * expanded — no variables, no globs — since no shell reads the line.
+ * @param text The arguments as written.
+ * @returns Returns the arguments, or null when a quote is left open, a NUL appears, or there are more
+ * than the shell is ever given.
+ */
+export function splitShellArguments(text: string): readonly string[] | null {
+  if (text.includes('\0')) {
+    return null;
+  }
+  const parsed: string[] = [];
+  let current: string = '';
+  let started: boolean = false;
+  let quote: '"' | "'" | null = null;
+  for (let index: number = 0; index < text.length; index++) {
+    const character: string = text[index];
+    if (quote === "'") {
+      if (character === "'") {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === '\\' && index + 1 < text.length) {
+      current += text[++index];
+      started = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (character === '"') {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      started = true;
+    } else if (/\s/.test(character)) {
+      if (started) {
+        parsed.push(current);
+        current = '';
+        started = false;
+      }
+    } else {
+      current += character;
+      started = true;
+    }
+  }
+  if (quote !== null) {
+    return null;
+  }
+  if (started) {
+    parsed.push(current);
+  }
+  return parsed.length > MAX_SHELL_ARGUMENTS ? null : parsed;
 }

@@ -29,6 +29,11 @@ export const TERMINAL_PANEL_ID: string = 'terminal';
 export const DISPOSED_EXIT_CODE: number = -1;
 
 /**
+ * Holds what a shell session is called before its shell has spawned and told it a better name.
+ */
+export const SHELL_PLACEHOLDER_NAME: string = 'Terminal';
+
+/**
  * One docked terminal session: its globally-unique PTY identifier and its display name.
  */
 export interface TerminalSession {
@@ -68,6 +73,17 @@ export interface TerminalSession {
    * Gets the shell executable the session actually spawned, or undefined until it reports one.
    */
   readonly shell?: string;
+
+  /**
+   * Gets whether the user named the session, so neither the shell nor its title renames it again.
+   */
+  readonly renamed?: boolean;
+
+  /**
+   * Gets whether the shell has set the terminal's title, which the session is named after from then
+   * on, rather than after the shell.
+   */
+  readonly titled?: boolean;
 
   /**
    * Gets whether the session was opened for an agent rather than by the user, so its pane starts
@@ -205,11 +221,6 @@ export class TerminalSessions implements OnDestroy {
   private readonly active: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Counts the sessions created, so each gets a distinct default name.
-   */
-  private sequence: number = 0;
-
-  /**
    * Holds the folder the sessions are rooted at, or null before one is known.
    */
   private root: string | null = null;
@@ -331,7 +342,8 @@ export class TerminalSessions implements OnDestroy {
   public create(options?: { readonly quiet?: boolean }): TerminalSession {
     const session: TerminalSession = {
       id: `term-${crypto.randomUUID()}`,
-      name: `Terminal ${++this.sequence}`,
+      // Named as a terminal tab is: after its shell once it spawns, then after the title it sets.
+      name: SHELL_PLACEHOLDER_NAME,
       kind: 'shell',
       generation: 0,
       exitCode: null,
@@ -534,7 +546,27 @@ export class TerminalSessions implements OnDestroy {
     }
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
       sessions.map((session: TerminalSession): TerminalSession =>
-        session.id === id ? { ...session, name: trimmed } : session,
+        session.id === id ? { ...session, name: trimmed, renamed: true } : session,
+      ),
+    );
+  }
+
+  /**
+   * Names a shell session after the title its shell set (the prompt's `user@host:~/path`), unless the
+   * user named it. A blank title is ignored, and a run or task keeps the name it was launched with.
+   * @param id The session identifier.
+   * @param title The title the shell set.
+   */
+  public setTitle(id: string, title: string): void {
+    const trimmed: string = title.trim();
+    if (trimmed.length === 0) {
+      return;
+    }
+    this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
+      sessions.map((session: TerminalSession): TerminalSession =>
+        session.id === id && session.kind === 'shell' && session.renamed !== true
+          ? { ...session, name: trimmed, titled: true }
+          : session,
       ),
     );
   }
@@ -586,16 +618,24 @@ export class TerminalSessions implements OnDestroy {
   }
 
   /**
-   * Records the shell a session's terminal actually spawned, so the status strip can show it.
+   * Records the shell a session's terminal actually spawned, so the status strip can show it, and
+   * names a shell session after it until the shell sets a title or the user names it.
    * @param id The session identifier.
    * @param shell The spawned shell executable.
    */
   public setShell(id: string, shell: string): void {
     this.log.debug('TerminalSessions', 'Session shell resolved', id, shell);
+    const base: string = shell.split(/[\\/]/).pop() ?? '';
+    const name: string = base.length > 0 ? base : shell;
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-      sessions.map((session: TerminalSession): TerminalSession =>
-        session.id === id ? { ...session, shell } : session,
-      ),
+      sessions.map((session: TerminalSession): TerminalSession => {
+        if (session.id !== id) {
+          return session;
+        }
+        const named: boolean =
+          session.kind !== 'shell' || session.renamed === true || session.titled === true;
+        return named ? { ...session, shell } : { ...session, shell, name };
+      }),
     );
   }
 
@@ -627,6 +667,5 @@ export class TerminalSessions implements OnDestroy {
     }
     this.items.set([]);
     this.active.set(null);
-    this.sequence = 0;
   }
 }

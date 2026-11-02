@@ -1051,7 +1051,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
         cols: xterm.cols,
         rows: xterm.rows,
         cwd: this.cwd(),
-        shell: this.overriddenShell ?? this.shell(),
+        // Default Shell applies wherever a shell starts — a docked terminal names no shell of its own.
+        shell: this.overriddenShell ?? this.shell() ?? this.configuredShell(),
+        shellArguments: this.settings.get('terminal.shellArguments'),
+        login: this.settings.get('terminal.loginShell'),
       });
       if (!result.success) {
         this.pendingChunks = null;
@@ -1130,6 +1133,15 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.terminalReady.set(true);
     this.log.info('Terminal', `Session '${id}' ready`, `kind=${this.kind()}`);
     this.ready.emit();
+  }
+
+  /**
+   * Reads Default Shell.
+   * @returns Returns the shell chosen, or undefined for the main process's default.
+   */
+  private configuredShell(): string | undefined {
+    const configured: string = this.settings.get('terminal.defaultShell').trim();
+    return configured.length > 0 ? configured : undefined;
   }
 
   /**

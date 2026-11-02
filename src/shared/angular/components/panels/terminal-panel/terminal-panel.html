@@ -60,6 +60,7 @@
             [quietStart]="session.quiet === true"
             [isActive]="isActive() && session.id === activeId()"
             (shellChange)="onShell(session.id, $event)"
+            (titleChange)="onTitle(session.id, $event)"
             (ready)="onReady(session.id)"
           />
         </div>

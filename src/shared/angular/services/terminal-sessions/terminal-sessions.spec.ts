@@ -67,16 +67,38 @@ describe('TerminalSessions', () => {
     expect(settled?.name).toBe(quiet.name);
   });
 
-  it('create_addsASessionWithADistinctNameAndMakesItActive', () => {
+  it('create_addsASessionAndMakesItActive', () => {
     const first: TerminalSession = sessions.create();
     const second: TerminalSession = sessions.create();
 
     expect(sessions.sessions().map((s: TerminalSession): string => s.name)).toEqual([
-      'Terminal 1',
-      'Terminal 2',
+      'Terminal',
+      'Terminal',
     ]);
     expect(first.id).not.toBe(second.id);
     expect(sessions.activeId()).toBe(second.id);
+  });
+
+  it('aShellSession_isNamedAfterItsShell_thenItsTitle_untilTheUserNamesIt', () => {
+    const session: TerminalSession = sessions.create();
+    const name: () => string | undefined = (): string | undefined =>
+      sessions.sessions().find((s: TerminalSession): boolean => s.id === session.id)?.name;
+
+    sessions.setShell(session.id, '/bin/zsh');
+    expect(name()).toBe('zsh');
+
+    sessions.setTitle(session.id, 'me@mac:~/code');
+    expect(name()).toBe('me@mac:~/code');
+    // A restart reports the shell again; the title it set still names the session.
+    sessions.setShell(session.id, '/bin/zsh');
+    expect(name()).toBe('me@mac:~/code');
+    sessions.setTitle(session.id, '   ');
+    expect(name()).toBe('me@mac:~/code');
+
+    sessions.rename(session.id, 'Build');
+    sessions.setTitle(session.id, 'me@mac:~/elsewhere');
+    sessions.setShell(session.id, '/bin/bash');
+    expect(name()).toBe('Build');
   });
 
   it('setRoot_opensNothingItself_andEnsureShellOpensTheFirstShell', () => {
@@ -151,10 +173,10 @@ describe('TerminalSessions', () => {
     expect(dispose).toHaveBeenCalledWith(old);
     expect(sessions.sessions()).toHaveLength(0);
 
-    // The panel's next ensureShell opens the new folder's shell, with naming restarted.
+    // The panel's next ensureShell opens the new folder's shell.
     sessions.ensureShell();
     expect(sessions.sessions()[0].cwd).toBe('/other');
-    expect(sessions.sessions()[0].name).toBe('Terminal 1');
+    expect(sessions.sessions()[0].name).toBe('Terminal');
   });
 
   it('setRoot_whenTheFolderCloses_disposesEverySession', () => {

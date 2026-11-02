@@ -85,7 +85,6 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.expandToolCalls',
     'ai.expandThinking',
     'ai.confirmDeleteConversations',
-    'ai.agentShell',
   ]),
   'ai-security': new Set<string>([
     'ai.permissionPosture',

@@ -106,6 +106,18 @@ export interface TerminalCreateOptions {
   readonly shell?: string;
 
   /**
+   * Gets the arguments an interactive shell starts with, written as on a command line (Shell
+   * Arguments), or undefined for none. Ignored when a {@link command} is given.
+   */
+  readonly shellArguments?: string;
+
+  /**
+   * Gets whether an interactive shell starts as a login shell (Start as Login Shell). Ignored on
+   * Windows, and when a {@link command} is given.
+   */
+  readonly login?: boolean;
+
+  /**
    * Gets the command a `run` or `task` session executes instead of an interactive shell. Without
    * {@link args} the string is run through the platform shell non-interactively (so `&&` chains and
    * quoting work); with {@link args} it is spawned directly as an executable with an argument vector.

@@ -9,8 +9,8 @@ import {
 } from '@shared/angular/components/forms/shell-picker/shell-picker';
 
 /**
- * Represents the Terminal section of the settings view: the default shell a new terminal starts with,
- * then the registry's terminal settings.
+ * Represents the Terminal section of the settings view: the default shell a new terminal starts with
+ * and the shell an agent's environment comes from, then the registry's terminal settings.
  *
  * The choice is a bespoke control rather than a generic one because its options are discovered at
  * runtime — the shells installed on the host — so it is rendered by the shared {@link ShellPicker},
@@ -41,6 +41,11 @@ export class TerminalSettingsSection {
   protected readonly defaultShell: Signal<string> = this.settings.value('terminal.defaultShell');
 
   /**
+   * Gets the persisted agent shell (the empty string for the default login shell).
+   */
+  protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;
+
+  /**
    * Persists the chosen default shell.
    * @param value The chosen shell path, or the empty string for the system default.
    */
@@ -51,5 +56,18 @@ export class TerminalSettingsSection {
       value === SHELL_PICKER_DEFAULT ? 'system default' : value,
     );
     this.settings.set('terminal.defaultShell', value);
+  }
+
+  /**
+   * Persists the chosen agent shell.
+   * @param value The chosen shell path, or the empty string for the default login shell.
+   */
+  protected onAgentShellChange(value: string): void {
+    this.log.info(
+      'settings.terminal',
+      'Agent shell changed',
+      value === '' ? 'default login shell' : value,
+    );
+    this.settings.set('ai.agentShell', value);
   }
 }

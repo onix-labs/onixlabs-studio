@@ -17,7 +17,7 @@ import {
   TerminalReplay,
 } from '@shared/api/terminal-channels';
 import { TerminalScrollback } from './terminal-scrollback';
-import { allowsInput, buildSpawnSpec, SpawnSpec } from './terminal-spawn';
+import { allowsInput, buildSpawnSpec, interactiveShellArgs, SpawnSpec } from './terminal-spawn';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -196,6 +196,8 @@ export class TerminalManager {
       rows?: unknown;
       cwd?: unknown;
       shell?: unknown;
+      shellArguments?: unknown;
+      login?: unknown;
       command?: unknown;
       args?: unknown;
       env?: unknown;
@@ -248,10 +250,21 @@ export class TerminalManager {
     const rows: number = this.isDimension(candidate.rows) ? candidate.rows : DEFAULT_ROWS;
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
-    const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args);
+    const shellArgs: readonly string[] | null = interactiveShellArgs(
+      process.platform,
+      typeof candidate.shellArguments === 'string' ? candidate.shellArguments : undefined,
+      candidate.login === true,
+    );
+    if (shellArgs === null) {
+      return {
+        success: false,
+        error: 'Shell Arguments could not be read: check for an unclosed quote.',
+      };
+    }
+    const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args, shellArgs);
     logger.debug(
       'TerminalManager.create',
-      `Spawning ${kind} session ${id}: file ${spec.file}, cwd ${cwd}, ${cols}x${rows}`,
+      `Spawning ${kind} session ${id}: file ${spec.file}, ${spec.args.length} args, cwd ${cwd}, ${cols}x${rows}`,
     );
 
     try {

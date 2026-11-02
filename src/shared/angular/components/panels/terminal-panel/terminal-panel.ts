@@ -208,6 +208,15 @@ export class TerminalPanel {
   }
 
   /**
+   * Names a terminal after the title its shell set, as a terminal tab is named.
+   * @param id The session identifier.
+   * @param title The title.
+   */
+  protected onTitle(id: string, title: string): void {
+    this.terminals.setTitle(id, title);
+  }
+
+  /**
    * Reduces a shell executable path to its base name for display (for example `/bin/zsh` → `zsh`).
    * @param shell The shell executable path, or undefined.
    * @returns Returns the base name, or a neutral label when unknown.

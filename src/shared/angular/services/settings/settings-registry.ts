@@ -250,6 +250,8 @@ export interface SettingsValues {
   readonly 'terminal.warnMultiLinePaste': boolean;
   readonly 'terminal.linkOpening': TerminalLinkOpening;
   readonly 'terminal.bell': TerminalBell;
+  readonly 'terminal.shellArguments': string;
+  readonly 'terminal.loginShell': boolean;
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
@@ -1626,6 +1628,35 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: '',
       },
       {
+        // Keyed under ai., where it began, so a choice made before it moved to Terminal is kept.
+        key: 'ai.agentShell',
+        title: 'Agent Shell',
+        description:
+          'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
+          'installed shell, or use the default login shell.',
+        control: { kind: 'custom', component: 'ai-agent-shell' },
+        default: '',
+      },
+      {
+        key: 'terminal.shellArguments',
+        title: 'Shell Arguments',
+        description:
+          'Arguments a new terminal starts its shell with, written as on a command line, such as ' +
+          '--norc. Quote an argument that holds spaces.',
+        control: { kind: 'text', placeholder: 'None' },
+        default: '',
+      },
+      {
+        key: 'terminal.loginShell',
+        title: 'Start as Login Shell',
+        description:
+          'Start the shell as a login shell, so it reads your login profile (.zprofile, ' +
+          '.bash_profile) as well.',
+        platforms: ['darwin', 'linux'],
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
         key: 'terminal.fontFamily',
         title: 'Font Family',
         description:
@@ -2215,15 +2246,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Ask before conversations are deleted from the conversation list.',
         control: { kind: 'toggle' },
         default: true,
-      },
-      {
-        key: 'ai.agentShell',
-        title: 'Agent Shell',
-        description:
-          'The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an ' +
-          'installed shell, or use the default login shell.',
-        control: { kind: 'custom', component: 'ai-agent-shell' },
-        default: '',
       },
       {
         key: 'ai.claudeExecutable',

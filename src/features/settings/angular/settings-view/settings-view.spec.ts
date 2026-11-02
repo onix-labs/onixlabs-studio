@@ -304,6 +304,14 @@ describe('SettingsView', () => {
       expect(general).not.toContain('source-control-cloning');
     });
 
+    it('search_byAgentShell_findsTerminalNotArtificialIntelligence', async () => {
+      // Agent Shell moved from AI › General to Terminal, keeping its ai. key.
+      const ids: readonly string[] = await search('agent shell');
+
+      expect(ids).toContain('terminal-general');
+      expect(ids).not.toContain('ai-general');
+    });
+
     it('search_byABranchName_keepsEveryLeafBeneathIt', async () => {
       const ids: readonly string[] = await search('artificial');
 
