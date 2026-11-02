@@ -76,7 +76,11 @@ describe('SetupStepCatalogue', () => {
             busy: signal<boolean>(false),
             error: signal<string | null>(null),
             installWithConsent,
-            uninstall,
+            // The confirmed removal every Remove button takes, answered yes.
+            uninstallWithConsent: async (plugin: PluginSummary): Promise<'removed'> => {
+              await (uninstall as unknown as (id: string) => Promise<void>)(plugin.id);
+              return 'removed';
+            },
           },
         },
       ],

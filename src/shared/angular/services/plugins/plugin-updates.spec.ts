@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ApplicationRef } from '@angular/core';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Plugins } from './plugins';
 import { PluginUpdates } from './plugin-updates';
@@ -91,6 +92,23 @@ describe('PluginUpdates', () => {
     expect(notice()?.title).toBe('2 plugin updates are available');
     expect(notice()?.detail).toBe('CLAUDE 0.8.0 → 0.10.0, GIT 0.3.0 → 0.4.0');
     expect(notice()?.sticky).toBe(true);
+  });
+
+  it('notifyAboutPluginUpdatesOff_announcesNothing_andWithdrawsTheNotice', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    try {
+      known.set([plugin('claude', '0.8.0', '0.10.0')]);
+      flush();
+      expect(notice()).toBeDefined();
+
+      settings.set('plugins.notifyUpdates', false);
+      flush();
+      expect(notice()).toBeUndefined();
+      // The Plugin Manager still knows about them.
+      expect(updates.available()).toHaveLength(1);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('oneUpdate_isNamedInTheSingular', () => {

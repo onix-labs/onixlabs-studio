@@ -3,6 +3,7 @@ import type { PluginSummary } from '@shared/api/plugin-channels';
 import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Plugins } from './plugins';
 
@@ -40,6 +41,11 @@ export class PluginUpdates {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Holds the settings, read for whether updates are announced at all.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -61,7 +67,10 @@ export class PluginUpdates {
    * Announces the waiting updates whenever the set changes.
    */
   private readonly watch: ReturnType<typeof effect> = effect((): void => {
-    const waiting: readonly PluginSummary[] = this.available();
+    // Notify About Plugin Updates off withdraws the notice; the Plugin Manager still shows them.
+    const waiting: readonly PluginSummary[] = this.settings.value('plugins.notifyUpdates')()
+      ? this.available()
+      : [];
     untracked((): void => this.announce(waiting));
   });
 

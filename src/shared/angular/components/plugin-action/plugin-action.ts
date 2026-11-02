@@ -101,6 +101,6 @@ export class PluginAction {
    * Removes the plugin.
    */
   protected uninstall(): void {
-    void this.plugins.uninstall(this.plugin().id);
+    void this.plugins.uninstallWithConsent(this.plugin());
   }
 }

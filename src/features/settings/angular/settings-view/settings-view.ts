@@ -23,6 +23,8 @@ import { LanguageEditorOverrides } from './language-editor-overrides/language-ed
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
+import { PluginSuggestionsDismissed } from './sections/plugin-suggestions-dismissed/plugin-suggestions-dismissed';
 import { RememberedFileAccess } from './sections/remembered-file-access/remembered-file-access';
 import { SpellCheckingLanguages } from './sections/spell-checking-languages/spell-checking-languages';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
@@ -271,6 +273,8 @@ interface SettingsTreeData {
     Modal,
     ModalContent,
     PersonalDictionary,
+    PluginsFolder,
+    PluginSuggestionsDismissed,
     RememberedFileAccess,
     SpellCheckingLanguages,
     LanguageEditorOverrides,

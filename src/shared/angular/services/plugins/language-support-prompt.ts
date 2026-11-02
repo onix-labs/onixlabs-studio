@@ -10,6 +10,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { languageDisplayName } from './language-names';
 import { Plugins } from './plugins';
+import { PluginSuggestions } from './plugin-suggestions';
 
 /**
  * Offers to install language support at the moment it is missed.
@@ -34,6 +35,11 @@ export class LanguageSupportPrompt {
    * Holds the notification surface the offer is raised on.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds whether plugin offers may be made, and which were turned down for good.
+   */
+  private readonly suggestions: PluginSuggestions = inject(PluginSuggestions);
 
   /**
    * Holds the structured logger.
@@ -106,6 +112,11 @@ export class LanguageSupportPrompt {
     // language. Offering a choice here would be asking the user to compare two things they have not
     // installed; choosing between implementations belongs in Settings, once both are installed.
     const plugin: PluginSummary = candidates[0];
+    // Suggest Plugins for Missing Support off, or this offer turned down for good: say nothing.
+    const suggestion: string = `language-support:${language}`;
+    if (!this.suggestions.allows(suggestion)) {
+      return;
+    }
     this.offered.add(language);
     this.log.info('LanguageSupportPrompt', `Offering ${plugin.id} for '${language}'`);
     this.notifications.notify({
@@ -126,6 +137,7 @@ export class LanguageSupportPrompt {
             void this.plugins.installWithConsent(plugin.id);
           },
         },
+        this.suggestions.dontSuggestAgain(suggestion),
       ],
     });
   }
