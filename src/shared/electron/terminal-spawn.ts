@@ -153,3 +153,19 @@ export function splitShellArguments(text: string): readonly string[] | null {
   }
   return parsed.length > MAX_SHELL_ARGUMENTS ? null : parsed;
 }
+
+/**
+ * Determines whether two program names are one program: alike once a login shell's leading dash and a
+ * Windows extension are dropped, and regardless of case.
+ * @param running The foreground program's name.
+ * @param shell The shell's name.
+ * @returns Returns true when they are the same program.
+ */
+export function sameProgram(running: string, shell: string): boolean {
+  const normal: (name: string) => string = (name: string): string =>
+    name
+      .replace(/^-/, '')
+      .replace(/\.exe$/i, '')
+      .toLowerCase();
+  return normal(running) === normal(shell);
+}

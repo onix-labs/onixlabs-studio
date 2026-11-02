@@ -17,7 +17,13 @@ import {
   TerminalReplay,
 } from '@shared/api/terminal-channels';
 import { TerminalScrollback } from './terminal-scrollback';
-import { allowsInput, buildSpawnSpec, interactiveShellArgs, SpawnSpec } from './terminal-spawn';
+import {
+  allowsInput,
+  buildSpawnSpec,
+  interactiveShellArgs,
+  sameProgram,
+  SpawnSpec,
+} from './terminal-spawn';
 
 /**
  * Specifies the default terminal column count when none is provided.
@@ -84,6 +90,12 @@ export class TerminalManager {
   private readonly kinds: Map<string, TerminalKind> = new Map<string, TerminalKind>();
 
   /**
+   * Holds the executable each live session spawned, so a foreground program can be told from the
+   * shell it runs in.
+   */
+  private readonly spawned: Map<string, string> = new Map<string, string>();
+
+  /**
    * Holds the pending SIGKILL escalation timers of terminating sessions, cleared when the process
    * exits within the grace period (or the session is disposed).
    */
@@ -136,6 +148,11 @@ export class TerminalManager {
       (_event: IpcMainInvokeEvent, id: unknown): Promise<string | null> =>
         typeof id === 'string' ? this.getCwd(id) : Promise.resolve(null),
     );
+    ipcMain.handle(
+      TerminalChannel.GetForeground,
+      (_event: IpcMainInvokeEvent, id: unknown): string | null =>
+        typeof id === 'string' ? this.foreground(id) : null,
+    );
     ipcMain.handle(TerminalChannel.ListShells, (): readonly ShellInfo[] => this.listShells());
     ipcMain.handle(
       TerminalChannel.Replay,
@@ -160,6 +177,7 @@ export class TerminalManager {
     this.terminals.clear();
     this.scrollback.clear();
     this.kinds.clear();
+    this.spawned.clear();
     for (const timer of this.killTimers.values()) {
       clearTimeout(timer);
     }
@@ -325,6 +343,7 @@ export class TerminalManager {
 
       this.terminals.set(id, terminal);
       this.kinds.set(id, kind);
+      this.spawned.set(id, spec.file);
       pidJournal()?.register(terminal.pid, 'terminal', spec.file);
       logger.info(
         'TerminalManager',
@@ -455,6 +474,7 @@ export class TerminalManager {
     this.pendingData.delete(id);
     const hadScrollback: boolean = this.scrollback.delete(id);
     this.kinds.delete(id);
+    this.spawned.delete(id);
     const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
     if (pendingKill !== undefined) {
       clearTimeout(pendingKill);
@@ -499,6 +519,26 @@ export class TerminalManager {
     }
 
     return null;
+  }
+
+  /**
+   * Gets the program a session runs in the foreground, when it is not the shell itself: what closing
+   * the session would stop. A run or task session's command counts as such a program while it runs.
+   * @param id The terminal identifier.
+   * @returns Returns the program's name, or null when only the shell runs or the session has ended.
+   */
+  public foreground(id: string): string | null {
+    const terminal: pty.IPty | undefined = this.terminals.get(id);
+    if (terminal === undefined) {
+      return null;
+    }
+    const running: string = path.basename(terminal.process);
+    if ((this.kinds.get(id) ?? 'shell') !== 'shell') {
+      return running.length > 0 ? running : 'a program';
+    }
+    const shell: string = path.basename(this.spawned.get(id) ?? '');
+    // Windows reports the shell as the process whatever runs in it, so nothing reads as running there.
+    return running.length === 0 || sameProgram(running, shell) ? null : running;
   }
 
   /**

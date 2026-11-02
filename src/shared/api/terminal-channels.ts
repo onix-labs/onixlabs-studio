@@ -39,6 +39,12 @@ export enum TerminalChannel {
   GetCwd = 'terminal:get-cwd',
 
   /**
+   * Requests the program a shell session is running in the foreground, or null when only the shell
+   * itself is — at its prompt, or ended (renderer→main, invoke).
+   */
+  GetForeground = 'terminal:get-foreground',
+
+  /**
    * Requests the list of shells installed on the host, for the shell picker (renderer→main, invoke).
    */
   ListShells = 'terminal:list-shells',

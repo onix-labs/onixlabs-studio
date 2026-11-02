@@ -12,7 +12,9 @@ import { TerminalCreateResult, TerminalKind } from '@shared/api/terminal-channel
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { Log } from '@shared/angular/services/log/log';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
+import { closesOnShellExit } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
 
 /**
  * The identifier the terminal panel is registered under in the dock blueprints, used to reveal the
@@ -209,6 +211,11 @@ export class TerminalSessions implements OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings, read for whether a shell's exit closes its terminal.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the sessions in tab order.
    */
   private readonly items: WritableSignal<readonly TerminalSession[]> = signal<
@@ -263,6 +270,17 @@ export class TerminalSessions implements OnDestroy {
           ),
         );
         this.resolveWaiter(id, effective);
+        // A shell that exited closes its terminal when When the Shell Exits says so; a run or task
+        // stays, its banner saying how it ended.
+        const shell: boolean =
+          this.items().find((session: TerminalSession): boolean => session.id === id)?.kind ===
+          'shell';
+        if (
+          shell &&
+          closesOnShellExit(this.settings.get('terminal.onShellExit'), exitCode, signal)
+        ) {
+          this.close(id);
+        }
       },
     );
   }

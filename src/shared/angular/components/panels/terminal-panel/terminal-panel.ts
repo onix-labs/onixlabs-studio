@@ -22,6 +22,7 @@ import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
+import { TerminalCloseGuard } from '@shared/angular/services/terminal-close-guard/terminal-close-guard';
 import {
   TerminalSession,
   TerminalSessions,
@@ -78,6 +79,11 @@ export class TerminalPanel {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the guard that asks before a terminal closes while a program runs in it.
+   */
+  private readonly closeGuard: TerminalCloseGuard = inject(TerminalCloseGuard);
 
   /**
    * Gets the absolute path the terminals' shells start in, or null when no folder is open.
@@ -155,8 +161,14 @@ export class TerminalPanel {
    * @param id The session identifier.
    * @param event The originating click, whose propagation to the tab is stopped.
    */
-  protected close(id: string, event: Event): void {
+  protected async close(id: string, event: Event): Promise<void> {
     event.stopPropagation();
+    const name: string =
+      this.terminals.sessions().find((session: TerminalSession): boolean => session.id === id)
+        ?.name ?? 'this terminal';
+    if (!(await this.closeGuard.mayClose([id], name))) {
+      return;
+    }
     this.log.info('TerminalPanel', `Closing terminal '${id}'`);
     this.terminals.close(id);
   }

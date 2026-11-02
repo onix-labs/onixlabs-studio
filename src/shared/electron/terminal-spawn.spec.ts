@@ -2,6 +2,7 @@ import {
   allowsInput,
   buildSpawnSpec,
   interactiveShellArgs,
+  sameProgram,
   splitShellArguments,
 } from './terminal-spawn';
 
@@ -89,5 +90,18 @@ describe('splitShellArguments', () => {
     expect(splitShellArguments('a\0b')).toBeNull();
     expect(splitShellArguments(Array.from({ length: 65 }, () => 'x').join(' '))).toBeNull();
     expect(splitShellArguments('')).toEqual([]);
+  });
+});
+
+describe('sameProgram', () => {
+  it('readsALoginShell_andAWindowsExtension_asTheShell', () => {
+    expect(sameProgram('-zsh', 'zsh')).toBe(true);
+    expect(sameProgram('pwsh.exe', 'PWSH.EXE')).toBe(true);
+    expect(sameProgram('powershell', 'powershell.exe')).toBe(true);
+  });
+
+  it('tellsAProgramFromItsShell', () => {
+    expect(sameProgram('npm', 'zsh')).toBe(false);
+    expect(sameProgram('vim', 'bash')).toBe(false);
   });
 });

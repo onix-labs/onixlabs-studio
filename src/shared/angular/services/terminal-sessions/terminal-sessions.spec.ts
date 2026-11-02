@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
@@ -65,6 +66,27 @@ describe('TerminalSessions', () => {
       .find((session: TerminalSession): boolean => session.id === quiet.id);
     expect(settled?.quiet).toBeUndefined();
     expect(settled?.name).toBe(quiet.name);
+  });
+
+  it('aShellThatExits_closesItsTerminal_asWhenTheShellExitsSays', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    try {
+      const kept: TerminalSession = sessions.create();
+      fireExit(kept.id, 0);
+      expect(sessions.sessions().map((s: TerminalSession): string => s.id)).toContain(kept.id);
+
+      settings.set('terminal.onShellExit', 'close-if-clean');
+      const failed: TerminalSession = sessions.create();
+      fireExit(failed.id, 1);
+      const clean: TerminalSession = sessions.create();
+      fireExit(clean.id, 0);
+
+      const ids: readonly string[] = sessions.sessions().map((s: TerminalSession): string => s.id);
+      expect(ids).toContain(failed.id);
+      expect(ids).not.toContain(clean.id);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('create_addsASessionAndMakesItActive', () => {

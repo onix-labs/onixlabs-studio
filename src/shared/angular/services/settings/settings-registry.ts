@@ -108,6 +108,17 @@ export type TerminalLinkOpening = 'modifier' | 'click' | 'off';
 export type TerminalBell = 'none' | 'sound' | 'visual';
 
 /**
+ * Names when closing a terminal asks first: every time, only while a program runs in it, or never.
+ */
+export type TerminalConfirmClose = 'always' | 'running' | 'never';
+
+/**
+ * Names what happens to a terminal when its shell exits: it stays open with its output, it closes, or
+ * it closes only when the shell exited cleanly (code 0).
+ */
+export type TerminalOnShellExit = 'keep' | 'close' | 'close-if-clean';
+
+/**
  * Holds the Font Family value that follows Code › Appearance's font.
  */
 export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
@@ -252,6 +263,8 @@ export interface SettingsValues {
   readonly 'terminal.bell': TerminalBell;
   readonly 'terminal.shellArguments': string;
   readonly 'terminal.loginShell': boolean;
+  readonly 'terminal.confirmClose': TerminalConfirmClose;
+  readonly 'terminal.onShellExit': TerminalOnShellExit;
 
   readonly 'keyboard.overrides': Readonly<Record<string, string>>;
 
@@ -1655,6 +1668,38 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         platforms: ['darwin', 'linux'],
         control: { kind: 'toggle' },
         default: false,
+      },
+      {
+        key: 'terminal.confirmClose',
+        title: 'Confirm Before Closing a Running Terminal',
+        description:
+          'Ask before closing a terminal: every time, only while a program other than the shell is ' +
+          'running in it, or never.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'running', label: 'When Running' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'running',
+      },
+      {
+        key: 'terminal.onShellExit',
+        title: 'When the Shell Exits',
+        description:
+          'Keep a terminal open with its output when its shell exits, close it, or close it only ' +
+          'when the shell exited without an error. A run or task always stays, to show how it ended.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'keep', label: 'Keep Open' },
+            { value: 'close', label: 'Close' },
+            { value: 'close-if-clean', label: 'Close If Clean' },
+          ],
+        },
+        default: 'keep',
       },
       {
         key: 'terminal.fontFamily',

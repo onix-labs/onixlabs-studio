@@ -101,6 +101,21 @@ const CWD_TTL_MS: number = 2000;
 const LINK_COLOUR_FALLBACK: string = '#0dcaec';
 
 /**
+ * Describes how a terminal's process ended: the code it exited with, and the signal that ended it.
+ */
+export interface TerminalExit {
+  /**
+   * Gets the exit code. A signal-ended process often reports 0.
+   */
+  readonly code: number;
+
+  /**
+   * Gets the number of the signal that ended the process, or null when it exited on its own.
+   */
+  readonly signal: number | null;
+}
+
+/**
  * Holds what the menu is opened for when the right-click was on the terminal rather than on a link.
  */
 const TERMINAL_MENU: unique symbol = Symbol('terminal-menu');
@@ -256,9 +271,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
   public readonly titleChange: OutputEmitterRef<string> = output<string>();
 
   /**
-   * Emits the exit code when the PTY process exits.
+   * Emits how the PTY process ended when it exits.
    */
-  public readonly exited: OutputEmitterRef<number> = output<number>();
+  public readonly exited: OutputEmitterRef<TerminalExit> = output<TerminalExit>();
 
   /**
    * Emits the shell executable the session actually spawned, once it is running (including after a
@@ -1028,7 +1043,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
         }
         this.hasExited = true;
         this.xterm?.writeln(this.exitBanner(exitCode, exitSignal));
-        this.exited.emit(exitCode);
+        this.exited.emit({ code: exitCode, signal: exitSignal });
       },
     );
 
