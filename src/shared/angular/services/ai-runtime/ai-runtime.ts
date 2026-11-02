@@ -107,6 +107,18 @@ export interface AiRunOptions {
   readonly maxSteps?: number;
 
   /**
+   * Gets a value indicating whether shell commands are refused where the machine has no OS sandbox
+   * (Require OS Sandbox). Absent means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that runs inside the OS sandbox goes ahead without
+   * asking (Auto-Allow Sandboxed Shell Commands). Absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
+
+  /**
    * Gets the absolute path of the shell whose login profile the agent's environment is sourced from,
    * or omitted/empty to inherit the process environment (hydrated from the default login shell at
    * startup).
@@ -303,6 +315,10 @@ export class AiRuntime {
       deniedNetworkLocations: options.deniedNetworkLocations ?? [],
       tokenCap: options.tokenCap ?? 0,
       ...(options.maxSteps === undefined ? {} : { maxSteps: options.maxSteps }),
+      ...(options.requireSandbox === undefined ? {} : { requireSandbox: options.requireSandbox }),
+      ...(options.autoAllowSandboxedShell === undefined
+        ? {}
+        : { autoAllowSandboxedShell: options.autoAllowSandboxedShell }),
       agentShell: options.agentShell ?? '',
       ...(options.claudeExecutable === undefined
         ? {}

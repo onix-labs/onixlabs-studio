@@ -1551,6 +1551,8 @@ export class Agent {
       deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
       tokenCap: this.settings.aiTokenCap(),
       maxSteps: this.settings.get('ai.maxStepsPerTurn'),
+      requireSandbox: this.settings.get('ai.requireOsSandbox'),
+      autoAllowSandboxedShell: this.settings.get('ai.autoAllowSandboxedShell'),
       agentShell: this.settings.aiAgentShell(),
       claudeExecutable: {
         mode: this.settings.aiClaudeExecutable(),
@@ -1796,6 +1798,8 @@ export class Agent {
       permissionPosture: 'prompt',
       tokenCap: this.settings.aiTokenCap(),
       maxSteps: this.settings.get('ai.maxStepsPerTurn'),
+      requireSandbox: this.settings.get('ai.requireOsSandbox'),
+      autoAllowSandboxedShell: this.settings.get('ai.autoAllowSandboxedShell'),
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       mode: 'chat',
     });

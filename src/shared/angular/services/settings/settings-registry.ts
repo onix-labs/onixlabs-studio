@@ -213,6 +213,8 @@ export interface SettingsValues {
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
   readonly 'ai.blockHostCommandLine': boolean;
+  readonly 'ai.requireOsSandbox': boolean;
+  readonly 'ai.autoAllowSandboxedShell': boolean;
   readonly 'ai.allowedWritePaths': readonly string[];
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.allowedNetworkLocations': readonly string[];
@@ -1337,6 +1339,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'command-line tool (gh for GitHub) and go through the plugin instead, which asks before it ' +
           'changes anything. Enforced for Claude and for providers that run commands through ' +
           "Studio's terminal; Codex is only told.",
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'ai.requireOsSandbox',
+        title: 'Require OS Sandbox',
+        description:
+          "Refuse the agent's shell commands on a machine with no OS sandbox, and say why, rather than run them unprotected. macOS always has one; Linux needs bubblewrap and socat; Windows has none. Applies to Claude; Codex always runs in its own sandbox.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'ai.autoAllowSandboxedShell',
+        title: 'Auto-Allow Sandboxed Shell Commands',
+        description:
+          'Let a shell command that runs inside the OS sandbox go ahead without asking. A command that asks to leave the sandbox still asks, and a tool set to Deny stays denied. Applies to Claude.',
         control: { kind: 'toggle' },
         default: false,
       },

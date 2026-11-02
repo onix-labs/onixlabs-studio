@@ -86,6 +86,8 @@ const AI_PAGE_KEYS: Readonly<Partial<Record<SettingsSectionId, ReadonlySet<strin
     'ai.remoteControlPosture',
     'ai.toolPolicies',
     'ai.blockHostCommandLine',
+    'ai.requireOsSandbox',
+    'ai.autoAllowSandboxedShell',
     'ai.allowedWritePaths',
     'ai.deniedWritePaths',
     'ai.allowedNetworkLocations',

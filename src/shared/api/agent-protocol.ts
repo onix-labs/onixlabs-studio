@@ -418,6 +418,19 @@ export interface TurnRequest {
   readonly maxSteps?: number;
 
   /**
+   * Gets a value indicating whether a harness that runs shell commands refuses them where the machine
+   * has no OS sandbox, saying why. Optional: absent (an older host) means on.
+   */
+  readonly requireSandbox?: boolean;
+
+  /**
+   * Gets a value indicating whether a shell command that will run inside the OS sandbox goes ahead
+   * without asking. A command asking to leave the sandbox, or a tool set to Deny, is unaffected.
+   * Optional: absent means off.
+   */
+  readonly autoAllowSandboxedShell?: boolean;
+
+  /**
    * Gets the session to resume, or null to start a new one. Ignored by a `stateless` harness.
    */
   readonly resumeSessionId: string | null;
