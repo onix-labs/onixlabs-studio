@@ -1,5 +1,46 @@
 <!-- General: settings that apply to every agent, whichever provider it runs through. -->
 @if (view() === 'general') {
+  <!-- What a new conversation starts with. Hidden until a provider is installed and configured:
+       there is nothing to choose before then. -->
+  @if (providerOptions().length > 0) {
+    <section class="ai-group">
+      <app-setting-row
+        label="Default Provider and Model"
+        description="The provider and model a new conversation starts with. Each conversation can still choose its own."
+      >
+        <div class="ai-default-model">
+          <app-dropdown
+            ariaLabel="Default provider"
+            [options]="providerOptions()"
+            [value]="defaultProvider()"
+            (valueChange)="onDefaultProviderChange($event)"
+          />
+          <app-dropdown
+            ariaLabel="Default model"
+            [options]="modelOptions()"
+            [value]="defaultModel()"
+            [disabled]="modelOptions().length === 0"
+            (valueChange)="onDefaultModelChange($event)"
+          />
+        </div>
+      </app-setting-row>
+
+      <app-setting-row
+        label="Default Reasoning Effort"
+        description="How hard a new conversation thinks before it answers. Where a provider lacks the level, the nearest one it offers is used. /effort changes it for one conversation."
+      >
+        <app-setting-control key="ai.defaultReasoningEffort" />
+      </app-setting-row>
+
+      <app-setting-row
+        label="Maximum Agent Steps per Turn"
+        description="How many steps, each a model reply or a tool call, one turn may take before the agent stops. Applies to OpenAI, Gemini, DeepSeek, Grok, Ollama and other compatible providers; Claude and Codex run their own loop."
+      >
+        <app-setting-control key="ai.maxStepsPerTurn" />
+      </app-setting-row>
+    </section>
+  }
+
   <section class="ai-group">
     <app-setting-row
       label="Auto-Scroll Transcripts"

@@ -411,6 +411,13 @@ export interface TurnRequest {
   readonly tokenCap: number;
 
   /**
+   * Gets the most steps (model turns plus tool round-trips) the turn may take, or 0 for no limit.
+   * Optional: a host that predates it sends none, and a harness running its own loop then keeps its
+   * own default.
+   */
+  readonly maxSteps?: number;
+
+  /**
    * Gets the session to resume, or null to start a new one. Ignored by a `stateless` harness.
    */
   readonly resumeSessionId: string | null;

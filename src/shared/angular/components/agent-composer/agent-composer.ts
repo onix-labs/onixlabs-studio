@@ -1056,7 +1056,9 @@ export class AgentComposer {
     if (levels.length === 0) {
       return [];
     }
-    const current: AiEffort | null = this.agent.effort();
+    // The level runs use, whether chosen here or from Default Reasoning Effort; `/effort default`
+    // returns to that setting.
+    const current: AiEffort | null = this.agent.effectiveEffort();
     const entries: ComposerSuggestion[] = levels.map((level: AiEffort): ComposerSuggestion => ({
       kind: 'command',
       label: `/effort ${level}`,
@@ -1066,7 +1068,10 @@ export class AgentComposer {
     entries.push({
       kind: 'command',
       label: '/effort default',
-      hint: current === null ? 'Provider default (current)' : 'Use the provider default',
+      hint:
+        this.agent.effort() === null
+          ? 'Your default from Settings (current)'
+          : 'Use your default from Settings',
       value: 'effort:default',
     });
     return entries;

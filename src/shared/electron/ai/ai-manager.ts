@@ -159,6 +159,12 @@ const DEFAULT_MAX_LIVE_SESSIONS: number = 16;
 const MAX_LIVE_SESSIONS_CEILING: number = 64;
 
 /**
+ * The steps a turn may take when its request names no limit — the Maximum Agent Steps per Turn
+ * setting's default.
+ */
+const DEFAULT_MAX_STEPS: number = 16;
+
+/**
  * The window streamed deltas merge over before the renderer sees them (see `emit`). Matches the
  * renderer transcript's own flush cadence, so batching here costs no visible latency there.
  */
@@ -1045,6 +1051,13 @@ export class AiManager {
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
         : 0;
+    // Maximum Agent Steps per Turn: a whole number, 0 for no limit; anything else is the default.
+    const maxSteps: number =
+      typeof request.maxSteps === 'number' &&
+      Number.isFinite(request.maxSteps) &&
+      request.maxSteps >= 0
+        ? Math.floor(request.maxSteps)
+        : DEFAULT_MAX_STEPS;
     const mode: AgentMode = request.mode === 'chat' ? 'chat' : 'agent';
     // Honour the requested reasoning effort only when the provider actually offers it (#330); an
     // unknown or unsupported level from the renderer falls back to the provider default.
@@ -1127,6 +1140,7 @@ export class AiManager {
       allowedNetworkLocations,
       deniedNetworkLocations,
       tokenCap,
+      maxSteps,
       agentShell,
       claudeExecutable,
       codexExecutable,
