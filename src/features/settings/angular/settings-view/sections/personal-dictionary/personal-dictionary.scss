@@ -1,0 +1,41 @@
+.dictionary {
+  display: flex;
+  flex-direction: column;
+
+  &__add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+  }
+
+  // A word is a chip: the word, then its remove button.
+  &__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 2px 2px 10px;
+    border: 0.0625rem solid var(--settings-border-color);
+    border-radius: calc(0.375rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+    background: var(--settings-control-background-color);
+  }
+
+  &__word {
+    font-size: 12px;
+  }
+
+  &__empty {
+    margin: 0 0 12px;
+    color: var(--settings-muted-foreground-color);
+    font-size: 12px;
+  }
+}

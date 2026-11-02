@@ -1,5 +1,5 @@
 import type { ReviewIssue, ReviewKind } from './review-types';
-import type { SpellChecker } from './review-spell';
+import type { WordChecker } from './review-spell';
 
 /**
  * Zero (indices, lengths, comparisons).
@@ -249,7 +249,7 @@ function makeIssue(
 function findSpellingIssues(
   source: string,
   masked: string,
-  checker: SpellChecker,
+  checker: WordChecker,
   userDictionary: ReadonlySet<string>,
 ): ReviewIssue[] {
   const issues: ReviewIssue[] = [];
@@ -313,7 +313,7 @@ function findRuleIssues(source: string, masked: string): ReviewIssue[] {
  */
 export function analyzeMarkdown(
   source: string,
-  checker: SpellChecker,
+  checker: WordChecker,
   userDictionary: ReadonlySet<string>,
 ): ReviewIssue[] {
   const masked: string = maskText(source);

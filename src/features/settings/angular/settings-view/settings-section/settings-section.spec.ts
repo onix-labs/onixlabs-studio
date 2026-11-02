@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Display } from '@shared/angular/services/display/display';
+import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
@@ -43,7 +44,11 @@ describe('SettingsSection', () => {
   it('render_whenSectionHasSettings_rendersARowAndControlPerSetting', async () => {
     // Every setting in this section is visible under the registry's defaults, so the count matches
     // it outright; a conditional setting's own behaviour is covered below.
-    const expected: number = findSection('application')?.settings.length ?? 0;
+    // Custom-control settings (the spell-checking languages) are drawn by their own rows instead.
+    const expected: number =
+      findSection('application')?.settings.filter(
+        (setting: SettingDef): boolean => setting.control.kind !== 'custom',
+      ).length ?? 0;
     const element: HTMLElement = await render('application');
     expect(element.querySelectorAll('app-setting-row').length).toBe(expected);
     expect(element.querySelectorAll('app-setting-control').length).toBe(expected);
@@ -157,10 +162,10 @@ describe('SettingsSection', () => {
   it('render_whenApplicationSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
     // Appearance merged into Application › General: graphics acceleration, theme, accent, corner
     // style, the application menu and its appearance, ribbon alignment, the window and quitting
-    // behaviour, setup after updates, the window lock. The workspace texture
+    // behaviour, setup after updates, the window lock, spell checking. The workspace texture
     // moved to Workspaces › General.
     const element: HTMLElement = await render('application');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(13);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(14);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
@@ -191,6 +196,7 @@ describe('SettingsSection', () => {
       'Confirm Before Quitting',
       'Run Setup After Updates',
       'Window Lock Switch',
+      'Spell Checking',
     ]);
   });
 

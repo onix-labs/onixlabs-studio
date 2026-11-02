@@ -1,8 +1,9 @@
-import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
+import { contextBridge, IpcRendererEvent, ipcRenderer, webFrame } from 'electron';
 import type { Bridge } from '@shared/api/bridge';
 import { AppChannel } from '@shared/api/app-channels';
 import type { DisplayStartup, HostEnv, HostVersions } from '@shared/api/host';
 import type { Severity } from '@shared/api/log-channels';
+import type { SpellingProbe } from '@shared/api/spelling-channels';
 import type { StartupSettings } from '@shared/api/startup-settings';
 
 /**
@@ -74,3 +75,14 @@ const bridge: Bridge = {
 };
 
 contextBridge.exposeInMainWorld('bridge', bridge);
+
+/**
+ * Specifies the spell-checker probe exposed under `window.spelling`, so Markdown review checks words
+ * with the same checker, languages and personal dictionary as every text box.
+ */
+const spelling: SpellingProbe = {
+  isMisspelled: (word: string): boolean => webFrame.isWordMisspelled(word),
+  suggestions: (word: string): string[] => webFrame.getWordSuggestions(word),
+};
+
+contextBridge.exposeInMainWorld('spelling', spelling);

@@ -1,19 +1,22 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { SpellingProbe } from '@shared/api/spelling-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { Spelling } from '@shared/angular/services/spelling/spelling';
 import { analyzeMarkdown } from './review-rules';
-import { DictionaryLoader, loadEnglishWords, SpellChecker } from './review-spell';
+import {
+  DictionaryLoader,
+  loadEnglishWords,
+  ProbeChecker,
+  SpellChecker,
+  WordChecker,
+} from './review-spell';
 import { ReviewCounts, ReviewIssue, ReviewKind, ReviewSession } from './review-types';
 
 /**
  * The active review filter: a specific category, or all.
  */
 export type ReviewFilter = ReviewKind | 'all';
-
-/**
- * Local-storage key for the user's personal dictionary.
- */
-const DICTIONARY_KEY: string = 'onixlabs-studio-review-dictionary';
 
 /**
  * Delay in milliseconds before re-analysing after the document changes, coalescing rapid edits.
@@ -34,8 +37,12 @@ function ignoreSignature(issue: ReviewIssue): string {
  * Runs spelling plus curated style/grammar checks over the active markdown document and exposes the
  * findings, counts, and a filter for the Review panel. The active editor registers a
  * {@link ReviewSession} so the service can read the live source, apply accepted suggestions, and
- * reveal flagged ranges. The ~3 MB dictionary is loaded lazily the first time the Review tool is
- * shown. Words can be added to a persisted personal dictionary or ignored for the session.
+ * reveal flagged ranges.
+ *
+ * Spelling is checked by Studio's own spell checker while Spell Checking is on, so review follows the
+ * chosen languages (the system's on macOS), exactly as text boxes do; with it off, or outside Electron,
+ * review falls back to the bundled English list, loaded (~3 MB) the first time it is needed. Words
+ * added to the dictionary go to the shared personal dictionary in Settings; ignoring is session-only.
  */
 @Service()
 export class Review {
@@ -50,14 +57,19 @@ export class Review {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the app's spell checking: its checker and the shared personal dictionary.
+   */
+  private readonly spelling: Spelling = inject(Spelling);
+
+  /**
    * Holds the dictionary loader, overridable in tests with a small word set.
    */
   private dictionaryLoader: DictionaryLoader = loadEnglishWords;
 
   /**
-   * Holds the spell checker once the dictionary has loaded, or null beforehand.
+   * Holds the bundled English checker once its dictionary has loaded, or null beforehand.
    */
-  private checker: SpellChecker | null = null;
+  private bundled: SpellChecker | null = null;
 
   /**
    * Holds a value indicating whether the dictionary load has started (guards re-entrancy).
@@ -85,11 +97,20 @@ export class Review {
   private readonly readyState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the user's personal dictionary (lowercased words).
+   * Gets the shared personal dictionary, lowercased for matching.
    */
-  private readonly userDictionaryState: WritableSignal<ReadonlySet<string>> = signal<
-    ReadonlySet<string>
-  >(this.loadUserDictionary());
+  private readonly userDictionary: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> =>
+      new Set<string>(this.spelling.words().map((word: string): string => word.toLowerCase())),
+  );
+
+  /**
+   * Gets Studio's spell checker while Spell Checking is on, or null when review uses the bundled list.
+   */
+  private readonly appChecker: Signal<WordChecker | null> = computed((): WordChecker | null => {
+    const probe: SpellingProbe | undefined = this.spelling.checker();
+    return probe === undefined ? null : new ProbeChecker(probe);
+  });
 
   /**
    * Holds the ignored issue signatures (session only).
@@ -162,12 +183,15 @@ export class Review {
   });
 
   /**
-   * Loads the dictionary and analyses the document when the Review panel first becomes visible.
+   * Analyses the document when the Review panel becomes visible, and again whenever the checker or
+   * the personal dictionary changes (a word added here, or in Settings).
    */
   public constructor() {
     effect((): void => {
       const visible: boolean = this.panels.active().has('review');
       this.hasSessionState();
+      this.appChecker();
+      this.userDictionary();
       if (visible && this.session !== null) {
         void this.ensureAnalyzed();
       }
@@ -254,10 +278,7 @@ export class Review {
    */
   public addToDictionary(issue: ReviewIssue): void {
     this.log.info('markdown.review', 'Added word to dictionary', { word: issue.word });
-    const next: Set<string> = new Set<string>(this.userDictionaryState());
-    next.add(issue.word.toLowerCase());
-    this.userDictionaryState.set(next);
-    this.saveUserDictionary(next);
+    this.spelling.addWord(issue.word);
     this.analyze();
   }
 
@@ -287,24 +308,25 @@ export class Review {
    */
   public setDictionaryLoader(loader: DictionaryLoader): void {
     this.dictionaryLoader = loader;
-    this.checker = null;
+    this.bundled = null;
     this.loadStarted = false;
     this.readyState.set(false);
   }
 
   /**
-   * Ensures the dictionary is loaded, then analyses the active document.
+   * Ensures a checker is ready — Studio's own, or the bundled list once loaded — then analyses the
+   * active document.
    */
   private async ensureAnalyzed(): Promise<void> {
-    if (this.checker === null) {
+    if (this.appChecker() === null && this.bundled === null) {
       if (this.loadStarted) {
         return;
       }
       this.loadStarted = true;
       const words: readonly string[] = await this.dictionaryLoader();
-      this.checker = new SpellChecker(words);
-      this.readyState.set(true);
+      this.bundled = new SpellChecker(words);
     }
+    this.readyState.set(true);
     this.analyze();
   }
 
@@ -312,40 +334,13 @@ export class Review {
    * Analyses the active document's source into issues.
    */
   private analyze(): void {
-    if (this.session === null || this.checker === null) {
+    const checker: WordChecker | null = this.appChecker() ?? this.bundled;
+    if (this.session === null || checker === null) {
       this.allIssuesState.set([]);
       return;
     }
     this.allIssuesState.set(
-      analyzeMarkdown(this.session.getSource(), this.checker, this.userDictionaryState()),
+      analyzeMarkdown(this.session.getSource(), checker, this.userDictionary()),
     );
-  }
-
-  /**
-   * Loads the persisted personal dictionary.
-   * @returns Returns the stored words (lowercased).
-   */
-  private loadUserDictionary(): ReadonlySet<string> {
-    try {
-      const stored: string | null = localStorage.getItem(DICTIONARY_KEY);
-      if (stored !== null) {
-        return new Set<string>(JSON.parse(stored) as string[]);
-      }
-    } catch {
-      this.log.warn('markdown-review', 'Failed to load the review dictionary from local storage');
-    }
-    return new Set<string>();
-  }
-
-  /**
-   * Persists the personal dictionary.
-   * @param words The words to store.
-   */
-  private saveUserDictionary(words: ReadonlySet<string>): void {
-    try {
-      localStorage.setItem(DICTIONARY_KEY, JSON.stringify([...words]));
-    } catch {
-      this.log.warn('markdown-review', 'Failed to save the review dictionary to local storage');
-    }
   }
 }

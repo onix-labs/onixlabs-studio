@@ -126,6 +126,9 @@ export interface SettingsValues {
   readonly 'application.quitWhenLastWindowCloses': QuitWhenLastWindowCloses;
   readonly 'application.confirmBeforeQuitting': ConfirmBeforeQuitting;
   readonly 'application.runSetupAfterUpdates': RunSetupAfterUpdates;
+  readonly 'application.spellChecking': boolean;
+  readonly 'application.spellCheckingLanguages': readonly string[];
+  readonly 'spelling.personalDictionary': readonly string[];
 
   readonly 'accessibility.showTooltips': boolean;
   readonly 'accessibility.tooltipDelay': number;
@@ -425,6 +428,24 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'releases the lock.',
         control: { kind: 'toggle' },
         default: true,
+      },
+      {
+        key: 'application.spellChecking',
+        title: 'Spell Checking',
+        description:
+          'Underline misspelled words in text boxes, and check spelling in Markdown review, in the ' +
+          'languages below.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'application.spellCheckingLanguages',
+        title: 'Spell Checking Languages',
+        description:
+          'The languages checked together, such as English (UK) and English (US). None chosen ' +
+          'checks the system language.',
+        control: { kind: 'custom', component: 'spell-checking-languages' },
+        default: [],
       },
     ],
   },
@@ -1127,6 +1148,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'regular',
+      },
+      {
+        key: 'spelling.personalDictionary',
+        title: 'Personal Dictionary',
+        description:
+          'Words never marked as misspelled, in Markdown review or in any text box. Shared with ' +
+          "the system's own dictionary on macOS and Windows.",
+        control: { kind: 'custom', component: 'personal-dictionary' },
+        default: [],
       },
     ],
   },

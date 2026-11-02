@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
+import type { SpellingProbe } from '@shared/api/spelling-channels';
+import { Spelling } from '@shared/angular/services/spelling/spelling';
 import { Review } from './markdown-review';
 import { ReviewIssue, ReviewSession } from './review-types';
 
@@ -134,5 +136,61 @@ describe('Review', () => {
 
     expect(review.hasSession()).toBe(false);
     expect(review.issues().length).toBe(0);
+  });
+
+  it('addToDictionary_addsTheWordToTheSharedPersonalDictionary', async () => {
+    review.registerSession(new FakeSession('helllo world'));
+    await review.refresh();
+    const issue: ReviewIssue | undefined = review
+      .issues()
+      .find((candidate: ReviewIssue): boolean => candidate.word === 'helllo');
+    expect(issue).toBeDefined();
+
+    review.addToDictionary(issue!);
+
+    expect(TestBed.inject(Spelling).words()).toContain('helllo');
+    expect(review.counts().spelling).toBe(0);
+  });
+
+  it('refresh_whenTheWordIsInThePersonalDictionaryFromSettings_doesNotFlagIt', async () => {
+    TestBed.inject(Spelling).addWord('Helllo');
+    review.registerSession(new FakeSession('helllo world'));
+
+    await review.refresh();
+
+    expect(review.counts().spelling).toBe(0);
+  });
+});
+
+describe('Review with the app spell checker', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'spelling');
+    localStorage.clear();
+  });
+
+  it('refresh_checksSpellingWithTheAppsCheckerRatherThanTheBundledList', async () => {
+    // The bundled list would flag "colour" and accept "color"; the app's checker (here British) does
+    // the opposite, and review must follow it.
+    const probe: SpellingProbe = {
+      isMisspelled: (word: string): boolean => word.toLowerCase() === 'color',
+      suggestions: (): string[] => ['colour'],
+    };
+    Object.defineProperty(window, 'spelling', { value: probe, configurable: true });
+    TestBed.resetTestingModule();
+    const review: Review = TestBed.inject(Review);
+    const loader: () => Promise<readonly string[]> = vi.fn((): Promise<readonly string[]> =>
+      Promise.resolve(['color']),
+    );
+    review.setDictionaryLoader(loader);
+    review.registerSession(new FakeSession('colour color'));
+
+    await review.refresh();
+
+    const spelling: readonly ReviewIssue[] = review
+      .issues()
+      .filter((issue: ReviewIssue): boolean => issue.kind === 'spelling');
+    expect(spelling.map((issue: ReviewIssue): string => issue.word)).toEqual(['color']);
+    expect(spelling[0].suggestions).toEqual(['colour']);
+    expect(loader).not.toHaveBeenCalled();
   });
 });

@@ -89,6 +89,7 @@ import {
   PidJournal,
 } from '@shared/electron/pid-journal';
 import { PrintManager } from '@shared/electron/print-manager';
+import { SpellingManager } from '@shared/electron/spelling-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
@@ -535,6 +536,11 @@ class Program {
    * Exports the current document to a PDF on behalf of the renderer's editors.
    */
   private readonly printManager: PrintManager = new PrintManager();
+
+  /**
+   * Applies the spell-checking settings to the session every window shares.
+   */
+  private readonly spellingManager: SpellingManager = new SpellingManager();
 
   /**
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
@@ -1131,6 +1137,7 @@ class Program {
     this.securityManager.register();
     this.mediaProtocol.register();
     this.printManager.register();
+    this.spellingManager.register();
     this.terminalManager.register();
     this.fileManager.register();
     this.menuManager.register();

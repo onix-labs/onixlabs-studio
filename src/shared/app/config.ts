@@ -29,6 +29,7 @@ import {
   registerFeatureContribution,
 } from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
+import { Spelling } from '@shared/angular/services/spelling/spelling';
 import { APPLICATION_KEYBINDINGS } from '@shared/angular/services/app-menu/core-keybindings';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
@@ -77,6 +78,11 @@ export const config: ApplicationConfig = {
     // and the first paint's corners follow what the settings say.
     provideAppInitializer((): void => {
       inject(StartupSettingsMirror);
+    }),
+    // Apply the spell-checking settings from the start, so text boxes are checked (or not) in the
+    // chosen languages, with the personal dictionary, from the first paint.
+    provideAppInitializer((): void => {
+      inject(Spelling);
     }),
     // Instantiate the Printing service at start-up so the persisted print-margin choice drives the
     // `@page` rule before the first document is printed or exported.

@@ -143,4 +143,17 @@ describe('SettingsTransfer', () => {
 
     expect(settings.get('terminal.defaultShell')).toBe('/bin/zsh');
   });
+
+  it('roundTrip_carriesThePersonalDictionaryAndSpellCheckingLanguages', () => {
+    settings.set('spelling.personalDictionary', ['kubectl', 'onix']);
+    settings.set('application.spellCheckingLanguages', ['en-GB', 'en-US']);
+    const text: string = JSON.stringify(transfer.buildExport());
+    settings.set('spelling.personalDictionary', []);
+    settings.set('application.spellCheckingLanguages', []);
+
+    transfer.apply(accepted(text), true);
+
+    expect(settings.get('spelling.personalDictionary')).toEqual(['kubectl', 'onix']);
+    expect(settings.get('application.spellCheckingLanguages')).toEqual(['en-GB', 'en-US']);
+  });
 });

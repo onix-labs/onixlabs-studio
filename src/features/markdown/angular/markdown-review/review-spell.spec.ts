@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { SpellChecker } from './review-spell';
+import type { SpellingProbe } from '@shared/api/spelling-channels';
+import { ProbeChecker, SpellChecker } from './review-spell';
 
 describe('SpellChecker', () => {
   const checker: SpellChecker = new SpellChecker(['hello', 'world', 'review', 'editor']);
@@ -27,5 +28,22 @@ describe('SpellChecker', () => {
 
   it('suggest_whenFarFromAnyWord_returnsNoSuggestions', () => {
     expect(checker.suggest('zzzzzzzz')).toEqual([]);
+  });
+});
+
+describe('ProbeChecker', () => {
+  const probe: SpellingProbe = {
+    isMisspelled: (word: string): boolean => word === 'helllo',
+    suggestions: (): string[] => ['hello', 'hallo', 'hullo', 'jello'],
+  };
+  const checker: ProbeChecker = new ProbeChecker(probe);
+
+  it('isCorrect_followsTheAppsSpellChecker', () => {
+    expect(checker.isCorrect('hello')).toBe(true);
+    expect(checker.isCorrect('helllo')).toBe(false);
+  });
+
+  it('suggest_returnsTheCheckersFirstThreeSuggestions', () => {
+    expect(checker.suggest('helllo')).toEqual(['hello', 'hallo', 'hullo']);
   });
 });
