@@ -80,7 +80,13 @@
           <app-terminal-settings />
         }
         @case ('source-control') {
-          <app-source-control-settings />
+          <app-source-control-settings view="general" />
+        }
+        @case ('vc-hosting') {
+          <app-source-control-settings view="hosting" />
+        }
+        @case ('vc-cloning') {
+          <app-source-control-settings view="cloning" />
         }
         @case ('keyboard') {
           <app-keyboard-settings [view]="null" />

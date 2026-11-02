@@ -53,16 +53,10 @@ import {
 } from '@shared/angular/services/settings/settings-schema';
 
 /**
- * Names the registry sections Version Control › General draws, in page order, each under its own
- * heading, so the page's search finds every one of them.
+ * Names the registry sections Version Control › General draws, in page order, so the page's search
+ * finds every one of them. Hosting and Cloning are pages of their own, one registry section each.
  */
-const VERSION_CONTROL_SECTIONS: readonly string[] = [
-  'vc-fetch',
-  'vc-commits',
-  'vc-history',
-  'vc-hosting',
-  'vc-cloning',
-];
+const VERSION_CONTROL_SECTIONS: readonly string[] = ['vc-fetch', 'vc-commits', 'vc-history'];
 
 /**
  * The keys of the AI registry settings each AI page shows. The registry keeps every AI setting in one
@@ -131,6 +125,8 @@ type SettingsSectionId =
   // Providers branch a list of companies core shipped rather than a list of what is installed.
   | `ai-provider-${string}`
   | 'source-control'
+  | 'vc-hosting'
+  | 'vc-cloning'
   | 'language-providers'
   | 'security'
   | 'workspaces'
@@ -436,7 +432,11 @@ export class SettingsView {
       group: 'studio',
       label: 'Version Control',
       icon: Icon.SOURCE_CONTROL,
-      children: [{ id: 'source-control-general', label: 'General', sectionId: 'source-control' }],
+      children: [
+        { id: 'source-control-general', label: 'General', sectionId: 'source-control' },
+        { id: 'source-control-hosting', label: 'Hosting', sectionId: 'vc-hosting' },
+        { id: 'source-control-cloning', label: 'Cloning', sectionId: 'vc-cloning' },
+      ],
     },
     {
       id: 'terminal',
@@ -841,9 +841,10 @@ export class SettingsView {
    * Finds the registry settings a leaf's page shows, for the search to match against.
    *
    * Most pages render one registry section of the same id. The AI pages split the one `ai` section
-   * between them (see {@link AI_PAGE_KEYS}), and a language's page shows the editor settings a language
-   * may override. Pages built by hand from settings the registry does not hold — Version Control, a
-   * language's server rows, the provider pages — have none, and are found by their names alone.
+   * between them (see {@link AI_PAGE_KEYS}), Version Control › General draws several (see
+   * {@link VERSION_CONTROL_SECTIONS}), and a language's page shows the editor settings a language may
+   * override. Pages built by hand from settings the registry does not hold — a language's server rows,
+   * the provider pages — have none, and are found by their names alone.
    * @param leaf The leaf.
    * @returns Returns the settings on the leaf's page.
    */
