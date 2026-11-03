@@ -2,7 +2,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
+  ElementRef,
   inject,
   input,
   InputSignal,
@@ -17,6 +19,9 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Printing } from '@shared/angular/services/printing/printing';
+import { CodePrintToken, renderCodePrint } from './code-print';
 import { resolveDefaultEol } from '@shared/angular/services/documents/document-defaults';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
@@ -118,6 +123,22 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * highlights the line the active workspace's debuggee is paused on.
    */
   private readonly debugger: Debugger = inject(Debugger);
+
+  /**
+   * Holds the shared Monaco loader, whose tokenizer colours the print mirror.
+   */
+  private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the print service, which asks this document to fill its print mirror before each print.
+   */
+  private readonly printing: Printing = inject(Printing);
+
+  /**
+   * Holds the print-only mirror of the whole document, filled just before a print and emptied after.
+   */
+  private readonly printMirror: Signal<ElementRef<HTMLPreElement> | undefined> =
+    viewChild<ElementRef<HTMLPreElement>>('printMirror');
 
   /**
    * Holds the decorations collection drawing the current-execution-line marker, or null before the
@@ -256,6 +277,9 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         this.documents.setActiveDocument(this.documentId());
       }
     });
+    inject(DestroyRef).onDestroy(
+      this.printing.registerPreparer((): (() => void) | void => this.preparePrint()),
+    );
     // Redraw the breakpoint gutter whenever the controller attaches, the document's path changes, or the
     // store changes. An unsaved document (no path) draws nothing.
     effect((): void => {
@@ -328,6 +352,48 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (controller !== null) {
       this.breakpointGutter.detach(controller);
       this.breakpointController.set(null);
+    }
+  }
+
+  /**
+   * Fills the print mirror with the whole document when this is the document being printed: coloured
+   * by its syntax and numbered as the Printing settings choose. Monaco virtualises its rows, so the
+   * editor itself would print only what is on screen.
+   * @returns Returns the step that empties the mirror after the print, or nothing when this document
+   * is not the one printed.
+   */
+  private preparePrint(): (() => void) | void {
+    const target: HTMLPreElement | undefined = this.printMirror()?.nativeElement;
+    const document: CodeDocument | null = this.backingDocument();
+    if (!this.isActive() || target === undefined || document === null) {
+      return;
+    }
+    const content: string = document.content();
+    renderCodePrint(target, content, {
+      tokens: this.settings.get('printing.syntaxColours')
+        ? this.tokenize(content, document.language())
+        : null,
+      lineNumbers: this.settings.get('printing.lineNumbers'),
+    });
+    return (): void => target.replaceChildren();
+  }
+
+  /**
+   * Tokenizes the document for the print palette with Monaco's grammar for its language.
+   * @param content The document's text.
+   * @param language The document's Monaco language id.
+   * @returns Returns each line's tokens, or null when Monaco is not loaded or cannot tokenize.
+   */
+  private tokenize(content: string, language: string): CodePrintToken[][] | null {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (monaco === undefined) {
+      return null;
+    }
+    try {
+      return monaco.editor.tokenize(content, language);
+    } catch (error: unknown) {
+      this.log.warn('code.document', 'Could not colour the printed document', error);
+      return null;
     }
   }
 
