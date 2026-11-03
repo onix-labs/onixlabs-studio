@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { DEFAULT_CHANGE_MARGIN_OPTIONS } from './change-margin-controller';
 import { ChangeMargins } from './change-margins';
 import { splitLines } from './line-diff';
@@ -102,8 +103,31 @@ function setup(namespace: typeof MonacoApi | undefined): ChangeMargins {
 
 describe('ChangeMargins', () => {
   afterEach((): void => {
+    localStorage.removeItem('settings');
     document.documentElement.style.removeProperty('--change-margin-unsaved');
     document.documentElement.style.removeProperty('--change-margin-saved');
+  });
+
+  it('attach_startsOnTheChangeMarginSetting', () => {
+    const harness: EditorHarness = createHarness('a');
+    const service: ChangeMargins = setup(harness.monaco);
+    TestBed.inject(Settings).set('textEditor.global.changeMargin', 'off');
+
+    service.attach(harness.editor, 'a', true);
+
+    expect(harness.decorations()).toEqual([]);
+  });
+
+  it('changeMarginSetting_whenChanged_redrawsEveryController', () => {
+    const harness: EditorHarness = createHarness('a');
+    const service: ChangeMargins = setup(harness.monaco);
+    service.attach(harness.editor, 'a', true);
+    expect(harness.decorations()).toHaveLength(1);
+
+    TestBed.inject(Settings).set('textEditor.global.changeMargin', 'unsaved');
+    TestBed.tick();
+
+    expect(harness.decorations()).toEqual([]);
   });
 
   it('attach_whenMonacoUnavailable_returnsNull', () => {
