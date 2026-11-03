@@ -74,6 +74,8 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       uri: { toString: (): string => 'inmemory://model/1' },
       onDidChangeOptions: (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
       getEOL: (): string => '\n',
+      getLineCount: (): number => 1,
+      getValue: (): string => '',
       getAllDecorations: (): unknown[] => [],
       getLanguageId: (): string => 'plaintext',
       getOptions: (): unknown => ({ bracketPairColorizationOptions: { enabled: true } }),

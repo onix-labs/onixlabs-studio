@@ -170,6 +170,12 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
   public readonly inline: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether changes to leading and trailing whitespace are left out of the
+   * diff.
+   */
+  public readonly ignoreWhitespace: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Holds a reference to the element Monaco mounts the diff editor into.
    */
   private readonly host: Signal<ElementRef<HTMLDivElement>> =
@@ -276,6 +282,16 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
       const inline: boolean = this.inline();
       if (this.ready) {
         untracked((): void => this.editor?.updateOptions({ renderSideBySide: !inline }));
+      }
+    });
+
+    // Follow the whitespace switch and the settings a diff shares with the editor, as they change.
+    effect((): void => {
+      const options: MonacoApi.editor.IDiffEditorOptions = this.monaco.getDiffLiveOptions(
+        this.ignoreWhitespace(),
+      );
+      if (this.ready) {
+        untracked((): void => this.editor?.updateOptions(options));
       }
     });
 
@@ -415,6 +431,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     this.editor = monaco.editor.createDiffEditor(this.host().nativeElement, {
       ...this.monaco.getDiffEditorOptions(),
       renderSideBySide: !this.inline(),
+      ignoreTrimWhitespace: this.ignoreWhitespace(),
     });
 
     // The diff is computed asynchronously and recomputed whenever the models or the options change;

@@ -17,6 +17,8 @@ import { DirectoryWatch } from '@shared/angular/services/directory-watch/directo
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import type { TextDecodeOptions, TextEncoding } from '@shared/api/text-encodings';
+import { textDecodeOptionsFrom } from '@shared/angular/services/documents/document-defaults';
 
 /**
  * How long, in milliseconds, external change bursts are accumulated before the affected loaded
@@ -333,13 +335,34 @@ export class Workspace {
   }
 
   /**
+   * Reads Large File Size Limit: the largest file, in megabytes, the main process opens as text.
+   * @returns Returns the limit.
+   */
+  private textFileLimitMb(): number {
+    return this.settings.get('textEditor.largeFileSizeMb');
+  }
+
+  /**
+   * Builds how an opened file's bytes decode, from Default Encoding and Auto-Detect Encoding.
+   * @param encoding An encoding to read in whatever the bytes suggest, or undefined to tell it.
+   * @returns Returns the decode options.
+   */
+  private decode(encoding?: TextEncoding): TextDecodeOptions {
+    return textDecodeOptionsFrom(this.settings, encoding);
+  }
+
+  /**
    * Shows the combined open dialog (file or folder). Routing the result into tabs or the workspace
    * is the caller's responsibility; this is a thin bridge to the main process.
    * @returns Returns the selection, or null when cancelled or running outside Electron.
    */
   public open(): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.Open) ?? Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.Open,
+        this.textFileLimitMb(),
+        this.decode(),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -350,8 +373,12 @@ export class Workspace {
    */
   public readFile(path: string): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.OpenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.OpenFile,
+        path,
+        this.textFileLimitMb(),
+        this.decode(),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -436,12 +463,17 @@ export class Workspace {
    * Re-opens a previously user-opened file by path. The main process honours this only for files the
    * user has opened before or files within an open workspace, so an arbitrary file cannot be read.
    * @param path The absolute file path to re-open.
+   * @param encoding An encoding to read it in whatever its bytes suggest, or undefined to tell it.
    * @returns Returns the file selection, or null when not trusted, unreadable, or outside Electron.
    */
-  public reopenFile(path: string): Promise<OpenSelection | null> {
+  public reopenFile(path: string, encoding?: TextEncoding): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.ReopenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.ReopenFile,
+        path,
+        this.textFileLimitMb(),
+        this.decode(encoding),
+      ) ?? Promise.resolve(null)
     );
   }
 

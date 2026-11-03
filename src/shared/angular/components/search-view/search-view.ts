@@ -30,6 +30,7 @@ import { Notifications } from '@shared/angular/services/notifications/notificati
 import { ReplaceFailure, ReplaceResponse } from '@shared/api/search-channels';
 import { SearchAdapter, SearchReplaceOutcome } from './search-adapter';
 import { SearchResultsTree } from './search-results-tree';
+import { FindOptions } from '@shared/angular/services/find-options/find-options';
 
 /**
  * Labels each scope as the scope dropdown offers it (#1007).
@@ -212,19 +213,21 @@ export class SearchView implements OnDestroy {
   private readonly searched: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds whether the search is case-sensitive.
+   * Holds whether the search is case-sensitive — remembered for the session, as the other two
+   * options are.
    */
-  protected readonly caseSensitive: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly caseSensitive: WritableSignal<boolean> =
+    inject(FindOptions).search.caseSensitive;
 
   /**
    * Holds whether the search matches whole words only.
    */
-  protected readonly wholeWord: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly wholeWord: WritableSignal<boolean> = inject(FindOptions).search.wholeWord;
 
   /**
    * Holds whether the text is a regular expression.
    */
-  protected readonly regexp: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly regexp: WritableSignal<boolean> = inject(FindOptions).search.regexp;
 
   /**
    * Gets the matches for the last search.

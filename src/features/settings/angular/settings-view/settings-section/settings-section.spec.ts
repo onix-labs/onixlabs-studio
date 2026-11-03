@@ -135,9 +135,10 @@ describe('SettingsSection', () => {
     expect(element.querySelectorAll('app-setting-row').length).toBe(12);
   });
 
-  it('render_whenCodeGeneralSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
+  it('render_whenCodeFindSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
     // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
-    const element: HTMLElement = await render('code-general');
+    // On Code › Find and Navigation since #1236.
+    const element: HTMLElement = await render('code-find');
     const row: Element | undefined = Array.from(element.querySelectorAll('app-setting-row')).find(
       (candidate: Element): boolean =>
         candidate.querySelector('.setting-row__label')?.textContent?.trim().toLowerCase() ===

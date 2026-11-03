@@ -193,6 +193,11 @@ export class DiffDocumentPanel {
   protected readonly inline: Signal<boolean> = this.diffs.inlineDiff;
 
   /**
+   * Gets whether the diff leaves leading and trailing whitespace changes out.
+   */
+  protected readonly ignoreWhitespace: Signal<boolean> = this.diffs.ignoreWhitespace;
+
+  /**
    * The layouts the diff can be read in. Named rather than toggled: a control offering both choices
    * should say which one is in force without the user pressing it to find out.
    */
@@ -292,6 +297,13 @@ export class DiffDocumentPanel {
    */
   protected onLayoutChange(value: string): void {
     this.diffs.setInline(value === 'inline');
+  }
+
+  /**
+   * Turns ignoring whitespace on or off for every open diff, for the session.
+   */
+  protected toggleIgnoreWhitespace(): void {
+    this.diffs.toggleIgnoreWhitespace();
   }
 
   /**

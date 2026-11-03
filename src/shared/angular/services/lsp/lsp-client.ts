@@ -506,9 +506,10 @@ const PROVIDER_ID: string = 'lsp';
 
 /**
  * How many unsolicited exits a session may accumulate before the automatic restart stops for good
- * (until a manual restart clears the count). Cumulative, not windowed: a server that OOM-crashes
- * every minute under a too-large workspace never trips a rolling window, yet each respawn re-runs
- * the whole workspace load — a treadmill that once kept a machine saturated indefinitely.
+ * (until a manual restart clears the count), when Restart Crashed Language Servers is not read.
+ * Cumulative, not windowed: a server that OOM-crashes every minute under a too-large workspace never
+ * trips a rolling window, yet each respawn re-runs the whole workspace load — a treadmill that once
+ * kept a machine saturated indefinitely.
  */
 const MAX_AUTO_RESTARTS: number = 5;
 
@@ -592,24 +593,35 @@ export function recordCrash(
 
 /**
  * Determines whether a session's crashes have stopped its automatic restart: it repeated itself, or
- * it has crashed {@link MAX_AUTO_RESTARTS} times.
+ * it has crashed as many times as Restart Crashed Language Servers allows. With restarts off, the
+ * first crash is the last.
  * @param crash The session's crash record.
+ * @param maxRestarts How many crashes are restarted automatically.
  * @returns Returns true when the automatic restart has given up.
  */
-export function crashesExhausted(crash: LspCrashRecord | undefined): boolean {
-  return crash !== undefined && (crash.repeated || crash.count >= MAX_AUTO_RESTARTS);
+export function crashesExhausted(
+  crash: LspCrashRecord | undefined,
+  maxRestarts: number = MAX_AUTO_RESTARTS,
+): boolean {
+  return crash !== undefined && (crash.repeated || crash.count >= Math.max(0, maxRestarts));
 }
 
 /**
  * Says why the automatic restart gave up, with the server's last reason when it gave one.
  * @param crash The session's crash record.
+ * @param maxRestarts How many crashes are restarted automatically.
  * @returns Returns the status line.
  */
-export function givenUpReason(crash: LspCrashRecord | undefined): string {
+export function givenUpReason(
+  crash: LspCrashRecord | undefined,
+  maxRestarts: number = MAX_AUTO_RESTARTS,
+): string {
   const stopped: string =
     crash?.repeated === true
       ? 'The server stopped the same way twice, so it was not restarted again'
-      : 'The server crashed repeatedly and was stopped';
+      : maxRestarts <= 0
+        ? 'The server stopped, and Restart Crashed Language Servers is off'
+        : 'The server crashed repeatedly and was stopped';
   return crash?.reason === undefined
     ? `${stopped}. Restart it to try again.`
     : `${stopped}: ${crash.reason} Restart it to try again.`;
@@ -681,15 +693,32 @@ const RECOLOR_PULL_CONCURRENCY: number = 3;
 const POST_LOAD_PULL_STAGGER_MS: number = 200;
 
 /**
- * How long a standalone file's server session may sit with no documents before it is stopped. A
- * standalone session is rooted at the file's own directory, so nothing else will ever join it: once
- * its last document closes it serves nothing, yet it used to live until the whole client suspended
- * or was destroyed — one leaked server process per one-off file the user glanced at. Workspace
- * sessions are deliberately NOT reaped this way: a workspace prestarts its servers so the first open
- * is warm, and the hidden-view reap already covers workspaces nobody is looking at. The grace period
- * exists so close-then-reopen (the common way people flick through files) never pays a cold start.
+ * How long a standalone file's server session may sit with no documents before it is stopped, when
+ * Stop Idle Language Servers After does not say. A standalone session is rooted at the file's own
+ * directory, so nothing else will ever join it: once its last document closes it serves nothing, yet
+ * it used to live until the whole client suspended or was destroyed — one leaked server process per
+ * one-off file the user glanced at. Workspace sessions are deliberately NOT reaped this way: a
+ * workspace prestarts its servers so the first open is warm, and the hidden-view reap already covers
+ * workspaces nobody is looking at. The grace period exists so close-then-reopen (the common way
+ * people flick through files) never pays a cold start.
  */
-const STANDALONE_DOCUMENTLESS_REAP_MS: number = 5 * 60_000;
+const STANDALONE_DOCUMENTLESS_REAP_MS: number = 10 * 60_000;
+
+/**
+ * Converts Stop Idle Language Servers After to a delay: the workspace hidden-view reap and the
+ * standalone documentless reap both wait this long.
+ * @param minutes The setting's minutes, or 0 for Never.
+ * @returns Returns the delay in milliseconds, or null for Never. A value that is not a positive
+ * number of minutes reads as the default, {@link STANDALONE_DOCUMENTLESS_REAP_MS}.
+ */
+export function idleStopMs(minutes: number): number | null {
+  if (minutes === 0) {
+    return null;
+  }
+  return Number.isFinite(minutes) && minutes > 0
+    ? minutes * 60_000
+    : STANDALONE_DOCUMENTLESS_REAP_MS;
+}
 
 /**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
@@ -1610,6 +1639,11 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.has(sessionId) || this.hasDocumentsFor(sessionId)) {
       return;
     }
+    // Stop Idle Language Servers After governs this grace period too; Never keeps the server.
+    const idleMs: number | null = idleStopMs(this.settings.get('lsp.idleStopMinutes'));
+    if (idleMs === null) {
+      return;
+    }
     this.clearStandaloneReap(sessionId);
     this.standaloneReapTimers.set(
       sessionId,
@@ -1627,7 +1661,7 @@ export class LspClient implements OnDestroy {
         this.settledSessions.delete(sessionId);
         this.clearPostLoadPulls(sessionId);
         this.sessions.delete(sessionId);
-      }, STANDALONE_DOCUMENTLESS_REAP_MS),
+      }, idleMs),
     );
   }
 
@@ -2371,8 +2405,9 @@ export class LspClient implements OnDestroy {
    */
   private startBlockReason(sessionId: string): string | null {
     const crash: LspCrashRecord | undefined = this.crashes.get(sessionId);
-    if (crashesExhausted(crash)) {
-      return givenUpReason(crash);
+    const tries: number = this.settings.get('lsp.restartTries');
+    if (crashesExhausted(crash, tries)) {
+      return givenUpReason(crash, tries);
     }
     const failure: { attempts: number; lastAt: number } | undefined =
       this.startFailures.get(sessionId);
@@ -2662,18 +2697,19 @@ export class LspClient implements OnDestroy {
     // then the row's Restart button lets the user recover it by hand.
     // The server's own last words, when it left any, are the one thing that tells a protocol error
     // from a deliberate stop — say them, rather than only that it stopped.
-    const exhausted: boolean = crashesExhausted(crash);
+    const tries: number = this.settings.get('lsp.restartTries');
+    const exhausted: boolean = crashesExhausted(crash, tries);
     this.status.setState(
       exit.sessionId,
       'unavailable',
       exhausted
-        ? givenUpReason(crash)
+        ? givenUpReason(crash, tries)
         : exit.reason === undefined
           ? 'The server stopped unexpectedly. Restart it to try again.'
           : `The server stopped unexpectedly: ${exit.reason} Restart it to try again.`,
     );
     if (exhausted) {
-      this.raiseGivenUp(exit.sessionId, crash);
+      this.raiseGivenUp(exit.sessionId, crash, tries);
     }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
@@ -3164,8 +3200,9 @@ export class LspClient implements OnDestroy {
    * Show log.
    * @param sessionId The session.
    * @param crash Its crash record.
+   * @param tries How many crashes Restart Crashed Language Servers restarts.
    */
-  private raiseGivenUp(sessionId: string, crash: LspCrashRecord): void {
+  private raiseGivenUp(sessionId: string, crash: LspCrashRecord, tries: number): void {
     const serverId: string | undefined = this.sessionInfo.get(sessionId)?.serverId;
     if (serverId === undefined) {
       return;
@@ -3175,7 +3212,9 @@ export class LspClient implements OnDestroy {
       severity: 'error',
       title: crash.repeated
         ? `${server} stopped the same way twice and was not restarted`
-        : `${server} crashed repeatedly and was stopped`,
+        : tries <= 0
+          ? `${server} stopped and was not restarted`
+          : `${server} crashed repeatedly and was stopped`,
       detail: crash.reason ?? 'It gave no reason. The log may say more.',
       actions: [
         { label: 'Restart', run: (): void => void this.restart(sessionId) },

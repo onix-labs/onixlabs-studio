@@ -71,6 +71,9 @@ import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
 import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
 import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
+import { encodingLabel } from '@shared/api/text-encodings';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
 
 /**
  * Represents the code editor view: the document-bound {@link CodeDocumentEditor} core (the shared
@@ -128,6 +131,12 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
    * Holds the documents service the ribbon's save commands target.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
+   * edits.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds the root editor registry this view registers its model with, so diagnostics resolve to a
@@ -367,13 +376,18 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
         this.codeStatus.clear();
         return;
       }
-      const encoding: string = document.encoding();
       this.codeStatus.publish({
         path: document.filePath(),
         line: caret.line,
         column: caret.column,
         eol: this.eol(),
-        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        encoding: encodingLabel(document.encoding(), document.hasBom()),
+        actions: codeDocumentActions({
+          document,
+          documents: this.documents,
+          fileSystem: this.fileSystem,
+          pane: (): TextEditor | undefined => this.pane(),
+        }),
       });
     });
 

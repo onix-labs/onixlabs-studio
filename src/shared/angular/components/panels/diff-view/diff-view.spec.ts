@@ -46,6 +46,7 @@ describe('DiffView', () => {
             ensureLoaded: (): Promise<void> => Promise.resolve(),
             getMonaco: (): undefined => undefined,
             getDiffEditorOptions: (): Record<string, unknown> => ({}),
+            getDiffLiveOptions: (): Record<string, unknown> => ({}),
             getThemeName: (): string => 'studio-dark',
             // Autocomplete (#1021) registers itself with the Monaco service as it starts.
             useAssist: (): void => undefined,

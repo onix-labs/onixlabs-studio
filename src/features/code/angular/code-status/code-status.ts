@@ -1,4 +1,5 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { DocumentStatusActions } from '@shared/angular/services/document-status/document-status';
 
 /**
  * Identifies the end-of-line sequence of the active document.
@@ -33,6 +34,12 @@ export interface CodeContext {
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
   readonly encoding: string;
+
+  /**
+   * Gets what the strip's end-of-line and encoding segments can do to the document, or undefined when
+   * they only show it.
+   */
+  readonly actions?: DocumentStatusActions;
 }
 
 /**

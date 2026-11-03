@@ -1236,7 +1236,7 @@ export class BinaryDocuments implements UnsavedWorkSource {
 
   /**
    * Handles a document's file changing on disk. The echo of the application's own save is ignored; an
-   * external change reloads a clean document in place, and raises a keep-or-reload conflict for a
+   * external change to a clean document does what Reload Files Changed on Disk says, and raises a keep-or-reload conflict for a
    * dirty one so the user's unsaved edits are never silently discarded.
    * @param tabId The owning tab identifier.
    */
@@ -1246,8 +1246,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
       return;
     }
     if (!entry.dirty()) {
-      this.log.info('binary.document', 'External change; reloading clean document', entry.path);
-      void entry.reloadFromDisk();
+      this.log.info('binary.document', 'External change to a clean document', entry.path);
+      this.fileConflicts.changedOnDisk(
+        { documentId: tabId, tabId, name: entry.fileName },
+        (): void => void entry.reloadFromDisk(),
+      );
       return;
     }
     this.log.warn(

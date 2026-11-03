@@ -69,6 +69,14 @@ function fold(
 }
 
 describe('computeFoldingRanges', () => {
+  it('foldsNothing_pastLargeFileFeatureThreshold', () => {
+    const lines: readonly string[] = ['void f() {', '    x();', '}'];
+    const monaco: typeof MonacoApi = fakeMonaco(defaultTokens(lines));
+
+    expect(computeFoldingRanges(monaco, fakeModel(lines), 2)).toEqual([]);
+    expect(computeFoldingRanges(monaco, fakeModel(lines), 3)).toEqual([{ start: 1, end: 3 }]);
+  });
+
   it('foldsAnAllmanBraceBlockFromItsSignatureLine', () => {
     expect(fold(['class Program', '{', '    int x;', '}'])).toEqual([{ start: 1, end: 4 }]);
   });

@@ -1,6 +1,14 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
+import type { MenuItem } from '@shared/angular/components/menu/menu';
+import type { DocumentStatusActions } from '@shared/angular/services/document-status/document-status';
+import {
+  chooseEncoding,
+  chooseEol,
+  encodingMenuItems,
+  eolMenuItems,
+} from '@shared/angular/services/document-status/document-status-menus';
 import { CodeContext, CodeStatus } from './code-status';
 
 /**
@@ -50,9 +58,53 @@ export class CodeStatusStrip {
         : [
             { id: 'code-line', text: `Ln ${context.line}` },
             { id: 'code-col', text: `Col ${context.column}` },
-            { id: 'code-eol', text: context.eol },
-            { id: 'code-encoding', text: context.encoding },
+            this.eolSegment(context),
+            this.encodingSegment(context),
           ];
     },
   );
+
+  /**
+   * Builds the end-of-line segment: a menu converting the line endings when the document can.
+   * @param context The document's status.
+   * @returns Returns the segment.
+   */
+  private eolSegment(context: CodeContext): StatusSegment {
+    const actions: DocumentStatusActions | undefined = context.actions;
+    return {
+      id: 'code-eol',
+      text: context.eol,
+      ...(actions?.setEol === undefined
+        ? {}
+        : {
+            title: 'Select end of line sequence',
+            menu: {
+              items: eolMenuItems(context.eol),
+              choose: (id: string): void => chooseEol(id, actions),
+            },
+          }),
+    };
+  }
+
+  /**
+   * Builds the encoding segment: a menu reopening or saving in another encoding when the document can.
+   * @param context The document's status.
+   * @returns Returns the segment.
+   */
+  private encodingSegment(context: CodeContext): StatusSegment {
+    const items: readonly MenuItem[] = encodingMenuItems(context.actions);
+    return {
+      id: 'code-encoding',
+      text: context.encoding,
+      ...(items.length === 0
+        ? {}
+        : {
+            title: 'Select encoding',
+            menu: {
+              items,
+              choose: (id: string): void => chooseEncoding(id, context.actions),
+            },
+          }),
+    };
+  }
 }

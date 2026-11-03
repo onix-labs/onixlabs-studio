@@ -17,6 +17,8 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Log } from '@shared/angular/services/log/log';
+import { resolveDefaultEol } from '@shared/angular/services/documents/document-defaults';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   TextEditor,
   TextEditorCursor,
@@ -91,6 +93,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the settings, read for the line ending a new document starts with.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the structured logger for the code document editor's lifecycle and breakpoint actions.
    */
   private readonly log: Log = inject(Log);
@@ -145,6 +152,17 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
         ...(view.lineNumbers === undefined ? {} : { lineNumbers: view.lineNumbers ? 'on' : 'off' }),
       };
     },
+  );
+
+  /**
+   * Gets the line ending the editor starts a new, never-saved document with (Default End of Line), or
+   * null for a file that exists, which keeps its own.
+   */
+  protected readonly newDocumentEol: Signal<TextEditorEol | null> = computed(
+    (): TextEditorEol | null =>
+      this.backingDocument()?.filePath() === null
+        ? resolveDefaultEol(this.settings.value('textEditor.defaultEol')(), window.host?.platform)
+        : null,
   );
 
   /**

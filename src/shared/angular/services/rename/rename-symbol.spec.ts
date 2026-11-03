@@ -20,6 +20,8 @@ import type {
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { RenameConfirmation, RenameConfirmationRequest } from './rename-confirmation';
 import { RenameSymbol } from './rename-symbol';
+import { Documents } from '@shared/angular/services/documents/documents';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Monaco's `EditorOption.readOnly`, as the fake instance numbers it.
@@ -281,6 +283,54 @@ describe('RenameSymbol (#1015)', () => {
         detail: 'Open files are changed but not saved.',
       }),
     ]);
+  });
+
+  it('acrossSeveralFiles_withConfirmOff_appliesWithoutAsking_andSavesWhenAsked', async () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('textEditor.confirmMultiFileRename', false);
+    settings.set('textEditor.saveAfterRename', true);
+    const saved: string[] = [];
+    const documents: Documents = TestBed.inject(Documents);
+    vi.spyOn(documents, 'findIdByPath').mockImplementation((path: string): string | undefined =>
+      path === '/ws/src/a.ts' ? 'doc-1' : undefined,
+    );
+    vi.spyOn(documents, 'save').mockImplementation((id: string): Promise<boolean> => {
+      saved.push(id);
+      return Promise.resolve(true);
+    });
+    lsp.rename.mockResolvedValue({
+      kind: 'edits',
+      edits: {
+        files: [
+          { path: '/ws/src/a.ts', edits: [renameAt(3)] },
+          { path: '/ws/lib/b.ts', edits: [renameAt(1)] },
+        ],
+        refused: [],
+      },
+    });
+    outcome = {
+      applied: [
+        { path: '/ws/src/a.ts', edits: 1, where: 'editor' },
+        { path: '/ws/lib/b.ts', edits: 1, where: 'disk' },
+      ],
+      skipped: [],
+    };
+    try {
+      await TestBed.inject(RenameSymbol).rename(fakeEditor().editor);
+
+      expect(TestBed.inject(RenameConfirmation).pending()).toBeNull();
+      expect(applied.length).toBe(1);
+      // Only the open file is saved: the closed one was written as the rename was applied.
+      expect(saved).toEqual(['doc-1']);
+      expect(notified).toEqual([
+        expect.objectContaining({
+          title: 'Renamed “greet” to “salute” in 2 files',
+          detail: undefined,
+        }),
+      ]);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('acrossSeveralFiles_cancelled_changesNothing', async () => {

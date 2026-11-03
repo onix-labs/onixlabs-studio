@@ -112,6 +112,9 @@ type SettingsSectionId =
   | 'code-general'
   | 'code-appearance'
   | 'code-editing'
+  | 'code-find'
+  | 'code-diffs'
+  | 'code-language-servers'
   | 'markdown'
   | 'terminal'
   | 'terminal-appearance'
@@ -472,6 +475,13 @@ export class SettingsView {
         { id: 'code-general-leaf', label: 'General', sectionId: 'code-general' },
         { id: 'code-appearance-leaf', label: 'Appearance', sectionId: 'code-appearance' },
         { id: 'code-editing-leaf', label: 'Editing', sectionId: 'code-editing' },
+        { id: 'code-find-leaf', label: 'Find and Navigation', sectionId: 'code-find' },
+        { id: 'code-diffs-leaf', label: 'Diffs', sectionId: 'code-diffs' },
+        {
+          id: 'code-language-servers-leaf',
+          label: 'Language Servers',
+          sectionId: 'code-language-servers',
+        },
       ],
     },
     {

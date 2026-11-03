@@ -14,6 +14,9 @@ import {
   RibbonStripMenuButton,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   BinaryDocumentEntry,
@@ -62,6 +65,21 @@ export class BinaryRibbon {
    * Holds the side-panel state the Tools group toggles.
    */
   private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
+
+  /**
+   * Holds the file opener, which opens the active file as text in the code editor.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the settings, read for Large File Size Limit before a file opens as text.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notifications, which say why a file too large for the text editor stays binary.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the structured logger for ribbon actions.
@@ -236,6 +254,28 @@ export class BinaryRibbon {
     const id: string | undefined = this.tabs.activeTabId();
     return id !== undefined && this.binaryPanels.isVisible(id, 'inspector');
   });
+
+  /**
+   * Opens the active file as text in the code editor, beside its binary tab — unless it is larger
+   * than Large File Size Limit, which the text editor does not open.
+   */
+  protected onOpenAsText(): void {
+    const document: BinaryDocumentEntry | undefined = this.activeDocument();
+    if (document === undefined) {
+      return;
+    }
+    const limitMb: number = this.settings.get('textEditor.largeFileSizeMb');
+    if (document.size() > limitMb * 1024 * 1024) {
+      this.notifications.notify({
+        severity: 'warning',
+        title: `${document.fileName} is too large to open as text`,
+        detail: `It is over the Large File Size Limit of ${limitMb} MB, set on Code › General.`,
+      });
+      return;
+    }
+    this.log.info('BinaryRibbon', 'Opening as text', document.path);
+    void this.fileOpener.openAsText(document.path);
+  }
 
   /**
    * Toggles the disassembly panel for the active binary tab.

@@ -88,4 +88,16 @@
       (action)="onToggleAgent()"
     />
   </app-ribbon-strip-group>
+
+  <!-- A file read as binary may be text after all — a log with a stray NUL, an unusual encoding — so
+       it can be opened as text, as an image tab offers its bytes in the binary editor. -->
+  <app-ribbon-strip-group title="Open">
+    <app-ribbon-strip-button
+      [icon]="Icon.OPEN_SOURCE"
+      label="Text Editor"
+      [disabled]="activeDocument() === undefined"
+      data-testid="binary-open-as-text"
+      (action)="onOpenAsText()"
+    />
+  </app-ribbon-strip-group>
 </app-ribbon-overflow>

@@ -237,15 +237,17 @@ export function flattenSymbols(
 
 /**
  * Filters Go to Symbol's list by what has been typed, ignoring case: names that start with it first,
- * then names that contain it, then names that hold its letters in order (`gcn` finds
- * `getCustomerName`). Each group keeps document order.
+ * then names that contain it, then — when matching is fuzzy — names that hold its letters in order
+ * (`gcn` finds `getCustomerName`). Each group keeps document order.
  * @param symbols The list.
  * @param query What has been typed.
+ * @param fuzzy Whether names holding the letters in order match too (Go to Symbol Matching: Fuzzy).
  * @returns Returns the matching symbols, best first; the whole list when nothing is typed.
  */
 export function filterSymbols(
   symbols: readonly GoToSymbol[],
   query: string,
+  fuzzy: boolean = true,
 ): readonly GoToSymbol[] {
   const needle: string = query.trim().toLowerCase();
   if (needle.length === 0) {
@@ -260,7 +262,7 @@ export function filterSymbols(
       prefixed.push(symbol);
     } else if (name.includes(needle)) {
       contained.push(symbol);
-    } else if (holdsInOrder(name, needle)) {
+    } else if (fuzzy && holdsInOrder(name, needle)) {
       scattered.push(symbol);
     }
   }

@@ -67,6 +67,9 @@ import {
   NavigationType,
 } from '@features/code/angular/code-navigation/code-navigation';
 import type * as MonacoApi from 'monaco-editor';
+import { encodingLabel } from '@shared/api/text-encodings';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
 
 /**
  * How long the document must be left unchanged before its symbols are read again, in milliseconds:
@@ -129,6 +132,12 @@ export class CodeDocumentPanel {
    * Holds the documents service backing the hosted document's language and encoding.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
+   * edits.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds the structured logger for the well document panel's lifecycle and command actions.
@@ -441,14 +450,19 @@ export class CodeDocumentPanel {
         this.documentStatus.clear(this.documentId());
         return;
       }
-      const encoding: string = document.encoding();
       this.documentStatus.set(this.documentId(), {
         line: caret.line,
         column: caret.column,
         language: document.language(),
         diagnostics: true,
         eol: this.eolSignal(),
-        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        encoding: encodingLabel(document.encoding(), document.hasBom()),
+        actions: codeDocumentActions({
+          document,
+          documents: this.documents,
+          fileSystem: this.fileSystem,
+          pane: (): TextEditor | undefined => this.core()?.getPane(),
+        }),
       });
     });
 

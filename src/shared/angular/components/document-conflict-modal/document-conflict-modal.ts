@@ -34,20 +34,32 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
         <ng-template appModalContent>
           <div class="conflict">
             <h2 class="conflict__title">File Changed on Disk</h2>
-            <p class="conflict__body">
-              <strong>{{ current.name }}</strong> was changed outside the editor, but you have
-              unsaved changes. Keep your version, or reload the version on disk (discarding your
-              edits)?
-            </p>
-            <app-button-row class="conflict__actions">
-              <app-button
-                variant="solid"
-                tone="danger"
-                label="Reload from disk"
-                (click)="reload(current)"
-              />
-              <app-button label="Keep my version" (click)="keep(current)" />
-            </app-button-row>
+            @if (current.unedited) {
+              <!-- Nothing is lost by reloading: the open copy has no edits. -->
+              <p class="conflict__body">
+                <strong>{{ current.name }}</strong> was changed outside the editor. Reload the
+                version on disk, or keep the copy that is open?
+              </p>
+              <app-button-row class="conflict__actions">
+                <app-button variant="solid" label="Reload from disk" (click)="reload(current)" />
+                <app-button label="Keep the open copy" (click)="keep(current)" />
+              </app-button-row>
+            } @else {
+              <p class="conflict__body">
+                <strong>{{ current.name }}</strong> was changed outside the editor, but you have
+                unsaved changes. Keep your version, or reload the version on disk (discarding your
+                edits)?
+              </p>
+              <app-button-row class="conflict__actions">
+                <app-button
+                  variant="solid"
+                  tone="danger"
+                  label="Reload from disk"
+                  (click)="reload(current)"
+                />
+                <app-button label="Keep my version" (click)="keep(current)" />
+              </app-button-row>
+            }
           </div>
         </ng-template>
       </app-modal>
@@ -97,7 +109,7 @@ export class DocumentConflictModal {
   }
 
   /**
-   * Reloads the document from disk, discarding unsaved edits.
+   * Reloads the document from disk, discarding any unsaved edits.
    * @param conflict The conflict being resolved.
    */
   public reload(conflict: FileConflict): void {

@@ -4,6 +4,7 @@ import {
   Component,
   computed,
   effect,
+  inject,
   input,
   InputSignal,
   OnInit,
@@ -21,6 +22,7 @@ import type {
   GoToSymbol,
   GoToTarget,
 } from '@shared/angular/services/go-to/go-to-model';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToPicker } from '../go-to-picker';
 
 /**
@@ -100,7 +102,17 @@ export class QuickOpen implements OnInit {
         ? 'Type a name to find it anywhere in the workspace'
         : `No symbols match “${query}”`;
     },
+    // A workspace search's symbols are what the servers matched; narrowing them again would drop
+    // what their own matching found. Go to Symbol Matching governs one file's symbols.
+    (): boolean =>
+      this.mode() === 'workspace' ||
+      this.settings.value('textEditor.goToSymbolMatching')() === 'fuzzy',
   );
+
+  /**
+   * Holds the settings, read for how symbols are matched.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets the field's placeholder for the mode.

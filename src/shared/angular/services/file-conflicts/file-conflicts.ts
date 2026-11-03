@@ -9,6 +9,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -31,6 +32,12 @@ export interface FileConflict {
    * Gets the document's display file name.
    */
   readonly name: string;
+
+  /**
+   * Gets whether the document has no unsaved edits, so reloading loses nothing — asked because
+   * Reload Files Changed on Disk is Ask. Absent for an edited document.
+   */
+  readonly unedited?: boolean;
 }
 
 /**
@@ -79,6 +86,11 @@ export class FileConflicts {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings, read for what an unedited document does when its file changes on disk.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Gets the conflict to prompt for on the active tab, or null when the active tab has none.
    */
   public readonly activeConflict: Signal<FileConflict | null> = computed(
@@ -117,6 +129,35 @@ export class FileConflicts {
    * @param handlers The keep/reload behaviour to run on the user's decision.
    */
   public raise(conflict: FileConflict, handlers: ConflictHandlers): void {
+    this.record(conflict, handlers);
+  }
+
+  /**
+   * Handles an unedited document's file changing on disk, as Reload Files Changed on Disk says:
+   * reload it at once, ask first (the conflict modal, worded for a document with nothing to lose), or
+   * leave the open copy as it is.
+   * @param conflict The document, as a conflict would name it.
+   * @param reload Reloads the document from disk.
+   */
+  public changedOnDisk(conflict: Omit<FileConflict, 'unedited'>, reload: () => void): void {
+    switch (this.settings.get('textEditor.reloadOnDiskChange')) {
+      case 'silent':
+        reload();
+        return;
+      case 'ignore':
+        this.log.info('FileConflicts', `Ignoring the change to '${conflict.name}'`);
+        return;
+      default:
+        this.record({ ...conflict, unedited: true }, { keep: (): void => undefined, reload });
+    }
+  }
+
+  /**
+   * Records a conflict and its handlers, replacing any prior pending conflict for the document.
+   * @param conflict The conflict descriptor.
+   * @param handlers The keep/reload behaviour to run on the user's decision.
+   */
+  private record(conflict: FileConflict, handlers: ConflictHandlers): void {
     this.handlers.set(conflict.documentId, handlers);
     this.log.info('FileConflicts', `Conflict raised for '${conflict.name}'`, conflict.documentId);
     this.conflictList.update((list: readonly FileConflict[]): readonly FileConflict[] => [

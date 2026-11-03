@@ -21,7 +21,13 @@ import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/dia
 import { Output, OutputChannelInfo } from '../output/output';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { LspClient, testLines, WorkspaceSymbolMatch } from './lsp-client';
+import {
+  crashesExhausted,
+  idleStopMs,
+  LspClient,
+  testLines,
+  WorkspaceSymbolMatch,
+} from './lsp-client';
 import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
@@ -2335,6 +2341,40 @@ describe('LspClient', () => {
     }
   });
 
+  it('crashLoop_withRestartsOff_theFirstCrashStopsTheServer', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      TestBed.inject(Settings).set('lsp.restartTries', 0);
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.exit('/root::typescript');
+
+      now += 600_000;
+      client.syncDocument(base);
+      await flush();
+
+      expect(lsp.starts).toHaveLength(1);
+      expect(status.stateOf('/root::typescript')).toBe('unavailable');
+      const server: LspServer | undefined = status
+        .servers()
+        .find((entry: LspServer): boolean => entry.sessionId === '/root::typescript');
+      expect(server?.detail).toContain('Restart Crashed Language Servers is off');
+    } finally {
+      vi.restoreAllMocks();
+      localStorage.removeItem('settings');
+    }
+  });
+
   it('crashLoop_manualRestart_clearsTheBreakerAndStartsAfresh', async () => {
     const realNow: () => number = Date.now;
     let now: number = realNow();
@@ -2656,5 +2696,32 @@ describe('LspClient', () => {
 
     expect(lsp.stops).toEqual(['/root::typescript']);
     expect(offeredLanguages).toEqual(['typescript']);
+  });
+});
+
+describe('idleStopMs', () => {
+  it('turnsMinutesIntoADelay_andNeverIntoNone', () => {
+    expect(idleStopMs(5)).toBe(300_000);
+    expect(idleStopMs(30)).toBe(1_800_000);
+    expect(idleStopMs(0)).toBeNull();
+    expect(idleStopMs(-1)).toBe(600_000);
+  });
+});
+
+describe('crashesExhausted', () => {
+  type Crash = Parameters<typeof crashesExhausted>[0];
+  const crash: (count: number, repeated?: boolean) => Crash = (
+    count: number,
+    repeated: boolean = false,
+  ): Crash => ({ count, lastAt: 0, clean: false, repeated });
+
+  it('givesUpAtTheChosenNumberOfTries_orAtOnceWhenOff', () => {
+    expect(crashesExhausted(crash(2), 3)).toBe(false);
+    expect(crashesExhausted(crash(3), 3)).toBe(true);
+    expect(crashesExhausted(crash(9), 10)).toBe(false);
+    expect(crashesExhausted(crash(1), 0)).toBe(true);
+    expect(crashesExhausted(undefined, 0)).toBe(false);
+    // The same crash twice stops it whatever the tries.
+    expect(crashesExhausted(crash(2, true), 10)).toBe(true);
   });
 });

@@ -34,6 +34,7 @@ import {
   GeneratedCode,
   GeneratedCodeResolver,
 } from '@features/code/angular/generated-code/generated-code';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Represents the generated-code panel: what the open source file compiles to.
@@ -58,6 +59,11 @@ export class CodeGeneratedPanel {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, read for the view the panel starts on.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the shared decoder client, used here for the JIT capture.
@@ -151,9 +157,12 @@ export class CodeGeneratedPanel {
   });
 
   /**
-   * Holds which listing the panel is showing: what the compiler produced, or what the JIT did.
+   * Holds which listing the panel is showing: what the compiler produced, or what the JIT did. Starts
+   * on Generated Code Default View; the panel's own switch changes it from there.
    */
-  protected readonly mode: WritableSignal<'static' | 'jit'> = signal<'static' | 'jit'>('static');
+  protected readonly mode: WritableSignal<'static' | 'jit'> = signal<'static' | 'jit'>(
+    this.settings.get('textEditor.generatedCodeView'),
+  );
 
   /**
    * Holds the optimisation tier the JIT capture asks for. A control rather than a setting: the same
@@ -285,6 +294,10 @@ export class CodeGeneratedPanel {
       if (current === this.token) {
         this.state.set(result);
         this.log.debug('code.generated', `Generated code for '${path}': ${result.kind}`);
+        // A panel on the JIT view captures as its listing arrives, as switching to it would.
+        if (this.mode() === 'jit' && result.kind === 'listing') {
+          void this.captureJit();
+        }
       }
     } finally {
       if (current === this.token) {

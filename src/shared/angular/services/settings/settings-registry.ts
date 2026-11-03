@@ -1,5 +1,6 @@
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
+import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -81,9 +82,38 @@ export type ReduceMotion = 'system' | 'on' | 'off';
 export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
 
 /**
+ * Names when an edited document saves itself: never, a moment after typing stops, or when the
+ * editor loses focus.
+ */
+export type AutoSaveMode = 'off' | 'delay' | 'focus';
+
+/**
+ * Names what happens to an unedited document whose file changes on disk: it reloads without a word,
+ * the user is asked, or the change is ignored. An edited document always asks.
+ */
+export type ReloadOnDiskChange = 'silent' | 'ask' | 'ignore';
+
+/**
+ * Names the line ending a new document starts with: LF, CRLF, or the system's own (CRLF on Windows,
+ * LF elsewhere).
+ */
+export type DefaultEndOfLine = 'lf' | 'crlf' | 'system';
+
+/**
  * Names the shape of a terminal's cursor.
  */
 export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
+
+/**
+ * Names the view a generated-code panel starts on: the compiler's static output, or the JIT's.
+ */
+export type GeneratedCodeView = 'static' | 'jit';
+
+/**
+ * Names when a workspace's language server starts: as the workspace opens (for the project kinds that
+ * have one), or only once the first file it serves is opened.
+ */
+export type LspStartMode = 'open' | 'first-file';
 
 /**
  * Names how a terminal draws: on the GPU (WebGL), where Graphics Acceleration allows, or with the
@@ -235,7 +265,25 @@ export interface SettingsValues {
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.goToStyle': GoToStyle;
+  readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
+  readonly 'textEditor.seedFindFrom': 'selection' | 'selection-or-word';
+  readonly 'textEditor.confirmMultiFileRename': boolean;
+  readonly 'textEditor.saveAfterRename': boolean;
   readonly 'textEditor.diffLayout': DiffLayout;
+  readonly 'textEditor.diffIgnoreWhitespace': boolean;
+  readonly 'textEditor.diffCollapseUnchanged': boolean;
+  readonly 'textEditor.autoSave': AutoSaveMode;
+  readonly 'textEditor.reloadOnDiskChange': ReloadOnDiskChange;
+  readonly 'textEditor.largeFileSizeMb': number;
+  readonly 'textEditor.largeFileLineThreshold': number;
+  readonly 'textEditor.defaultLanguage': string;
+  readonly 'textEditor.defaultEol': DefaultEndOfLine;
+  readonly 'textEditor.defaultEncoding': TextEncoding;
+  readonly 'textEditor.autoDetectEncoding': boolean;
+  readonly 'textEditor.generatedCodeView': GeneratedCodeView;
+  readonly 'lsp.restartTries': number;
+  readonly 'lsp.idleStopMinutes': number;
+  readonly 'lsp.startMode': LspStartMode;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
   readonly 'textEditor.printMargin': PrintMargin;
 
@@ -893,9 +941,147 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
-    // Code-wide behaviour that is neither how code looks nor how a language is edited.
+    // Code-wide behaviour that is neither how code looks nor how a language is edited: files on disk.
     id: 'code-general',
     label: 'Code',
+    settings: [
+      {
+        key: 'textEditor.autoSave',
+        title: 'Auto Save',
+        description:
+          'Save edited code and Markdown files on their own: a moment after you stop typing, or ' +
+          'when you move away from the editor. A document never saved yet still asks where to go.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'delay', label: 'After a Delay' },
+            { value: 'focus', label: 'When Focus Changes' },
+          ],
+        },
+        default: 'off',
+      },
+      {
+        key: 'textEditor.reloadOnDiskChange',
+        title: 'Reload Files Changed on Disk',
+        description:
+          'What happens when a file you have not edited changes outside Studio: reload it ' +
+          'silently, ask first, or leave the open copy as it is. A file you have edited always ' +
+          'asks. Images and binary files follow this too.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'silent', label: 'Reload Silently' },
+            { value: 'ask', label: 'Ask' },
+            { value: 'ignore', label: 'Ignore' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'textEditor.largeFileSizeMb',
+        title: 'Large File Size Limit',
+        description:
+          'The largest file that opens as text. A larger one opens in the binary editor instead.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 MB' },
+            { value: '50', label: '50 MB' },
+            { value: '100', label: '100 MB' },
+            { value: '250', label: '250 MB' },
+          ],
+        },
+        default: 50,
+      },
+      {
+        key: 'textEditor.largeFileLineThreshold',
+        title: 'Large File Feature Threshold',
+        description:
+          'Above this many lines a file opens without the heavier editor features — folding, the ' +
+          'minimap, highlighting of matching words and bracket colours — so it stays responsive.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10000', label: '10,000 lines' },
+            { value: '20000', label: '20,000 lines' },
+            { value: '50000', label: '50,000 lines' },
+            { value: '100000', label: '100,000 lines' },
+          ],
+        },
+        default: 20000,
+      },
+      {
+        key: 'textEditor.defaultLanguage',
+        title: 'Default Language for New Documents',
+        description: 'The language a new, untitled code document starts in.',
+        control: { kind: 'select', options: [{ value: 'plaintext', label: 'Plain Text' }] },
+        default: 'plaintext',
+      },
+      {
+        key: 'textEditor.defaultEncoding',
+        title: 'Default Encoding',
+        description:
+          'The encoding a new file is saved in, and the one a file is read in when its encoding ' +
+          "can't be told from its bytes. The status strip reopens or saves any file in another.",
+        control: {
+          kind: 'select',
+          options: TEXT_ENCODINGS.map(
+            (encoding: TextEncoding): { value: string; label: string } => ({
+              value: encoding,
+              label: encodingLabel(encoding),
+            }),
+          ),
+        },
+        default: 'utf8',
+      },
+      {
+        key: 'textEditor.autoDetectEncoding',
+        title: 'Auto-Detect Encoding',
+        description:
+          "Tell a file's encoding from its bytes: UTF-8 when they are valid UTF-8, Default Encoding " +
+          'otherwise. Off reads every file without a byte-order mark in Default Encoding.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.defaultEol',
+        title: 'Default End of Line',
+        description:
+          'The line ending a new document starts with. A file that already exists keeps its own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'lf', label: 'LF' },
+            { value: 'crlf', label: 'CRLF' },
+            { value: 'system', label: 'System (CRLF on Windows, LF Elsewhere)' },
+          ],
+        },
+        default: 'lf',
+      },
+      {
+        key: 'textEditor.generatedCodeView',
+        title: 'Generated Code Default View',
+        description:
+          "The view a generated-code panel opens on: the compiler's static output, or what the JIT " +
+          'produces at run time. Starting on JIT runs the capture as the panel first shows.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'static', label: 'Static' },
+            { value: 'jit', label: 'JIT' },
+          ],
+        },
+        default: 'static',
+      },
+    ],
+  },
+  {
+    // Finding, going to and renaming, across the code.
+    id: 'code-find',
+    label: 'Code Find and Navigation',
     settings: [
       {
         key: 'textEditor.goToStyle',
@@ -912,6 +1098,60 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'quick-open',
       },
       {
+        key: 'textEditor.goToSymbolMatching',
+        title: 'Go to Symbol Matching',
+        description:
+          'How Go to Symbol matches what you type: names that contain it, or also names that hold ' +
+          'its letters in order, so gcn finds getCustomerName.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'contains', label: 'Contains' },
+            { value: 'fuzzy', label: 'Fuzzy' },
+          ],
+        },
+        default: 'contains',
+      },
+      {
+        key: 'textEditor.seedFindFrom',
+        title: 'Seed Find From',
+        description:
+          'What Find starts with when it opens: the selected text only, or the selection, else the ' +
+          'word at the caret.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'selection', label: 'Selection Only' },
+            { value: 'selection-or-word', label: 'Selection or Word at Caret' },
+          ],
+        },
+        default: 'selection-or-word',
+      },
+      {
+        key: 'textEditor.confirmMultiFileRename',
+        title: 'Confirm Multi-File Rename',
+        description:
+          'Ask before a rename changes more than one file, listing the files it changes.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.saveAfterRename',
+        title: 'Save Files After Rename',
+        description:
+          'Save the open files a rename changed. Files that were not open are written as the ' +
+          'rename is made either way.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+    ],
+  },
+  {
+    // How diffs compare and show two versions of a file.
+    id: 'code-diffs',
+    label: 'Code Diffs',
+    settings: [
+      {
         key: 'textEditor.diffLayout',
         title: 'Default Diff Layout',
         description:
@@ -924,6 +1164,85 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'side-by-side',
+      },
+      {
+        key: 'textEditor.diffIgnoreWhitespace',
+        title: 'Ignore Whitespace in Diffs',
+        description:
+          "Leave changes to leading and trailing whitespace out of a diff. The diff's own " +
+          'whitespace switch changes it for the session.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'textEditor.diffCollapseUnchanged',
+        title: 'Collapse Unchanged Regions',
+        description:
+          'Fold the long unchanged stretches between changes, leaving a few lines of context ' +
+          'around each change. A folded stretch opens with a click.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
+    // When language servers start, stop and come back.
+    id: 'code-language-servers',
+    label: 'Code Language Servers',
+    settings: [
+      {
+        key: 'lsp.restartTries',
+        title: 'Restart Crashed Language Servers',
+        description:
+          'How many times a language server that crashes is started again, waiting longer each ' +
+          'time, before Studio gives up until you restart it. A server that crashes the same way ' +
+          'twice is not restarted again.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '3', label: '3 Tries' },
+            { value: '5', label: '5 Tries' },
+            { value: '10', label: '10 Tries' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'lsp.idleStopMinutes',
+        title: 'Stop Idle Language Servers After',
+        description:
+          'Stop the language servers of a workspace tab left in the background, and of a file ' +
+          'opened outside a workspace once it closes, after this long. They start again when ' +
+          'you come back.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '5', label: '5 Minutes' },
+            { value: '10', label: '10 Minutes' },
+            { value: '30', label: '30 Minutes' },
+            { value: '0', label: 'Never' },
+          ],
+        },
+        default: 10,
+      },
+      {
+        key: 'lsp.startMode',
+        title: 'Start Language Server',
+        description:
+          'Start the language server for a .NET, Node, JVM, Python, C++, Rust or Go workspace as ' +
+          'the workspace opens, so it is ready by the first file, or only once the first file it ' +
+          'serves is opened.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'open', label: 'When the Workspace Opens' },
+            { value: 'first-file', label: 'When the First File Opens' },
+          ],
+        },
+        default: 'open',
       },
     ],
   },
@@ -2616,6 +2935,9 @@ export const CODE_SECTION_IDS: readonly string[] = [
   'code-general',
   'code-appearance',
   'code-editing',
+  'code-find',
+  'code-diffs',
+  'code-language-servers',
 ];
 
 /**

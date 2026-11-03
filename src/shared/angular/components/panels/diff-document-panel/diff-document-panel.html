@@ -6,6 +6,17 @@
     [value]="inline() ? 'inline' : 'side-by-side'"
     (valueChange)="onLayoutChange($event)"
   />
+  <!-- For the session, every open diff; the Ignore Whitespace in Diffs setting is what a new session
+       starts with. -->
+  <app-button
+    variant="none"
+    [icon]="Icon.DIFF_WHITESPACE"
+    ariaLabel="Ignore Whitespace"
+    tooltip="Ignore whitespace changes"
+    [pressed]="ignoreWhitespace()"
+    data-testid="diff-ignore-whitespace"
+    (click)="toggleIgnoreWhitespace()"
+  />
   <span class="panel-toolbar__spacer"></span>
   <!-- Monaco owns what "the next change" is: where the hunks are, how they wrap, and scrolling both
        sides to them together. These only ask. -->
@@ -90,5 +101,6 @@
     [modified]="change.modified"
     [language]="change.language"
     [inline]="inline()"
+    [ignoreWhitespace]="ignoreWhitespace()"
   />
 }
