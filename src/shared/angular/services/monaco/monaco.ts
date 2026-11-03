@@ -555,7 +555,8 @@ export class Monaco {
    * Builds the Monaco diff-editor construction options from the current global settings. Shared by
    * every diff surface so the read-only, side-by-side comparison view resolves the same theme and font
    * as the single-editor pages. The caller supplies the `renderSideBySide` flag, which is a per-view
-   * (inline vs side-by-side) choice rather than a global setting.
+   * (inline vs side-by-side) choice rather than a global setting, and may override whether whitespace
+   * is ignored, which the diff's own switch can change for the session.
    * @returns Returns the diff-editor construction options.
    */
   public getDiffEditorOptions(): MonacoApi.editor.IStandaloneDiffEditorConstructionOptions {
@@ -566,14 +567,12 @@ export class Monaco {
       readOnly: true,
       originalEditable: false,
       renderOverviewRuler: true,
-      ignoreTrimWhitespace: false,
       enableSplitViewResizing: true,
-      minimap: { enabled: false },
       scrollBeyondLastLine: false,
       fontSize: resolved.fontSize,
       fontFamily: `"${resolved.fontFamily}", monospace`,
-      lineNumbers: 'on',
       padding: { top: 12 },
+      ...this.getDiffLiveOptions(this.settings.get('textEditor.diffIgnoreWhitespace')),
       // Off in every editor until Studio draws its own right-click menu (#946, #1009).
       contextmenu: false,
       // None of Monaco's go-to navigations ever peeks (#1014).
@@ -586,6 +585,33 @@ export class Monaco {
       ...WIDGET_GUARD_EDITOR_OPTIONS,
       // No toolbar or revert arrows in the gutter between the sides (#1024).
       ...DIFF_GUARD_EDITOR_OPTIONS,
+    };
+  }
+
+  /**
+   * Builds the diff options that follow the settings while a diff is open: how changes are found and
+   * shown, and the Code settings a diff shares with the editor — word wrap, minimap and line numbers.
+   * Applied when a diff is created and again whenever one of them changes.
+   * @param ignoreWhitespace Whether leading and trailing whitespace changes are left out.
+   * @returns Returns the options.
+   */
+  public getDiffLiveOptions(ignoreWhitespace: boolean): MonacoApi.editor.IDiffEditorOptions {
+    const resolved: TextEditorSettings = this.settings.globalTextEditor();
+    return {
+      ignoreTrimWhitespace: ignoreWhitespace,
+      // The advanced comparison follows code that moved rather than reading it as a deletion and an
+      // unrelated addition, and marks where it went.
+      diffAlgorithm: 'advanced',
+      experimental: { showMoves: true },
+      hideUnchangedRegions: {
+        enabled: this.settings.get('textEditor.diffCollapseUnchanged'),
+        contextLineCount: 3,
+        minimumLineCount: 3,
+        revealLineCount: 20,
+      },
+      wordWrap: resolved.wordWrap ? 'on' : 'off',
+      minimap: { enabled: resolved.showMinimap },
+      lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
     };
   }
 

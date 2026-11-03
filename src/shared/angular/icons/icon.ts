@@ -880,6 +880,11 @@ export class Icon {
   public static readonly GIT_DIFF: Icon = new Icon('ph-duotone ph-git-diff');
 
   /**
+   * Gets the icon of a diff's Ignore Whitespace switch.
+   */
+  public static readonly DIFF_WHITESPACE: Icon = new Icon('ph-duotone ph-paragraph');
+
+  /**
    * Gets the icon of the explorers' Ignore command, which adds a path to version control's ignore
    * list (#1043).
    */

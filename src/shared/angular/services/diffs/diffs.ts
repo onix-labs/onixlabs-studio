@@ -60,9 +60,26 @@ export class Diffs {
   );
 
   /**
+   * Holds whether whitespace is ignored as chosen with the diffs' own switch, or null until it is
+   * used. Shared across every open diff, like {@link chosen}; until then the diffs follow the setting.
+   */
+  private readonly chosenIgnoreWhitespace: WritableSignal<boolean | null> = signal<boolean | null>(
+    null,
+  );
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Gets whether diffs leave leading and trailing whitespace changes out: as switched this session,
+   * otherwise as Ignore Whitespace in Diffs says.
+   */
+  public readonly ignoreWhitespace: Signal<boolean> = computed(
+    (): boolean =>
+      this.chosenIgnoreWhitespace() ?? this.settings.value('textEditor.diffIgnoreWhitespace')(),
+  );
 
   /**
    * Holds the editors of the diffs open now, by dock panel id.
@@ -142,6 +159,16 @@ export class Diffs {
     }
     this.chosen.set(inline);
     this.log.debug('Diffs', `Diff layout set to ${inline ? 'inline' : 'side-by-side'}`);
+  }
+
+  /**
+   * Turns ignoring whitespace on or off for every open diff, for the rest of the session. The setting
+   * is left alone.
+   */
+  public toggleIgnoreWhitespace(): void {
+    const ignore: boolean = !this.ignoreWhitespace();
+    this.chosenIgnoreWhitespace.set(ignore);
+    this.log.debug('Diffs', `Diff whitespace ${ignore ? 'ignored' : 'shown'} for the session`);
   }
 
   /**

@@ -64,6 +64,21 @@ describe('Diffs', () => {
     expect(settings.get('textEditor.diffLayout')).toBe('inline');
   });
 
+  it('ignoreWhitespace_followsTheSetting_untilTheSwitchIsUsed_thenHoldsForTheSession', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    expect(diffs.ignoreWhitespace()).toBe(false);
+
+    settings.set('textEditor.diffIgnoreWhitespace', true);
+    expect(diffs.ignoreWhitespace()).toBe(true);
+
+    // The switch wins from then on, for every diff; it never changes the setting.
+    diffs.toggleIgnoreWhitespace();
+    expect(diffs.ignoreWhitespace()).toBe(false);
+    settings.set('textEditor.diffIgnoreWhitespace', true);
+    expect(diffs.ignoreWhitespace()).toBe(false);
+    expect(settings.get('textEditor.diffIgnoreWhitespace')).toBe(true);
+  });
+
   it('setInline_asksForALayoutRatherThanForTheOtherOne', () => {
     // What a two-choice control needs: picking the same layout twice must leave it there.
     diffs.setInline(true);

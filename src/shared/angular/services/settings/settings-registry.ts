@@ -259,6 +259,8 @@ export interface SettingsValues {
   readonly 'textEditor.confirmMultiFileRename': boolean;
   readonly 'textEditor.saveAfterRename': boolean;
   readonly 'textEditor.diffLayout': DiffLayout;
+  readonly 'textEditor.diffIgnoreWhitespace': boolean;
+  readonly 'textEditor.diffCollapseUnchanged': boolean;
   readonly 'textEditor.autoSave': AutoSaveMode;
   readonly 'textEditor.reloadOnDiskChange': ReloadOnDiskChange;
   readonly 'textEditor.largeFileSizeMb': number;
@@ -1132,6 +1134,24 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'side-by-side',
+      },
+      {
+        key: 'textEditor.diffIgnoreWhitespace',
+        title: 'Ignore Whitespace in Diffs',
+        description:
+          "Leave changes to leading and trailing whitespace out of a diff. The diff's own " +
+          'whitespace switch changes it for the session.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'textEditor.diffCollapseUnchanged',
+        title: 'Collapse Unchanged Regions',
+        description:
+          'Fold the long unchanged stretches between changes, leaving a few lines of context ' +
+          'around each change. A folded stretch opens with a click.',
+        control: { kind: 'toggle' },
+        default: true,
       },
     ],
   },

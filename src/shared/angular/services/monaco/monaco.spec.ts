@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 import { buildHeuristicSemanticTokens, MonarchToken, Monaco } from './monaco';
 import {
@@ -132,7 +133,35 @@ describe('Monaco', () => {
 
     expect(options.renderGutterMenu).toBe(false);
     expect(options.renderMarginRevertIcon).toBe(false);
-    expect(options.hideUnchangedRegions).toBeUndefined();
+    // Folding the unchanged runs is Collapse Unchanged Regions' to say: on by default.
+    expect(options.hideUnchangedRegions?.enabled).toBe(true);
+  });
+
+  it('getDiffEditorOptions_findMovedCode_andFollowTheDiffAndCodeSettings', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    let options: ReturnType<Monaco['getDiffEditorOptions']> = monaco.getDiffEditorOptions();
+    expect(options.diffAlgorithm).toBe('advanced');
+    expect(options.experimental?.showMoves).toBe(true);
+    expect(options.ignoreTrimWhitespace).toBe(false);
+
+    try {
+      settings.set('textEditor.diffIgnoreWhitespace', true);
+      settings.set('textEditor.diffCollapseUnchanged', false);
+      settings.set('textEditor.global.wordWrap', true);
+      settings.set('textEditor.global.showMinimap', true);
+      settings.set('textEditor.global.showLineNumbers', false);
+      options = monaco.getDiffEditorOptions();
+
+      expect(options.ignoreTrimWhitespace).toBe(true);
+      expect(options.hideUnchangedRegions?.enabled).toBe(false);
+      expect(options.wordWrap).toBe('on');
+      expect(options.minimap?.enabled).toBe(true);
+      expect(options.lineNumbers).toBe('off');
+      // The diff's own whitespace switch overrides the setting for an open diff.
+      expect(monaco.getDiffLiveOptions(false).ignoreTrimWhitespace).toBe(false);
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('editorAndDiffOptions_neverPeek_soSeveralAnswersGoToTheFirst', () => {

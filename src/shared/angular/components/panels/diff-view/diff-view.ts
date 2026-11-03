@@ -66,6 +66,11 @@ export class DiffView {
   public readonly inline: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether changes to leading and trailing whitespace are left out.
+   */
+  public readonly ignoreWhitespace: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Holds the shared pane that owns the Monaco diff editor.
    */
   private readonly pane: Signal<DiffEditor | undefined> = viewChild<DiffEditor>(DiffEditor);

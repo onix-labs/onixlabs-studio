@@ -96,6 +96,7 @@ function renderProviders(): unknown[] {
         ensureLoaded: (): Promise<void> => Promise.resolve(),
         getMonaco: (): undefined => undefined,
         getDiffEditorOptions: (): Record<string, unknown> => ({}),
+        getDiffLiveOptions: (): Record<string, unknown> => ({}),
         getThemeName: (): string => 'studio-dark',
         // Autocomplete (#1021) registers itself with the Monaco service as it starts.
         useAssist: (): void => undefined,
@@ -245,6 +246,20 @@ describe('DiffDocumentPanel', () => {
       fixture.detectChanges();
 
       expect(diffs.inlineDiff()).toBe(true);
+    });
+
+    it('theWhitespaceSwitch_saysWhetherItIsOn_andFlipsEveryOpenDiff', async () => {
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const before: boolean = diffs.ignoreWhitespace();
+      expect(tool('Ignore Whitespace').getAttribute('aria-pressed')).toBe(String(before));
+
+      tool('Ignore Whitespace').click();
+      fixture.detectChanges();
+
+      expect(diffs.ignoreWhitespace()).toBe(!before);
+      expect(tool('Ignore Whitespace').getAttribute('aria-pressed')).toBe(String(!before));
     });
 
     it('theNavigationArrowsAreInert_untilThereIsAComparison', async () => {
