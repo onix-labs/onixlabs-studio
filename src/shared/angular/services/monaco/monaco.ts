@@ -269,6 +269,14 @@ export class Monaco {
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
 
   /**
+   * Reads Large File Feature Threshold: the line count above which a file loses the heavier editor
+   * features, folding among them.
+   * @returns Returns the threshold.
+   */
+  public readonly largeFileLines: () => number = (): number =>
+    this.settings.get('textEditor.largeFileLineThreshold');
+
+  /**
    * Determines whether a document's folding is left to its language server, for the brace folding.
    * @param model The document.
    * @returns Returns true when a server folds it.
@@ -600,7 +608,7 @@ export class Monaco {
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
-    registerBraceFolding(window.monaco, this.braceFoldingSuppressed);
+    registerBraceFolding(window.monaco, this.braceFoldingSuppressed, this.largeFileLines);
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
@@ -858,7 +866,7 @@ export class Monaco {
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
-      registerBraceFolding(monaco, this.braceFoldingSuppressed);
+      registerBraceFolding(monaco, this.braceFoldingSuppressed, this.largeFileLines);
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);

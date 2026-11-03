@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { FileChannel, SaveDialogChoice } from '@shared/api/file-channels';
 import { BinarySpan, WorkspaceChannel } from '@shared/api/workspace-channels';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -311,14 +312,37 @@ describe('ImageDocuments', () => {
     expect(documents.forHolder('panel-1')).toBeUndefined();
   });
 
-  it('diskChange_onAnUneditedImage_reloadsIt', async () => {
-    const { document } = await openLoaded('/ws/photo.png');
+  it('diskChange_onAnUneditedImage_followsReloadFilesChangedOnDisk', async () => {
+    const settings: Settings = TestBed.inject(Settings);
+    try {
+      const { document } = await openLoaded('/ws/photo.png');
 
-    watchers.get('/ws/photo.png')?.();
-    await flush();
+      // Ask, by default: the question is raised, worded for an image with nothing to lose.
+      watchers.get('/ws/photo.png')?.();
+      await flush();
+      expect(document.revision()).toBe(0);
+      expect(TestBed.inject(FileConflicts).activeConflict()).toMatchObject({
+        documentId: '/ws/photo.png',
+        unedited: true,
+      });
+      TestBed.inject(FileConflicts).reload('/ws/photo.png');
+      await flush();
+      expect(document.revision()).toBe(1);
 
-    expect(document.revision()).toBe(1);
-    expect(document.displayUrl()).toBe(mediaUrl('/ws/photo.png', 1));
+      settings.set('textEditor.reloadOnDiskChange', 'silent');
+      watchers.get('/ws/photo.png')?.();
+      await flush();
+      expect(document.revision()).toBe(2);
+      expect(document.displayUrl()).toBe(mediaUrl('/ws/photo.png', 2));
+
+      settings.set('textEditor.reloadOnDiskChange', 'ignore');
+      watchers.get('/ws/photo.png')?.();
+      await flush();
+      expect(document.revision()).toBe(2);
+      expect(TestBed.inject(FileConflicts).activeConflict()).toBeNull();
+    } finally {
+      localStorage.removeItem('settings');
+    }
   });
 
   it('diskChange_onAnEditedImage_raisesAConflictInsteadOfDiscardingTheEdits', async () => {

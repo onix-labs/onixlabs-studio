@@ -77,6 +77,15 @@ describe('DocumentConflictModal', () => {
     expect(host?.textContent).toContain('File Changed on Disk');
   });
 
+  it('render_forAnUneditedFile_offersToReloadWithoutWarningOfLostEdits', async () => {
+    activeConflict.set({ ...conflict, unedited: true });
+    const host: HTMLElement | null = await present();
+
+    expect(host?.textContent).toContain('main.ts');
+    expect(host?.textContent).not.toContain('unsaved changes');
+    expect(host?.textContent).toContain('Keep the open copy');
+  });
+
   it('render_asksForAWindowThatCannotBeDismissed', async () => {
     activeConflict.set(conflict);
     await present();

@@ -1,6 +1,14 @@
-import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { FileInfo } from '@shared/api/file-channels';
-import type { TextEditorSettings } from '@shared/angular/services/settings/settings';
+import { Settings, type TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -23,14 +31,15 @@ import {
 const UNTITLED_NAME: string = 'Untitled';
 
 /**
- * Holds the default language used for a new, unsaved document.
- */
-const DEFAULT_LANGUAGE: string = 'plaintext';
-
-/**
  * Holds the encoding label assumed for a new, unsaved document.
  */
 const DEFAULT_ENCODING: string = 'UTF-8';
+
+/**
+ * Holds how long after typing stops an edited document saves itself when Auto Save is After a Delay,
+ * in milliseconds.
+ */
+export const AUTO_SAVE_DELAY_MS: number = 1000;
 
 /**
  * The view toggles a code tab may set for itself — word wrap, the minimap, line numbers — each unset
@@ -243,6 +252,11 @@ export class Documents implements UnsavedWorkSource {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings, read for the language a new document starts in and for auto save.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
    * documents), or null when each document is its own top-level tab (standalone editor tabs).
    */
@@ -279,6 +293,41 @@ export class Documents implements UnsavedWorkSource {
   public readonly activeDocumentId: Signal<string | null> = this.activeDocument.asReadonly();
 
   /**
+   * Holds each document's pending Auto Save, while typing has not yet paused for the delay.
+   */
+  private readonly autoSaveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
+   * Holds the documents an Auto Save is writing now, so a second is not started over it.
+   */
+  private readonly autoSaving: Set<string> = new Set<string>();
+
+  /**
+   * Initializes a new instance of the {@link Documents} class, saving edited documents when the
+   * window loses focus and Auto Save is When Focus Changes.
+   */
+  public constructor() {
+    const onBlur: () => void = (): void => {
+      if (this.settings.get('textEditor.autoSave') === 'focus') {
+        for (const id of [...this.entries.keys()]) {
+          void this.autoSave(id);
+        }
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    inject(DestroyRef).onDestroy((): void => {
+      window.removeEventListener('blur', onBlur);
+      for (const timer of this.autoSaveTimers.values()) {
+        clearTimeout(timer);
+      }
+      this.autoSaveTimers.clear();
+    });
+  }
+
+  /**
    * Returns the document for a tab, creating an empty document when none exists yet.
    * @param id The owning tab identifier.
    * @param defaultName The display name given to a freshly created document; defaults to `Untitled`.
@@ -308,6 +357,57 @@ export class Documents implements UnsavedWorkSource {
     }
     entry.content.set(content);
     this.syncTab(id);
+    this.scheduleAutoSave(id);
+  }
+
+  /**
+   * Starts, or restarts, a document's Auto Save when Auto Save is After a Delay: it saves once typing
+   * has paused for {@link AUTO_SAVE_DELAY_MS}.
+   * @param id The document identifier.
+   */
+  private scheduleAutoSave(id: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.autoSaveTimers.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.autoSaveTimers.delete(id);
+    }
+    if (this.settings.get('textEditor.autoSave') !== 'delay') {
+      return;
+    }
+    this.autoSaveTimers.set(
+      id,
+      setTimeout((): void => {
+        this.autoSaveTimers.delete(id);
+        void this.autoSave(id);
+      }, AUTO_SAVE_DELAY_MS),
+    );
+  }
+
+  /**
+   * Saves a document on its own, for Auto Save: only one with a file to go to, edits to save and no
+   * save of its own already writing. Never asks anything — a document never saved yet is left for
+   * the user to save.
+   * @param id The document identifier.
+   * @returns Resolves once the save, if any, has finished.
+   */
+  private async autoSave(id: string): Promise<void> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (
+      entry === undefined ||
+      entry.filePath() === null ||
+      entry.readOnly() ||
+      !entry.document.dirty() ||
+      this.autoSaving.has(id)
+    ) {
+      return;
+    }
+    this.autoSaving.add(id);
+    try {
+      this.log.debug('Documents', `Auto-saving '${entry.fileName()}'`, id);
+      await this.save(id);
+    } finally {
+      this.autoSaving.delete(id);
+    }
   }
 
   /**
@@ -324,6 +424,11 @@ export class Documents implements UnsavedWorkSource {
   }
 
   public remove(id: string): void {
+    const pending: ReturnType<typeof setTimeout> | undefined = this.autoSaveTimers.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.autoSaveTimers.delete(id);
+    }
     this.entries.get(id)?.watchDisposer?.();
     this.fileConflicts.clear(id);
     this.entries.delete(id);
@@ -615,7 +720,16 @@ export class Documents implements UnsavedWorkSource {
    * @param id The focused document id, or null.
    */
   public setActiveDocument(id: string | null): void {
+    const previous: string | null = this.activeDocument();
     this.activeDocument.set(id);
+    // Moving to another document, or away from every one, is a focus change for Auto Save.
+    if (
+      previous !== null &&
+      previous !== id &&
+      this.settings.get('textEditor.autoSave') === 'focus'
+    ) {
+      void this.autoSave(previous);
+    }
   }
 
   /**
@@ -770,7 +884,10 @@ export class Documents implements UnsavedWorkSource {
   private createEntry(id: string, defaultName: string = UNTITLED_NAME): DocumentEntry {
     const filePath: WritableSignal<string | null> = signal<string | null>(null);
     const fileName: WritableSignal<string> = signal<string>(defaultName);
-    const language: WritableSignal<string> = signal<string>(DEFAULT_LANGUAGE);
+    // A new document starts in Default Language for New Documents; opening a file sets its own.
+    const language: WritableSignal<string> = signal<string>(
+      this.settings.get('textEditor.defaultLanguage'),
+    );
     const content: WritableSignal<string> = signal<string>('');
     const original: WritableSignal<string> = signal<string>('');
     const encoding: WritableSignal<string> = signal<string>(DEFAULT_ENCODING);
@@ -826,8 +943,8 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
-   * Handles a watched document's file changing on disk. Reloads the document when it has no unsaved
-   * edits; when it is dirty, raises a keep/reload conflict for the user to resolve.
+   * Handles a watched document's file changing on disk. With no unsaved edits it does what Reload
+   * Files Changed on Disk says; when it is dirty, raises a keep/reload conflict for the user to resolve.
    * @param id The document identifier.
    * @param info The freshly-read file.
    */
@@ -837,7 +954,10 @@ export class Documents implements UnsavedWorkSource {
       return;
     }
     if (!entry.document.dirty()) {
-      this.reloadFromDisk(id, info.content);
+      this.fileConflicts.changedOnDisk(
+        { documentId: id, tabId: this.owningTabId ?? id, name: entry.fileName() },
+        (): void => this.reloadFromDisk(id, info.content),
+      );
       return;
     }
     // Unsaved edits diverge from a new on-disk version: prompt the user to keep or reload.

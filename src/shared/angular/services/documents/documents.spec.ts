@@ -10,7 +10,11 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
-import { CodeDocument, Documents, effectiveViewToggles } from './documents';
+import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
+import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { vi } from 'vitest';
+import { AUTO_SAVE_DELAY_MS, CodeDocument, Documents, effectiveViewToggles } from './documents';
 
 /**
  * A sample file used by the open-from-info tests.
@@ -445,5 +449,141 @@ describe('effectiveViewToggles', () => {
       minimap: false,
       lineNumbers: true,
     });
+  });
+});
+
+describe('Documents, with files on disk (#1236)', () => {
+  let documents: Documents;
+  let settings: Settings;
+  let written: string[];
+  let watchers: Map<string, (info: FileInfo) => void>;
+
+  beforeEach(() => {
+    localStorage.removeItem('settings');
+    written = [];
+    watchers = new Map<string, (info: FileInfo) => void>();
+    TestBed.configureTestingModule({
+      providers: [
+        provideUnsavedWork(Documents),
+        {
+          provide: FileSystem,
+          useValue: {
+            write: (_path: string, content: string): Promise<{ success: boolean }> => {
+              written.push(content);
+              return Promise.resolve({ success: true });
+            },
+          },
+        },
+        {
+          provide: FileWatch,
+          useValue: {
+            watch: (path: string, onChange: (info: FileInfo) => void): (() => void) => {
+              watchers.set(path, onChange);
+              return (): void => void watchers.delete(path);
+            },
+          },
+        },
+      ],
+    });
+    documents = TestBed.inject(Documents);
+    settings = TestBed.inject(Settings);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.removeItem('settings');
+  });
+
+  it('aNewDocument_startsInDefaultLanguageForNewDocuments', () => {
+    settings.set('textEditor.defaultLanguage', 'python');
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+
+    expect(documents.ensure(tab.id).language()).toBe('python');
+  });
+
+  it('autoSaveAfterADelay_savesOnceTypingPauses_andNeverAnUntitledDocument', async () => {
+    vi.useFakeTimers();
+    settings.set('textEditor.autoSave', 'delay');
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    const untitled: Tab = TestBed.inject(Tabs).open('code');
+    documents.ensure(untitled.id);
+
+    documents.setContent(tab.id, 'a');
+    documents.setContent(untitled.id, 'b');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS / 2);
+    documents.setContent(tab.id, 'ab');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS / 2);
+    expect(written).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS);
+    expect(written).toEqual(['ab']);
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+    expect(documents.get(untitled.id)?.dirty()).toBe(true);
+  });
+
+  it('autoSaveWhenFocusChanges_savesTheDocumentLeft_andOnWindowBlur', async () => {
+    settings.set('textEditor.autoSave', 'focus');
+    const first: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    const second: Tab = documents.openFileInfo(
+      { ...SAMPLE_FILE, path: '/ws/other.ts', name: 'other.ts' },
+      'code',
+    );
+
+    documents.setActiveDocument(first.id);
+    documents.setContent(first.id, 'first edit');
+    documents.setActiveDocument(second.id);
+    await Promise.resolve();
+    expect(written).toEqual(['first edit']);
+
+    documents.setContent(second.id, 'second edit');
+    window.dispatchEvent(new Event('blur'));
+    await Promise.resolve();
+    expect(written).toEqual(['first edit', 'second edit']);
+  });
+
+  it('autoSaveOff_neverSaves', async () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    documents.setActiveDocument(tab.id);
+    documents.setContent(tab.id, 'edit');
+    documents.setActiveDocument(null);
+    window.dispatchEvent(new Event('blur'));
+    await Promise.resolve();
+
+    expect(written).toEqual([]);
+  });
+
+  it('anUneditedDocument_followsReloadFilesChangedOnDisk', () => {
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    const conflicts: FileConflicts = TestBed.inject(FileConflicts);
+    const change: (content: string) => void = (content: string): void =>
+      watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content });
+
+    // Ask, by default: nothing changes until the user answers.
+    change('asked');
+    expect(documents.get(tab.id)?.content()).toBe(SAMPLE_FILE.content);
+    expect(conflicts.activeConflict()).toMatchObject({ documentId: tab.id, unedited: true });
+    conflicts.reload(tab.id);
+    expect(documents.get(tab.id)?.content()).toBe('asked');
+
+    settings.set('textEditor.reloadOnDiskChange', 'silent');
+    change('silent');
+    expect(documents.get(tab.id)?.content()).toBe('silent');
+    expect(conflicts.activeConflict()).toBeNull();
+
+    settings.set('textEditor.reloadOnDiskChange', 'ignore');
+    change('ignored');
+    expect(documents.get(tab.id)?.content()).toBe('silent');
+    expect(conflicts.activeConflict()).toBeNull();
+  });
+
+  it('anEditedDocument_alwaysAsks_whateverTheSetting', () => {
+    settings.set('textEditor.reloadOnDiskChange', 'silent');
+    const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+    documents.setContent(tab.id, 'mine');
+
+    watchers.get(SAMPLE_FILE.path)?.({ ...SAMPLE_FILE, content: 'theirs' });
+
+    expect(documents.get(tab.id)?.content()).toBe('mine');
+    expect(TestBed.inject(FileConflicts).activeConflict()?.unedited).toBeUndefined();
   });
 });

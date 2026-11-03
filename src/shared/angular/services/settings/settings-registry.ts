@@ -81,6 +81,24 @@ export type ReduceMotion = 'system' | 'on' | 'off';
 export type HistoryDateFormat = 'relative' | 'absolute' | 'both';
 
 /**
+ * Names when an edited document saves itself: never, a moment after typing stops, or when the
+ * editor loses focus.
+ */
+export type AutoSaveMode = 'off' | 'delay' | 'focus';
+
+/**
+ * Names what happens to an unedited document whose file changes on disk: it reloads without a word,
+ * the user is asked, or the change is ignored. An edited document always asks.
+ */
+export type ReloadOnDiskChange = 'silent' | 'ask' | 'ignore';
+
+/**
+ * Names the line ending a new document starts with: LF, CRLF, or the system's own (CRLF on Windows,
+ * LF elsewhere).
+ */
+export type DefaultEndOfLine = 'lf' | 'crlf' | 'system';
+
+/**
  * Names the shape of a terminal's cursor.
  */
 export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
@@ -236,6 +254,12 @@ export interface SettingsValues {
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.diffLayout': DiffLayout;
+  readonly 'textEditor.autoSave': AutoSaveMode;
+  readonly 'textEditor.reloadOnDiskChange': ReloadOnDiskChange;
+  readonly 'textEditor.largeFileSizeMb': number;
+  readonly 'textEditor.largeFileLineThreshold': number;
+  readonly 'textEditor.defaultLanguage': string;
+  readonly 'textEditor.defaultEol': DefaultEndOfLine;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
   readonly 'textEditor.printMargin': PrintMargin;
 
@@ -893,9 +917,106 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
-    // Code-wide behaviour that is neither how code looks nor how a language is edited.
+    // Code-wide behaviour that is neither how code looks nor how a language is edited: files on disk.
     id: 'code-general',
     label: 'Code',
+    settings: [
+      {
+        key: 'textEditor.autoSave',
+        title: 'Auto Save',
+        description:
+          'Save edited code and Markdown files on their own: a moment after you stop typing, or ' +
+          'when you move away from the editor. A document never saved yet still asks where to go.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'delay', label: 'After a Delay' },
+            { value: 'focus', label: 'When Focus Changes' },
+          ],
+        },
+        default: 'off',
+      },
+      {
+        key: 'textEditor.reloadOnDiskChange',
+        title: 'Reload Files Changed on Disk',
+        description:
+          'What happens when a file you have not edited changes outside Studio: reload it ' +
+          'silently, ask first, or leave the open copy as it is. A file you have edited always ' +
+          'asks. Images and binary files follow this too.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'silent', label: 'Reload Silently' },
+            { value: 'ask', label: 'Ask' },
+            { value: 'ignore', label: 'Ignore' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'textEditor.largeFileSizeMb',
+        title: 'Large File Size Limit',
+        description:
+          'The largest file that opens as text. A larger one opens in the binary editor instead.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 MB' },
+            { value: '50', label: '50 MB' },
+            { value: '100', label: '100 MB' },
+            { value: '250', label: '250 MB' },
+          ],
+        },
+        default: 50,
+      },
+      {
+        key: 'textEditor.largeFileLineThreshold',
+        title: 'Large File Feature Threshold',
+        description:
+          'Above this many lines a file opens without the heavier editor features — folding, the ' +
+          'minimap, highlighting of matching words and bracket colours — so it stays responsive.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10000', label: '10,000 lines' },
+            { value: '20000', label: '20,000 lines' },
+            { value: '50000', label: '50,000 lines' },
+            { value: '100000', label: '100,000 lines' },
+          ],
+        },
+        default: 20000,
+      },
+      {
+        key: 'textEditor.defaultLanguage',
+        title: 'Default Language for New Documents',
+        description: 'The language a new, untitled code document starts in.',
+        control: { kind: 'select', options: [{ value: 'plaintext', label: 'Plain Text' }] },
+        default: 'plaintext',
+      },
+      {
+        key: 'textEditor.defaultEol',
+        title: 'Default End of Line',
+        description:
+          'The line ending a new document starts with. A file that already exists keeps its own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'lf', label: 'LF' },
+            { value: 'crlf', label: 'CRLF' },
+            { value: 'system', label: 'System (CRLF on Windows, LF Elsewhere)' },
+          ],
+        },
+        default: 'lf',
+      },
+    ],
+  },
+  {
+    // Finding, going to and renaming, across the code.
+    id: 'code-find',
+    label: 'Code Find and Navigation',
     settings: [
       {
         key: 'textEditor.goToStyle',
@@ -911,6 +1032,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'quick-open',
       },
+    ],
+  },
+  {
+    // How diffs compare and show two versions of a file.
+    id: 'code-diffs',
+    label: 'Code Diffs',
+    settings: [
       {
         key: 'textEditor.diffLayout',
         title: 'Default Diff Layout',
@@ -926,6 +1054,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'side-by-side',
       },
     ],
+  },
+  {
+    // When language servers start, stop and come back.
+    id: 'code-language-servers',
+    label: 'Code Language Servers',
+    settings: [],
   },
   {
     // How code looks wherever it appears: editor tabs, diffs, queries, request bodies, Markdown code blocks.
@@ -2616,6 +2750,9 @@ export const CODE_SECTION_IDS: readonly string[] = [
   'code-general',
   'code-appearance',
   'code-editing',
+  'code-find',
+  'code-diffs',
+  'code-language-servers',
 ];
 
 /**

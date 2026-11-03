@@ -255,6 +255,15 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     input<MonacoApi.editor.IEditorOptions>({});
 
   /**
+   * Gets the line ending a new document starts with (Default End of Line), or null for a file that
+   * exists, which keeps its own. Applied once, when the editor is created, and only while the text has
+   * no line break to say otherwise.
+   */
+  public readonly newDocumentEol: InputSignal<TextEditorEol | null> = input<TextEditorEol | null>(
+    null,
+  );
+
+  /**
    * Gets a value indicating whether the pane belongs to the active tab. The active pane is laid out
    * and focused.
    */
@@ -311,6 +320,12 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private foldingPlaceholders: FoldingPlaceholderController | null = null;
 
   /**
+   * Holds whether the open file was past Large File Feature Threshold when its content last arrived,
+   * so the options re-apply when a load moves it across.
+   */
+  private readonly largeFile: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -339,6 +354,8 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     effect((): void => {
       this.settings.textEditor();
       this.settings.textEditorAccentSelection();
+      this.settings.value('textEditor.largeFileLineThreshold')();
+      this.largeFile();
       this.theme.resolvedMode();
       this.theme.accent();
       const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
@@ -349,9 +366,14 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(
         this.language(),
       );
+      const large: boolean = this.isLargeFile();
       editor.updateOptions({
         lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
-        minimap: { enabled: resolved.showMinimap },
+        minimap: { enabled: resolved.showMinimap && !large },
+        // Past Large File Feature Threshold the heavier features go, so the file stays responsive.
+        ...(large
+          ? { folding: false, occurrencesHighlight: 'off' as const, selectionHighlight: false }
+          : {}),
         renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
@@ -392,6 +414,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       if (editor.getValue() !== content) {
         this.ignoreNextChange = true;
         editor.setValue(content);
+        this.largeFile.set(this.isLargeFile());
       }
       // The editor now holds this exact content, whichever branch ran; remembering it keeps the
       // echo-skip above truthful after an external update.
@@ -465,6 +488,15 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Determines whether the open file is past Large File Feature Threshold.
+   * @returns Returns true when it has more lines than the threshold.
+   */
+  private isLargeFile(): boolean {
+    const lines: number = this.editor?.getModel()?.getLineCount() ?? 0;
+    return lines > this.settings.get('textEditor.largeFileLineThreshold');
+  }
+
+  /**
    * Applies the current "coloured brackets" setting to the editor's model. Bracket-pair colourisation
    * is a model option — the per-editor `bracketPairColorization` option is a no-op in standalone
    * Monaco — so the resolved value is written to the model directly, and only when it differs so the
@@ -475,9 +507,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     if (model === null) {
       return;
     }
-    const enabled: boolean = this.settings.resolveSettingsForLanguage(
-      this.language(),
-    ).colorBrackets;
+    const enabled: boolean =
+      this.settings.resolveSettingsForLanguage(this.language()).colorBrackets &&
+      !this.isLargeFile();
     if (model.getOptions().bracketPairColorizationOptions.enabled === enabled) {
       return;
     }
@@ -691,6 +723,12 @@ export class TextEditor implements AfterViewInit, OnDestroy {
 
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;
+    const eol: TextEditorEol | null = this.newDocumentEol();
+    if (model !== null && eol !== null && !/[\r\n]/.test(model.getValue())) {
+      model.setEOL(
+        eol === 'CRLF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF,
+      );
+    }
     this.log.info('TextEditor', `Created editor for '${language}'`, this.modelUri);
 
     // Monaco's shared model service re-seeds every model's bracket-colouring option from the global
@@ -752,6 +790,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       this.selectionChange.emit(this.selectionHasText());
     });
 
+    this.largeFile.set(this.isLargeFile());
     this.editorReady.set(true);
     this.ready.emit();
   }

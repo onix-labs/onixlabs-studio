@@ -333,13 +333,22 @@ export class Workspace {
   }
 
   /**
+   * Reads Large File Size Limit: the largest file, in megabytes, the main process opens as text.
+   * @returns Returns the limit.
+   */
+  private textFileLimitMb(): number {
+    return this.settings.get('textEditor.largeFileSizeMb');
+  }
+
+  /**
    * Shows the combined open dialog (file or folder). Routing the result into tabs or the workspace
    * is the caller's responsibility; this is a thin bridge to the main process.
    * @returns Returns the selection, or null when cancelled or running outside Electron.
    */
   public open(): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.Open) ?? Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.Open, this.textFileLimitMb()) ??
+      Promise.resolve(null)
     );
   }
 
@@ -350,8 +359,11 @@ export class Workspace {
    */
   public readFile(path: string): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.OpenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.OpenFile,
+        path,
+        this.textFileLimitMb(),
+      ) ?? Promise.resolve(null)
     );
   }
 
@@ -440,8 +452,11 @@ export class Workspace {
    */
   public reopenFile(path: string): Promise<OpenSelection | null> {
     return (
-      this.bridge?.invoke<OpenSelection | null>(WorkspaceChannel.ReopenFile, path) ??
-      Promise.resolve(null)
+      this.bridge?.invoke<OpenSelection | null>(
+        WorkspaceChannel.ReopenFile,
+        path,
+        this.textFileLimitMb(),
+      ) ?? Promise.resolve(null)
     );
   }
 

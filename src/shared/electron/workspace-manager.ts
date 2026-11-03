@@ -46,6 +46,7 @@ import { metadataAsSourcePath } from './lsp/metadata-as-source';
 import { TrustedPaths } from './trusted-paths';
 import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
+import { textFileLimitBytes } from './text-file-limit';
 
 /**
  * Specifies the sort order placing directories before files.
@@ -62,13 +63,6 @@ const FILE_ORDER: number = 1;
  * content.
  */
 const BINARY_SNIFF_LENGTH: number = 8000;
-
-/**
- * The largest file opened as editable text (50 MB). Bigger files — huge logs, generated SQL, data
- * dumps — open in the binary/hex editor, which windows its reads, instead of being decoded whole
- * into one IPC payload and a Monaco model.
- */
-const MAX_TEXT_FILE_BYTES: number = 50 * 1024 * 1024;
 
 /**
  * Specifies the byte value (NUL) whose presence marks a file as binary.
@@ -136,16 +130,20 @@ export class WorkspaceManager {
   public register(): void {
     ipcMain.handle(
       WorkspaceChannel.Open,
-      (event: IpcMainInvokeEvent): Promise<OpenSelection | null> => {
+      (event: IpcMainInvokeEvent, limitMb: unknown): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Open}`);
-        return this.open(event.sender);
+        return this.open(event.sender, textFileLimitBytes(limitMb));
       },
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        limitMb: unknown,
+      ): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.OpenFile}`);
-        return this.openFile(filePath);
+        return this.openFile(filePath, textFileLimitBytes(limitMb));
       },
     );
     ipcMain.handle(
@@ -211,9 +209,13 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.ReopenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+      (
+        _event: IpcMainInvokeEvent,
+        filePath: unknown,
+        limitMb: unknown,
+      ): Promise<OpenSelection | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReopenFile}`);
-        return this.reopenFile(filePath);
+        return this.reopenFile(filePath, textFileLimitBytes(limitMb));
       },
     );
     ipcMain.handle(
@@ -539,9 +541,10 @@ export class WorkspaceManager {
    * the workspace root; a file is returned as text content, or as a binary marker when it is not
    * decodable text.
    * @param sender The web contents that requested the dialog.
+   * @param limit The largest file, in bytes, opened as text.
    * @returns Returns the selection, or null when the dialog was cancelled or unreadable.
    */
-  private async open(sender: WebContents): Promise<OpenSelection | null> {
+  private async open(sender: WebContents, limit: number): Promise<OpenSelection | null> {
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile', 'openDirectory'],
     });
@@ -559,7 +562,7 @@ export class WorkspaceManager {
       }
       this.trusted.remember(selectedPath);
       logger.debug('WorkspaceManager.open', `Opening file ${selectedPath}`);
-      return await this.readFileSelection(selectedPath);
+      return await this.readFileSelection(selectedPath, limit);
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', `Failed to open ${selectedPath}`, error);
       return null;
@@ -569,9 +572,10 @@ export class WorkspaceManager {
   /**
    * Reads a single file within the workspace for opening in an editor.
    * @param filePath The absolute path of the file to read.
+   * @param limit The largest file, in bytes, opened as text.
    * @returns Returns the file selection (text or binary), or null when invalid or outside the workspace.
    */
-  private async openFile(filePath: unknown): Promise<OpenSelection | null> {
+  private async openFile(filePath: unknown, limit: number): Promise<OpenSelection | null> {
     if (!this.workspace.isWithin(filePath)) {
       // The one exception: a language server's decompiled source for a framework or package symbol,
       // which Go to Definition lands in (#1133). Opened to read only, and not remembered as a recent
@@ -580,14 +584,14 @@ export class WorkspaceManager {
       // knows it by and the one navigation waits for an editor to show (on macOS the two differ —
       // `/var/…` is a link to `/private/var/…`).
       if ((await metadataAsSourcePath(filePath)) !== null) {
-        return this.readDecompiledSource(path.resolve(filePath as string));
+        return this.readDecompiledSource(path.resolve(filePath as string), limit);
       }
       logger.warn('WorkspaceManager.openFile', 'Rejected file outside the workspace');
       return null;
     }
     try {
       const resolved: string = path.resolve(filePath as string);
-      const selection: OpenSelection = await this.readFileSelection(resolved);
+      const selection: OpenSelection = await this.readFileSelection(resolved, limit);
       // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
       this.trusted.remember(resolved);
       return selection;
@@ -600,11 +604,15 @@ export class WorkspaceManager {
   /**
    * Reads a language server's decompiled source for opening read-only.
    * @param filePath The file's absolute path, already known to be a decompiled source.
+   * @param limit The largest file, in bytes, opened as text.
    * @returns Returns the file selection marked read-only, or null when it cannot be read as text.
    */
-  private async readDecompiledSource(filePath: string): Promise<OpenSelection | null> {
+  private async readDecompiledSource(
+    filePath: string,
+    limit: number,
+  ): Promise<OpenSelection | null> {
     try {
-      const selection: OpenSelection = await this.readFileSelection(filePath);
+      const selection: OpenSelection = await this.readFileSelection(filePath, limit);
       if (selection.kind !== 'file') {
         return null;
       }
@@ -855,15 +863,16 @@ export class WorkspaceManager {
    * dialog before, or files already within an open workspace, so the renderer cannot read arbitrary
    * files.
    * @param filePath The absolute file path to re-open.
+   * @param limit The largest file, in bytes, opened as text.
    * @returns Returns the file selection (text or binary), or null when untrusted or unreadable.
    */
-  private async reopenFile(filePath: unknown): Promise<OpenSelection | null> {
+  private async reopenFile(filePath: unknown, limit: number): Promise<OpenSelection | null> {
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
       logger.warn('WorkspaceManager.reopenFile', 'Rejected untrusted file path');
       return null;
     }
     try {
-      return await this.readFileSelection(path.resolve(filePath as string));
+      return await this.readFileSelection(path.resolve(filePath as string), limit);
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', 'Failed to read file selection', error);
       return null;
@@ -975,9 +984,10 @@ export class WorkspaceManager {
    * Reads a file and classifies it as an image, text or binary. Images and binary files are
    * recognised but not decoded, so the renderer can route them to the image viewer or the hex editor.
    * @param filePath The absolute path of the file to read.
+   * @param limit The largest file, in bytes, opened as text (Large File Size Limit).
    * @returns Returns an image, text-file or binary selection.
    */
-  private async readFileSelection(filePath: string): Promise<OpenSelection> {
+  private async readFileSelection(filePath: string, limit: number): Promise<OpenSelection> {
     const stats: Stats = await fs.stat(filePath);
     // An image is recognised by its extension before its contents are sniffed: a PNG would otherwise
     // sniff as binary and an SVG as text, and both belong in the image viewer. The extension list is
@@ -989,7 +999,7 @@ export class WorkspaceManager {
     // A text file past the cap opens in the binary/hex editor, which reads it in windows on demand:
     // decoding a multi-hundred-megabyte log into one string, shipping it over IPC, and mounting it
     // in Monaco would stall the whole application.
-    if (stats.size > MAX_TEXT_FILE_BYTES || (await this.isBinaryFile(filePath))) {
+    if (stats.size > limit || (await this.isBinaryFile(filePath))) {
       logger.debug(
         'WorkspaceManager.readFileSelection',
         `${filePath} classified binary (${stats.size} bytes)`,

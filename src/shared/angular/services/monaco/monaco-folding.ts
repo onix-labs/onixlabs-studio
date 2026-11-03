@@ -19,10 +19,11 @@ const BRACE_FOLDING_LANGUAGES: readonly string[] = [
 ];
 
 /**
- * The line-count above which folding is skipped, so a very large file never pays the whole-document
- * tokenize-and-scan cost on every edit.
+ * The line-count above which folding is skipped when no threshold is given — Large File Feature
+ * Threshold's default — so a very large file never pays the whole-document tokenize-and-scan cost on
+ * every edit.
  */
-const MAX_FOLDING_LINE_COUNT: number = 20000;
+export const DEFAULT_LARGE_FILE_LINES: number = 20000;
 
 /**
  * Matches the token classifications a brace must NOT be inside to count as a real block delimiter: a
@@ -61,10 +62,12 @@ interface BracePosition {
  * indentation folding), so those region and comment folds are re-provided here rather than lost.
  * @param monaco The loaded Monaco namespace, or undefined before it has loaded (a no-op).
  * @param suppressed Returns true for a document a language server folds instead (#1147).
+ * @param maxLines Returns Large File Feature Threshold: above it a file is not folded.
  */
 export function registerBraceFolding(
   monaco: typeof MonacoApi | undefined,
   suppressed: (model: MonacoApi.editor.ITextModel) => boolean = (): boolean => false,
+  maxLines: () => number = (): number => DEFAULT_LARGE_FILE_LINES,
 ): void {
   if (monaco === undefined) {
     return;
@@ -75,7 +78,7 @@ export function registerBraceFolding(
     provideFoldingRanges: (
       model: MonacoApi.editor.ITextModel,
     ): MonacoApi.languages.FoldingRange[] =>
-      suppressed(model) ? [] : computeFoldingRanges(monaco, model),
+      suppressed(model) ? [] : computeFoldingRanges(monaco, model, maxLines()),
   };
   for (const language of BRACE_FOLDING_LANGUAGES) {
     monaco.languages.registerFoldingRangeProvider(language, provider);
@@ -89,13 +92,15 @@ export function registerBraceFolding(
  * consistently.
  * @param monaco The loaded Monaco namespace.
  * @param model The model to fold.
+ * @param maxLines The line count above which the file is not folded (Large File Feature Threshold).
  * @returns Returns the folding ranges, or an empty list for a file past the size guard.
  */
 export function computeFoldingRanges(
   monaco: typeof MonacoApi,
   model: MonacoApi.editor.ITextModel,
+  maxLines: number = DEFAULT_LARGE_FILE_LINES,
 ): MonacoApi.languages.FoldingRange[] {
-  if (model.getLineCount() > MAX_FOLDING_LINE_COUNT) {
+  if (model.getLineCount() > maxLines) {
     return [];
   }
   const tokens: MonacoApi.Token[][] = monaco.editor.tokenize(

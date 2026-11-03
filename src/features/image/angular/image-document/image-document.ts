@@ -826,7 +826,7 @@ export class ImageDocuments implements UnsavedWorkSource {
 
   /**
    * Handles a document's file changing on disk. The echo of its own save is ignored; an unedited
-   * image reloads in place; an edited one raises a keep-or-reload conflict, so edits are never
+   * image does what Reload Files Changed on Disk says; an edited one raises a keep-or-reload conflict, so edits are never
    * silently discarded.
    * @param document The document whose file changed.
    */
@@ -834,12 +834,15 @@ export class ImageDocuments implements UnsavedWorkSource {
     if (document.recentlySaved(SAVE_ECHO_WINDOW_MS)) {
       return;
     }
+    const tabId: string = this.holdersOf(document)[0]?.tabId ?? '';
     if (!document.dirty()) {
-      this.log.info('image.document', 'External change; reloading image', document.path);
-      void document.reload();
+      this.log.info('image.document', 'External change to an unedited image', document.path);
+      this.fileConflicts.changedOnDisk(
+        { documentId: document.path, tabId, name: document.fileName },
+        (): void => void document.reload(),
+      );
       return;
     }
-    const tabId: string = this.holdersOf(document)[0]?.tabId ?? '';
     this.log.warn('image.document', 'External change on edited image', document.path);
     this.fileConflicts.raise(
       { documentId: document.path, tabId, name: document.fileName },

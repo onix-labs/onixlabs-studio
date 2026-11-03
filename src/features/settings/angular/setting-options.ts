@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Display } from '@shared/angular/services/display/display';
 import { FontCatalog } from '@shared/angular/services/fonts/font-catalog';
+import { LanguageInfo, supportedLanguages } from '@shared/angular/services/monaco/monaco-languages';
 import {
   SETTINGS_BY_KEY,
   TERMINAL_FONT_SAME_AS_CODE,
@@ -50,9 +51,28 @@ export class SettingOptions {
         ];
       case 'application.cornerStyle':
         return this.cornerStyles();
+      case 'textEditor.defaultLanguage':
+        return this.newDocumentLanguages();
       default:
         return undefined;
     }
+  }
+
+  /**
+   * Lists the languages a new document may start in: Plain Text first, then every language the editor
+   * knows, by name.
+   * @returns Returns the languages.
+   */
+  private newDocumentLanguages(): readonly ChoiceOption[] {
+    return [
+      { value: 'plaintext', label: 'Plain Text' },
+      ...supportedLanguages()
+        .filter((language: LanguageInfo): boolean => language.id !== 'plaintext')
+        .map((language: LanguageInfo): ChoiceOption => ({
+          value: language.id,
+          label: language.name,
+        })),
+    ];
   }
 
   /**
