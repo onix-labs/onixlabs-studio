@@ -114,11 +114,12 @@ import { CodeDocument, Documents } from '@shared/angular/services/documents/docu
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { idleStopMs, LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { WorkspaceSymbolRouter } from '@shared/angular/services/go-to/workspace-symbol-router';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import { WorkspaceSymbolPalette } from '../workspace-symbols/workspace-symbol-palette';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { PackageModel } from '@features/workspace/angular/project/package-model';
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
@@ -189,14 +190,6 @@ const PRESTART_LANGUAGES: Readonly<Record<string, string>> = {
   rust: 'rust',
   go: 'go',
 };
-
-/**
- * How long a view must stay hidden before its language servers are released. Long enough that tab
- * flipping never churns servers; short enough that a parked checkout stops holding a multi-gigabyte
- * server for the rest of the session. Follow-up: make this configurable alongside
- * `ai.agentSessionLifetime`.
- */
-const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
 
 /**
  * The minimum time the Mission Control Run button shows its launching spinner after a press. A fast
@@ -597,6 +590,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the language-server settings, used to resolve which server serves a prestarted language.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Holds the settings, read for when language servers start and how long a hidden view keeps them.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds this tab's scoped document model.
@@ -1544,7 +1542,9 @@ export class DirectoryView implements OnInit, OnDestroy {
       // resolves its model before the catalogue arrives, and would otherwise never prestart.
       const serverId: string | null =
         language === null ? null : this.lspSettings.serverForLanguage(language);
-      if (model !== null && serverId !== null && this.isActive()) {
+      // Start Language Server: When the First File Opens leaves the server to the first document.
+      const prestart: boolean = this.settings.value('lsp.startMode')() === 'open';
+      if (prestart && model !== null && serverId !== null && this.isActive()) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }
     });
@@ -1558,9 +1558,16 @@ export class DirectoryView implements OnInit, OnDestroy {
         untracked((): void => this.lspClient.resume());
         return;
       }
+      // How long a view stays hidden before its servers go: Stop Idle Language Servers After — long
+      // enough that tab flipping never churns servers, short enough that a parked checkout stops
+      // holding a multi-gigabyte server. Never keeps them for as long as the view lives.
+      const idleMs: number | null = idleStopMs(this.settings.value('lsp.idleStopMinutes')());
+      if (idleMs === null) {
+        return;
+      }
       const reapTimer: ReturnType<typeof setTimeout> = setTimeout((): void => {
         this.lspClient.suspend();
-      }, HIDDEN_LSP_REAP_MS);
+      }, idleMs);
       onCleanup((): void => clearTimeout(reapTimer));
     });
 

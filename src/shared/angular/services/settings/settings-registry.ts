@@ -105,6 +105,17 @@ export type DefaultEndOfLine = 'lf' | 'crlf' | 'system';
 export type TerminalCursorStyle = 'block' | 'bar' | 'underline';
 
 /**
+ * Names the view a generated-code panel starts on: the compiler's static output, or the JIT's.
+ */
+export type GeneratedCodeView = 'static' | 'jit';
+
+/**
+ * Names when a workspace's language server starts: as the workspace opens (for the project kinds that
+ * have one), or only once the first file it serves is opened.
+ */
+export type LspStartMode = 'open' | 'first-file';
+
+/**
  * Names how a terminal draws: on the GPU (WebGL), where Graphics Acceleration allows, or with the
  * standard renderer.
  */
@@ -269,6 +280,10 @@ export interface SettingsValues {
   readonly 'textEditor.defaultEol': DefaultEndOfLine;
   readonly 'textEditor.defaultEncoding': TextEncoding;
   readonly 'textEditor.autoDetectEncoding': boolean;
+  readonly 'textEditor.generatedCodeView': GeneratedCodeView;
+  readonly 'lsp.restartTries': number;
+  readonly 'lsp.idleStopMinutes': number;
+  readonly 'lsp.startMode': LspStartMode;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
   readonly 'textEditor.printMargin': PrintMargin;
 
@@ -1046,6 +1061,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'lf',
       },
+      {
+        key: 'textEditor.generatedCodeView',
+        title: 'Generated Code Default View',
+        description:
+          "The view a generated-code panel opens on: the compiler's static output, or what the JIT " +
+          'produces at run time. Starting on JIT runs the capture as the panel first shows.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'static', label: 'Static' },
+            { value: 'jit', label: 'JIT' },
+          ],
+        },
+        default: 'static',
+      },
     ],
   },
   {
@@ -1159,7 +1189,62 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     // When language servers start, stop and come back.
     id: 'code-language-servers',
     label: 'Code Language Servers',
-    settings: [],
+    settings: [
+      {
+        key: 'lsp.restartTries',
+        title: 'Restart Crashed Language Servers',
+        description:
+          'How many times a language server that crashes is started again, waiting longer each ' +
+          'time, before Studio gives up until you restart it. A server that crashes the same way ' +
+          'twice is not restarted again.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Off' },
+            { value: '3', label: '3 Tries' },
+            { value: '5', label: '5 Tries' },
+            { value: '10', label: '10 Tries' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'lsp.idleStopMinutes',
+        title: 'Stop Idle Language Servers After',
+        description:
+          'Stop the language servers of a workspace tab left in the background, and of a file ' +
+          'opened outside a workspace once it closes, after this long. They start again when ' +
+          'you come back.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '5', label: '5 Minutes' },
+            { value: '10', label: '10 Minutes' },
+            { value: '30', label: '30 Minutes' },
+            { value: '0', label: 'Never' },
+          ],
+        },
+        default: 10,
+      },
+      {
+        key: 'lsp.startMode',
+        title: 'Start Language Server',
+        description:
+          'Start the language server for a .NET, Node, JVM, Python, C++, Rust or Go workspace as ' +
+          'the workspace opens, so it is ready by the first file, or only once the first file it ' +
+          'serves is opened.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'open', label: 'When the Workspace Opens' },
+            { value: 'first-file', label: 'When the First File Opens' },
+          ],
+        },
+        default: 'open',
+      },
+    ],
   },
   {
     // How code looks wherever it appears: editor tabs, diffs, queries, request bodies, Markdown code blocks.
