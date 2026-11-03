@@ -98,7 +98,6 @@ export class BinaryDisasmPanel implements OnDestroy {
     glyphMargin: false,
     lineDecorationsWidth: 0,
     renderLineHighlight: 'none',
-    scrollBeyondLastLine: false,
     contextmenu: false,
     wordWrap: 'off',
     padding: { top: 4 },

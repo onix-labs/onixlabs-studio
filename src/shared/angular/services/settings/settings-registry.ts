@@ -21,6 +21,14 @@ import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
   BraceStyle,
+  BracketPairGuides,
+  ChangeMarginMode,
+  EditorCursorStyle,
+  FoldingControls,
+  IndentGuides,
+  InlayHintsMode,
+  MinimumDiagnosticSeverity,
+  RenderWhitespace,
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
@@ -275,6 +283,26 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
+  readonly 'textEditor.global.renderWhitespace': RenderWhitespace;
+  readonly 'textEditor.global.rulers': string;
+  readonly 'textEditor.global.indentGuides': IndentGuides;
+  readonly 'textEditor.global.bracketPairGuides': BracketPairGuides;
+  readonly 'textEditor.global.matchBrackets': boolean;
+  readonly 'textEditor.global.fontLigatures': boolean;
+  readonly 'textEditor.global.cursorStyle': EditorCursorStyle;
+  readonly 'textEditor.global.cursorWidth': number;
+  readonly 'textEditor.global.smoothScrolling': boolean;
+  readonly 'textEditor.global.scrollBeyondLastLine': boolean;
+  readonly 'textEditor.global.foldingControls': FoldingControls;
+  readonly 'textEditor.global.changeMargin': ChangeMarginMode;
+  readonly 'textEditor.global.inlayHints': InlayHintsMode;
+  readonly 'textEditor.global.semanticHighlighting': boolean;
+  readonly 'textEditor.global.highlightOccurrences': boolean;
+  readonly 'textEditor.global.selectionHighlight': boolean;
+  readonly 'textEditor.global.colourSwatches': boolean;
+  readonly 'textEditor.global.minimumDiagnosticSeverity': MinimumDiagnosticSeverity;
+  readonly 'textEditor.global.mouseWheelZoom': boolean;
+  readonly 'textEditor.zoom': number;
   readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
   readonly 'textEditor.seedFindFrom': 'selection' | 'selection-or-word';
@@ -1367,6 +1395,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'JetBrains Mono',
       },
       {
+        key: 'textEditor.global.fontLigatures',
+        title: 'Font Ligatures',
+        description: "Draw the font's ligatures, joining sequences such as => into one glyph.",
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
         key: 'textEditor.global.fontSize',
         title: 'Font Size',
         description: 'The editor font size in pixels.',
@@ -1458,6 +1493,50 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'off',
       },
       {
+        key: 'textEditor.global.cursorStyle',
+        title: 'Cursor Style',
+        description: 'The shape of the cursor.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'line', label: 'Line' },
+            { value: 'block', label: 'Block' },
+            { value: 'underline', label: 'Underline' },
+          ],
+        },
+        default: 'line',
+      },
+      {
+        key: 'textEditor.global.cursorWidth',
+        title: 'Cursor Width',
+        description: 'The width of the line cursor.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 px' },
+            { value: '2', label: '2 px' },
+            { value: '3', label: '3 px' },
+          ],
+        },
+        visibleWhen: { key: 'textEditor.global.cursorStyle', equals: ['line'] },
+        default: 2,
+      },
+      {
+        key: 'textEditor.global.smoothScrolling',
+        title: 'Smooth Scrolling',
+        description: 'Animate scrolling. Reduce Motion also turns this off.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.scrollBeyondLastLine',
+        title: 'Scroll Beyond Last Line',
+        description: 'Let the editor scroll until the last line is at the top.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
         key: 'textEditor.global.showLineNumbers',
         title: 'Line Numbers',
         description: 'Show line numbers in the gutter.',
@@ -1474,12 +1553,46 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'textEditor.global.colorBrackets',
-        title: 'Coloured Brackets',
-        description: 'Colour matching bracket pairs by their nesting depth.',
+        key: 'textEditor.global.foldingControls',
+        title: 'Folding Controls',
+        description: 'When the fold controls show in the gutter.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'hover', label: 'On Hover' },
+          ],
+        },
+        default: 'always',
+      },
+      {
+        key: 'textEditor.global.changeMargin',
+        title: 'Change Margin',
+        description: 'Which lines the bars beside the line numbers mark.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'unsaved', label: 'Unsaved Only' },
+            { value: 'all', label: 'Saved and Unsaved' },
+          ],
+        },
+        default: 'all',
+      },
+      {
+        key: 'textEditor.global.mouseWheelZoom',
+        title: 'Mouse Wheel Zoom',
+        description: 'Zoom the editors with the mouse wheel while holding ⌘ or Ctrl.',
         control: { kind: 'toggle' },
-        profileOverridable: true,
-        default: true,
+        default: false,
+      },
+      {
+        // Set from the zoom menu on the status strip, and remembered; it has no row of its own.
+        key: 'textEditor.zoom',
+        title: 'Editor Zoom',
+        description: 'The zoom level of the code editors, as a percentage.',
+        control: { kind: 'custom', component: 'editor-zoom' },
+        default: 100,
       },
       {
         key: 'textEditor.global.accentSelection',
@@ -1513,6 +1626,147 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'regular',
+      },
+    ],
+  },
+  {
+    // What the editor draws over the code: guides, rulers, hints and highlights. Split from Code Appearance
+    // because a settings page is a flat list, and that one had outgrown it.
+    id: 'code-highlighting',
+    label: 'Code Guides and Highlights',
+    settings: [
+      {
+        key: 'textEditor.global.colorBrackets',
+        title: 'Coloured Brackets',
+        description: 'Colour matching bracket pairs by their nesting depth.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.matchBrackets',
+        title: 'Matching Bracket Highlight',
+        description: 'Highlight the bracket that matches the one at the cursor.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.bracketPairGuides',
+        title: 'Bracket Pair Guides',
+        description: 'Draw a guide between matching brackets.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'active', label: 'Active Pair' },
+            { value: 'all', label: 'All' },
+          ],
+        },
+        default: 'off',
+      },
+      {
+        key: 'textEditor.global.indentGuides',
+        title: 'Indent Guides',
+        description: 'Draw a guide at each indentation level.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'on', label: 'On' },
+            { value: 'highlight-active', label: 'On and Highlight Active' },
+          ],
+        },
+        default: 'highlight-active',
+      },
+      {
+        key: 'textEditor.global.renderWhitespace',
+        title: 'Render Whitespace',
+        description: 'Which whitespace the editor draws.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'boundary', label: 'Boundary' },
+            { value: 'selection', label: 'Selection' },
+            { value: 'trailing', label: 'Trailing' },
+            { value: 'all', label: 'All' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'selection',
+      },
+      {
+        key: 'textEditor.global.rulers',
+        title: 'Rulers',
+        description: 'The columns to draw a ruler at, separated by commas.',
+        control: { kind: 'text', placeholder: '80, 120' },
+        profileOverridable: true,
+        default: '',
+      },
+      {
+        key: 'textEditor.global.inlayHints',
+        title: 'Inlay Hints',
+        description:
+          'Show the hints a language server sets into the code, such as parameter names and inferred ' +
+          'types. While Holding means ⌥ on macOS, and Ctrl+Alt elsewhere.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+            { value: 'while-holding', label: 'While Holding' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'on',
+      },
+      {
+        key: 'textEditor.global.semanticHighlighting',
+        title: 'Semantic Highlighting',
+        description:
+          'Colour types, members and parameters by what they are, not only how they read.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.highlightOccurrences',
+        title: 'Highlight Occurrences',
+        description: 'Highlight the other occurrences of the symbol at the cursor.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.selectionHighlight',
+        title: 'Selection Highlight',
+        description: 'Highlight the other matches of the selected text.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.colourSwatches',
+        title: 'Colour Swatches',
+        description: 'Show a swatch beside colour values.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.minimumDiagnosticSeverity',
+        title: 'Minimum Diagnostic Severity',
+        description:
+          'The least severe problem the editor underlines. The Problems panel still lists them all.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'hint', label: 'Hint' },
+            { value: 'info', label: 'Info' },
+            { value: 'warning', label: 'Warning' },
+            { value: 'error', label: 'Error' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'hint',
       },
     ],
   },
@@ -3041,6 +3295,7 @@ export const SETTINGS_DEFAULTS: SettingsValues = Object.fromEntries(
 export const CODE_SECTION_IDS: readonly string[] = [
   'code-general',
   'code-appearance',
+  'code-highlighting',
   'code-editing',
   'code-find',
   'code-diffs',

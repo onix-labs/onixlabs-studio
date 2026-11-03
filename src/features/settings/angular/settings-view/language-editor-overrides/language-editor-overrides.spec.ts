@@ -12,6 +12,10 @@ import { LanguageEditorOverrides } from './language-editor-overrides';
 const CSHARP_ALLMAN: Record<string, unknown> = { csharp: { braceStyle: 'allman' } };
 
 describe('LanguageEditorOverrides', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let component: LanguageEditorOverrides;
   let fixture: ComponentFixture<LanguageEditorOverrides>;
   let settings: Settings;
@@ -61,8 +65,8 @@ describe('LanguageEditorOverrides', () => {
     expect(element.querySelector('.language-editor-overrides__subtitle')?.textContent).toContain(
       'Rust files',
     );
-    // Nine overridable settings, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(9);
+    // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
+    expect(element.querySelectorAll('app-setting-row').length).toBe(15);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -162,8 +166,22 @@ describe('LanguageEditorOverrides', () => {
   it('section_showsOnlyThatPagesOverridableSettings', async () => {
     fixture.componentRef.setInput('section', 'code-appearance');
     await fixture.whenStable();
-    expect(titles()).toEqual(['Line Numbers', 'Minimap', 'Coloured Brackets', 'Sticky Scroll']);
-    expect(element.textContent).toContain('untick to follow Code › Appearance');
+    // How code looks, which the global settings spread over two pages.
+    expect(titles()).toEqual([
+      'Line Numbers',
+      'Minimap',
+      'Sticky Scroll',
+      'Coloured Brackets',
+      'Render Whitespace',
+      'Rulers',
+      'Inlay Hints',
+      'Semantic Highlighting',
+      'Colour Swatches',
+      'Minimum Diagnostic Severity',
+    ]);
+    expect(element.textContent).toContain(
+      'untick to follow Code › Appearance and Code › Guides and Highlights',
+    );
 
     fixture.componentRef.setInput('section', 'code-editing');
     await fixture.whenStable();
@@ -174,6 +192,17 @@ describe('LanguageEditorOverrides', () => {
       'Format on Type',
       'Brace Style',
     ]);
+  });
+
+  it('rulers_whenOverridden_keepsTheTextTypedForTheLanguage', async () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.setLanguageOverride('rust', 'rulers', '100');
+    fixture.componentRef.setInput('section', 'code-appearance');
+    await fixture.whenStable();
+
+    const field: HTMLInputElement | null = element.querySelector('app-text-field input');
+    expect(field?.value).toBe('100');
+    expect(field?.disabled).toBe(false);
   });
 
   it('braceStyle_whenTheLanguagesServerDoesNotTakeIt_saysSo', async () => {

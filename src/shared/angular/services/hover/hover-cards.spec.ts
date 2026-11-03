@@ -7,6 +7,7 @@ import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { HoverCardContent, MARKER_SEVERITY } from './hover-content';
 import { HoverCards } from './hover-cards';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * The model URI of the editor under test.
@@ -246,6 +247,7 @@ describe('HoverCards (#1020)', () => {
 
   afterEach(() => {
     detach();
+    localStorage.removeItem('settings');
     delete (window as unknown as { monaco?: unknown }).monaco;
     document.body.innerHTML = '';
   });
@@ -271,6 +273,18 @@ describe('HoverCards (#1020)', () => {
       quickFix: true,
       actions: { definition: true, references: true, referencesListed: false },
     });
+  });
+
+  it('contentAt_belowTheMinimumSeverity_leavesTheProblemOut', async () => {
+    TestBed.inject(Settings).set('textEditor.global.minimumDiagnosticSeverity', 'error');
+
+    const content: HoverCardContent | null = await cards.contentAt(fake.editor, {
+      kind: 'text',
+      position: { lineNumber: 3, column: 12 },
+      anchor: { startLineNumber: 3, startColumn: 10, endLineNumber: 3, endColumn: 21 },
+    });
+
+    expect(content?.problems).toEqual([]);
   });
 
   it('contentAt_offTheWords_hasNoActions_andTheGutterShowsItsDescriptionsAlone', async () => {

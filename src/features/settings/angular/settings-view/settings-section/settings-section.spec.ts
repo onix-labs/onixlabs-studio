@@ -8,6 +8,10 @@ import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
 import { SettingsSection } from './settings-section';
 
 describe('SettingsSection', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let fixture: ComponentFixture<SettingsSection>;
 
   beforeEach(async () => {
@@ -132,7 +136,18 @@ describe('SettingsSection', () => {
   it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {
     // How code looks wherever it appears, Print Margins among them.
     const element: HTMLElement = await render('code-appearance');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(19);
+  });
+
+  it('render_whenCodeHighlightingSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('code-highlighting');
     expect(element.querySelectorAll('app-setting-row').length).toBe(12);
+  });
+
+  it('render_whenTheCursorIsNotALine_hidesCursorWidth', async () => {
+    TestBed.inject(Settings).set('textEditor.global.cursorStyle', 'block');
+    const element: HTMLElement = await render('code-appearance');
+    expect(element.textContent).not.toContain('Cursor Width');
   });
 
   it('render_whenPrintingSection_rendersTheSharedPrintSettings', async () => {

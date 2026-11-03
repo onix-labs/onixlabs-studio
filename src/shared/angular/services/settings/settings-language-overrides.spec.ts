@@ -6,8 +6,10 @@ import {
   resolveForLanguage,
   setLanguageOverride,
 } from './settings-language-overrides';
+import { TEXT_EDITOR_SETTINGS } from './text-editor-settings.fixture';
 
 const GLOBAL: TextEditorSettings = {
+  ...TEXT_EDITOR_SETTINGS,
   showLineNumbers: true,
   showMinimap: true,
   currentLineHighlight: 'filled',

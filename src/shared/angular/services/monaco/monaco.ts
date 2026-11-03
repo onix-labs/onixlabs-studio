@@ -1,4 +1,4 @@
-import { inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { effect, inject, Injector, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import {
   CurrentLineHighlightStyle,
@@ -22,6 +22,7 @@ import {
   HEURISTIC_SEMANTIC_TOKEN_LEGEND,
 } from './monaco-heuristic-tokens';
 import { defineThemes } from './monaco-themes';
+import { editorAppearanceOptions } from './editor-appearance-options';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
@@ -292,6 +293,12 @@ export class Monaco {
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
 
   /**
+   * Holds the emitter asking Monaco for the heuristic semantic tokens again, or null before Monaco
+   * loads.
+   */
+  private heuristicTokensChanged: MonacoApi.Emitter<void> | null = null;
+
+  /**
    * Holds predicates that leave Monaco's word-based suggestions out of the completion list for the
    * documents they own. A language server registers one (via {@link suppressWordSuggestionsWhen}), so
    * a document it serves lists only what the server suggests (#1021).
@@ -317,6 +324,16 @@ export class Monaco {
    * Gets a value indicating whether Monaco has finished loading.
    */
   public readonly isLoaded: Signal<boolean> = this.loadedSignal.asReadonly();
+
+  /**
+   * Initialises the service, asking for the heuristic tokens again when Semantic Highlighting changes.
+   */
+  public constructor() {
+    effect((): void => {
+      this.settings.semanticHighlightingChoices();
+      this.heuristicTokensChanged?.fire();
+    });
+  }
 
   /**
    * Ensures Monaco is loaded, configuring the worker environment and registering themes on first
@@ -507,8 +524,7 @@ export class Monaco {
       stickyScroll: { enabled: resolved.stickyScroll },
       formatOnType: resolved.formatOnType,
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
-      scrollBeyondLastLine: false,
-      renderWhitespace: 'selection',
+      ...editorAppearanceOptions(resolved),
       tabSize: resolved.tabSize,
       insertSpaces: resolved.insertSpaces,
       // Honour the configured indent verbatim rather than inferring it from file contents, so the
@@ -516,6 +532,7 @@ export class Monaco {
       detectIndentation: false,
       cursorBlinking: resolved.cursorBlinking,
       ...this.motionOptions(resolved),
+      inlayHints: { enabled: resolved.inlayHints === 'on' ? 'on' : 'off' },
       padding: { top: 16 },
       // Colour language-server semantic tokens (types, members, parameters) for every theme, not only
       // the languages with a built-in Monaco worker.
@@ -535,7 +552,7 @@ export class Monaco {
   }
 
   /**
-   * Builds the editor options Reduce Motion governs: smooth scrolling, and the smooth caret the code
+   * Builds the editor options Reduce Motion governs: the smooth scrolling and smooth caret the code
    * settings choose, both off while motion is reduced. Reads the setting reactively, so an effect
    * that applies these follows it.
    * @param resolved The code settings in force.
@@ -546,7 +563,7 @@ export class Monaco {
   ): Pick<MonacoApi.editor.IEditorOptions, 'smoothScrolling' | 'cursorSmoothCaretAnimation'> {
     const reduced: boolean = this.accessibility.reducedMotion();
     return {
-      smoothScrolling: !reduced,
+      smoothScrolling: resolved.smoothScrolling && !reduced,
       cursorSmoothCaretAnimation: reduced ? 'off' : resolved.cursorSmoothCaretAnimation,
     };
   }
@@ -590,7 +607,7 @@ export class Monaco {
 
   /**
    * Builds the diff options that follow the settings while a diff is open: how changes are found and
-   * shown, and the Code settings a diff shares with the editor — word wrap, minimap and line numbers.
+   * shown, and the Code settings a diff shares with the editor.
    * Applied when a diff is created and again whenever one of them changes.
    * @param ignoreWhitespace Whether leading and trailing whitespace changes are left out.
    * @returns Returns the options.
@@ -612,6 +629,8 @@ export class Monaco {
       wordWrap: resolved.wordWrap ? 'on' : 'off',
       minimap: { enabled: resolved.showMinimap },
       lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
+      renderWhitespace: resolved.renderWhitespace,
+      fontLigatures: resolved.fontLigatures,
     };
   }
 
@@ -1057,14 +1076,16 @@ export class Monaco {
       return;
     }
 
+    this.heuristicTokensChanged = new monaco.Emitter<void>();
     for (const languageId of HEURISTIC_SEMANTIC_TOKEN_LANGUAGES) {
       monaco.languages.registerDocumentSemanticTokensProvider(languageId, {
+        onDidChange: this.heuristicTokensChanged.event,
         getLegend: (): MonacoApi.languages.SemanticTokensLegend => HEURISTIC_SEMANTIC_TOKEN_LEGEND,
         releaseDocumentSemanticTokens: (): void => undefined,
         provideDocumentSemanticTokens: (
           model: MonacoApi.editor.ITextModel,
         ): MonacoApi.languages.SemanticTokens | null => {
-          if (this.isHeuristicTokensSuppressed(model)) {
+          if (!this.semanticHighlightingEnabled(model) || this.isHeuristicTokensSuppressed(model)) {
             return null;
           }
           const source: string = model.getValue();
@@ -1073,6 +1094,18 @@ export class Monaco {
         },
       });
     }
+  }
+
+  /**
+   * Gets whether Semantic Highlighting is on for a model's language. Token providers ask this rather
+   * than the editors being told through `semanticHighlighting.enabled`: `updateOptions` writes that
+   * key to the configuration one Monaco instance shares across its editors, so a per-language value
+   * would be whichever editor updated last.
+   * @param model The model a token request is for.
+   * @returns Returns true when the model's code is coloured by semantic tokens.
+   */
+  public semanticHighlightingEnabled(model: MonacoApi.editor.ITextModel): boolean {
+    return this.settings.resolveSettingsForLanguage(model.getLanguageId()).semanticHighlighting;
   }
 
   /**

@@ -362,6 +362,8 @@ describe('LspFeatures', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
+  let semanticHighlightingOn: boolean = true;
+
   /**
    * Builds the service with a fake Monaco namespace and a single document resolver, then waits for
    * provider registration.
@@ -371,6 +373,7 @@ describe('LspFeatures', () => {
     const monaco: unknown = {
       ensureLoaded: (): Promise<void> => Promise.resolve(),
       getMonaco: (): unknown => fakeMonacoNamespace(captured, openModels),
+      semanticHighlightingEnabled: (): boolean => semanticHighlightingOn,
       suppressHeuristicTokensWhen: (predicate: (model: unknown) => boolean): (() => void) => {
         suppressWhen = predicate;
         return (): void => undefined;
@@ -2690,6 +2693,19 @@ describe('LspFeatures', () => {
 
     // class -> type index 2; method -> 13, re-encoded from the class token (line 1, char 0).
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 2, 0, 1, 0, 4, 13, 0]);
+  });
+
+  it('semanticTokens_whenSemanticHighlightingIsOff_makesNoRequest', async () => {
+    semanticLegend = { tokenTypes: ['class'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 1, 0, 0] };
+    semanticHighlightingOn = false;
+    await build();
+    const model: unknown = fakeModel(MODEL_URI, 'typescript', 'Widget');
+    const tokens: unknown = await captured.semantic?.provideDocumentSemanticTokens(model);
+    semanticHighlightingOn = true;
+
+    expect(requests).toHaveLength(0);
+    expect(tokens).toBeUndefined();
   });
 
   it('semanticTokens_withoutServerLegend_makesNoRequest', async () => {

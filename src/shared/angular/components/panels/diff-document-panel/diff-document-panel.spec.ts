@@ -26,11 +26,13 @@ import { DiffView } from '../diff-view/diff-view';
 import { DiffDocumentPanel } from './diff-document-panel';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { TEXT_EDITOR_SETTINGS as DEFAULT_SETTINGS } from '@shared/angular/services/settings/text-editor-settings.fixture';
 
 /**
  * The text-editor settings the stubbed {@link Settings} hands out.
  */
 const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
+  ...DEFAULT_SETTINGS,
   showLineNumbers: true,
   showMinimap: false,
   currentLineHighlight: 'outline',

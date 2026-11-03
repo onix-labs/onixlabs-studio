@@ -8,11 +8,13 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
 import { DiffView } from './diff-view';
+import { TEXT_EDITOR_SETTINGS as DEFAULT_SETTINGS } from '@shared/angular/services/settings/text-editor-settings.fixture';
 
 /**
  * The text-editor settings the stubbed {@link Settings} hands out.
  */
 const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
+  ...DEFAULT_SETTINGS,
   showLineNumbers: true,
   showMinimap: false,
   currentLineHighlight: 'outline',

@@ -1,9 +1,10 @@
 import { STUDIO_REFERENCES_LENS_COMMAND } from '@shared/angular/services/monaco/monaco-navigation-commands';
 import { applyAutoInsert } from '@shared/angular/services/monaco/monaco-auto-insert';
-import { inject, Service } from '@angular/core';
+import { effect, inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   LspChannel,
   LspSemanticTokensLegend,
@@ -790,6 +791,11 @@ export class LspFeatures {
   private readonly monaco: Monaco = inject(Monaco);
 
   /**
+   * Holds the settings, whose Semantic Highlighting choices ask for tokens again when they change.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the editor registry used to map a model URI to its file path and back.
    */
   private readonly editors: Editors = inject(Editors);
@@ -952,6 +958,14 @@ export class LspFeatures {
       return;
     }
     void this.monaco.ensureLoaded().then((): void => this.registerProviders());
+    let previous: string | undefined;
+    effect((): void => {
+      const choices: string = this.settings.semanticHighlightingChoices();
+      if (previous !== undefined) {
+        this.refreshSemanticTokens();
+      }
+      previous = choices;
+    });
   }
 
   /**
@@ -2003,6 +2017,9 @@ export class LspFeatures {
   private provideSemanticTokens(
     model: MonacoApi.editor.ITextModel,
   ): Promise<MonacoApi.languages.SemanticTokens | undefined> {
+    if (!this.monaco.semanticHighlightingEnabled(model)) {
+      return Promise.resolve(undefined);
+    }
     const key: string = model.uri.toString();
     const pending: Promise<MonacoApi.languages.SemanticTokens | undefined> | undefined =
       this.pendingTokenRequests.get(key);
