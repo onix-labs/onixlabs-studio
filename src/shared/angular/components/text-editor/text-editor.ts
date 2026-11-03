@@ -796,6 +796,23 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Converts the document's line endings, as an edit the user can undo; the content change that
+   * follows marks the document edited.
+   * @param eol The line ending to use.
+   */
+  public setEol(eol: TextEditorEol): void {
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    const model: MonacoApi.editor.ITextModel | null | undefined = this.editor?.getModel();
+    if (monaco === undefined || model === null || model === undefined || this.readEol() === eol) {
+      return;
+    }
+    model.pushEOL(
+      eol === 'CRLF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF,
+    );
+    this.log.debug('TextEditor', `Converted line endings to ${eol}`, this.modelUri);
+  }
+
+  /**
    * Reads the editor model's end-of-line sequence.
    * @returns Returns 'CRLF' when the model uses CRLF, otherwise 'LF'.
    */

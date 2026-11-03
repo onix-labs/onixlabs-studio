@@ -1,7 +1,9 @@
 import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import { FileInfo } from '@shared/api/file-channels';
+import { FileInfo, FileWriteResult } from '@shared/api/file-channels';
+import type { TextEncoding } from '@shared/api/text-encodings';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { DockPanelPlaceholder } from '@shared/angular/components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -585,5 +587,114 @@ describe('Documents, with files on disk (#1236)', () => {
 
     expect(documents.get(tab.id)?.content()).toBe('mine');
     expect(TestBed.inject(FileConflicts).activeConflict()?.unedited).toBeUndefined();
+  });
+});
+
+describe('Documents, in an encoding (#1236)', () => {
+  let documents: Documents;
+  let writes: { content: string; hasBom: boolean; encoding: TextEncoding }[];
+  let writeResult: FileWriteResult;
+  let reads: { path: string; encoding: TextEncoding | undefined }[];
+  let onDisk: FileInfo | null;
+  let notified: string[];
+
+  beforeEach(() => {
+    localStorage.removeItem('settings');
+    writes = [];
+    reads = [];
+    notified = [];
+    writeResult = { success: true, path: SAMPLE_FILE.path };
+    onDisk = null;
+    TestBed.configureTestingModule({
+      providers: [
+        provideUnsavedWork(Documents),
+        {
+          provide: FileSystem,
+          useValue: {
+            write: (
+              _path: string,
+              content: string,
+              hasBom: boolean,
+              encoding: TextEncoding,
+            ): Promise<FileWriteResult> => {
+              writes.push({ content, hasBom, encoding });
+              return Promise.resolve(writeResult);
+            },
+            read: (path: string, encoding?: TextEncoding): Promise<FileInfo | null> => {
+              reads.push({ path, encoding });
+              return Promise.resolve(onDisk);
+            },
+          },
+        },
+        {
+          provide: FileWatch,
+          useValue: { watch: (): (() => void) => (): void => undefined },
+        },
+        {
+          provide: Notifications,
+          useValue: {
+            notify: (request: { readonly title: string }): void =>
+              void notified.push(request.title),
+          },
+        },
+      ],
+    });
+    documents = TestBed.inject(Documents);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  it('savesAFileInTheEncodingItWasReadIn', async () => {
+    const tab: Tab = documents.openFileInfo(
+      { ...SAMPLE_FILE, encoding: 'utf16le', hasBom: true },
+      'code',
+    );
+    documents.setContent(tab.id, 'changed');
+
+    expect(await documents.save(tab.id)).toBe(true);
+    expect(writes).toEqual([{ content: 'changed', hasBom: true, encoding: 'utf16le' }]);
+  });
+
+  it('aNewDocument_startsInDefaultEncoding_withAByteOrderMarkForUtf16', () => {
+    TestBed.inject(Settings).set('textEditor.defaultEncoding', 'utf16be');
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+
+    const document: CodeDocument = documents.ensure(tab.id);
+    expect(document.encoding()).toBe('utf16be');
+    expect(document.hasBom()).toBe(true);
+  });
+
+  it('saveWithEncoding_switchesTheEncoding_andKeepsTheOldOneWhenTheSaveFails', async () => {
+    const tab: Tab = documents.openFileInfo({ ...SAMPLE_FILE, encoding: 'utf8' }, 'code');
+
+    expect(await documents.saveWithEncoding(tab.id, 'windows1252')).toBe(true);
+    expect(writes[0]).toEqual({
+      content: SAMPLE_FILE.content,
+      hasBom: false,
+      encoding: 'windows1252',
+    });
+    expect(documents.get(tab.id)?.encoding()).toBe('windows1252');
+
+    writeResult = { success: false, error: 'The text cannot be saved in ISO 8859-1: “€”' };
+    expect(await documents.saveWithEncoding(tab.id, 'iso88591')).toBe(false);
+    expect(documents.get(tab.id)?.encoding()).toBe('windows1252');
+    // A failed save says why, rather than failing silently.
+    expect(notified).toEqual(["main.ts wasn't saved"]);
+  });
+
+  it('reopenWithEncoding_readsTheFileAgainInIt_andGivesUpTheEdits', async () => {
+    const tab: Tab = documents.openFileInfo({ ...SAMPLE_FILE, encoding: 'utf8' }, 'code');
+    documents.setContent(tab.id, 'unsaved');
+    onDisk = { ...SAMPLE_FILE, content: 'naÃ¯ve', encoding: 'iso88591', hasBom: false };
+
+    expect(await documents.reopenWithEncoding(tab.id, 'iso88591')).toBe(true);
+
+    expect(reads).toEqual([{ path: SAMPLE_FILE.path, encoding: 'iso88591' }]);
+    const document: CodeDocument | undefined = documents.get(tab.id);
+    expect(document?.content()).toBe('naÃ¯ve');
+    expect(document?.dirty()).toBe(false);
+    expect(document?.encoding()).toBe('iso88591');
   });
 });

@@ -23,6 +23,9 @@ import {
   computeMarkdownStats,
   MarkdownStats,
 } from '@features/markdown/angular/markdown-status/markdown-status';
+import { encodingLabel } from '@shared/api/text-encodings';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { codeDocumentActions } from '@shared/angular/services/document-status/document-encoding-actions';
 
 /**
  * Represents the lean markdown surface mounted in a workspace document well: the shared
@@ -112,6 +115,12 @@ export class MarkdownDocumentPanel {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
+   * edits.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
    * Holds the well status strip this panel publishes to while it is the active document.
    */
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
@@ -170,12 +179,18 @@ export class MarkdownDocumentPanel {
         return;
       }
       const stats: MarkdownStats = computeMarkdownStats(document.content());
-      const encoding: string = document.encoding();
       this.documentStatus.set(this.documentId(), {
         words: stats.words,
         readMinutes: stats.readMinutes,
         language: document.language(),
-        encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
+        encoding: encodingLabel(document.encoding(), document.hasBom()),
+        // Reopen and save in another encoding; a prose document shows no line endings to convert.
+        actions: codeDocumentActions({
+          document,
+          documents: this.documents,
+          fileSystem: this.fileSystem,
+          pane: (): undefined => undefined,
+        }),
       });
     });
 

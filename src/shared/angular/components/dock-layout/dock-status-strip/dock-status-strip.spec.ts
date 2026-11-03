@@ -9,6 +9,7 @@ import {
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockStatusStrip } from './dock-status-strip';
+import type { TextEncoding } from '@shared/api/text-encodings';
 
 describe('DockStatusStrip', () => {
   let component: DockStatusStrip;
@@ -88,6 +89,42 @@ describe('DockStatusStrip', () => {
     expect(text).toContain('LF');
     expect(text).toContain('UTF-8');
     expect(text).toContain('100%');
+  });
+
+  it('eolAndEncoding_openMenusThatActOnTheDocument_whenItHasActions', async () => {
+    const did: string[] = [];
+    documentStatus.set('owner', {
+      ...info,
+      actions: {
+        reopenWithEncoding: (encoding: TextEncoding): void => void did.push(`reopen ${encoding}`),
+        saveWithEncoding: (encoding: TextEncoding): void => void did.push(`save ${encoding}`),
+        setEol: (eol: 'LF' | 'CRLF'): void => void did.push(`eol ${eol}`),
+      },
+    });
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[data-testid="status-encoding"]')?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(document.body.textContent).toContain('Reopen with Encoding');
+    expect(document.body.textContent).toContain('Save with Encoding');
+
+    const strip: { setEol(id: string): void; chooseEncoding(id: string): void } =
+      component as unknown as { setEol(id: string): void; chooseEncoding(id: string): void };
+    strip.chooseEncoding('save:windows1252');
+    strip.chooseEncoding('reopen:utf16be');
+    strip.setEol('CRLF');
+    expect(did).toEqual(['save windows1252', 'reopen utf16be', 'eol CRLF']);
+  });
+
+  it('eolAndEncoding_onlyShowTheirValue_withoutActions', () => {
+    documentStatus.set('owner', info);
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[data-testid="status-encoding"]')?.click();
+    fixture.detectChanges();
+
+    expect(document.body.textContent).not.toContain('Reopen with Encoding');
   });
 
   it('render_whenAProseDocumentPublishes_showsWordCountAndReadTimeWithoutCodeSegments', () => {

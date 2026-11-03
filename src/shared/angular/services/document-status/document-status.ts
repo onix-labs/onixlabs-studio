@@ -1,3 +1,4 @@
+import type { TextEncoding } from '@shared/api/text-encodings';
 import { ChipTone } from '@shared/angular/components/chip/chip';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
@@ -123,6 +124,33 @@ export interface DocumentStatusInfo {
    * Gets the document's encoding label (for example "UTF-8" or "UTF-8 with BOM").
    */
   readonly encoding?: string;
+
+  /**
+   * Gets what the strip's end-of-line and encoding segments can do to the document, or undefined when
+   * they only show it (#1236).
+   */
+  readonly actions?: DocumentStatusActions;
+}
+
+/**
+ * Describes what a document's status strip may do to it: reopen or save it in another encoding, and
+ * change its line endings. A segment whose action is absent shows its value only.
+ */
+export interface DocumentStatusActions {
+  /**
+   * Reopens the document's file in an encoding, or is absent when it has no file to reopen.
+   */
+  readonly reopenWithEncoding?: (encoding: TextEncoding) => void;
+
+  /**
+   * Saves the document in an encoding, or is absent when it cannot be saved.
+   */
+  readonly saveWithEncoding?: (encoding: TextEncoding) => void;
+
+  /**
+   * Converts the document's line endings, or is absent when they cannot be changed.
+   */
+  readonly setEol?: (eol: 'LF' | 'CRLF') => void;
 }
 
 /**

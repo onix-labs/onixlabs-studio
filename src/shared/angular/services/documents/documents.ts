@@ -7,7 +7,9 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { FileInfo } from '@shared/api/file-channels';
+import { FileInfo, FileWriteResult } from '@shared/api/file-channels';
+import type { TextEncoding } from '@shared/api/text-encodings';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings, type TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -31,9 +33,9 @@ import {
 const UNTITLED_NAME: string = 'Untitled';
 
 /**
- * Holds the encoding label assumed for a new, unsaved document.
+ * Holds the encoding assumed for a file read without saying which (synthesised file infos).
  */
-const DEFAULT_ENCODING: string = 'UTF-8';
+const ASSUMED_ENCODING: TextEncoding = 'utf8';
 
 /**
  * Holds how long after typing stops an edited document saves itself when Auto Save is After a Delay,
@@ -123,12 +125,13 @@ export interface CodeDocument {
   readonly dirty: Signal<boolean>;
 
   /**
-   * Gets the text encoding label (for example "UTF-8").
+   * Gets the text encoding the document is read and saved in.
    */
-  readonly encoding: Signal<string>;
+  readonly encoding: Signal<TextEncoding>;
 
   /**
-   * Gets a value indicating whether the file is, or will be saved, with a UTF-8 byte-order mark.
+   * Gets a value indicating whether the file is, or will be saved, with its encoding's byte-order
+   * mark.
    */
   readonly hasBom: Signal<boolean>;
 
@@ -180,9 +183,9 @@ interface DocumentEntry {
   readonly original: WritableSignal<string>;
 
   /**
-   * Gets the writable text encoding label.
+   * Gets the writable text encoding.
    */
-  readonly encoding: WritableSignal<string>;
+  readonly encoding: WritableSignal<TextEncoding>;
 
   /**
    * Gets the writable byte-order-mark flag.
@@ -255,6 +258,11 @@ export class Documents implements UnsavedWorkSource {
    * Holds the settings, read for the language a new document starts in and for auto save.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the notifications, which say why a save failed.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
@@ -559,7 +567,7 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(id);
     this.watchEntry(id);
@@ -589,7 +597,7 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     this.syncTab(tab.id);
     this.watchEntry(tab.id);
@@ -631,7 +639,7 @@ export class Documents implements UnsavedWorkSource {
     entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
-    entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
+    entry.encoding.set(fileInfo.encoding ?? ASSUMED_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     entry.readOnly.set(fileInfo.readOnly === true);
     this.watchEntry(id);
@@ -811,15 +819,12 @@ export class Documents implements UnsavedWorkSource {
       return this.saveAs(id);
     }
     const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(filePath, content, entry.hasBom()))
-      .success;
+    const success: boolean = await this.write(entry, filePath, content);
     if (success) {
       entry.original.set(content);
       this.syncTab(id);
       this.recordRecent(entry);
       this.log.info('Documents', `Saved '${entry.fileName()}'`, id, filePath);
-    } else {
-      this.log.warn('Documents', `Save failed for '${entry.fileName()}'`, id, filePath);
     }
     return success;
   }
@@ -840,8 +845,7 @@ export class Documents implements UnsavedWorkSource {
       return false;
     }
     const content: string = entry.content();
-    const success: boolean = (await this.fileSystem.write(targetPath, content, entry.hasBom()))
-      .success;
+    const success: boolean = await this.write(entry, targetPath, content);
     if (success) {
       entry.filePath.set(targetPath);
       entry.fileName.set(this.basename(targetPath));
@@ -855,6 +859,92 @@ export class Documents implements UnsavedWorkSource {
       this.log.warn('Documents', 'Save-as failed', id, targetPath);
     }
     return success;
+  }
+
+  /**
+   * Saves a document in another encoding: converts it and writes it in that one from now on. When the
+   * text holds a character the encoding cannot, nothing is written and the document keeps its own.
+   * @param id The owning tab identifier.
+   * @param encoding The encoding to save in.
+   * @returns Returns true when the document was saved.
+   */
+  public async saveWithEncoding(id: string, encoding: TextEncoding): Promise<boolean> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    if (entry === undefined || entry.readOnly()) {
+      return false;
+    }
+    const previous: { encoding: TextEncoding; hasBom: boolean } = {
+      encoding: entry.encoding(),
+      hasBom: entry.hasBom(),
+    };
+    entry.encoding.set(encoding);
+    // UTF-16 is written with its byte-order mark, so it reads back as UTF-16; UTF-8 keeps the file's
+    // choice; a single-byte encoding has none.
+    entry.hasBom.set(
+      encoding === 'utf8'
+        ? previous.encoding === 'utf8' && previous.hasBom
+        : encoding === 'utf16le' || encoding === 'utf16be',
+    );
+    this.log.info('Documents', `Saving '${entry.fileName()}' as ${encoding}`, id);
+    if (await this.save(id)) {
+      return true;
+    }
+    entry.encoding.set(previous.encoding);
+    entry.hasBom.set(previous.hasBom);
+    return false;
+  }
+
+  /**
+   * Reopens a document's file decoded in an encoding, whatever its bytes suggest: for a file read in
+   * the wrong one. Unsaved edits are given up, so a caller asks first.
+   * @param id The owning tab identifier.
+   * @param encoding The encoding to read it in.
+   * @returns Returns true when the file was read again.
+   */
+  public async reopenWithEncoding(id: string, encoding: TextEncoding): Promise<boolean> {
+    const entry: DocumentEntry | undefined = this.entries.get(id);
+    const filePath: string | null | undefined = entry?.filePath();
+    if (entry === undefined || filePath === null || filePath === undefined) {
+      return false;
+    }
+    const info: FileInfo | null = await this.fileSystem.read(filePath, encoding);
+    if (info === null) {
+      this.log.warn('Documents', `Could not reopen '${entry.fileName()}' as ${encoding}`, id);
+      return false;
+    }
+    entry.encoding.set(info.encoding ?? encoding);
+    entry.hasBom.set(info.hasBom ?? false);
+    entry.content.set(info.content);
+    entry.original.set(info.content);
+    this.syncTab(id);
+    this.log.info('Documents', `Reopened '${entry.fileName()}' as ${encoding}`, id);
+    return true;
+  }
+
+  /**
+   * Writes a document's text in its encoding, saying why when it cannot be: a character the encoding
+   * has no byte for is the failure a user can act on.
+   * @param entry The document.
+   * @param path Where to write.
+   * @param content The text.
+   * @returns Returns true when it was written.
+   */
+  private async write(entry: DocumentEntry, path: string, content: string): Promise<boolean> {
+    const result: FileWriteResult = await this.fileSystem.write(
+      path,
+      content,
+      entry.hasBom(),
+      entry.encoding(),
+    );
+    if (!result.success) {
+      this.log.warn('Documents', `Save failed for '${entry.fileName()}'`, path, result.error);
+      this.notifications.notify({
+        severity: 'error',
+        title: `${entry.fileName()} wasn't saved`,
+        detail: result.error ?? 'The file could not be written.',
+      });
+    }
+    return result.success;
   }
 
   /**
@@ -890,8 +980,11 @@ export class Documents implements UnsavedWorkSource {
     );
     const content: WritableSignal<string> = signal<string>('');
     const original: WritableSignal<string> = signal<string>('');
-    const encoding: WritableSignal<string> = signal<string>(DEFAULT_ENCODING);
-    const hasBom: WritableSignal<boolean> = signal<boolean>(false);
+    // And is saved in Default Encoding — a UTF-16 one with its byte-order mark, which tells the
+    // encoding to whoever reads it next; opening a file sets its own.
+    const defaultEncoding: TextEncoding = this.settings.get('textEditor.defaultEncoding');
+    const encoding: WritableSignal<TextEncoding> = signal<TextEncoding>(defaultEncoding);
+    const hasBom: WritableSignal<boolean> = signal<boolean>(defaultEncoding.startsWith('utf16'));
     const readOnly: WritableSignal<boolean> = signal<boolean>(false);
     // A read-only document is never dirty, so it never asks to be saved on close or by Save All.
     const dirty: Signal<boolean> = computed((): boolean => !readOnly() && content() !== original());
@@ -950,7 +1043,21 @@ export class Documents implements UnsavedWorkSource {
    */
   private onDiskChange(id: string, info: FileInfo): void {
     const entry: DocumentEntry | undefined = this.entries.get(id);
-    if (entry === undefined || entry.content() === info.content) {
+    if (entry === undefined) {
+      return;
+    }
+    // The watcher tells the encoding from the bytes; a document reopened in another reads its file in
+    // that one, or every change would look like new text.
+    const encoding: TextEncoding = entry.encoding();
+    if ((info.encoding ?? ASSUMED_ENCODING) !== encoding) {
+      void this.fileSystem.read(info.path, encoding).then((reread: FileInfo | null): void => {
+        if (reread !== null && reread.encoding === encoding) {
+          this.onDiskChange(id, reread);
+        }
+      });
+      return;
+    }
+    if (entry.content() === info.content) {
       return;
     }
     if (!entry.document.dirty()) {

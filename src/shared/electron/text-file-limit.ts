@@ -1,3 +1,5 @@
+import { textDecodeOptions, type TextDecodeOptions } from '@shared/api/text-encodings';
+
 /**
  * The largest file opened as editable text when the renderer does not say (50 MB): Large File Size
  * Limit's default. Bigger files — huge logs, generated SQL, data dumps — open in the binary/hex
@@ -23,4 +25,31 @@ export function textFileLimitBytes(value: unknown): number {
       ? Math.min(Math.max(value, 1), MAX_TEXT_FILE_MB)
       : DEFAULT_TEXT_FILE_MB;
   return Math.round(megabytes * 1024 * 1024);
+}
+
+/**
+ * Describes how a file opened from the renderer is read: the largest that opens as text, and how its
+ * bytes decode.
+ */
+export interface TextReadPolicy {
+  /**
+   * Gets the largest file, in bytes, opened as text.
+   */
+  readonly limit: number;
+
+  /**
+   * Gets how the file's bytes decode.
+   */
+  readonly decode: TextDecodeOptions;
+}
+
+/**
+ * Reads the policy the renderer asked for, which is untrusted, through {@link textFileLimitBytes} and
+ * {@link textDecodeOptions}.
+ * @param limitMb The text-file cap asked for, in megabytes.
+ * @param decode The decode options asked for.
+ * @returns Returns the policy.
+ */
+export function textReadPolicy(limitMb: unknown, decode: unknown): TextReadPolicy {
+  return { limit: textFileLimitBytes(limitMb), decode: textDecodeOptions(decode) };
 }

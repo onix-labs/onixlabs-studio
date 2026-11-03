@@ -1,4 +1,4 @@
-import { textFileLimitBytes } from './text-file-limit';
+import { textFileLimitBytes, textReadPolicy } from './text-file-limit';
 
 describe('textFileLimitBytes', () => {
   const MB: number = 1024 * 1024;
@@ -17,5 +17,17 @@ describe('textFileLimitBytes', () => {
   it('clampsToOneGigabyte_andAtLeastOneMegabyte', () => {
     expect(textFileLimitBytes(10_000)).toBe(1024 * MB);
     expect(textFileLimitBytes(0.25)).toBe(1 * MB);
+  });
+});
+
+describe('textReadPolicy', () => {
+  it('readsTheLimitAndTheDecodeOptions_droppingWhatItDoesNotUnderstand', () => {
+    expect(
+      textReadPolicy(10, { fallback: 'windows1252', autoDetect: false, encoding: 'ebcdic' }),
+    ).toEqual({
+      limit: 10 * 1024 * 1024,
+      decode: { fallback: 'windows1252', autoDetect: false },
+    });
+    expect(textReadPolicy(undefined, 'utf8').decode).toEqual({});
   });
 });

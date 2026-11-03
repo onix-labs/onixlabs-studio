@@ -1,5 +1,6 @@
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
+import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -260,6 +261,8 @@ export interface SettingsValues {
   readonly 'textEditor.largeFileLineThreshold': number;
   readonly 'textEditor.defaultLanguage': string;
   readonly 'textEditor.defaultEol': DefaultEndOfLine;
+  readonly 'textEditor.defaultEncoding': TextEncoding;
+  readonly 'textEditor.autoDetectEncoding': boolean;
   readonly 'textEditor.languageOverrides': LanguageOverrides;
   readonly 'textEditor.printMargin': PrintMargin;
 
@@ -995,6 +998,32 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'The language a new, untitled code document starts in.',
         control: { kind: 'select', options: [{ value: 'plaintext', label: 'Plain Text' }] },
         default: 'plaintext',
+      },
+      {
+        key: 'textEditor.defaultEncoding',
+        title: 'Default Encoding',
+        description:
+          'The encoding a new file is saved in, and the one a file is read in when its encoding ' +
+          "can't be told from its bytes. The status strip reopens or saves any file in another.",
+        control: {
+          kind: 'select',
+          options: TEXT_ENCODINGS.map(
+            (encoding: TextEncoding): { value: string; label: string } => ({
+              value: encoding,
+              label: encodingLabel(encoding),
+            }),
+          ),
+        },
+        default: 'utf8',
+      },
+      {
+        key: 'textEditor.autoDetectEncoding',
+        title: 'Auto-Detect Encoding',
+        description:
+          "Tell a file's encoding from its bytes: UTF-8 when they are valid UTF-8, Default Encoding " +
+          'otherwise. Off reads every file without a byte-order mark in Default Encoding.',
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'textEditor.defaultEol',
