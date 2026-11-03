@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { Printing, PrintPreparer } from '@shared/angular/services/printing/printing';
 import { CodeDocumentEditor } from './code-document';
 
 describe('CodeDocumentEditor', () => {
@@ -18,5 +19,34 @@ describe('CodeDocumentEditor', () => {
       TestBed.createComponent(CodeDocumentEditor);
     fixture.componentRef.setInput('documentId', 'test-document');
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('print_whenNotTheActiveDocument_leavesThePrintToTheOneThatIs', () => {
+    // Every open code document registers to fill its print mirror, but only the active one prints.
+    const preparers: PrintPreparer[] = [];
+    vi.spyOn(TestBed.inject(Printing), 'registerPreparer').mockImplementation(
+      (preparer: PrintPreparer): (() => void) => {
+        preparers.push(preparer);
+        return (): void => undefined;
+      },
+    );
+    const fixture: ComponentFixture<CodeDocumentEditor> =
+      TestBed.createComponent(CodeDocumentEditor);
+    fixture.componentRef.setInput('documentId', 'test-document');
+
+    expect(preparers.length).toBe(1);
+    expect(preparers[0]()).toBeUndefined();
+  });
+
+  it('destroy_unregistersThePrintPreparer', () => {
+    const unregister: ReturnType<typeof vi.fn<() => void>> = vi.fn<() => void>();
+    vi.spyOn(TestBed.inject(Printing), 'registerPreparer').mockReturnValue(unregister);
+    const fixture: ComponentFixture<CodeDocumentEditor> =
+      TestBed.createComponent(CodeDocumentEditor);
+    fixture.componentRef.setInput('documentId', 'test-document');
+
+    fixture.destroy();
+
+    expect(unregister).toHaveBeenCalledTimes(1);
   });
 });

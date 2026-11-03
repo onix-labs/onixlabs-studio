@@ -135,6 +135,24 @@ describe('SettingsSection', () => {
     expect(element.querySelectorAll('app-setting-row').length).toBe(12);
   });
 
+  it('render_whenPrintingSection_rendersTheSharedPrintSettings', async () => {
+    // Application › Printing (#1237): how code and Markdown print, apart from their own margins.
+    const element: HTMLElement = await render('printing');
+    const labels: string[] = Array.from(element.querySelectorAll('.setting-row__label')).map(
+      (label: Element): string => label.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual([
+      'Paper Size',
+      'Orientation',
+      'Print Background Colours',
+      'Print Syntax Colours',
+      'Print Line Numbers',
+      'Print Font Size',
+      'Header and Footer',
+      'Open PDF After Export',
+    ]);
+  });
+
   it('render_whenCodeFindSection_offersTheGoToStyle_defaultingToTheQuickOpenBox', async () => {
     // #1009: how Go to Symbol and Go to Line ask where to go, editor-wide (no per-language override).
     // On Code › Find and Navigation since #1236.

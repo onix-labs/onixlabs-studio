@@ -530,7 +530,10 @@ export class MarkdownRibbon {
    */
   protected onPrint(): void {
     this.log.info('markdown.ribbon', 'Print requested');
-    this.printing.print(this.settings.get('markdownEditor.printMargin'));
+    void this.printing.print(
+      this.activeDocumentName(),
+      this.settings.get('markdownEditor.printMargin'),
+    );
   }
 
   /**
