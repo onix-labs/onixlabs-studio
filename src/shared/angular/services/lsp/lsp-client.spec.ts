@@ -1312,6 +1312,7 @@ describe('LspClient', () => {
             useValue: {
               globalTextEditor: global,
               languageOverrides: overrides,
+              semanticHighlightingChoices: (): string => '',
               resolveSettingsForLanguage: (language: string): unknown => ({
                 ...global(),
                 ...overrides()[language],
