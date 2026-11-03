@@ -87,6 +87,17 @@ export type SelectAllScope = 'block' | 'document';
 export type PrintMargin = 'narrow' | 'regular' | 'wide';
 
 /**
+ * Identifies the paper a document is printed or exported on; `system` picks Letter or A4 by the
+ * region of the system locale.
+ */
+export type PrintPaperSize = 'system' | 'a4' | 'letter' | 'legal' | 'a3';
+
+/**
+ * Identifies which way up a printed or exported page is laid out.
+ */
+export type PrintOrientation = 'portrait' | 'landscape';
+
+/**
  * Identifies how the ribbon's controls are aligned within the ribbon strip.
  */
 export type RibbonAlignment = 'left' | 'center';

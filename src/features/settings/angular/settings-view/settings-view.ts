@@ -109,6 +109,7 @@ type SettingsSectionId =
   | 'application'
   | 'accessibility'
   | 'notifications'
+  | 'printing'
   | 'code-general'
   | 'code-appearance'
   | 'code-editing'
@@ -419,6 +420,7 @@ export class SettingsView {
         { id: 'application-general', label: 'General', sectionId: 'application' },
         { id: 'application-accessibility', label: 'Accessibility', sectionId: 'accessibility' },
         { id: 'application-notifications', label: 'Notifications', sectionId: 'notifications' },
+        { id: 'application-printing', label: 'Printing', sectionId: 'printing' },
         { id: 'application-security', label: 'Privacy & Content', sectionId: 'security' },
         // The app-wide shortcuts; each root's own are on a Keyboard leaf under it.
         { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },

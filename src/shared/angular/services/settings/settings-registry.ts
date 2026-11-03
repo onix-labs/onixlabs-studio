@@ -37,6 +37,8 @@ import type {
   NotificationStacking,
   MarginSize,
   PrintMargin,
+  PrintOrientation,
+  PrintPaperSize,
   RibbonAlignment,
   SelectAllScope,
   WorkspaceTexture,
@@ -243,6 +245,15 @@ export interface SettingsValues {
   readonly 'notifications.desktopErrors': boolean;
   readonly 'notifications.agentFinished': FinishNotifications;
   readonly 'notifications.runFinished': FinishNotifications;
+
+  readonly 'printing.paperSize': PrintPaperSize;
+  readonly 'printing.orientation': PrintOrientation;
+  readonly 'printing.backgroundColours': boolean;
+  readonly 'printing.syntaxColours': boolean;
+  readonly 'printing.lineNumbers': boolean;
+  readonly 'printing.fontSize': number;
+  readonly 'printing.headerAndFooter': boolean;
+  readonly 'printing.openPdfAfterExport': boolean;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
   readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
@@ -862,6 +873,100 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    // How code and Markdown documents print and export to PDF; each keeps its own Print Margins.
+    id: 'printing',
+    label: 'Printing',
+    settings: [
+      {
+        key: 'printing.paperSize',
+        title: 'Paper Size',
+        description:
+          'The paper documents print and export on. System uses Letter in regions that use it, ' +
+          'such as the US and Canada, and A4 everywhere else.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'system', label: 'System' },
+            { value: 'a4', label: 'A4' },
+            { value: 'letter', label: 'Letter' },
+            { value: 'legal', label: 'Legal' },
+            { value: 'a3', label: 'A3' },
+          ],
+        },
+        default: 'system',
+      },
+      {
+        key: 'printing.orientation',
+        title: 'Orientation',
+        description: 'Which way up the page is laid out.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'portrait', label: 'Portrait' },
+            { value: 'landscape', label: 'Landscape' },
+          ],
+        },
+        default: 'portrait',
+      },
+      {
+        key: 'printing.backgroundColours',
+        title: 'Print Background Colours',
+        description:
+          'Print the shading behind code blocks, tables and highlights. Off saves ink and prints ' +
+          'text on plain white.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'printing.syntaxColours',
+        title: 'Print Syntax Colours',
+        description:
+          'Colour printed code by its syntax, in Markdown code blocks too. Off prints code in black.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'printing.lineNumbers',
+        title: 'Print Line Numbers',
+        description: 'Number each line down the left of a printed code document.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'printing.fontSize',
+        title: 'Print Font Size',
+        description: 'The size printed code is set in. The font is the one Code uses.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '8', label: '8 pt' },
+            { value: '9', label: '9 pt' },
+            { value: '10', label: '10 pt' },
+            { value: '11', label: '11 pt' },
+            { value: '12', label: '12 pt' },
+          ],
+        },
+        default: 10,
+      },
+      {
+        key: 'printing.headerAndFooter',
+        title: 'Header and Footer',
+        description:
+          'Print the file name and date at the top of each page, and the page number at the bottom.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'printing.openPdfAfterExport',
+        title: 'Open PDF After Export',
+        description: 'Open an exported PDF in the default PDF viewer once it is written.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
     id: 'workspaces',
     label: 'Workspaces',
     settings: [
@@ -1397,7 +1502,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Print Margins',
         description:
           'The page margin applied when printing or exporting a code document to PDF. Regular is double ' +
-          'Narrow, and Wide is double Regular.',
+          'Narrow, and Wide is double Regular. Paper, orientation and the rest are under Application › ' +
+          'Printing.',
         control: {
           kind: 'select',
           options: [
@@ -1595,7 +1701,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         title: 'Print Margins',
         description:
           'The page margin applied when printing or exporting a Markdown document to PDF. Regular is double ' +
-          'Narrow, and Wide is double Regular.',
+          'Narrow, and Wide is double Regular. Paper, orientation and the rest are under Application › ' +
+          'Printing.',
         control: {
           kind: 'select',
           options: [
