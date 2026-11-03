@@ -6,6 +6,7 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Printing } from '@shared/angular/services/printing/printing';
+import type { PrintResult } from '@shared/api/print-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
@@ -71,7 +72,10 @@ describe('CodeRibbon', () => {
       formatDocument: (): void => void calls.push('format'),
     };
     const printingStub: Partial<Printing> = {
-      print: (): void => void calls.push('print'),
+      print: (): Promise<PrintResult> => {
+        calls.push('print');
+        return Promise.resolve({ success: true });
+      },
       exportPdf: (name: string): Promise<never> => {
         calls.push(`exportPdf:${name}`);
         return Promise.resolve() as Promise<never>;

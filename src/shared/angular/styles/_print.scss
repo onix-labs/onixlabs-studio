@@ -11,17 +11,40 @@
 
 @use 'milkdown' as *;
 
-// The printed page margin is owned entirely by the Printing service, which rewrites an `@page` rule
-// from the user's "Print margins" setting (Chromium does not honour a CSS variable inside `@page`, so
-// the value cannot be projected the way the theme colours are). No `@page` margin is declared here so
-// there is a single source of truth.
+// The printed page margin and size are owned entirely by the Printing service, which rewrites an
+// `@page` rule from the Print Margins and Application › Printing settings (Chromium does not honour a
+// CSS variable inside `@page`, so the values cannot be projected the way the theme colours are). No
+// `@page` rule is declared here so there is a single source of truth. The service also sets the flags
+// and variables read below: `data-print-backgrounds`, `data-print-syntax`, `--print-code-font-size`
+// and `--print-code-font-family`.
 
 @media print {
+  // --- Print on a light page, with or without backgrounds --------------------
+  // Pin the scheme light so nothing the browser draws itself prints dark, and print backgrounds only
+  // when asked to. (The `@page` margin band is the window's background colour, which the print
+  // manager whitens while backgrounds print.)
+  :root {
+    color-scheme: light !important;
+    print-color-adjust: economy;
+  }
+
+  :root[data-print-backgrounds],
+  :root[data-print-backgrounds] * {
+    print-color-adjust: exact;
+  }
+
+  // Without syntax colours, the Markdown code blocks' highlighted spans print in the text colour.
+  :root:not([data-print-syntax]) app-markdown-editor .milkdown-monaco-code-block [class*='mtk'] {
+    color: inherit !important;
+  }
+
   // --- Hide the application chrome -------------------------------------------
   app-title-strip-container,
   app-ribbon-strip-container,
   app-status-strip-container,
-  app-welcome-screen {
+  app-welcome-screen,
+  app-toast-host,
+  .cdk-overlay-container {
     display: none !important;
   }
 
@@ -125,10 +148,70 @@
     overflow: visible !important;
     background: #fff !important;
     color: #000 !important;
-    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
-    font-size: 10pt;
+    font-family: var(--print-code-font-family, 'JetBrains Mono'), ui-monospace, monospace;
+    font-size: var(--print-code-font-size, 10pt);
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  // Line numbers sit in a right-aligned gutter as wide as the longest number, set by the renderer in
+  // `--code-print-gutter` (in characters); a wrapped line hangs under its own text, not the number.
+  app-code-document .code-print--numbered .code-print__line {
+    display: block;
+    padding-inline-start: calc(var(--code-print-gutter, 3) * 1ch + 1.5ch);
+    text-indent: calc((var(--code-print-gutter, 3) * 1ch + 1.5ch) * -1);
+  }
+
+  app-code-document .code-print__number {
+    display: inline-block;
+    inline-size: calc(var(--code-print-gutter, 3) * 1ch);
+    margin-inline-end: 1.5ch;
+    color: #8c8c8c;
+    text-align: end;
+    text-indent: 0;
+  }
+
+  // The syntax palette is the light theme's, fixed so the printout reads the same from a dark session.
+  app-code-document .code-print {
+    .code-print__token--comment {
+      color: #008000;
+    }
+
+    .code-print__token--keyword {
+      color: #0000ff;
+    }
+
+    .code-print__token--string {
+      color: #a31515;
+    }
+
+    .code-print__token--number {
+      color: #098658;
+    }
+
+    .code-print__token--regexp {
+      color: #811f3f;
+    }
+
+    .code-print__token--type {
+      color: #267f99;
+    }
+
+    .code-print__token--tag {
+      color: #800000;
+    }
+
+    .code-print__token--attribute {
+      color: #e50000;
+    }
+
+    .code-print__token--variable {
+      color: #001080;
+    }
+
+    .code-print__token--annotation {
+      color: #795e26;
+    }
   }
 }

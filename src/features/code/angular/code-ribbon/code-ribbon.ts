@@ -375,7 +375,10 @@ export class CodeRibbon {
    */
   protected onPrint(): void {
     this.log.info('code.ribbon', 'Print requested');
-    this.printing.print(this.settings.get('textEditor.printMargin'));
+    void this.printing.print(
+      this.activeDocument()?.fileName() ?? '',
+      this.settings.get('textEditor.printMargin'),
+    );
   }
 
   /**
