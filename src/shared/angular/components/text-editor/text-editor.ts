@@ -19,9 +19,15 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { FoldingPlaceholderController } from './folding-placeholder-controller';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
-import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import {
+  InlayHintsMode,
+  Settings,
+  TextEditorSettings,
+} from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
+import { editorAppearanceOptions } from '@shared/angular/services/monaco/editor-appearance-options';
+import { watchInlayHintsHold } from './inlay-hints-hold';
 import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
@@ -43,6 +49,12 @@ import { pasteIntoEditor } from './editor-paste';
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
  */
 const COMMAND_SOURCE: string = 'app-text-editor';
+
+/**
+ * Holds the wheel travel, in pixels, that makes one zoom step: one notch of a mouse wheel, or a short
+ * trackpad pinch.
+ */
+const WHEEL_ZOOM_STEP: number = 40;
 
 /**
  * Describes a caret position reported to the host, as one-based line and column numbers.
@@ -326,6 +338,26 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private readonly largeFile: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether the modifier that shows inlay hints is held, for the While Holding choice.
+   */
+  private readonly inlayHintsHeld: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the wheel travel not yet turned into a zoom step: a trackpad reports it in many small moves.
+   */
+  private wheelZoomTravel: number = 0;
+
+  /**
+   * Holds the function that stops watching for the inlay hints modifier, or null when not watching.
+   */
+  private detachInlayHintsHold: (() => void) | null = null;
+
+  /**
+   * Holds the function that stops zooming with the wheel, or null when not listening.
+   */
+  private detachWheelZoom: (() => void) | null = null;
+
+  /**
    * Holds a value indicating whether the editor is ready for interaction.
    */
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
@@ -371,15 +403,16 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         lineNumbers: resolved.showLineNumbers ? 'on' : 'off',
         minimap: { enabled: resolved.showMinimap && !large },
         // Past Large File Feature Threshold the heavier features go, so the file stays responsive.
-        ...(large
-          ? { folding: false, occurrencesHighlight: 'off' as const, selectionHighlight: false }
-          : {}),
+        folding: !large,
+        occurrencesHighlight: resolved.highlightOccurrences && !large ? 'singleFile' : 'off',
+        selectionHighlight: resolved.selectionHighlight && !large,
         renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
         formatOnType: resolved.formatOnType,
         cursorBlinking: resolved.cursorBlinking,
         ...this.monaco.motionOptions(resolved),
+        ...editorAppearanceOptions(resolved),
         tabSize: resolved.tabSize,
         insertSpaces: resolved.insertSpaces,
         detectIndentation: false,
@@ -396,6 +429,17 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       this.monaco
         .getMonaco()
         ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
+    });
+
+    // Inlay hints: apart from the rest, as the While Holding choice changes them on every key press.
+    effect((): void => {
+      const mode: InlayHintsMode = this.settings.resolveSettingsForLanguage(
+        this.language(),
+      ).inlayHints;
+      const shown: boolean = mode === 'on' || (mode === 'while-holding' && this.inlayHintsHeld());
+      if (this.editorReady()) {
+        this.editor?.updateOptions({ inlayHints: { enabled: shown ? 'on' : 'off' } });
+      }
     });
 
     // External content: replace the editor text when the bound content differs, without echoing it
@@ -479,12 +523,48 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.detachColourPickers = null;
     this.detachAutocomplete?.();
     this.detachAutocomplete = null;
+    this.detachInlayHintsHold?.();
+    this.detachInlayHintsHold = null;
+    this.detachWheelZoom?.();
+    this.detachWheelZoom = null;
     if (this.editor !== null) {
       this.editor.dispose();
       this.editor = null;
     }
     this.modelUri = null;
     this.editorReady.set(false);
+  }
+
+  /**
+   * Starts zooming the editors as the wheel moves with ⌘ or Ctrl held. Listens ahead of Monaco, which
+   * would otherwise scroll.
+   * @param element The element the editor is in.
+   * @returns Returns a function that stops listening.
+   */
+  private attachWheelZoom(element: HTMLElement): () => void {
+    const listener: (event: WheelEvent) => void = (event: WheelEvent): void =>
+      this.zoomWithWheel(event);
+    element.addEventListener('wheel', listener, { capture: true, passive: false });
+    return (): void => element.removeEventListener('wheel', listener, { capture: true });
+  }
+
+  /**
+   * Zooms the editors with the wheel, when Mouse Wheel Zoom is on. Studio's own zoom rather than
+   * Monaco's `mouseWheelZoom`, which would zoom past the level on the status strip. A trackpad pinch
+   * arrives here too, as small moves with Ctrl set.
+   * @param event The wheel event.
+   */
+  private zoomWithWheel(event: WheelEvent): void {
+    if (!(event.metaKey || event.ctrlKey) || !this.settings.globalTextEditor().mouseWheelZoom) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.wheelZoomTravel += event.deltaY;
+    if (Math.abs(this.wheelZoomTravel) >= WHEEL_ZOOM_STEP) {
+      this.editorZoom.step(-this.wheelZoomTravel);
+      this.wheelZoomTravel = 0;
+    }
   }
 
   /**
@@ -720,6 +800,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       value: this.content(),
       language,
     });
+
+    const element: HTMLElement = this.host().nativeElement;
+    this.detachInlayHintsHold = watchInlayHintsHold(
+      element.ownerDocument.defaultView ?? window,
+      (held: boolean): void => this.inlayHintsHeld.set(held),
+    );
+    this.detachWheelZoom = this.attachWheelZoom(element);
 
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;

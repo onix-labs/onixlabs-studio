@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import type * as MonacoApi from 'monaco-editor';
 import type { FindMode } from '@shared/angular/components/find-panel/find-request';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 
 import { buildHeuristicSemanticTokens, MonarchToken, Monaco } from './monaco';
 import {
@@ -58,6 +58,10 @@ function wholeLineAs(type: string): MonarchToken[] {
 }
 
 describe('Monaco', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let monaco: Monaco;
 
   beforeEach(() => {
@@ -115,6 +119,32 @@ describe('Monaco', () => {
     expect([...names]).toEqual(
       [...names].sort((a: string, b: string): number => a.localeCompare(b)),
     );
+  });
+
+  it('semanticHighlightingEnabled_followsTheModelsLanguage', () => {
+    TestBed.inject(Settings).setLanguageOverride('rust', 'semanticHighlighting', false);
+    const model: (language: string) => MonacoApi.editor.ITextModel = (
+      language: string,
+    ): MonacoApi.editor.ITextModel =>
+      ({ getLanguageId: (): string => language }) as MonacoApi.editor.ITextModel;
+
+    expect(monaco.semanticHighlightingEnabled(model('rust'))).toBe(false);
+    expect(monaco.semanticHighlightingEnabled(model('csharp'))).toBe(true);
+  });
+
+  it('motionOptions_keepSmoothScrollingOffWhenTheSettingIs', () => {
+    const resolved: TextEditorSettings =
+      TestBed.inject(Settings).resolveSettingsForLanguage('rust');
+
+    expect(monaco.motionOptions({ ...resolved, smoothScrolling: false }).smoothScrolling).toBe(
+      false,
+    );
+  });
+
+  it('getEditorOptions_startsWithInlayHintsOffWhenTheyWaitForTheModifier', () => {
+    TestBed.inject(Settings).set('textEditor.global.inlayHints', 'while-holding');
+
+    expect(monaco.getEditorOptions('rust').inlayHints?.enabled).toBe('off');
   });
 
   it('getEditorOptions_turnsMonacosRightClickMenuOff', () => {

@@ -61,8 +61,7 @@ const NEW_DOCUMENT_NAME: string = 'New Document';
  * and the fold chevron (a `firstLineDecorationClassName`). Left at its narrow default they overlapped —
  * the chevron sat on top of the bar. The lane is widened to hold both side by side, and CSS pins the
  * bar to the left edge (against the line numbers) and the chevron to the right edge (against the code);
- * see `_change-margin.scss` and `_folding.scss`. The chevrons are shown always (not only on hover) so
- * the fold column reads as a stable gutter rather than appearing under the pointer.
+ * see `_change-margin.scss` and `_folding.scss`.
  */
 const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
   glyphMargin: true,
@@ -70,7 +69,6 @@ const CODE_EDITOR_OPTIONS: MonacoApi.editor.IEditorOptions = {
   // Room for the change-margin bar (a 16px gap, a 4px bar, a 16px gap = 36px) plus the fold control box
   // to its right; see `_change-margin.scss` and `_folding.scss`.
   lineDecorationsWidth: 50,
-  showFoldingControls: 'always',
 };
 
 /**
