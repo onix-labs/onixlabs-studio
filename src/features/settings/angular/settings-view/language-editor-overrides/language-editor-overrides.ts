@@ -11,6 +11,7 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import {
   PartialTextEditorSettings,
@@ -37,11 +38,21 @@ type EditorField = keyof TextEditorSettings;
 export type CodeOverrideSection = 'code-appearance' | 'code-editing';
 
 /**
- * Names each code settings page as the user sees it, for the line saying where the global values live.
+ * Names each block's code settings pages as the user sees them, for the line saying where the global
+ * values live.
  */
 const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
-  'code-appearance': 'Code › Appearance',
+  'code-appearance': 'Code › Appearance and Code › Guides and Highlights',
   'code-editing': 'Code › Editing',
+};
+
+/**
+ * Lists the registry sections each block of overrides draws from. A language's Appearance section
+ * covers how its code looks, which the global settings spread over two pages.
+ */
+const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
+  'code-appearance': ['code-appearance', 'code-highlighting'],
+  'code-editing': ['code-editing'],
 };
 
 /**
@@ -58,7 +69,7 @@ const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
  */
 @Component({
   selector: 'app-language-editor-overrides',
-  imports: [Checkbox, Dropdown, NumberField, SettingRow, Toggle],
+  imports: [Checkbox, Dropdown, NumberField, SettingRow, TextField, Toggle],
   templateUrl: './language-editor-overrides.html',
   styleUrl: './language-editor-overrides.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -98,9 +109,13 @@ export class LanguageEditorOverrides {
   protected readonly overridable: Signal<readonly SettingDef[]> = computed(
     (): readonly SettingDef[] => {
       const section: CodeOverrideSection | undefined = this.section();
-      return (
-        section === undefined ? codeSettings() : (findSection(section)?.settings ?? [])
-      ).filter((setting: SettingDef): boolean => setting.profileOverridable === true);
+      const settings: readonly SettingDef[] =
+        section === undefined
+          ? codeSettings()
+          : SECTION_IDS[section].flatMap(
+              (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
+            );
+      return settings.filter((setting: SettingDef): boolean => setting.profileOverridable === true);
     },
   );
 
@@ -211,6 +226,15 @@ export class LanguageEditorOverrides {
       this.fieldOf(setting),
       coerced as TextEditorSettings[EditorField],
     );
+  }
+
+  /**
+   * Gets the placeholder for a text setting's control, or an empty string for other controls.
+   * @param setting The setting definition.
+   * @returns Returns the placeholder.
+   */
+  protected textPlaceholder(setting: SettingDef): string {
+    return setting.control.kind === 'text' ? (setting.control.placeholder ?? '') : '';
   }
 
   /**

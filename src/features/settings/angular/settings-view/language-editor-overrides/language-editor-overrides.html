@@ -29,6 +29,14 @@
               (checkedChange)="onOverrideValue(setting, $event)"
             />
           }
+          @case ('text') {
+            <app-text-field
+              [value]="$any(resolved(setting))"
+              [placeholder]="textPlaceholder(setting)"
+              [disabled]="!isOverridden(setting)"
+              (valueChange)="onOverrideValue(setting, $event)"
+            />
+          }
           @case ('number') {
             <app-number-field
               [min]="numberMin(setting)"

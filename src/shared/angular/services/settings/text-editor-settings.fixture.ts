@@ -1,0 +1,41 @@
+import type { TextEditorSettings } from './settings';
+
+/**
+ * A complete set of code settings at their defaults, for specs to spread and change what they test.
+ */
+export const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
+  showLineNumbers: true,
+  showMinimap: true,
+  currentLineHighlight: 'outline',
+  colorBrackets: true,
+  wordWrap: false,
+  stickyScroll: true,
+  formatOnType: true,
+  cursorBlinking: 'blink',
+  cursorSmoothCaretAnimation: 'off',
+  insertSpaces: true,
+  tabSize: 2,
+  fontFamily: 'JetBrains Mono',
+  fontSize: 14,
+  lineHeight: 0,
+  braceStyle: 'kr',
+  renderWhitespace: 'selection',
+  rulers: '',
+  indentGuides: 'highlight-active',
+  bracketPairGuides: 'off',
+  matchBrackets: true,
+  fontLigatures: false,
+  cursorStyle: 'line',
+  cursorWidth: 2,
+  smoothScrolling: true,
+  scrollBeyondLastLine: false,
+  foldingControls: 'always',
+  changeMargin: 'all',
+  inlayHints: 'on',
+  semanticHighlighting: true,
+  highlightOccurrences: true,
+  selectionHighlight: true,
+  colourSwatches: true,
+  minimumDiagnosticSeverity: 'hint',
+  mouseWheelZoom: false,
+};

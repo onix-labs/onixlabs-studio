@@ -112,6 +112,7 @@ type SettingsSectionId =
   | 'printing'
   | 'code-general'
   | 'code-appearance'
+  | 'code-highlighting'
   | 'code-editing'
   | 'code-find'
   | 'code-diffs'
@@ -476,6 +477,11 @@ export class SettingsView {
       children: [
         { id: 'code-general-leaf', label: 'General', sectionId: 'code-general' },
         { id: 'code-appearance-leaf', label: 'Appearance', sectionId: 'code-appearance' },
+        {
+          id: 'code-highlighting-leaf',
+          label: 'Guides and Highlights',
+          sectionId: 'code-highlighting',
+        },
         { id: 'code-editing-leaf', label: 'Editing', sectionId: 'code-editing' },
         { id: 'code-find-leaf', label: 'Find and Navigation', sectionId: 'code-find' },
         { id: 'code-diffs-leaf', label: 'Diffs', sectionId: 'code-diffs' },

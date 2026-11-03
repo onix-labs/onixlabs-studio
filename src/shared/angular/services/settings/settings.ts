@@ -60,6 +60,49 @@ export type CursorSmoothCaretAnimation = 'off' | 'on' | 'explicit';
 export type BraceStyle = 'kr' | 'allman' | 'gnu';
 
 /**
+ * Identifies which whitespace the editor draws: none, between words only, in the selection, at the
+ * ends of lines, or all of it.
+ */
+export type RenderWhitespace = 'none' | 'boundary' | 'selection' | 'trailing' | 'all';
+
+/**
+ * Identifies how indentation is guided: not at all, with a line per level, or with the active level
+ * also highlighted.
+ */
+export type IndentGuides = 'off' | 'on' | 'highlight-active';
+
+/**
+ * Identifies which bracket pairs get a guide: none, the pair around the caret, or all of them.
+ */
+export type BracketPairGuides = 'off' | 'active' | 'all';
+
+/**
+ * Identifies the shape of the text editor cursor.
+ */
+export type EditorCursorStyle = 'line' | 'block' | 'underline';
+
+/**
+ * Identifies when the fold controls show in the gutter: always, or while the pointer is over it.
+ */
+export type FoldingControls = 'always' | 'hover';
+
+/**
+ * Identifies what the change margin marks: nothing, lines that differ from the saved file, or those
+ * and the lines in sync with it.
+ */
+export type ChangeMarginMode = 'off' | 'unsaved' | 'all';
+
+/**
+ * Identifies when inlay hints show: always, never, or while a modifier is held.
+ */
+export type InlayHintsMode = 'on' | 'off' | 'while-holding';
+
+/**
+ * Identifies the least severe diagnostic an editor underlines.
+ */
+export type MinimumDiagnosticSeverity = 'hint' | 'info' | 'warning' | 'error';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -269,6 +312,101 @@ export interface TextEditorSettings {
    * Gets the brace placement style the editor formats to.
    */
   readonly braceStyle: BraceStyle;
+
+  /**
+   * Gets which whitespace the editor draws.
+   */
+  readonly renderWhitespace: RenderWhitespace;
+
+  /**
+   * Gets the columns rulers are drawn at, as the user typed them; see `parseRulers`.
+   */
+  readonly rulers: string;
+
+  /**
+   * Gets how indentation is guided.
+   */
+  readonly indentGuides: IndentGuides;
+
+  /**
+   * Gets which bracket pairs get a guide.
+   */
+  readonly bracketPairGuides: BracketPairGuides;
+
+  /**
+   * Gets a value indicating whether the bracket matching the one at the caret is highlighted.
+   */
+  readonly matchBrackets: boolean;
+
+  /**
+   * Gets a value indicating whether the font's ligatures are drawn.
+   */
+  readonly fontLigatures: boolean;
+
+  /**
+   * Gets the shape of the cursor.
+   */
+  readonly cursorStyle: EditorCursorStyle;
+
+  /**
+   * Gets the width of the line cursor, in pixels.
+   */
+  readonly cursorWidth: number;
+
+  /**
+   * Gets a value indicating whether scrolling animates. Reduce Motion also turns it off.
+   */
+  readonly smoothScrolling: boolean;
+
+  /**
+   * Gets a value indicating whether the editor scrolls past the last line.
+   */
+  readonly scrollBeyondLastLine: boolean;
+
+  /**
+   * Gets when the fold controls show.
+   */
+  readonly foldingControls: FoldingControls;
+
+  /**
+   * Gets what the change margin marks.
+   */
+  readonly changeMargin: ChangeMarginMode;
+
+  /**
+   * Gets when inlay hints show.
+   */
+  readonly inlayHints: InlayHintsMode;
+
+  /**
+   * Gets a value indicating whether semantic tokens colour the code.
+   */
+  readonly semanticHighlighting: boolean;
+
+  /**
+   * Gets a value indicating whether other occurrences of the symbol at the caret are highlighted.
+   */
+  readonly highlightOccurrences: boolean;
+
+  /**
+   * Gets a value indicating whether other matches of the selected text are highlighted.
+   */
+  readonly selectionHighlight: boolean;
+
+  /**
+   * Gets a value indicating whether colour values get a swatch.
+   */
+  readonly colourSwatches: boolean;
+
+  /**
+   * Gets the least severe diagnostic the editor underlines.
+   */
+  readonly minimumDiagnosticSeverity: MinimumDiagnosticSeverity;
+
+  /**
+   * Gets a value indicating whether ⌘ or Ctrl and the mouse wheel zoom the editors.
+   */
+  readonly mouseWheelZoom: boolean;
 }
 
 /**
@@ -628,7 +766,42 @@ export class Settings {
       fontSize: this.read('textEditor.global.fontSize'),
       lineHeight: this.read('textEditor.global.lineHeight'),
       braceStyle: this.read('textEditor.global.braceStyle'),
+      renderWhitespace: this.read('textEditor.global.renderWhitespace'),
+      rulers: this.read('textEditor.global.rulers'),
+      indentGuides: this.read('textEditor.global.indentGuides'),
+      bracketPairGuides: this.read('textEditor.global.bracketPairGuides'),
+      matchBrackets: this.read('textEditor.global.matchBrackets'),
+      fontLigatures: this.read('textEditor.global.fontLigatures'),
+      cursorStyle: this.read('textEditor.global.cursorStyle'),
+      cursorWidth: this.read('textEditor.global.cursorWidth'),
+      smoothScrolling: this.read('textEditor.global.smoothScrolling'),
+      scrollBeyondLastLine: this.read('textEditor.global.scrollBeyondLastLine'),
+      foldingControls: this.read('textEditor.global.foldingControls'),
+      changeMargin: this.read('textEditor.global.changeMargin'),
+      inlayHints: this.read('textEditor.global.inlayHints'),
+      semanticHighlighting: this.read('textEditor.global.semanticHighlighting'),
+      highlightOccurrences: this.read('textEditor.global.highlightOccurrences'),
+      selectionHighlight: this.read('textEditor.global.selectionHighlight'),
+      colourSwatches: this.read('textEditor.global.colourSwatches'),
+      minimumDiagnosticSeverity: this.read('textEditor.global.minimumDiagnosticSeverity'),
+      mouseWheelZoom: this.read('textEditor.global.mouseWheelZoom'),
     }),
+  );
+
+  /**
+   * Gets a value that changes only when Semantic Highlighting does, globally or for any language, so
+   * token providers are asked again for that and not for every other code setting.
+   */
+  public readonly semanticHighlightingChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.semanticHighlighting'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [string, boolean | undefined] => [
+          language,
+          own.semanticHighlighting,
+        ],
+      ),
+    ]),
   );
 
   /**
