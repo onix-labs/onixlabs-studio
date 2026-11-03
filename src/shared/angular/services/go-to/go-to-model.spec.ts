@@ -162,6 +162,13 @@ describe('filterSymbols', () => {
   it('noMatch_isEmpty', () => {
     expect(filterSymbols(symbols, 'zzz')).toEqual([]);
   });
+
+  it('containsMatching_leavesOutLettersInOrder', () => {
+    expect(
+      filterSymbols(symbols, 'cust', false).map((item: GoToSymbol): string => item.name),
+    ).toEqual(['customer', 'Customers', 'getCustomerName']);
+    expect(filterSymbols(symbols, 'gcn', false)).toEqual([]);
+  });
 });
 
 describe('stepSelection', () => {

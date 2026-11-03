@@ -8,6 +8,7 @@ import type {
 } from '@shared/angular/components/find-panel/find-request';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FindAttachment, FindHost, FindWorkspace } from './find-host';
 
 /**
@@ -31,6 +32,11 @@ export class FindRouter {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, read for what Find starts with.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds what is known of each attached editor. Weak, so a disposed editor's entry goes with it.
@@ -118,8 +124,9 @@ export class FindRouter {
   }
 
   /**
-   * Builds a find request from an editor's state: its single-line selection as the seed, the file it
-   * shows, and a snapshot of the selection for a find limited to it.
+   * Builds a find request from an editor's state: its single-line selection as the seed — or, with
+   * nothing selected and Seed Find From on Selection or Word at Caret, the word at the caret — the
+   * file it shows, and a snapshot of the selection for a find limited to it.
    * @param editor The editor.
    * @param mode Whether to open for find or for replace.
    * @param scope Where to look; the current file unless the caller asks otherwise.
@@ -147,8 +154,35 @@ export class FindRouter {
     const seed: string | undefined =
       range !== null && model !== null && range.startLineNumber === range.endLineNumber
         ? model.getValueInRange(range)
-        : undefined;
+        : this.wordAtCaret(model, selection, range === null);
     return { mode, scope, seed, filePath: this.filePathOf(editor, model), selection: range };
+  }
+
+  /**
+   * Reads the word at the caret as Find's seed, when nothing is selected and Seed Find From says to.
+   * @param model The editor's model, or null when it has none.
+   * @param selection The editor's selection, whose start is the caret.
+   * @param empty Whether nothing is selected.
+   * @returns Returns the word, or undefined when there is none or the setting does not ask for it.
+   */
+  private wordAtCaret(
+    model: MonacoApi.editor.ITextModel | null,
+    selection: MonacoApi.Selection | null,
+    empty: boolean,
+  ): string | undefined {
+    if (
+      !empty ||
+      model === null ||
+      selection === null ||
+      this.settings.get('textEditor.seedFindFrom') !== 'selection-or-word'
+    ) {
+      return undefined;
+    }
+    const word: MonacoApi.editor.IWordAtPosition | null = model.getWordAtPosition({
+      lineNumber: selection.startLineNumber,
+      column: selection.startColumn,
+    });
+    return word === null || word.word.length === 0 ? undefined : word.word;
   }
 
   /**

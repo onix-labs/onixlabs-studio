@@ -254,6 +254,10 @@ export interface SettingsValues {
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.goToStyle': GoToStyle;
+  readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
+  readonly 'textEditor.seedFindFrom': 'selection' | 'selection-or-word';
+  readonly 'textEditor.confirmMultiFileRename': boolean;
+  readonly 'textEditor.saveAfterRename': boolean;
   readonly 'textEditor.diffLayout': DiffLayout;
   readonly 'textEditor.autoSave': AutoSaveMode;
   readonly 'textEditor.reloadOnDiskChange': ReloadOnDiskChange;
@@ -1060,6 +1064,53 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'quick-open',
+      },
+      {
+        key: 'textEditor.goToSymbolMatching',
+        title: 'Go to Symbol Matching',
+        description:
+          'How Go to Symbol matches what you type: names that contain it, or also names that hold ' +
+          'its letters in order, so gcn finds getCustomerName.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'contains', label: 'Contains' },
+            { value: 'fuzzy', label: 'Fuzzy' },
+          ],
+        },
+        default: 'contains',
+      },
+      {
+        key: 'textEditor.seedFindFrom',
+        title: 'Seed Find From',
+        description:
+          'What Find starts with when it opens: the selected text only, or the selection, else the ' +
+          'word at the caret.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'selection', label: 'Selection Only' },
+            { value: 'selection-or-word', label: 'Selection or Word at Caret' },
+          ],
+        },
+        default: 'selection-or-word',
+      },
+      {
+        key: 'textEditor.confirmMultiFileRename',
+        title: 'Confirm Multi-File Rename',
+        description:
+          'Ask before a rename changes more than one file, listing the files it changes.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.saveAfterRename',
+        title: 'Save Files After Rename',
+        description:
+          'Save the open files a rename changed. Files that were not open are written as the ' +
+          'rename is made either way.',
+        control: { kind: 'toggle' },
+        default: false,
       },
     ],
   },

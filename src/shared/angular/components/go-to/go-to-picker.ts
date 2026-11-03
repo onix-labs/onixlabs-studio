@@ -31,7 +31,7 @@ export class GoToPicker {
    * Gets the symbols matching what has been typed, best first, or empty while they are being read.
    */
   public readonly matches: Signal<readonly GoToSymbol[]> = computed((): readonly GoToSymbol[] =>
-    filterSymbols(this.symbols() ?? [], this.query()),
+    filterSymbols(this.symbols() ?? [], this.query(), this.fuzzy()),
   );
 
   /**
@@ -88,12 +88,15 @@ export class GoToPicker {
    * @param noSymbols Says why there are no symbols at all, given what was typed: a document's having
    * none, or — for a search whose symbols come from what was typed (#1146) — nothing typed yet, or
    * nothing found.
+   * @param fuzzy Reads whether symbols holding the typed letters in order match too (Go to Symbol
+   * Matching), defaulting to yes.
    */
   public constructor(
     private readonly symbols: () => readonly GoToSymbol[] | null,
     private readonly lineCount: () => number,
     private readonly currentName: () => string = (): string => '',
     private readonly noSymbols: (query: string) => string = (): string => 'No symbols in this file',
+    private readonly fuzzy: () => boolean = (): boolean => true,
   ) {}
 
   /**

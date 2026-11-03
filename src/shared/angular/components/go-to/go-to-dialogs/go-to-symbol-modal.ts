@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  inject,
   input,
   InputSignal,
   output,
@@ -14,6 +15,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import type { GoToSymbol, GoToTarget } from '@shared/angular/services/go-to/go-to-model';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { GoToPicker } from '../go-to-picker';
 
 /**
@@ -104,7 +106,15 @@ export class GoToSymbolModal {
   protected readonly picker: GoToPicker = new GoToPicker(
     (): readonly GoToSymbol[] | null => this.symbols(),
     (): number => 1,
+    undefined,
+    undefined,
+    (): boolean => this.settings.value('textEditor.goToSymbolMatching')() === 'fuzzy',
   );
+
+  /**
+   * Holds the settings, read for how symbols are matched.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Moves the selection through the symbols, keeping the caret where it is in the field.
