@@ -1,0 +1,11 @@
+// Minimum Diagnostic Severity: Monaco draws every marker, and the markers are shared with the Problems
+// panel, so an editor hides the underlines below its minimum rather than the markers being withheld.
+// Monaco draws them into its own DOM, outside Angular's view encapsulation, so this lives here.
+.monaco-editor.minimum-severity-info .squiggly-hint,
+.monaco-editor.minimum-severity-warning .squiggly-hint,
+.monaco-editor.minimum-severity-warning .squiggly-info,
+.monaco-editor.minimum-severity-error .squiggly-hint,
+.monaco-editor.minimum-severity-error .squiggly-info,
+.monaco-editor.minimum-severity-error .squiggly-warning {
+  display: none;
+}

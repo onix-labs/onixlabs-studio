@@ -13,6 +13,7 @@
 @use 'milkdown' as *;
 @use 'agent-markdown' as *;
 @use 'change-margin' as *;
+@use 'diagnostics' as *;
 @use 'folding' as *;
 @use 'quick-fix' as *;
 @use 'test-results' as *;
