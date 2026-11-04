@@ -1,8 +1,27 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiClientChannel } from '@shared/api/api-client-channels';
 import { HttpOutcome, ResolvedHttpRequest } from '@shared/api/api-client-types';
 import { ContributionListener, ContributionLogger, InvokeHandler } from '../main-contribution';
 import { ApiClientContribution } from './api-client.contribution';
+import { TransportRequest, TransportResponse } from './api-client-transport';
+
+/**
+ * Builds a transport response with the fields a test cares about.
+ */
+function answer(values: Partial<TransportResponse> = {}): TransportResponse {
+  return {
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    body: new Uint8Array(),
+    sizeBytes: 0,
+    truncated: false,
+    finalUrl: 'https://api.test/thing',
+    redirected: false,
+    firstByteMs: 1,
+    ...values,
+  };
+}
 
 /**
  * A stand-in contribution context capturing the handlers the contribution registers.
@@ -94,8 +113,9 @@ function request(values: Partial<ResolvedHttpRequest> = {}): ResolvedHttpRequest
 }
 
 describe('ApiClientContribution', () => {
-  let contribution: ApiClientContribution;
   let context: FakeContext;
+  let transport: (request: TransportRequest) => Promise<TransportResponse>;
+  let sent: TransportRequest | undefined;
 
   /**
    * Sends a request through the registered handler.
@@ -106,13 +126,16 @@ describe('ApiClientContribution', () => {
   }
 
   beforeEach(() => {
-    contribution = new ApiClientContribution();
+    sent = undefined;
+    transport = (): Promise<TransportResponse> => Promise.resolve(answer());
+    const contribution: ApiClientContribution = new ApiClientContribution(
+      (request: TransportRequest): Promise<TransportResponse> => {
+        sent = request;
+        return transport(request);
+      },
+    );
     context = new FakeContext();
     contribution.activate(context);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it('activate_registersTheSendHandlerAndTheCancelListener', () => {
@@ -121,18 +144,17 @@ describe('ApiClientContribution', () => {
   });
 
   it('send_whenTheServerResponds_reportsTheStatusHeadersBodyAndSize', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((): Promise<Response> =>
-        Promise.resolve(
-          new Response('{"ok":true}', {
-            status: 201,
-            statusText: 'Created',
-            headers: { 'content-type': 'application/json' },
-          }),
-        ),
-      ),
-    );
+    const text: string = '{"ok":true}';
+    transport = (): Promise<TransportResponse> =>
+      Promise.resolve(
+        answer({
+          status: 201,
+          statusText: 'Created',
+          headers: { 'content-type': 'application/json' },
+          body: new TextEncoder().encode(text),
+          sizeBytes: text.length,
+        }),
+      );
 
     const outcome: HttpOutcome = await send(request());
 
@@ -140,31 +162,28 @@ describe('ApiClientContribution', () => {
     if (outcome.kind === 'response') {
       expect(outcome.status).toBe(201);
       expect(outcome.headers['content-type']).toBe('application/json');
-      expect(outcome.body).toBe('{"ok":true}');
-      expect(outcome.sizeBytes).toBe('{"ok":true}'.length);
+      expect(outcome.body).toBe(text);
+      expect(outcome.sizeBytes).toBe(text.length);
     }
+  });
+
+  it('send_whenTheBodyWasCut_saysSo', async () => {
+    transport = (): Promise<TransportResponse> => Promise.resolve(answer({ truncated: true }));
+
+    expect(await send(request())).toMatchObject({ kind: 'response', truncated: true });
   });
 
   it('send_whenTheStatusIsAnError_isStillAResponseRatherThanAFailure', async () => {
     // A 500 is an answer. Only the absence of an answer is a failure — the distinction the user cares
     // about, and one a status code cannot carry.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((): Promise<Response> => Promise.resolve(new Response('nope', { status: 500 }))),
-    );
+    transport = (): Promise<TransportResponse> => Promise.resolve(answer({ status: 500 }));
 
     expect((await send(request())).kind).toBe('response');
   });
 
   it('send_whenTheTransportFails_reportsAFailureCarryingTheUnderlyingCause', async () => {
-    // Node's fetch reports the useful detail on the cause; the uniformly useless "fetch failed" is
-    // what the user would otherwise be shown.
-    const error: Error = new Error('fetch failed');
-    (error as { cause?: unknown }).cause = new Error('connect ECONNREFUSED 127.0.0.1:9');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((): Promise<Response> => Promise.reject(error)),
-    );
+    transport = (): Promise<TransportResponse> =>
+      Promise.reject(new Error('connect ECONNREFUSED 127.0.0.1:9'));
 
     const outcome: HttpOutcome = await send(request());
 
@@ -178,10 +197,7 @@ describe('ApiClientContribution', () => {
   it('send_whenCancelled_reportsAFailureMarkedAsCancelled', async () => {
     const aborted: Error = new Error('The operation was aborted');
     aborted.name = 'AbortError';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((): Promise<Response> => Promise.reject(aborted)),
-    );
+    transport = (): Promise<TransportResponse> => Promise.reject(aborted);
 
     const outcome: HttpOutcome = await send(request());
 
@@ -193,36 +209,32 @@ describe('ApiClientContribution', () => {
 
   it('send_forABodylessMethod_dropsTheBodyRatherThanSendingAProtocolError', async () => {
     // A GET with a body is a protocol error, whatever the editor holds, so the engine drops it.
-    let sentUrl: string = '';
-    let sentInit: RequestInit | undefined = undefined;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((url: string, init: RequestInit): Promise<Response> => {
-        sentUrl = url;
-        sentInit = init;
-        return Promise.resolve(new Response('', { status: 200 }));
-      }),
-    );
-
     await send(request({ method: 'GET', body: '{"a":1}' }));
 
-    expect(sentUrl).toBe('https://api.test/thing');
-    expect((sentInit as RequestInit | undefined)?.body).toBeNull();
+    expect(sent?.url).toBe('https://api.test/thing');
+    expect(sent?.body).toBeNull();
   });
 
   it('send_whenRedirectsAreNotFollowed_asksTheTransportForTheRedirectItself', async () => {
     // Seeing the 302 itself is the point of turning redirects off.
-    let sentInit: RequestInit | undefined = undefined;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((_url: string, init: RequestInit): Promise<Response> => {
-        sentInit = init;
-        return Promise.resolve(new Response('', { status: 302 }));
+    await send(request({ followRedirects: false }));
+
+    expect(sent?.followRedirects).toBe(false);
+  });
+
+  it('send_passesTheSettingsThroughToTheTransport', async () => {
+    await send(
+      request({
+        maxBodyBytes: 8,
+        acceptSelfSigned: 'always',
+        proxy: { mode: 'custom', address: 'p:1', bypass: '' },
       }),
     );
 
-    await send(request({ followRedirects: false }));
-
-    expect((sentInit as RequestInit | undefined)?.redirect).toBe('manual');
+    expect(sent).toMatchObject({
+      maxBodyBytes: 8,
+      acceptSelfSigned: 'always',
+      proxy: { mode: 'custom', address: 'p:1' },
+    });
   });
 });

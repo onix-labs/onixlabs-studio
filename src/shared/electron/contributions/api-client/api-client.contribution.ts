@@ -2,11 +2,12 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { ApiClientChannel } from '@shared/api/api-client-channels';
 import { HttpFailure, HttpOutcome, ResolvedHttpRequest } from '@shared/api/api-client-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
+import { ApiTransport, createApiTransport, TransportResponse } from './api-client-transport';
 
 /**
- * The largest response body read into memory, in bytes. A request that returns more than this is
- * truncated rather than allowed to exhaust the main process — the API Explorer is for inspecting
- * responses, not for downloading files, and a 32 MiB ceiling is far above any payload a person reads.
+ * The largest response body read into memory unless a request says otherwise, in bytes. A request that
+ * returns more than this is truncated rather than allowed to exhaust the main process — the API
+ * Explorer is for inspecting responses, not for downloading files.
  */
 const MAX_BODY_BYTES: number = 32 * 1024 * 1024;
 
@@ -40,6 +41,19 @@ export class ApiClientContribution implements MainContribution {
    * belongs to. A request is in flight at most once at a time, so its id is a sufficient key.
    */
   private readonly inFlight: Map<string, AbortController> = new Map<string, AbortController>();
+
+  /**
+   * Initializes a new instance of the {@link ApiClientContribution} class.
+   * @param transport Sends a request and reads its response.
+   */
+  public constructor(
+    private readonly transport: ApiTransport = createApiTransport(
+      async (url: string): Promise<string> => {
+        const { session } = await import('electron');
+        return session.defaultSession.resolveProxy(url);
+      },
+    ),
+  ) {}
 
   /**
    * Wires the send and cancel channels.
@@ -88,37 +102,42 @@ export class ApiClientContribution implements MainContribution {
   ): Promise<HttpOutcome> {
     const controller: AbortController = new AbortController();
     this.inFlight.set(request.id, controller);
-    const timeout: ReturnType<typeof setTimeout> = setTimeout((): void => {
-      controller.abort(new Error(`Timed out after ${request.timeoutMs}ms`));
-    }, request.timeoutMs);
+    // A timeout of zero is No Limit: only the user's cancel ends it.
+    const timeout: ReturnType<typeof setTimeout> | undefined =
+      request.timeoutMs > 0
+        ? setTimeout((): void => {
+            controller.abort(new Error(`Timed out after ${request.timeoutMs}ms`));
+          }, request.timeoutMs)
+        : undefined;
     const started: number = performance.now();
 
     try {
       context.log.info('Sending request', { method: request.method, url: request.url });
-      const response: Response = await fetch(request.url, {
+      const response: TransportResponse = await this.transport({
         method: request.method,
+        url: request.url,
         headers: { ...request.headers },
         body: BODYLESS_METHODS.has(request.method) ? null : request.body,
-        redirect: request.followRedirects ? 'follow' : 'manual',
+        followRedirects: request.followRedirects,
+        maxBodyBytes: request.maxBodyBytes ?? MAX_BODY_BYTES,
+        acceptSelfSigned: request.acceptSelfSigned ?? 'never',
+        proxy: request.proxy ?? { mode: 'none', address: '', bypass: '' },
         signal: controller.signal,
       });
-      const firstByteMs: number = performance.now() - started;
-      const buffer: ArrayBuffer = await response.arrayBuffer();
       const totalMs: number = performance.now() - started;
-      const bytes: Uint8Array = new Uint8Array(buffer);
-      const body: string = new TextDecoder().decode(bytes.subarray(0, MAX_BODY_BYTES));
 
       return {
         kind: 'response',
         id: request.id,
         status: response.status,
         statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        body,
-        sizeBytes: bytes.byteLength,
-        finalUrl: response.url === '' ? request.url : response.url,
+        headers: response.headers,
+        body: new TextDecoder().decode(response.body),
+        sizeBytes: response.sizeBytes,
+        truncated: response.truncated,
+        finalUrl: response.finalUrl,
         redirected: response.redirected,
-        timings: { firstByteMs, totalMs },
+        timings: { firstByteMs: response.firstByteMs, totalMs },
       };
     } catch (error: unknown) {
       return this.toFailure(request, error, performance.now() - started, context);

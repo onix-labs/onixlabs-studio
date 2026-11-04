@@ -134,6 +134,7 @@ type SettingsSectionId =
   | 'ai-security'
   | 'mission-control'
   | 'system-monitor'
+  | 'api-explorer'
   | 'database-explorer'
   | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
@@ -555,12 +556,11 @@ export class SettingsView {
       ],
     },
     {
-      // API Explorer has no settings of its own yet; it carries its Keyboard leaf alone.
       id: 'api-explorer',
       group: 'capabilities',
       label: 'API Explorer',
       icon: Icon.API_EXPLORER,
-      children: [],
+      children: [{ id: 'api-explorer-general', label: 'General', sectionId: 'api-explorer' }],
     },
     {
       id: 'database-explorer',

@@ -437,6 +437,16 @@ export type BinaryInspectorSign = 'signed' | 'unsigned';
 export type BinaryDoubleClick = 'instruction' | 'byte';
 
 /**
+ * Names whose certificates the API Explorer accepts without verifying them.
+ */
+export type ApiAcceptSelfSigned = 'never' | 'localhost' | 'always';
+
+/**
+ * Names how the API Explorer's requests reach their servers.
+ */
+export type ApiProxyMode = 'none' | 'system' | 'custom';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -686,6 +696,20 @@ export interface SettingsValues {
   readonly 'binaryEditor.doubleClickSelects': BinaryDoubleClick;
   readonly 'binaryEditor.loadSymbolFiles': boolean;
   readonly 'binaryEditor.decodeLimit': number;
+
+  readonly 'apiExplorer.requestTimeoutSeconds': number;
+  readonly 'apiExplorer.followRedirects': boolean;
+  readonly 'apiExplorer.maxResponseMib': number;
+  readonly 'apiExplorer.acceptSelfSigned': ApiAcceptSelfSigned;
+  readonly 'apiExplorer.proxyMode': ApiProxyMode;
+  readonly 'apiExplorer.proxyAddress': string;
+  readonly 'apiExplorer.proxyBypass': string;
+  readonly 'apiExplorer.historySize': number;
+  readonly 'apiExplorer.keepHistory': boolean;
+  readonly 'apiExplorer.prettyPrintJson': boolean;
+  readonly 'apiExplorer.wrapResponseBody': boolean;
+  readonly 'apiExplorer.confirmDelete': boolean;
+  readonly 'apiExplorer.sampleContent': boolean;
 
   readonly 'plugins.notifyUpdates': boolean;
   readonly 'plugins.showUnsupported': boolean;
@@ -5061,6 +5085,153 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'auto',
+      },
+    ],
+  },
+  {
+    id: 'api-explorer',
+    label: 'API Explorer',
+    settings: [
+      {
+        key: 'apiExplorer.requestTimeoutSeconds',
+        title: 'Request Timeout',
+        description: "How long a request may take. A request's Settings tab can set its own.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 Seconds' },
+            { value: '30', label: '30 Seconds' },
+            { value: '60', label: '1 Minute' },
+            { value: '300', label: '5 Minutes' },
+            { value: '0', label: 'No Limit' },
+          ],
+        },
+        default: 30,
+      },
+      {
+        key: 'apiExplorer.followRedirects',
+        title: 'Follow Redirects',
+        description:
+          "Follow a redirect to where it leads. A request's Settings tab can say otherwise.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'apiExplorer.maxResponseMib',
+        title: 'Maximum Response Size',
+        description:
+          'The most of a response body that is read. A longer one is cut there, and says so.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '8', label: '8 MiB' },
+            { value: '32', label: '32 MiB' },
+            { value: '128', label: '128 MiB' },
+          ],
+        },
+        default: 32,
+      },
+      {
+        key: 'apiExplorer.acceptSelfSigned',
+        title: 'Accept Self-Signed Certificates',
+        description:
+          "Whose certificates are accepted without being verified: nobody's, this machine's, or everybody's.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'never', label: 'Never' },
+            { value: 'localhost', label: 'Localhost Only' },
+            { value: 'always', label: 'Always' },
+          ],
+        },
+        default: 'localhost',
+      },
+      {
+        key: 'apiExplorer.proxyMode',
+        title: 'Proxy',
+        description:
+          "How requests reach their servers: directly, through the system's proxy, or through your own. This machine is always reached directly.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'system', label: 'System' },
+            { value: 'custom', label: 'Custom' },
+          ],
+        },
+        default: 'system',
+      },
+      {
+        key: 'apiExplorer.proxyAddress',
+        title: 'Proxy Address',
+        description: 'The proxy to use, as host and port.',
+        control: { kind: 'text', placeholder: 'proxy.example.com:8080' },
+        visibleWhen: { key: 'apiExplorer.proxyMode', equals: ['custom'] },
+        default: '',
+      },
+      {
+        key: 'apiExplorer.proxyBypass',
+        title: 'Proxy Bypass List',
+        description:
+          'The hosts to reach directly, separated by commas. *.example.com covers a domain.',
+        control: { kind: 'text', placeholder: 'internal.example.com, *.corp.example.com' },
+        visibleWhen: { key: 'apiExplorer.proxyMode', equals: ['custom'] },
+        default: '',
+      },
+      {
+        key: 'apiExplorer.historySize',
+        title: 'History Size',
+        description: 'How many sends the History panel keeps.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '50', label: '50' },
+            { value: '100', label: '100' },
+            { value: '250', label: '250' },
+            { value: '500', label: '500' },
+          ],
+        },
+        default: 100,
+      },
+      {
+        key: 'apiExplorer.keepHistory',
+        title: 'Keep History Across Sessions',
+        description:
+          "Keep a saved workspace's history when it closes. Response bodies are left out.",
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'apiExplorer.prettyPrintJson',
+        title: 'Pretty-Print JSON',
+        description: 'Lay a JSON response out with indentation.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'apiExplorer.wrapResponseBody',
+        title: 'Wrap Response Body',
+        description: 'Wrap long lines of a response body.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'apiExplorer.confirmDelete',
+        title: 'Confirm Before Deleting',
+        description: 'Ask before deleting a request, folder or environment.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'apiExplorer.sampleContent',
+        title: 'Start New Workspaces With Sample Content',
+        description:
+          'Start a new workspace with a collection, a request and an environment to try.',
+        control: { kind: 'toggle' },
+        default: false,
       },
     ],
   },

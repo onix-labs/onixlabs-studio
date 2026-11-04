@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
@@ -66,6 +67,11 @@ export class ApiEnvironmentPanel {
    * Holds the API workspace the environment is read from and written to.
    */
   protected readonly workspace: ApiWorkspace = inject(ApiWorkspace);
+
+  /**
+   * Holds the settings, which say whether a delete asks first.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the prompts, whose New Environment dialog the strip opens.
@@ -144,12 +150,14 @@ export class ApiEnvironmentPanel {
       return;
     }
     if (id === DELETE) {
-      const confirmed: boolean = await this.fileSystem.confirmDestructive({
-        title: 'Delete Environment',
-        message: `Delete "${environment.name}"?`,
-        detail: 'This cannot be undone.',
-        confirmLabel: 'Delete',
-      });
+      const confirmed: boolean =
+        !this.settings.get('apiExplorer.confirmDelete') ||
+        (await this.fileSystem.confirmDestructive({
+          title: 'Delete Environment',
+          message: `Delete "${environment.name}"?`,
+          detail: 'This cannot be undone.',
+          confirmLabel: 'Delete',
+        }));
       if (confirmed) {
         this.workspace.removeEnvironment(environment.id);
       }

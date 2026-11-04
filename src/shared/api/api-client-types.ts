@@ -26,6 +26,32 @@ export const HTTP_METHODS: readonly HttpMethod[] = [
 ];
 
 /**
+ * Names whose certificates are accepted without being verified.
+ */
+export type ApiSelfSignedPolicy = 'never' | 'localhost' | 'always';
+
+/**
+ * Describes how a request reaches its server: directly, as the system says, or through an address of
+ * the user's with a list of hosts that go directly anyway.
+ */
+export interface ApiProxy {
+  /**
+   * Gets which of those it is.
+   */
+  readonly mode: 'none' | 'system' | 'custom';
+
+  /**
+   * Gets the Custom proxy, as `host:port`.
+   */
+  readonly address: string;
+
+  /**
+   * Gets the hosts that bypass the Custom proxy.
+   */
+  readonly bypass: string;
+}
+
+/**
  * One editable name/value row — a query parameter, a header, or a form field. Rows carry their own
  * enabled flag so a user can keep a parameter around without sending it, exactly as the tick boxes in
  * the reference tools do; a disabled row is dropped when the request is resolved.
@@ -153,6 +179,16 @@ export interface ApiRequest {
    * the explanation lives beside the request rather than only in the conversation.
    */
   readonly description: string;
+
+  /**
+   * Gets this request's own timeout, in seconds (zero for none), or undefined for the setting's.
+   */
+  readonly timeoutSeconds?: number;
+
+  /**
+   * Gets whether this request follows redirects, or undefined for the setting's answer.
+   */
+  readonly followRedirects?: boolean;
 }
 
 /**
@@ -310,6 +346,21 @@ export interface ResolvedHttpRequest {
    * is what a user debugging a redirect chain wants to see.
    */
   readonly followRedirects: boolean;
+
+  /**
+   * Gets the most bytes of response body read, or undefined for the engine's own limit.
+   */
+  readonly maxBodyBytes?: number;
+
+  /**
+   * Gets whose certificates are accepted without being verified, or undefined for nobody's.
+   */
+  readonly acceptSelfSigned?: ApiSelfSignedPolicy;
+
+  /**
+   * Gets how the request reaches its server, or undefined to go directly.
+   */
+  readonly proxy?: ApiProxy;
 }
 
 /**
@@ -375,6 +426,11 @@ export interface HttpResponse {
    * Gets the body size in bytes, as measured on the wire rather than after decoding.
    */
   readonly sizeBytes: number;
+
+  /**
+   * Gets whether the body was cut at the Maximum Response Size.
+   */
+  readonly truncated?: boolean;
 
   /**
    * Gets the URL the response actually came from, which differs from the request URL when redirects
