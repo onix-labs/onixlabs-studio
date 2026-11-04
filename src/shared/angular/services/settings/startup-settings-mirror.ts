@@ -40,6 +40,13 @@ export class StartupSettingsMirror {
       this.settings.value('containers.engineAddressMode')() === 'custom'
         ? this.settings.value('containers.engineAddress')()
         : '',
+    ollamaAddress: this.settings.value('aiManager.ollamaAddress')(),
+    ollamaModelsFolder: this.settings.value('aiManager.modelsFolder')(),
+    ollamaRuntimeFolder: this.settings.value('aiManager.runtimeFolder')(),
+    ollamaStopOnQuit: this.settings.value('aiManager.stopRuntimeOnQuit')(),
+    ollamaStart: this.settings.value('aiManager.startRuntime')(),
+    ollamaKeepAliveMinutes: this.settings.value('aiManager.keepModelsLoadedMinutes')(),
+    skillLibraryFolder: this.settings.value('aiManager.skillLibraryFolder')(),
   }));
 
   /**

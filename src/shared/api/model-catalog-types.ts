@@ -89,6 +89,11 @@ export interface CatalogQuery {
    * The most results to return per source.
    */
   readonly limit?: number;
+
+  /**
+   * Whether the Hugging Face Hub is searched; absent means it is.
+   */
+  readonly huggingFace?: boolean;
 }
 
 /**

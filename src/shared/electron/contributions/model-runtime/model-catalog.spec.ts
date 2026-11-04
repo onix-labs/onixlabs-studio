@@ -162,3 +162,33 @@ describe('CuratedCatalogSource', () => {
     }
   });
 });
+
+describe('ModelCatalog sources', () => {
+  /**
+   * Makes a source that records being searched.
+   * @param id The source's id.
+   * @param searched Where it records.
+   * @returns Returns the source.
+   */
+  function source(id: string, searched: string[]): ModelCatalogSource {
+    return {
+      id,
+      search: (): Promise<CatalogModel[]> => {
+        searched.push(id);
+        return Promise.resolve([]);
+      },
+    };
+  }
+
+  it('leavesTheHubOut_whenAsked', async () => {
+    const searched: string[] = [];
+    const catalog: ModelCatalog = new ModelCatalog([
+      source('curated', searched),
+      source('huggingface', searched),
+    ]);
+
+    await catalog.search({ text: 'llama', huggingFace: false });
+
+    expect(searched).toEqual(['curated']);
+  });
+});

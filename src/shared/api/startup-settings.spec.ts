@@ -1,4 +1,8 @@
-import { DEFAULT_STARTUP_SETTINGS, parseStartupSettings } from './startup-settings';
+import {
+  DEFAULT_STARTUP_SETTINGS,
+  parseStartupSettings,
+  StartupSettings,
+} from './startup-settings';
 
 describe('parseStartupSettings', () => {
   it('withNothing_returnsTheDefaults', () => {
@@ -48,5 +52,29 @@ describe('parseStartupSettings log limits', () => {
   it('falls back on the default for one it does not', () => {
     expect(parseStartupSettings({ logRotatedCopies: 99 }).logRotatedCopies).toBe(5);
     expect(parseStartupSettings({ liveLogRecords: '5000' }).liveLogRecords).toBe(5000);
+  });
+});
+
+describe('parseStartupSettings AI Manager', () => {
+  it('keepsWhatTheSettingsOffer', () => {
+    const parsed: StartupSettings = parseStartupSettings({
+      ollamaAddress: '10.0.0.5:11434',
+      ollamaStopOnQuit: 'never',
+      ollamaStart: 'launch',
+      ollamaKeepAliveMinutes: -1,
+    });
+    expect(parsed).toMatchObject({
+      ollamaAddress: '10.0.0.5:11434',
+      ollamaStopOnQuit: 'never',
+      ollamaStart: 'launch',
+      ollamaKeepAliveMinutes: -1,
+    });
+  });
+
+  it('fallsBackOnTheDefaults', () => {
+    expect(parseStartupSettings({ ollamaStart: 'sometimes', ollamaAddress: 7 })).toMatchObject({
+      ollamaStart: 'needed',
+      ollamaAddress: '127.0.0.1:11434',
+    });
   });
 });

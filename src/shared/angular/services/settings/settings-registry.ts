@@ -1,3 +1,4 @@
+import type { OllamaStart, OllamaStopOnQuit } from '@shared/api/startup-settings';
 import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
@@ -872,6 +873,16 @@ export interface SettingsValues {
   readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
   readonly 'databaseExplorer.gridlines': DatabaseGridlines;
   readonly 'databaseExplorer.gridlineTone': DatabaseGridlineTone;
+  readonly 'aiManager.ollamaAddress': string;
+  readonly 'aiManager.modelsFolder': string;
+  readonly 'aiManager.runtimeFolder': string;
+  readonly 'aiManager.stopRuntimeOnQuit': OllamaStopOnQuit;
+  readonly 'aiManager.startRuntime': OllamaStart;
+  readonly 'aiManager.keepModelsLoadedMinutes': number;
+  readonly 'aiManager.searchHuggingFace': boolean;
+  readonly 'aiManager.resultsPerSource': number;
+  readonly 'aiManager.skillLibraryFolder': string;
+  readonly 'aiManager.lastSection': string;
   readonly 'containers.engine': string;
   readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
   readonly 'containers.engineAddress': string;
@@ -5589,6 +5600,129 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description: 'Whether the Containers list shows only running containers.',
         control: { kind: 'custom', component: 'containers-running-only' },
         default: false,
+      },
+    ],
+  },
+  {
+    id: 'ai-manager',
+    label: 'AI Manager',
+    settings: [
+      {
+        key: 'aiManager.ollamaAddress',
+        title: 'Ollama Server Address',
+        description:
+          'Where the Ollama server listens. The OLLAMA_HOST environment variable wins when it is ' +
+          'set. Takes effect the next time Studio starts.',
+        control: { kind: 'text', placeholder: '127.0.0.1:11434' },
+        default: '127.0.0.1:11434',
+      },
+      {
+        key: 'aiManager.modelsFolder',
+        title: 'Model Storage Folder',
+        description:
+          'Where a server Studio starts keeps its models. Leave empty for ~/.ollama/models. The ' +
+          'OLLAMA_MODELS environment variable wins when it is set.',
+        control: { kind: 'text', placeholder: '~/.ollama/models' },
+        default: '',
+      },
+      {
+        key: 'aiManager.runtimeFolder',
+        title: 'Runtime Install Folder',
+        description:
+          "Where Studio installs its own copy of Ollama. Leave empty for Studio's user data. Takes " +
+          'effect the next time Studio starts.',
+        control: { kind: 'text', placeholder: "Studio's user data" },
+        default: '',
+      },
+      {
+        key: 'aiManager.stopRuntimeOnQuit',
+        title: 'Stop Runtime on Quit',
+        description:
+          "What happens to a server Studio started when Studio quits. Automatic stops Studio's own " +
+          'copy and leaves your installed Ollama running. A server Studio did not start is never ' +
+          'touched.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'always', label: 'Always' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'aiManager.startRuntime',
+        title: 'Start Runtime',
+        description:
+          'When Studio starts Ollama: only from the AI Manager, when a model is about to be used, or ' +
+          'as Studio launches.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'manual', label: 'Manually' },
+            { value: 'needed', label: 'When needed' },
+            { value: 'launch', label: 'On launch' },
+          ],
+        },
+        default: 'needed',
+      },
+      {
+        key: 'aiManager.keepModelsLoadedMinutes',
+        title: 'Keep Models Loaded For',
+        description:
+          'How long a model stays in memory after its last use. On a server Studio did not start, ' +
+          'this is applied while the AI Manager is open.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 minute' },
+            { value: '5', label: '5 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '-1', label: 'Until quit' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'aiManager.searchHuggingFace',
+        title: 'Search Hugging Face',
+        description: 'Search the Hugging Face Hub for models as well as the curated list.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'aiManager.resultsPerSource',
+        title: 'Results per Source',
+        description: 'How many models a search brings back from each place it looks.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10' },
+            { value: '25', label: '25' },
+            { value: '50', label: '50' },
+          ],
+        },
+        default: 25,
+      },
+      {
+        key: 'aiManager.skillLibraryFolder',
+        title: 'Skill Library Folder',
+        description:
+          "Where your skills are kept. Leave empty for Studio's user data. Existing skills are not " +
+          'moved. Takes effect the next time Studio starts.',
+        control: { kind: 'text', placeholder: "Studio's user data" },
+        default: '',
+      },
+      {
+        // The section left open, which the AI Manager opens at; it has no row of its own.
+        key: 'aiManager.lastSection',
+        title: 'Last Section',
+        description: 'The AI Manager section left open.',
+        control: { kind: 'custom', component: 'ai-manager-section' },
+        default: '',
       },
     ],
   },

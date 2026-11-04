@@ -413,11 +413,12 @@ class Program {
   );
 
   /**
-   * Owns the user's skill library (#301): a folder of `SKILL.md` folders under the user-data path,
-   * which runs draw their in-scope skills from and Settings edits.
+   * Owns the user's skill library (#301): a folder of `SKILL.md` folders, under the user-data path
+   * unless the user chose another, which runs draw their in-scope skills from and Settings edits.
    */
   private readonly skillLibrary: SkillLibrary = new SkillLibrary(
-    path.join(app.getPath('userData'), 'skills'),
+    StartupPreferencesStore.read().settings.skillLibraryFolder ||
+      path.join(app.getPath('userData'), 'skills'),
   );
 
   /**

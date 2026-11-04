@@ -194,7 +194,7 @@ export class AiManagerView implements OnInit {
    * Publishes this view's injector to the status strip, now that the tab id is readable.
    */
   public ngOnInit(): void {
-    // Every showing starts with the sidebar's sections closed, unless something opened it at one.
+    // Every showing opens where it was left, unless something opened it at a section.
     this.navigation.begin();
     this.statusHost.register(this.tabId());
     this.agentHost.register(this.tabId());

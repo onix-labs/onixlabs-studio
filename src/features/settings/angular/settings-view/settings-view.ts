@@ -141,6 +141,7 @@ type SettingsSectionId =
   | 'system-monitor'
   | 'api-explorer'
   | 'containers'
+  | 'ai-manager'
   | 'database-explorer'
   | 'database-results'
   | 'database-connections'
@@ -207,6 +208,7 @@ const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
   'database-explorer': 'Database Explorer',
   'system-monitor': 'System Monitor',
   containers: 'Containers',
+  'ai-manager': 'AI Manager',
 };
 
 /**
@@ -610,6 +612,13 @@ export class SettingsView {
       label: 'Containers',
       icon: Icon.CONTAINERS,
       children: [{ id: 'containers-general', label: 'General', sectionId: 'containers' }],
+    },
+    {
+      id: 'ai-manager',
+      group: 'tools',
+      label: 'AI Manager',
+      icon: Icon.AI_MODELS,
+      children: [{ id: 'ai-manager-general', label: 'General', sectionId: 'ai-manager' }],
     },
   ];
 

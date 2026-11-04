@@ -1,3 +1,4 @@
+import { ollamaEnvironment } from '../../ai/ollama-settings';
 import { Dirent, Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
@@ -15,7 +16,7 @@ import {
 import { logger } from '../../logger';
 import { ModelRuntime } from './model-runtime';
 import { OllamaProvisioner } from './ollama-provisioner';
-import { OllamaServer } from './ollama-server';
+import { OllamaServerOptions, OllamaServer } from './ollama-server';
 import { HttpOllamaTransport, OllamaResponse, OllamaTransport } from './ollama-transport';
 
 /**
@@ -76,6 +77,11 @@ const DEFAULT_ORIGIN: string = 'http://127.0.0.1:11434';
  */
 export class OllamaRuntime implements ModelRuntime {
   /**
+   * Holds the `keep_alive` and expiry each loaded model was last left with, by name.
+   */
+  private readonly held: Map<string, string> = new Map<string, string>();
+
+  /**
    * The stable runtime identifier.
    */
   public readonly id: string = 'ollama';
@@ -106,20 +112,28 @@ export class OllamaRuntime implements ModelRuntime {
    * @param origin The server origin; defaults to Ollama's standard local address.
    * @param transport The transport to use; defaults to JSON over HTTP to the origin.
    * @param provisioner Finds and installs the binary; omitted in tests that only exercise the API.
+   * @param serverOptions Reads the user's settings for a server Studio starts.
+   * @param keepAlive Reads the `keep_alive` models are to be held to, when the user has set one.
    */
   public constructor(
     origin: string = DEFAULT_ORIGIN,
     transport?: OllamaTransport,
     provisioner?: OllamaProvisioner,
+    serverOptions?: () => OllamaServerOptions,
+    private readonly keepAlive: (() => string) | null = null,
   ) {
     this.transport = transport ?? new HttpOllamaTransport(origin);
     this.provisioner = provisioner ?? null;
     this.server =
       provisioner === undefined
         ? null
-        : new OllamaServer(hostFromOrigin(origin), async (): Promise<boolean> => {
-            return (await this.status()).available;
-          });
+        : new OllamaServer(
+            hostFromOrigin(origin),
+            async (): Promise<boolean> => {
+              return (await this.status()).available;
+            },
+            serverOptions,
+          );
   }
 
   /**
@@ -198,7 +212,7 @@ export class OllamaRuntime implements ModelRuntime {
    * @returns Returns the disk usage.
    */
   public async diskUsage(): Promise<ModelDiskUsage> {
-    const store: string = ollamaModelStore(process.env, os.homedir());
+    const store: string = ollamaModelStore(ollamaEnvironment(), os.homedir());
     try {
       const blobs: string = path.join(store, 'blobs');
       const entries: Dirent[] = await fs.readdir(blobs, { withFileTypes: true });
@@ -252,6 +266,15 @@ export class OllamaRuntime implements ModelRuntime {
    * @returns Returns the running models.
    */
   public async running(): Promise<RunningModel[]> {
+    const models: RunningModel[] = await this.readRunning();
+    return this.keepAlive === null ? models : this.holdLoaded(models, this.keepAlive());
+  }
+
+  /**
+   * Reads the loaded models.
+   * @returns Returns them, none when the server is unreachable.
+   */
+  private async readRunning(): Promise<RunningModel[]> {
     const raw: { models?: readonly RawPsModel[] } | null = await this.json<{
       models?: readonly RawPsModel[];
     }>('GET', '/api/ps');
@@ -262,6 +285,39 @@ export class OllamaRuntime implements ModelRuntime {
       sizeVram: model.size_vram ?? 0,
       expiresAt: model.expires_at ?? '',
     }));
+  }
+
+  /**
+   * Holds loaded models to the user's Keep Models Loaded For. Chat runs through Ollama's OpenAI-compatible
+   * API, which takes no `keep_alive`, so a server Studio did not start would otherwise keep its own
+   * default: each model is told once per load, and again whenever a request has reset its expiry.
+   * @param models The loaded models.
+   * @param keepAlive The `keep_alive` to hold them to.
+   * @returns Returns the loaded models, as they stand afterwards.
+   */
+  private async holdLoaded(models: RunningModel[], keepAlive: string): Promise<RunningModel[]> {
+    const stale: readonly RunningModel[] = models.filter(
+      (model: RunningModel): boolean =>
+        this.held.get(model.name) !== `${keepAlive}@${model.expiresAt}`,
+    );
+    if (stale.length === 0) {
+      return models;
+    }
+    await Promise.all(
+      stale.map((model: RunningModel): Promise<unknown> =>
+        this.json('POST', '/api/generate', {
+          model: model.name,
+          keep_alive: keepAlive,
+          stream: false,
+        }),
+      ),
+    );
+    const current: RunningModel[] = await this.readRunning();
+    this.held.clear();
+    for (const model of current) {
+      this.held.set(model.name, `${keepAlive}@${model.expiresAt}`);
+    }
+    return current;
   }
 
   /**

@@ -23,6 +23,17 @@ export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
 export type ConfirmExternalLinks = 'never' | 'untrusted' | 'always';
 
 /**
+ * What happens to an Ollama server Studio started, when Studio quits: Automatic stops Studio's own
+ * private copy and leaves the user's install running.
+ */
+export type OllamaStopOnQuit = 'automatic' | 'always' | 'never';
+
+/**
+ * When Studio starts the Ollama runtime.
+ */
+export type OllamaStart = 'manual' | 'needed' | 'launch';
+
+/**
  * Defines the settings the main process has to know before any window exists, or while none does.
  *
  * Settings live in the renderer's store, which the main process cannot reach at launch. Each of these
@@ -96,6 +107,41 @@ export interface StartupSettings {
    * engine as it starts, with no window open.
    */
   readonly containerEngineAddress: string;
+
+  /**
+   * Gets the Ollama server's address, which the environment's overrides.
+   */
+  readonly ollamaAddress: string;
+
+  /**
+   * Gets the folder Ollama keeps models in, empty for its own default.
+   */
+  readonly ollamaModelsFolder: string;
+
+  /**
+   * Gets the folder Studio installs its own Ollama in, empty for under the user data.
+   */
+  readonly ollamaRuntimeFolder: string;
+
+  /**
+   * Gets what happens to a server Studio started, when Studio quits.
+   */
+  readonly ollamaStopOnQuit: OllamaStopOnQuit;
+
+  /**
+   * Gets when Studio starts the runtime.
+   */
+  readonly ollamaStart: OllamaStart;
+
+  /**
+   * Gets how long a model stays loaded after its last use, in minutes; -1 until Studio quits.
+   */
+  readonly ollamaKeepAliveMinutes: number;
+
+  /**
+   * Gets the folder the skill library lives in, empty for under the user data.
+   */
+  readonly skillLibraryFolder: string;
 }
 
 /**
@@ -114,6 +160,13 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   keepSessionLogsDays: 30,
   liveLogRecords: 5000,
   containerEngineAddress: '',
+  ollamaAddress: '127.0.0.1:11434',
+  ollamaModelsFolder: '',
+  ollamaRuntimeFolder: '',
+  ollamaStopOnQuit: 'automatic',
+  ollamaStart: 'needed',
+  ollamaKeepAliveMinutes: 5,
+  skillLibraryFolder: '',
 };
 
 /**
@@ -129,6 +182,16 @@ function oneOf<T extends string | number>(
   fallback: T,
 ): T {
   return (allowed as readonly unknown[]).includes(candidate) ? (candidate as T) : fallback;
+}
+
+/**
+ * Reads a text setting.
+ * @param candidate The stored value.
+ * @param fallback The value used when it is not text.
+ * @returns Returns the text.
+ */
+function text(candidate: unknown, fallback: string): string {
+  return typeof candidate === 'string' ? candidate : fallback;
 }
 
 /**
@@ -190,9 +253,25 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       [1000, 5000, 20_000, 50_000],
       defaults.liveLogRecords,
     ),
-    containerEngineAddress:
-      typeof record['containerEngineAddress'] === 'string'
-        ? record['containerEngineAddress']
-        : defaults.containerEngineAddress,
+    containerEngineAddress: text(record['containerEngineAddress'], defaults.containerEngineAddress),
+    ollamaAddress: text(record['ollamaAddress'], defaults.ollamaAddress),
+    ollamaModelsFolder: text(record['ollamaModelsFolder'], defaults.ollamaModelsFolder),
+    ollamaRuntimeFolder: text(record['ollamaRuntimeFolder'], defaults.ollamaRuntimeFolder),
+    ollamaStopOnQuit: oneOf<OllamaStopOnQuit>(
+      record['ollamaStopOnQuit'],
+      ['automatic', 'always', 'never'],
+      defaults.ollamaStopOnQuit,
+    ),
+    ollamaStart: oneOf<OllamaStart>(
+      record['ollamaStart'],
+      ['manual', 'needed', 'launch'],
+      defaults.ollamaStart,
+    ),
+    ollamaKeepAliveMinutes: oneOf<number>(
+      record['ollamaKeepAliveMinutes'],
+      [1, 5, 30, -1],
+      defaults.ollamaKeepAliveMinutes,
+    ),
+    skillLibraryFolder: text(record['skillLibraryFolder'], defaults.skillLibraryFolder),
   };
 }

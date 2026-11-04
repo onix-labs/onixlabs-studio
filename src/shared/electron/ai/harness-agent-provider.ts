@@ -79,6 +79,11 @@ export interface HarnessDefinition {
   readonly connect: HarnessTransportFactory;
 
   /**
+   * Gets what to do before each turn: starting a local runtime the connection needs, say.
+   */
+  readonly beforeTurn?: () => Promise<void>;
+
+  /**
    * Gets how the harness maintains a conversation, as its **manifest** declares.
    *
    * ⛔ Not read from the handshake. `AiManager.dispatchLive` asks this before anything has been started,
@@ -340,6 +345,7 @@ export class HarnessAgentProvider implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
+    await this.definition.beforeTurn?.();
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
       (requestId: string, name: string, detail: string, source: string): void => {
@@ -498,6 +504,7 @@ export class HarnessAgentSession implements AgentSession {
    * @param context The run context.
    */
   public async turn(context: AgentRunContext): Promise<void> {
+    await this.definition.beforeTurn?.();
     const host: HarnessHost = await this.start();
     this.contexts.set(context.requestId, context);
     this.inFlight.push(context.requestId);
