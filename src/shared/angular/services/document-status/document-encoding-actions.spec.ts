@@ -1,17 +1,33 @@
 import { signal } from '@angular/core';
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 import type { TextEncoding } from '@shared/api/text-encodings';
 import type { DocumentStatusActions } from './document-status';
 import type { CodeDocument } from '@shared/angular/services/documents/documents';
 import { codeDocumentActions, type CodeDocumentActionsSource } from './document-encoding-actions';
 
 describe('codeDocumentActions', () => {
+  it('offersNothingAnEditorConfigDecides', () => {
+    const actions: DocumentStatusActions = codeDocumentActions(
+      source(document({ config: { endOfLine: 'crlf', charset: 'utf-8' } })).source,
+    );
+
+    expect(actions.setEol).toBeUndefined();
+    expect(actions.saveWithEncoding).toBeUndefined();
+    expect(actions.reopenWithEncoding).toBeDefined();
+  });
+
   /**
    * Builds a stand-in document.
    * @param overrides The parts that differ.
    * @returns Returns the document.
    */
   function document(
-    overrides: { path?: string | null; dirty?: boolean; readOnly?: boolean } = {},
+    overrides: {
+      path?: string | null;
+      dirty?: boolean;
+      readOnly?: boolean;
+      config?: EditorConfigProperties;
+    } = {},
   ): CodeDocument {
     return {
       id: 'doc',
@@ -19,6 +35,7 @@ describe('codeDocumentActions', () => {
       fileName: signal('a.txt'),
       dirty: signal(overrides.dirty ?? false),
       readOnly: signal(overrides.readOnly ?? false),
+      editorConfig: signal(overrides.config ?? null),
     } as unknown as CodeDocument;
   }
 

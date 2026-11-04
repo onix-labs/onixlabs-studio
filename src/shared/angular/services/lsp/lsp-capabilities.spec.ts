@@ -115,19 +115,28 @@ describe('structureSupportOf (#1147)', () => {
       structureSupportOf({
         foldingRangeProvider: true,
         documentHighlightProvider: true,
+        linkedEditingRangeProvider: true,
         selectionRangeProvider: true,
         semanticTokensProvider: { legend, range: true, full: false },
       }),
-    ).toEqual({ folding: true, highlights: true, rangeTokens: true, selectionRanges: true });
+    ).toEqual({
+      folding: true,
+      highlights: true,
+      linkedEditing: true,
+      rangeTokens: true,
+      selectionRanges: true,
+    });
     expect(structureSupportOf({ semanticTokensProvider: { range: true } })).toEqual({
       folding: false,
       highlights: false,
+      linkedEditing: false,
       rangeTokens: false,
       selectionRanges: false,
     });
     expect(structureSupportOf(undefined)).toEqual({
       folding: false,
       highlights: false,
+      linkedEditing: false,
       rangeTokens: false,
       selectionRanges: false,
     });

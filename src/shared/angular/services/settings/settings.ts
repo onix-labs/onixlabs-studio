@@ -103,6 +103,11 @@ export type InlayHintsMode = 'on' | 'off' | 'while-holding';
 export type MinimumDiagnosticSeverity = 'hint' | 'info' | 'warning' | 'error';
 
 /**
+ * Identifies what a save formats: nothing, the whole file, or the lines changed since the last save.
+ */
+export type FormatOnSave = 'off' | 'whole' | 'changed';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -234,6 +239,69 @@ export type GoToStyle = 'quick-open' | 'dialogs';
 export type DiffLayout = 'side-by-side' | 'inline';
 
 /**
+ * Identifies when the pointer brings up a hover card: always, never, or while a modifier is held.
+ * ⌘K ⌘I shows one at the caret whichever is chosen.
+ */
+export type ShowHoverCards = 'on' | 'off' | 'while-holding';
+
+/**
+ * Identifies when a typed bracket or quote gets its closing one: always, only before whitespace, or
+ * never.
+ */
+export type AutoCloseBrackets = 'always' | 'before-whitespace' | 'never';
+
+/**
+ * Identifies what typing a bracket or quote over a selection wraps it in.
+ */
+export type AutoSurround = 'brackets-and-quotes' | 'brackets' | 'quotes' | 'never';
+
+/**
+ * Identifies how much a new line's indentation is worked out for you.
+ */
+export type AutoIndent = 'none' | 'keep' | 'brackets' | 'full';
+
+/**
+ * Identifies the modifier that adds a cursor when clicking: `alt` is ⌥ (Alt); `ctrl-cmd` is ⌘ (Ctrl).
+ * Go to Definition takes the other.
+ */
+export type MultiCursorModifier = 'alt' | 'ctrl-cmd';
+
+/**
+ * Identifies what happens to Line Separator and Paragraph Separator characters found in a document.
+ */
+export type UnusualLineTerminators = 'ask' | 'remove' | 'ignore';
+
+/**
+ * Identifies where the completion list opens by itself as you type. ⌃Space opens it anywhere.
+ */
+export type QuickSuggestions = 'off' | 'code' | 'code-and-strings' | 'everywhere';
+
+/**
+ * Identifies which keys accept the completion list's focused row.
+ */
+export type AcceptSuggestionWith = 'enter-and-tab' | 'tab' | 'enter';
+
+/**
+ * Identifies which documents the words the completion list offers come from.
+ */
+export type WordBasedSuggestions = 'off' | 'this-file' | 'all-open-files';
+
+/**
+ * Identifies where snippets sit in the completion list, or that they are left out.
+ */
+export type SnippetSuggestions = 'top' | 'inline' | 'bottom' | 'none';
+
+/**
+ * Identifies which row of the completion list is focused when it opens.
+ */
+export type SuggestionSelection = 'first' | 'recently-used';
+
+/**
+ * Identifies what accepting a completion does to the text after the caret: keeps it, or replaces it.
+ */
+export type CompletionInsertMode = 'insert' | 'replace';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -312,6 +380,12 @@ export interface TextEditorSettings {
    * Gets the brace placement style the editor formats to.
    */
   readonly braceStyle: BraceStyle;
+
+  /**
+   * Gets a value indicating whether a file's indentation is read from its content, leaving the tab
+   * size and insert spaces settings to new and empty files.
+   */
+  readonly detectIndentation: boolean;
 
   /**
    * Gets which whitespace the editor draws.
@@ -407,6 +481,151 @@ export interface TextEditorSettings {
    * Gets a value indicating whether ⌘ or Ctrl and the mouse wheel zoom the editors.
    */
   readonly mouseWheelZoom: boolean;
+
+  /**
+   * Gets what a save formats.
+   */
+  readonly formatOnSave: FormatOnSave;
+
+  /**
+   * Gets a value indicating whether a save organises the imports.
+   */
+  readonly organiseImportsOnSave: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes whitespace at the ends of lines.
+   */
+  readonly trimTrailingWhitespace: boolean;
+
+  /**
+   * Gets a value indicating whether a save ensures the text ends with a newline.
+   */
+  readonly insertFinalNewline: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes blank lines after the last line of text.
+   */
+  readonly trimFinalNewlines: boolean;
+
+  /**
+   * Gets a value indicating whether a new UTF-8 file starts with a byte-order mark.
+   */
+  readonly addByteOrderMark: boolean;
+
+  /**
+   * Gets a value indicating whether pasted text is formatted.
+   */
+  readonly formatOnPaste: boolean;
+
+  /**
+   * Gets how long the pointer rests before a hover card shows, in milliseconds.
+   */
+  readonly hoverDelay: number;
+
+  /**
+   * Gets when the pointer brings up a hover card.
+   */
+  readonly showHoverCards: ShowHoverCards;
+
+  /**
+   * Gets where the completion list opens by itself as you type.
+   */
+  readonly quickSuggestions: QuickSuggestions;
+
+  /**
+   * Gets how long after typing the completion list opens by itself, in milliseconds.
+   */
+  readonly quickSuggestionsDelay: number;
+
+  /**
+   * Gets a value indicating whether a language's trigger characters open the completion list.
+   */
+  readonly suggestOnTriggerCharacters: boolean;
+
+  /**
+   * Gets which keys accept the completion list's focused row.
+   */
+  readonly acceptSuggestionWith: AcceptSuggestionWith;
+
+  /**
+   * Gets a value indicating whether a character a completion commits on accepts it.
+   */
+  readonly acceptOnCommitCharacter: boolean;
+
+  /**
+   * Gets which documents the completion list's words come from.
+   */
+  readonly wordBasedSuggestions: WordBasedSuggestions;
+
+  /**
+   * Gets where snippets sit in the completion list.
+   */
+  readonly snippetSuggestions: SnippetSuggestions;
+
+  /**
+   * Gets which row of the completion list is focused when it opens.
+   */
+  readonly suggestionSelection: SuggestionSelection;
+
+  /**
+   * Gets what accepting a completion does to the text after the caret.
+   */
+  readonly completionInsertMode: CompletionInsertMode;
+
+  /**
+   * Gets how many rows the completion list shows before it scrolls.
+   */
+  readonly suggestionListSize: number;
+
+  /**
+   * Gets a value indicating whether the signature card shows as you type a call.
+   */
+  readonly parameterHints: boolean;
+
+  /**
+   * Gets when a typed bracket or quote gets its closing one.
+   */
+  readonly autoCloseBrackets: AutoCloseBrackets;
+
+  /**
+   * Gets what typing a bracket or quote over a selection wraps it in.
+   */
+  readonly autoSurround: AutoSurround;
+
+  /**
+   * Gets how much a new line's indentation is worked out for you.
+   */
+  readonly autoIndent: AutoIndent;
+
+  /**
+   * Gets a value indicating whether renaming one of a linked pair, such as an HTML tag, renames both.
+   */
+  readonly linkedEditing: boolean;
+
+  /**
+   * Gets a value indicating whether a language server fills in a doc comment as it is begun.
+   */
+  readonly docCommentAutoInsert: boolean;
+
+  /**
+   * Gets the modifier that adds a cursor when clicking.
+   */
+  readonly multiCursorModifier: MultiCursorModifier;
+
+  /**
+   * Gets a value indicating whether the fix icon shows beside the caret's line.
+   */
+  readonly quickFixIndicator: boolean;
+
+  /**
+   * Gets how long things must stay still before the fix icon looks for fixes, in milliseconds.
+   */
+  readonly quickFixIndicatorDelay: number;
+
+  /**
+   * Gets what happens to unusual line terminators found in a document.
+   */
+  readonly unusualLineTerminators: UnusualLineTerminators;
 }
 
 /**
@@ -766,6 +985,7 @@ export class Settings {
       fontSize: this.read('textEditor.global.fontSize'),
       lineHeight: this.read('textEditor.global.lineHeight'),
       braceStyle: this.read('textEditor.global.braceStyle'),
+      detectIndentation: this.read('textEditor.global.detectIndentation'),
       renderWhitespace: this.read('textEditor.global.renderWhitespace'),
       rulers: this.read('textEditor.global.rulers'),
       indentGuides: this.read('textEditor.global.indentGuides'),
@@ -785,6 +1005,35 @@ export class Settings {
       colourSwatches: this.read('textEditor.global.colourSwatches'),
       minimumDiagnosticSeverity: this.read('textEditor.global.minimumDiagnosticSeverity'),
       mouseWheelZoom: this.read('textEditor.global.mouseWheelZoom'),
+      formatOnSave: this.read('textEditor.global.formatOnSave'),
+      organiseImportsOnSave: this.read('textEditor.global.organiseImportsOnSave'),
+      trimTrailingWhitespace: this.read('textEditor.global.trimTrailingWhitespace'),
+      insertFinalNewline: this.read('textEditor.global.insertFinalNewline'),
+      trimFinalNewlines: this.read('textEditor.global.trimFinalNewlines'),
+      addByteOrderMark: this.read('textEditor.global.addByteOrderMark'),
+      formatOnPaste: this.read('textEditor.global.formatOnPaste'),
+      hoverDelay: this.read('textEditor.global.hoverDelay'),
+      showHoverCards: this.read('textEditor.global.showHoverCards'),
+      quickSuggestions: this.read('textEditor.global.quickSuggestions'),
+      quickSuggestionsDelay: this.read('textEditor.global.quickSuggestionsDelay'),
+      suggestOnTriggerCharacters: this.read('textEditor.global.suggestOnTriggerCharacters'),
+      acceptSuggestionWith: this.read('textEditor.global.acceptSuggestionWith'),
+      acceptOnCommitCharacter: this.read('textEditor.global.acceptOnCommitCharacter'),
+      wordBasedSuggestions: this.read('textEditor.global.wordBasedSuggestions'),
+      snippetSuggestions: this.read('textEditor.global.snippetSuggestions'),
+      suggestionSelection: this.read('textEditor.global.suggestionSelection'),
+      completionInsertMode: this.read('textEditor.global.completionInsertMode'),
+      suggestionListSize: this.read('textEditor.global.suggestionListSize'),
+      parameterHints: this.read('textEditor.global.parameterHints'),
+      autoCloseBrackets: this.read('textEditor.global.autoCloseBrackets'),
+      autoSurround: this.read('textEditor.global.autoSurround'),
+      autoIndent: this.read('textEditor.global.autoIndent'),
+      linkedEditing: this.read('textEditor.global.linkedEditing'),
+      docCommentAutoInsert: this.read('textEditor.global.docCommentAutoInsert'),
+      multiCursorModifier: this.read('textEditor.global.multiCursorModifier'),
+      quickFixIndicator: this.read('textEditor.global.quickFixIndicator'),
+      quickFixIndicatorDelay: this.read('textEditor.global.quickFixIndicatorDelay'),
+      unusualLineTerminators: this.read('textEditor.global.unusualLineTerminators'),
     }),
   );
 

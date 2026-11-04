@@ -1,3 +1,4 @@
+import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -438,6 +439,11 @@ export class CodeDocumentPanel {
   private readonly eolSignal: WritableSignal<TextEditorEol> = signal<TextEditorEol>('LF');
 
   /**
+   * Holds the label of the indentation in force, for the status strip.
+   */
+  protected readonly indent: WritableSignal<string> = signal<string>('');
+
+  /**
    * Initializes a new instance of the {@link CodeDocumentPanel} class, publishing its status to the
    * well status strip while it is the active document and clearing it when it is not or is destroyed.
    */
@@ -457,6 +463,8 @@ export class CodeDocumentPanel {
         diagnostics: true,
         eol: this.eolSignal(),
         encoding: encodingLabel(document.encoding(), document.hasBom()),
+        indent: this.indent(),
+        editorConfig: governedByEditorConfig(document.editorConfig()),
         actions: codeDocumentActions({
           document,
           documents: this.documents,

@@ -60,12 +60,21 @@
         {{ document.language }}
       </button>
     }
+    @if (document.indent) {
+      <span
+        class="dock-status-strip__segment"
+        data-testid="status-indent"
+        [attr.title]="titleFor('indent', 'Indentation')"
+      >
+        {{ document.indent }}
+      </span>
+    }
     @if (document.eol) {
       <!-- Opens the line-ending menu when the document can change them; otherwise shows them. -->
       <button
         type="button"
         class="dock-status-strip__segment"
-        title="Select end of line sequence"
+        [attr.title]="titleFor('eol', 'Select end of line sequence')"
         data-testid="status-eol"
         [cdkMenuTriggerFor]="document.actions?.setEol ? (eolMenu.panel() ?? null) : null"
         [cdkMenuPosition]="eolMenu.position()"
@@ -77,7 +86,7 @@
       <button
         type="button"
         class="dock-status-strip__segment"
-        title="Select encoding"
+        [attr.title]="titleFor('encoding', 'Select encoding')"
         data-testid="status-encoding"
         [cdkMenuTriggerFor]="encodingItems().length > 0 ? (encodingMenu.panel() ?? null) : null"
         [cdkMenuPosition]="encodingMenu.position()"

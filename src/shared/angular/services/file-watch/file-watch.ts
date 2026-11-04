@@ -19,6 +19,11 @@ interface PathWatchers {
    * text and who re-fetch what they need themselves.
    */
   readonly pathCallbacks: Set<() => void>;
+
+  /**
+   * Gets the callbacks invoked when the file is gone from disk.
+   */
+  readonly removalCallbacks: Set<() => void>;
 }
 
 /**
@@ -57,6 +62,11 @@ export class FileWatch {
     this.bridge?.on(FileChannel.Changed, (...args: unknown[]): void => {
       void this.onChanged(args[0] as string);
     });
+    this.bridge?.on(FileChannel.Removed, (...args: unknown[]): void => {
+      for (const callback of this.watchers.get(args[0] as string)?.removalCallbacks ?? []) {
+        callback();
+      }
+    });
   }
 
   /**
@@ -92,6 +102,24 @@ export class FileWatch {
   }
 
   /**
+   * Watches a path that may not exist, invoking the callback when it appears, changes or goes: for a
+   * file whose absence means something too.
+   * @param path The absolute path to watch.
+   * @param onChange Invoked on each change.
+   * @returns Returns a function that stops this subscription.
+   */
+  public watchPresence(path: string, onChange: () => void): () => void {
+    const entry: PathWatchers = this.ensureWatched(path);
+    entry.pathCallbacks.add(onChange);
+    entry.removalCallbacks.add(onChange);
+    return (): void => {
+      entry.pathCallbacks.delete(onChange);
+      entry.removalCallbacks.delete(onChange);
+      this.releaseIfUnused(path);
+    };
+  }
+
+  /**
    * Gets the subscriber entry for a path, starting the OS watch when it is the path's first.
    * @param path The absolute path to watch.
    * @returns Returns the path's subscriber entry.
@@ -102,6 +130,7 @@ export class FileWatch {
       entry = {
         callbacks: new Set<(info: FileInfo) => void>(),
         pathCallbacks: new Set<() => void>(),
+        removalCallbacks: new Set<() => void>(),
       };
       this.watchers.set(path, entry);
       void this.bridge?.invoke(FileChannel.Watch, path);

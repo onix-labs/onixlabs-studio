@@ -1,6 +1,10 @@
 import { encodingLabel, type TextEncoding } from '@shared/api/text-encodings';
 import type { TextEditor, TextEditorEol } from '@shared/angular/components/text-editor/text-editor';
-import type { DocumentStatusActions } from './document-status';
+import {
+  governedByEditorConfig,
+  type DocumentStatusActions,
+  type EditorConfigSegment,
+} from './document-status';
 import type { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import type { FileSystem } from '@shared/angular/services/file-system/file-system';
 
@@ -39,6 +43,7 @@ export interface CodeDocumentActionsSource {
  */
 export function codeDocumentActions(source: CodeDocumentActionsSource): DocumentStatusActions {
   const { document, documents, fileSystem } = source;
+  const governed: readonly EditorConfigSegment[] = governedByEditorConfig(document.editorConfig());
   const reopen: (encoding: TextEncoding) => Promise<void> = async (
     encoding: TextEncoding,
   ): Promise<void> => {
@@ -62,9 +67,16 @@ export function codeDocumentActions(source: CodeDocumentActionsSource): Document
     ...(document.readOnly()
       ? {}
       : {
-          saveWithEncoding: (encoding: TextEncoding): void =>
-            void documents.saveWithEncoding(document.id, encoding),
-          setEol: (eol: TextEditorEol): void => source.pane()?.setEol(eol),
+          // What an `.editorconfig` decides, the strip shows without offering to change.
+          ...(governed.includes('encoding')
+            ? {}
+            : {
+                saveWithEncoding: (encoding: TextEncoding): void =>
+                  void documents.saveWithEncoding(document.id, encoding),
+              }),
+          ...(governed.includes('eol')
+            ? {}
+            : { setEol: (eol: TextEditorEol): void => source.pane()?.setEol(eol) }),
         }),
   };
 }

@@ -2,7 +2,6 @@ import type * as MonacoApi from 'monaco-editor';
 import { Icon } from '@shared/angular/icons/icon';
 import {
   QUICK_FIX_GLYPH_CLASS,
-  QUICK_FIX_INDICATOR_DELAY_MS,
   QuickFixIndicator,
   QuickFixIndicatorHooks,
 } from './quick-fix-indicator';
@@ -140,6 +139,11 @@ const monaco: typeof MonacoApi = {
   },
 } as unknown as typeof MonacoApi;
 
+/**
+ * Holds the delay the hooks report.
+ */
+const INDICATOR_DELAY_MS: number = 250;
+
 describe('QuickFixIndicator (#1016)', () => {
   let fixes: boolean;
   let enabled: boolean;
@@ -163,6 +167,7 @@ describe('QuickFixIndicator (#1016)', () => {
       },
       open: (): void => void (opened += 1),
       enabled: (): boolean => enabled,
+      delay: (): number => INDICATOR_DELAY_MS,
       onMarkersChanged: (
         listener: (uris: readonly MonacoApi.Uri[]) => void,
       ): MonacoApi.IDisposable => {
@@ -183,7 +188,7 @@ describe('QuickFixIndicator (#1016)', () => {
    * @returns Returns a promise that resolves once the answer has been acted on.
    */
   async function settle(): Promise<void> {
-    await vi.advanceTimersByTimeAsync(QUICK_FIX_INDICATOR_DELAY_MS);
+    await vi.advanceTimersByTimeAsync(INDICATOR_DELAY_MS);
   }
 
   beforeEach(() => {
@@ -358,5 +363,18 @@ describe('QuickFixIndicator (#1016)', () => {
     expect(fake.calls.at(-1)).toBe('clear');
     expect(fake.decorations()).toEqual([]);
     expect(fake.listening()).toBe(0);
+  });
+
+  it('refresh_whenNoLongerEnabled_hidesTheIcon', async () => {
+    build();
+    fake.moveTo(3, 2);
+    await settle();
+    expect(indicator.shownLine()).toBe(3);
+
+    enabled = false;
+    indicator.refresh();
+    await settle();
+
+    expect(indicator.shownLine()).toBeNull();
   });
 });

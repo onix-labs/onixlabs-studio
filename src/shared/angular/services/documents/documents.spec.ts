@@ -14,9 +14,20 @@ import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
-import { AUTO_SAVE_DELAY_MS, CodeDocument, Documents, effectiveViewToggles } from './documents';
+import {
+  AUTO_SAVE_DELAY_MS,
+  CodeDocument,
+  Documents,
+  effectiveViewToggles,
+  SAVE_PREPARATION_TIMEOUT_MS,
+} from './documents';
+import type {
+  EditorConfigProperties,
+  EditorConfigResolution,
+} from '@shared/api/editor-config-channels';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
 
 /**
  * A sample file used by the open-from-info tests.
@@ -696,5 +707,324 @@ describe('Documents, in an encoding (#1236)', () => {
     expect(document?.content()).toBe('naÃ¯ve');
     expect(document?.dirty()).toBe(false);
     expect(document?.encoding()).toBe('iso88591');
+  });
+});
+
+describe('Documents, under an .editorconfig (#1049)', () => {
+  let documents: Documents;
+  let resolution: EditorConfigResolution;
+  let writes: { content: string; hasBom: boolean; encoding: TextEncoding }[];
+  let onChange: (() => void) | undefined;
+  let onDisk: ((info: FileInfo) => void) | undefined;
+  let conflicts: number;
+
+  beforeEach(() => {
+    localStorage.removeItem('settings');
+    resolution = { properties: {}, candidates: ['/ws/.editorconfig'] };
+    writes = [];
+    onChange = undefined;
+    onDisk = undefined;
+    conflicts = 0;
+    TestBed.configureTestingModule({
+      providers: [
+        provideUnsavedWork(Documents),
+        {
+          provide: FileSystem,
+          useValue: {
+            write: (
+              path: string,
+              content: string,
+              hasBom: boolean,
+              encoding: TextEncoding,
+            ): Promise<FileWriteResult> => {
+              writes.push({ content, hasBom, encoding });
+              return Promise.resolve({ success: true, path });
+            },
+            saveDialog: (): Promise<string> => Promise.resolve('/ws/new.ts'),
+          },
+        },
+        {
+          provide: FileWatch,
+          useValue: {
+            watch: (_path: string, callback: (info: FileInfo) => void): (() => void) => {
+              onDisk = callback;
+              return (): void => undefined;
+            },
+          },
+        },
+        {
+          provide: FileConflicts,
+          useValue: {
+            changedOnDisk: (): void => void (conflicts += 1),
+            raise: (): void => void (conflicts += 1),
+            clear: (): void => undefined,
+          },
+        },
+        {
+          provide: EditorConfigs,
+          useValue: {
+            resolve: (): Promise<EditorConfigResolution> => Promise.resolve(resolution),
+            watch: (_candidates: readonly string[], callback: () => void): (() => void) => {
+              onChange = callback;
+              return (): void => undefined;
+            },
+          },
+        },
+      ],
+    });
+    documents = TestBed.inject(Documents);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  /**
+   * Opens a file and lets EditorConfig answer.
+   * @param properties What EditorConfig says.
+   * @param file The file.
+   * @returns Returns the tab.
+   */
+  async function open(
+    properties: EditorConfigProperties,
+    file: FileInfo = SAMPLE_FILE,
+  ): Promise<Tab> {
+    resolution = { properties, candidates: ['/ws/.editorconfig'] };
+    const tab: Tab = documents.openFileInfo(file, 'code');
+    await Promise.resolve();
+    await Promise.resolve();
+    return tab;
+  }
+
+  it('saveSettings_applyWhereNoEditorConfigSpeaks', async () => {
+    TestBed.inject(Settings).set('textEditor.global.trimTrailingWhitespace', true);
+    TestBed.inject(Settings).set('textEditor.global.insertFinalNewline', true);
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'a  \nb');
+
+    await documents.save(tab.id);
+
+    expect(writes.at(-1)?.content).toBe('a\nb\n');
+  });
+
+  it('saveSettings_giveWayToWhatAnEditorConfigStates', async () => {
+    TestBed.inject(Settings).set('textEditor.global.trimTrailingWhitespace', true);
+    const tab: Tab = await open({ trimTrailingWhitespace: false });
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes.at(-1)?.content).toBe('a  ');
+  });
+
+  it('autoSaveAfterADelay_leavesTheTextAlone_evenWhereAnEditorConfigTrims', async () => {
+    vi.useFakeTimers();
+    TestBed.inject(Settings).set('textEditor.autoSave', 'delay');
+    const prepared: string[] = [];
+    const tab: Tab = await open({ trimTrailingWhitespace: true, insertFinalNewline: true });
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    documents.registerSavePreparer(tab.id, (): Promise<void> => {
+      prepared.push(tab.id);
+      return Promise.resolve();
+    });
+
+    documents.setContent(tab.id, 'typing ');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS);
+
+    expect(writes.at(-1)?.content).toBe('typing ');
+    expect(documents.get(tab.id)?.content()).toBe('typing ');
+    expect(prepared).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('autoSaveOnFocusChange_appliesTheRules', async () => {
+    TestBed.inject(Settings).set('textEditor.autoSave', 'focus');
+    const tab: Tab = await open({ trimTrailingWhitespace: true });
+    documents.setContent(tab.id, 'a ');
+    documents.setActiveDocument(tab.id);
+
+    documents.setActiveDocument(null);
+    await vi.waitFor((): void => expect(writes.at(-1)?.content).toBe('a'));
+  });
+
+  it('formatOnSave_runsTheEditorBeforeWriting_withTheSavedText', async () => {
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'changed');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'messy');
+    const seen: string[] = [];
+    documents.registerSavePreparer(
+      tab.id,
+      (settings: TextEditorSettings, savedContent: string): Promise<void> => {
+        seen.push(settings.formatOnSave, savedContent);
+        documents.setContent(tab.id, 'tidy');
+        return Promise.resolve();
+      },
+    );
+
+    await documents.save(tab.id);
+
+    expect(seen).toEqual(['changed', SAMPLE_FILE.content]);
+    expect(writes.at(-1)?.content).toBe('tidy');
+  });
+
+  it('formatOnSave_whenOff_leavesTheEditorAlone', async () => {
+    const tab: Tab = await open({});
+    let prepared: boolean = false;
+    documents.registerSavePreparer(tab.id, (): Promise<void> => {
+      prepared = true;
+      return Promise.resolve();
+    });
+
+    await documents.save(tab.id);
+
+    expect(prepared).toBe(false);
+  });
+
+  it('formatOnSave_whenTheFormatterFails_stillSaves', async () => {
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'edit');
+    documents.registerSavePreparer(tab.id, (): Promise<void> =>
+      Promise.reject(new Error('no formatter')),
+    );
+
+    expect(await documents.save(tab.id)).toBe(true);
+    expect(writes.at(-1)?.content).toBe('edit');
+  });
+
+  it('formatOnSave_whenTheFormatterHangs_savesOnceTheWaitIsOver', async () => {
+    vi.useFakeTimers();
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'edit');
+    documents.registerSavePreparer(
+      tab.id,
+      (): Promise<void> => new Promise<void>((): void => undefined),
+    );
+
+    const saved: Promise<boolean> = documents.save(tab.id);
+    await vi.advanceTimersByTimeAsync(SAVE_PREPARATION_TIMEOUT_MS);
+
+    expect(await saved).toBe(true);
+    expect(writes.at(-1)?.content).toBe('edit');
+    vi.useRealTimers();
+  });
+
+  it('addByteOrderMark_marksANewUtf8FileWhenFirstSaved', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    resolution = { properties: {}, candidates: [] };
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+    documents.ensure(tab.id);
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(true);
+  });
+
+  it('addByteOrderMark_leavesAnExistingFileAlone', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    const tab: Tab = await open({});
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(false);
+  });
+
+  it('addByteOrderMark_givesWayToACharsetInAnEditorConfig', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    resolution = { properties: { charset: 'utf-8' }, candidates: [] };
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+    documents.ensure(tab.id);
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(false);
+  });
+
+  it('writesExactlyWhatItsaysOnSave', async () => {
+    const tab: Tab = await open({
+      endOfLine: 'crlf',
+      trimTrailingWhitespace: true,
+      insertFinalNewline: true,
+    });
+    documents.setContent(tab.id, 'a  \nb');
+
+    await documents.save(tab.id);
+
+    expect(writes[0].content).toBe('a\r\nb\r\n');
+    expect(documents.get(tab.id)?.content()).toBe('a\r\nb\r\n');
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+  });
+
+  it('changesNothingWithNoEditorConfig', async () => {
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes[0].content).toBe('a  ');
+    expect(documents.get(tab.id)?.editorConfig()).toBeNull();
+  });
+
+  it('exposesWhatItSaysToTheEditor', async () => {
+    const tab: Tab = await open({ indentStyle: 'tab' });
+
+    expect(documents.get(tab.id)?.editorConfig()).toEqual({ indentStyle: 'tab' });
+  });
+
+  it('appliesAChangedEditorConfigToAnOpenDocument', async () => {
+    const tab: Tab = await open({ indentStyle: 'tab' });
+
+    resolution = { properties: { indentStyle: 'space' }, candidates: [] };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(documents.get(tab.id)?.editorConfig()).toEqual({ indentStyle: 'space' });
+  });
+
+  it('savesInTheCharset_andGoesBackWhenItIsTakenAway', async () => {
+    const tab: Tab = await open({ charset: 'latin1' });
+    documents.setContent(tab.id, 'changed');
+
+    await documents.save(tab.id);
+    expect(writes[0]).toMatchObject({ encoding: 'iso88591', hasBom: false });
+
+    resolution = { properties: {}, candidates: [] };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(documents.get(tab.id)?.encoding()).toBe('utf8');
+  });
+
+  it('readsUtf8BomAsAByteOrderMark', async () => {
+    const tab: Tab = await open({ charset: 'utf-8-bom' });
+
+    expect(documents.get(tab.id)?.hasBom()).toBe(true);
+  });
+
+  it('keepsAMarkdownDocumentsTextAndCharset_followingOnlyTheWhitespaceRules', async () => {
+    const tab: Tab = await open(
+      { trimTrailingWhitespace: true, insertFinalNewline: true, charset: 'latin1' },
+      { ...SAMPLE_FILE, path: '/ws/a.md', name: 'a.md' },
+    );
+    documents.setLanguage(tab.id, 'markdown');
+    resolution = {
+      properties: { trimTrailingWhitespace: true, insertFinalNewline: true, charset: 'latin1' },
+      candidates: [],
+    };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes[0]).toMatchObject({ content: 'a\n', encoding: 'utf8' });
+    expect(documents.get(tab.id)?.content()).toBe('a  ');
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+
+    onDisk?.({ ...SAMPLE_FILE, path: '/ws/a.md', content: 'a\n' });
+    expect(conflicts).toBe(0);
   });
 });

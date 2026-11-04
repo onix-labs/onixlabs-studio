@@ -1,3 +1,4 @@
+import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -264,6 +265,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   private readonly eol: WritableSignal<EndOfLine> = signal<EndOfLine>('LF');
 
   /**
+   * Holds the label of the indentation in force, for the status strip.
+   */
+  protected readonly indent: WritableSignal<string> = signal<string>('');
+
+  /**
    * Gets the identifier of the owning tab, used to resolve the backing document.
    */
   public readonly tabId: InputSignal<string> = input.required<string>();
@@ -382,6 +388,8 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
         column: caret.column,
         eol: this.eol(),
         encoding: encodingLabel(document.encoding(), document.hasBom()),
+        indent: this.indent(),
+        editorConfig: governedByEditorConfig(document.editorConfig()),
         actions: codeDocumentActions({
           document,
           documents: this.documents,

@@ -1,8 +1,9 @@
-import { inject, Injector, Service } from '@angular/core';
+import { effect, inject, Injector, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   LspCodeAction,
   LspCommandOutcome,
@@ -109,6 +110,28 @@ export class QuickFixes {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the settings the fix icon follows.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds each attached editor's fix icon, so a change of the setting reaches them.
+   */
+  private readonly indicators: Set<QuickFixIndicator> = new Set<QuickFixIndicator>();
+
+  /**
+   * Initialises the service, keeping the fix icons on the Quick Fix Indicator setting.
+   */
+  public constructor() {
+    effect((): void => {
+      this.settings.value('textEditor.global.quickFixIndicator')();
+      for (const indicator of this.indicators) {
+        indicator.refresh();
+      }
+    });
+  }
+
+  /**
    * Holds the actions of the menu last opened, released when the next opens or one is applied.
    */
   private session: QuickFixSession | null = null;
@@ -146,14 +169,20 @@ export class QuickFixes {
     const indicator: QuickFixIndicator = new QuickFixIndicator(editor, monaco, {
       hasFixes: (): Promise<boolean> => this.hasFixes(editor),
       open: (): void => void this.open(editor),
-      enabled: (): boolean => this.offersQuickFixes(editor),
+      enabled: (): boolean =>
+        this.settings.get('textEditor.global.quickFixIndicator') && this.offersQuickFixes(editor),
+      delay: (): number => this.settings.get('textEditor.global.quickFixIndicatorDelay'),
       onMarkersChanged:
         monaco?.editor.onDidChangeMarkers === undefined
           ? undefined
           : (listener: (uris: readonly MonacoApi.Uri[]) => void): MonacoApi.IDisposable =>
               monaco.editor.onDidChangeMarkers(listener),
     });
-    return (): void => indicator.dispose();
+    this.indicators.add(indicator);
+    return (): void => {
+      this.indicators.delete(indicator);
+      indicator.dispose();
+    };
   }
 
   /**

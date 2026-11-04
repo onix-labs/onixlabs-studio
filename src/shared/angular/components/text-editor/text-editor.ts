@@ -20,6 +20,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { FoldingPlaceholderController } from './folding-placeholder-controller';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import {
+  AutoIndent,
   InlayHintsMode,
   Settings,
   TextEditorSettings,
@@ -27,7 +28,18 @@ import {
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { editorAppearanceOptions } from '@shared/angular/services/monaco/editor-appearance-options';
-import { watchInlayHintsHold } from './inlay-hints-hold';
+import { editorSuggestOptions } from '@shared/angular/services/monaco/editor-suggest-options';
+import { editorTypingOptions } from '@shared/angular/services/monaco/editor-typing-options';
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
+import { parseRulers } from '@shared/angular/services/monaco/parse-rulers';
+import { watchHeldModifier } from '@shared/angular/services/monaco/held-modifier';
+import {
+  BaseIndentation,
+  fixesIndentation,
+  indentationLabel,
+  ResolvedIndentation,
+  resolveIndentation,
+} from './resolve-indentation';
 import { Log } from '@shared/angular/services/log/log';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { FIND_HOST, FindHost } from '@shared/angular/services/find-router/find-host';
@@ -55,6 +67,21 @@ const COMMAND_SOURCE: string = 'app-text-editor';
  * trackpad pinch.
  */
 const WHEEL_ZOOM_STEP: number = 40;
+
+/**
+ * Describes a run of lines, both ends included.
+ */
+export interface TextEditorLineRange {
+  /**
+   * Gets the first line, one-based.
+   */
+  readonly first: number;
+
+  /**
+   * Gets the last line, one-based.
+   */
+  readonly last: number;
+}
 
 /**
  * Describes a caret position reported to the host, as one-based line and column numbers.
@@ -309,6 +336,17 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Emits the label of the indentation in force whenever it changes.
+   */
+  public readonly indentationChange: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Gets what the file's `.editorconfig` says, which wins over the settings, or null for no file.
+   */
+  public readonly editorConfig: InputSignal<EditorConfigProperties | null> =
+    input<EditorConfigProperties | null>(null);
+
+  /**
    * Holds the Monaco editor instance, or null before creation and after disposal.
    */
   private editor: MonacoApi.editor.IStandaloneCodeEditor | null = null;
@@ -343,6 +381,22 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private readonly inlayHintsHeld: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the indentation in force, re-asserted when Monaco's model service re-seeds the model; see
+   * {@link applyIndentation}.
+   */
+  private indentation: ResolvedIndentation | null = null;
+
+  /**
+   * Holds whether the model is being asked to read its indentation, which is no re-seed to undo.
+   */
+  private detectingIndentation: boolean = false;
+
+  /**
+   * Holds the Auto Indent the editor's cursor last took, or null before the first settings pass.
+   */
+  private cursorAutoIndent: AutoIndent | null = null;
+
+  /**
    * Holds the wheel travel not yet turned into a zoom step: a trackpad reports it in many small moves.
    */
   private wheelZoomTravel: number = 0;
@@ -363,10 +417,10 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private readonly editorReady: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds a value indicating whether the next model-content change should be ignored because it
-   * originated from an external content update applied to the editor.
+   * Holds a value indicating whether model-content changes should be ignored because they come from
+   * an external content update being applied to the editor. Monaco raises them synchronously.
    */
-  private ignoreNextChange: boolean = false;
+  private ignoringChanges: boolean = false;
 
   /**
    * Holds the last content string this editor itself emitted, so its own edit echoed back through
@@ -385,6 +439,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // the new editor selection colour (#314) before the theme is re-applied below.
     effect((): void => {
       this.settings.textEditor();
+      this.editorConfig();
       this.settings.textEditorAccentSelection();
       this.settings.value('textEditor.largeFileLineThreshold')();
       this.largeFile();
@@ -410,9 +465,13 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
         formatOnType: resolved.formatOnType,
+        formatOnPaste: resolved.formatOnPaste,
         cursorBlinking: resolved.cursorBlinking,
         ...this.monaco.motionOptions(resolved),
         ...editorAppearanceOptions(resolved),
+        ...editorSuggestOptions(resolved),
+        ...editorTypingOptions(resolved),
+        rulers: this.rulers(resolved),
         tabSize: resolved.tabSize,
         insertSpaces: resolved.insertSpaces,
         detectIndentation: false,
@@ -425,7 +484,9 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         // Merged last so a composing view's pinned chrome wins over the settings-derived defaults.
         ...this.options(),
       });
+      this.applyAutoIndent(resolved.autoIndent);
       this.applyBracketColorization();
+      this.applyIndentation();
       this.monaco
         .getMonaco()
         ?.editor.setTheme(this.monaco.getThemeName(resolved.currentLineHighlight));
@@ -442,6 +503,26 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       }
     });
 
+    // An `.editorconfig` line ending: converting the model is not an edit of the user's, so it dirties
+    // nothing; the save writes it.
+    effect((): void => {
+      const eol: TextEditorEol | null = this.fixedEol();
+      const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+      const model: MonacoApi.editor.ITextModel | null = this.editor?.getModel() ?? null;
+      if (!this.editorReady() || eol === null || monaco === undefined || model === null) {
+        return;
+      }
+      if (this.readEol() !== eol) {
+        this.ignoringChanges = true;
+        model.setEOL(
+          eol === 'CRLF'
+            ? monaco.editor.EndOfLineSequence.CRLF
+            : monaco.editor.EndOfLineSequence.LF,
+        );
+        this.ignoringChanges = false;
+      }
+    });
+
     // External content: replace the editor text when the bound content differs, without echoing it
     // back through contentChange. The editor's own edit coming back around is recognised by string
     // identity first — the store passes the emitted string through unchanged — so the common
@@ -455,10 +536,12 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       if (content === this.lastEmittedContent) {
         return;
       }
-      if (editor.getValue() !== content) {
-        this.ignoreNextChange = true;
-        editor.setValue(content);
+      if (!this.holdsContent(editor, content)) {
+        this.ignoringChanges = true;
+        this.replaceContent(editor, content);
+        this.ignoringChanges = false;
         this.largeFile.set(this.isLargeFile());
+        this.applyIndentation();
       }
       // The editor now holds this exact content, whichever branch ran; remembering it keeps the
       // echo-skip above truthful after an external update.
@@ -574,6 +657,136 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private isLargeFile(): boolean {
     const lines: number = this.editor?.getModel()?.getLineCount() ?? 0;
     return lines > this.settings.get('textEditor.largeFileLineThreshold');
+  }
+
+  /**
+   * Gets the line ending the file's `.editorconfig` fixes, or null when it leaves that alone. Monaco
+   * has no bare CR, so `cr` fixes nothing.
+   * @returns Returns the line ending, or null.
+   */
+  private fixedEol(): TextEditorEol | null {
+    const endOfLine: string | undefined = this.editorConfig()?.endOfLine;
+    return endOfLine === 'lf' ? 'LF' : endOfLine === 'crlf' ? 'CRLF' : null;
+  }
+
+  /**
+   * Resolves the rulers in force: `max_line_length` wins over the Rulers setting.
+   * @param resolved The code settings in force.
+   * @returns Returns the columns.
+   */
+  private rulers(resolved: TextEditorSettings): number[] {
+    const length: number | 'off' | undefined = this.editorConfig()?.maxLineLength;
+    return length === undefined
+      ? [...parseRulers(resolved.rulers)]
+      : length === 'off'
+        ? []
+        : [length];
+  }
+
+  /**
+   * Determines whether the editor already holds a text. Under a fixed line ending the model may have
+   * been converted ahead of the document, which only takes the new endings on save, so the endings
+   * alone are no difference.
+   * @param editor The editor.
+   * @param content The text.
+   * @returns Returns true when there is nothing to replace.
+   */
+  private holdsContent(editor: MonacoApi.editor.IStandaloneCodeEditor, content: string): boolean {
+    const current: string = editor.getValue();
+    return this.fixedEol() === null
+      ? current === content
+      : current.replace(/\r\n/g, '\n') === content.replace(/\r\n/g, '\n');
+  }
+
+  /**
+   * Replaces the editor's text where it stands, so a save that changed it (or a reload) keeps the
+   * caret, the scroll position and the undo history that `setValue` would throw away.
+   * @param editor The editor.
+   * @param content The new text.
+   */
+  private replaceContent(editor: MonacoApi.editor.IStandaloneCodeEditor, content: string): void {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
+    if (model === null || monaco === undefined) {
+      editor.setValue(content);
+      return;
+    }
+    const view: MonacoApi.editor.ICodeEditorViewState | null = editor.saveViewState();
+    model.pushEditOperations(
+      null,
+      [{ range: model.getFullModelRange(), text: content }],
+      (): null => null,
+    );
+    if (content.includes('\n')) {
+      const eol: TextEditorEol = this.fixedEol() ?? (content.includes('\r\n') ? 'CRLF' : 'LF');
+      model.setEOL(
+        eol === 'CRLF' ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF,
+      );
+    }
+    if (view !== null) {
+      editor.restoreViewState(view);
+    }
+  }
+
+  /**
+   * Resolves the indentation in force and puts it on the model. It goes on the model because that is
+   * what a formatter is asked with, and because `tabSize` given to `updateOptions` lands in
+   * configuration shared by a Monaco instance's editors, which cannot hold a value per file. Monaco's
+   * own `detectIndentation` lives there too, so reading the content is done here, per model.
+   */
+  private applyIndentation(): void {
+    const model: MonacoApi.editor.ITextModel | null = this.editor?.getModel() ?? null;
+    if (model === null) {
+      return;
+    }
+    const resolved: TextEditorSettings = this.settings.resolveSettingsForLanguage(this.language());
+    const config: EditorConfigProperties | null = this.editorConfig();
+    let detected: BaseIndentation | null = null;
+    if (resolved.detectIndentation && !fixesIndentation(config)) {
+      this.detectingIndentation = true;
+      model.detectIndentation(resolved.insertSpaces, resolved.tabSize);
+      this.detectingIndentation = false;
+      detected = model.getOptions();
+    }
+    this.indentation = resolveIndentation(resolved, detected, config);
+    this.assertIndentation();
+    this.indentationChange.emit(indentationLabel(this.indentation));
+  }
+
+  /**
+   * Writes the resolved indentation to the model, only when it differs so the guard cannot recurse.
+   */
+  private assertIndentation(): void {
+    const model: MonacoApi.editor.ITextModel | null = this.editor?.getModel() ?? null;
+    const wanted: ResolvedIndentation | null = this.indentation;
+    if (model === null || wanted === null) {
+      return;
+    }
+    const { tabSize, indentSize, insertSpaces }: MonacoApi.editor.TextModelResolvedOptions =
+      model.getOptions();
+    if (
+      tabSize !== wanted.tabSize ||
+      indentSize !== wanted.indentSize ||
+      insertSpaces !== wanted.insertSpaces
+    ) {
+      model.updateOptions(wanted);
+    }
+  }
+
+  /**
+   * Makes a change of Auto Indent reach typing. The cursor keeps its own copy of the options, rebuilt
+   * only when one of a fixed list changes, and Monaco's list leaves `autoIndent` out: the option alone
+   * would read as changed while Enter went on indenting the old way. Moving a listed option there and
+   * back, one that does nothing until a bracket is deleted, rebuilds the copy.
+   * @param autoIndent The Auto Indent now in force.
+   */
+  private applyAutoIndent(autoIndent: AutoIndent): void {
+    const previous: AutoIndent | null = this.cursorAutoIndent;
+    this.cursorAutoIndent = autoIndent;
+    if (previous !== null && previous !== autoIndent) {
+      this.editor?.updateOptions({ autoClosingDelete: 'never' });
+      this.editor?.updateOptions({ autoClosingDelete: 'auto' });
+    }
   }
 
   /**
@@ -722,6 +935,44 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Runs an editor action for a save, leaving the focus where it is: a save may come from elsewhere,
+   * for another document's editor, and what the user is doing must not be taken from them.
+   * @param action The action identifier.
+   * @returns Returns a promise that resolves once the action has finished.
+   */
+  public async runActionForSave(action: string): Promise<void> {
+    await this.editor?.getAction(action)?.run();
+  }
+
+  /**
+   * Formats lines for a save, with the formatter for a selection: one that cannot format part of a
+   * file offers no such action, and the lines stay as they are. The caret and scroll position stay
+   * too, as the selection is only how the action is told what to format.
+   * @param ranges The lines to format, last first, so formatting one leaves the next where it is.
+   * @returns Returns a promise that resolves once they are formatted.
+   */
+  public async formatLinesForSave(ranges: readonly TextEditorLineRange[]): Promise<void> {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    if (editor === null || model === null || ranges.length === 0) {
+      return;
+    }
+    const view: MonacoApi.editor.ICodeEditorViewState | null = editor.saveViewState();
+    for (const range of ranges) {
+      editor.setSelection({
+        startLineNumber: range.first,
+        startColumn: 1,
+        endLineNumber: range.last,
+        endColumn: model.getLineMaxColumn(range.last),
+      });
+      await editor.getAction('editor.action.formatSelection')?.run();
+    }
+    if (view !== null) {
+      editor.restoreViewState(view);
+    }
+  }
+
+  /**
    * Pastes the clipboard contents at the current selection, since Monaco has no paste trigger.
    */
   public paste(): void {
@@ -802,7 +1053,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     });
 
     const element: HTMLElement = this.host().nativeElement;
-    this.detachInlayHintsHold = watchInlayHintsHold(
+    this.detachInlayHintsHold = watchHeldModifier(
       element.ownerDocument.defaultView ?? window,
       (held: boolean): void => this.inlayHintsHeld.set(held),
     );
@@ -823,7 +1074,12 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // colouring behind the setting's back. Re-assert the resolved value each time the model's options
     // change so the toggle sticks regardless of what triggered the re-seed.
     this.bracketColorizationGuard =
-      model?.onDidChangeOptions((): void => this.applyBracketColorization()) ?? null;
+      model?.onDidChangeOptions((): void => {
+        this.applyBracketColorization();
+        if (!this.detectingIndentation) {
+          this.assertIndentation();
+        }
+      }) ?? null;
 
     // Draw Visual-Studio-style collapsed-region placeholders (`signature {...}`). Harmless on editors
     // whose language has no brace folding — the controller simply finds no collapsed ranges.
@@ -855,8 +1111,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     this.editor.onDidChangeModelContent((): void => {
       // The end-of-line sequence can change with content (for example a "Change EOL" edit).
       this.eolChange.emit(this.readEol());
-      if (this.ignoreNextChange) {
-        this.ignoreNextChange = false;
+      if (this.ignoringChanges) {
         return;
       }
       const value: string = this.editor?.getValue() ?? '';

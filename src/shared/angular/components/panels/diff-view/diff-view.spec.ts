@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { Signal, signal } from '@angular/core';
 import {
   SETTINGS_DEFAULTS,
   SettingsKey,
@@ -61,6 +61,7 @@ describe('DiffView', () => {
             globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
             // Everything else reads its default (the notifications service, for one).
             get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
+            value: (key: SettingsKey): Signal<unknown> => signal<unknown>(SETTINGS_DEFAULTS[key]),
           },
         },
       ],

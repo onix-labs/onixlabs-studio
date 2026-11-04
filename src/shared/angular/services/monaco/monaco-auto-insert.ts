@@ -43,6 +43,24 @@ export function typedCharacter(event: MonacoApi.editor.IModelContentChangedEvent
 }
 
 /**
+ * Determines whether a typed character begins or continues a doc comment: the last of a `///` or
+ * `'''`, or Enter on such a line. What else a server inserts on a typed character, a closing brace's
+ * layout after Enter say, is left to it.
+ * @param model The model typed in.
+ * @param position The caret, after the character.
+ * @param ch The character typed (`\n` for Enter).
+ * @returns Returns true when the character is doc comment typing.
+ */
+export function isDocCommentTyping(
+  model: Pick<MonacoApi.editor.ITextModel, 'getLineContent'>,
+  position: MonacoApi.IPosition,
+  ch: string,
+): boolean {
+  const line: number = ch === '\n' ? position.lineNumber - 1 : position.lineNumber;
+  return line >= 1 && /^\s*(\/\/\/|''')/.test(model.getLineContent(line));
+}
+
+/**
  * Listens in every editor of a Monaco instance — those made before and after — for characters the
  * user types, and hands each to a handler, which asks whatever may answer it (#1148). Only an editor
  * the user is typing into is listened to: an edit applied by code is not typing.

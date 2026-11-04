@@ -23,7 +23,8 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { CodePrintToken, renderCodePrint } from './code-print';
 import { resolveDefaultEol } from '@shared/angular/services/documents/document-defaults';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
+import { changedLineRanges } from '@features/code/angular/change-margin/changed-line-ranges';
 import {
   TextEditor,
   TextEditorCursor,
@@ -254,6 +255,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Emits the label of the indentation in force whenever it changes.
+   */
+  public readonly indentationChange: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Emits whether the editor holds a selection whenever that changes, so the owning leaf can report
    * it against the tab it registered.
    */
@@ -264,6 +270,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * was resolved without re-reading the required {@link documentId} input during destruction.
    */
   private registeredDocumentId: string | null = null;
+
+  /**
+   * Holds the function that stops readying the document for saves, or null before initialisation.
+   */
+  private removeSavePreparer: (() => void) | null = null;
 
   /**
    * Initialises the component, wiring the effect that focuses the documents service on this document
@@ -328,6 +339,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     this.registeredDocumentId = this.documentId();
     this.log.debug('code.document', 'Resolving backing document', this.documentId());
     this.backingDocument.set(this.documents.ensure(this.documentId(), NEW_DOCUMENT_NAME));
+    this.removeSavePreparer = this.documents.registerSavePreparer(
+      this.documentId(),
+      (settings: TextEditorSettings, savedContent: string): Promise<void> =>
+        this.prepareSave(settings, savedContent),
+    );
   }
 
   /**
@@ -340,6 +356,8 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (id === null) {
       return;
     }
+    this.removeSavePreparer?.();
+    this.removeSavePreparer = null;
     if (this.documents.activeDocumentId() === id) {
       this.documents.setActiveDocument(null);
     }
@@ -350,6 +368,28 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (controller !== null) {
       this.breakpointGutter.detach(controller);
       this.breakpointController.set(null);
+    }
+  }
+
+  /**
+   * Does in the editor what the settings ask of a save. Sequenced, not fired together: organising
+   * imports rewrites the very lines the formatter would otherwise lay out.
+   * @param settings The code settings for the document's language.
+   * @param savedContent The text last saved, which Changed Lines Only compares with.
+   * @returns Returns a promise that resolves once the document is ready.
+   */
+  private async prepareSave(settings: TextEditorSettings, savedContent: string): Promise<void> {
+    const pane: TextEditor | undefined = this.editor();
+    if (pane === undefined) {
+      return;
+    }
+    if (settings.organiseImportsOnSave) {
+      await pane.runActionForSave('editor.action.organizeImports');
+    }
+    if (settings.formatOnSave === 'whole') {
+      await pane.runActionForSave('editor.action.formatDocument');
+    } else if (settings.formatOnSave === 'changed') {
+      await pane.formatLinesForSave(changedLineRanges(savedContent, pane.getValue()));
     }
   }
 

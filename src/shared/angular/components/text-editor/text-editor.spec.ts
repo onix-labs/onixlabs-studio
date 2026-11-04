@@ -4,8 +4,9 @@ import { By } from '@angular/platform-browser';
 import type * as MonacoApi from 'monaco-editor';
 import { EditorContextMenuHost } from '@shared/angular/components/editor-context-menu/editor-context-menu-host';
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
-import type { MockInstance } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import {
   FIND_HOST,
@@ -23,6 +24,7 @@ import { HoverCards } from '@shared/angular/services/hover/hover-cards';
 import { Autocomplete } from '@shared/angular/services/autocomplete/autocomplete';
 import { ColourPickers } from '@shared/angular/services/colour-picker/colour-pickers';
 import { TextEditor } from './text-editor';
+import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 
 describe('TextEditor', () => {
   let fixture: ComponentFixture<TextEditor>;
@@ -57,6 +59,10 @@ describe('TextEditor', () => {
 });
 
 describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   /**
    * The tab Find panel the pane's enclosing tab provides.
    */
@@ -78,9 +84,17 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       getValue: (): string => '',
       getAllDecorations: (): unknown[] => [],
       getLanguageId: (): string => 'plaintext',
-      getOptions: (): unknown => ({ bracketPairColorizationOptions: { enabled: true } }),
+      getOptions: (): unknown => ({
+        bracketPairColorizationOptions: { enabled: true },
+        tabSize: 2,
+        indentSize: 2,
+        insertSpaces: true,
+      }),
+      detectIndentation: (): void => undefined,
+      updateOptions: (): void => undefined,
     };
     const named: Record<string, unknown> = {
+      getContainerDomNode: (): HTMLElement => document.body,
       getModel: (): unknown => model,
       getPosition: (): null => null,
       getValue: (): string => '',
@@ -98,6 +112,200 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
           : (): MonacoApi.IDisposable => ({ dispose: (): void => undefined }),
     }) as unknown as MonacoApi.editor.IStandaloneCodeEditor;
   }
+
+  /**
+   * Builds a text editor over a model that keeps its indentation like Monaco's.
+   * @param properties What the file's `.editorconfig` says.
+   * @param detected What the model reads from its content.
+   * @returns Returns the fixture, the model's options, and what re-seeds them.
+   */
+  async function indented(
+    properties: EditorConfigProperties | null,
+    detected: { tabSize: number; insertSpaces: boolean } = { tabSize: 4, insertSpaces: false },
+    held: string = '',
+  ): Promise<{
+    fixture: ComponentFixture<TextEditor>;
+    options: Record<string, unknown>;
+    reseed: () => void;
+    updateEditor: Mock<(options: unknown) => void>;
+    setEOL: Mock<(eol: number) => void>;
+    replaced: Mock<() => void>;
+  }> {
+    const options: Record<string, unknown> = {
+      bracketPairColorizationOptions: { enabled: true },
+      tabSize: 2,
+      indentSize: 2,
+      insertSpaces: true,
+    };
+    let onOptions: () => void = (): void => undefined;
+    const setEOL: Mock<(eol: number) => void> = vi.fn<(eol: number) => void>();
+    const replaced: Mock<() => void> = vi.fn<() => void>();
+    const model: unknown = {
+      uri: { toString: (): string => 'inmemory://model/2' },
+      getFullModelRange: (): unknown => ({}),
+      pushEditOperations: replaced,
+      onDidChangeOptions: (listener: () => void): MonacoApi.IDisposable => {
+        onOptions = listener;
+        return { dispose: (): void => undefined };
+      },
+      getEOL: (): string => '\n',
+      getLineCount: (): number => 1,
+      getValue: (): string => '',
+      getAllDecorations: (): unknown[] => [],
+      getLanguageId: (): string => 'plaintext',
+      getOptions: (): unknown => options,
+      setEOL,
+      detectIndentation: (): void => {
+        Object.assign(options, detected, { indentSize: detected.tabSize });
+        onOptions();
+      },
+      updateOptions: (changes: Record<string, unknown>): void => {
+        Object.assign(options, changes);
+        onOptions();
+      },
+    };
+    const updateEditor: Mock<(options: unknown) => void> = vi.fn<(options: unknown) => void>();
+    const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor({
+      getModel: (): unknown => model,
+      getValue: (): string => held,
+      updateOptions: updateEditor,
+    });
+    const fakeMonaco: unknown = {
+      editor: {
+        create: (): MonacoApi.editor.IStandaloneCodeEditor => editor,
+        setTheme: (): void => undefined,
+        EndOfLineSequence: { LF: 0, CRLF: 1 },
+      },
+    };
+    await TestBed.configureTestingModule({
+      imports: [TextEditor],
+      providers: [{ provide: FIND_HOST, useValue: host }],
+    }).compileComponents();
+    const monaco: Monaco = TestBed.inject(Monaco);
+    vi.spyOn(monaco, 'ensureLoaded').mockResolvedValue(undefined);
+    vi.spyOn(monaco, 'getMonaco').mockReturnValue(fakeMonaco as typeof MonacoApi);
+    const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+    fixture.componentRef.setInput('editorConfig', properties);
+    fixture.componentRef.setInput('content', held);
+    await fixture.whenStable();
+    return {
+      fixture,
+      options,
+      setEOL,
+      replaced,
+      updateEditor,
+      reseed: (): void => {
+        Object.assign(options, { tabSize: 2, indentSize: 2, insertSpaces: true });
+        onOptions();
+      },
+    };
+  }
+
+  it('rebuildsTheCursorsOptions_whenAutoIndentChanges', async () => {
+    const { fixture, updateEditor } = await indented(null);
+    updateEditor.mockClear();
+
+    TestBed.inject(Settings).set('textEditor.global.autoIndent', 'none');
+    await fixture.whenStable();
+    localStorage.removeItem('settings');
+
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'never' });
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'auto' });
+  });
+
+  it('readsIndentationFromTheContent_underDetectIndentation', async () => {
+    const { options } = await indented(null);
+
+    expect(options).toMatchObject({ tabSize: 4, indentSize: 4, insertSpaces: false });
+  });
+
+  it('keepsTheSettings_whenDetectIndentationIsOff', async () => {
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({ 'textEditor.global.detectIndentation': false }),
+    );
+
+    const { options } = await indented(null);
+
+    expect(options).toMatchObject({ tabSize: 2, insertSpaces: true });
+  });
+
+  it('letsEditorConfigWinOverTheContent', async () => {
+    const { options } = await indented({ indentStyle: 'space', indentSize: 8 });
+
+    expect(options).toMatchObject({ tabSize: 8, indentSize: 8, insertSpaces: true });
+  });
+
+  it('putsTheIndentationBackWhenMonacoReseedsTheModel', async () => {
+    const { options, reseed } = await indented({ indentStyle: 'tab', tabWidth: 8 });
+
+    reseed();
+
+    expect(options).toMatchObject({ tabSize: 8, insertSpaces: false });
+  });
+
+  it('reportsTheIndentationInForce', async () => {
+    const seen: string[] = [];
+    const { fixture } = await indented({ indentStyle: 'space', indentSize: 8 });
+    fixture.componentInstance.indentationChange.subscribe((label: string): void => {
+      seen.push(label);
+    });
+
+    fixture.componentRef.setInput('editorConfig', { indentStyle: 'tab', indentSize: 4 });
+    await fixture.whenStable();
+
+    expect(seen).toContain('Tabs: 4');
+  });
+
+  it('letsMaxLineLengthWinOverTheRulers', async () => {
+    localStorage.setItem('settings', JSON.stringify({ 'textEditor.global.rulers': '80, 120' }));
+
+    const { updateEditor } = await indented({ maxLineLength: 100 });
+
+    expect(updateEditor).toHaveBeenCalledWith(expect.objectContaining({ rulers: [100] }));
+  });
+
+  it('drawsNoRuler_whenMaxLineLengthIsOff', async () => {
+    localStorage.setItem('settings', JSON.stringify({ 'textEditor.global.rulers': '80' }));
+
+    const { updateEditor } = await indented({ maxLineLength: 'off' });
+
+    expect(updateEditor).toHaveBeenCalledWith(expect.objectContaining({ rulers: [] }));
+  });
+
+  it('convertsTheModelToTheFixedLineEnding', async () => {
+    const { setEOL } = await indented({ endOfLine: 'crlf' });
+
+    expect(setEOL).toHaveBeenCalledWith(1);
+  });
+
+  it('doesNotTakeAConvertedModelForDifferentText', async () => {
+    const { fixture, replaced } = await indented(
+      { endOfLine: 'crlf' },
+      { tabSize: 4, insertSpaces: false },
+      'a\r\nb',
+    );
+
+    fixture.componentRef.setInput('content', 'a\nb');
+    await fixture.whenStable();
+
+    expect(replaced).not.toHaveBeenCalled();
+  });
+
+  it('replacesTextWhereItStands_whenItReallyDiffers', async () => {
+    const { fixture, replaced } = await indented(null, { tabSize: 4, insertSpaces: false }, 'a');
+
+    fixture.componentRef.setInput('content', 'b');
+    await fixture.whenStable();
+
+    expect(replaced).toHaveBeenCalledTimes(1);
+  });
+
+  it('leavesTheLineEndingAloneForABareCr', async () => {
+    const { setEOL } = await indented({ endOfLine: 'cr' });
+
+    expect(setEOL).not.toHaveBeenCalled();
+  });
 
   it('attachesItsEditorToTheFindRouter_withTheEnclosingTabsFindPanel_andDetachesOnDestroy', async () => {
     const editor: MonacoApi.editor.IStandaloneCodeEditor = standInEditor();

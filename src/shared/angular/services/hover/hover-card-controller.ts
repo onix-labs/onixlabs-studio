@@ -1,11 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
+import type { ShowHoverCards } from '@shared/angular/services/settings/settings';
 import { hasContent, HoverCardContent, rangeHolds } from './hover-content';
-
-/**
- * Holds how long the pointer must rest on a symbol or a problem before its card shows, in
- * milliseconds — about half a second, as the product owner asked (#1020).
- */
-export const HOVER_CARD_DELAY_MS: number = 500;
 
 /**
  * Holds how long a card stays once the pointer leaves both the spot it is about and the card itself,
@@ -103,6 +98,18 @@ export interface HoverCardHandle {
  */
 export interface HoverCardHooks {
   /**
+   * Reads how long the pointer must rest on a spot before its card shows.
+   * @returns Returns the delay, in milliseconds.
+   */
+  delay(): number;
+
+  /**
+   * Reads when the pointer brings up a card. The keyboard always can.
+   * @returns Returns the choice.
+   */
+  pointerCards(): ShowHoverCards;
+
+  /**
    * Reads the problems of the editor's document, which a spot off any word can be about.
    * @returns Returns the problems.
    */
@@ -152,8 +159,8 @@ interface ShownCard {
 
 /**
  * Shows Studio's hover card in one Monaco editor (#1020), in place of Monaco's hover: after the pointer
- * rests on a symbol, a problem or a gutter decoration for {@link HOVER_CARD_DELAY_MS}, or at once when
- * asked from the keyboard. The card is sticky — the pointer can move into it, and it stays while the
+ * rests on a symbol, a problem or a gutter decoration for the Hover Delay, or at once when asked from
+ * the keyboard. Show Hover Cards can stop the pointer asking, or have it wait for a held modifier. The card is sticky — the pointer can move into it, and it stays while the
  * pointer is in it — and goes {@link HOVER_CARD_GRACE_MS} after the pointer leaves both the spot and
  * the card. It closes at once on a click or a key in the editor, a scroll, an edit, another document,
  * the editor losing focus to anything but the card, or the window losing focus.
@@ -203,6 +210,16 @@ export class HoverCardController {
    * once that card has gone.
    */
   private next: HoverSpot | null = null;
+
+  /**
+   * Holds the spot under the pointer, so pressing the held modifier can show its card, or null.
+   */
+  private resting: HoverSpot | null = null;
+
+  /**
+   * Holds whether the modifier the While Holding choice waits for is held.
+   */
+  private held: boolean = false;
 
   /**
    * Holds whether the pointer is in the card.
@@ -282,6 +299,37 @@ export class HoverCardController {
   }
 
   /**
+   * Follows the modifier the While Holding choice waits for: pressing it asks for the card of the
+   * spot under the pointer, and letting go takes a pointer's card away, unless the pointer is in it.
+   * @param held Whether the modifier is held.
+   */
+  public setHeld(held: boolean): void {
+    if (held === this.held) {
+      return;
+    }
+    this.held = held;
+    if (this.hooks.pointerCards() !== 'while-holding') {
+      return;
+    }
+    if (held) {
+      if (
+        this.resting !== null &&
+        this.shown === null &&
+        this.pending === null &&
+        this.asking === null
+      ) {
+        this.schedule(this.resting);
+      }
+    } else if (
+      this.shown?.source !== 'keyboard' &&
+      this.asking?.source !== 'keyboard' &&
+      !this.inCard
+    ) {
+      this.hide();
+    }
+  }
+
+  /**
    * Takes the card away, and forgets any spot waiting for one.
    */
   public hide(): void {
@@ -319,6 +367,10 @@ export class HoverCardController {
       return;
     }
     const spot: HoverSpot | null = this.spotOf(event);
+    this.resting = spot;
+    if (!this.pointerAsks()) {
+      return;
+    }
     const key: string | null = spot === null ? null : keyOf(spot);
     if (this.shown !== null) {
       if (key === this.shown.key) {
@@ -348,10 +400,20 @@ export class HoverCardController {
   }
 
   /**
+   * Determines whether the pointer brings up a card just now.
+   * @returns Returns true unless Show Hover Cards says otherwise.
+   */
+  private pointerAsks(): boolean {
+    const choice: ShowHoverCards = this.hooks.pointerCards();
+    return choice === 'on' || (choice === 'while-holding' && this.held);
+  }
+
+  /**
    * Starts a card's grace when the pointer leaves the editor — unless it is in the card — and forgets
    * any spot waiting for one.
    */
   private onPointerLeft(): void {
+    this.resting = null;
     this.cancelPending();
     this.next = null;
     if (this.asking?.source === 'pointer') {
@@ -387,7 +449,7 @@ export class HoverCardController {
       timer: setTimeout((): void => {
         this.pending = null;
         void this.open(spot, 'pointer');
-      }, HOVER_CARD_DELAY_MS),
+      }, this.hooks.delay()),
     };
   }
 

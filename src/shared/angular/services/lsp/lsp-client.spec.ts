@@ -45,6 +45,7 @@ import {
 } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
 
 /**
  * The registered servers these tests run against, standing in for the catalogue the real settings
@@ -1292,15 +1293,19 @@ describe('LspClient', () => {
   });
 
   describe('brace style (#1177)', () => {
+    let editorConfigChanged: (path: string) => void;
     let global: WritableSignal<{ braceStyle: string }>;
     let overrides: WritableSignal<Record<string, { braceStyle?: string }>>;
 
     beforeEach(() => {
       installedServers.set(
         CATALOGUE.map((server: LspServerSummary): LspServerSummary =>
-          server.id === 'csharp' ? { ...server, takesBraceStyle: true } : server,
+          server.id === 'csharp'
+            ? { ...server, takesBraceStyle: true, readsEditorConfigAtStart: true }
+            : server,
         ),
       );
+      editorConfigChanged = (): void => undefined;
       global = signal<{ braceStyle: string }>({ braceStyle: 'kr' });
       overrides = signal<Record<string, { braceStyle?: string }>>({
         csharp: { braceStyle: 'allman' },
@@ -1321,8 +1326,38 @@ describe('LspClient', () => {
               get: (key: SettingsKey): unknown => SETTINGS_DEFAULTS[key],
             },
           },
+          {
+            provide: EditorConfigs,
+            useValue: {
+              onChanged: (listener: (path: string) => void): (() => void) => {
+                editorConfigChanged = listener;
+                return (): void => undefined;
+              },
+            },
+          },
         ],
       });
+    });
+
+    it('anEditorConfigChanging_restartsAServerThatReadsItAtStart_andNoOther', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+      await openDocument(client, '/root/src/a.ts', 'typescript');
+
+      editorConfigChanged('/root/.editorconfig');
+      await flush();
+
+      expect(lsp.restarts).toEqual(['/root::csharp']);
+    });
+
+    it('anEditorConfigOutsideTheSession_restartsNothing', async () => {
+      const client: LspClient = build();
+      await openDocument(client, '/root/src/A.cs', 'csharp');
+
+      editorConfigChanged('/elsewhere/.editorconfig');
+      await flush();
+
+      expect(lsp.restarts).toEqual([]);
     });
 
     /**
@@ -1515,6 +1550,7 @@ describe('LspClient', () => {
       const expected: unknown = {
         folding: true,
         highlights: true,
+        linkedEditing: false,
         rangeTokens: false,
         selectionRanges: false,
       };

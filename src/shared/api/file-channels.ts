@@ -40,6 +40,11 @@ export enum FileChannel {
   Changed = 'file:changed',
 
   /**
+   * Notifies the renderer that a watched file is gone from disk (main→renderer, send).
+   */
+  Removed = 'file:removed',
+
+  /**
    * Starts watching a directory tree recursively for on-disk changes (renderer→main, invoke).
    */
   WatchDirectory = 'file:watch-directory',

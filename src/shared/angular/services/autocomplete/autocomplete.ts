@@ -15,6 +15,7 @@ import {
 import { SignatureCard } from '@shared/angular/components/signature-card/signature-card';
 import { Log } from '@shared/angular/services/log/log';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { AcceptSuggestionWith, Settings } from '@shared/angular/services/settings/settings';
 import type {
   ParameterHintsControl,
   ParameterHintsPresenter,
@@ -81,6 +82,11 @@ export class Autocomplete implements SuggestPresenter, ParameterHintsPresenter {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, read for which keys accept a row and how many rows the list shows.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the injector of the component each attached editor is in.
@@ -306,6 +312,9 @@ export class Autocomplete implements SuggestPresenter, ParameterHintsPresenter {
         return (): void => clearTimeout(timer);
       },
       cancellation: (): Cancellation => cancellationIn(editor),
+      acceptWith: (): AcceptSuggestionWith =>
+        this.settings.get('textEditor.global.acceptSuggestionWith'),
+      visibleRows: (): number => this.settings.get('textEditor.global.suggestionListSize'),
     };
   }
 

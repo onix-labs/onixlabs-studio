@@ -9,7 +9,10 @@ import { LanguageEditorOverrides } from './language-editor-overrides';
 /**
  * The language overrides Studio ships with: C# braces on their own line (#1177).
  */
-const CSHARP_ALLMAN: Record<string, unknown> = { csharp: { braceStyle: 'allman' } };
+const SHIPPED_OVERRIDES: Record<string, unknown> = {
+  csharp: { braceStyle: 'allman' },
+  markdown: { trimTrailingWhitespace: false },
+};
 
 describe('LanguageEditorOverrides', () => {
   afterEach(() => {
@@ -66,7 +69,7 @@ describe('LanguageEditorOverrides', () => {
       'Rust files',
     );
     // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(15);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(34);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -110,7 +113,7 @@ describe('LanguageEditorOverrides', () => {
 
     await tick(tabSizeIndex(), true);
 
-    expect(settings.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, rust: { tabSize: 8 } });
+    expect(settings.languageOverrides()).toEqual({ ...SHIPPED_OVERRIDES, rust: { tabSize: 8 } });
     expect(tabSizeSelect().disabled).toBe(false);
   });
 
@@ -122,7 +125,7 @@ describe('LanguageEditorOverrides', () => {
     fixture.detectChanges();
 
     // Stored as a number, as the global setting is — not the dropdown's string pick.
-    expect(settings.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, rust: { tabSize: 4 } });
+    expect(settings.languageOverrides()).toEqual({ ...SHIPPED_OVERRIDES, rust: { tabSize: 4 } });
     expect(settings.globalTextEditor().tabSize).toBe(2);
     expect(settings.resolveSettingsForLanguage('rust').tabSize).toBe(4);
   });
@@ -131,7 +134,7 @@ describe('LanguageEditorOverrides', () => {
     await tick(tabSizeIndex(), true);
     await tick(tabSizeIndex(), false);
 
-    expect(settings.languageOverrides()).toEqual(CSHARP_ALLMAN);
+    expect(settings.languageOverrides()).toEqual(SHIPPED_OVERRIDES);
     expect(checks()[tabSizeIndex()].checked).toBe(false);
   });
 
@@ -186,12 +189,44 @@ describe('LanguageEditorOverrides', () => {
     fixture.componentRef.setInput('section', 'code-editing');
     await fixture.whenStable();
     expect(titles()).toEqual([
+      'Detect Indentation',
       'Tab Size',
       'Insert Spaces',
       'Word Wrap',
       'Format on Type',
       'Brace Style',
+      'Auto Close Brackets and Quotes',
+      'Auto Surround',
+      'Auto Indent',
+      'Linked Editing',
+      'Doc Comment Auto Insert',
+      'Format on Save',
+      'Organise Imports on Save',
+      'Trim Trailing Whitespace on Save',
+      'Insert Final Newline',
+      'Trim Final Newlines',
+      'Add Byte-Order Mark to New Files',
+      'Format on Paste',
+      'Quick Suggestions',
+      'Suggest on Trigger Characters',
+      'Accept on Commit Character',
+      'Word-Based Suggestions',
+      'Snippet Suggestions',
+      'Parameter Hints',
     ]);
+  });
+
+  it('saysWhatAnEditorConfigDecides_whileItIsHonoured', async () => {
+    const note: string = 'Set by .editorconfig';
+    fixture.componentRef.setInput('section', 'code-editing');
+    await fixture.whenStable();
+    expect(element.textContent).toContain(note);
+
+    TestBed.inject(Settings).set('textEditor.honourEditorConfig', false);
+    fixture.componentRef.setInput('section', 'code-appearance');
+    fixture.componentRef.setInput('section', 'code-editing');
+    await fixture.whenStable();
+    expect(element.textContent).not.toContain(note);
   });
 
   it('rulers_whenOverridden_keepsTheTextTypedForTheLanguage', async () => {

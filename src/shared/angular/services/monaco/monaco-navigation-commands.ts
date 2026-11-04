@@ -213,9 +213,29 @@ export function installNavigationCommands(
 }
 
 /**
+ * Determines whether a click holds the modifier for Go to Definition, which is whichever one Multi-Cursor
+ * Modifier does not take.
+ * @param event The editor's mouse event.
+ * @param editor The editor.
+ * @param isMac Whether the host is macOS.
+ * @returns Returns true when the click holds the modifier, and not the one that adds a cursor.
+ */
+function hasLinkModifier(
+  event: MonacoApi.editor.IEditorMouseEvent,
+  editor: MonacoApi.editor.ICodeEditor,
+  isMac: boolean,
+): boolean {
+  const primary: boolean = isMac ? event.event.metaKey : event.event.ctrlKey;
+  return editor.getRawOptions().multiCursorModifier === 'ctrlCmd'
+    ? event.event.altKey && !primary
+    : primary && !event.event.altKey;
+}
+
+/**
  * Takes over ⌘-click (Ctrl-click) on a symbol in one editor: Monaco's own navigation from the click is
  * replaced with nothing, and a click with the modifier that lands on the text, not dragged, runs
- * Studio's Go to Definition from where it landed.
+ * Studio's Go to Definition from where it landed. When Multi-Cursor Modifier takes ⌘ (Ctrl), Go to
+ * Definition takes ⌥ (Alt) instead, read at each click so the setting applies at once.
  * @param editor The editor, just created.
  * @param isMac Whether the host is macOS, which decides the modifier.
  * @param onNavigate Receives the editor and the mode.
@@ -239,8 +259,7 @@ export function takeOverDefinitionClicks(
     event: MonacoApi.editor.IEditorMouseEvent,
   ): boolean =>
     event.event.leftButton &&
-    !event.event.altKey &&
-    (isMac ? event.event.metaKey : event.event.ctrlKey) &&
+    hasLinkModifier(event, editor, isMac) &&
     LINK_TARGETS.has(event.target.type) &&
     event.target.position !== null;
   editor.onMouseDown((event: MonacoApi.editor.IEditorMouseEvent): void => {

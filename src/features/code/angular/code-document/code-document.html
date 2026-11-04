@@ -4,11 +4,13 @@
   [options]="editorOptions()"
   [readOnly]="doc()?.readOnly() ?? false"
   [newDocumentEol]="newDocumentEol()"
+  [editorConfig]="doc()?.editorConfig() ?? null"
   [isActive]="isActive()"
   (ready)="onReady()"
   (contentChange)="onContentChange($event)"
   (cursorChange)="onCursorChange($event)"
   (eolChange)="onEolChange($event)"
+  (indentationChange)="indentationChange.emit($event)"
   (selectionChange)="onSelectionChange($event)"
 />
 

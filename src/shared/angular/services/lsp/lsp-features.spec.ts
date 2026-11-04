@@ -1,5 +1,6 @@
 import type * as MonacoApi from 'monaco-editor';
 import { TestBed } from '@angular/core/testing';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Bridge } from '@shared/api/bridge';
 import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
@@ -97,6 +98,10 @@ interface FakeCodeLensProvider {
  * A folding, highlight or range-token provider as the specs call it (#1147).
  */
 interface FakeStructureProvider {
+  provideLinkedEditingRanges?: (
+    model: unknown,
+    position: unknown,
+  ) => Promise<{ ranges: unknown[]; wordPattern?: RegExp } | undefined>;
   provideFoldingRanges?(model: unknown): Promise<unknown>;
   provideDocumentHighlights?(model: unknown, position: unknown): Promise<unknown>;
   provideSelectionRanges?(model: unknown, positions: unknown[]): Promise<unknown>;
@@ -212,6 +217,9 @@ function fakeMonacoNamespace(
       },
       registerDocumentHighlightProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:highlights`, provider);
+      },
+      registerLinkedEditingRangeProvider: (language: string, provider: unknown): void => {
+        (captured.structure ??= new Map()).set(`${language}:linkedEditing`, provider);
       },
       registerDocumentRangeSemanticTokensProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:rangeTokens`, provider);
@@ -1302,6 +1310,8 @@ describe('LspFeatures', () => {
         getVersionId: (): number => version.value,
         isDisposed: (): boolean => false,
         getOptions: (): unknown => ({ tabSize: 4, insertSpaces: true }),
+        getLanguageId: (): string => 'csharp',
+        getLineContent: (): string => '    ///',
       };
       return {
         getModel: (): unknown => model,
@@ -1338,6 +1348,19 @@ describe('LspFeatures', () => {
       ]);
     });
 
+    it('withDocCommentAutoInsertOff_aDocCommentAsksNothing', async () => {
+      autoInsertTriggers = ['/'];
+      await build();
+      const settings: Settings = TestBed.inject(Settings);
+      settings.setLanguageOverride('csharp', 'docCommentAutoInsert', false);
+
+      autoInsertHandler?.(typedInto([], { value: 1 }), '/');
+      await flush();
+      localStorage.removeItem('settings');
+
+      expect(requests).toHaveLength(0);
+    });
+
     it('aCharacterTheServerDoesNotDeclare_asksNothing', async () => {
       autoInsertTriggers = ['/'];
       await build();
@@ -1368,6 +1391,7 @@ describe('LspFeatures', () => {
     const ALL: LspStructureSupport = {
       folding: true,
       highlights: true,
+      linkedEditing: true,
       rangeTokens: true,
       selectionRanges: true,
     };
@@ -1383,6 +1407,7 @@ describe('LspFeatures', () => {
       features.enableStructure('go', {
         folding: true,
         highlights: false,
+        linkedEditing: false,
         rangeTokens: false,
         selectionRanges: false,
       });
@@ -1390,10 +1415,47 @@ describe('LspFeatures', () => {
       expect([...(captured.structure?.keys() ?? [])]).toEqual([
         'csharp:folding',
         'csharp:highlights',
+        'csharp:linkedEditing',
         'csharp:rangeTokens',
         'csharp:selectionRanges',
         'go:folding',
       ]);
+    });
+
+    it('linkedEditing_asksTheServerForTheRangesEditedTogether', async () => {
+      structureSupport = ALL;
+      const tag: (line: number) => unknown = (line: number): unknown => ({
+        start: { line, character: 1 },
+        end: { line, character: 4 },
+      });
+      responses['textDocument/linkedEditingRange'] = {
+        ranges: [tag(0), tag(2)],
+        wordPattern: '[a-z]+',
+      };
+      const features: LspFeatures = await build();
+      features.enableStructure('html', ALL);
+
+      const linked: { ranges: unknown[]; wordPattern?: RegExp } | undefined =
+        await captured.structure
+          ?.get('html:linkedEditing')
+          ?.provideLinkedEditingRanges?.(owned, { lineNumber: 1, column: 2 });
+
+      expect(requests.at(-1)?.method).toBe('textDocument/linkedEditingRange');
+      expect(linked?.ranges).toHaveLength(2);
+      expect(linked?.wordPattern).toEqual(/[a-z]+/);
+    });
+
+    it('linkedEditing_withNoRangesThere_answersNothing', async () => {
+      structureSupport = ALL;
+      responses['textDocument/linkedEditingRange'] = null;
+      const features: LspFeatures = await build();
+      features.enableStructure('html', ALL);
+
+      await expect(
+        captured.structure
+          ?.get('html:linkedEditing')
+          ?.provideLinkedEditingRanges?.(owned, { lineNumber: 1, column: 2 }),
+      ).resolves.toBeUndefined();
     });
 
     it('selectionRanges_climbFromTheIdentifierOutward_oneChainPerCaret (#1155)', async () => {

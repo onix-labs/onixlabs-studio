@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { watchInlayHintsHold } from './inlay-hints-hold';
+import { watchHeldModifier } from './held-modifier';
 
-describe('watchInlayHintsHold', () => {
+describe('watchHeldModifier', () => {
   let stop: (() => void) | undefined;
 
   /**
@@ -12,7 +12,7 @@ describe('watchInlayHintsHold', () => {
   function watch(platform: string): boolean[] {
     Object.defineProperty(window, 'host', { configurable: true, value: { platform } });
     const reports: boolean[] = [];
-    stop = watchInlayHintsHold(window, (held: boolean): void => {
+    stop = watchHeldModifier(window, (held: boolean): void => {
       reports.push(held);
     });
     return reports;

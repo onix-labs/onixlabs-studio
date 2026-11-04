@@ -2,12 +2,6 @@ import type * as MonacoApi from 'monaco-editor';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
- * Holds how long the caret, the text and the problems must stay still before the icon asks whether
- * fixes exist at the caret, so moving through a file or typing does not ask on every step.
- */
-export const QUICK_FIX_INDICATOR_DELAY_MS: number = 250;
-
-/**
  * Holds the CSS class the icon is drawn with, beside the icon set's own classes; see `_quick-fix.scss`.
  */
 export const QUICK_FIX_GLYPH_CLASS: string = 'quick-fix-glyph';
@@ -51,6 +45,13 @@ export interface QuickFixIndicatorHooks {
    * @returns Returns true when they can.
    */
   enabled(): boolean;
+
+  /**
+   * Gets how long the caret, the text and the problems must stay still before the icon asks whether
+   * fixes exist at the caret, so moving through a file or typing does not ask on every step.
+   * @returns Returns the delay, in milliseconds.
+   */
+  delay(): number;
 
   /**
    * Subscribes to changes of the problems Monaco holds, by the models they changed in, or undefined
@@ -187,6 +188,14 @@ export class QuickFixIndicator {
   }
 
   /**
+   * Asks again whether the icon should show, when what it depends on changes outside the editor: the
+   * Quick Fix Indicator setting.
+   */
+  public refresh(): void {
+    this.schedule();
+  }
+
+  /**
    * Stops following the editor and takes the icon away.
    */
   public dispose(): void {
@@ -272,7 +281,7 @@ export class QuickFixIndicator {
     this.timer = setTimeout((): void => {
       this.timer = null;
       void this.ask();
-    }, QUICK_FIX_INDICATOR_DELAY_MS);
+    }, this.hooks.delay());
   }
 
   /**

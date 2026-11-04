@@ -59,6 +59,7 @@ import { CodeRunner } from '@shared/electron/code-runner';
 import { DecoderHost } from '@shared/electron/decoders/decoder-ipc';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
 import { DirectoryWatcher } from '@shared/electron/directory-watcher';
+import { EditorConfigManager } from '@shared/electron/editor-config/editor-config-manager';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
@@ -374,6 +375,11 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
   );
+
+  /**
+   * Holds the EditorConfig resolver, answering what a file's `.editorconfig` files say about it.
+   */
+  private readonly editorConfigManager: EditorConfigManager = new EditorConfigManager();
 
   /**
    * Renders the contextual application menu the renderer composes.
@@ -1160,6 +1166,7 @@ class Program {
     this.spellingManager.register();
     this.terminalManager.register();
     this.fileManager.register();
+    this.editorConfigManager.register();
     this.menuManager.register();
     this.codeRunner.register();
     this.versionControlManager.register();

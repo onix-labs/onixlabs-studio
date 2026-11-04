@@ -43,7 +43,7 @@ export type CodeOverrideSection = 'code-appearance' | 'code-editing';
  */
 const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
   'code-appearance': 'Code › Appearance and Code › Guides and Highlights',
-  'code-editing': 'Code › Editing',
+  'code-editing': 'Code › Editing, Code › Saving and Code › Suggestions and Hover',
 };
 
 /**
@@ -52,13 +52,26 @@ const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
  */
 const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
   'code-appearance': ['code-appearance', 'code-highlighting'],
-  'code-editing': ['code-editing'],
+  'code-editing': ['code-editing', 'code-saving', 'code-suggestions'],
 };
 
 /**
  * The key of the brace-style setting, which only a language server that takes it can honour.
  */
 const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
+
+/**
+ * The keys of the per-language settings a project's `.editorconfig` can decide.
+ */
+const EDITOR_CONFIG_KEYS: ReadonlySet<string> = new Set<string>([
+  'textEditor.global.tabSize',
+  'textEditor.global.insertSpaces',
+  'textEditor.global.detectIndentation',
+  'textEditor.global.rulers',
+  'textEditor.global.trimTrailingWhitespace',
+  'textEditor.global.insertFinalNewline',
+  'textEditor.global.addByteOrderMark',
+]);
 
 /**
  * Edits one language's overrides of the code settings: the Appearance or Editing section of a
@@ -149,9 +162,13 @@ export class LanguageEditorOverrides {
    * @returns Returns the description.
    */
   protected describe(setting: SettingDef): string {
+    const note: string =
+      EDITOR_CONFIG_KEYS.has(setting.key) && this.settings.get('textEditor.honourEditorConfig')
+        ? ' Set by .editorconfig for the files one covers.'
+        : '';
     return setting.key === BRACE_STYLE_KEY && !this.takesBraceStyle()
       ? `${setting.description} Not supported by this language's server yet.`
-      : setting.description;
+      : `${setting.description}${note}`;
   }
 
   /**

@@ -115,13 +115,16 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
  * @param textFocus Whether its text holds the keyboard.
  * @param contribution The ⌘-click contribution it has: Monaco's, one without the navigation Studio
  * replaces, or none.
+ * @param multiCursorModifier The modifier that adds a cursor.
  * @returns Returns the editor and its recorders.
  */
 function fakeEditor(
   textFocus: boolean = false,
   contribution: 'monaco' | 'unknown' | 'none' = 'monaco',
+  multiCursorModifier: MonacoApi.editor.IEditorOptions['multiCursorModifier'] = 'alt',
 ): FakeEditor {
   const calls: string[] = [];
+  const rawOptions: MonacoApi.editor.IEditorOptions = { multiCursorModifier };
   let down: ((event: MonacoApi.editor.IEditorMouseEvent) => void) | null = null;
   let up: ((event: MonacoApi.editor.IEditorMouseEvent) => void) | null = null;
   const link: { gotoDefinition?: unknown; disposed: boolean; dispose(): void } | null =
@@ -159,6 +162,7 @@ function fakeEditor(
   const editor: unknown = {
     hasTextFocus: (): boolean => textFocus,
     hasWidgetFocus: (): boolean => textFocus,
+    getRawOptions: (): MonacoApi.editor.IEditorOptions => rawOptions,
     updateOptions: (options: MonacoApi.editor.IEditorOptions): void =>
       void calls.push(`options ${JSON.stringify(options)}`),
     getContribution: (id: string): unknown => (id === DEFINITION_LINK_CONTRIBUTION ? link : null),
@@ -352,6 +356,20 @@ describe('installNavigationCommands (#1014)', () => {
     fake.press({ ctrl: true });
     fake.release({ ctrl: true });
     expect(installed.navigated.length).toBe(1);
+  });
+
+  it('whenTheMultiCursorModifierTakesCmd_optionClickGoesToDefinition_andCmdClickDoesNot', () => {
+    const installed: Installed = install(true, []);
+    const fake: FakeEditor = fakeEditor(false, 'monaco', 'ctrlCmd');
+    installed.create(fake.editor);
+
+    fake.press({ meta: true });
+    fake.release({ meta: true });
+    expect(installed.navigated).toEqual([]);
+
+    fake.press({ alt: true });
+    fake.release({ alt: true });
+    expect(installed.navigated).toEqual([{ editor: fake.editor, mode: 'definition' }]);
   });
 
   it('ctrlClick_onWindowsAndLinux_runsStudiosGoToDefinition', () => {

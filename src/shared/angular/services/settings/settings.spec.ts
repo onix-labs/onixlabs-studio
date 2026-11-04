@@ -23,7 +23,10 @@ function connection(id: string): AiConnection {
 /**
  * The language overrides Studio ships with: C# braces on their own line (#1177).
  */
-const CSHARP_ALLMAN: Record<string, unknown> = { csharp: { braceStyle: 'allman' } };
+const SHIPPED_OVERRIDES: Record<string, unknown> = {
+  csharp: { braceStyle: 'allman' },
+  markdown: { trimTrailingWhitespace: false },
+};
 
 describe('Settings', () => {
   beforeEach(() => {
@@ -58,7 +61,7 @@ describe('Settings', () => {
     service.setLanguageOverride('typescript', 'wordWrap', true);
 
     expect(service.languageOverrides()).toEqual({
-      ...CSHARP_ALLMAN,
+      ...SHIPPED_OVERRIDES,
       typescript: { wordWrap: true },
     });
   });
@@ -69,10 +72,13 @@ describe('Settings', () => {
     service.setLanguageOverride('typescript', 'tabSize', 2);
 
     service.clearLanguageOverride('typescript', 'wordWrap');
-    expect(service.languageOverrides()).toEqual({ ...CSHARP_ALLMAN, typescript: { tabSize: 2 } });
+    expect(service.languageOverrides()).toEqual({
+      ...SHIPPED_OVERRIDES,
+      typescript: { tabSize: 2 },
+    });
 
     service.clearLanguageOverride('typescript', 'tabSize');
-    expect(service.languageOverrides()).toEqual(CSHARP_ALLMAN);
+    expect(service.languageOverrides()).toEqual(SHIPPED_OVERRIDES);
   });
 
   it('resolveSettingsForLanguage_whenOverridden_mergesOverGlobal', () => {
@@ -95,7 +101,9 @@ describe('Settings', () => {
 
     service.clearLanguageOverride('csharp', 'braceStyle');
 
-    expect(service.languageOverrides()).toEqual({});
+    expect(service.languageOverrides()).toEqual({
+      markdown: { trimTrailingWhitespace: false },
+    });
     expect(service.resolveSettingsForLanguage('csharp').braceStyle).toBe('kr');
   });
 
@@ -134,7 +142,7 @@ describe('Settings', () => {
 
     expect(service.globalTextEditor().wordWrap).toBe(true);
     expect(service.globalTextEditor().showLineNumbers).toBe(true);
-    expect(service.languageOverrides()).toEqual(CSHARP_ALLMAN);
+    expect(service.languageOverrides()).toEqual(SHIPPED_OVERRIDES);
   });
 
   it('ai_whenDefaulted_usesClaudeConnectionPromptAndNoCap', () => {

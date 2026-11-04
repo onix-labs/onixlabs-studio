@@ -20,15 +20,28 @@ import type {
 import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
+  AcceptSuggestionWith,
+  AutoCloseBrackets,
+  AutoIndent,
+  AutoSurround,
   BraceStyle,
+  CompletionInsertMode,
+  QuickSuggestions,
+  ShowHoverCards,
+  SnippetSuggestions,
+  SuggestionSelection,
+  WordBasedSuggestions,
   BracketPairGuides,
   ChangeMarginMode,
   EditorCursorStyle,
+  FormatOnSave,
   FoldingControls,
   IndentGuides,
   InlayHintsMode,
   MinimumDiagnosticSeverity,
+  MultiCursorModifier,
   RenderWhitespace,
+  UnusualLineTerminators,
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
@@ -283,6 +296,15 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
+  readonly 'textEditor.global.detectIndentation': boolean;
+  readonly 'textEditor.global.formatOnSave': FormatOnSave;
+  readonly 'textEditor.global.organiseImportsOnSave': boolean;
+  readonly 'textEditor.global.trimTrailingWhitespace': boolean;
+  readonly 'textEditor.global.insertFinalNewline': boolean;
+  readonly 'textEditor.global.trimFinalNewlines': boolean;
+  readonly 'textEditor.global.addByteOrderMark': boolean;
+  readonly 'textEditor.global.formatOnPaste': boolean;
+  readonly 'textEditor.honourEditorConfig': boolean;
   readonly 'textEditor.global.renderWhitespace': RenderWhitespace;
   readonly 'textEditor.global.rulers': string;
   readonly 'textEditor.global.indentGuides': IndentGuides;
@@ -303,6 +325,28 @@ export interface SettingsValues {
   readonly 'textEditor.global.minimumDiagnosticSeverity': MinimumDiagnosticSeverity;
   readonly 'textEditor.global.mouseWheelZoom': boolean;
   readonly 'textEditor.zoom': number;
+  readonly 'textEditor.global.hoverDelay': number;
+  readonly 'textEditor.global.showHoverCards': ShowHoverCards;
+  readonly 'textEditor.global.quickSuggestions': QuickSuggestions;
+  readonly 'textEditor.global.quickSuggestionsDelay': number;
+  readonly 'textEditor.global.suggestOnTriggerCharacters': boolean;
+  readonly 'textEditor.global.acceptSuggestionWith': AcceptSuggestionWith;
+  readonly 'textEditor.global.acceptOnCommitCharacter': boolean;
+  readonly 'textEditor.global.wordBasedSuggestions': WordBasedSuggestions;
+  readonly 'textEditor.global.snippetSuggestions': SnippetSuggestions;
+  readonly 'textEditor.global.suggestionSelection': SuggestionSelection;
+  readonly 'textEditor.global.completionInsertMode': CompletionInsertMode;
+  readonly 'textEditor.global.suggestionListSize': number;
+  readonly 'textEditor.global.autoCloseBrackets': AutoCloseBrackets;
+  readonly 'textEditor.global.autoSurround': AutoSurround;
+  readonly 'textEditor.global.autoIndent': AutoIndent;
+  readonly 'textEditor.global.linkedEditing': boolean;
+  readonly 'textEditor.global.docCommentAutoInsert': boolean;
+  readonly 'textEditor.global.multiCursorModifier': MultiCursorModifier;
+  readonly 'textEditor.global.quickFixIndicator': boolean;
+  readonly 'textEditor.global.quickFixIndicatorDelay': number;
+  readonly 'textEditor.global.unusualLineTerminators': UnusualLineTerminators;
+  readonly 'textEditor.global.parameterHints': boolean;
   readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
   readonly 'textEditor.seedFindFrom': 'selection' | 'selection-or-word';
@@ -1776,6 +1820,26 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Code Editing',
     settings: [
       {
+        key: 'textEditor.honourEditorConfig',
+        title: 'Honour EditorConfig',
+        description:
+          "Let a project's .editorconfig decide indentation, line endings, encoding, trailing " +
+          'whitespace, the final newline and the ruler for the files it covers, over these settings ' +
+          'and each language page.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.detectIndentation',
+        title: 'Detect Indentation',
+        description:
+          "Read a file's indentation from its content. Tab Size and Insert Spaces apply to new and " +
+          'empty files.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
         key: 'textEditor.global.tabSize',
         title: 'Tab Size',
         description: 'The number of spaces a single indentation level occupies.',
@@ -1835,14 +1899,396 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'kr',
       },
       {
+        key: 'textEditor.global.autoCloseBrackets',
+        title: 'Auto Close Brackets and Quotes',
+        description: 'When typing an opening bracket or quote also types its closing one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'before-whitespace', label: 'Before Whitespace' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'before-whitespace',
+      },
+      {
+        key: 'textEditor.global.autoSurround',
+        title: 'Auto Surround',
+        description: 'What typing a bracket or quote over a selection wraps it in.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'brackets-and-quotes', label: 'Brackets and Quotes' },
+            { value: 'brackets', label: 'Brackets' },
+            { value: 'quotes', label: 'Quotes' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'brackets-and-quotes',
+      },
+      {
+        key: 'textEditor.global.autoIndent',
+        title: 'Auto Indent',
+        description:
+          "How a new line is indented: not at all, like the line above, by the language's brackets, " +
+          'or by all of its indentation rules.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'keep', label: 'Keep' },
+            { value: 'brackets', label: 'Brackets' },
+            { value: 'full', label: 'Full' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'full',
+      },
+      {
+        key: 'textEditor.global.linkedEditing',
+        title: 'Linked Editing',
+        description:
+          "Edit a linked pair together, such as an HTML tag's opening and closing names, where the " +
+          "language's server offers it.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.docCommentAutoInsert',
+        title: 'Doc Comment Auto Insert',
+        description:
+          "Let the language's server fill in a doc comment as you begin one, where it offers that.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.multiCursorModifier',
+        title: 'Multi-Cursor Modifier',
+        description:
+          'The key held to add a cursor by clicking. Go to Definition moves to the other one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'alt', label: '⌥-Click (Alt-Click)' },
+            { value: 'ctrl-cmd', label: '⌘-Click (Ctrl-Click)' },
+          ],
+        },
+        default: 'alt',
+      },
+      {
+        key: 'textEditor.global.quickFixIndicator',
+        title: 'Quick Fix Indicator',
+        description: 'Show a lightbulb beside the line when fixes exist at the cursor.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.quickFixIndicatorDelay',
+        title: 'Quick Fix Indicator Delay',
+        description: 'How long the cursor rests before the lightbulb looks for fixes.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Instant' },
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+          ],
+        },
+        visibleWhen: { key: 'textEditor.global.quickFixIndicator', equals: [true] },
+        default: 250,
+      },
+      {
+        key: 'textEditor.global.unusualLineTerminators',
+        title: 'Unusual Line Terminators',
+        description:
+          'What to do with Line Separator and Paragraph Separator characters found in a document.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'remove', label: 'Remove' },
+            { value: 'ignore', label: 'Ignore' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
         key: 'textEditor.languageOverrides',
         title: 'Language Overrides',
         description:
           'Per-language overrides of the code settings, edited on each language page under Code › Languages.',
         control: { kind: 'custom', component: 'language-editor-overrides' },
         // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
-        // an ordinary override, so the user can change or clear it like any other (#1177).
-        default: { csharp: { braceStyle: 'allman' } },
+        // an ordinary override, so the user can change or clear it like any other (#1177). Markdown
+        // keeps trailing whitespace, where two spaces are a hard line break.
+        default: {
+          csharp: { braceStyle: 'allman' },
+          markdown: { trimTrailingWhitespace: false },
+        },
+      },
+    ],
+  },
+  {
+    // What a save does to a file; the per-language overrides are edited on each language's page under
+    // Code › Languages. An Auto Save after a delay leaves the text alone, as the user may be typing.
+    id: 'code-saving',
+    label: 'Code Saving',
+    settings: [
+      {
+        key: 'textEditor.global.formatOnSave',
+        title: 'Format on Save',
+        description:
+          "What a save lays out with the language's formatter. Changed Lines Only needs a formatter " +
+          'that can format part of a file. An Auto Save after a delay never formats.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'whole', label: 'Whole File' },
+            { value: 'changed', label: 'Changed Lines Only' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'off',
+      },
+      {
+        key: 'textEditor.global.organiseImportsOnSave',
+        title: 'Organise Imports on Save',
+        description: "Sort and tidy the imports on save, using the language's own tools.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.trimTrailingWhitespace',
+        title: 'Trim Trailing Whitespace on Save',
+        description: 'Remove whitespace at the end of each line on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.insertFinalNewline',
+        title: 'Insert Final Newline',
+        description: 'End the file with a newline on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.trimFinalNewlines',
+        title: 'Trim Final Newlines',
+        description: 'Remove blank lines after the last line of text on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.addByteOrderMark',
+        title: 'Add Byte-Order Mark to New Files',
+        description: 'Start a new UTF-8 file with a byte-order mark the first time it is saved.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.formatOnPaste',
+        title: 'Format on Paste',
+        description: "Lay out pasted text using the language's formatter.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+    ],
+  },
+  {
+    // How the editor offers help: its hover cards and its completion list.
+    id: 'code-suggestions',
+    label: 'Code Suggestions and Hover',
+    settings: [
+      {
+        key: 'textEditor.global.showHoverCards',
+        title: 'Show Hover Cards',
+        description:
+          'When resting the pointer shows a card. While Holding means ⌥ on macOS, and Ctrl+Alt elsewhere. ⌘K ⌘I always shows one at the cursor.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+            { value: 'while-holding', label: 'While Holding' },
+          ],
+        },
+        default: 'on',
+      },
+      {
+        key: 'textEditor.global.hoverDelay',
+        title: 'Hover Delay',
+        description: 'How long the pointer rests before a card shows.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+            { value: '1000', label: '1000 ms' },
+          ],
+        },
+        default: 500,
+      },
+      {
+        key: 'textEditor.global.quickSuggestions',
+        title: 'Quick Suggestions',
+        description:
+          'Where the completion list opens by itself as you type. ⌃Space always opens it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'code', label: 'Code Only' },
+            { value: 'code-and-strings', label: 'Code and Strings' },
+            { value: 'everywhere', label: 'Everywhere' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'code',
+      },
+      {
+        key: 'textEditor.global.quickSuggestionsDelay',
+        title: 'Quick Suggestions Delay',
+        description: 'How long after you stop typing the completion list opens by itself.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Instant' },
+            { value: '100', label: '100 ms' },
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'textEditor.global.suggestOnTriggerCharacters',
+        title: 'Suggest on Trigger Characters',
+        description:
+          "Open the completion list on the language's own trigger characters, such as a dot.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.acceptSuggestionWith',
+        title: 'Accept Suggestion With',
+        description:
+          'Which keys accept the focused completion. The other key does what it always does.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'enter-and-tab', label: 'Enter and Tab' },
+            { value: 'tab', label: 'Tab Only' },
+            { value: 'enter', label: 'Enter Only' },
+          ],
+        },
+        default: 'tab',
+      },
+      {
+        key: 'textEditor.global.acceptOnCommitCharacter',
+        title: 'Accept on Commit Character',
+        description:
+          'Accept the focused completion when you type a character it commits on, such as a dot after a member.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.wordBasedSuggestions',
+        title: 'Word-Based Suggestions',
+        description: 'Where the completion list finds words, for a file no language server serves.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'this-file', label: 'This File' },
+            { value: 'all-open-files', label: 'All Open Files' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'this-file',
+      },
+      {
+        key: 'textEditor.global.snippetSuggestions',
+        title: 'Snippet Suggestions',
+        description: 'Where snippets sit in the completion list.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'top', label: 'Top' },
+            { value: 'inline', label: 'Inline' },
+            { value: 'bottom', label: 'Bottom' },
+            { value: 'none', label: 'None' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'inline',
+      },
+      {
+        key: 'textEditor.global.suggestionSelection',
+        title: 'Suggestion Selection',
+        description: 'Which completion is focused when the list opens.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'first', label: 'First' },
+            { value: 'recently-used', label: 'Recently Used' },
+          ],
+        },
+        default: 'recently-used',
+      },
+      {
+        key: 'textEditor.global.completionInsertMode',
+        title: 'Completion Insert Mode',
+        description:
+          'Whether accepting a completion keeps the text after the cursor, or replaces it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'insert', label: 'Insert' },
+            { value: 'replace', label: 'Replace' },
+          ],
+        },
+        default: 'insert',
+      },
+      {
+        key: 'textEditor.global.suggestionListSize',
+        title: 'Suggestion List Size',
+        description: 'How many rows the completion list shows before it scrolls.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '8', label: '8' },
+            { value: '12', label: '12' },
+            { value: '16', label: '16' },
+            { value: '20', label: '20' },
+          ],
+        },
+        default: 12,
+      },
+      {
+        key: 'textEditor.global.parameterHints',
+        title: 'Parameter Hints',
+        description: 'Show the signature card as you type a call. ⌘⇧Space always shows it.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
       },
     ],
   },
@@ -3297,6 +3743,8 @@ export const CODE_SECTION_IDS: readonly string[] = [
   'code-appearance',
   'code-highlighting',
   'code-editing',
+  'code-saving',
+  'code-suggestions',
   'code-find',
   'code-diffs',
   'code-language-servers',

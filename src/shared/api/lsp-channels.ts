@@ -123,6 +123,12 @@ export interface LspServerSummary extends LanguageSlotEntry {
   readonly takesBraceStyle?: boolean;
 
   /**
+   * Gets a value indicating whether the server reads `.editorconfig` only as it starts, so one
+   * changing needs a restart to reach it.
+   */
+  readonly readsEditorConfigAtStart?: boolean;
+
+  /**
    * Gets the settings the server declares (#1143), offered on its language's page in Settings.
    */
   readonly settings?: readonly LspServerSettingDescriptor[];
