@@ -154,6 +154,13 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
     });
 
     effect((): void => {
+      const scrollback: number = this.settings.value('workspaces.outputScrollbackLines')();
+      if (this.xterm !== null) {
+        this.xterm.options.scrollback = scrollback;
+      }
+    });
+
+    effect((): void => {
       if (this.isActive() && this.xterm !== null && this.fitAddon !== null) {
         this.handleResize();
       }

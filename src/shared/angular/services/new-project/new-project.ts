@@ -54,6 +54,35 @@ export class NewProject implements NewProjectClient {
   }
 
   /**
+   * Gets the folder new projects are made in.
+   * @returns Returns the folder, or null before one is known.
+   */
+  public defaultFolder(): Promise<string | null> {
+    return this.bridge?.invoke<string | null>(NewProjectChannel.Parent) ?? Promise.resolve(null);
+  }
+
+  /**
+   * Asks the user where this project goes, without changing the Default Projects Folder.
+   * @returns Returns the folder chosen, or null when the dialog was cancelled.
+   */
+  public pickFolder(): Promise<string | null> {
+    return (
+      this.bridge?.invoke<string | null>(NewProjectChannel.PickParent) ?? Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Asks the user for the Default Projects Folder.
+   * @returns Returns the folder chosen, or null when the dialog was cancelled.
+   */
+  public pickDefaultFolder(): Promise<string | null> {
+    return (
+      this.bridge?.invoke<string | null>(NewProjectChannel.PickDefaultParent) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
    * Asks the user for supporting documents and reads them.
    * @returns Returns what was read and what was left out; nothing when the dialog was cancelled.
    */

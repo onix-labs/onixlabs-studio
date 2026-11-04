@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 import type { Skill } from '@shared/api/skill-channels';
 import type { Tab } from '@shared/angular/services/tabs/tab';
@@ -172,7 +173,11 @@ describe('ProjectDraft', () => {
     expect(await draft.send()).toBe(true);
 
     expect(machine.created).toEqual([
-      { name: 'todo-app', repository: { kind: 'local', layout: 'worktree' } },
+      {
+        name: 'todo-app',
+        repository: { kind: 'local', layout: 'worktree' },
+        initialFiles: { readme: false, commit: true },
+      },
     ]);
     expect(machine.opened[0].path).toBe('/Users/me/Development/todo-app');
     expect(machine.opened[0].start?.prompt).toContain(
@@ -229,6 +234,40 @@ describe('ProjectDraft', () => {
     ]);
     expect(start?.images).toEqual([{ mediaType: 'image/png', data: 'AA==', name: 'sketch.png' }]);
     expect(start?.prompt).toContain('- notes.md\n- sketch.png');
+  });
+
+  it('send_carriesTheNewRepositorysFiles', async () => {
+    draft.name.set('todo-app');
+    draft.setRepository('local');
+    draft.layout.set('flat');
+    draft.gitignore.set('node');
+    draft.licence.set('mit');
+    draft.readme.set(true);
+
+    await draft.send();
+
+    expect(machine.created[0].initialFiles).toEqual({
+      gitignore: 'node',
+      licence: 'mit',
+      readme: true,
+      commit: true,
+    });
+  });
+
+  it('send_goesBySendFirstMessageAndPlanBeforeBuilding', async () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('workspaces.sendFirstMessageAutomatically', false);
+    settings.set('workspaces.planBeforeBuilding', false);
+    draft.describe('A to-do list');
+
+    await draft.send();
+
+    const tab: Tab = TestBed.inject(Tabs).tabs()[0];
+    const start: WorkspaceAgentStart = TestBed.inject(Workspaces).takeAgentStart(tab.id)!;
+    expect(start.send).toBe(false);
+    expect(start.brief).toContain('Start building the project');
+    expect(start.prompt).toContain('Go ahead and build it.');
+    localStorage.removeItem('settings');
   });
 
   it('send_briefsTheAgent_withTheTemplatesSkill_andThoseChosen', async () => {

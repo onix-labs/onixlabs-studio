@@ -68,6 +68,11 @@ export interface ProjectMessageInput {
    * Gets the names of the supporting documents attached.
    */
   readonly documents: readonly string[];
+
+  /**
+   * Gets whether the agent is to start building rather than plan first: Plan Before Building off.
+   */
+  readonly buildAtOnce?: boolean;
 }
 
 /**
@@ -115,7 +120,11 @@ export function projectMessage(input: ProjectMessageInput): string {
       `**Supporting documents** (attached)\n\n${input.documents.map((name: string): string => `- ${name}`).join('\n')}`,
     );
   }
-  sections.push('Help me plan it before we build anything.');
+  sections.push(
+    input.buildAtOnce === true
+      ? 'Go ahead and build it.'
+      : 'Help me plan it before we build anything.',
+  );
   return sections.join('\n\n');
 }
 
@@ -124,14 +133,21 @@ export function projectMessage(input: ProjectMessageInput): string {
  * the skills to follow — the template's, then any the user chose — when the library has them.
  * @param hasFolder Whether the project already has a folder, which the conversation runs in.
  * @param skills The skills to follow.
+ * @param planFirst Plan Before Building: whether the plan is settled before any building.
  * @returns Returns the brief.
  */
-export function projectBrief(hasFolder: boolean, skills: readonly Skill[]): string {
+export function projectBrief(
+  hasFolder: boolean,
+  skills: readonly Skill[],
+  planFirst: boolean = true,
+): string {
   return [
     hasFolder
       ? 'This conversation starts a new project, in its new workspace. It holds nothing the user wrote yet.'
       : 'This conversation starts a new project that has no folder yet, so there is nowhere to create files: do not try to. When the plan is settled and the user agrees, offer them a workspace for it with the propose-workspace tool, writing the handoff its agent will start from; the user chooses where the project goes.',
-    'Help the user plan the project before building it. Build on what they have already decided rather than asking it again; ask about what is missing one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.',
+    planFirst
+      ? 'Help the user plan the project before building it. Build on what they have already decided rather than asking it again; ask about what is missing one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.'
+      : 'Start building the project from what the user has already decided, without settling a plan with them first. Choose sensibly where they left something open, say what you chose, and ask only when you cannot go on without them. Follow them if they want to talk about something else.',
     ...skills.map((skill: Skill): string => `Follow the "${skill.name}" skill:\n\n${skill.body}`),
   ].join('\n\n');
 }

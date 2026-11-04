@@ -24,18 +24,20 @@
         />
       </div>
     </div>
-    <div class="step__column">
-      <span class="step__label">Location</span>
-      <div class="step__location">
-        <span class="step__path" [class.step__path--empty]="draft.location() === null">
-          {{ draft.location() ?? 'Not chosen' }}
-        </span>
-        <button type="button" class="step__secondary" (click)="draft.browse()">
-          <app-icon [icon]="Icon.WELCOME_PROJECT_BROWSE" />
-          <span>Browse…</span>
-        </button>
+    @if (draft.destination.asksWhere()) {
+      <div class="step__column">
+        <span class="step__label">Location</span>
+        <div class="step__location">
+          <span class="step__path" [class.step__path--empty]="draft.location() === null">
+            {{ draft.location() ?? 'Not chosen' }}
+          </span>
+          <button type="button" class="step__secondary" (click)="draft.browse()">
+            <app-icon [icon]="Icon.WELCOME_PROJECT_BROWSE" />
+            <span>Browse…</span>
+          </button>
+        </div>
       </div>
-    </div>
+    }
   </div>
 
   <span class="step__label">Repository</span>
@@ -73,6 +75,45 @@
       />
     }
   </div>
+
+  <!-- What a new repository starts with, as a code host asks when making one. -->
+  @if (draft.repository() !== null && draft.repository() !== 'none') {
+    <div class="step__choices">
+      <app-dropdown
+        class="step__choice"
+        ariaLabel=".gitignore template"
+        [options]="gitignoreOptions"
+        [value]="draft.gitignore()"
+        [fullWidth]="true"
+        (valueChange)="draft.gitignore.set($event)"
+      />
+      <app-dropdown
+        class="step__choice"
+        ariaLabel="Licence"
+        [options]="licenceOptions"
+        [value]="draft.licence()"
+        [fullWidth]="true"
+        (valueChange)="draft.licence.set($event)"
+      />
+    </div>
+    <div class="step__checks">
+      <!-- The labels wrap the checkboxes' projected native inputs, associating them at runtime; the
+           lint rule cannot see through the component boundary to verify this statically. -->
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="step__check">
+        <app-checkbox [checked]="draft.readme()" (checkedChange)="draft.readme.set($event)" />
+        <span>README</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="step__check">
+        <app-checkbox
+          [checked]="draft.initialCommit()"
+          (checkedChange)="draft.initialCommit.set($event)"
+        />
+        <span>Initial Commit</span>
+      </label>
+    </div>
+  }
 
   @if (draft.detailsProblem(); as problem) {
     <p class="step__error" role="alert">{{ problem }}</p>

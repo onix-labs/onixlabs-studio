@@ -80,11 +80,13 @@ describe('NewProjectManager', () => {
   let parent: string | null;
   let trusted: string[];
   let clones: CloneRequest[];
+  let cloneParents: (string | null)[];
   let cloneOutcome: CloneOutcome;
   let made: { host: string; account: string; name: string; private: boolean }[];
   let repository: ForgeResult<HostedRepository>;
   let inits: VcsParams<'init'>[];
   let initError: string | null;
+  let commits: { directory: string; paths: readonly string[]; push: boolean }[];
 
   /**
    * Builds the manager over stand-ins for the clone and hosting managers.
@@ -94,8 +96,9 @@ describe('NewProjectManager', () => {
     return new NewProjectManager(
       {
         parent: (): string | null => parent,
-        clone: (request: CloneRequest): Promise<CloneOutcome> => {
+        clone: (request: CloneRequest, into?: string): Promise<CloneOutcome> => {
           clones.push(request);
+          cloneParents.push(into ?? null);
           return Promise.resolve(cloneOutcome);
         },
       } as unknown as CloneManager,
@@ -124,6 +127,16 @@ describe('NewProjectManager', () => {
           fs.mkdirSync(path.join(params.directory, '.git'), { recursive: true });
           return Promise.resolve({ id: 1, ok: true, result: {} });
         },
+        firstCommitInChosenFolder: (
+          _pluginId: string,
+          directory: string,
+          paths: readonly string[],
+          _message: string,
+          push: boolean,
+        ): Promise<string | null> => {
+          commits.push({ directory, paths, push });
+          return Promise.resolve(null);
+        },
       } as unknown as VersionControlHost,
       { remember: (target: string): number => trusted.push(target) } as unknown as TrustedPaths,
     );
@@ -133,10 +146,12 @@ describe('NewProjectManager', () => {
     parent = fs.mkdtempSync(path.join(os.tmpdir(), 'project-parent-'));
     trusted = [];
     clones = [];
+    cloneParents = [];
     cloneOutcome = { ok: true, path: path.join(parent, 'todo') };
     made = [];
     inits = [];
     initError = null;
+    commits = [];
     repository = {
       ok: true,
       value: {
@@ -204,7 +219,45 @@ describe('NewProjectManager', () => {
     expect(clones).toEqual([
       { url: 'https://github.com/matthew/todo.git', name: 'todo', layout: 'worktree' },
     ]);
+    expect(cloneParents).toEqual([parent]);
     expect(outcome).toEqual(cloneOutcome);
+  });
+
+  it('aLocalRepository_startsWithTheFilesChosen_committed', async () => {
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'flat' },
+      initialFiles: { gitignore: 'node', readme: true, commit: true },
+    });
+
+    const folder: string = path.join(parent!, 'todo');
+    expect(outcome).toEqual({ ok: true, path: folder });
+    expect(fs.readFileSync(path.join(folder, 'README.md'), 'utf8')).toBe('# todo\n');
+    expect(fs.existsSync(path.join(folder, '.gitignore'))).toBe(true);
+    expect(commits).toEqual([
+      { directory: folder, paths: ['.gitignore', 'README.md'], push: false },
+    ]);
+  });
+
+  it('noRepository_startsWithNoneOfThem', async () => {
+    await manager().create({
+      name: 'todo',
+      repository: { kind: 'none' },
+      initialFiles: { readme: true, commit: true },
+    });
+
+    expect(fs.existsSync(path.join(parent!, 'todo', 'README.md'))).toBe(false);
+    expect(commits).toEqual([]);
+  });
+
+  it('aWorktreeRepository_namesItsFirstCheckoutAfterItsBranch', async () => {
+    await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'worktree' },
+      defaultBranch: 'main',
+    });
+
+    expect(inits[0].directory).toBe(path.join(parent!, 'todo', 'main'));
   });
 
   it('aHostThatRefuses_clonesNothing', async () => {

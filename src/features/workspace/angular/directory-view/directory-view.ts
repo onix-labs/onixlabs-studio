@@ -2173,7 +2173,11 @@ export class DirectoryView implements OnInit, OnDestroy {
     for (const reference of start.context ?? []) {
       this.agent.attachContext(reference);
     }
-    void this.agent.sendWhenReady(start.prompt, this.tabId(), 'workspace', start.images ?? []);
+    if (start.send === false) {
+      this.agentConversation.draft.set(start.prompt);
+    } else {
+      void this.agent.sendWhenReady(start.prompt, this.tabId(), 'workspace', start.images ?? []);
+    }
     this.dockReveal.reveal('agent');
   }
 

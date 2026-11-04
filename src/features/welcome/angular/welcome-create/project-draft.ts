@@ -9,6 +9,7 @@ import type { Skill, SkillSaveResult } from '@shared/api/skill-channels';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Log } from '@shared/angular/services/log/log';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Skills } from '@shared/angular/services/skills/skills';
 import type { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -81,6 +82,11 @@ export class ProjectDraft {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings that say how the agent starts.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the new-project service, which makes the project and reads supporting documents.
@@ -172,6 +178,26 @@ export class ProjectDraft {
    * Holds the account picked for a hosted repository — its id — or null.
    */
   public readonly account: WritableSignal<string | null> = this.destination.account;
+
+  /**
+   * Holds the `.gitignore` template chosen for a new repository, or empty for none.
+   */
+  public readonly gitignore: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the licence chosen for a new repository, or empty for none.
+   */
+  public readonly licence: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether a new repository starts with a README.
+   */
+  public readonly readme: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds whether a new repository's files make up its first commit.
+   */
+  public readonly initialCommit: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
    * Holds the supporting documents attached.
@@ -578,8 +604,11 @@ export class ProjectDraft {
     this.summary.set('');
     this.name.set('');
     this.repository.set(null);
-    this.layout.set(null);
-    this.account.set(null);
+    this.destination.reset();
+    this.gitignore.set('');
+    this.licence.set('');
+    this.readme.set(false);
+    this.initialCommit.set(true);
     this.documents.set([]);
     this.skippedDocuments.set([]);
     this.technologies.set(new Set<string>());
@@ -619,7 +648,16 @@ export class ProjectDraft {
     const name: string = this.name().trim();
     this.sending.set(true);
     try {
-      const outcome: NewProjectOutcome = await this.newProject.create({ name, repository });
+      const outcome: NewProjectOutcome = await this.newProject.create({
+        name,
+        repository,
+        initialFiles: {
+          ...(this.gitignore() === '' ? {} : { gitignore: this.gitignore() }),
+          ...(this.licence() === '' ? {} : { licence: this.licence() }),
+          readme: this.readme(),
+          commit: this.initialCommit(),
+        },
+      });
       if (!outcome.ok) {
         this.error.set(outcome.error);
         return false;
@@ -650,7 +688,12 @@ export class ProjectDraft {
     const documents: readonly ProjectDocument[] = this.documents();
     return {
       prompt: projectMessage(this.messageInput(made)),
-      brief: projectBrief(made !== null, this.skillsToFollow()),
+      brief: projectBrief(
+        made !== null,
+        this.skillsToFollow(),
+        this.settings.get('workspaces.planBeforeBuilding'),
+      ),
+      send: this.settings.get('workspaces.sendFirstMessageAutomatically'),
       context: documents.flatMap((document: ProjectDocument) =>
         document.kind === 'text'
           ? [{ path: document.path, kind: 'selection' as const, content: document.content }]
@@ -734,6 +777,7 @@ export class ProjectDraft {
       }),
       skills: [...this.skills()],
       documents: this.documents().map((document: ProjectDocument): string => document.name),
+      buildAtOnce: !this.settings.get('workspaces.planBeforeBuilding'),
     };
   }
 }

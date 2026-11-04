@@ -20,6 +20,7 @@ import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-s
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
+import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
@@ -143,6 +144,7 @@ type SettingsSectionId =
   | 'workspaces-explorers'
   | 'workspaces-search'
   | 'workspaces-run'
+  | 'workspaces-new-projects'
   // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
   // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
   | `keyboard-${string}`;
@@ -288,6 +290,7 @@ interface SettingsTreeData {
     RememberedFileAccess,
     SpellCheckingLanguages,
     LanguageEditorOverrides,
+    ProjectsFolder,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -528,6 +531,11 @@ export class SettingsView {
         { id: 'workspaces-explorers', label: 'Explorers', sectionId: 'workspaces-explorers' },
         { id: 'workspaces-search', label: 'Search and Problems', sectionId: 'workspaces-search' },
         { id: 'workspaces-run', label: 'Run and Debug', sectionId: 'workspaces-run' },
+        {
+          id: 'workspaces-new-projects',
+          label: 'New Projects',
+          sectionId: 'workspaces-new-projects',
+        },
       ],
     },
     {

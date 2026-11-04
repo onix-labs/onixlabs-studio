@@ -618,6 +618,7 @@ class Program {
     this.versionControlHost,
     this.trustedPaths,
     (): BrowserWindow | null => this.windows.main(),
+    path.join(app.getPath('userData'), 'new-project.json'),
   );
 
   /**

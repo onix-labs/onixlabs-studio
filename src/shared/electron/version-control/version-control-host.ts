@@ -594,6 +594,55 @@ export class VersionControlHost {
   }
 
   /**
+   * Stages and commits files in a repository a new project has just made, and pushes them when it has
+   * a remote to go to. Like {@link initInChosenFolder} the folder is one the main process's own dialog
+   * chose, so it need not be an open workspace: nothing has opened it yet.
+   * @param pluginId The plugin to ask.
+   * @param directory The repository; must be absolute.
+   * @param paths The files, relative to it.
+   * @param message The commit message.
+   * @param push Whether to push the commit to its origin.
+   * @returns Returns null when it was done, or why it was not.
+   */
+  public async firstCommitInChosenFolder(
+    pluginId: string,
+    directory: string,
+    paths: readonly string[],
+    message: string,
+    push: boolean,
+  ): Promise<string | null> {
+    const descriptor: VersionControlDescriptor | undefined = this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor === undefined || !path.isAbsolute(directory)) {
+      return `No version-control plugin named ${pluginId} is installed.`;
+    }
+    const root: string = path.resolve(directory);
+    const staged: VersionControlResponse<'stage'> = await this.dispatch(descriptor, root, 'stage', {
+      paths,
+    });
+    if (!staged.ok) {
+      return staged.error;
+    }
+    const committed: VersionControlResponse<'commit'> = await this.dispatch(
+      descriptor,
+      root,
+      'commit',
+      { message },
+    );
+    if (!committed.ok) {
+      return committed.error;
+    }
+    if (!push) {
+      return null;
+    }
+    const pushed: VersionControlResponse<'push'> = await this.dispatch(descriptor, root, 'push', {
+      target: null,
+    });
+    return pushed.ok ? null : pushed.error;
+  }
+
+  /**
    * Gets a contributed plugin by id.
    * @param pluginId The plugin.
    * @returns Returns the descriptor, or undefined when no such plugin is contributed.

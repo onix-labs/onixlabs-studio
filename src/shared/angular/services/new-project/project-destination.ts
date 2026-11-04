@@ -5,7 +5,8 @@ import type { NewProjectRepository } from '@shared/api/new-project-channels';
 import { installedContributions } from '@shared/api/plugin-channels';
 import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import type { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { Clone } from '@shared/angular/services/clone/clone';
+import { NewProject } from '@shared/angular/services/new-project/new-project';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
@@ -60,6 +61,35 @@ export const PROJECT_LAYOUT_OPTIONS: readonly DropdownOption[] = [
 ];
 
 /**
+ * The key the hosting account last used is remembered under.
+ */
+const LAST_ACCOUNT_KEY: string = 'newProject.lastAccount';
+
+/**
+ * Reads the hosting account last used.
+ * @returns Returns its id, or null.
+ */
+function readLastAccount(): string | null {
+  try {
+    return localStorage.getItem(LAST_ACCOUNT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remembers the hosting account used, quietly when storage is unavailable.
+ * @param account Its id.
+ */
+function rememberLastAccount(account: string): void {
+  try {
+    localStorage.setItem(LAST_ACCOUNT_KEY, account);
+  } catch {
+    // Not remembered; the next project asks again.
+  }
+}
+
+/**
  * Holds where a new project goes and what it starts with — its name, the folder it is made in, and its
  * repository — and what the machine can offer for each (#876). Shared by the New Project wizard and
  * the card an agent tab offers a workspace with, so both ask the same questions the same way.
@@ -69,9 +99,14 @@ export const PROJECT_LAYOUT_OPTIONS: readonly DropdownOption[] = [
  */
 export class ProjectDestination {
   /**
-   * Holds the folder-picking and clone-parent client.
+   * Holds the new-project client, which knows where projects go.
    */
-  private readonly cloner: Clone = inject(Clone);
+  private readonly newProject: NewProject = inject(NewProject);
+
+  /**
+   * Holds the settings: whether to ask where a project goes, and its repository's layout.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the plugin client, which says what is installed.
@@ -112,7 +147,17 @@ export class ProjectDestination {
   /**
    * Holds the repository's layout, or null before one is picked.
    */
-  public readonly layout: WritableSignal<ProjectLayout | null> = signal<ProjectLayout | null>(null);
+  public readonly layout: WritableSignal<ProjectLayout | null> = signal<ProjectLayout | null>(
+    this.defaultLayout(),
+  );
+
+  /**
+   * Gets whether the user is asked where the project goes. With Ask Where to Create Each Time off it
+   * goes to the Default Projects Folder, unless there is none to go to yet.
+   */
+  public readonly asksWhere: Signal<boolean> = computed(
+    (): boolean => this.settings.value('workspaces.askWhereToCreate')() || this.location() === null,
+  );
 
   /**
    * Holds the account a hosted repository is made under, or null before one is picked.
@@ -228,7 +273,7 @@ export class ProjectDestination {
       return;
     }
     this.initialised = true;
-    void this.cloner.parent().then((parent: string | null): void => {
+    void this.newProject.defaultFolder().then((parent: string | null): void => {
       if (this.location() === null) {
         this.location.set(parent);
       }
@@ -243,8 +288,25 @@ export class ProjectDestination {
    */
   public setRepository(repository: ProjectRepository | null): void {
     this.repository.set(repository);
-    if (this.hosted() && this.account() === null && this.accounts().length === 1) {
-      this.account.set(this.accounts()[0].id);
+    if (this.hosted() && this.account() === null) {
+      const accounts: readonly ProjectAccount[] = this.accounts();
+      const last: string | null = readLastAccount();
+      this.account.set(
+        accounts.length === 1
+          ? accounts[0].id
+          : (accounts.find((account: ProjectAccount): boolean => account.id === last)?.id ?? null),
+      );
+    }
+  }
+
+  /**
+   * Records the account picked, and remembers it for the next project.
+   * @param account The account's id, or null.
+   */
+  public chooseAccount(account: string | null): void {
+    this.account.set(account);
+    if (account !== null) {
+      rememberLastAccount(account);
     }
   }
 
@@ -253,7 +315,7 @@ export class ProjectDestination {
    * @returns Resolves once the dialog has closed.
    */
   public async browse(): Promise<void> {
-    const chosen: string | null = await this.cloner.pickParent();
+    const chosen: string | null = await this.newProject.pickFolder();
     if (chosen !== null) {
       this.location.set(chosen);
     }
@@ -265,8 +327,17 @@ export class ProjectDestination {
   public reset(): void {
     this.name.set('');
     this.repository.set(null);
-    this.layout.set(null);
+    this.layout.set(this.defaultLayout());
     this.account.set(null);
+  }
+
+  /**
+   * Gets the layout a new repository starts with: Default Clone Layout's, or none yet when it says Ask.
+   * @returns Returns the layout.
+   */
+  private defaultLayout(): ProjectLayout | null {
+    const layout: 'ask' | ProjectLayout = this.settings.get('versionControl.cloneLayout');
+    return layout === 'ask' ? null : layout;
   }
 
   /**

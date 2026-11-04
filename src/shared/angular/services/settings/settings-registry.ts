@@ -345,6 +345,9 @@ export interface SettingsValues {
   readonly 'workspaces.followSymbolicLinks': boolean;
   readonly 'workspaces.problemsShown': number;
   readonly 'workspaces.showDebugPanelsOnStart': boolean;
+  readonly 'workspaces.askWhereToCreate': boolean;
+  readonly 'workspaces.sendFirstMessageAutomatically': boolean;
+  readonly 'workspaces.planBeforeBuilding': boolean;
   readonly 'workspaces.saveBeforeRun': SaveBeforeRun;
   readonly 'workspaces.whenConfigurationRunning': WhenConfigurationRunning;
   readonly 'workspaces.whenBuildRunning': WhenBuildRunning;
@@ -1399,6 +1402,37 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         key: 'workspaces.showDebugPanelsOnStart',
         title: 'Show Debug and Logs Panels on Debug Start',
         description: 'Add the Debug and Logs panels to the layout when a debug session starts.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
+    // The Default Projects Folder row beside these is its own component: main's dialog chooses it.
+    id: 'workspaces-new-projects',
+    label: 'New Projects',
+    settings: [
+      {
+        key: 'workspaces.askWhereToCreate',
+        title: 'Ask Where to Create Each Time',
+        description:
+          'Choose the folder for every new project. When off, projects go straight into the Default Projects Folder.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.sendFirstMessageAutomatically',
+        title: 'Send First Message Automatically',
+        description:
+          'Send what you told the New Project wizard to the agent at once. When off, it waits in the message box for you to edit and send.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.planBeforeBuilding',
+        title: 'Plan Before Building',
+        description:
+          'Have the agent settle a plan with you before it creates files. When off, it starts building from what you told it.',
         control: { kind: 'toggle' },
         default: true,
       },
