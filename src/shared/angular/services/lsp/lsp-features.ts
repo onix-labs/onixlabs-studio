@@ -1,5 +1,8 @@
 import { STUDIO_REFERENCES_LENS_COMMAND } from '@shared/angular/services/monaco/monaco-navigation-commands';
-import { applyAutoInsert } from '@shared/angular/services/monaco/monaco-auto-insert';
+import {
+  applyAutoInsert,
+  isDocCommentTyping,
+} from '@shared/angular/services/monaco/monaco-auto-insert';
 import { effect, inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
@@ -367,6 +370,12 @@ export interface LspStructureSupport {
    * (`textDocument/documentHighlight`).
    */
   readonly highlights: boolean;
+
+  /**
+   * Gets a value indicating whether the server links ranges that are edited together, such as an HTML
+   * tag's opening and closing names.
+   */
+  readonly linkedEditing: boolean;
 
   /**
    * Gets whether it colours a range alone (`textDocument/semanticTokens/range`), which paints the
@@ -1153,6 +1162,12 @@ export class LspFeatures {
     if (ref === null || ref.autoInsertTriggers?.includes(ch) !== true) {
       return;
     }
+    if (
+      !this.settings.resolveSettingsForLanguage(model.getLanguageId()).docCommentAutoInsert &&
+      isDocCommentTyping(model, position, ch)
+    ) {
+      return;
+    }
     const version: number = model.getVersionId();
     await ref.sync?.(model.getValue());
     const options: MonacoApi.editor.TextModelResolvedOptions = model.getOptions();
@@ -1407,6 +1422,16 @@ export class LspFeatures {
           this.provideDocumentHighlights(monaco, model, position),
       });
     }
+    if (support.linkedEditing && !registered.has(`${language}:linkedEditing`)) {
+      registered.add(`${language}:linkedEditing`);
+      monaco.languages.registerLinkedEditingRangeProvider(language, {
+        provideLinkedEditingRanges: (
+          model: MonacoApi.editor.ITextModel,
+          position: MonacoApi.Position,
+        ): Promise<MonacoApi.languages.LinkedEditingRanges | undefined> =>
+          this.provideLinkedEditingRanges(model, position),
+      });
+    }
     if (support.rangeTokens && !registered.has(`${language}:rangeTokens`)) {
       registered.add(`${language}:rangeTokens`);
       monaco.languages.registerDocumentRangeSemanticTokensProvider(language, {
@@ -1533,6 +1558,47 @@ export class LspFeatures {
       });
     }
     return ranges;
+  }
+
+  /**
+   * Asks the server serving a model which ranges are edited together with the one at a position.
+   * @param model The model.
+   * @param position The caret.
+   * @returns Returns the ranges, or undefined when no server serving the model links any there.
+   */
+  private async provideLinkedEditingRanges(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.Position,
+  ): Promise<MonacoApi.languages.LinkedEditingRanges | undefined> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined || ref.structure?.linkedEditing !== true) {
+      return undefined;
+    }
+    await ref.sync?.(model.getValue());
+    let result: unknown;
+    try {
+      result = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/linkedEditingRange',
+        { textDocument: { uri: ref.uri }, position: toLspPosition(position) },
+      );
+    } catch {
+      return undefined;
+    }
+    const answer: { ranges?: unknown; wordPattern?: unknown } | null =
+      (result as { ranges?: unknown; wordPattern?: unknown } | null) ?? null;
+    if (!Array.isArray(answer?.ranges) || answer.ranges.length === 0) {
+      return undefined;
+    }
+    return {
+      ranges: (answer.ranges as readonly LspRange[]).map((range: LspRange): MonacoApi.IRange =>
+        this.toRange(range),
+      ),
+      ...(typeof answer.wordPattern === 'string'
+        ? { wordPattern: new RegExp(answer.wordPattern) }
+        : {}),
+    };
   }
 
   /**

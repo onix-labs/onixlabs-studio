@@ -245,6 +245,33 @@ export type DiffLayout = 'side-by-side' | 'inline';
 export type ShowHoverCards = 'on' | 'off' | 'while-holding';
 
 /**
+ * Identifies when a typed bracket or quote gets its closing one: always, only before whitespace, or
+ * never.
+ */
+export type AutoCloseBrackets = 'always' | 'before-whitespace' | 'never';
+
+/**
+ * Identifies what typing a bracket or quote over a selection wraps it in.
+ */
+export type AutoSurround = 'brackets-and-quotes' | 'brackets' | 'quotes' | 'never';
+
+/**
+ * Identifies how much a new line's indentation is worked out for you.
+ */
+export type AutoIndent = 'none' | 'keep' | 'brackets' | 'full';
+
+/**
+ * Identifies the modifier that adds a cursor when clicking: `alt` is ⌥ (Alt); `ctrl-cmd` is ⌘ (Ctrl).
+ * Go to Definition takes the other.
+ */
+export type MultiCursorModifier = 'alt' | 'ctrl-cmd';
+
+/**
+ * Identifies what happens to Line Separator and Paragraph Separator characters found in a document.
+ */
+export type UnusualLineTerminators = 'ask' | 'remove' | 'ignore';
+
+/**
  * Identifies where the completion list opens by itself as you type. ⌃Space opens it anywhere.
  */
 export type QuickSuggestions = 'off' | 'code' | 'code-and-strings' | 'everywhere';
@@ -554,6 +581,51 @@ export interface TextEditorSettings {
    * Gets a value indicating whether the signature card shows as you type a call.
    */
   readonly parameterHints: boolean;
+
+  /**
+   * Gets when a typed bracket or quote gets its closing one.
+   */
+  readonly autoCloseBrackets: AutoCloseBrackets;
+
+  /**
+   * Gets what typing a bracket or quote over a selection wraps it in.
+   */
+  readonly autoSurround: AutoSurround;
+
+  /**
+   * Gets how much a new line's indentation is worked out for you.
+   */
+  readonly autoIndent: AutoIndent;
+
+  /**
+   * Gets a value indicating whether renaming one of a linked pair, such as an HTML tag, renames both.
+   */
+  readonly linkedEditing: boolean;
+
+  /**
+   * Gets a value indicating whether a language server fills in a doc comment as it is begun.
+   */
+  readonly docCommentAutoInsert: boolean;
+
+  /**
+   * Gets the modifier that adds a cursor when clicking.
+   */
+  readonly multiCursorModifier: MultiCursorModifier;
+
+  /**
+   * Gets a value indicating whether the fix icon shows beside the caret's line.
+   */
+  readonly quickFixIndicator: boolean;
+
+  /**
+   * Gets how long things must stay still before the fix icon looks for fixes, in milliseconds.
+   */
+  readonly quickFixIndicatorDelay: number;
+
+  /**
+   * Gets what happens to unusual line terminators found in a document.
+   */
+  readonly unusualLineTerminators: UnusualLineTerminators;
 }
 
 /**
@@ -953,6 +1025,15 @@ export class Settings {
       completionInsertMode: this.read('textEditor.global.completionInsertMode'),
       suggestionListSize: this.read('textEditor.global.suggestionListSize'),
       parameterHints: this.read('textEditor.global.parameterHints'),
+      autoCloseBrackets: this.read('textEditor.global.autoCloseBrackets'),
+      autoSurround: this.read('textEditor.global.autoSurround'),
+      autoIndent: this.read('textEditor.global.autoIndent'),
+      linkedEditing: this.read('textEditor.global.linkedEditing'),
+      docCommentAutoInsert: this.read('textEditor.global.docCommentAutoInsert'),
+      multiCursorModifier: this.read('textEditor.global.multiCursorModifier'),
+      quickFixIndicator: this.read('textEditor.global.quickFixIndicator'),
+      quickFixIndicatorDelay: this.read('textEditor.global.quickFixIndicatorDelay'),
+      unusualLineTerminators: this.read('textEditor.global.unusualLineTerminators'),
     }),
   );
 

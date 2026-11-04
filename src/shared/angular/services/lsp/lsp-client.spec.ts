@@ -1550,6 +1550,7 @@ describe('LspClient', () => {
       const expected: unknown = {
         folding: true,
         highlights: true,
+        linkedEditing: false,
         rangeTokens: false,
         selectionRanges: false,
       };

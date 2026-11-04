@@ -24,6 +24,7 @@ import {
 import { defineThemes } from './monaco-themes';
 import { editorAppearanceOptions } from './editor-appearance-options';
 import { editorSuggestOptions, wordSuggestionsOption } from './editor-suggest-options';
+import { editorTypingOptions } from './editor-typing-options';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
@@ -529,6 +530,7 @@ export class Monaco {
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
       ...editorAppearanceOptions(resolved),
       ...editorSuggestOptions(resolved),
+      ...editorTypingOptions(resolved),
       tabSize: resolved.tabSize,
       insertSpaces: resolved.insertSpaces,
       // Honour the configured indent verbatim rather than inferring it from file contents, so the

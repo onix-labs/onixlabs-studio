@@ -6,6 +6,7 @@ import { EditorContextMenuHost } from '@shared/angular/components/editor-context
 import { EditorContextMenu } from '@shared/angular/services/editor-context-menu/editor-context-menu';
 import type { Mock, MockInstance } from 'vitest';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import {
   FIND_HOST,
@@ -199,6 +200,18 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       },
     };
   }
+
+  it('rebuildsTheCursorsOptions_whenAutoIndentChanges', async () => {
+    const { fixture, updateEditor } = await indented(null);
+    updateEditor.mockClear();
+
+    TestBed.inject(Settings).set('textEditor.global.autoIndent', 'none');
+    await fixture.whenStable();
+    localStorage.removeItem('settings');
+
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'never' });
+    expect(updateEditor).toHaveBeenCalledWith({ autoClosingDelete: 'auto' });
+  });
 
   it('readsIndentationFromTheContent_underDetectIndentation', async () => {
     const { options } = await indented(null);

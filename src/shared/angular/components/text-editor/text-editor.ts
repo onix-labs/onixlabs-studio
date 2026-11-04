@@ -20,6 +20,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { FoldingPlaceholderController } from './folding-placeholder-controller';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import {
+  AutoIndent,
   InlayHintsMode,
   Settings,
   TextEditorSettings,
@@ -28,6 +29,7 @@ import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { editorAppearanceOptions } from '@shared/angular/services/monaco/editor-appearance-options';
 import { editorSuggestOptions } from '@shared/angular/services/monaco/editor-suggest-options';
+import { editorTypingOptions } from '@shared/angular/services/monaco/editor-typing-options';
 import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 import { parseRulers } from '@shared/angular/services/monaco/parse-rulers';
 import { watchHeldModifier } from '@shared/angular/services/monaco/held-modifier';
@@ -390,6 +392,11 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private detectingIndentation: boolean = false;
 
   /**
+   * Holds the Auto Indent the editor's cursor last took, or null before the first settings pass.
+   */
+  private cursorAutoIndent: AutoIndent | null = null;
+
+  /**
    * Holds the wheel travel not yet turned into a zoom step: a trackpad reports it in many small moves.
    */
   private wheelZoomTravel: number = 0;
@@ -463,6 +470,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         ...this.monaco.motionOptions(resolved),
         ...editorAppearanceOptions(resolved),
         ...editorSuggestOptions(resolved),
+        ...editorTypingOptions(resolved),
         rulers: this.rulers(resolved),
         tabSize: resolved.tabSize,
         insertSpaces: resolved.insertSpaces,
@@ -476,6 +484,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         // Merged last so a composing view's pinned chrome wins over the settings-derived defaults.
         ...this.options(),
       });
+      this.applyAutoIndent(resolved.autoIndent);
       this.applyBracketColorization();
       this.applyIndentation();
       this.monaco
@@ -761,6 +770,22 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       insertSpaces !== wanted.insertSpaces
     ) {
       model.updateOptions(wanted);
+    }
+  }
+
+  /**
+   * Makes a change of Auto Indent reach typing. The cursor keeps its own copy of the options, rebuilt
+   * only when one of a fixed list changes, and Monaco's list leaves `autoIndent` out: the option alone
+   * would read as changed while Enter went on indenting the old way. Moving a listed option there and
+   * back, one that does nothing until a bracket is deleted, rebuilds the copy.
+   * @param autoIndent The Auto Indent now in force.
+   */
+  private applyAutoIndent(autoIndent: AutoIndent): void {
+    const previous: AutoIndent | null = this.cursorAutoIndent;
+    this.cursorAutoIndent = autoIndent;
+    if (previous !== null && previous !== autoIndent) {
+      this.editor?.updateOptions({ autoClosingDelete: 'never' });
+      this.editor?.updateOptions({ autoClosingDelete: 'auto' });
     }
   }
 

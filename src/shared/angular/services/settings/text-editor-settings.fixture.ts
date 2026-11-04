@@ -59,4 +59,13 @@ export const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   completionInsertMode: 'insert',
   suggestionListSize: 12,
   parameterHints: true,
+  autoCloseBrackets: 'before-whitespace',
+  autoSurround: 'brackets-and-quotes',
+  autoIndent: 'full',
+  linkedEditing: true,
+  docCommentAutoInsert: true,
+  multiCursorModifier: 'alt',
+  quickFixIndicator: true,
+  quickFixIndicatorDelay: 250,
+  unusualLineTerminators: 'ask',
 };

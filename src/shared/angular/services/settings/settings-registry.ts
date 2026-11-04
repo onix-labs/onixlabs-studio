@@ -21,6 +21,9 @@ import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
   AcceptSuggestionWith,
+  AutoCloseBrackets,
+  AutoIndent,
+  AutoSurround,
   BraceStyle,
   CompletionInsertMode,
   QuickSuggestions,
@@ -36,7 +39,9 @@ import type {
   IndentGuides,
   InlayHintsMode,
   MinimumDiagnosticSeverity,
+  MultiCursorModifier,
   RenderWhitespace,
+  UnusualLineTerminators,
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
@@ -332,6 +337,15 @@ export interface SettingsValues {
   readonly 'textEditor.global.suggestionSelection': SuggestionSelection;
   readonly 'textEditor.global.completionInsertMode': CompletionInsertMode;
   readonly 'textEditor.global.suggestionListSize': number;
+  readonly 'textEditor.global.autoCloseBrackets': AutoCloseBrackets;
+  readonly 'textEditor.global.autoSurround': AutoSurround;
+  readonly 'textEditor.global.autoIndent': AutoIndent;
+  readonly 'textEditor.global.linkedEditing': boolean;
+  readonly 'textEditor.global.docCommentAutoInsert': boolean;
+  readonly 'textEditor.global.multiCursorModifier': MultiCursorModifier;
+  readonly 'textEditor.global.quickFixIndicator': boolean;
+  readonly 'textEditor.global.quickFixIndicatorDelay': number;
+  readonly 'textEditor.global.unusualLineTerminators': UnusualLineTerminators;
   readonly 'textEditor.global.parameterHints': boolean;
   readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
@@ -1883,6 +1897,126 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         profileOverridable: true,
         default: 'kr',
+      },
+      {
+        key: 'textEditor.global.autoCloseBrackets',
+        title: 'Auto Close Brackets and Quotes',
+        description: 'When typing an opening bracket or quote also types its closing one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'before-whitespace', label: 'Before Whitespace' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'before-whitespace',
+      },
+      {
+        key: 'textEditor.global.autoSurround',
+        title: 'Auto Surround',
+        description: 'What typing a bracket or quote over a selection wraps it in.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'brackets-and-quotes', label: 'Brackets and Quotes' },
+            { value: 'brackets', label: 'Brackets' },
+            { value: 'quotes', label: 'Quotes' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'brackets-and-quotes',
+      },
+      {
+        key: 'textEditor.global.autoIndent',
+        title: 'Auto Indent',
+        description:
+          "How a new line is indented: not at all, like the line above, by the language's brackets, " +
+          'or by all of its indentation rules.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'none', label: 'None' },
+            { value: 'keep', label: 'Keep' },
+            { value: 'brackets', label: 'Brackets' },
+            { value: 'full', label: 'Full' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'full',
+      },
+      {
+        key: 'textEditor.global.linkedEditing',
+        title: 'Linked Editing',
+        description:
+          "Edit a linked pair together, such as an HTML tag's opening and closing names, where the " +
+          "language's server offers it.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.docCommentAutoInsert',
+        title: 'Doc Comment Auto Insert',
+        description:
+          "Let the language's server fill in a doc comment as you begin one, where it offers that.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.multiCursorModifier',
+        title: 'Multi-Cursor Modifier',
+        description:
+          'The key held to add a cursor by clicking. Go to Definition moves to the other one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'alt', label: '⌥-Click (Alt-Click)' },
+            { value: 'ctrl-cmd', label: '⌘-Click (Ctrl-Click)' },
+          ],
+        },
+        default: 'alt',
+      },
+      {
+        key: 'textEditor.global.quickFixIndicator',
+        title: 'Quick Fix Indicator',
+        description: 'Show a lightbulb beside the line when fixes exist at the cursor.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.quickFixIndicatorDelay',
+        title: 'Quick Fix Indicator Delay',
+        description: 'How long the cursor rests before the lightbulb looks for fixes.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Instant' },
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+          ],
+        },
+        visibleWhen: { key: 'textEditor.global.quickFixIndicator', equals: [true] },
+        default: 250,
+      },
+      {
+        key: 'textEditor.global.unusualLineTerminators',
+        title: 'Unusual Line Terminators',
+        description:
+          'What to do with Line Separator and Paragraph Separator characters found in a document.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'remove', label: 'Remove' },
+            { value: 'ignore', label: 'Ignore' },
+          ],
+        },
+        default: 'ask',
       },
       {
         key: 'textEditor.languageOverrides',

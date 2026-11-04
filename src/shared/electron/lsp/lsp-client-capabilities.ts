@@ -68,6 +68,8 @@ export function clientCapabilities(): ClientCapabilities {
         foldingRangeKind: { valueSet: ['comment', 'imports', 'region'] },
       },
       documentHighlight: { dynamicRegistration: false },
+      // Ranges edited together, such as an HTML tag's opening and closing names.
+      linkedEditingRange: { dynamicRegistration: false },
       // Expand and Shrink Selection grow by the compiler's syntax nodes (#1155).
       selectionRange: { dynamicRegistration: false },
       // Facts above types and members — Roslyn's reference counts (#1149) — each filled in as shown.

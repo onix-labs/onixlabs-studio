@@ -69,7 +69,7 @@ describe('LanguageEditorOverrides', () => {
       'Rust files',
     );
     // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(29);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(34);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -195,6 +195,11 @@ describe('LanguageEditorOverrides', () => {
       'Word Wrap',
       'Format on Type',
       'Brace Style',
+      'Auto Close Brackets and Quotes',
+      'Auto Surround',
+      'Auto Indent',
+      'Linked Editing',
+      'Doc Comment Auto Insert',
       'Format on Save',
       'Organise Imports on Save',
       'Trim Trailing Whitespace on Save',

@@ -1,5 +1,10 @@
 import type * as MonacoApi from 'monaco-editor';
-import { applyAutoInsert, installAutoInsert, typedCharacter } from './monaco-auto-insert';
+import {
+  applyAutoInsert,
+  installAutoInsert,
+  isDocCommentTyping,
+  typedCharacter,
+} from './monaco-auto-insert';
 
 /**
  * Builds a content change event.
@@ -44,6 +49,22 @@ describe('typedCharacter (#1148)', () => {
         ],
       }),
     ).toBeNull();
+  });
+});
+
+describe('isDocCommentTyping', () => {
+  const lines: readonly string[] = ['    ///', '    {', ''];
+  const model: Pick<MonacoApi.editor.ITextModel, 'getLineContent'> = {
+    getLineContent: (line: number): string => lines[line - 1],
+  };
+
+  it('counts the slash that makes a doc comment, and Enter on one', () => {
+    expect(isDocCommentTyping(model, { lineNumber: 1, column: 8 }, '/')).toBe(true);
+    expect(isDocCommentTyping(model, { lineNumber: 2, column: 1 }, '\n')).toBe(true);
+  });
+
+  it('leaves Enter after a brace to the server', () => {
+    expect(isDocCommentTyping(model, { lineNumber: 3, column: 1 }, '\n')).toBe(false);
   });
 });
 

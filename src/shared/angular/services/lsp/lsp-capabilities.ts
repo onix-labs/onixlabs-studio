@@ -186,6 +186,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
     | {
         foldingRangeProvider?: unknown;
         documentHighlightProvider?: unknown;
+        linkedEditingRangeProvider?: unknown;
         selectionRangeProvider?: unknown;
         semanticTokensProvider?: { range?: unknown; legend?: unknown };
       }
@@ -194,6 +195,7 @@ export function structureSupportOf(capabilities: unknown): LspStructureSupport {
   return {
     folding: isOffered(caps?.foldingRangeProvider),
     highlights: isOffered(caps?.documentHighlightProvider),
+    linkedEditing: isOffered(caps?.linkedEditingRangeProvider),
     rangeTokens:
       semanticLegendOf(capabilities) !== null &&
       (range === true || (typeof range === 'object' && range !== null)),

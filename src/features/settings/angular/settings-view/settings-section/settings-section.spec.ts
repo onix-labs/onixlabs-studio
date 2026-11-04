@@ -130,13 +130,19 @@ describe('SettingsSection', () => {
     // Code › Editing has scalar settings (Format on Type, #1141, among them) plus a custom "language
     // overrides" entry, which is rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('code-editing');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
   });
 
   it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {
     // How code looks wherever it appears, Print Margins among them.
     const element: HTMLElement = await render('code-appearance');
     expect(element.querySelectorAll('app-setting-row').length).toBe(19);
+  });
+
+  it('render_whenTheQuickFixIndicatorIsOff_hidesItsDelay', async () => {
+    TestBed.inject(Settings).set('textEditor.global.quickFixIndicator', false);
+    const element: HTMLElement = await render('code-editing');
+    expect(element.textContent).not.toContain('Quick Fix Indicator Delay');
   });
 
   it('render_whenCodeSavingSection_rendersEverySetting', async () => {
