@@ -1,4 +1,14 @@
 import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
+import type { TextEditorSettings } from '@shared/angular/services/settings/settings';
+
+/**
+ * Readies an open document for saving, in its editor: what only an editor can do, such as formatting.
+ * Returns the code settings in force and the text last saved, which Changed Lines Only compares with.
+ */
+export type DocumentSavePreparer = (
+  settings: TextEditorSettings,
+  savedContent: string,
+) => Promise<void>;
 
 /**
  * Describes what happens to a document's text as it is written. The one place a save changes text, so
@@ -17,6 +27,11 @@ export interface DocumentSaveRules {
   readonly finalNewline: 'insert' | 'remove' | 'keep';
 
   /**
+   * Gets whether blank lines after the last line of text are removed, leaving its own newline.
+   */
+  readonly trimFinalNewlines: boolean;
+
+  /**
    * Gets the line ending every line is converted to, or null to leave them alone.
    */
   readonly endOfLine: 'LF' | 'CRLF' | null;
@@ -28,6 +43,7 @@ export interface DocumentSaveRules {
 export const NO_SAVE_RULES: DocumentSaveRules = {
   trimTrailingWhitespace: false,
   finalNewline: 'keep',
+  trimFinalNewlines: false,
   endOfLine: null,
 };
 
@@ -45,8 +61,42 @@ export function saveRulesFromEditorConfig(
   return {
     trimTrailingWhitespace: properties?.trimTrailingWhitespace === true,
     finalNewline: finalNewline === undefined ? 'keep' : finalNewline ? 'insert' : 'remove',
+    trimFinalNewlines: false,
     endOfLine: endOfLine === 'lf' ? 'LF' : endOfLine === 'crlf' ? 'CRLF' : null,
   };
+}
+
+/**
+ * Reads the save rules in force: an `.editorconfig` decides what it states, and the code settings
+ * decide the rest.
+ * @param properties The properties in force, or null when none are.
+ * @param settings The code settings for the document's language.
+ * @returns Returns the rules.
+ */
+export function resolveSaveRules(
+  properties: EditorConfigProperties | null,
+  settings: TextEditorSettings,
+): DocumentSaveRules {
+  const stated: DocumentSaveRules = saveRulesFromEditorConfig(properties);
+  return {
+    ...stated,
+    trimTrailingWhitespace: properties?.trimTrailingWhitespace ?? settings.trimTrailingWhitespace,
+    finalNewline:
+      stated.finalNewline === 'keep' && settings.insertFinalNewline
+        ? 'insert'
+        : stated.finalNewline,
+    trimFinalNewlines: settings.trimFinalNewlines && stated.finalNewline !== 'remove',
+  };
+}
+
+/**
+ * Narrows save rules for an Auto Save made while the user is typing: nothing may change the text under
+ * the caret, so only the line endings, which it cannot see, still apply.
+ * @param rules The rules in force.
+ * @returns Returns the rules to save under.
+ */
+export function saveRulesWhileTyping(rules: DocumentSaveRules): DocumentSaveRules {
+  return { ...NO_SAVE_RULES, endOfLine: rules.endOfLine };
 }
 
 /**
@@ -59,6 +109,9 @@ export function applySaveRules(text: string, rules: DocumentSaveRules): string {
   let result: string = text;
   if (rules.trimTrailingWhitespace) {
     result = result.replace(/[ \t]+(?=\r?\n|$)/g, '');
+  }
+  if (rules.trimFinalNewlines) {
+    result = result.replace(/(\r?\n)(?:\r?\n)+$/, '$1');
   }
   if (rules.finalNewline === 'remove') {
     result = result.replace(/(?:\r?\n)+$/, '');

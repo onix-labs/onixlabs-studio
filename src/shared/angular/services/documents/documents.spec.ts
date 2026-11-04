@@ -14,9 +14,15 @@ import { TabCloser } from '@shared/angular/services/tab-closer/tab-closer';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
-import { AUTO_SAVE_DELAY_MS, CodeDocument, Documents, effectiveViewToggles } from './documents';
+import {
+  AUTO_SAVE_DELAY_MS,
+  CodeDocument,
+  Documents,
+  effectiveViewToggles,
+  SAVE_PREPARATION_TIMEOUT_MS,
+} from './documents';
 import type {
   EditorConfigProperties,
   EditorConfigResolution,
@@ -734,6 +740,7 @@ describe('Documents, under an .editorconfig (#1049)', () => {
               writes.push({ content, hasBom, encoding });
               return Promise.resolve({ success: true, path });
             },
+            saveDialog: (): Promise<string> => Promise.resolve('/ws/new.ts'),
           },
         },
         {
@@ -788,6 +795,151 @@ describe('Documents, under an .editorconfig (#1049)', () => {
     await Promise.resolve();
     return tab;
   }
+
+  it('saveSettings_applyWhereNoEditorConfigSpeaks', async () => {
+    TestBed.inject(Settings).set('textEditor.global.trimTrailingWhitespace', true);
+    TestBed.inject(Settings).set('textEditor.global.insertFinalNewline', true);
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'a  \nb');
+
+    await documents.save(tab.id);
+
+    expect(writes.at(-1)?.content).toBe('a\nb\n');
+  });
+
+  it('saveSettings_giveWayToWhatAnEditorConfigStates', async () => {
+    TestBed.inject(Settings).set('textEditor.global.trimTrailingWhitespace', true);
+    const tab: Tab = await open({ trimTrailingWhitespace: false });
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes.at(-1)?.content).toBe('a  ');
+  });
+
+  it('autoSaveAfterADelay_leavesTheTextAlone_evenWhereAnEditorConfigTrims', async () => {
+    vi.useFakeTimers();
+    TestBed.inject(Settings).set('textEditor.autoSave', 'delay');
+    const prepared: string[] = [];
+    const tab: Tab = await open({ trimTrailingWhitespace: true, insertFinalNewline: true });
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    documents.registerSavePreparer(tab.id, (): Promise<void> => {
+      prepared.push(tab.id);
+      return Promise.resolve();
+    });
+
+    documents.setContent(tab.id, 'typing ');
+    await vi.advanceTimersByTimeAsync(AUTO_SAVE_DELAY_MS);
+
+    expect(writes.at(-1)?.content).toBe('typing ');
+    expect(documents.get(tab.id)?.content()).toBe('typing ');
+    expect(prepared).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('autoSaveOnFocusChange_appliesTheRules', async () => {
+    TestBed.inject(Settings).set('textEditor.autoSave', 'focus');
+    const tab: Tab = await open({ trimTrailingWhitespace: true });
+    documents.setContent(tab.id, 'a ');
+    documents.setActiveDocument(tab.id);
+
+    documents.setActiveDocument(null);
+    await vi.waitFor((): void => expect(writes.at(-1)?.content).toBe('a'));
+  });
+
+  it('formatOnSave_runsTheEditorBeforeWriting_withTheSavedText', async () => {
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'changed');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'messy');
+    const seen: string[] = [];
+    documents.registerSavePreparer(
+      tab.id,
+      (settings: TextEditorSettings, savedContent: string): Promise<void> => {
+        seen.push(settings.formatOnSave, savedContent);
+        documents.setContent(tab.id, 'tidy');
+        return Promise.resolve();
+      },
+    );
+
+    await documents.save(tab.id);
+
+    expect(seen).toEqual(['changed', SAMPLE_FILE.content]);
+    expect(writes.at(-1)?.content).toBe('tidy');
+  });
+
+  it('formatOnSave_whenOff_leavesTheEditorAlone', async () => {
+    const tab: Tab = await open({});
+    let prepared: boolean = false;
+    documents.registerSavePreparer(tab.id, (): Promise<void> => {
+      prepared = true;
+      return Promise.resolve();
+    });
+
+    await documents.save(tab.id);
+
+    expect(prepared).toBe(false);
+  });
+
+  it('formatOnSave_whenTheFormatterFails_stillSaves', async () => {
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'edit');
+    documents.registerSavePreparer(tab.id, (): Promise<void> =>
+      Promise.reject(new Error('no formatter')),
+    );
+
+    expect(await documents.save(tab.id)).toBe(true);
+    expect(writes.at(-1)?.content).toBe('edit');
+  });
+
+  it('formatOnSave_whenTheFormatterHangs_savesOnceTheWaitIsOver', async () => {
+    vi.useFakeTimers();
+    TestBed.inject(Settings).set('textEditor.global.formatOnSave', 'whole');
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'edit');
+    documents.registerSavePreparer(
+      tab.id,
+      (): Promise<void> => new Promise<void>((): void => undefined),
+    );
+
+    const saved: Promise<boolean> = documents.save(tab.id);
+    await vi.advanceTimersByTimeAsync(SAVE_PREPARATION_TIMEOUT_MS);
+
+    expect(await saved).toBe(true);
+    expect(writes.at(-1)?.content).toBe('edit');
+    vi.useRealTimers();
+  });
+
+  it('addByteOrderMark_marksANewUtf8FileWhenFirstSaved', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    resolution = { properties: {}, candidates: [] };
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+    documents.ensure(tab.id);
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(true);
+  });
+
+  it('addByteOrderMark_leavesAnExistingFileAlone', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    const tab: Tab = await open({});
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(false);
+  });
+
+  it('addByteOrderMark_givesWayToACharsetInAnEditorConfig', async () => {
+    TestBed.inject(Settings).set('textEditor.global.addByteOrderMark', true);
+    resolution = { properties: { charset: 'utf-8' }, candidates: [] };
+    const tab: Tab = TestBed.inject(Tabs).open('code');
+    documents.ensure(tab.id);
+
+    await documents.saveAs(tab.id);
+
+    expect(writes.at(-1)?.hasBom).toBe(false);
+  });
 
   it('writesExactlyWhatItsaysOnSave', async () => {
     const tab: Tab = await open({

@@ -103,6 +103,11 @@ export type InlayHintsMode = 'on' | 'off' | 'while-holding';
 export type MinimumDiagnosticSeverity = 'hint' | 'info' | 'warning' | 'error';
 
 /**
+ * Identifies what a save formats: nothing, the whole file, or the lines changed since the last save.
+ */
+export type FormatOnSave = 'off' | 'whole' | 'changed';
+
+/**
  * Identifies the document margin size for the markdown editor.
  */
 export type MarginSize = 'narrow' | 'medium' | 'wide' | 'full-width';
@@ -413,6 +418,41 @@ export interface TextEditorSettings {
    * Gets a value indicating whether ⌘ or Ctrl and the mouse wheel zoom the editors.
    */
   readonly mouseWheelZoom: boolean;
+
+  /**
+   * Gets what a save formats.
+   */
+  readonly formatOnSave: FormatOnSave;
+
+  /**
+   * Gets a value indicating whether a save organises the imports.
+   */
+  readonly organiseImportsOnSave: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes whitespace at the ends of lines.
+   */
+  readonly trimTrailingWhitespace: boolean;
+
+  /**
+   * Gets a value indicating whether a save ensures the text ends with a newline.
+   */
+  readonly insertFinalNewline: boolean;
+
+  /**
+   * Gets a value indicating whether a save removes blank lines after the last line of text.
+   */
+  readonly trimFinalNewlines: boolean;
+
+  /**
+   * Gets a value indicating whether a new UTF-8 file starts with a byte-order mark.
+   */
+  readonly addByteOrderMark: boolean;
+
+  /**
+   * Gets a value indicating whether pasted text is formatted.
+   */
+  readonly formatOnPaste: boolean;
 }
 
 /**
@@ -792,6 +832,13 @@ export class Settings {
       colourSwatches: this.read('textEditor.global.colourSwatches'),
       minimumDiagnosticSeverity: this.read('textEditor.global.minimumDiagnosticSeverity'),
       mouseWheelZoom: this.read('textEditor.global.mouseWheelZoom'),
+      formatOnSave: this.read('textEditor.global.formatOnSave'),
+      organiseImportsOnSave: this.read('textEditor.global.organiseImportsOnSave'),
+      trimTrailingWhitespace: this.read('textEditor.global.trimTrailingWhitespace'),
+      insertFinalNewline: this.read('textEditor.global.insertFinalNewline'),
+      trimFinalNewlines: this.read('textEditor.global.trimFinalNewlines'),
+      addByteOrderMark: this.read('textEditor.global.addByteOrderMark'),
+      formatOnPaste: this.read('textEditor.global.formatOnPaste'),
     }),
   );
 

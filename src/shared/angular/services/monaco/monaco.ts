@@ -523,6 +523,7 @@ export class Monaco {
       wordWrap: resolved.wordWrap ? 'on' : 'off',
       stickyScroll: { enabled: resolved.stickyScroll },
       formatOnType: resolved.formatOnType,
+      formatOnPaste: resolved.formatOnPaste,
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
       ...editorAppearanceOptions(resolved),
       tabSize: resolved.tabSize,

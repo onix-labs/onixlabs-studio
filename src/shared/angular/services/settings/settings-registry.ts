@@ -24,6 +24,7 @@ import type {
   BracketPairGuides,
   ChangeMarginMode,
   EditorCursorStyle,
+  FormatOnSave,
   FoldingControls,
   IndentGuides,
   InlayHintsMode,
@@ -284,6 +285,13 @@ export interface SettingsValues {
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
   readonly 'textEditor.global.detectIndentation': boolean;
+  readonly 'textEditor.global.formatOnSave': FormatOnSave;
+  readonly 'textEditor.global.organiseImportsOnSave': boolean;
+  readonly 'textEditor.global.trimTrailingWhitespace': boolean;
+  readonly 'textEditor.global.insertFinalNewline': boolean;
+  readonly 'textEditor.global.trimFinalNewlines': boolean;
+  readonly 'textEditor.global.addByteOrderMark': boolean;
+  readonly 'textEditor.global.formatOnPaste': boolean;
   readonly 'textEditor.honourEditorConfig': boolean;
   readonly 'textEditor.global.renderWhitespace': RenderWhitespace;
   readonly 'textEditor.global.rulers': string;
@@ -1863,8 +1871,85 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Per-language overrides of the code settings, edited on each language page under Code › Languages.',
         control: { kind: 'custom', component: 'language-editor-overrides' },
         // C# ships with Allman braces, its own convention and Roslyn's default, over the global K&R —
-        // an ordinary override, so the user can change or clear it like any other (#1177).
-        default: { csharp: { braceStyle: 'allman' } },
+        // an ordinary override, so the user can change or clear it like any other (#1177). Markdown
+        // keeps trailing whitespace, where two spaces are a hard line break.
+        default: {
+          csharp: { braceStyle: 'allman' },
+          markdown: { trimTrailingWhitespace: false },
+        },
+      },
+    ],
+  },
+  {
+    // What a save does to a file; the per-language overrides are edited on each language's page under
+    // Code › Languages. An Auto Save after a delay leaves the text alone, as the user may be typing.
+    id: 'code-saving',
+    label: 'Code Saving',
+    settings: [
+      {
+        key: 'textEditor.global.formatOnSave',
+        title: 'Format on Save',
+        description:
+          "What a save lays out with the language's formatter. Changed Lines Only needs a formatter " +
+          'that can format part of a file. An Auto Save after a delay never formats.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'whole', label: 'Whole File' },
+            { value: 'changed', label: 'Changed Lines Only' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'off',
+      },
+      {
+        key: 'textEditor.global.organiseImportsOnSave',
+        title: 'Organise Imports on Save',
+        description: "Sort and tidy the imports on save, using the language's own tools.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.trimTrailingWhitespace',
+        title: 'Trim Trailing Whitespace on Save',
+        description: 'Remove whitespace at the end of each line on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.insertFinalNewline',
+        title: 'Insert Final Newline',
+        description: 'End the file with a newline on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.trimFinalNewlines',
+        title: 'Trim Final Newlines',
+        description: 'Remove blank lines after the last line of text on save.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.addByteOrderMark',
+        title: 'Add Byte-Order Mark to New Files',
+        description: 'Start a new UTF-8 file with a byte-order mark the first time it is saved.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
+      },
+      {
+        key: 'textEditor.global.formatOnPaste',
+        title: 'Format on Paste',
+        description: "Lay out pasted text using the language's formatter.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: false,
       },
     ],
   },
@@ -3319,6 +3404,7 @@ export const CODE_SECTION_IDS: readonly string[] = [
   'code-appearance',
   'code-highlighting',
   'code-editing',
+  'code-saving',
   'code-find',
   'code-diffs',
   'code-language-servers',

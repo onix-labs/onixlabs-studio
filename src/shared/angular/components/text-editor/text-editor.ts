@@ -66,6 +66,21 @@ const COMMAND_SOURCE: string = 'app-text-editor';
 const WHEEL_ZOOM_STEP: number = 40;
 
 /**
+ * Describes a run of lines, both ends included.
+ */
+export interface TextEditorLineRange {
+  /**
+   * Gets the first line, one-based.
+   */
+  readonly first: number;
+
+  /**
+   * Gets the last line, one-based.
+   */
+  readonly last: number;
+}
+
+/**
  * Describes a caret position reported to the host, as one-based line and column numbers.
  */
 export interface TextEditorCursor {
@@ -442,6 +457,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         wordWrap: resolved.wordWrap ? 'on' : 'off',
         stickyScroll: { enabled: resolved.stickyScroll },
         formatOnType: resolved.formatOnType,
+        formatOnPaste: resolved.formatOnPaste,
         cursorBlinking: resolved.cursorBlinking,
         ...this.monaco.motionOptions(resolved),
         ...editorAppearanceOptions(resolved),
@@ -889,6 +905,44 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     }
     editor.focus();
     await editor.getAction(action)?.run();
+  }
+
+  /**
+   * Runs an editor action for a save, leaving the focus where it is: a save may come from elsewhere,
+   * for another document's editor, and what the user is doing must not be taken from them.
+   * @param action The action identifier.
+   * @returns Returns a promise that resolves once the action has finished.
+   */
+  public async runActionForSave(action: string): Promise<void> {
+    await this.editor?.getAction(action)?.run();
+  }
+
+  /**
+   * Formats lines for a save, with the formatter for a selection: one that cannot format part of a
+   * file offers no such action, and the lines stay as they are. The caret and scroll position stay
+   * too, as the selection is only how the action is told what to format.
+   * @param ranges The lines to format, last first, so formatting one leaves the next where it is.
+   * @returns Returns a promise that resolves once they are formatted.
+   */
+  public async formatLinesForSave(ranges: readonly TextEditorLineRange[]): Promise<void> {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    if (editor === null || model === null || ranges.length === 0) {
+      return;
+    }
+    const view: MonacoApi.editor.ICodeEditorViewState | null = editor.saveViewState();
+    for (const range of ranges) {
+      editor.setSelection({
+        startLineNumber: range.first,
+        startColumn: 1,
+        endLineNumber: range.last,
+        endColumn: model.getLineMaxColumn(range.last),
+      });
+      await editor.getAction('editor.action.formatSelection')?.run();
+    }
+    if (view !== null) {
+      editor.restoreViewState(view);
+    }
   }
 
   /**

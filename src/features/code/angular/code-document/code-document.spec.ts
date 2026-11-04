@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Printing, PrintPreparer } from '@shared/angular/services/printing/printing';
 import { CodeDocumentEditor } from './code-document';
 
@@ -19,6 +20,26 @@ describe('CodeDocumentEditor', () => {
       TestBed.createComponent(CodeDocumentEditor);
     fixture.componentRef.setInput('documentId', 'test-document');
     expect(fixture.componentInstance).toBeTruthy();
+  });
+
+  it('init_readiesTheDocumentForSaves_untilItIsDestroyed', () => {
+    const registered: string[] = [];
+    const removed: string[] = [];
+    vi.spyOn(TestBed.inject(Documents), 'registerSavePreparer').mockImplementation(
+      (id: string): (() => void) => {
+        registered.push(id);
+        return (): void => void removed.push(id);
+      },
+    );
+    const fixture: ComponentFixture<CodeDocumentEditor> =
+      TestBed.createComponent(CodeDocumentEditor);
+    fixture.componentRef.setInput('documentId', 'test-document');
+
+    fixture.componentInstance.ngOnInit();
+    expect(registered).toEqual(['test-document']);
+
+    fixture.destroy();
+    expect(removed).toEqual(['test-document']);
   });
 
   it('print_whenNotTheActiveDocument_leavesThePrintToTheOneThatIs', () => {

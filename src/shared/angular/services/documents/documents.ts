@@ -24,8 +24,10 @@ import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-pan
 import { Log } from '@shared/angular/services/log/log';
 import {
   applySaveRules,
+  DocumentSavePreparer,
   DocumentSaveRules,
-  saveRulesFromEditorConfig,
+  resolveSaveRules,
+  saveRulesWhileTyping,
 } from './document-save-rules';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
@@ -65,6 +67,12 @@ const CHARSET_ENCODINGS: Readonly<Record<EditorConfigCharset, TextEncoding>> = {
  * in milliseconds.
  */
 export const AUTO_SAVE_DELAY_MS: number = 1000;
+
+/**
+ * Holds how long a save waits for the editor to format a document, in milliseconds, before saving the
+ * text as it stands.
+ */
+export const SAVE_PREPARATION_TIMEOUT_MS: number = 3000;
 
 /**
  * The view toggles a code tab may set for itself — word wrap, the minimap, line numbers — each unset
@@ -369,6 +377,14 @@ export class Documents implements UnsavedWorkSource {
   private readonly autoSaving: Set<string> = new Set<string>();
 
   /**
+   * Holds what readies each document open in an editor for saving.
+   */
+  private readonly savePreparers: Map<string, DocumentSavePreparer> = new Map<
+    string,
+    DocumentSavePreparer
+  >();
+
+  /**
    * Initializes a new instance of the {@link Documents} class, saving edited documents when the
    * window loses focus and Auto Save is When Focus Changes.
    */
@@ -376,7 +392,7 @@ export class Documents implements UnsavedWorkSource {
     const onBlur: () => void = (): void => {
       if (this.settings.get('textEditor.autoSave') === 'focus') {
         for (const id of [...this.entries.keys()]) {
-          void this.autoSave(id);
+          void this.autoSave(id, false);
         }
       }
     };
@@ -451,7 +467,7 @@ export class Documents implements UnsavedWorkSource {
       id,
       setTimeout((): void => {
         this.autoSaveTimers.delete(id);
-        void this.autoSave(id);
+        void this.autoSave(id, true);
       }, AUTO_SAVE_DELAY_MS),
     );
   }
@@ -461,9 +477,10 @@ export class Documents implements UnsavedWorkSource {
    * save of its own already writing. Never asks anything — a document never saved yet is left for
    * the user to save.
    * @param id The document identifier.
+   * @param whileTyping Whether the user may still be typing, as an Auto Save after a delay assumes.
    * @returns Resolves once the save, if any, has finished.
    */
-  private async autoSave(id: string): Promise<void> {
+  private async autoSave(id: string, whileTyping: boolean): Promise<void> {
     const entry: DocumentEntry | undefined = this.entries.get(id);
     if (
       entry === undefined ||
@@ -477,7 +494,7 @@ export class Documents implements UnsavedWorkSource {
     this.autoSaving.add(id);
     try {
       this.log.debug('Documents', `Auto-saving '${entry.fileName()}'`, id);
-      await this.save(id);
+      await this.save(id, whileTyping);
     } finally {
       this.autoSaving.delete(id);
     }
@@ -802,7 +819,7 @@ export class Documents implements UnsavedWorkSource {
       previous !== id &&
       this.settings.get('textEditor.autoSave') === 'focus'
     ) {
-      void this.autoSave(previous);
+      void this.autoSave(previous, false);
     }
   }
 
@@ -867,11 +884,27 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Registers what readies a document open in an editor for saving.
+   * @param id The document identifier.
+   * @param preparer What readies it.
+   * @returns Returns a function that removes it.
+   */
+  public registerSavePreparer(id: string, preparer: DocumentSavePreparer): () => void {
+    this.savePreparers.set(id, preparer);
+    return (): void => {
+      if (this.savePreparers.get(id) === preparer) {
+        this.savePreparers.delete(id);
+      }
+    };
+  }
+
+  /**
    * Saves a tab's document, prompting for a path when it has never been saved.
    * @param id The owning tab identifier.
+   * @param whileTyping Whether the user may still be typing, so the text must stay as it is.
    * @returns Returns true when the document was saved.
    */
-  public async save(id: string): Promise<boolean> {
+  public async save(id: string, whileTyping: boolean = false): Promise<boolean> {
     const entry: DocumentEntry | undefined = this.entries.get(id);
     if (entry === undefined) {
       return false;
@@ -884,7 +917,10 @@ export class Documents implements UnsavedWorkSource {
     if (filePath === null) {
       return this.saveAs(id);
     }
-    const content: string | null = await this.writeApplyingRules(entry, filePath);
+    if (!whileTyping) {
+      await this.prepareForSave(id, entry);
+    }
+    const content: string | null = await this.writeApplyingRules(entry, filePath, whileTyping);
     if (content !== null) {
       entry.original.set(content);
       this.syncTab(id);
@@ -911,18 +947,30 @@ export class Documents implements UnsavedWorkSource {
     }
     // The new path may sit under a different `.editorconfig`, whose rules this write must follow.
     await this.refreshEditorConfig(id, targetPath);
-    const content: string | null = await this.writeApplyingRules(entry, targetPath);
+    await this.prepareForSave(id, entry);
+    const language: string = this.monaco.getLanguageForExtension(this.extname(targetPath));
+    const hadBom: boolean = entry.hasBom();
+    if (this.startsWithBom(entry, language)) {
+      entry.hasBom.set(true);
+    }
+    const content: string | null = await this.writeApplyingRules(
+      entry,
+      targetPath,
+      false,
+      language,
+    );
     const success: boolean = content !== null;
     if (content !== null) {
       entry.filePath.set(targetPath);
       entry.fileName.set(this.basename(targetPath));
-      entry.language.set(this.monaco.getLanguageForExtension(this.extname(targetPath)));
+      entry.language.set(language);
       entry.original.set(content);
       this.syncTab(id);
       this.watchEntry(id);
       this.recordRecent(entry);
       this.log.info('Documents', `Saved as '${entry.fileName()}'`, id, targetPath);
     } else {
+      entry.hasBom.set(hadBom);
       await this.refreshEditorConfig(id);
       this.log.warn('Documents', 'Save-as failed', id, targetPath);
     }
@@ -990,12 +1038,75 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Determines whether a document saved for the first time starts with a byte-order mark: Add
+   * Byte-Order Mark to New Files, unless an `.editorconfig` decides its charset.
+   * @param entry The document.
+   * @param language The language it is being saved as.
+   * @returns Returns true when the mark should be added.
+   */
+  private startsWithBom(entry: DocumentEntry, language: string): boolean {
+    return (
+      entry.filePath() === null &&
+      entry.encoding() === 'utf8' &&
+      entry.editorConfig()?.charset === undefined &&
+      this.settings.resolveSettingsForLanguage(language).addByteOrderMark
+    );
+  }
+
+  /**
+   * Runs what the document's editor does before a save, when a setting asks for any of it. A save is
+   * never lost to this: a formatter that fails or takes too long is logged, and the text saved as it
+   * stands.
+   * @param id The document identifier.
+   * @param entry The document.
+   * @returns Resolves once the document is ready, or the wait is over.
+   */
+  private async prepareForSave(id: string, entry: DocumentEntry): Promise<void> {
+    const preparer: DocumentSavePreparer | undefined = this.savePreparers.get(id);
+    const settings: TextEditorSettings = this.settings.resolveSettingsForLanguage(entry.language());
+    if (
+      preparer === undefined ||
+      (settings.formatOnSave === 'off' && !settings.organiseImportsOnSave)
+    ) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut: Promise<boolean> = new Promise<boolean>(
+      (resolve: (value: boolean) => void): void => {
+        timer = setTimeout((): void => resolve(true), SAVE_PREPARATION_TIMEOUT_MS);
+      },
+    );
+    try {
+      const finished: Promise<boolean> = preparer(settings, entry.original()).then(
+        (): boolean => false,
+      );
+      if (await Promise.race([finished, timedOut])) {
+        this.log.warn('Documents', `Saving '${entry.fileName()}' without waiting to format`, id);
+      }
+    } catch (error: unknown) {
+      this.log.warn('Documents', `Could not format '${entry.fileName()}' on save`, id, error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Gets the rules a document's text is saved under.
    * @param entry The document.
+   * @param language The language it is saved as.
+   * @param whileTyping Whether the user may still be typing.
    * @returns Returns the rules.
    */
-  private saveRules(entry: DocumentEntry): DocumentSaveRules {
-    return saveRulesFromEditorConfig(entry.editorConfig());
+  private saveRules(
+    entry: DocumentEntry,
+    language: string,
+    whileTyping: boolean,
+  ): DocumentSaveRules {
+    const rules: DocumentSaveRules = resolveSaveRules(
+      entry.editorConfig(),
+      this.settings.resolveSettingsForLanguage(language),
+    );
+    return whileTyping ? saveRulesWhileTyping(rules) : rules;
   }
 
   /**
@@ -1004,11 +1115,18 @@ export class Documents implements UnsavedWorkSource {
    * the file differing from it only in what the rules changed is not a change on disk.
    * @param entry The document.
    * @param path Where to write.
+   * @param whileTyping Whether the user may still be typing.
+   * @param language The language it is saved as.
    * @returns Returns the document's text as now saved, or null when it could not be written.
    */
-  private async writeApplyingRules(entry: DocumentEntry, path: string): Promise<string | null> {
+  private async writeApplyingRules(
+    entry: DocumentEntry,
+    path: string,
+    whileTyping: boolean,
+    language: string = entry.language(),
+  ): Promise<string | null> {
     const content: string = entry.content();
-    const written: string = applySaveRules(content, this.saveRules(entry));
+    const written: string = applySaveRules(content, this.saveRules(entry, language, whileTyping));
     const kept: string = entry.language() === 'markdown' ? content : written;
     entry.lastWritten = written === kept ? null : written;
     if (kept !== content) {

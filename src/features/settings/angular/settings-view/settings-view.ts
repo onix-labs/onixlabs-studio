@@ -114,6 +114,7 @@ type SettingsSectionId =
   | 'code-appearance'
   | 'code-highlighting'
   | 'code-editing'
+  | 'code-saving'
   | 'code-find'
   | 'code-diffs'
   | 'code-language-servers'
@@ -483,6 +484,7 @@ export class SettingsView {
           sectionId: 'code-highlighting',
         },
         { id: 'code-editing-leaf', label: 'Editing', sectionId: 'code-editing' },
+        { id: 'code-saving-leaf', label: 'Saving', sectionId: 'code-saving' },
         { id: 'code-find-leaf', label: 'Find and Navigation', sectionId: 'code-find' },
         { id: 'code-diffs-leaf', label: 'Diffs', sectionId: 'code-diffs' },
         {

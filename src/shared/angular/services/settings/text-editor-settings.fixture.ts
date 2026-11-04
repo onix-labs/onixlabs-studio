@@ -39,4 +39,11 @@ export const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   colourSwatches: true,
   minimumDiagnosticSeverity: 'hint',
   mouseWheelZoom: false,
+  formatOnSave: 'off',
+  organiseImportsOnSave: false,
+  trimTrailingWhitespace: false,
+  insertFinalNewline: false,
+  trimFinalNewlines: false,
+  addByteOrderMark: false,
+  formatOnPaste: false,
 };

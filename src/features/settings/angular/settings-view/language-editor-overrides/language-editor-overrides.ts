@@ -43,7 +43,7 @@ export type CodeOverrideSection = 'code-appearance' | 'code-editing';
  */
 const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
   'code-appearance': 'Code › Appearance and Code › Guides and Highlights',
-  'code-editing': 'Code › Editing',
+  'code-editing': 'Code › Editing and Code › Saving',
 };
 
 /**
@@ -52,7 +52,7 @@ const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
  */
 const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
   'code-appearance': ['code-appearance', 'code-highlighting'],
-  'code-editing': ['code-editing'],
+  'code-editing': ['code-editing', 'code-saving'],
 };
 
 /**
@@ -68,6 +68,9 @@ const EDITOR_CONFIG_KEYS: ReadonlySet<string> = new Set<string>([
   'textEditor.global.insertSpaces',
   'textEditor.global.detectIndentation',
   'textEditor.global.rulers',
+  'textEditor.global.trimTrailingWhitespace',
+  'textEditor.global.insertFinalNewline',
+  'textEditor.global.addByteOrderMark',
 ]);
 
 /**
