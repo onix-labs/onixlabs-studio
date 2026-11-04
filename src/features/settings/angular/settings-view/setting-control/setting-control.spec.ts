@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { SettingControl } from './setting-control';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
@@ -121,5 +122,34 @@ describe('SettingControl', () => {
     select.dispatchEvent(new Event('change'));
 
     expect(settings.get('systemMonitor.refreshRate')).toBe(4000);
+  });
+
+  it('chooseFolder_whenAFolderIsPicked_writesItToTheSetting', async () => {
+    vi.spyOn(TestBed.inject(FileSystem), 'pickPath').mockResolvedValue('/models');
+    const element: HTMLElement = await render('aiManager.modelsFolder');
+
+    element.querySelector<HTMLElement>('[data-testid="setting-folder-choose"]')?.click();
+    await fixture.whenStable();
+
+    expect(settings.get('aiManager.modelsFolder')).toBe('/models');
+  });
+
+  it('chooseFolder_whenCancelled_leavesTheSettingAlone', async () => {
+    settings.set('aiManager.modelsFolder', '/kept');
+    vi.spyOn(TestBed.inject(FileSystem), 'pickPath').mockResolvedValue(null);
+    const element: HTMLElement = await render('aiManager.modelsFolder');
+
+    element.querySelector<HTMLElement>('[data-testid="setting-folder-choose"]')?.click();
+    await fixture.whenStable();
+
+    expect(settings.get('aiManager.modelsFolder')).toBe('/kept');
+  });
+
+  it('render_whenFolderControl_keepsThePathTypeable', async () => {
+    const element: HTMLElement = await render('aiManager.skillLibraryFolder');
+
+    expect(element.querySelector<HTMLInputElement>('input')?.placeholder).toBe(
+      "Studio's user data",
+    );
   });
 });

@@ -5622,7 +5622,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Where a server Studio starts keeps its models. Leave empty for ~/.ollama/models. The ' +
           'OLLAMA_MODELS environment variable wins when it is set.',
-        control: { kind: 'text', placeholder: '~/.ollama/models' },
+        control: { kind: 'folder', placeholder: '~/.ollama/models' },
         default: '',
       },
       {
@@ -5631,7 +5631,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           "Where Studio installs its own copy of Ollama. Leave empty for Studio's user data. Takes " +
           'effect the next time Studio starts.',
-        control: { kind: 'text', placeholder: "Studio's user data" },
+        control: { kind: 'folder', placeholder: "Studio's user data" },
         default: '',
       },
       {
@@ -5713,7 +5713,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           "Where your skills are kept. Leave empty for Studio's user data. Existing skills are not " +
           'moved. Takes effect the next time Studio starts.',
-        control: { kind: 'text', placeholder: "Studio's user data" },
+        control: { kind: 'folder', placeholder: "Studio's user data" },
         default: '',
       },
       {
