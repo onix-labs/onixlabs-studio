@@ -76,7 +76,7 @@ describe('SqliteEngine', (): void => {
     const engine: SqliteEngine = new SqliteEngine('/unused/main.js');
 
     expect(engine.info.id).toBe('sqlite');
-    expect(engine.info.capabilities).toEqual(['cancel', 'script', 'completion']);
+    expect(engine.info.capabilities).toEqual(['cancel', 'script', 'completion', 'transactions']);
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'file',
       'readOnly',

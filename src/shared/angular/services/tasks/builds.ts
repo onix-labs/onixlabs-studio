@@ -95,6 +95,18 @@ export interface BuildActionOptions {
    * (the ribbon asks before ever dispatching into a busy build).
    */
   readonly restart?: boolean;
+
+  /**
+   * Gets whether a busy build terminal takes this action next, once it is free: When a Build Is
+   * Already Running set to Queue.
+   */
+  readonly queue?: boolean;
+
+  /**
+   * Gets whether a run starts a further instance beside one already running, in a terminal of its own:
+   * When a Configuration Is Already Running set to Run Another.
+   */
+  readonly another?: boolean;
 }
 
 /**

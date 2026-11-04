@@ -1,6 +1,7 @@
 import {
   CompletionName,
   ConnectionValues,
+  ConnectOptions,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
@@ -9,6 +10,9 @@ import {
   NodeActionOutcome,
   QueryMessage,
   ResultColumn,
+  TransactionAction,
+  TransactionOutcome,
+  TreeOptions,
 } from './protocol';
 
 /**
@@ -26,9 +30,10 @@ export interface DatabaseEngine {
   /**
    * Opens a connection.
    * @param values The connection's field values, secrets included.
+   * @param options How Studio wants it opened.
    * @returns Returns a promise resolving the session; it rejects with a message fit to show.
    */
-  connect(values: ConnectionValues): Promise<EngineSession>;
+  connect(values: ConnectionValues, options?: ConnectOptions): Promise<EngineSession>;
 }
 
 /**
@@ -59,6 +64,11 @@ export interface EngineExecution {
   readonly messages: readonly QueryMessage[];
   readonly failed: boolean;
   readonly cancelled: boolean;
+
+  /**
+   * Gets whether a manual transaction is still open.
+   */
+  readonly transactionOpen?: boolean;
 }
 
 /**
@@ -73,9 +83,10 @@ export interface EngineSession {
   /**
    * Lists a node's children.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the children; it rejects with a message fit to show.
    */
-  expand(path: string | null): Promise<readonly DatabaseNode[]>;
+  expand(path: string | null, options?: TreeOptions): Promise<readonly DatabaseNode[]>;
 
   /**
    * Runs text, statement by statement, stopping at the first error.
@@ -94,9 +105,10 @@ export interface EngineSession {
    * Runs a node action.
    * @param path The node's path.
    * @param action The action's identifier.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving what it produced.
    */
-  action(path: string, action: string): Promise<NodeActionOutcome>;
+  action(path: string, action: string, options?: TreeOptions): Promise<NodeActionOutcome>;
 
   /**
    * Lists names to complete with, for an engine that declares `completion` (#1098). An object that
@@ -106,6 +118,14 @@ export interface EngineSession {
    * @returns Returns a promise resolving the names.
    */
   names?(scope: NamesScope, database?: string): Promise<readonly CompletionName[]>;
+
+  /**
+   * Ends the transaction an execution left open, for an engine that declares `transactions`.
+   * @param action What to do with it.
+   * @param database The database it is open on, when the engine reaches several.
+   * @returns Returns a promise resolving what it came to.
+   */
+  transaction?(action: TransactionAction, database?: string): Promise<TransactionOutcome>;
 
   /**
    * Closes the connection.
@@ -118,6 +138,15 @@ export interface EngineSession {
  * than allowed to exhaust the process — the explorer is for reading results, not for exporting tables.
  */
 export const MAX_RESULT_ROWS: number = 100_000;
+
+/**
+ * Gets the most rows a result set of this execution keeps.
+ * @param request The execution.
+ * @returns Returns what Studio asked for, or the engine's ceiling.
+ */
+export function maxResultRows(request: ExecuteRequest): number {
+  return request.options?.maxRows ?? MAX_RESULT_ROWS;
+}
 
 /**
  * Encodes a node path from its segments. Paths are opaque to Studio; inside an engine they are a JSON

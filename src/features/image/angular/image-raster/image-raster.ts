@@ -86,7 +86,7 @@ export class ImageRaster {
         break;
       }
       case 'resize':
-        context.imageSmoothingEnabled = true;
+        context.imageSmoothingEnabled = edit.resampling !== 'pixelated';
         context.imageSmoothingQuality = 'high';
         context.drawImage(raster.source, 0, 0, size.width, size.height);
         break;

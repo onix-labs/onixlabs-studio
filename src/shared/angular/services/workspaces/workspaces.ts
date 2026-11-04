@@ -19,6 +19,12 @@ export interface WorkspaceAgentStart {
   readonly brief: string;
 
   /**
+   * Gets whether the first message is sent at once, or undefined for yes; otherwise it waits in the
+   * message box for the user to edit and send, with its context attached.
+   */
+  readonly send?: boolean;
+
+  /**
    * Gets the context the first message carries — supporting documents, inline — if any.
    */
   readonly context?: readonly AgentContextRef[];

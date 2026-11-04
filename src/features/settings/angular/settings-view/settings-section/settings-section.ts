@@ -12,8 +12,11 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { findSection, SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
+import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import {
   appliesToPlatform,
+  ContributionRequirement,
   SettingDef,
   VisibilityDef,
 } from '@shared/angular/services/settings/settings-schema';
@@ -46,6 +49,11 @@ export class SettingsSection {
   private readonly bindings: SettingBindings = inject(SettingBindings);
 
   /**
+   * Holds the plugins, which decide whether a setting that needs one is shown.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
    * Gets the identifier of the section to render.
    */
   public readonly sectionId: InputSignal<string> = input.required<string>();
@@ -76,6 +84,16 @@ export class SettingsSection {
    */
   private isVisible(setting: SettingDef): boolean {
     if (!appliesToPlatform(setting)) return false;
+    const required: ContributionRequirement | undefined = setting.requiresContribution;
+    if (
+      required !== undefined &&
+      !installedContributions(this.plugins.plugins(), required.slot).some(
+        (contribution: PluginContribution): boolean =>
+          required.id === undefined || contribution.id === required.id,
+      )
+    ) {
+      return false;
+    }
     const condition: VisibilityDef | undefined = setting.visibleWhen;
     if (condition === undefined) return true;
 

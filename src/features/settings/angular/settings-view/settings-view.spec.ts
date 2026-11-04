@@ -244,11 +244,9 @@ describe('SettingsView', () => {
       expect(ids).toContain('application-keyboard');
     });
 
-    it('render_aRootWithNothingButAnAbsentKeyboardPage_isDropped', () => {
-      // API Explorer carries only its Keyboard leaf; with no shortcuts catalogued it would be empty.
+    it('render_anAbsentKeyboardPage_isDropped', () => {
       const ids: readonly string[] = allRowIds();
 
-      expect(ids).not.toContain('api-explorer');
       expect(ids).not.toContain('terminal-keyboard');
     });
   });

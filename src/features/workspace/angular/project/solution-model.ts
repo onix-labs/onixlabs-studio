@@ -1,3 +1,6 @@
+import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { explorerSorted } from '@shared/angular/services/workspace/explorer-sort';
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
@@ -155,6 +158,11 @@ export class SolutionModel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the settings, for Sort Order.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the view's dock context, whose display name titles the workspace root row.
    */
   private readonly context: DockTabContext = inject(DockTabContext);
@@ -268,12 +276,18 @@ export class SolutionModel {
    * because it is not always — reading around a solution while a generated file stays open drags the
    * selection back with every tab change.
    */
-  private readonly syncWithActive: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly syncWithActive: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.followActiveDocument',
+    true,
+  );
 
   /**
    * Holds whether rows carry their git change badge.
    */
-  private readonly gitStatusShown: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly gitStatusShown: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.showGitStatus',
+    true,
+  );
 
   /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
@@ -585,25 +599,25 @@ export class SolutionModel {
   /**
    * Gets whether the tree follows the active document.
    */
-  public readonly followsActiveDocument: Signal<boolean> = this.syncWithActive.asReadonly();
+  public readonly followsActiveDocument: Signal<boolean> = this.syncWithActive.on;
 
   /**
    * Gets whether rows carry their git change badge.
    */
-  public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.asReadonly();
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.on;
 
   /**
    * Toggles whether the tree follows the active document.
    */
   public toggleFollowActiveDocument(): void {
-    this.syncWithActive.update((value: boolean): boolean => !value);
+    this.syncWithActive.toggle();
   }
 
   /**
    * Toggles whether rows carry their git change badge.
    */
   public toggleGitStatus(): void {
-    this.gitStatusShown.update((value: boolean): boolean => !value);
+    this.gitStatusShown.toggle();
   }
 
   /**
@@ -1106,7 +1120,26 @@ export class SolutionModel {
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     const folders: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'folder');
     const projects: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'project');
-    return [...folders.sort(byName), ...projects.sort(byName)];
+    return explorerSorted(
+      [...folders.sort(byName), ...projects.sort(byName)],
+      (node: ProjectNode): boolean => node.type === 'folder',
+      byName,
+      this.settings.value('workspaces.sortOrder')(),
+    );
+  }
+
+  /**
+   * Orders a project's items by Sort Order.
+   * @param nodes The item nodes, as the project lists them.
+   * @returns Returns the nodes in display order.
+   */
+  private orderedItems(nodes: readonly ProjectItemNode[]): readonly ProjectItemNode[] {
+    return explorerSorted(
+      nodes,
+      (node: ProjectItemNode): boolean => node.type === 'folder',
+      (a: ProjectItemNode, b: ProjectItemNode): number => a.name.localeCompare(b.name),
+      this.settings.value('workspaces.sortOrder')(),
+    );
   }
 
   /**
@@ -1151,7 +1184,7 @@ export class SolutionModel {
     parentKey: string,
     rows: SolutionRow[],
   ): void {
-    for (const node of nodes) {
+    for (const node of this.orderedItems(nodes)) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const expanded: boolean = this.expandedKeys().has(key);
@@ -1279,7 +1312,7 @@ export class SolutionModel {
     query: string,
   ): boolean {
     let matched: boolean = false;
-    for (const node of nodes) {
+    for (const node of this.orderedItems(nodes)) {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const childRows: SolutionRow[] = [];

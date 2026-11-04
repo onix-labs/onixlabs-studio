@@ -109,6 +109,22 @@ const VARIANT_REMOVE_PASSPHRASE: string = 'remove-passphrase';
           [disabled]="!commands.canExecute()"
           (action)="commands.execute()"
         />
+        @if (commands.manualTransactions() || commands.transactionOpen()) {
+          <app-ribbon-strip-column>
+            <app-ribbon-strip-button-small
+              [icon]="Icon.CHECK"
+              label="Commit"
+              [disabled]="!commands.transactionOpen()"
+              (action)="commands.commit()"
+            />
+            <app-ribbon-strip-button-small
+              [icon]="Icon.UNDO"
+              label="Rollback"
+              [disabled]="!commands.transactionOpen()"
+              (action)="commands.rollback()"
+            />
+          </app-ribbon-strip-column>
+        }
       </app-ribbon-strip-group>
       <!-- The agent's toggle, lit while its panel shows; the other panels, and Reset Layout, are in
            the app's View menu. -->
@@ -255,6 +271,29 @@ export class DatabaseExplorerRibbon {
             enabled: this.commands.canExecute(),
             run: (): void => this.commands.execute(),
           },
+          {
+            id: 'database.executeStatement',
+            label: 'Execute Current Statement',
+            enabled: this.commands.canExecute() && !this.commands.executing(),
+            run: (): void => this.commands.executeStatement(),
+          },
+          ...(this.commands.manualTransactions() || this.commands.transactionOpen()
+            ? [
+                MENU_SEPARATOR,
+                {
+                  id: 'database.commit',
+                  label: 'Commit Transaction',
+                  enabled: this.commands.transactionOpen(),
+                  run: (): void => this.commands.commit(),
+                },
+                {
+                  id: 'database.rollback',
+                  label: 'Roll Back Transaction',
+                  enabled: this.commands.transactionOpen(),
+                  run: (): void => this.commands.rollback(),
+                },
+              ]
+            : []),
         ],
       },
       {

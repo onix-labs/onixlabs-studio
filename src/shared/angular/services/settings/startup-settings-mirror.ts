@@ -30,6 +30,23 @@ export class StartupSettingsMirror {
     restoreFullScreen: this.settings.value('application.restoreFullScreen')(),
     cornerStyle: this.settings.value('application.cornerStyle')(),
     confirmExternalLinks: this.settings.value('privacy.confirmExternalLinks')(),
+    addStudioUserFileToGitignore: this.settings.value('workspaces.addStudioUserFileToGitignore')(),
+    projectScanDepth: this.settings.value('workspaces.projectScanDepth')(),
+    logFileSizeMb: this.settings.value('systemMonitor.logFileSizeMb')(),
+    logRotatedCopies: this.settings.value('systemMonitor.logRotatedCopies')(),
+    keepSessionLogsDays: this.settings.value('systemMonitor.keepSessionLogsDays')(),
+    liveLogRecords: this.settings.value('systemMonitor.liveLogRecords')(),
+    containerEngineAddress:
+      this.settings.value('containers.engineAddressMode')() === 'custom'
+        ? this.settings.value('containers.engineAddress')()
+        : '',
+    ollamaAddress: this.settings.value('aiManager.ollamaAddress')(),
+    ollamaModelsFolder: this.settings.value('aiManager.modelsFolder')(),
+    ollamaRuntimeFolder: this.settings.value('aiManager.runtimeFolder')(),
+    ollamaStopOnQuit: this.settings.value('aiManager.stopRuntimeOnQuit')(),
+    ollamaStart: this.settings.value('aiManager.startRuntime')(),
+    ollamaKeepAliveMinutes: this.settings.value('aiManager.keepModelsLoadedMinutes')(),
+    skillLibraryFolder: this.settings.value('aiManager.skillLibraryFolder')(),
   }));
 
   /**

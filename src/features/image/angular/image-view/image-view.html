@@ -31,6 +31,12 @@
           [value]="resizeUnit()"
           (valueChange)="onResizeUnit($event)"
         />
+        <app-dropdown
+          ariaLabel="Resampling"
+          [options]="resamplings"
+          [value]="resizeResampling()"
+          (valueChange)="onResizeResampling($event)"
+        />
         @if (resizeUnit() === 'px') {
           <span class="image-view__label">Width</span>
           <app-number-field
@@ -134,12 +140,13 @@
             #stage
             class="image-view__stage"
             [class]="'image-view__stage--' + background()"
+            [style.--image-checker-size]="checkerSize()"
             [style.width.px]="stageSize()?.width"
             [style.height.px]="stageSize()?.height"
           >
             <img
               class="image-view__image"
-              [class.image-view__image--pixelated]="scale() >= 4"
+              [class.image-view__image--pixelated]="pixelated()"
               [src]="image.displayUrl()"
               [alt]="image.fileName"
               draggable="false"

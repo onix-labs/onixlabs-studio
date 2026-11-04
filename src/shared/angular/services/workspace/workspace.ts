@@ -1,4 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { RememberedSwitch } from '@shared/angular/services/explorer-filter/remembered-switch';
+import { explorerSorted } from './explorer-sort';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
@@ -255,35 +257,41 @@ export class Workspace {
    * Holds whether the tree follows the active document. On by default, as it always was before it could
    * be turned off; the Solution Explorer has the same switch.
    */
-  private readonly followingActive: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly followingActive: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.followActiveDocument',
+    true,
+  );
 
   /**
    * Holds whether rows are coloured by how version control sees them.
    */
-  private readonly gitStatusVisible: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly gitStatusVisible: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.showGitStatus',
+    true,
+  );
 
   /**
    * Gets whether the tree follows the active document, revealing it as the editor's tab changes.
    */
-  public readonly followsActiveDocument: Signal<boolean> = this.followingActive.asReadonly();
+  public readonly followsActiveDocument: Signal<boolean> = this.followingActive.on;
 
   /**
    * Gets whether rows are coloured by how version control sees them.
    */
-  public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.asReadonly();
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.on;
 
   /**
    * Toggles whether the tree follows the active document.
    */
   public toggleFollowActiveDocument(): void {
-    this.followingActive.update((value: boolean): boolean => !value);
+    this.followingActive.toggle();
   }
 
   /**
    * Toggles whether rows are coloured by how version control sees them.
    */
   public toggleGitStatus(): void {
-    this.gitStatusVisible.update((value: boolean): boolean => !value);
+    this.gitStatusVisible.toggle();
   }
 
   /**
@@ -708,10 +716,15 @@ export class Workspace {
    * and filesystem allow it. The result's `trashed` flag says which happened, so a caller can report
    * an unrecoverable removal honestly rather than promising a Trash the entry never reached.
    * @param path The absolute path of the entry to delete.
+   * @param permanent Whether to skip the trash: Move to Trash turned off, and confirmed as such.
    * @returns Returns the result describing success and how the entry went, or the failure's message.
    */
-  public delete(path: string): Promise<FileOperationResult> {
-    return this.mutate(WorkspaceChannel.Delete, this.parentDirectory(path), [path]);
+  public delete(path: string, permanent: boolean = false): Promise<FileOperationResult> {
+    return this.mutate(
+      WorkspaceChannel.Delete,
+      this.parentDirectory(path),
+      permanent ? [path, true] : [path],
+    );
   }
 
   /**
@@ -1009,14 +1022,29 @@ export class Workspace {
   }
 
   /**
-   * Flattens the visible tree into depth-tagged rows, pruning collapsed and unloaded subtrees.
+   * Orders one folder's nodes by Sort Order: applied here rather than to the listing, so changing it
+   * needs no re-read.
+   * @param nodes The nodes, as listed.
+   * @returns Returns the nodes in display order.
+   */
+  private sorted(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
+    return explorerSorted(
+      nodes,
+      (node: WorkspaceTreeNode): boolean => node.type === 'directory',
+      (a: WorkspaceTreeNode, b: WorkspaceTreeNode): number => a.name.localeCompare(b.name),
+      this.settings.value('workspaces.sortOrder')(),
+    );
+  }
+
+  /**
+   * Flattens the visible tree into rows, in Sort Order.
    * @param nodes The nodes to flatten.
    * @param depth The depth of these nodes beneath the root.
-   * @returns Returns the flattened rows in render order.
+   * @returns Returns the rows in render order.
    */
   private flatten(nodes: readonly WorkspaceTreeNode[], depth: number): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of nodes) {
+    for (const node of this.sorted(nodes)) {
       const expanded: boolean = node.type === 'directory' && node.expanded;
       rows.push({ node, depth, expanded });
       if (expanded && node.children !== null) {
@@ -1042,7 +1070,7 @@ export class Workspace {
     query: string,
   ): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
-    for (const node of nodes) {
+    for (const node of this.sorted(nodes)) {
       const selfMatch: boolean = node.name.toLowerCase().includes(query);
       if (node.type === 'directory') {
         const childRows: readonly WorkspaceTreeRow[] =

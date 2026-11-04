@@ -1,4 +1,6 @@
 import { computed, inject, Service, Signal } from '@angular/core';
+import type { StudioCrepeBehaviour } from '@shared/angular/milkdown/create-studio-crepe';
+import type { MermaidAppearance } from '@shared/angular/milkdown/mermaid-plugin';
 import {
   ImageAlignment,
   ImageSizing,
@@ -6,6 +8,7 @@ import {
   MarkdownEditorSettings,
   Settings,
 } from '@shared/angular/services/settings/settings';
+import type { MarkdownHeadingScale } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Holds the system default sans-serif font stack applied when the markdown body font is unset.
@@ -23,6 +26,15 @@ const SYSTEM_MONOSPACE: string =
  * Holds the sentinel font-family value that resolves to the system sans-serif stack.
  */
 const SYSTEM_DEFAULT_FONT: string = 'System Default';
+
+/**
+ * Holds how far headings grow beyond body text at each Heading Size Scale, Standard being as designed.
+ */
+const HEADING_SCALE: Readonly<Record<MarkdownHeadingScale, number>> = {
+  compact: 0.6,
+  standard: 1,
+  large: 1.3,
+};
 
 /**
  * Resolves the markdown editor's settings into the CSS custom properties and layout values the
@@ -66,6 +78,47 @@ export class Milkdown {
   );
 
   /**
+   * Gets the choices that shape the editor as it is built.
+   */
+  public readonly behaviour: Signal<StudioCrepeBehaviour> = computed((): StudioCrepeBehaviour => ({
+    convertEmoji: this.settings.get('markdownEditor.convertEmoji'),
+    convertAlerts: this.settings.get('markdownEditor.convertAlerts'),
+    subSuperscriptShortcuts: this.settings.get('markdownEditor.subSuperscriptShortcuts'),
+    colourSwatches: this.settings.get('markdownEditor.colourSwatches'),
+    floatingToolbar: this.settings.get('markdownEditor.floatingToolbar'),
+    blockHandles: this.settings.get('markdownEditor.blockHandles'),
+    slashMenu: this.settings.get('markdownEditor.slashMenu'),
+    smartPunctuation: this.settings.get('markdownEditor.smartPunctuation'),
+    undoHistory: this.settings.get('markdownEditor.undoHistory'),
+    renderHtmlBlocks: this.settings.get('markdownEditor.renderHtmlBlocks') === 'safe',
+    codeBlockLineNumbers: this.settings.get('markdownEditor.codeBlockLineNumbers'),
+    mathPreview: this.settings.get('markdownEditor.mathBlocks') === 'preview',
+    cursorBlinking: this.settings.get('markdownEditor.cursorBlinking'),
+    openLinks: this.settings.get('markdownEditor.openLinks'),
+    defaultPaste: this.settings.get('markdownEditor.defaultPaste'),
+    richPaste: this.settings.get('markdownEditor.richPaste'),
+  }));
+
+  /**
+   * Gets how Mermaid diagrams are drawn.
+   */
+  public readonly mermaidAppearance: Signal<MermaidAppearance> = computed(
+    (): MermaidAppearance => ({
+      theme: this.settings.get('markdownEditor.mermaidTheme'),
+      fontFamily: this.settings.get('markdownEditor.mermaidBodyFont')
+        ? this.resolveFontFamily(this.markdownSettings().fontFamily)
+        : null,
+    }),
+  );
+
+  /**
+   * Gets a value that changes whenever the editor has to be built again to honour its settings.
+   */
+  public readonly buildSignature: Signal<string> = computed((): string =>
+    JSON.stringify([this.behaviour(), this.mermaidAppearance()]),
+  );
+
+  /**
    * Builds the CSS custom properties applied to the `.milkdown` element so the editor honours the
    * configured fonts and base size.
    * @returns Returns a map of custom property names to their resolved values.
@@ -76,6 +129,13 @@ export class Milkdown {
       '--markdown-font-family': this.resolveFontFamily(settings.fontFamily),
       '--markdown-monospace-font': this.resolveMonospaceFont(settings.monospaceFontFamily),
       '--markdown-font-size': `${settings.fontSize}px`,
+      '--markdown-line-height': String(this.settings.get('markdownEditor.paragraphLineHeight')),
+      '--markdown-heading-scale': String(
+        HEADING_SCALE[this.settings.get('markdownEditor.headingScale')],
+      ),
+      '--markdown-link-underline':
+        this.settings.get('markdownEditor.underlineLinks') === 'always' ? 'underline' : 'none',
+      '--markdown-image-max-width': `${this.settings.get('markdownEditor.maxImageWidth')}%`,
     };
   }
 

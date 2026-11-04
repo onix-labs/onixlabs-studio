@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addCheckoutEntry,
   defaultWorktreeConfig,
+  checkoutIdForBranch,
   isSafeCheckoutId,
   mintCheckoutId,
   parseWorktreeConfig,
@@ -22,10 +23,26 @@ describe('mintCheckoutId', () => {
   });
 });
 
+describe('checkoutIdForBranch', () => {
+  it('namesTheCheckoutAfterItsBranch', () => {
+    expect(checkoutIdForBranch('feature/login page', [])).toBe('feature-login-page');
+  });
+
+  it('numbersANameAlreadyTaken_withoutRegardToCase', () => {
+    expect(checkoutIdForBranch('main', ['Main', 'main-2'])).toBe('main-3');
+  });
+
+  it('mintsAnIdWithoutAUsableName', () => {
+    expect(isSafeCheckoutId(checkoutIdForBranch(undefined, []))).toBe(true);
+    expect(isSafeCheckoutId(checkoutIdForBranch('///', []))).toBe(true);
+  });
+});
+
 describe('isSafeCheckoutId', () => {
-  it('acceptsTheExactUuidShape', () => {
+  it('acceptsTheMintedUuidShape_andAFolderNamedAfterABranch', () => {
     expect(isSafeCheckoutId('01234567-89ab-cdef-0123-456789abcdef')).toBe(true);
     expect(isSafeCheckoutId('01234567-89AB-CDEF-0123-456789ABCDEF')).toBe(true);
+    expect(isSafeCheckoutId('feature-login_1.2')).toBe(true);
   });
 
   it('rejectsTraversalSeparatorsAndMalformedValues', () => {
@@ -34,7 +51,8 @@ describe('isSafeCheckoutId', () => {
     expect(isSafeCheckoutId('../evil')).toBe(false);
     expect(isSafeCheckoutId('a/b')).toBe(false);
     expect(isSafeCheckoutId('a\\b')).toBe(false);
-    expect(isSafeCheckoutId('not-a-uuid')).toBe(false);
+    expect(isSafeCheckoutId('.studio')).toBe(false);
+    expect(isSafeCheckoutId('-rf')).toBe(false);
     expect(isSafeCheckoutId(42)).toBe(false);
     expect(isSafeCheckoutId(null)).toBe(false);
   });

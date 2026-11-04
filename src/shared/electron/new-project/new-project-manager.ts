@@ -12,11 +12,17 @@ import {
   PickedDocuments,
   ProjectDocument,
 } from '@shared/api/new-project-channels';
+import {
+  InitialRepositoryFiles,
+  parseInitialFiles,
+  RepositoryFile,
+  repositoryFiles,
+} from '@shared/api/repository-files';
 import { STUDIO_DIR } from '@shared/api/studio';
 import type { VersionControlResponse } from '@shared/api/version-control-protocol';
 import {
+  checkoutIdForBranch,
   defaultWorktreeConfig,
-  mintCheckoutId,
   serializeWorktreeConfig,
   parseWorktreeConfig,
   WORKTREE_CONFIG_FILE,
@@ -59,6 +65,7 @@ export class NewProjectManager {
    * @param versionControl The version-control host, which makes a local repository.
    * @param trusted The trusted paths, which a new folder joins.
    * @param window Gets the window a dialog belongs to when no sender is known.
+   * @param file The file the Default Projects Folder is remembered in; without one it lasts the session.
    */
   public constructor(
     private readonly clones: CloneManager,
@@ -66,7 +73,47 @@ export class NewProjectManager {
     private readonly versionControl: VersionControlHost,
     private readonly trusted: TrustedPaths,
     private readonly window: () => Electron.BrowserWindow | null = (): null => null,
-  ) {}
+    private readonly file: string | null = null,
+  ) {
+    this.defaultParent = file === null ? null : loadParent(file);
+  }
+
+  /**
+   * Holds the Default Projects Folder, or null before one is chosen: until then projects go where
+   * clones do, which is where they went before they had a folder of their own.
+   */
+  private defaultParent: string | null;
+
+  /**
+   * Holds the folder the user chose for the project in hand, or null. It does not change the default.
+   */
+  private pickedParent: string | null = null;
+
+  /**
+   * Gets the folder the project in hand is made in.
+   * @returns Returns the folder, when it still exists, or null.
+   */
+  public parent(): string | null {
+    const chosen: string | null = this.pickedParent ?? this.defaultParent;
+    return chosen !== null && fs.existsSync(chosen) ? chosen : this.clones.parent();
+  }
+
+  /**
+   * Asks the user for a folder, in this process's own dialog.
+   * @param sender The web contents that asked, whose window the dialog belongs to.
+   * @param title The dialog's title.
+   * @returns Returns the folder, or null when the dialog was cancelled.
+   */
+  private async pickFolder(sender: WebContents, title: string): Promise<string | null> {
+    const current: string | null = this.parent();
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.window, {
+      title,
+      buttonLabel: 'Choose',
+      properties: ['openDirectory', 'createDirectory'],
+      ...(current === null ? {} : { defaultPath: current }),
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  }
 
   /**
    * Registers the project IPC handlers.
@@ -80,6 +127,31 @@ export class NewProjectManager {
     ipcMain.handle(
       NewProjectChannel.PickDocuments,
       (event: IpcMainInvokeEvent): Promise<PickedDocuments> => this.pickDocuments(event.sender),
+    );
+    ipcMain.handle(NewProjectChannel.Parent, (): string | null => this.parent());
+    ipcMain.handle(
+      NewProjectChannel.PickParent,
+      async (event: IpcMainInvokeEvent): Promise<string | null> => {
+        const chosen: string | null = await this.pickFolder(event.sender, 'Choose where it goes');
+        this.pickedParent = chosen ?? this.pickedParent;
+        return chosen;
+      },
+    );
+    ipcMain.handle(
+      NewProjectChannel.PickDefaultParent,
+      async (event: IpcMainInvokeEvent): Promise<string | null> => {
+        const chosen: string | null = await this.pickFolder(
+          event.sender,
+          'Choose the Default Projects Folder',
+        );
+        if (chosen !== null) {
+          this.defaultParent = chosen;
+          if (this.file !== null) {
+            saveParent(this.file, chosen);
+          }
+        }
+        return chosen;
+      },
     );
   }
 
@@ -108,7 +180,7 @@ export class NewProjectManager {
     if (typeof parsed === 'string') {
       return { ok: false, error: parsed };
     }
-    const parent: string | null = this.clones.parent();
+    const parent: string | null = this.parent();
     if (parent === null) {
       return { ok: false, error: 'Choose where the project goes first.' };
     }
@@ -119,12 +191,21 @@ export class NewProjectManager {
     logger.info('NewProjectManager', `Creating ${destination} (${parsed.repository.kind})`);
     const outcome: NewProjectOutcome =
       parsed.repository.kind === 'hosted'
-        ? await this.createHosted(parsed, parsed.repository)
+        ? await this.createHosted(parsed, parsed.repository, parent)
         : parsed.repository.kind === 'local'
           ? await this.createLocal(destination, parsed.repository.layout, parsed.defaultBranch)
           : this.createFolder(destination);
     if (outcome.ok) {
       logger.info('NewProjectManager', `Created ${outcome.path}`);
+      this.pickedParent = null;
+      if (parsed.initialFiles !== undefined && parsed.repository.kind !== 'none') {
+        await this.addInitialFiles(
+          outcome.path,
+          parsed.name,
+          parsed.initialFiles,
+          parsed.repository.kind === 'hosted',
+        );
+      }
       if (parsed.handoff !== undefined) {
         writeHandoff(outcome.path, parsed.handoff);
       }
@@ -169,7 +250,7 @@ export class NewProjectManager {
         error: 'No version-control plugin is installed. Install Git from the Plugin Manager.',
       };
     }
-    const id: string = mintCheckoutId();
+    const id: string = checkoutIdForBranch(defaultBranch, []);
     const repository: string = layout === 'worktree' ? path.join(destination, id) : destination;
     try {
       fs.mkdirSync(repository, { recursive: true });
@@ -210,11 +291,13 @@ export class NewProjectManager {
    * Has the code host make the repository, then clones it into the project's folder.
    * @param request The project.
    * @param repository Its hosted repository.
+   * @param parent The folder it is made in.
    * @returns Returns the outcome.
    */
   private async createHosted(
     request: NewProjectRequest,
     repository: Extract<NewProjectRequest['repository'], { kind: 'hosted' }>,
+    parent: string,
   ): Promise<NewProjectOutcome> {
     const made: ForgeResult<HostedRepository> = await this.hosting.createRepository(
       repository.host,
@@ -228,11 +311,14 @@ export class NewProjectManager {
         error: `${repository.host} could not make the repository: ${made.error}`,
       };
     }
-    const cloned: CloneOutcome = await this.clones.clone({
-      url: made.value.cloneUrl,
-      name: request.name,
-      layout: repository.layout,
-    });
+    const cloned: CloneOutcome = await this.clones.clone(
+      {
+        url: made.value.cloneUrl,
+        name: request.name,
+        layout: repository.layout,
+      },
+      parent,
+    );
     return cloned.ok
       ? cloned
       : {
@@ -240,6 +326,102 @@ export class NewProjectManager {
           error: `The repository was made at ${made.value.webUrl}, but it could not be cloned: ${cloned.error}`,
         };
   }
+
+  /**
+   * Writes the files a new repository starts with and, when asked, commits them — pushing a hosted
+   * one's. Best-effort, like the handoff: the project is made either way, and what could not be done
+   * is logged rather than undoing it.
+   * @param project The project's folder.
+   * @param name The project's name.
+   * @param choices What it starts with.
+   * @param hosted Whether its repository has a remote to push to.
+   */
+  private async addInitialFiles(
+    project: string,
+    name: string,
+    choices: InitialRepositoryFiles,
+    hosted: boolean,
+  ): Promise<void> {
+    const folder: string = workingFolder(project);
+    const written: string[] = [];
+    for (const file of repositoryFiles(choices, name, new Date().getFullYear())) {
+      if (writeRepositoryFile(folder, file)) {
+        written.push(file.name);
+      }
+    }
+    const plugin: VersionControlDescriptor | null = this.versionControl.preferredPlugin();
+    if (!choices.commit || written.length === 0 || plugin === null) {
+      return;
+    }
+    const problem: string | null = await this.versionControl.firstCommitInChosenFolder(
+      plugin.id,
+      folder,
+      written,
+      'Initial commit',
+      hosted,
+    );
+    if (problem !== null) {
+      logger.warn('NewProjectManager', `The first commit was not made: ${problem}`);
+    }
+  }
+}
+
+/**
+ * Writes one of a new repository's files, leaving one already there alone.
+ * @param folder The folder.
+ * @param file The file.
+ * @returns Returns true when it was written.
+ */
+function writeRepositoryFile(folder: string, file: RepositoryFile): boolean {
+  try {
+    fs.writeFileSync(path.join(folder, file.name), file.text, { encoding: 'utf8', flag: 'wx' });
+    return true;
+  } catch (error: unknown) {
+    logger.warn('NewProjectManager', `${file.name} could not be written: ${message(error)}`);
+    return false;
+  }
+}
+
+/**
+ * Reads the remembered Default Projects Folder.
+ * @param file The file it is remembered in.
+ * @returns Returns the folder, or null.
+ */
+function loadParent(file: string): string | null {
+  try {
+    const parent: unknown = (JSON.parse(fs.readFileSync(file, 'utf8')) as { parent?: unknown })
+      .parent;
+    return typeof parent === 'string' && path.isAbsolute(parent) ? parent : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remembers the Default Projects Folder.
+ * @param file The file to remember it in.
+ * @param parent The folder.
+ */
+function saveParent(file: string, parent: string): void {
+  try {
+    fs.writeFileSync(file, JSON.stringify({ parent }), 'utf8');
+  } catch (error: unknown) {
+    logger.warn('NewProjectManager', `The projects folder was not saved: ${message(error)}`);
+  }
+}
+
+/**
+ * Finds where a new project's agent works: the folder itself, or, for a worktree container, its first
+ * checkout.
+ * @param project The project's folder.
+ * @returns Returns the folder.
+ */
+function workingFolder(project: string): string {
+  const config: string = path.join(project, STUDIO_DIR, WORKTREE_CONFIG_FILE);
+  const first: string | undefined = fs.existsSync(config)
+    ? parseWorktreeConfig(JSON.parse(fs.readFileSync(config, 'utf8')) as unknown).checkouts[0]?.id
+    : undefined;
+  return first === undefined ? project : path.join(project, first);
 }
 
 /**
@@ -252,7 +434,10 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   if (typeof value !== 'object' || value === null) {
     return 'No project was described.';
   }
-  const { name, repository, handoff, defaultBranch } = value as Record<string, unknown>;
+  const { name, repository, handoff, defaultBranch, initialFiles } = value as Record<
+    string,
+    unknown
+  >;
   if (typeof name !== 'string' || !FOLDER_NAME.test(name)) {
     return 'The project name must be a single folder name, without slashes.';
   }
@@ -263,8 +448,10 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
     return 'The handoff is not one that can be written.';
   }
   // A branch name is passed to git as an operand, so one that could be read as an option is dropped.
-  const withHandoff: Pick<NewProjectRequest, 'handoff' | 'defaultBranch'> = {
+  const parsedFiles: InitialRepositoryFiles | undefined = parseInitialFiles(initialFiles);
+  const withHandoff: Pick<NewProjectRequest, 'handoff' | 'defaultBranch' | 'initialFiles'> = {
     ...(typeof handoff === 'string' ? { handoff } : {}),
+    ...(parsedFiles === undefined ? {} : { initialFiles: parsedFiles }),
     ...(typeof defaultBranch === 'string' && BRANCH_NAME.test(defaultBranch)
       ? { defaultBranch }
       : {}),
@@ -318,11 +505,7 @@ export const HANDOFF_FILE: string = 'handoff.md';
  */
 export function writeHandoff(project: string, handoff: string): void {
   try {
-    const config: string = path.join(project, STUDIO_DIR, WORKTREE_CONFIG_FILE);
-    const first: string | undefined = fs.existsSync(config)
-      ? parseWorktreeConfig(JSON.parse(fs.readFileSync(config, 'utf8')) as unknown).checkouts[0]?.id
-      : undefined;
-    const folder: string = first === undefined ? project : path.join(project, first);
+    const folder: string = workingFolder(project);
     fs.writeFileSync(path.join(folder, HANDOFF_FILE), handoff, { encoding: 'utf8', flag: 'wx' });
     logger.info('NewProjectManager', `Wrote the handoff into ${folder}`);
   } catch (error: unknown) {

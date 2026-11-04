@@ -1,5 +1,7 @@
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { SaveBeforeRun } from '@shared/angular/services/settings/settings-registry';
 
 /**
  * Defines the document commands the directory (workspace) ribbon's File group can invoke on the
@@ -27,6 +29,16 @@ export interface WorkspaceDocumentCommandHandler {
    * Saves every document in the well that has unsaved changes.
    */
   saveAll(): void;
+
+  /**
+   * Gets whether any document in the well with a file has unsaved changes.
+   */
+  hasUnsavedFiles(): boolean;
+
+  /**
+   * Saves the documents in the well with a file and unsaved changes, leaving those never saved alone.
+   */
+  saveFiles(): Promise<void>;
 }
 
 /**
@@ -45,6 +57,25 @@ export class WorkspaceDocumentCommands {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, for Save Documents Before Run or Build.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the run or build waiting on the answer to the ribbon's save question, or null.
+   */
+  private readonly pendingRun: WritableSignal<(() => void) | null> = signal<(() => void) | null>(
+    null,
+  );
+
+  /**
+   * Gets whether the ribbon is to ask about saving before a run or build.
+   */
+  public readonly askingToSave: Signal<boolean> = computed(
+    (): boolean => this.pendingRun() !== null,
+  );
 
   /**
    * Holds the active workspace's command handler, or null when no directory tab is active.
@@ -90,6 +121,40 @@ export class WorkspaceDocumentCommands {
   public save(): void {
     this.log.info('workspace.document', 'Save active document invoked');
     this.handler()?.save();
+  }
+
+  /**
+   * Runs what a run or build should do once Save Documents Before Run or Build has had its say, at
+   * once when it has nothing to do. Ask raises the ribbon's question, and Cancel there runs nothing.
+   * @param proceed Starts the run or build.
+   */
+  public afterSaving(proceed: () => void): void {
+    const choice: SaveBeforeRun = this.settings.get('workspaces.saveBeforeRun');
+    const handler: WorkspaceDocumentCommandHandler | null = this.handler();
+    if (choice === 'never' || handler?.hasUnsavedFiles() !== true) {
+      proceed();
+    } else if (choice === 'always') {
+      void handler.saveFiles().then(proceed);
+    } else {
+      this.pendingRun.set(proceed);
+    }
+  }
+
+  /**
+   * Answers the Save Documents Before Run or Build question.
+   * @param answer Save and run, run without saving, or cancel the run.
+   */
+  public answerSaveQuestion(answer: 'save' | 'skip' | 'cancel'): void {
+    const proceed: (() => void) | null = this.pendingRun();
+    this.pendingRun.set(null);
+    if (proceed === null || answer === 'cancel') {
+      return;
+    }
+    if (answer === 'skip') {
+      proceed();
+    } else {
+      void this.handler()?.saveFiles().then(proceed);
+    }
   }
 
   /**

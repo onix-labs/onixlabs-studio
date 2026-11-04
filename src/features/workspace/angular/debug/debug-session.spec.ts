@@ -317,6 +317,40 @@ describe('DebugSession', () => {
     });
   });
 
+  it('launch_stopAtEntry_tellsTheAdapterInBothItsSpellings', async () => {
+    const session: DebugSession = build();
+    session.launch({ ...config(), stopAtEntry: true });
+    await flush();
+
+    expect(bridge.requests().find((r) => r.command === 'launch')?.args).toMatchObject({
+      stopOnEntry: true,
+      stopAtEntry: true,
+    });
+  });
+
+  it('onInitialized_asksForTheExceptionsChosen_inTheAdaptersOwnFilterNames', async () => {
+    bridge.startResult = {
+      success: true,
+      capabilities: {
+        exceptionBreakpointFilters: [
+          { filter: 'all', label: 'All Exceptions' },
+          { filter: 'user-unhandled', label: 'User-Unhandled Exceptions' },
+        ],
+      },
+    };
+    const session: DebugSession = build();
+    session.launch(config());
+    await flush();
+    const sessionId: string = currentSessionId(bridge);
+
+    bridge.emit(DebugChannel.Event, sessionIdEvent(sessionId, 'initialized'));
+    await flush();
+
+    expect(bridge.requests().find((r) => r.command === 'setExceptionBreakpoints')?.args).toEqual({
+      filters: ['user-unhandled'],
+    });
+  });
+
   it('onInitialized_sendsConfigurationDoneWhenSupported', async () => {
     bridge.startResult = {
       success: true,

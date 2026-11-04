@@ -5,6 +5,7 @@ import type { PassphraseLock, SealedSecrets } from '@shared/api/database-documen
 import {
   CompletionName,
   ConnectionValues,
+  ConnectOptions,
   ConnectOutcome,
   DatabaseEngineInfo,
   DatabaseValue,
@@ -14,6 +15,9 @@ import {
   FetchRequest,
   NamesRequest,
   NodeActionOutcome,
+  TransactionOutcome,
+  TransactionRequest,
+  TreeOptions,
 } from '@shared/api/database-engine-protocol';
 import { pluginNodeRuntime } from '../../plugin-node-runtime';
 import { ContributionContext, MainContribution } from '../main-contribution';
@@ -87,7 +91,11 @@ export class DatabaseContribution implements MainContribution {
     context.handle(
       DatabaseChannel.Connect,
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<ConnectOutcome> =>
-        this.connect(args[0] as string, args[1] as ConnectionValues),
+        this.connect(
+          args[0] as string,
+          args[1] as ConnectionValues,
+          args[2] as ConnectOptions | undefined,
+        ),
     );
     context.handle(
       DatabaseChannel.Test,
@@ -95,6 +103,7 @@ export class DatabaseContribution implements MainContribution {
         const outcome: ConnectOutcome = await this.connect(
           args[0] as string,
           args[1] as ConnectionValues,
+          args[2] as ConnectOptions | undefined,
         );
         if (outcome.kind === 'connected') {
           await this.disconnect(outcome.session);
@@ -110,7 +119,11 @@ export class DatabaseContribution implements MainContribution {
     context.handle(
       DatabaseChannel.Expand,
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<ExpandOutcome> =>
-        this.expand(args[0] as string, args[1] as string | null),
+        this.expand(
+          args[0] as string,
+          args[1] as string | null,
+          args[2] as TreeOptions | undefined,
+        ),
     );
     context.handle(
       DatabaseChannel.Execute,
@@ -135,7 +148,17 @@ export class DatabaseContribution implements MainContribution {
     context.handle(
       DatabaseChannel.Action,
       (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<NodeActionOutcome> =>
-        this.action(args[0] as string, args[1] as string, args[2] as string),
+        this.action(
+          args[0] as string,
+          args[1] as string,
+          args[2] as string,
+          args[3] as TreeOptions | undefined,
+        ),
+    );
+    context.handle(
+      DatabaseChannel.Transaction,
+      (_event: IpcMainInvokeEvent, ...args: unknown[]): Promise<TransactionOutcome> =>
+        this.transaction(args[0] as TransactionRequest),
     );
     context.handle(
       DatabaseChannel.Names,
@@ -287,14 +310,22 @@ export class DatabaseContribution implements MainContribution {
    * Opens a connection with an engine.
    * @param engineId The engine's id.
    * @param values The connection's field values, secrets included.
+   * @param options How Studio wants it opened.
    * @returns Returns a promise resolving the session, or why there is none.
    */
-  private async connect(engineId: string, values: ConnectionValues): Promise<ConnectOutcome> {
+  private async connect(
+    engineId: string,
+    values: ConnectionValues,
+    options?: ConnectOptions,
+  ): Promise<ConnectOutcome> {
     const client: DatabaseEngineClient | null = this.client(engineId);
     if (client === null) {
       return { kind: 'failure', message: `No database engine named '${engineId}' is installed.` };
     }
-    const outcome: DatabaseEngineOutcome<ConnectOutcome> = await client.call('connect', { values });
+    const outcome: DatabaseEngineOutcome<ConnectOutcome> = await client.call('connect', {
+      values,
+      ...(options === undefined ? {} : { options }),
+    });
     if (!outcome.ok) {
       return { kind: 'failure', message: outcome.error };
     }
@@ -323,9 +354,14 @@ export class DatabaseContribution implements MainContribution {
    * Lists a node's children.
    * @param sessionId The session.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the children, or why they could not be read.
    */
-  private async expand(sessionId: string, path: string | null): Promise<ExpandOutcome> {
+  private async expand(
+    sessionId: string,
+    path: string | null,
+    options?: TreeOptions,
+  ): Promise<ExpandOutcome> {
     const target: { client: DatabaseEngineClient; open: OpenSession } | null =
       this.target(sessionId);
     if (target === null) {
@@ -334,6 +370,7 @@ export class DatabaseContribution implements MainContribution {
     const outcome: DatabaseEngineOutcome<ExpandOutcome> = await target.client.call('expand', {
       session: target.open.session,
       path,
+      ...(options === undefined ? {} : { options }),
     });
     return outcome.ok ? outcome.result : { kind: 'failure', message: outcome.error };
   }
@@ -384,12 +421,14 @@ export class DatabaseContribution implements MainContribution {
    * @param sessionId The session.
    * @param path The node's path.
    * @param action The action's id.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving what it produced.
    */
   private async action(
     sessionId: string,
     path: string,
     action: string,
+    options?: TreeOptions,
   ): Promise<NodeActionOutcome> {
     const target: { client: DatabaseEngineClient; open: OpenSession } | null =
       this.target(sessionId);
@@ -400,8 +439,28 @@ export class DatabaseContribution implements MainContribution {
       session: target.open.session,
       path,
       action,
+      ...(options === undefined ? {} : { options }),
     });
     return outcome.ok ? outcome.result : { kind: 'failure', message: outcome.error };
+  }
+
+  /**
+   * Commits or rolls back the transaction an execution left open.
+   * @param request What to do, naming this host's session.
+   * @returns Returns a promise resolving what it came to.
+   */
+  private async transaction(request: TransactionRequest): Promise<TransactionOutcome> {
+    const target: { client: DatabaseEngineClient; open: OpenSession } | null = this.target(
+      request.session,
+    );
+    if (target === null) {
+      return { failed: true, message: 'The connection is closed, so the transaction is gone.' };
+    }
+    const outcome: DatabaseEngineOutcome<TransactionOutcome> = await target.client.call(
+      'transaction',
+      { ...request, session: target.open.session },
+    );
+    return outcome.ok ? outcome.result : { failed: true, message: outcome.error };
   }
 
   /**

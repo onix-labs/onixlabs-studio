@@ -182,8 +182,8 @@ export class ContainerEngineClient implements ContainerEngine {
    * @param id The container id.
    * @returns Returns true when the engine accepted it.
    */
-  public async remove(id: string): Promise<boolean> {
-    return (await this.call('remove', { id })) === true;
+  public async remove(id: string, volumes: boolean = false): Promise<boolean> {
+    return (await this.call('remove', { id, volumes })) === true;
   }
 
   /**
@@ -295,7 +295,11 @@ export class ContainerEngineClient implements ContainerEngine {
    * @param request What to run.
    * @returns Returns the new container's id, or why it could not be run.
    */
-  public async run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+  public async run(request: RunContainerRequest): Promise<{
+    id?: string;
+    error?: string;
+    missingImage?: boolean;
+  }> {
     return (
       (await this.call('run', { request }, RUN_TIMEOUT_MS)) ?? {
         error: 'The engine plugin cannot run containers.',

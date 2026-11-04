@@ -37,6 +37,7 @@ import {
   describeSummary,
   Neo4jEngine,
   nodeValue,
+  encryptionConfig,
   relationshipValue,
   toValue,
 } from './neo4j-engine';
@@ -440,7 +441,8 @@ describe('Neo4jEngine', (): void => {
       queryExtension: 'cypher',
     });
     expect(engine.info.capabilities).toContain('graph');
-    expect(engine.info.capabilities).toEqual([
+    expect(engine.info.capabilities).toContain('transactions');
+    expect(engine.info.capabilities.filter((name: string) => name !== 'transactions')).toEqual([
       'cancel',
       'multipleDatabases',
       'script',
@@ -452,13 +454,15 @@ describe('Neo4jEngine', (): void => {
       'user',
       'password',
       'database',
+      'encryption',
+      'readOnly',
     ]);
     expect(engine.info.connectionFields[2]).toMatchObject({ kind: 'password', secret: true });
     expect(
       engine.info.connectionFields.map(
         (field: { section?: string }): string | undefined => field.section,
       ),
-    ).toEqual(['server', 'authentication', 'authentication', 'database']);
+    ).toEqual(['server', 'authentication', 'authentication', 'database', 'security', 'options']);
   });
 
   it('connect_refusesAnEmptyAddress_withoutOpeningADriver', async (): Promise<void> => {
@@ -989,5 +993,25 @@ describe('Neo4jEngine', (): void => {
     await session.close();
 
     expect(driver.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('encryptionConfig', () => {
+  it('leaves an address that names its own encryption alone', () => {
+    expect(encryptionConfig('neo4j+s://db:7687', 'off')).toEqual({});
+    expect(encryptionConfig('bolt+ssc://db:7687', 'on')).toEqual({});
+  });
+
+  it('turns the field into the driver settings for a bare address', () => {
+    expect(encryptionConfig('neo4j://db:7687', 'address')).toEqual({});
+    expect(encryptionConfig('neo4j://db:7687', 'off')).toEqual({ encrypted: 'ENCRYPTION_OFF' });
+    expect(encryptionConfig('bolt://db:7687', 'on')).toEqual({
+      encrypted: 'ENCRYPTION_ON',
+      trust: 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES',
+    });
+    expect(encryptionConfig('bolt://db:7687', 'no-verify')).toEqual({
+      encrypted: 'ENCRYPTION_ON',
+      trust: 'TRUST_ALL_CERTIFICATES',
+    });
   });
 });

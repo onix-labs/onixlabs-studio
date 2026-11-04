@@ -17,7 +17,9 @@
            independently-scaled graphs (Received/Sent, Read/Write); GPU shows N/A where unsupported. -->
       <section class="system-monitor__tiles">
         <app-metric-tile label="CPU" [channels]="cpuChannels()" />
-        <app-metric-tile label="GPU" [channels]="gpuChannels()" />
+        @if (gpuMonitoring()) {
+          <app-metric-tile label="GPU" [channels]="gpuChannels()" />
+        }
         <app-metric-tile label="Memory" [suffix]="memoryTotal()" [channels]="memoryChannels()" />
         <app-metric-tile label="Network" [channels]="networkChannels()" />
         <app-metric-tile label="Disk" [channels]="diskChannels()" />

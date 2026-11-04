@@ -32,6 +32,28 @@ const REQUEST_TIMEOUT_MS: number = 90_000;
 const EXECUTE_TIMEOUT_MS: number = 60 * 60_000;
 
 /**
+ * How much longer than its own limit an execution is given, so the engine reports the limit itself.
+ */
+const EXECUTE_GRACE_MS: number = 60_000;
+
+/**
+ * The longest a timer can wait: what stands in for an execution with no limit.
+ */
+const LONGEST_TIMER_MS: number = 2 ** 31 - 1;
+
+/**
+ * Works out how long to wait for an execution's answer.
+ * @param limit The limit Studio set on it: 0 for none, undefined when it set none.
+ * @returns Returns the time to wait, in milliseconds.
+ */
+function executeTimeout(limit: number | undefined): number {
+  if (limit === undefined) {
+    return EXECUTE_TIMEOUT_MS;
+  }
+  return limit === 0 ? LONGEST_TIMER_MS : limit + EXECUTE_GRACE_MS;
+}
+
+/**
  * How long a plugin is given to exit after SIGTERM before it is killed.
  */
 const KILL_GRACE_MS: number = 2_000;
@@ -133,7 +155,9 @@ export class DatabaseEngineClient {
     const outcome: DatabaseEngineOutcome<unknown> = await this.send(
       op,
       params,
-      op === 'execute' ? EXECUTE_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+      op === 'execute'
+        ? executeTimeout((params as DatabaseEngineParams<'execute'>).options?.timeoutMs)
+        : REQUEST_TIMEOUT_MS,
     );
     if (!outcome.ok) {
       logger.debug('DatabaseEngineClient', `'${this.id}' ${op} failed: ${outcome.error}`);

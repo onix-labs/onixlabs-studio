@@ -1,15 +1,29 @@
-import { computed, effect, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  Signal,
+  signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import {
   ConnectionValues,
+  ConnectOptions,
   ConnectOutcome,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
+  ExecuteOptions,
   ExecuteOutcome,
   ExpandOutcome,
   NodeActionOutcome,
   ResultColumn,
   ResultSet,
+  TransactionAction,
+  TransactionOutcome,
+  TreeOptions,
 } from '@shared/api/database-engine-protocol';
 import {
   DATABASE_DOCUMENT_KIND,
@@ -35,9 +49,9 @@ import { DatabaseClient } from '../database-client/database-client';
 const UNTITLED_NAME: string = 'Untitled';
 
 /**
- * How many rows each Load More fetches.
+ * How often open connections are checked for having gone idle, in milliseconds.
  */
-const FETCH_PAGE_ROWS: number = 1_000;
+const IDLE_CHECK_MS: number = 30_000;
 
 /**
  * An open connection's session.
@@ -142,6 +156,16 @@ export function nodeKey(connectionId: string, path: string | null): string {
 }
 
 /**
+ * The key a manual transaction is tracked under: its connection, and the database it is open on.
+ * @param connectionId The connection.
+ * @param database The database, or undefined for the connection's own.
+ * @returns Returns the key.
+ */
+function transactionKey(connectionId: string, database: string | undefined): string {
+  return `${connectionId}\u0000${database ?? ''}`;
+}
+
+/**
  * The Database Explorer's model for one tab: the document (its connections and queries), the
  * open sessions, the object tree as far as it has been expanded, and every query's latest outcome.
  *
@@ -213,6 +237,18 @@ export class DatabaseWorkspace {
     signal<DatabaseSelection | null>(null);
   private readonly filePathSignal: WritableSignal<string | null> = signal<string | null>(null);
   private readonly dirtySignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the open manual transactions, keyed by {@link transactionKey}.
+   */
+  private readonly transactionsSignal: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
+
+  /**
+   * Holds when each connection was last used, for Disconnect When Idle.
+   */
+  private readonly lastUsed: Map<string, number> = new Map<string, number>();
 
   /**
    * Holds each connection's secrets for this session, keyed by connection id. Saved only sealed, and
@@ -368,6 +404,107 @@ export class DatabaseWorkspace {
         );
       });
     });
+    // What the tree shows is a setting's, so a change shows at once in every open connection.
+    let treeRead: boolean = false;
+    effect((): void => {
+      this.settings.value('databaseExplorer.showSystemObjects')();
+      this.settings.value('databaseExplorer.matchCount')();
+      if (treeRead) {
+        untracked((): void => this.reloadTrees());
+      }
+      treeRead = true;
+    });
+    effect((onCleanup: (cleanup: () => void) => void): void => {
+      const minutes: number = this.settings.value('databaseExplorer.disconnectIdleMinutes')();
+      if (minutes > 0) {
+        const timer: ReturnType<typeof setInterval> = setInterval(
+          (): void => void this.disconnectIdle(minutes * 60_000),
+          IDLE_CHECK_MS,
+        );
+        onCleanup((): void => clearInterval(timer));
+      }
+    });
+  }
+
+  /**
+   * Gets how connections are opened, from the user's settings.
+   * @returns Returns the options.
+   */
+  private connectOptions(): ConnectOptions {
+    return { timeoutMs: this.settings.get('databaseExplorer.connectionTimeoutSeconds') * 1000 };
+  }
+
+  /**
+   * Gets how the tree is described, from the user's settings.
+   * @returns Returns the options.
+   */
+  private treeOptions(): TreeOptions {
+    return {
+      systemObjects: this.settings.get('databaseExplorer.showSystemObjects'),
+      matchCount: this.settings.get('databaseExplorer.matchCount'),
+    };
+  }
+
+  /**
+   * Gets how an execution runs, from the user's settings.
+   * @param connection The connection it runs against.
+   * @returns Returns the options.
+   */
+  private executeOptions(connection: string): ExecuteOptions {
+    return {
+      timeoutMs: this.settings.get('databaseExplorer.queryTimeoutSeconds') * 1000,
+      continueOnError: this.settings.get('databaseExplorer.onError') === 'continue',
+      maxRows: this.settings.get('databaseExplorer.maxRows'),
+      pageRows: this.settings.get('databaseExplorer.pageSize'),
+      manualTransaction: this.manualTransactions(connection),
+    };
+  }
+
+  /**
+   * Determines whether queries on a connection run in a transaction left open for Commit or Rollback.
+   * @param connection The connection's id.
+   * @returns Returns true when the user asked for that and the connection's engine can.
+   */
+  public manualTransactions(connection: string): boolean {
+    const engine: string | undefined = this.connection(connection)?.engine;
+    return (
+      this.settings.value('databaseExplorer.transactions')() === 'manual' &&
+      engine !== undefined &&
+      this.engine(engine)?.capabilities.includes('transactions') === true
+    );
+  }
+
+  /**
+   * Re-reads the tree of every open connection.
+   */
+  private reloadTrees(): void {
+    for (const id of this.sessionsSignal().keys()) {
+      this.dropChildren(id);
+      void this.expand(id, null);
+    }
+  }
+
+  /**
+   * Closes every connection idle for longer than a limit. One with a query running, or a transaction
+   * open that closing it would throw away, is in use however long it has been quiet.
+   * @param limitMs The limit, in milliseconds.
+   * @param now The time now.
+   */
+  public async disconnectIdle(limitMs: number, now: number = Date.now()): Promise<void> {
+    const busy: ReadonlySet<string | null> = new Set<string | null>(
+      [...this.runningSignal().keys()].map(
+        (id: string): string | null => this.query(id)?.connectionId ?? null,
+      ),
+    );
+    for (const id of [...this.sessionsSignal().keys()]) {
+      const holding: boolean = [...this.transactionsSignal()].some((key: string): boolean =>
+        key.startsWith(`${id}\u0000`),
+      );
+      if (!busy.has(id) && !holding && now - (this.lastUsed.get(id) ?? now) >= limitMs) {
+        this.log.info('database.workspace', 'Disconnected an idle connection');
+        await this.disconnect(id);
+      }
+    }
   }
 
   // --- The document ---
@@ -801,6 +938,7 @@ export class DatabaseWorkspace {
       const outcome: ConnectOutcome = await this.client.connect(
         connection.engine,
         this.valuesFor(id),
+        this.connectOptions(),
       );
       if (outcome.kind === 'failure') {
         this.setConnectionError(id, outcome.message);
@@ -817,6 +955,7 @@ export class DatabaseWorkspace {
         engine: connection.engine,
         server: outcome.serverVersion,
       });
+      this.lastUsed.set(id, Date.now());
       await this.expand(id, null);
       return true;
     } finally {
@@ -841,6 +980,24 @@ export class DatabaseWorkspace {
         return next;
       },
     );
+    this.dropChildren(id);
+    // Closing the session rolls back whatever it had open.
+    const transactions: string = `${id}\u0000`;
+    this.transactionsSignal.update(
+      (keys: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>([...keys].filter((key: string): boolean => !key.startsWith(transactions))),
+    );
+    this.lastUsed.delete(id);
+    if (open !== undefined) {
+      await this.client.disconnect(open.session);
+    }
+  }
+
+  /**
+   * Forgets a connection's loaded tree.
+   * @param id The connection's id.
+   */
+  private dropChildren(id: string): void {
     this.childrenSignal.update(
       (children: ReadonlyMap<string, NodeChildren>): ReadonlyMap<string, NodeChildren> => {
         const prefix: string = `${id}\u0000`;
@@ -849,9 +1006,6 @@ export class DatabaseWorkspace {
         );
       },
     );
-    if (open !== undefined) {
-      await this.client.disconnect(open.session);
-    }
   }
 
   /**
@@ -861,7 +1015,7 @@ export class DatabaseWorkspace {
    * @returns Returns a promise resolving the outcome.
    */
   public test(engine: string, values: ConnectionValues): Promise<ConnectOutcome> {
-    return this.client.test(engine, values);
+    return this.client.test(engine, values, this.connectOptions());
   }
 
   // --- The tree ---
@@ -901,7 +1055,8 @@ export class DatabaseWorkspace {
     }
     const key: string = nodeKey(connectionId, path);
     this.setChildren(key, { state: 'loading' });
-    const outcome: ExpandOutcome = await this.client.expand(open.session, path);
+    this.lastUsed.set(connectionId, Date.now());
+    const outcome: ExpandOutcome = await this.client.expand(open.session, path, this.treeOptions());
     this.setChildren(
       key,
       outcome.kind === 'nodes'
@@ -946,7 +1101,12 @@ export class DatabaseWorkspace {
     if (open === undefined) {
       return null;
     }
-    const outcome: NodeActionOutcome = await this.client.action(open.session, node.path, action);
+    const outcome: NodeActionOutcome = await this.client.action(
+      open.session,
+      node.path,
+      action,
+      this.treeOptions(),
+    );
     switch (outcome.kind) {
       case 'script': {
         const query: DatabaseQuery = this.addQuery(
@@ -991,7 +1151,7 @@ export class DatabaseWorkspace {
     if (open === undefined) {
       return { kind: 'failure', message: 'The connection is not open.' };
     }
-    return this.client.action(open.session, path, action);
+    return this.client.action(open.session, path, action, this.treeOptions());
   }
 
   // --- Queries ---
@@ -1109,6 +1269,7 @@ export class DatabaseWorkspace {
       return null;
     }
     const executionId: string = newId();
+    this.lastUsed.set(query.connectionId, Date.now());
     this.runningSignal.update(
       (running: ReadonlyMap<string, string>): ReadonlyMap<string, string> =>
         new Map<string, string>([...running, [id, executionId]]),
@@ -1120,8 +1281,16 @@ export class DatabaseWorkspace {
         text,
         firstLine,
         ...(query.database === undefined ? {} : { database: query.database }),
+        options: this.executeOptions(query.connectionId),
       });
       this.setOutcome(id, outcome);
+      if (outcome.transactionOpen !== undefined) {
+        this.setTransaction(
+          transactionKey(query.connectionId, query.database),
+          outcome.transactionOpen,
+        );
+      }
+      this.lastUsed.set(query.connectionId, Date.now());
       return outcome;
     } finally {
       this.runningSignal.update(
@@ -1132,6 +1301,63 @@ export class DatabaseWorkspace {
         },
       );
     }
+  }
+
+  /**
+   * Determines whether a transaction is open where a query runs.
+   * @param id The query's id.
+   * @returns Returns true when one is.
+   */
+  public transactionOpen(id: string): boolean {
+    const query: DatabaseQuery | undefined = this.query(id);
+    const connection: string | null = query?.connectionId ?? null;
+    return (
+      connection !== null &&
+      this.transactionsSignal().has(transactionKey(connection, query?.database))
+    );
+  }
+
+  /**
+   * Commits or rolls back the transaction open where a query runs.
+   * @param id The query's id.
+   * @param action What to do with it.
+   * @returns Returns a promise resolving what it came to, or null when there is nothing to end.
+   */
+  public async endTransaction(
+    id: string,
+    action: TransactionAction,
+  ): Promise<TransactionOutcome | null> {
+    const query: DatabaseQuery | undefined = this.query(id);
+    const connection: string | null = query?.connectionId ?? null;
+    const open: OpenSession | undefined =
+      connection === null ? undefined : this.sessionsSignal().get(connection);
+    if (query === undefined || connection === null || open === undefined) {
+      return null;
+    }
+    const outcome: TransactionOutcome = await this.client.transaction({
+      session: open.session,
+      action,
+      ...(query.database === undefined ? {} : { database: query.database }),
+    });
+    this.setTransaction(transactionKey(connection, query.database), false);
+    return outcome;
+  }
+
+  /**
+   * Records whether a transaction is open.
+   * @param key Where.
+   * @param open Whether it is.
+   */
+  private setTransaction(key: string, open: boolean): void {
+    this.transactionsSignal.update((keys: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(keys);
+      if (open) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
   }
 
   /**
@@ -1167,7 +1393,7 @@ export class DatabaseWorkspace {
       session: open.session,
       resultSet: resultSetId,
       offset: resultSet.rows.length,
-      count: FETCH_PAGE_ROWS,
+      count: this.settings.get('databaseExplorer.pageSize'),
     });
     this.setOutcome(id, {
       ...outcome,

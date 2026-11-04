@@ -1,12 +1,13 @@
 import type * as MonacoApi from 'monaco-editor';
+import type { FoldingProvider } from '@shared/angular/services/settings/settings';
 
 /**
- * The brace-delimited languages the Visual-Studio-style folding provider is registered for. Each folds
- * its `{ … }` blocks from the block's signature line (see {@link braceRanges}), plus its `#region`
+ * The brace-delimited languages the Visual-Studio-style folding provider folds under Automatic. Each
+ * folds its `{ … }` blocks from the block's signature line (see {@link braceRanges}), plus its `#region`
  * markers and multi-line comment runs. Languages that are not brace-delimited (for example Python) keep
- * Monaco's default indentation folding.
+ * Monaco's default indentation folding unless Folding Provider asks for braces.
  */
-const BRACE_FOLDING_LANGUAGES: readonly string[] = [
+const BRACE_FOLDING_LANGUAGES: ReadonlySet<string> = new Set<string>([
   'csharp',
   'cpp',
   'c',
@@ -16,7 +17,7 @@ const BRACE_FOLDING_LANGUAGES: readonly string[] = [
   'go',
   'rust',
   'kotlin',
-];
+]);
 
 /**
  * The line-count above which folding is skipped when no threshold is given — Large File Feature
@@ -63,26 +64,49 @@ interface BracePosition {
  * @param monaco The loaded Monaco namespace, or undefined before it has loaded (a no-op).
  * @param suppressed Returns true for a document a language server folds instead (#1147).
  * @param maxLines Returns Large File Feature Threshold: above it a file is not folded.
+ * @param choice Returns the document's Folding Provider setting.
+ * @returns Returns a function that folds open documents again, for a changed setting; a no-op before
+ * Monaco has loaded.
  */
 export function registerBraceFolding(
   monaco: typeof MonacoApi | undefined,
   suppressed: (model: MonacoApi.editor.ITextModel) => boolean = (): boolean => false,
   maxLines: () => number = (): number => DEFAULT_LARGE_FILE_LINES,
-): void {
+  choice: (model: MonacoApi.editor.ITextModel) => FoldingProvider = (): FoldingProvider =>
+    'automatic',
+): () => void {
   if (monaco === undefined) {
-    return;
+    return (): void => undefined;
   }
+  const changed: MonacoApi.Emitter<MonacoApi.languages.FoldingRangeProvider> =
+    new monaco.Emitter<MonacoApi.languages.FoldingRangeProvider>();
   const provider: MonacoApi.languages.FoldingRangeProvider = {
-    // A document whose language server folds it (#1147) is folded by the server alone: two providers'
-    // ranges would be merged, and the heuristic's guesses would sit beside the compiler's answer.
+    onDidChange: changed.event,
+    // Every language goes through here so Braces can be chosen for any of them. Answering undefined
+    // rather than an empty list leaves the document to the other providers, then to indentation.
     provideFoldingRanges: (
       model: MonacoApi.editor.ITextModel,
-    ): MonacoApi.languages.FoldingRange[] =>
-      suppressed(model) ? [] : computeFoldingRanges(monaco, model, maxLines()),
+    ): MonacoApi.languages.FoldingRange[] | undefined => {
+      const provided: FoldingProvider = choice(model);
+      if (provided === 'braces') {
+        const ranges: MonacoApi.languages.FoldingRange[] = computeFoldingRanges(
+          monaco,
+          model,
+          maxLines(),
+        );
+        return ranges.length > 0 ? ranges : undefined;
+      }
+      if (provided !== 'automatic' || !BRACE_FOLDING_LANGUAGES.has(model.getLanguageId())) {
+        return undefined;
+      }
+      // A document whose language server folds it (#1147) is folded by the server alone: two
+      // providers' ranges would be merged, and the heuristic's guesses would sit beside the
+      // compiler's answer.
+      return suppressed(model) ? [] : computeFoldingRanges(monaco, model, maxLines());
+    },
   };
-  for (const language of BRACE_FOLDING_LANGUAGES) {
-    monaco.languages.registerFoldingRangeProvider(language, provider);
-  }
+  monaco.languages.registerFoldingRangeProvider('*', provider);
+  return (): void => changed.fire(provider);
 }
 
 /**

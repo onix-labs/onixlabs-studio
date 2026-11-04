@@ -188,6 +188,11 @@ export class CodeField {
   public readonly readOnly: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets whether long lines wrap.
+   */
+  public readonly wordWrap: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets a value indicating whether the field is disabled: read-only and dimmed.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
@@ -206,6 +211,7 @@ export class CodeField {
     (): MonacoApi.editor.IEditorOptions => ({
       ...FIELD_OPTIONS,
       glyphMargin: !this.readOnly() && !this.disabled(),
+      wordWrap: this.wordWrap() ? 'on' : 'off',
     }),
   );
 

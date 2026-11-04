@@ -201,8 +201,30 @@
                 />
                 <p class="request__hint">
                   The agent writes here when it adds an endpoint, so the explanation stays with the
-                  request. Timeout and redirect handling are fixed in this spike.
+                  request.
                 </p>
+                <app-setting-row label="Timeout" description="How long this request may take.">
+                  <app-dropdown
+                    ariaLabel="Timeout"
+                    [options]="timeoutOptions"
+                    [value]="request.timeoutSeconds?.toString() ?? ''"
+                    (valueChange)="setTimeoutChoice($event)"
+                  />
+                </app-setting-row>
+                <app-setting-row label="Redirects" description="Whether this request follows them.">
+                  <app-dropdown
+                    ariaLabel="Redirects"
+                    [options]="redirectOptions"
+                    [value]="
+                      request.followRedirects === undefined
+                        ? ''
+                        : request.followRedirects
+                          ? 'follow'
+                          : 'report'
+                    "
+                    (valueChange)="setRedirectChoice($event)"
+                  />
+                </app-setting-row>
               </div>
             }
           }
@@ -244,6 +266,13 @@
                 @if (response.redirected) {
                   <span class="request__metric" [title]="response.finalUrl">redirected</span>
                 }
+                @if (response.truncated) {
+                  <span
+                    class="request__metric"
+                    title="The body is over the Maximum Response Size in Settings"
+                    >cut at the size limit</span
+                  >
+                }
                 <button
                   type="button"
                   class="request__toggle"
@@ -269,6 +298,7 @@
                   [language]="responseLanguage(response)"
                   [readOnly]="true"
                   [fill]="true"
+                  [wordWrap]="wrapResponse()"
                   ariaLabel="Response body"
                 />
               }

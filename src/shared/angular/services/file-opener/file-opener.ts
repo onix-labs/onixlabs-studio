@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { effect, inject, Injector, Service } from '@angular/core';
 import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import {
@@ -38,6 +39,11 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 
 /**
+ * Holds the lowercased extension of an SVG, which Open SVG Files As can send to the code editor.
+ */
+const SVG_EXTENSION: string = '.svg';
+
+/**
  * Holds the lowercased file extensions (including the leading dot) routed to the markdown editor.
  */
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.md', '.markdown']);
@@ -60,6 +66,11 @@ export class FileOpener {
    * Holds the document model that backs code and markdown tabs.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the settings, which decide the editor a Markdown file opens in.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the file-system service showing the native confirm-save dialog when a dirty well document is
@@ -195,8 +206,13 @@ export class FileOpener {
     // An image is document-shaped, unlike a binary: it sits in the well beside the code that
     // references it, falling back to its own tab only when this dock has no document home.
     if (selection.kind === 'image') {
+      if (this.opensAsCode(selection.path)) {
+        return this.openAsText(selection.path);
+      }
       return (
-        this.openImageInWell(selection.path, options) || this.openImage(selection.path, options)
+        (this.settings.get('imageViewer.openIn') === 'workspace' &&
+          this.openImageInWell(selection.path, options)) ||
+        this.openImage(selection.path, options)
       );
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
@@ -272,16 +288,34 @@ export class FileOpener {
         if (this.openSurfaceDocument(selection.file)) {
           return true;
         }
-        const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
+        const type: TabType = this.opensInMarkdownEditor(selection.file.extension)
+          ? 'markdown'
+          : 'code';
         this.documents.openFileInfo(selection.file, type);
         this.recordRecentFile(selection.file);
         return true;
       }
       case 'image':
+        if (this.opensAsCode(selection.path)) {
+          void this.openAsText(selection.path);
+          return true;
+        }
         return this.openImage(selection.path);
       case 'binary':
         return this.openBinary(selection.path);
     }
+  }
+
+  /**
+   * Determines whether an image opens as its source: an SVG, while Open SVG Files As says Code.
+   * @param path The image's path.
+   * @returns Returns true when it opens in the code editor.
+   */
+  private opensAsCode(path: string): boolean {
+    return (
+      path.toLowerCase().endsWith(SVG_EXTENSION) &&
+      this.settings.get('imageViewer.openSvgAs') === 'code'
+    );
   }
 
   /**
@@ -542,6 +576,17 @@ export class FileOpener {
       fileInfo.path,
       fileInfo.name,
       this.isMarkdown(fileInfo.extension) ? 'markdown' : 'code',
+    );
+  }
+
+  /**
+   * Determines whether a file opens in the markdown editor, rather than the code editor on its source.
+   * @param extension The file extension, including the leading dot.
+   * @returns Returns true for a markdown file while Open Markdown Files In says Visual.
+   */
+  private opensInMarkdownEditor(extension: string): boolean {
+    return (
+      this.isMarkdown(extension) && this.settings.get('markdownEditor.openFilesIn') === 'visual'
     );
   }
 

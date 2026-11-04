@@ -1,24 +1,54 @@
 import { DatabaseValue, ResultColumn } from '@shared/api/database-engine-protocol';
-import { cellText } from '../database-values';
+import { cellText, plainValue } from '../database-values';
+
+/**
+ * How a CSV export is written, from the user's settings.
+ */
+export interface CsvOptions {
+  /**
+   * Gets the character between fields.
+   */
+  readonly delimiter?: string;
+
+  /**
+   * Gets whether the first line names the columns.
+   */
+  readonly header?: boolean;
+
+  /**
+   * Gets what a NULL is written as.
+   */
+  readonly nullText?: string;
+}
 
 /**
  * Turns a result set into a CSV document (RFC 4180): a header row of the column names, then one line
- * per row, CRLF-terminated, with any field holding a comma, a quote or a line break quoted. A NULL
- * cell is empty; every other cell is written as the grid shows it.
+ * per row, CRLF-terminated, with any field holding the delimiter, a quote or a line break quoted. A
+ * NULL cell is empty unless the options say otherwise; every other cell is written as it was sent.
  * @param columns The result's columns.
  * @param rows The rows.
+ * @param options How to write it.
  * @returns Returns the CSV text, without a byte-order mark.
  */
 export function toCsv(
   columns: readonly ResultColumn[],
   rows: readonly (readonly DatabaseValue[])[],
+  options?: CsvOptions,
 ): string {
+  const delimiter: string = options?.delimiter ?? ',';
+  const nullText: string = options?.nullText ?? '';
   const line: (fields: readonly string[]) => string = (fields: readonly string[]): string =>
-    fields.map(csvField).join(',');
+    fields.map((field: string): string => csvField(field, delimiter)).join(delimiter);
   return [
-    line(columns.map((column: ResultColumn): string => column.name)),
+    ...(options?.header === false
+      ? []
+      : [line(columns.map((column: ResultColumn): string => column.name))]),
     ...rows.map((row: readonly DatabaseValue[]): string =>
-      line(row.map((value: DatabaseValue): string => (value === null ? '' : cellText(value).text))),
+      line(
+        row.map((value: DatabaseValue): string =>
+          value === null ? nullText : cellText(value).text,
+        ),
+      ),
     ),
   ]
     .map((text: string): string => `${text}\r\n`)
@@ -28,10 +58,37 @@ export function toCsv(
 /**
  * Quotes one CSV field when it must be.
  * @param field The field.
+ * @param delimiter The character between fields.
  * @returns Returns it as it is written.
  */
-function csvField(field: string): string {
-  return /[",\r\n]/.test(field) ? `"${field.replaceAll('"', '""')}"` : field;
+function csvField(field: string, delimiter: string): string {
+  return field.includes(delimiter) || /["\r\n]/.test(field)
+    ? `"${field.replaceAll('"', '""')}"`
+    : field;
+}
+
+/**
+ * Turns a result set into a JSON document: an array with one object per row, keyed by column name.
+ * Values are written as the plain JSON the Raw view shows, so a NULL stays null and a number a number.
+ * A column name returned twice keeps its last value, as the Raw view's does.
+ * @param columns The result's columns.
+ * @param rows The rows.
+ * @returns Returns the JSON text.
+ */
+export function toJson(
+  columns: readonly ResultColumn[],
+  rows: readonly (readonly DatabaseValue[])[],
+): string {
+  const names: readonly string[] = columns.map((column: ResultColumn): string => column.name);
+  const objects: readonly unknown[] = rows.map((row: readonly DatabaseValue[]) =>
+    Object.fromEntries(
+      row.map((value: DatabaseValue, index: number): [string, unknown] => [
+        names[index] ?? `${index}`,
+        plainValue(value),
+      ]),
+    ),
+  );
+  return `${JSON.stringify(objects, null, 2)}\n`;
 }
 
 /**

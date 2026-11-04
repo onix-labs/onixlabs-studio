@@ -56,16 +56,24 @@ export class DatabaseQueryOpener {
   private readonly runners: Map<string, () => void> = new Map<string, () => void>();
 
   /**
+   * Holds how each open query panel runs the statement its caret is in.
+   */
+  private readonly statementRunners: Map<string, () => void> = new Map<string, () => void>();
+
+  /**
    * Records how an open query panel runs itself.
    * @param id The query's id.
    * @param run Runs the panel's selection, or all of it.
+   * @param runStatement Runs the statement the panel's caret is in.
    * @returns Returns a function that forgets it again.
    */
-  public attach(id: string, run: () => void): () => void {
+  public attach(id: string, run: () => void, runStatement: () => void): () => void {
     this.runners.set(id, run);
+    this.statementRunners.set(id, runStatement);
     return (): void => {
       if (this.runners.get(id) === run) {
         this.runners.delete(id);
+        this.statementRunners.delete(id);
       }
     };
   }
@@ -76,6 +84,14 @@ export class DatabaseQueryOpener {
    */
   public run(id: string): void {
     this.runners.get(id)?.();
+  }
+
+  /**
+   * Runs the statement an open query's caret is in, as its panel would.
+   * @param id The query's id.
+   */
+  public runStatement(id: string): void {
+    this.statementRunners.get(id)?.();
   }
 
   /**

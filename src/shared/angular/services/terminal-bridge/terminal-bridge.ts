@@ -89,10 +89,14 @@ export class TerminalBridge {
    * Terminates a session's process tree (SIGTERM escalating to SIGKILL) while keeping the session
    * and its scrollback — stop what runs, without removing the tab.
    * @param id The terminal identifier.
+   * @param graceMilliseconds How long the process has to end before it is killed.
    * @returns Returns true when the session exists and was signalled.
    */
-  public terminate(id: string): Promise<boolean> {
-    return this.bridge?.invoke<boolean>(TerminalChannel.Terminate, id) ?? Promise.resolve(false);
+  public terminate(id: string, graceMilliseconds?: number): Promise<boolean> {
+    return (
+      this.bridge?.invoke<boolean>(TerminalChannel.Terminate, id, graceMilliseconds) ??
+      Promise.resolve(false)
+    );
   }
 
   /**

@@ -22,6 +22,7 @@ import { fetchLatestVersion, fetchSearch, FlatContainerCache } from './nuget-reg
 import { NuGetSource, readNuGetSources } from './nuget-sources';
 import { HttpFetch, PackageManager } from './package-manager';
 import { compareReleaseVersions, deriveStatus } from './versions';
+import { currentProjectScanDepth } from '../project-system/dotnet-project-system';
 import { logger } from '../logger';
 
 /**
@@ -62,11 +63,6 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['node_modules'
  * away.
  */
 const LOAD_SCAN_DEPTH: number = 6;
-
-/**
- * How shallow to scan when merely detecting whether the root is a .NET workspace.
- */
-const DETECT_SCAN_DEPTH: number = 2;
 
 /**
  * How many registry queries run at once while resolving latest versions.
@@ -110,7 +106,7 @@ export class NuGetPackageManager implements PackageManager {
     if (await this.hasSolutionFile(root)) {
       return true;
     }
-    return (await this.findProjects(root, DETECT_SCAN_DEPTH)).length > 0;
+    return (await this.findProjects(root, currentProjectScanDepth())).length > 0;
   }
 
   /**

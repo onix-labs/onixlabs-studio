@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { DatabaseSettingsStandIn } from './database-settings.testing';
 import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
 import {
@@ -12,6 +13,8 @@ import {
   ExpandOutcome,
   FetchRequest,
   NodeActionOutcome,
+  TransactionOutcome,
+  TransactionRequest,
 } from '@shared/api/database-engine-protocol';
 import {
   DATABASE_DOCUMENT_KIND,
@@ -56,7 +59,7 @@ const SQLITE: DatabaseEngineInfo = {
   displayName: 'SQLite',
   language: 'sql',
   queryExtension: 'sql',
-  capabilities: ['script'],
+  capabilities: ['script', 'transactions'],
   connectionFields: [{ id: 'file', label: 'File', kind: 'file' }],
 };
 
@@ -209,8 +212,14 @@ class FakeClient {
       elapsedMs: 5,
       failed: false,
       cancelled: false,
+      ...(this.transactionOpen === undefined ? {} : { transactionOpen: this.transactionOpen }),
     };
   }
+
+  /**
+   * Holds whether an execution answers that a transaction is open; undefined leaves it unsaid.
+   */
+  public transactionOpen: boolean | undefined = undefined;
 
   /**
    * Records a cancel.
@@ -243,6 +252,21 @@ class FakeClient {
   public action(session: string, path: string, action: string): Promise<NodeActionOutcome> {
     this.actions.push({ session, path, action });
     return Promise.resolve(this.actionOutcome);
+  }
+
+  /**
+   * Holds every transaction request.
+   */
+  public readonly transactions: TransactionRequest[] = [];
+
+  /**
+   * Records a transaction request.
+   * @param request The request.
+   * @returns Returns a success.
+   */
+  public transaction(request: TransactionRequest): Promise<TransactionOutcome> {
+    this.transactions.push(request);
+    return Promise.resolve({ failed: false, message: 'done' });
   }
 
   /**
@@ -384,6 +408,7 @@ describe('DatabaseWorkspace', () => {
   let client: FakeClient;
   let installedKey: WritableSignal<string>;
   let selectAction: WritableSignal<DatabaseSelectAction>;
+  let settings: DatabaseSettingsStandIn;
   let written: { path: string; content: string }[];
   let chosenPath: string | null;
   let writeSucceeds: boolean;
@@ -392,6 +417,7 @@ describe('DatabaseWorkspace', () => {
     client = new FakeClient();
     installedKey = signal<string>('postgres\nsqlite');
     selectAction = signal<DatabaseSelectAction>('open');
+    settings = new DatabaseSettingsStandIn(selectAction);
     written = [];
     chosenPath = null;
     writeSucceeds = true;
@@ -411,7 +437,7 @@ describe('DatabaseWorkspace', () => {
         DatabaseWorkspace,
         { provide: DatabaseClient, useValue: client },
         { provide: FileSystem, useValue: fileSystem },
-        { provide: Settings, useValue: { databaseSelectAction: selectAction } },
+        { provide: Settings, useValue: settings },
         { provide: DatabaseEnginePrompt, useValue: { installedKey } },
       ],
     });
@@ -427,6 +453,105 @@ describe('DatabaseWorkspace', () => {
   function addPostgres(): DatabaseConnection {
     return workspace.addConnection('Production', 'postgres', PG_VALUES);
   }
+
+  // --- Settings ---
+
+  it('execute_sendsTheOptionsTheSettingsAskFor', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select 1');
+    settings.set('databaseExplorer.queryTimeoutSeconds', 30);
+    settings.set('databaseExplorer.onError', 'continue');
+    settings.set('databaseExplorer.maxRows', 10_000);
+    settings.set('databaseExplorer.pageSize', 500);
+
+    await workspace.execute(query.id, 'select 1');
+
+    expect(client.executes[0].options).toEqual({
+      timeoutMs: 30_000,
+      continueOnError: true,
+      maxRows: 10_000,
+      pageRows: 500,
+      manualTransaction: false,
+    });
+  });
+
+  it('execute_noLimit_sendsAZeroTimeout', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select 1');
+    settings.set('databaseExplorer.queryTimeoutSeconds', 0);
+
+    await workspace.execute(query.id, 'select 1');
+
+    expect(client.executes[0].options?.timeoutMs).toBe(0);
+  });
+
+  it('fetchMore_fetchesAPageOfTheSizeTheSettingAsksFor', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select 1');
+    await workspace.execute(query.id, 'select 1');
+    settings.set('databaseExplorer.pageSize', 5000);
+
+    await workspace.fetchMore(query.id, 'rs-1');
+
+    expect(client.fetches[0].count).toBe(5000);
+  });
+
+  it('manualTransactions_needTheSettingAndAnEngineThatCan', () => {
+    const cannot: DatabaseConnection = addPostgres();
+    const can: DatabaseConnection = workspace.addConnection('Lite', 'sqlite', { file: 'a.db' });
+    expect(workspace.manualTransactions(can.id)).toBe(false);
+
+    settings.set('databaseExplorer.transactions', 'manual');
+
+    expect(workspace.manualTransactions(cannot.id)).toBe(false);
+    expect(workspace.manualTransactions(can.id)).toBe(true);
+  });
+
+  it('endTransaction_endsItOnTheQuerysDatabase_andForgetsIt', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, 'sales', 'select 1');
+    client.transactionOpen = true;
+    await workspace.execute(query.id, 'select 1');
+    expect(workspace.transactionOpen(query.id)).toBe(true);
+
+    await workspace.endTransaction(query.id, 'rollback');
+
+    expect(client.transactions[0]).toMatchObject({ action: 'rollback', database: 'sales' });
+    expect(workspace.transactionOpen(query.id)).toBe(false);
+  });
+
+  it('disconnect_forgetsTheConnectionsOpenTransactions', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select 1');
+    client.transactionOpen = true;
+    await workspace.execute(query.id, 'select 1');
+
+    await workspace.disconnect(connection.id);
+
+    expect(workspace.transactionOpen(query.id)).toBe(false);
+  });
+
+  it('disconnectIdle_closesWhatHasBeenQuietForTheLimit', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    await workspace.connect(connection.id);
+
+    await workspace.disconnectIdle(60_000, Date.now() + 30_000);
+    expect(workspace.sessions().has(connection.id)).toBe(true);
+
+    await workspace.disconnectIdle(60_000, Date.now() + 120_000);
+    expect(workspace.sessions().has(connection.id)).toBe(false);
+  });
+
+  it('disconnectIdle_leavesAConnectionHoldingATransaction', async () => {
+    const connection: DatabaseConnection = addPostgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'select 1');
+    client.transactionOpen = true;
+    await workspace.execute(query.id, 'select 1');
+
+    await workspace.disconnectIdle(60_000, Date.now() + 120_000);
+
+    expect(workspace.sessions().has(connection.id)).toBe(true);
+  });
 
   // --- Engines ---
 
@@ -447,7 +572,7 @@ describe('DatabaseWorkspace', () => {
         DatabaseWorkspace,
         { provide: DatabaseClient, useValue: new FakeClient() },
         { provide: FileSystem, useValue: {} },
-        { provide: Settings, useValue: { databaseSelectAction: selectAction } },
+        { provide: Settings, useValue: settings },
         { provide: DatabaseEnginePrompt, useValue: { installedKey } },
       ],
     });
@@ -924,7 +1049,7 @@ describe('DatabaseWorkspace', () => {
             saveDialog: (): Promise<string | null> => Promise.resolve('/docs/k.database.json'),
           },
         },
-        { provide: Settings, useValue: { databaseSelectAction: selectAction } },
+        { provide: Settings, useValue: settings },
         { provide: DatabaseEnginePrompt, useValue: { installedKey } },
       ],
     });

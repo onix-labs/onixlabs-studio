@@ -222,6 +222,64 @@ export interface TextEditsResponse {
 }
 
 /**
+ * Narrows or widens which files a search reads, per search: the Find panel's fields and switches.
+ * Ignored, hidden and excluded files are left out unless a switch asks for them.
+ */
+export interface SearchFileFilter {
+  /**
+   * Gets the glob patterns a file must match to be searched; none searches every file.
+   */
+  readonly include?: readonly string[];
+
+  /**
+   * Gets the glob patterns of files to leave out.
+   */
+  readonly exclude?: readonly string[];
+
+  /**
+   * Gets a value indicating whether files the workspace's ignore rules name are searched.
+   */
+  readonly ignored?: boolean;
+
+  /**
+   * Gets a value indicating whether hidden files and folders are searched.
+   */
+  readonly hidden?: boolean;
+
+  /**
+   * Gets a value indicating whether the folders Studio excludes from every search are searched: the
+   * version control systems' own. They are hidden folders, so this reads hidden files too.
+   */
+  readonly excluded?: boolean;
+}
+
+/**
+ * The Workspaces › Search settings a search runs under. The settings live in the renderer, so each
+ * request carries them; anything left out takes the main process's default.
+ */
+export interface SearchLimits {
+  /**
+   * Gets the most matches to return across every file.
+   */
+  readonly maxResults?: number;
+
+  /**
+   * Gets how many seconds the search may run, or 0 for no limit.
+   */
+  readonly timeoutSeconds?: number;
+
+  /**
+   * Gets the size in megabytes above which a file is not read, or 0 for no limit.
+   */
+  readonly maxFileSizeMegabytes?: number;
+
+  /**
+   * Gets a value indicating whether symbolic links are followed.
+   */
+  readonly followSymlinks?: boolean;
+}
+
+/**
  * Defines a request to search a workspace root for a query.
  */
 export interface SearchRequest {
@@ -257,6 +315,16 @@ export interface SearchRequest {
    * refused whole.
    */
   readonly paths?: readonly string[];
+
+  /**
+   * Gets which files to read, or undefined for every file not ignored, hidden or excluded.
+   */
+  readonly files?: SearchFileFilter;
+
+  /**
+   * Gets the limits to run under, or undefined for the defaults.
+   */
+  readonly limits?: SearchLimits;
 }
 
 /**
@@ -288,6 +356,12 @@ export interface SearchMatch {
    * Gets the line text after the match, trimmed to a preview length.
    */
   readonly after: string;
+
+  /**
+   * Gets how many times the query occurs on the line. Ripgrep reports a line once however often it
+   * matches, so the results list shows the first and a replace count needs this.
+   */
+  readonly occurrences?: number;
 }
 
 /**

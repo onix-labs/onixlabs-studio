@@ -1,3 +1,5 @@
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -55,7 +57,7 @@ type VariableRowData =
  */
 @Component({
   selector: 'app-debug-panel',
-  imports: [Button, PanelToolbar, TextField, TreeView],
+  imports: [Button, Checkbox, PanelToolbar, TextField, TreeView],
   templateUrl: './debug-panel.html',
   styleUrl: './debug-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -65,6 +67,11 @@ export class DebugPanel {
    * Holds the workspace's debug session this panel drives and reads.
    */
   private readonly session: DebugSession = inject(DebugSession);
+
+  /**
+   * Holds the workspace's `.studio` configuration, which remembers the watches and exception choices.
+   */
+  private readonly studio: StudioConfig = inject(StudioConfig);
 
   /**
    * Holds the file opener used to bring a selected frame's source into the well.
@@ -202,9 +209,22 @@ export class DebugPanel {
   /**
    * Holds the watch expressions, in the order the user added them.
    */
-  protected readonly watchExpressions: WritableSignal<readonly string[]> = signal<
-    readonly string[]
-  >([]);
+  protected readonly watchExpressions: Signal<readonly string[]> = this.studio.watchExpressions;
+
+  /**
+   * Gets whether the debugger breaks on uncaught exceptions.
+   */
+  protected readonly breakOnUncaught: Signal<boolean> = this.studio.breakOnUncaughtExceptions;
+
+  /**
+   * Gets whether the debugger breaks on every exception.
+   */
+  protected readonly breakOnAll: Signal<boolean> = this.studio.breakOnAllExceptions;
+
+  /**
+   * Gets whether the call stack has frames beyond those shown.
+   */
+  protected readonly hasMoreFrames: Signal<boolean> = this.session.hasMoreFrames;
 
   /**
    * Holds the latest evaluation of each watch expression, keyed by the expression.
@@ -345,6 +365,29 @@ export class DebugPanel {
   }
 
   /**
+   * Chooses whether the debugger breaks on uncaught exceptions.
+   * @param uncaught Whether it does.
+   */
+  protected onBreakOnUncaught(uncaught: boolean): void {
+    this.session.setBreakOnExceptions(uncaught, this.breakOnAll());
+  }
+
+  /**
+   * Chooses whether the debugger breaks on every exception.
+   * @param all Whether it does.
+   */
+  protected onBreakOnAll(all: boolean): void {
+    this.session.setBreakOnExceptions(this.breakOnUncaught(), all);
+  }
+
+  /**
+   * Loads the next page of the call stack.
+   */
+  protected onLoadMoreFrames(): void {
+    void this.session.loadMoreFrames();
+  }
+
+  /**
    * Adds the draft expression to the watch list and evaluates it.
    */
   protected addWatch(): void {
@@ -354,7 +397,7 @@ export class DebugPanel {
       return;
     }
     this.log.info('workspace.debug-panel', 'Add watch expression', expression);
-    this.watchExpressions.set([...this.watchExpressions(), expression]);
+    void this.studio.setWatchExpressions([...this.watchExpressions(), expression]);
     this.newWatch.set('');
     void this.evaluateOne(expression);
   }
@@ -365,7 +408,7 @@ export class DebugPanel {
    */
   protected removeWatch(expression: string): void {
     this.log.info('workspace.debug-panel', 'Remove watch expression', expression);
-    this.watchExpressions.set(
+    void this.studio.setWatchExpressions(
       this.watchExpressions().filter((candidate: string): boolean => candidate !== expression),
     );
     const results: Map<string, DebugEvaluation> = new Map<string, DebugEvaluation>(

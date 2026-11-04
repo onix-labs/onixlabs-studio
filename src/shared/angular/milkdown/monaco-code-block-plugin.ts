@@ -56,6 +56,16 @@ export interface MonacoCodeBlockDeps {
   readonly highlighter: MonacoHighlighter;
 
   /**
+   * Gets whether fences number their lines. Absent means they stay compact.
+   */
+  readonly lineNumbers?: boolean;
+
+  /**
+   * Gets whether a math fence shows its equation until it is entered. Absent means its source.
+   */
+  readonly mathPreview?: boolean;
+
+  /**
    * Gets Studio's completion list and signature card for each fence's editor (#1021), or undefined for
    * a fence with neither.
    */
@@ -141,6 +151,35 @@ function computeChange(
  */
 function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Holds the language a math fence carries, lower-cased.
+ */
+const MATH_LANGUAGE: string = 'latex';
+
+/**
+ * Splits `colorize`'s HTML into its lines, which it ends with a break.
+ * @param html The colorized HTML.
+ * @returns Returns each line's HTML.
+ */
+function colorizedLines(html: string): readonly string[] {
+  const lines: string[] = html.split(/<br\s*\/?>/);
+  if (lines[lines.length - 1].trim().length === 0) {
+    lines.pop();
+  }
+  return lines;
+}
+
+/**
+ * Wraps each line in the element the stylesheet numbers, so a line that wraps keeps one number.
+ * @param lines Each line's HTML.
+ * @returns Returns the numbered lines' HTML.
+ */
+function numberLines(lines: readonly string[]): string {
+  return lines
+    .map((line: string): string => `<span class="milkdown-monaco-code-block__line">${line}</span>`)
+    .join('');
 }
 
 /**
@@ -393,7 +432,13 @@ class MonacoCodeBlockView implements NodeView {
   private renderPlaceholder(): void {
     const request: number = ++this.placeholderRequest;
     const code: string = this.node.textContent;
-    this.body.innerHTML = `<pre class="milkdown-monaco-code-block__placeholder"><code>${escapeHtml(code)}</code></pre>`;
+    if (this.showsEquation(code)) {
+      this.renderEquation(code, request);
+      return;
+    }
+    const numbered: boolean = this.deps.lineNumbers === true;
+    const escaped: string = escapeHtml(code);
+    this.body.innerHTML = `<pre class="milkdown-monaco-code-block__placeholder${numbered ? ' milkdown-monaco-code-block__placeholder--numbered' : ''}"><code>${numbered ? numberLines(escaped.split('\n')) : escaped}</code></pre>`;
     const placeholder: HTMLElement | null = this.body.querySelector(
       '.milkdown-monaco-code-block__placeholder',
     );
@@ -410,8 +455,38 @@ class MonacoCodeBlockView implements NodeView {
           '.milkdown-monaco-code-block__placeholder code',
         );
         if (codeElement !== null) {
-          codeElement.innerHTML = html;
+          codeElement.innerHTML = numbered ? numberLines(colorizedLines(html)) : html;
         }
+      })
+      .catch((): void => undefined);
+  }
+
+  /**
+   * Determines whether the idle fence shows its equation rather than its source.
+   * @param code The fence's code.
+   * @returns Returns true for a math fence with something in it, while previews are on.
+   */
+  private showsEquation(code: string): boolean {
+    return (
+      this.deps.mathPreview === true &&
+      this.languageAttr().toLowerCase() === MATH_LANGUAGE &&
+      code.trim().length > 0
+    );
+  }
+
+  /**
+   * Renders the idle fence as its equation. Entering the fence brings its source back.
+   * @param code The fence's LaTeX.
+   * @param request The render's request number.
+   */
+  private renderEquation(code: string, request: number): void {
+    this.body.innerHTML = '';
+    void import('katex')
+      .then(({ default: katex }): void => {
+        if (request !== this.placeholderRequest || this.editor !== null) {
+          return;
+        }
+        this.body.innerHTML = `<div class="milkdown-monaco-code-block__equation">${katex.renderToString(code, { displayMode: true, throwOnError: false })}</div>`;
       })
       .catch((): void => undefined);
   }
@@ -523,11 +598,11 @@ class MonacoCodeBlockView implements NodeView {
       // A fence is a compact, chromeless surface, not a full page: no line numbers, gutter, minimap,
       // folding or ruler, and it grows to fit its content rather than scrolling internally. The
       // decorations lane is widened a little to give the code some breathing room from the left edge.
-      lineNumbers: 'off',
+      lineNumbers: this.deps.lineNumbers === true ? 'on' : 'off',
       glyphMargin: false,
       folding: false,
       lineDecorationsWidth: 12,
-      lineNumbersMinChars: 0,
+      lineNumbersMinChars: this.deps.lineNumbers === true ? 3 : 0,
       minimap: { enabled: false },
       overviewRulerLanes: 0,
       hideCursorInOverviewRuler: true,

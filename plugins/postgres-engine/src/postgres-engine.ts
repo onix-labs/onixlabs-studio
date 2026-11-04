@@ -2,6 +2,7 @@ import pg from 'pg';
 import {
   CompletionName,
   ConnectionValues,
+  ConnectOptions,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseNodeAction,
@@ -13,6 +14,9 @@ import {
   ResultColumn,
   ResultColumnKey,
   ResultColumnKeyKind,
+  TransactionAction,
+  TransactionOutcome,
+  TreeOptions,
 } from '../../protocol/database/protocol';
 import { countNewlines, splitStatements } from '../../protocol/database/statements';
 import {
@@ -25,7 +29,7 @@ import {
   EngineExecution,
   EngineResultSet,
   EngineSession,
-  MAX_RESULT_ROWS,
+  maxResultRows,
   quoteIdentifier,
   text,
 } from '../../protocol/database/engine';
@@ -105,7 +109,27 @@ interface PostgresSettings {
   readonly password: string;
   readonly ssl: false | { readonly rejectUnauthorized: boolean };
   readonly database: string;
+
+  /**
+   * Gets whether to fall back to a plain connection when the server has no encryption to offer.
+   */
+  readonly preferEncryption: boolean;
+
+  /**
+   * Gets whether the session's transactions are read-only.
+   */
+  readonly readOnly: boolean;
+
+  /**
+   * Gets how long to wait for the server, in milliseconds.
+   */
+  readonly connectTimeoutMs: number;
 }
+
+/**
+ * How long a connection waits for the server when Studio does not say.
+ */
+const DEFAULT_CONNECT_TIMEOUT_MS: number = 10_000;
 
 /**
  * PostgreSQL through `pg`, the pure-JavaScript client, so the engine needs no native build per
@@ -120,7 +144,7 @@ export class PostgresEngine implements DatabaseEngine {
     displayName: 'PostgreSQL',
     language: 'pgsql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion'],
+    capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
     connectionFields: [
       {
         id: 'host',
@@ -167,13 +191,21 @@ export class PostgresEngine implements DatabaseEngine {
         id: 'ssl',
         label: 'Encryption',
         kind: 'choice',
-        defaultValue: 'disable',
+        defaultValue: 'prefer',
         section: 'security',
         options: [
           { value: 'disable', label: 'Disabled' },
+          { value: 'prefer', label: 'Prefer' },
           { value: 'require', label: 'Required' },
           { value: 'no-verify', label: 'Required, without verifying the certificate' },
         ],
+      },
+      {
+        id: 'readOnly',
+        label: 'Open read-only',
+        kind: 'boolean',
+        defaultValue: 'false',
+        section: 'options',
       },
     ],
   };
@@ -181,9 +213,13 @@ export class PostgresEngine implements DatabaseEngine {
   /**
    * Opens a connection to the named database.
    * @param values The connection's field values.
+   * @param options How Studio wants it opened.
    * @returns Returns a promise resolving the session.
    */
-  public async connect(values: ConnectionValues): Promise<EngineSession> {
+  public async connect(values: ConnectionValues, options?: ConnectOptions): Promise<EngineSession> {
+    // Prefer asks what libpq's `sslmode=prefer` asks: encryption when the server has it, without
+    // verifying the certificate, and a plain connection when it has not.
+    const mode: string = values['ssl'] ?? 'prefer';
     const settings: PostgresSettings = {
       host: (values['host'] ?? 'localhost').trim() || 'localhost',
       port: Number(values['port'] ?? '5432') || 5432,
@@ -191,11 +227,14 @@ export class PostgresEngine implements DatabaseEngine {
       password: values['password'] ?? '',
       database: (values['database'] ?? 'postgres').trim() || 'postgres',
       ssl:
-        values['ssl'] === 'require'
+        mode === 'require'
           ? { rejectUnauthorized: true }
-          : values['ssl'] === 'no-verify'
+          : mode === 'no-verify' || mode === 'prefer'
             ? { rejectUnauthorized: false }
             : false,
+      preferEncryption: mode === 'prefer',
+      readOnly: values['readOnly'] === 'true',
+      connectTimeoutMs: options?.timeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
     };
     const session: PostgresSession = new PostgresSession(settings);
     await session.open();
@@ -237,10 +276,23 @@ class PostgresSession implements EngineSession {
   private typeNames: Map<number, string> | null = null;
 
   /**
+   * Holds the clients with a manual transaction open, keyed by database. Each is a client of its own,
+   * so a statement that aborts the transaction does not take the tree's reads down with it.
+   */
+  private readonly transactions: Map<string, pg.Client> = new Map<string, pg.Client>();
+
+  /**
+   * Holds how clients are encrypted, which Prefer settles when the first one connects.
+   */
+  private ssl: PostgresSettings['ssl'];
+
+  /**
    * Creates the session.
    * @param settings The connection settings.
    */
-  public constructor(private readonly settings: PostgresSettings) {}
+  public constructor(private readonly settings: PostgresSettings) {
+    this.ssl = settings.ssl;
+  }
 
   /**
    * Opens the client for the connection's own database and reads the server version.
@@ -254,6 +306,14 @@ class PostgresSession implements EngineSession {
       });
       this.serverVersion = `PostgreSQL ${text(result.rows[0]?.[0])}`;
     } catch (error: unknown) {
+      if (
+        this.settings.preferEncryption &&
+        this.ssl !== false &&
+        /does not support SSL/i.test(describeError(error))
+      ) {
+        this.ssl = false;
+        return this.open();
+      }
       // A session that fails to open is never handed out, so nothing else would close its client.
       await this.close().catch((): void => undefined);
       throw error;
@@ -290,8 +350,9 @@ class PostgresSession implements EngineSession {
       user: this.settings.user,
       password: this.settings.password,
       database,
-      ssl: this.settings.ssl === false ? false : { ...this.settings.ssl },
-      connectionTimeoutMillis: 10_000,
+      ssl: this.ssl === false ? false : { ...this.ssl },
+      connectionTimeoutMillis: this.settings.connectTimeoutMs,
+      ...(this.settings.readOnly ? { options: '-c default_transaction_read_only=on' } : {}),
       types: {
         getTypeParser: ((oid: number, format?: string): unknown =>
           TEMPORAL_OIDS.has(oid)
@@ -305,6 +366,9 @@ class PostgresSession implements EngineSession {
       // A dropped connection is reported by the next query that uses it; the session forgets it so
       // that query opens a fresh one — but only if it is the one remembered, since a cancel's
       // short-lived client is opened the same way and its failure says nothing about the other.
+      if (this.transactions.get(database) === client) {
+        this.transactions.delete(database);
+      }
       const remembered: Promise<pg.Client> | undefined = this.clients.get(database);
       void remembered?.then(
         (current: pg.Client): void => {
@@ -322,16 +386,20 @@ class PostgresSession implements EngineSession {
   /**
    * Lists a node's children.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the children.
    */
-  public async expand(path: string | null): Promise<readonly DatabaseNode[]> {
+  public async expand(
+    path: string | null,
+    options?: TreeOptions,
+  ): Promise<readonly DatabaseNode[]> {
     const segments: readonly string[] = path === null ? [] : decodePath(path);
     const [, database, , schema, kind, name, part] = segments;
     if (database === undefined) {
       return this.databases();
     }
     if (schema === undefined) {
-      return this.schemas(database);
+      return this.schemas(database, options?.systemObjects === true);
     }
     if (kind === undefined) {
       return this.schemaFolders(database, schema);
@@ -394,15 +462,17 @@ class PostgresSession implements EngineSession {
   }
 
   /**
-   * Lists a database's user schemas.
+   * Lists a database's schemas: its users', and with them the system's when asked.
    * @param database The database.
+   * @param system Whether to list the system schemas too.
    * @returns Returns the schema nodes.
    */
-  private async schemas(database: string): Promise<readonly DatabaseNode[]> {
+  private async schemas(database: string, system: boolean): Promise<readonly DatabaseNode[]> {
     const rows: readonly unknown[][] = await this.rows(
       database,
       `select nspname, pg_get_userbyid(nspowner) from pg_namespace
-        where nspname not like 'pg\\_%' and nspname <> 'information_schema' order by nspname`,
+        ${system ? '' : `where nspname not like 'pg\\_%' and nspname <> 'information_schema'`}
+        order by nspname`,
     );
     return rows.map((row: unknown[]): DatabaseNode => ({
       path: encodePath('db', database, 'schema', text(row[0])),
@@ -607,17 +677,20 @@ class PostgresSession implements EngineSession {
   }
 
   /**
-   * Runs a script statement by statement against a database, stopping at the first error.
+   * Runs a script statement by statement against a database, stopping at the first error unless
+   * asked to carry on.
    * @param request The execution.
    * @returns Returns a promise resolving what it produced.
    */
   public async execute(request: ExecuteRequest): Promise<EngineExecution> {
     const database: string = request.database ?? this.settings.database;
+    const manual: boolean = request.options?.manualTransaction === true;
+    const maxRows: number = maxResultRows(request);
     const resultSets: EngineResultSet[] = [];
     const messages: QueryMessage[] = [];
     let client: pg.Client;
     try {
-      client = await this.client(database);
+      client = await (manual ? this.transactionClient(database) : this.client(database));
     } catch (error: unknown) {
       return {
         resultSets,
@@ -626,6 +699,7 @@ class PostgresSession implements EngineSession {
         cancelled: false,
       };
     }
+    await this.applyTimeout(client, request.options?.timeoutMs);
     const onNotice: (notice: NoticeLike) => void = (notice: NoticeLike): void => {
       messages.push({
         severity: notice.severity === 'WARNING' ? 'warning' : 'info',
@@ -648,7 +722,7 @@ class PostgresSession implements EngineSession {
           });
           if (result.fields.length > 0) {
             const rows: (readonly DatabaseValue[])[] = result.rows
-              .slice(0, MAX_RESULT_ROWS)
+              .slice(0, maxRows)
               .map((row: unknown[]): readonly DatabaseValue[] =>
                 row.map((value: unknown, index: number): DatabaseValue =>
                   toValue(value, result.fields[index]?.dataTypeID ?? 0),
@@ -686,6 +760,10 @@ class PostgresSession implements EngineSession {
               text: `${result.command ?? 'OK'}${result.rowCount === null ? '' : ` ${result.rowCount}`}`,
               line: statement.line,
             });
+            // A script may end its own transaction, and then nothing is left to commit.
+            if (manual && (result.command === 'COMMIT' || result.command === 'ROLLBACK')) {
+              await this.endClient(database);
+            }
           }
         } catch (error: unknown) {
           const position: number = Number((error as { position?: string }).position ?? 0);
@@ -701,7 +779,9 @@ class PostgresSession implements EngineSession {
               : { severity: 'error', text: describeError(error), line },
           );
           failed = true;
-          break;
+          if (this.cancelled.has(request.id) || request.options?.continueOnError !== true) {
+            break;
+          }
         }
       }
     } finally {
@@ -709,7 +789,85 @@ class PostgresSession implements EngineSession {
       this.running.delete(request.id);
     }
     const cancelled: boolean = this.cancelled.delete(request.id);
-    return { resultSets, messages, failed: failed && !cancelled, cancelled };
+    return {
+      resultSets,
+      messages,
+      failed: failed && !cancelled,
+      cancelled,
+      ...(manual ? { transactionOpen: this.transactions.has(database) } : {}),
+    };
+  }
+
+  /**
+   * Gets the client holding a database's manual transaction, beginning one when there is none.
+   * @param database The database.
+   * @returns Returns a promise resolving the client.
+   */
+  private async transactionClient(database: string): Promise<pg.Client> {
+    const open: pg.Client | undefined = this.transactions.get(database);
+    if (open !== undefined) {
+      return open;
+    }
+    const client: pg.Client = await this.newClient(database);
+    await client.query('begin');
+    this.transactions.set(database, client);
+    return client;
+  }
+
+  /**
+   * Sets how long a statement may run on the server. A transaction a statement has aborted refuses
+   * even this, and the host's own limit still holds.
+   * @param client The client.
+   * @param timeoutMs The limit in milliseconds, 0 for none, or undefined to leave it be.
+   */
+  private async applyTimeout(client: pg.Client, timeoutMs: number | undefined): Promise<void> {
+    if (timeoutMs === undefined) {
+      return;
+    }
+    await client
+      .query(`select set_config('statement_timeout', $1, false)`, [`${timeoutMs}`])
+      .catch((): void => undefined);
+  }
+
+  /**
+   * Closes a database's transaction client; closing it rolls back whatever is still open on it.
+   * @param database The database.
+   */
+  private async endClient(database: string): Promise<void> {
+    const client: pg.Client | undefined = this.transactions.get(database);
+    this.transactions.delete(database);
+    await client?.end().catch((): void => undefined);
+  }
+
+  /**
+   * Commits or rolls back a database's manual transaction.
+   * @param action What to do with it.
+   * @param database The database, or the connection's own.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public async transaction(
+    action: TransactionAction,
+    database?: string,
+  ): Promise<TransactionOutcome> {
+    const target: string = database ?? this.settings.database;
+    const client: pg.Client | undefined = this.transactions.get(target);
+    if (client === undefined) {
+      return { failed: false, message: 'No transaction is open.' };
+    }
+    try {
+      const result: pg.QueryResult = await client.query(action);
+      // COMMIT of a transaction a statement aborted rolls it back, and says so only by its tag.
+      return result.command === 'ROLLBACK' && action === 'commit'
+        ? { failed: true, message: 'The transaction had failed, so it was rolled back.' }
+        : {
+            failed: false,
+            message: action === 'commit' ? 'Transaction committed.' : 'Transaction rolled back.',
+          };
+    } catch (error: unknown) {
+      return { failed: true, message: describeError(error) };
+    } finally {
+      await this.endClient(target);
+    }
   }
 
   /**
@@ -862,6 +1020,9 @@ class PostgresSession implements EngineSession {
   public async close(): Promise<void> {
     const clients: Promise<pg.Client>[] = [...this.clients.values()];
     this.clients.clear();
+    await Promise.allSettled(
+      [...this.transactions.keys()].map((database: string) => this.endClient(database)),
+    );
     await Promise.allSettled(
       clients.map(async (opening: Promise<pg.Client>): Promise<void> => (await opening).end()),
     );

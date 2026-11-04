@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import {
@@ -1090,6 +1091,59 @@ describe('TreePanel row context menu', () => {
 
     expect(component.deleteTargets()?.map((target) => target.path)).toEqual(['/ws/main.ts']);
     expect(workspace.deleted).toEqual([]);
+  });
+
+  describe('delete and open settings (#1244)', () => {
+    afterEach(() => {
+      localStorage.removeItem('settings');
+    });
+
+    it('confirmBeforeDeletingOff_goesToTheTrashWithoutAsking', async () => {
+      TestBed.inject(Settings).set('workspaces.confirmBeforeDeleting', false);
+
+      component.onContextAction({
+        itemId: 'delete',
+        row: treeRow(node('main.ts', '/ws/main.ts', 'file')),
+      });
+      await fixture.whenStable();
+
+      expect(workspace.deleted).toEqual(['/ws/main.ts']);
+      expect(component.deleteTargets()).toBeNull();
+    });
+
+    it('moveToTrashOff_alwaysAsks_evenWithConfirmationOff', () => {
+      const settings: Settings = TestBed.inject(Settings);
+      settings.set('workspaces.confirmBeforeDeleting', false);
+      settings.set('workspaces.moveToTrash', false);
+
+      component.onContextAction({
+        itemId: 'delete',
+        row: treeRow(node('main.ts', '/ws/main.ts', 'file')),
+      });
+
+      expect(workspace.deleted).toEqual([]);
+      expect(component.deleteTargets()?.length).toBe(1);
+    });
+
+    it('moveToTrashOff_saysNothingAfterwards_asItAskedForThatItself', async () => {
+      TestBed.inject(Settings).set('workspaces.moveToTrash', false);
+      workspace.result = { success: true, trashed: false };
+      component.deleteTargets.set([node('main.ts', '/ws/main.ts', 'file')]);
+
+      await component.confirmDelete();
+
+      expect(workspace.deleted).toEqual(['/ws/main.ts']);
+      expect(notifications.sent).toEqual([]);
+    });
+
+    it('openFilesWithSingleClick_opensAFileOnItsClick', () => {
+      component.onRowClick(treeRow(node('main.ts', '/ws/main.ts', 'file')));
+      expect(opener.opened).toEqual([]);
+
+      TestBed.inject(Settings).set('workspaces.openFilesWith', 'single');
+      component.onRowClick(treeRow(node('main.ts', '/ws/main.ts', 'file')));
+      expect(opener.opened).toEqual(['/ws/main.ts']);
+    });
   });
 
   it('confirmDelete_deletesTheEntry_andSaysNothingWhenItReachedTheTrash', async () => {

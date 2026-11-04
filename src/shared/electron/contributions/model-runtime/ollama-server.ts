@@ -1,3 +1,4 @@
+import type { OllamaStopOnQuit } from '@shared/api/startup-settings';
 import { ChildProcess, spawn } from 'node:child_process';
 import { RuntimeInstallKind } from '@shared/api/model-runtime-types';
 import { logger } from '../../logger';
@@ -33,10 +34,29 @@ export type HealthProbe = () => Promise<boolean>;
  *
  * This is only about *closing Studio*. An explicit stop is the user's instruction and always applies.
  * @param kind The install the running server was started from.
+ * @param policy What the user's Stop Runtime on Quit setting asks for.
  * @returns Returns true when shutdown should stop the server.
  */
-export function stopsOnShutdown(kind: RuntimeInstallKind): boolean {
-  return kind === 'managed';
+export function stopsOnShutdown(
+  kind: RuntimeInstallKind,
+  policy: OllamaStopOnQuit = 'automatic',
+): boolean {
+  return policy === 'automatic' ? kind === 'managed' : policy === 'always';
+}
+
+/**
+ * The user's settings for a server Studio starts.
+ */
+export interface OllamaServerOptions {
+  /**
+   * Gets what happens to it when Studio quits.
+   */
+  readonly stopOnQuit?: OllamaStopOnQuit;
+
+  /**
+   * Gets the variables it starts with.
+   */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -70,6 +90,11 @@ export class OllamaServer {
   private startedKind: RuntimeInstallKind = 'system';
 
   /**
+   * What the user's Stop Runtime on Quit setting asked for when the running server was started.
+   */
+  private policy: OllamaStopOnQuit = 'automatic';
+
+  /**
    * The health probe used to decide when a spawned server is ready.
    */
   private readonly probe: HealthProbe;
@@ -80,13 +105,24 @@ export class OllamaServer {
   private readonly host: string;
 
   /**
+   * The user's settings for a server, read as each one starts.
+   */
+  private readonly options: () => OllamaServerOptions;
+
+  /**
    * Initializes a new instance of the {@link OllamaServer} class.
    * @param host The host[:port] the server should listen on.
    * @param probe Answers whether the server is reachable.
+   * @param options Reads the user's settings for a server.
    */
-  public constructor(host: string, probe: HealthProbe) {
+  public constructor(
+    host: string,
+    probe: HealthProbe,
+    options: () => OllamaServerOptions = (): OllamaServerOptions => ({}),
+  ) {
     this.host = host;
     this.probe = probe;
+    this.options = options;
   }
 
   /**
@@ -115,17 +151,20 @@ export class OllamaServer {
     }
 
     logger.info('OllamaServer', `Starting Ollama server: ${executable} serve (${this.host})`);
+    const options: OllamaServerOptions = this.options();
+    this.policy = options.stopOnQuit ?? 'automatic';
+    const outlives: boolean = !stopsOnShutdown(kind, this.policy);
     let child: ChildProcess;
     try {
       child = spawn(executable, ['serve'], {
-        env: { ...process.env, OLLAMA_HOST: this.host },
+        env: { ...process.env, ...options.env, OLLAMA_HOST: this.host },
         stdio: 'ignore',
         windowsHide: true,
         // Detached so a server that is meant to outlive Studio is not in Studio's process group and
         // cannot be taken down with it. A managed server is killed explicitly on disposal instead.
-        detached: kind === 'system',
+        detached: outlives,
       });
-      if (kind === 'system') {
+      if (outlives) {
         // Nothing waits on it, so let the event loop close without it.
         child.unref();
       }
@@ -153,7 +192,7 @@ export class OllamaServer {
     // to outlive Studio would have the reaper shoot it moments after Studio came back. Leaving it
     // unregistered is also the robust choice: unregistering on shutdown would depend on a graceful
     // quit, and a crash or a force-kill would then take the user's own server down with it.
-    if (stopsOnShutdown(kind)) {
+    if (!outlives) {
       pidJournal()?.register(child.pid, 'model-runtime', executable);
     }
 
@@ -204,8 +243,8 @@ export class OllamaServer {
     }
     this.child = null;
 
-    if (stopsOnShutdown(this.startedKind)) {
-      // Studio's own private copy: nothing else on the machine uses it, so leaving it holding a port,
+    if (stopsOnShutdown(this.startedKind, this.policy)) {
+      // Studio's own private copy, or one the user asked to have stopped: nothing else on the machine uses it, so leaving it holding a port,
       // RAM and VRAM after Studio has gone would be pure waste.
       logger.info('OllamaServer', 'Stopping the Studio-managed server on shutdown');
       child.kill('SIGTERM');

@@ -26,6 +26,11 @@ export enum DatabaseChannel {
   Test = 'database:test',
 
   /**
+   * Commits or rolls back the transaction an execution left open (invoke).
+   */
+  Transaction = 'database:transaction',
+
+  /**
    * Closes a session (invoke).
    */
   Disconnect = 'database:disconnect',

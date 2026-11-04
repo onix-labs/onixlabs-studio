@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
@@ -276,6 +277,143 @@ describe('BuildRunner', () => {
     // Both launches reuse the workspace's one Build session.
     expect(sessions.launchCalls[0].sessionId).toBe(sessions.launchCalls[1].sessionId);
     expect(runner.buildBusy()).toBe(true);
+  });
+
+  it('run_queued_startsWhenTheRunningBuildEnds_andSaysSo', async () => {
+    const runner: BuildRunner = await discover();
+
+    runner.run('dotnet:build');
+    await settle();
+    runner.run('dotnet:build', { queue: true });
+    await settle();
+    expect(sessions.launchCalls).toHaveLength(1);
+
+    sessions.resolveExit(0);
+    await settle();
+
+    expect(sessions.launchCalls).toHaveLength(2);
+    expect(runner.buildBusy()).toBe(true);
+  });
+
+  describe('run settings (#1245)', () => {
+    const app: RunConfiguration = {
+      id: 'app',
+      name: 'App',
+      providerKind: 'dotnet',
+      target: '/w/App.csproj',
+      mode: 'run',
+    };
+
+    afterEach(() => {
+      localStorage.removeItem('settings');
+    });
+
+    it('another_runsBesideTheOneRunning_inATerminalOfItsOwn', async () => {
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration(app);
+      runner.runConfiguration(app, [], { another: true });
+      await settle();
+
+      expect(sessions.launchCalls).toHaveLength(2);
+      expect(sessions.launchCalls[0].sessionId).not.toBe(sessions.launchCalls[1].sessionId);
+      expect(runner.activeRuns()).toHaveLength(2);
+    });
+
+    it('newEachRun_givesEveryRunAFreshTerminal', async () => {
+      TestBed.inject(Settings).set('workspaces.runTerminal', 'new');
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration(app);
+      await settle();
+      sessions.resolveExit(0);
+      await settle();
+      runner.runConfiguration(app);
+      await settle();
+
+      expect(sessions.launchCalls[0].sessionId).not.toBe(sessions.launchCalls[1].sessionId);
+    });
+
+    it('newEachRun_restartStopsTheRunItReplaces', async () => {
+      TestBed.inject(Settings).set('workspaces.runTerminal', 'new');
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration(app);
+      await settle();
+      runner.runConfiguration(app, [], { restart: true });
+      await settle();
+
+      expect(sessions.terminateCalls).toHaveLength(1);
+    });
+
+    it('reuseAndKeep_asksTheSessionToKeepItsOutput', async () => {
+      TestBed.inject(Settings).set('workspaces.runTerminal', 'reuse-keep');
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration(app);
+      await settle();
+
+      expect(sessions.launchCalls[0].keepOutput).toBe(true);
+    });
+
+    it('revealOnFailure_staysBackUntilTheRunFails', async () => {
+      TestBed.inject(Settings).set('workspaces.revealTerminalOnRun', 'failure');
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration(app);
+      await settle();
+      expect(sessions.launchCalls[0].reveal).toBe(false);
+
+      sessions.resolveExit(1, sessions.launchCalls[0].sessionId);
+      await settle();
+      expect(sessions.revealCalls).toEqual([sessions.launchCalls[0].sessionId]);
+    });
+
+    it('beforeRun_useLastBuild_buildsTheFirstTime_thenRunsWithoutBuilding', async () => {
+      const runner: BuildRunner = await discover();
+      const last: RunConfiguration = { ...app, beforeRun: 'last-build' };
+
+      runner.runConfiguration(last);
+      await settle();
+      sessions.resolveExit(0, sessions.launchCalls[0].sessionId);
+      await settle();
+      runner.runConfiguration(last);
+      await settle();
+
+      expect(sessions.launchCalls[0].command).toBe('dotnet run --project "/w/App.csproj"');
+      expect(sessions.launchCalls[1].command).toBe(
+        'dotnet run --no-build --project "/w/App.csproj"',
+      );
+    });
+
+    it('beforeRun_rebuild_buildsFromCleanFirst', async () => {
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration({ ...app, beforeRun: 'rebuild' });
+      await settle();
+
+      expect(sessions.launchCalls[0].command).toBe(
+        'dotnet build "/w/App.csproj" --no-incremental && dotnet run --no-build --project "/w/App.csproj"',
+      );
+    });
+
+    it('cmakeBuildFolder_replacesTheDefaultFolder', async () => {
+      const runner: BuildRunner = await discover();
+
+      runner.runConfiguration({
+        id: 'app',
+        name: 'App',
+        providerKind: 'cpp',
+        target: 'app',
+        mode: 'run',
+        cmakeBuildFolder: 'out/debug',
+      });
+      await settle();
+
+      expect(sessions.launchCalls[0].command).toBe(
+        'cmake --build out/debug --target app && ./out/debug/app',
+      );
+    });
   });
 
   it('run_supersededOrDisposedBuild_publishesNoProblems', async () => {

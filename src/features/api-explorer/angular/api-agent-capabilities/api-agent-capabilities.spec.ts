@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import {
@@ -107,6 +108,10 @@ class FakeOpener {
 }
 
 describe('ApiAgentCapabilities', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   let workspace: ApiWorkspace;
   let runtime: FakeRuntime;
   let opener: FakeOpener;
@@ -132,6 +137,7 @@ describe('ApiAgentCapabilities', () => {
         { provide: ApiRequestOpener, useValue: opener },
       ],
     });
+    TestBed.inject(Settings).set('apiExplorer.sampleContent', true);
     workspace = TestBed.inject(ApiWorkspace);
     TestBed.inject(ApiAgentCapabilities);
   });

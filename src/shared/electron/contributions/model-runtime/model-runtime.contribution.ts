@@ -9,12 +9,20 @@ import {
 } from '@shared/api/model-runtime-types';
 import { CatalogQuery } from '@shared/api/model-catalog-types';
 import { resolveOllamaOrigin } from '../../ai/ollama-endpoint';
+import {
+  ollamaEnvironment,
+  ollamaKeepAlive,
+  ollamaStopOnQuit,
+  onOllamaNeeded,
+} from '../../ai/ollama-settings';
+import { StartupPreferencesStore } from '../../startup-preferences';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { CuratedCatalogSource } from './curated-catalog-source';
 import { HubFetch, HubResponse, HuggingFaceCatalogSource } from './huggingface-catalog-source';
 import { ModelCatalog } from './model-catalog';
 import { ModelRuntime } from './model-runtime';
 import { OllamaProvisioner } from './ollama-provisioner';
+import type { OllamaServerOptions } from './ollama-server';
 import { OllamaRuntime } from './ollama-runtime';
 
 /**
@@ -108,6 +116,17 @@ export class ModelRuntimeContribution implements MainContribution {
   }
 
   /**
+   * Starts the runtime for a model about to be used, when the user wants it started on demand.
+   * @param runtime The runtime.
+   * @returns Returns a promise resolving once it is up, or has failed to come up.
+   */
+  private async startWhenNeeded(runtime: ModelRuntime): Promise<void> {
+    if (StartupPreferencesStore.read().settings.ollamaStart === 'needed') {
+      await runtime.start();
+    }
+  }
+
+  /**
    * Wires the operation channels and the watch requests. Polling itself does not begin until a
    * consumer asks for it.
    * @param context The contribution context.
@@ -118,6 +137,10 @@ export class ModelRuntimeContribution implements MainContribution {
     this.runtime = runtime;
     const catalog: ModelCatalog = this.catalogFactory();
     this.catalog = catalog;
+    onOllamaNeeded((): Promise<void> => this.startWhenNeeded(runtime));
+    if (StartupPreferencesStore.read().settings.ollamaStart === 'launch') {
+      void runtime.start();
+    }
 
     context.handle(ModelRuntimeChannel.Describe, (): { id: string; displayName: string } => ({
       id: runtime.id,
@@ -174,6 +197,7 @@ export class ModelRuntimeContribution implements MainContribution {
    * Stops polling and drops the context. The IPC handlers are removed automatically by the registry.
    */
   public dispose(): void {
+    onOllamaNeeded(null);
     this.context?.log.info('disposing model runtime contribution; stopping status poll');
     this.stopPolling();
     // In-flight pulls hold an open connection to the server; abort them before it goes away.
@@ -213,6 +237,7 @@ export class ModelRuntimeContribution implements MainContribution {
     this.pulls.set(name, controller);
     context.log.info(`pulling model '${name}'`);
     try {
+      await this.startWhenNeeded(runtime);
       return await runtime.pull(
         name,
         (progress: ModelPullProgress): void =>
@@ -318,15 +343,30 @@ export function sameStatus(previous: ModelRuntimeStatus | null, next: ModelRunti
 }
 
 /**
- * Builds the production runtime: Ollama at the environment's configured origin, with managed installs
- * kept under the user-data directory alongside the provisioned language servers.
+ * Builds the production runtime: Ollama at the origin the environment or the user's setting names, with
+ * managed installs kept under the user-data directory alongside the provisioned language servers unless
+ * the user chose a folder of their own.
  * @returns Returns the runtime.
  */
 function defaultRuntime(): ModelRuntime {
+  const folder: string = StartupPreferencesStore.read().settings.ollamaRuntimeFolder;
   return new OllamaRuntime(
-    resolveOllamaOrigin(process.env),
+    resolveOllamaOrigin(ollamaEnvironment()),
     undefined,
-    new OllamaProvisioner(path.join(app.getPath('userData'), 'model-runtimes', 'ollama')),
+    new OllamaProvisioner(
+      folder === '' ? path.join(app.getPath('userData'), 'model-runtimes', 'ollama') : folder,
+    ),
+    (): OllamaServerOptions => {
+      const env: Record<string, string | undefined> = ollamaEnvironment();
+      return {
+        stopOnQuit: ollamaStopOnQuit(),
+        env: {
+          OLLAMA_KEEP_ALIVE: ollamaKeepAlive(),
+          ...(env['OLLAMA_MODELS'] === undefined ? {} : { OLLAMA_MODELS: env['OLLAMA_MODELS'] }),
+        },
+      };
+    },
+    ollamaKeepAlive,
   );
 }
 

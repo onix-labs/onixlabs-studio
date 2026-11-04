@@ -8,6 +8,9 @@ import {
   ExecuteRequest,
   NamesScope,
   NodeActionOutcome,
+  TransactionAction,
+  TransactionOutcome,
+  TreeOptions,
 } from '../../protocol/database/protocol';
 import { SqliteRunner } from './sqlite-runner';
 import { toValue } from './sqlite-run';
@@ -67,7 +70,7 @@ export class SqliteEngine implements DatabaseEngine {
     displayName: 'SQLite',
     language: 'sql',
     queryExtension: 'sql',
-    capabilities: ['cancel', 'script', 'completion'],
+    capabilities: ['cancel', 'script', 'completion', 'transactions'],
     connectionFields: [
       {
         id: 'file',
@@ -113,6 +116,15 @@ export class SqliteEngine implements DatabaseEngine {
 }
 
 /**
+ * Gets the condition that leaves SQLite's own `sqlite_` objects out of a listing.
+ * @param system Whether they are wanted after all.
+ * @returns Returns the condition, to follow a `where`.
+ */
+function userObjects(system: boolean): string {
+  return system ? '' : ` and name not like 'sqlite\\_%' escape '\\'`;
+}
+
+/**
  * One open SQLite database.
  */
 class SqliteSession implements EngineSession {
@@ -140,11 +152,14 @@ class SqliteSession implements EngineSession {
    * Lists a node's children: the schemas (main, temp and any attached), their object folders, the
    * objects in each, and a table's columns, indexes and foreign keys.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the children.
    */
-  public expand(path: string | null): Promise<readonly DatabaseNode[]> {
+  public expand(path: string | null, options?: TreeOptions): Promise<readonly DatabaseNode[]> {
     try {
-      return Promise.resolve(this.children(path === null ? [] : decodePath(path)));
+      return Promise.resolve(
+        this.children(path === null ? [] : decodePath(path), options?.systemObjects === true),
+      );
     } catch (error: unknown) {
       return Promise.reject(new Error(describeError(error)));
     }
@@ -153,9 +168,10 @@ class SqliteSession implements EngineSession {
   /**
    * Builds a node's children from the segments of its path.
    * @param segments The decoded path.
+   * @param system Whether to list SQLite's own `sqlite_` tables.
    * @returns Returns the children.
    */
-  private children(segments: readonly string[]): readonly DatabaseNode[] {
+  private children(segments: readonly string[], system: boolean): readonly DatabaseNode[] {
     const [schema, folder, name, part] = segments;
     if (schema === undefined) {
       return this.all('pragma database_list').map(
@@ -177,7 +193,7 @@ class SqliteSession implements EngineSession {
         (entry: { readonly type: string; readonly label: string }): DatabaseNode => {
           const count: number = Number(
             this.all(
-              `select count(*) from ${quoteIdentifier(schema)}.sqlite_schema where type = ? and name not like 'sqlite_%'`,
+              `select count(*) from ${quoteIdentifier(schema)}.sqlite_schema where type = ?${userObjects(system)}`,
               entry.type,
             )[0]?.[0] ?? 0,
           );
@@ -192,7 +208,7 @@ class SqliteSession implements EngineSession {
       );
     }
     if (name === undefined) {
-      return this.objects(schema, folder);
+      return this.objects(schema, folder, system);
     }
     if (part === undefined) {
       return this.tableParts(schema, name);
@@ -206,9 +222,9 @@ class SqliteSession implements EngineSession {
    * @param type The `sqlite_schema` type.
    * @returns Returns the object nodes.
    */
-  private objects(schema: string, type: string): readonly DatabaseNode[] {
+  private objects(schema: string, type: string, system: boolean): readonly DatabaseNode[] {
     return this.all(
-      `select name, tbl_name from ${quoteIdentifier(schema)}.sqlite_schema where type = ? and name not like 'sqlite_%' order by name`,
+      `select name, tbl_name from ${quoteIdentifier(schema)}.sqlite_schema where type = ?${userObjects(system)} order by name`,
       type,
     ).map((row: readonly DatabaseValue[]): DatabaseNode => {
       const name: string = text(row[0]);
@@ -351,6 +367,15 @@ class SqliteSession implements EngineSession {
    */
   public cancel(id: string): void {
     this.runner.cancel(id);
+  }
+
+  /**
+   * Commits or rolls back the transaction a manual run left open on the runner's connection.
+   * @param action What to do with it.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public transaction(action: TransactionAction): Promise<TransactionOutcome> {
+    return this.runner.transaction(action);
   }
 
   /**

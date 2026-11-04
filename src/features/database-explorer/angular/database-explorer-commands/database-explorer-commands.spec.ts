@@ -27,12 +27,35 @@ class RecordingHandler implements DatabaseExplorerCommandHandler {
   );
   public readonly hasPassphrase: WritableSignal<boolean> = signal<boolean>(false);
   public readonly locked: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly manualTransactions: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly transactionOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Records an execute.
    */
   public execute(): void {
     this.calls.push('execute');
+  }
+
+  /**
+   * Records an execute of the current statement.
+   */
+  public executeStatement(): void {
+    this.calls.push('executeStatement');
+  }
+
+  /**
+   * Records a commit.
+   */
+  public commit(): void {
+    this.calls.push('commit');
+  }
+
+  /**
+   * Records a rollback.
+   */
+  public rollback(): void {
+    this.calls.push('rollback');
   }
 
   /**

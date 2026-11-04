@@ -150,6 +150,18 @@ class FakeDocumentHandler implements WorkspaceDocumentCommandHandler {
   public saveAll(): void {
     this.saveAllCalls++;
   }
+
+  public unsavedFiles: boolean = false;
+  public saveFilesCalls: number = 0;
+
+  public hasUnsavedFiles(): boolean {
+    return this.unsavedFiles;
+  }
+
+  public saveFiles(): Promise<void> {
+    this.saveFilesCalls++;
+    return Promise.resolve();
+  }
 }
 
 /**

@@ -10,7 +10,6 @@ import type { PluginSummary } from '@shared/api/plugin-channels';
 import type { Skill, SkillSaveResult } from '@shared/api/skill-channels';
 import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import type { VersionControlCapability } from '@shared/api/version-control-protocol';
-import { Clone } from '@shared/angular/services/clone/clone';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
@@ -89,13 +88,6 @@ export class FakeProjectMachine {
     return [
       { provide: Plugins, useValue: { plugins: this.plugins } },
       {
-        provide: Clone,
-        useValue: {
-          parent: (): Promise<string | null> => Promise.resolve(this.parent),
-          pickParent: (): Promise<string | null> => Promise.resolve(this.picked),
-        },
-      },
-      {
         provide: Forge,
         useValue: {
           isAvailable: true,
@@ -125,6 +117,8 @@ export class FakeProjectMachine {
       {
         provide: NewProject,
         useValue: {
+          defaultFolder: (): Promise<string | null> => Promise.resolve(this.parent),
+          pickFolder: (): Promise<string | null> => Promise.resolve(this.picked),
           create: (request: NewProjectRequest): Promise<NewProjectOutcome> => {
             this.created.push(request);
             return Promise.resolve(this.outcome);

@@ -29,6 +29,9 @@ import { ActiveWorkspace } from '@shared/angular/services/workspace/active-works
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
+import { FindOptions } from '@shared/angular/services/find-options/find-options';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { SearchLimits } from '@shared/api/search-channels';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -91,6 +94,16 @@ export class SearchPanel {
    * Holds the search client that runs a disk search in the main process.
    */
   private readonly search: Search = inject(Search);
+
+  /**
+   * Holds the settings a disk search runs under.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the options remembered for the session, the scope among them.
+   */
+  private readonly findOptions: FindOptions = inject(FindOptions);
 
   /**
    * Holds the file opener used to open a match's file.
@@ -210,6 +223,13 @@ export class SearchPanel {
     fileOpener: this.fileOpener,
     editors: this.editors,
     rootOf: (): string | null => this.activeWorkspace.rootPath(),
+    scope: this.findOptions.searchScope,
+    limitsOf: (): SearchLimits => ({
+      maxResults: this.settings.get('workspaces.searchMaximumResults'),
+      timeoutSeconds: this.settings.get('workspaces.searchTimeout'),
+      maxFileSizeMegabytes: this.settings.get('workspaces.searchMaximumFileSize'),
+      followSymlinks: this.settings.get('workspaces.followSymbolicLinks'),
+    }),
     projectDirectoryOf: (): string | null => untracked(this.projectDirectory),
     editorTargetsOf: (scope: FindScope): readonly EditorSearchTarget[] =>
       this.editorTargets.resolve(scope, {

@@ -11,7 +11,12 @@ import {
   Signal,
   untracked,
 } from '@angular/core';
-import { ConnectionField, DatabaseEngineInfo } from '@shared/api/database-engine-protocol';
+import {
+  ConnectionField,
+  DatabaseEngineInfo,
+  TransactionAction,
+  TransactionOutcome,
+} from '@shared/api/database-engine-protocol';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -59,6 +64,8 @@ import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { parentDir } from '@shared/angular/services/lsp/lsp-paths';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -187,6 +194,8 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   private readonly popoutPanels: PopoutPanels = inject(PopoutPanels);
   private readonly dockFloating: DockFloating = inject(DockFloating);
   private readonly dockReveal: DockReveal = inject(DockReveal);
+  private readonly settings: Settings = inject(Settings);
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Publishes this view's injector so the status strip mounts inside it.
@@ -237,6 +246,24 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
   public readonly executing: Signal<boolean> = computed((): boolean => {
     const id: string | null = this.openQueryId();
     return id !== null && this.workspace.running().has(id);
+  });
+
+  /**
+   * Gets whether the open query runs in manual transactions.
+   */
+  public readonly manualTransactions: Signal<boolean> = computed((): boolean => {
+    const id: string | null = this.openQueryId();
+    const connection: string | null =
+      id === null ? null : (this.workspace.query(id)?.connectionId ?? null);
+    return connection !== null && this.workspace.manualTransactions(connection);
+  });
+
+  /**
+   * Gets whether a transaction is open where the open query runs.
+   */
+  public readonly transactionOpen: Signal<boolean> = computed((): boolean => {
+    const id: string | null = this.openQueryId();
+    return id !== null && this.workspace.transactionOpen(id);
   });
 
   /**
@@ -398,7 +425,7 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     }
     this.releaseUnsavedWork = this.unsavedWork.register(this);
     const first: DatabaseQuery | undefined = this.workspace.queries()[0];
-    if (first !== undefined) {
+    if (first !== undefined && this.settings.get('databaseExplorer.openFirstQuery')) {
       this.opener.open(first.id);
     }
     this.log.info('database.view', 'Database Explorer opened', { file: this.workspace.filePath() });
@@ -456,6 +483,46 @@ export class DatabaseExplorerView implements OnInit, OnDestroy, DatabaseExplorer
     const id: string | null = this.openQueryId();
     if (id !== null) {
       this.opener.run(id);
+    }
+  }
+
+  /**
+   * Runs the statement the open query's caret is in.
+   */
+  public executeStatement(): void {
+    const id: string | null = this.openQueryId();
+    if (id !== null) {
+      this.opener.runStatement(id);
+    }
+  }
+
+  /**
+   * Commits the open transaction.
+   */
+  public commit(): void {
+    void this.endTransaction('commit');
+  }
+
+  /**
+   * Rolls back the open transaction.
+   */
+  public rollback(): void {
+    void this.endTransaction('rollback');
+  }
+
+  /**
+   * Ends the open transaction, and says how it went.
+   * @param action What to do with it.
+   */
+  private async endTransaction(action: TransactionAction): Promise<void> {
+    const id: string | null = this.openQueryId();
+    const outcome: TransactionOutcome | null =
+      id === null ? null : await this.workspace.endTransaction(id, action);
+    if (outcome !== null) {
+      this.notifications.notify({
+        severity: outcome.failed ? 'error' : 'info',
+        title: outcome.message,
+      });
     }
   }
 

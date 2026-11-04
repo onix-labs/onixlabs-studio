@@ -113,6 +113,75 @@ describe('SearchManager (#1007 paths)', () => {
     expect(captured.spawns).toHaveLength(1);
     expect(captured.spawns[0].cwd).toBe(root);
     expect(captured.spawns[0].args.slice(-3)).toEqual(['--', 'name', '.']);
+    expect(captured.spawns[0].args).toContain('--glob=!.git');
+  });
+
+  it('run_withTheFindPanelsFilters_narrowsAndWidensTheFilesRead', async () => {
+    await search({
+      files: { include: ['*.ts'], exclude: ['*.d.ts'], ignored: true, hidden: true },
+    });
+
+    const args: readonly string[] = captured.spawns[0].args;
+    expect(args).toEqual(
+      expect.arrayContaining([
+        '--no-ignore',
+        '--hidden',
+        '--glob=*.ts',
+        '--glob=!*.d.ts',
+        '--glob=!.git',
+      ]),
+    );
+  });
+
+  it('run_searchingExcludedFiles_readsHiddenFolders_andDropsTheirExclusion', async () => {
+    await search({ files: { excluded: true } });
+
+    expect(captured.spawns[0].args).toContain('--hidden');
+    expect(captured.spawns[0].args).not.toContain('--glob=!.git');
+  });
+
+  it('run_byDefault_leavesIgnoredAndHiddenFilesOut', async () => {
+    await search();
+
+    expect(captured.spawns[0].args).not.toContain('--no-ignore');
+    expect(captured.spawns[0].args).not.toContain('--hidden');
+  });
+
+  it('run_withTheSearchSettings_passesTheirLimitsOn', async () => {
+    await search({ limits: { maxFileSizeMegabytes: 50, followSymlinks: true, timeoutSeconds: 0 } });
+
+    expect(captured.spawns[0].args).toEqual(
+      expect.arrayContaining(['--max-filesize=50M', '--follow']),
+    );
+  });
+
+  it('run_cappedAtTheSetMaximum', async () => {
+    const match: string = JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: 'a.ts' },
+        line_number: 1,
+        lines: { text: 'name\n' },
+        submatches: [
+          { start: 0, end: 4, match: { text: 'name' } },
+          { start: 5, end: 9, match: { text: 'name' } },
+        ],
+      },
+    });
+    captured.output = `${match}\n${match}\n${match}\n`;
+
+    const response: SearchResponse = await search({ limits: { maxResults: 2 } });
+
+    expect(response.total).toBe(2);
+    expect(response.capped).toBe(true);
+    expect(response.files[0].matches[0].occurrences).toBe(2);
+  });
+
+  it('run_rejectsLimitsThatCouldNotBeRun', async () => {
+    await search({ limits: { maxResults: 0 } });
+    await search({ limits: { timeoutSeconds: -1 } });
+
+    expect(captured.spawns).toHaveLength(0);
   });
 
   it('run_withAPathInsideTheRoot_searchesItRootRelative_andLabelsResultsFromTheRoot', async () => {

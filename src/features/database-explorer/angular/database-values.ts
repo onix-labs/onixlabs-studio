@@ -10,16 +10,47 @@ export interface CellText {
 }
 
 /**
- * Formats a typed cell for the grid.
- * @param value The cell.
+ * How the grid shows a value, from the user's settings. Display only: an export takes the values as
+ * they were sent.
+ */
+export interface CellFormat {
+  /**
+   * Gets what a NULL reads as.
+   */
+  readonly nullText?: string;
+
+  /**
+   * Gets whether numbers, dates and times read in the machine's local format.
+   */
+  readonly local?: boolean;
+}
+
+/**
+ * Reads a date or time in the machine's local format, leaving what `Date` cannot read (a time of day,
+ * an interval) as it was sent.
+ * @param text The value as it was sent.
  * @returns Returns how it reads.
  */
-export function cellText(value: DatabaseValue): CellText {
+function localTemporal(text: string): string {
+  const time: number = Date.parse(text);
+  return Number.isNaN(time) ? text : new Date(time).toLocaleString();
+}
+
+/**
+ * Formats a typed cell for the grid.
+ * @param value The cell.
+ * @param format How the user has it shown.
+ * @returns Returns how it reads.
+ */
+export function cellText(value: DatabaseValue, format?: CellFormat): CellText {
   if (value === null) {
-    return { text: 'NULL', kind: 'null' };
+    return { text: format?.nullText ?? 'NULL', kind: 'null' };
   }
   if (typeof value === 'number') {
-    return { text: String(value), kind: 'number' };
+    return {
+      text: format?.local === true ? value.toLocaleString() : String(value),
+      kind: 'number',
+    };
   }
   if (typeof value === 'boolean') {
     return { text: value ? 'true' : 'false', kind: 'boolean' };
@@ -29,14 +60,20 @@ export function cellText(value: DatabaseValue): CellText {
   }
   switch (value.type) {
     case 'bigint':
-      return { text: value.value, kind: 'number' };
+      return {
+        text: format?.local === true ? BigInt(value.value).toLocaleString() : value.value,
+        kind: 'number',
+      };
     case 'bytes':
       return {
         text: `0x${value.preview}${value.size > 16 ? '…' : ''} (${value.size} bytes)`,
         kind: 'other',
       };
     case 'temporal':
-      return { text: value.value, kind: 'text' };
+      return {
+        text: format?.local === true ? localTemporal(value.value) : value.value,
+        kind: 'text',
+      };
     case 'json':
       return { text: JSON.stringify(value.value), kind: 'other' };
     case 'list':

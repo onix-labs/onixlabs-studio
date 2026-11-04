@@ -66,6 +66,19 @@
         @case ('workspaces') {
           <app-settings-section sectionId="workspaces" />
         }
+        @case ('workspaces-explorers') {
+          <app-settings-section sectionId="workspaces-explorers" />
+        }
+        @case ('workspaces-search') {
+          <app-settings-section sectionId="workspaces-search" />
+        }
+        @case ('workspaces-run') {
+          <app-settings-section sectionId="workspaces-run" />
+        }
+        @case ('workspaces-new-projects') {
+          <app-projects-folder />
+          <app-settings-section sectionId="workspaces-new-projects" />
+        }
         @case ('code-general') {
           <app-settings-section sectionId="code-general" />
         }
@@ -95,7 +108,20 @@
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
+        }
+        @case ('markdown-editing') {
+          <app-settings-section sectionId="markdown-editing" />
+        }
+        @case ('markdown-review') {
+          <app-settings-section sectionId="markdown-review" />
+          <app-read-aloud-voice />
           <app-personal-dictionary />
+        }
+        @case ('images') {
+          <app-settings-section sectionId="images" />
+        }
+        @case ('binary') {
+          <app-settings-section sectionId="binary" />
         }
         @case ('terminal') {
           <app-terminal-settings />
@@ -129,9 +155,30 @@
         }
         @case ('system-monitor') {
           <app-settings-section sectionId="system-monitor" />
+          <app-default-severities />
+          <app-log-folder />
+        }
+        @case ('api-explorer') {
+          <app-settings-section sectionId="api-explorer" />
+        }
+        @case ('ai-manager') {
+          <app-settings-section sectionId="ai-manager" />
+        }
+        @case ('containers') {
+          <app-container-engine />
+          <app-settings-section sectionId="containers" />
         }
         @case ('database-explorer') {
           <app-settings-section sectionId="database-explorer" />
+        }
+        @case ('database-results') {
+          <app-settings-section sectionId="database-results" />
+        }
+        @case ('database-connections') {
+          <app-settings-section sectionId="database-connections" />
+        }
+        @case ('database-export') {
+          <app-settings-section sectionId="database-export" />
         }
         @case ('plugins') {
           <app-settings-section sectionId="plugins" />

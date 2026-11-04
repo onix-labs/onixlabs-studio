@@ -20,9 +20,14 @@ import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-s
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
+import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
+import { ContainerEngine } from './sections/container-engine/container-engine';
+import { DefaultSeverities } from './sections/default-severities/default-severities';
+import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
 import { PluginSuggestionsDismissed } from './sections/plugin-suggestions-dismissed/plugin-suggestions-dismissed';
 import { RememberedFileAccess } from './sections/remembered-file-access/remembered-file-access';
@@ -30,6 +35,8 @@ import { SpellCheckingLanguages } from './sections/spell-checking-languages/spel
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import type { ProviderPage } from '@shared/api/ai-types';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { installedContributions } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
@@ -120,6 +127,10 @@ type SettingsSectionId =
   | 'code-diffs'
   | 'code-language-servers'
   | 'markdown'
+  | 'markdown-editing'
+  | 'markdown-review'
+  | 'images'
+  | 'binary'
   | 'terminal'
   | 'terminal-appearance'
   | 'terminal-input'
@@ -128,7 +139,13 @@ type SettingsSectionId =
   | 'ai-security'
   | 'mission-control'
   | 'system-monitor'
+  | 'api-explorer'
+  | 'containers'
+  | 'ai-manager'
   | 'database-explorer'
+  | 'database-results'
+  | 'database-connections'
+  | 'database-export'
   | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
@@ -140,6 +157,10 @@ type SettingsSectionId =
   | 'language-providers'
   | 'security'
   | 'workspaces'
+  | 'workspaces-explorers'
+  | 'workspaces-search'
+  | 'workspaces-run'
+  | 'workspaces-new-projects'
   // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
   // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
   | `keyboard-${string}`;
@@ -186,6 +207,8 @@ const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
   'api-explorer': 'API Explorer',
   'database-explorer': 'Database Explorer',
   'system-monitor': 'System Monitor',
+  containers: 'Containers',
+  'ai-manager': 'AI Manager',
 };
 
 /**
@@ -277,14 +300,19 @@ interface SettingsTreeData {
   imports: [
     Button,
     ButtonRow,
+    ContainerEngine,
+    DefaultSeverities,
+    LogFolder,
     Modal,
     ModalContent,
     PersonalDictionary,
+    ReadAloudVoice,
     PluginsFolder,
     PluginSuggestionsDismissed,
     RememberedFileAccess,
     SpellCheckingLanguages,
     LanguageEditorOverrides,
+    ProjectsFolder,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -333,6 +361,11 @@ export class SettingsView {
    * Holds the providers installed harnesses contribute, which the Providers branch is built from.
    */
   private readonly providers: AiProviders = inject(AiProviders);
+
+  /**
+   * Holds the installed plugins, which decide whether the Containers root is shown.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
 
   /**
    * Holds the keyboard catalogue, which decides the Keyboard leaves and lets search find a shortcut.
@@ -505,30 +538,49 @@ export class SettingsView {
       group: 'documents',
       label: 'Markdown',
       icon: Icon.SETTINGS_MARKDOWN,
-      children: [{ id: 'markdown-general', label: 'General', sectionId: 'markdown' }],
+      children: [
+        { id: 'markdown-general', label: 'General', sectionId: 'markdown' },
+        { id: 'markdown-editing-leaf', label: 'Editing', sectionId: 'markdown-editing' },
+        { id: 'markdown-review-leaf', label: 'Review and Reading', sectionId: 'markdown-review' },
+      ],
     },
     {
-      // Images have no settings of their own yet; the root carries its Keyboard leaf alone.
       id: 'images',
       group: 'documents',
       label: 'Images',
       icon: Icon.IMAGE_FILE,
-      children: [],
+      children: [{ id: 'images-general', label: 'General', sectionId: 'images' }],
+    },
+    {
+      id: 'binary',
+      group: 'documents',
+      label: 'Binary',
+      icon: Icon.BINARY,
+      children: [{ id: 'binary-general', label: 'General', sectionId: 'binary' }],
     },
     {
       id: 'workspaces',
       group: 'capabilities',
       label: 'Workspaces',
       icon: Icon.DIRECTORY,
-      children: [{ id: 'workspaces-general', label: 'General', sectionId: 'workspaces' }],
+      children: [
+        { id: 'workspaces-general', label: 'General', sectionId: 'workspaces' },
+        { id: 'workspaces-explorers', label: 'Explorers', sectionId: 'workspaces-explorers' },
+        { id: 'workspaces-search', label: 'Search and Problems', sectionId: 'workspaces-search' },
+        { id: 'workspaces-run', label: 'Run and Debug', sectionId: 'workspaces-run' },
+        {
+          id: 'workspaces-new-projects',
+          label: 'New Projects',
+          sectionId: 'workspaces-new-projects',
+        },
+      ],
     },
     {
-      // API Explorer has no settings of its own yet; it carries its Keyboard leaf alone.
       id: 'api-explorer',
       group: 'capabilities',
       label: 'API Explorer',
       icon: Icon.API_EXPLORER,
-      children: [],
+      children: [{ id: 'api-explorer-general', label: 'General', sectionId: 'api-explorer' }],
     },
     {
       id: 'database-explorer',
@@ -536,7 +588,14 @@ export class SettingsView {
       label: 'Database Explorer',
       icon: Icon.DATABASE,
       children: [
-        { id: 'database-explorer-general', label: 'General', sectionId: 'database-explorer' },
+        { id: 'database-explorer-general', label: 'Queries', sectionId: 'database-explorer' },
+        { id: 'database-explorer-results', label: 'Results', sectionId: 'database-results' },
+        {
+          id: 'database-explorer-connections',
+          label: 'Connections',
+          sectionId: 'database-connections',
+        },
+        { id: 'database-explorer-export', label: 'Export', sectionId: 'database-export' },
       ],
     },
     {
@@ -545,6 +604,21 @@ export class SettingsView {
       label: 'System Monitor',
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
+    },
+    {
+      // Only while an engine is installed: its settings have nothing to act on before then.
+      id: 'containers',
+      group: 'tools',
+      label: 'Containers',
+      icon: Icon.CONTAINERS,
+      children: [{ id: 'containers-general', label: 'General', sectionId: 'containers' }],
+    },
+    {
+      id: 'ai-manager',
+      group: 'tools',
+      label: 'AI Manager',
+      icon: Icon.AI_MODELS,
+      children: [{ id: 'ai-manager-general', label: 'General', sectionId: 'ai-manager' }],
     },
   ];
 
@@ -558,7 +632,12 @@ export class SettingsView {
       // branch, so the branch's open list of entries never pushes the root's own pages out of sight.
       this.withLanguageProviderPages(
         this.withProviderPages(this.withKeyboardPages(this.staticSections)),
-      ).filter((node: SettingsNavNode): boolean => (node.children?.length ?? 1) > 0),
+      ).filter(
+        (node: SettingsNavNode): boolean =>
+          (node.children?.length ?? 1) > 0 &&
+          (node.id !== 'containers' ||
+            installedContributions(this.plugins.plugins(), 'container-engine').length > 0),
+      ),
   );
 
   /**

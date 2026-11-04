@@ -118,6 +118,11 @@ export interface TerminalCreateOptions {
   readonly shellArguments?: string;
 
   /**
+   * Gets output to keep above the new session's own: a relaunch carrying on from its last run.
+   */
+  readonly earlierOutput?: string;
+
+  /**
    * Gets whether an interactive shell starts as a login shell (Start as Login Shell). Ignored on
    * Windows, and when a {@link command} is given.
    */

@@ -69,7 +69,7 @@ describe('LanguageEditorOverrides', () => {
       'Rust files',
     );
     // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(34);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(35);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -166,6 +166,16 @@ describe('LanguageEditorOverrides', () => {
     );
   }
 
+  it('defaultFormatter_showsOnlyForALanguageWithABuiltInFormatter', async () => {
+    fixture.componentRef.setInput('section', 'code-editing');
+    await fixture.whenStable();
+    expect(titles()).not.toContain('Default Formatter');
+
+    fixture.componentRef.setInput('language', 'typescript');
+    await fixture.whenStable();
+    expect(titles()).toContain('Default Formatter');
+  });
+
   it('section_showsOnlyThatPagesOverridableSettings', async () => {
     fixture.componentRef.setInput('section', 'code-appearance');
     await fixture.whenStable();
@@ -173,6 +183,7 @@ describe('LanguageEditorOverrides', () => {
     expect(titles()).toEqual([
       'Line Numbers',
       'Minimap',
+      'Folding Provider',
       'Sticky Scroll',
       'Coloured Brackets',
       'Render Whitespace',

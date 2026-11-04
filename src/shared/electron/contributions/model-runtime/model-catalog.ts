@@ -57,8 +57,12 @@ export class ModelCatalog {
    */
   public async search(query: CatalogQuery, signal?: AbortSignal): Promise<CatalogResult> {
     const limit: number = query.limit ?? DEFAULT_LIMIT;
+    const sources: readonly ModelCatalogSource[] = this.sources.filter(
+      (source: ModelCatalogSource): boolean =>
+        query.huggingFace !== false || source.id !== 'huggingface',
+    );
     const settled: PromiseSettledResult<CatalogModel[]>[] = await Promise.allSettled(
-      this.sources.map((source: ModelCatalogSource): Promise<CatalogModel[]> =>
+      sources.map((source: ModelCatalogSource): Promise<CatalogModel[]> =>
         source.search({ ...query, limit }, signal),
       ),
     );
@@ -66,7 +70,7 @@ export class ModelCatalog {
     const found: CatalogModel[] = [];
     const failedSources: string[] = [];
     settled.forEach((result: PromiseSettledResult<CatalogModel[]>, index: number): void => {
-      const source: ModelCatalogSource | undefined = this.sources[index];
+      const source: ModelCatalogSource | undefined = sources[index];
       if (result.status === 'fulfilled') {
         found.push(...result.value);
         return;

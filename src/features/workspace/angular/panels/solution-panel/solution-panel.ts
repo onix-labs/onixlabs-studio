@@ -48,6 +48,9 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { WhenBuildRunning } from '@shared/angular/services/settings/settings-registry';
+import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -69,6 +72,7 @@ import {
  * Identifies the context-menu and toolbar actions the panel offers.
  */
 const ACTION_OPEN: string = 'open';
+const ACTION_OPEN_AS_CODE: string = 'open-as-code';
 const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
@@ -195,6 +199,23 @@ export class SolutionPanel {
   private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
 
   /**
+   * Holds the settings that decide how a file opens and how a delete goes.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the seam that saves documents before a build.
+   */
+  private readonly documentCommands: WorkspaceDocumentCommands = inject(WorkspaceDocumentCommands);
+
+  /**
+   * Gets whether a delete is permanent: Move to Trash is off.
+   */
+  protected readonly deletesPermanently: Signal<boolean> = computed(
+    (): boolean => !this.settings.value('workspaces.moveToTrash')(),
+  );
+
+  /**
    * Holds the version-control commands a row offers, shared with the File Explorer (#1041).
    */
   private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
@@ -235,8 +256,21 @@ export class SolutionPanel {
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
-    return targets.length === 1 ? `Delete ${targets[0].label}?` : `Delete ${targets.length} items?`;
+    const named: string = targets.length === 1 ? targets[0].label : `${targets.length} items`;
+    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
   });
+
+  /**
+   * Asks to delete rows: with the confirmation, unless Confirm Before Deleting is off and they are only
+   * going to the Trash. A permanent delete always asks.
+   * @param targets The rows.
+   */
+  private requestDelete(targets: readonly SolutionRow[]): void {
+    this.deleteTargets.set(targets);
+    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+      void this.confirmDelete();
+    }
+  }
 
   /**
    * Holds the row being renamed in place — a solution folder, a file or a folder on disk — or null
@@ -312,6 +346,9 @@ export class SolutionPanel {
 
     if (row.kind === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      if (path?.toLowerCase().endsWith('.svg') === true) {
+        items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
     }
     if (row.kind === 'project') {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
@@ -449,10 +486,13 @@ export class SolutionPanel {
         continue;
       }
       this.log.info('workspace.solution', 'Delete requested', path);
-      const result: FileOperationResult = await this.workspace.delete(path);
+      const result: FileOperationResult = await this.workspace.delete(
+        path,
+        this.deletesPermanently(),
+      );
       if (!result.success) {
         failed.push({ row, error: result.error });
-      } else if (result.trashed === false) {
+      } else if (result.trashed === false && !this.deletesPermanently()) {
         permanent.push(row);
       }
     }
@@ -615,7 +655,9 @@ export class SolutionPanel {
       // Explorer shows source-control state at all.
       ...(this.solution.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
       // An error in what the row stands for, or anywhere beneath it, squiggles its name.
-      ...(this.hasProblems(row, 'error') ? { squiggle: true } : {}),
+      ...(this.settings.value('workspaces.showErrorSquiggles')() && this.hasProblems(row, 'error')
+        ? { squiggle: true }
+        : {}),
       data: row,
     })),
   );
@@ -904,7 +946,7 @@ export class SolutionPanel {
       return;
     }
     if (selection.itemId === ACTION_DELETE) {
-      this.deleteTargets.set([row]);
+      this.requestDelete([row]);
       return;
     }
     const path: string | null = this.pathFor(row);
@@ -921,6 +963,10 @@ export class SolutionPanel {
       case ACTION_EDIT_PROJECT:
         this.solution.select(row.key);
         void this.fileOpener.openPath(path);
+        return;
+      case ACTION_OPEN_AS_CODE:
+        this.solution.select(row.key);
+        void this.fileOpener.openAsText(path);
         return;
       case ACTION_COPY_PATH:
         void navigator.clipboard.writeText(path).catch((): void => undefined);
@@ -1014,7 +1060,7 @@ export class SolutionPanel {
     }
     switch (itemId) {
       case ACTION_DELETE:
-        this.deleteTargets.set(targets);
+        this.requestDelete(targets);
         return;
       case ACTION_OPEN:
         for (const path of paths) {
@@ -1087,10 +1133,17 @@ export class SolutionPanel {
       project,
     };
     if (this.buildRunner.buildBusy()) {
-      this.pendingAction.set(pending);
+      const choice: WhenBuildRunning = this.settings.get('workspaces.whenBuildRunning');
+      if (choice === 'ask') {
+        this.pendingAction.set(pending);
+      } else {
+        this.documentCommands.afterSaving((): void =>
+          this.dispatchProjectAction(pending, choice === 'restart', choice === 'queue'),
+        );
+      }
       return;
     }
-    this.dispatchProjectAction(pending, false);
+    this.documentCommands.afterSaving((): void => this.dispatchProjectAction(pending, false));
   }
 
   /**
@@ -1101,7 +1154,7 @@ export class SolutionPanel {
     const pending: PendingProjectAction | null = this.pendingAction();
     this.pendingAction.set(null);
     if (pending !== null) {
-      this.dispatchProjectAction(pending, true);
+      this.documentCommands.afterSaving((): void => this.dispatchProjectAction(pending, true));
     }
   }
 
@@ -1116,15 +1169,24 @@ export class SolutionPanel {
    * Sends a capability action to this workspace's build runner, aimed at one project.
    * @param pending The action and the project it runs against.
    * @param restart Whether a busy build may be stopped and replaced.
+   * @param queue Whether a busy build is to run this one when it ends.
    */
-  private dispatchProjectAction(pending: PendingProjectAction, restart: boolean): void {
+  private dispatchProjectAction(
+    pending: PendingProjectAction,
+    restart: boolean,
+    queue: boolean = false,
+  ): void {
     this.log.info(
       'workspace.solution',
       `Project action '${pending.action}'`,
       pending.project.path,
       { restart },
     );
-    this.buildRunner.runAction(pending.action, { project: pending.project, restart });
+    this.buildRunner.runAction(pending.action, {
+      project: pending.project,
+      restart,
+      ...(queue ? { queue } : {}),
+    });
   }
 
   /**
@@ -1185,6 +1247,8 @@ export class SolutionPanel {
     if (row.expandable) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
+    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+      this.onRowOpen(treeRow);
     }
   }
 

@@ -33,6 +33,7 @@ describe('editorAppearanceOptions', () => {
       cursorWidth: 2,
       scrollBeyondLastLine: false,
       showFoldingControls: 'always',
+      foldingStrategy: 'auto',
       colorDecorators: true,
       extraEditorClassName: '',
     });
@@ -62,6 +63,13 @@ describe('editorAppearanceOptions', () => {
     expect(
       editorAppearanceOptions(settings({ foldingControls: 'hover' })).showFoldingControls,
     ).toBe('mouseover');
+  });
+
+  it('folds by indentation alone only when asked to', () => {
+    expect(editorAppearanceOptions(settings()).foldingStrategy).toBe('auto');
+    expect(
+      editorAppearanceOptions(settings({ foldingProvider: 'indentation' })).foldingStrategy,
+    ).toBe('indentation');
   });
 
   it('marks the editor with the least severe problem it underlines', () => {

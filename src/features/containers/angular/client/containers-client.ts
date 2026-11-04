@@ -77,12 +77,15 @@ export class ContainersClient {
 
   /**
    * Removes a container.
+   * @param volumes Whether its anonymous volumes go with it.
    * @param id The container id.
    * @returns Returns true when the engine accepted the request.
    */
-  public remove(id: string): Promise<boolean> {
+  public remove(id: string, volumes: boolean = false): Promise<boolean> {
     this.log.trace('containers.client', 'IPC remove container', id);
-    return this.bridge?.invoke<boolean>(ContainerChannel.Remove, id) ?? Promise.resolve(false);
+    return (
+      this.bridge?.invoke<boolean>(ContainerChannel.Remove, id, volumes) ?? Promise.resolve(false)
+    );
   }
 
   /**
@@ -206,7 +209,11 @@ export class ContainersClient {
    * @param request What to run.
    * @returns Returns the new container's id, or why it could not be run.
    */
-  public run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+  public run(request: RunContainerRequest): Promise<{
+    id?: string;
+    error?: string;
+    missingImage?: boolean;
+  }> {
     this.log.info('containers.client', 'Running a container from', request.image);
     return (
       this.bridge?.invoke<{ id?: string; error?: string }>(ContainerChannel.Run, request) ??
@@ -298,8 +305,7 @@ export class ContainersClient {
   }
 
   /**
-   * Chooses which container engine to use. The socket is opened at startup, so the change takes effect
-   * when Studio next starts.
+   * Chooses which container engine to use. The change takes effect on the next call to the engine.
    * @param engineId The chosen engine, or null to let the highest-priority available one win.
    * @returns Returns a promise that resolves once the choice is stored.
    */

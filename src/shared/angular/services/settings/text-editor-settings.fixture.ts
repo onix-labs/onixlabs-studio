@@ -31,6 +31,8 @@ export const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   smoothScrolling: true,
   scrollBeyondLastLine: false,
   foldingControls: 'always',
+  foldingProvider: 'automatic',
+  defaultFormatter: 'language-server',
   changeMargin: 'all',
   inlayHints: 'on',
   semanticHighlighting: true,

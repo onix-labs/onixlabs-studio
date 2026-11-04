@@ -105,14 +105,16 @@ export class CloneManager {
   /**
    * Clones a repository into the chosen parent folder.
    * @param request The untrusted request.
+   * @param into The folder to clone into in place of the chosen one: a new project's, which the main
+   * process's own dialog chose. Never from a renderer.
    * @returns Returns where the result is, or why there is none.
    */
-  public async clone(request: unknown): Promise<CloneOutcome> {
+  public async clone(request: unknown, into?: string): Promise<CloneOutcome> {
     const parsed: CloneRequest | string = parseRequest(request);
     if (typeof parsed === 'string') {
       return { ok: false, error: parsed };
     }
-    const parent: string | null = this.parent();
+    const parent: string | null = into ?? this.parent();
     if (parent === null) {
       return { ok: false, error: 'Choose a folder to clone into first.' };
     }

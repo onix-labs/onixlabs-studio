@@ -96,8 +96,8 @@ export class ContainersContribution implements MainContribution {
     );
     context.handle(
       ContainerChannel.Remove,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
-        this.currentEngine(context)?.remove(String(id)) ?? Promise.resolve(false),
+      (_event: IpcMainInvokeEvent, id: unknown, volumes: unknown): Promise<boolean> =>
+        this.currentEngine(context)?.remove(String(id), volumes === true) ?? Promise.resolve(false),
     );
     context.handle(
       ContainerChannel.Logs,

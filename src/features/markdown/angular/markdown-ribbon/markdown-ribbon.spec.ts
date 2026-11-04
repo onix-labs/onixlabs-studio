@@ -37,7 +37,8 @@ function recordingHandler(inserted: string[]): MarkdownCommandHandler {
     toggleBulletList: (): void => void inserted.push('bullet-list'),
     toggleOrderedList: (): void => void inserted.push('ordered-list'),
     toggleTaskList: (): void => void inserted.push('task-list'),
-    insertTable: (): void => void inserted.push('table'),
+    insertTable: (rows: number, columns: number): void =>
+      void inserted.push(`table:${rows}x${columns}`),
     insertHorizontalRule: (): void => void inserted.push('divider'),
     insertMarkdown: (markdown: string): void => void inserted.push(`block:${markdown}`),
     insertInlineMarkdown: (markdown: string): void => void inserted.push(`inline:${markdown}`),
@@ -113,14 +114,15 @@ describe('MarkdownRibbon', () => {
     expect(smallButton('Undo').disabled).toBe(true);
   });
 
-  it('tableButton_whenClicked_insertsATable', () => {
+  it('tableButton_whenClicked_asksForTheSizeBeforeInserting', () => {
     const inserted: string[] = [];
     const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
     commands.register('doc-1', recordingHandler(inserted));
 
     smallButton('Table').click();
+    fixture.detectChanges();
 
-    expect(inserted).toContain('table');
+    expect(inserted).not.toContain('table');
   });
 
   it('bulletsButton_whenClicked_insertsABulletedList', () => {
@@ -204,7 +206,6 @@ describe('MarkdownRibbon', () => {
     menu.dispatch('markdown.bulletList');
     menu.dispatch('markdown.orderedList');
     menu.dispatch('markdown.taskList');
-    menu.dispatch('markdown.table');
     menu.dispatch('markdown.divider');
     // Undo and Redo are deliberately not on the menu: the core carries them as native roles, and a
     // feature entry claiming ⌘Z takes the chord from every other control on the tab. The ribbon's own
@@ -212,7 +213,7 @@ describe('MarkdownRibbon', () => {
     // editing-chords.contract.spec.ts.
 
     expect(inserted).toEqual(
-      expect.arrayContaining(['bullet-list', 'ordered-list', 'task-list', 'table', 'divider']),
+      expect.arrayContaining(['bullet-list', 'ordered-list', 'task-list', 'divider']),
     );
   });
 

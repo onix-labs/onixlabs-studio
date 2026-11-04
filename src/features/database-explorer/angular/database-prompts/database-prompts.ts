@@ -6,6 +6,7 @@ import {
   DatabaseEngineInfo,
 } from '@shared/api/database-engine-protocol';
 import { DatabaseConnection } from '@shared/api/database-document';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { DatabaseWorkspace } from '../database-workspace/database-workspace';
 
 /**
@@ -104,6 +105,19 @@ export type ConnectionTestState =
 @Service()
 export class DatabasePrompts {
   private readonly workspace: DatabaseWorkspace = inject(DatabaseWorkspace);
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the statements waiting for the user to confirm them, or null while none are.
+   */
+  public readonly destructive: WritableSignal<readonly string[] | null> = signal<
+    readonly string[] | null
+  >(null);
+
+  /**
+   * Answers the destructive-statement prompt, or null when it is closed.
+   */
+  private answerDestructive: ((run: boolean) => void) | null = null;
 
   /**
    * Holds what the dialog is doing, or null while it is closed.
@@ -117,7 +131,8 @@ export class DatabasePrompts {
   public readonly connectionId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds whether the connection's secrets are to be remembered in the document. On by default.
+   * Holds whether the connection's secrets are to be remembered in the document, which the Remember
+   * Passwords by Default setting starts a new connection with.
    */
   public readonly remember: WritableSignal<boolean> = signal<boolean>(true);
 
@@ -245,10 +260,13 @@ export class DatabasePrompts {
    * Opens the dialog for a new connection, with the first engine chosen.
    */
   public newConnection(): void {
-    const first: DatabaseEngineInfo | undefined = this.workspace.engines()[0];
+    const engines: readonly DatabaseEngineInfo[] = this.workspace.engines();
+    const last: string = this.settings.get('databaseExplorer.lastEngine');
+    const first: DatabaseEngineInfo | undefined =
+      engines.find((engine: DatabaseEngineInfo): boolean => engine.id === last) ?? engines[0];
     this.connectionId.set(null);
     this.name.set('');
-    this.remember.set(true);
+    this.remember.set(this.settings.get('databaseExplorer.rememberPasswords'));
     this.chooseEngine(first?.id ?? '');
     this.tab.set('login');
     this.mode.set('new');
@@ -287,7 +305,7 @@ export class DatabasePrompts {
     this.engineId.set(connection.engine);
     this.name.set(connection.name);
     this.values.set({ ...this.defaults(connection.engine), ...this.workspace.valuesFor(id) });
-    this.remember.set(true);
+    this.remember.set(this.settings.get('databaseExplorer.rememberPasswords'));
     this.test.set({ state: 'idle' });
     this.afterSecrets = then;
     this.mode.set('secrets');
@@ -364,6 +382,8 @@ export class DatabasePrompts {
     this.mode.set(null);
     switch (mode) {
       case 'new':
+        this.settings.set('databaseExplorer.lastEngine', this.engineId());
+        this.offerPassphrase();
         return this.workspace.addConnection(
           this.name().trim(),
           this.engineId(),
@@ -385,6 +405,7 @@ export class DatabasePrompts {
         this.afterSecrets = null;
         if (id !== null) {
           this.workspace.provideSecrets(id, this.values(), this.remember());
+          this.offerPassphrase();
           then?.(id);
         }
         return id;
@@ -392,6 +413,47 @@ export class DatabasePrompts {
       default:
         return null;
     }
+  }
+
+  /**
+   * Asks for a passphrase when a password is being remembered, the user keeps secrets under one, and
+   * the document has none yet. Skipping it leaves the password with the keychain.
+   */
+  private offerPassphrase(): void {
+    if (
+      this.remember() &&
+      this.settings.get('databaseExplorer.secretStorage') === 'passphrase' &&
+      !this.workspace.hasPassphrase() &&
+      (this.engine()?.connectionFields ?? []).some(
+        (field: ConnectionField): boolean => field.secret === true,
+      )
+    ) {
+      this.openPassphrase('set');
+    }
+  }
+
+  /**
+   * Asks the user to confirm statements that cannot be taken back.
+   * @param statements The statements.
+   * @returns Returns a promise resolving true to run them.
+   */
+  public confirmDestructive(statements: readonly string[]): Promise<boolean> {
+    this.answerDestructive?.(false);
+    this.destructive.set(statements);
+    return new Promise<boolean>((resolve: (run: boolean) => void): void => {
+      this.answerDestructive = resolve;
+    });
+  }
+
+  /**
+   * Answers the destructive-statement prompt.
+   * @param run Whether to run them.
+   */
+  public settleDestructive(run: boolean): void {
+    const answer: ((run: boolean) => void) | null = this.answerDestructive;
+    this.answerDestructive = null;
+    this.destructive.set(null);
+    answer?.(run);
   }
 
   /**

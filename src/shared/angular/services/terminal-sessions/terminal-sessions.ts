@@ -143,6 +143,16 @@ export interface TerminalLaunchOptions {
    * or focuses the pop-out already showing it — with this session active.
    */
   readonly presentation?: RunPresentation;
+
+  /**
+   * Gets whether the launch brings the session forward, or undefined for yes.
+   */
+  readonly reveal?: boolean;
+
+  /**
+   * Gets whether a relaunch keeps the session's earlier output above the new run's.
+   */
+  readonly keepOutput?: boolean;
 }
 
 /**
@@ -398,7 +408,11 @@ export class TerminalSessions implements OnDestroy {
     const cwd: string | undefined = options.cwd ?? this.root ?? undefined;
 
     this.log.info('TerminalSessions', `Launching ${options.kind} session`, id, options.name, cwd);
+    let earlierOutput: string | undefined;
     if (existing !== undefined) {
+      if (options.keepOutput === true) {
+        earlierOutput = (await this.bridge.replay(id)).data;
+      }
       // Relaunch-in-place: silence any pending completion, then dispose the previous PTY (and its
       // scrollback) so the reused identifier spawns fresh. Disposal never emits an exit event, so
       // the old process's end cannot masquerade as the new run's.
@@ -447,6 +461,7 @@ export class TerminalSessions implements OnDestroy {
       args: options.args,
       env: options.env,
       cwd,
+      ...(earlierOutput === undefined ? {} : { earlierOutput }),
     });
     const processId: number | null = result.success ? (result.pid ?? null) : null;
     if (!result.success) {
@@ -466,7 +481,7 @@ export class TerminalSessions implements OnDestroy {
       // pop-out already showing it) with this session active, instead of revealing the dock.
       this.active.set(id);
       this.popouts.popOut(TERMINAL_PANEL_ID);
-    } else {
+    } else if (options.reveal !== false) {
       this.activateAndReveal(id);
     }
     const session: TerminalSession = this.items().find(
@@ -509,7 +524,7 @@ export class TerminalSessions implements OnDestroy {
    */
   public terminate(id: string): void {
     this.log.info('TerminalSessions', 'Terminating session process', id);
-    void this.bridge.terminate(id);
+    void this.bridge.terminate(id, this.settings.get('workspaces.stopGracePeriod') * 1000);
   }
 
   /**

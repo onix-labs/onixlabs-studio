@@ -1,9 +1,19 @@
-import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { SpellingProbe } from '@shared/api/spelling-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Spelling } from '@shared/angular/services/spelling/spelling';
-import { analyzeMarkdown } from './review-rules';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { analyzeMarkdown, ReviewRuleOptions } from './review-rules';
 import {
   DictionaryLoader,
   loadEnglishWords,
@@ -55,6 +65,22 @@ export class Review {
    * Holds the logging client for surfacing dictionary persistence failures to the audit.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings saying which rules review runs.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets which of the curated rules run.
+   */
+  private readonly ruleOptions: Signal<ReviewRuleOptions> = computed((): ReviewRuleOptions => ({
+    repeatedWord: this.settings.get('markdownEditor.reviewRepeatedWord'),
+    passiveVoice: this.settings.get('markdownEditor.reviewPassiveVoice'),
+    articleAgreement: this.settings.get('markdownEditor.reviewArticleAgreement'),
+    weakIntensifier: this.settings.get('markdownEditor.reviewWeakIntensifier'),
+    serialComma: this.settings.get('markdownEditor.reviewSerialComma'),
+  }));
 
   /**
    * Holds the app's spell checking: its checker and the shared personal dictionary.
@@ -192,6 +218,7 @@ export class Review {
       this.hasSessionState();
       this.appChecker();
       this.userDictionary();
+      this.ruleOptions();
       if (visible && this.session !== null) {
         void this.ensureAnalyzed();
       }
@@ -340,7 +367,12 @@ export class Review {
       return;
     }
     this.allIssuesState.set(
-      analyzeMarkdown(this.session.getSource(), checker, this.userDictionary()),
+      analyzeMarkdown(
+        this.session.getSource(),
+        checker,
+        this.userDictionary(),
+        untracked(this.ruleOptions),
+      ),
     );
   }
 }

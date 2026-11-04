@@ -22,7 +22,7 @@
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const CONTAINER_ENGINE_PROTOCOL_VERSION: string = '1.1';
+export const CONTAINER_ENGINE_PROTOCOL_VERSION: string = '1.2';
 
 /**
  * Every capability an engine plugin can declare. A closed list: Studio asks for an operation only when
@@ -149,7 +149,16 @@ export interface ContainerEngineOperations {
   /**
    * Removes a container.
    */
-  readonly remove: { readonly params: { readonly id: string }; readonly result: boolean };
+  readonly remove: {
+    readonly params: {
+      readonly id: string;
+      /**
+       * Gets whether the container's anonymous volumes go with it (protocol 1.2).
+       */
+      readonly volumes?: boolean;
+    };
+    readonly result: boolean;
+  };
 
   /**
    * Reads a container's most recent log lines.
@@ -216,7 +225,15 @@ export interface ContainerEngineOperations {
    */
   readonly run: {
     readonly params: { readonly request: RunContainerRequest };
-    readonly result: { readonly id?: string; readonly error?: string };
+    readonly result: {
+      readonly id?: string;
+      readonly error?: string;
+      /**
+       * Gets whether it failed because the image is not on this machine (protocol 1.2), which pulling
+       * it would put right.
+       */
+      readonly missingImage?: boolean;
+    };
   };
 
   /**

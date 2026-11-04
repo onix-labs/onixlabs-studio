@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { MockInstance, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
@@ -260,12 +261,14 @@ describe('ImageView', () => {
     expect(internals().exportType()).toBe('image/webp');
   });
 
-  it('save_whenTheFormatCannotBeWrittenBack_opensTheExportTool', async () => {
+  it('save_whenTheFormatCannotBeWrittenBackAndTheSettingAsks_opensTheExportTool', async () => {
     await mount('/pictures/anim.gif');
     expect(view.editingNote()).toBe('Editing flattens the animation');
     view.flip('horizontal');
     await flush();
 
+    TestBed.inject(Settings).set('imageViewer.fallbackSaveFormat', 'ask');
+    localStorage.removeItem('settings');
     await view.save();
 
     expect(view.tool()).toBe('export');

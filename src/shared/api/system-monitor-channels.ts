@@ -31,9 +31,21 @@ export enum SystemMonitorChannel {
 }
 
 /**
- * The number of samples the tiles keep for their sparklines.
+ * The number of samples the agent's capabilities keep to answer from.
  */
 export const METRICS_HISTORY: number = 60;
+
+/**
+ * Works out how many samples hold a span of time, so a graph's history is the same length of time at
+ * every Refresh Rate.
+ * @param minutes The span of time, in minutes.
+ * @param intervalMs The time between samples, in milliseconds; 0 while paused.
+ * @returns Returns the number of samples.
+ */
+export function historySamples(minutes: number, intervalMs: number): number {
+  const interval: number = intervalMs > 0 ? intervalMs : DEFAULT_SAMPLE_INTERVAL_MS;
+  return Math.ceil((minutes * 60_000) / interval);
+}
 
 /**
  * How often samples are taken unless the user chose otherwise, in milliseconds: once a second, the
@@ -58,6 +70,11 @@ export interface SamplingRate {
    * Gets the time between samples, in milliseconds.
    */
   readonly intervalMs: number;
+
+  /**
+   * Gets whether the GPU is read; absent means it is.
+   */
+  readonly gpu?: boolean;
 }
 
 /**

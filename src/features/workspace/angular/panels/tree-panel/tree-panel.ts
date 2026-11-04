@@ -43,6 +43,7 @@ import {
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
@@ -64,6 +65,7 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
  * Identifies the row context-menu actions the panel offers.
  */
 const ACTION_OPEN: string = 'open';
+const ACTION_OPEN_AS_CODE: string = 'open-as-code';
 const ACTION_NEW_FILE: string = 'new-file';
 const ACTION_NEW_FOLDER: string = 'new-folder';
 const ACTION_COPY_PATH: string = 'copy-path';
@@ -183,6 +185,18 @@ export class TreePanel {
   private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
 
   /**
+   * Holds the settings that decide how a file opens and how a delete goes.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether a delete is permanent: Move to Trash is off.
+   */
+  protected readonly deletesPermanently: Signal<boolean> = computed(
+    (): boolean => !this.settings.value('workspaces.moveToTrash')(),
+  );
+
+  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
@@ -252,7 +266,10 @@ export class TreePanel {
       // How version control sees the path, in colour (#860) — unless the colours are switched off.
       ...(this.workspace.showsGitStatus() ? scmRowFields(this.git.stateFor(row.node.path)) : {}),
       // An error in the file, or beneath the folder, squiggles its name as an editor would.
-      ...(this.problems.has(row.node.path, 'error') ? { squiggle: true } : {}),
+      ...(this.settings.value('workspaces.showErrorSquiggles')() &&
+      this.problems.has(row.node.path, 'error')
+        ? { squiggle: true }
+        : {}),
       data: row.node,
     }));
     const edit: NameEdit | null = this.editing();
@@ -552,6 +569,8 @@ export class TreePanel {
     if (node.type === 'directory') {
       this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
+    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+      this.onRowOpen(row);
     }
   }
 
@@ -658,6 +677,9 @@ export class TreePanel {
 
     if (node.type === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      if (node.path.toLowerCase().endsWith('.svg')) {
+        items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
     }
     items.push(
       { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -734,6 +756,10 @@ export class TreePanel {
         this.workspace.select(node.path);
         void this.fileOpener.openPath(node.path);
         return;
+      case ACTION_OPEN_AS_CODE:
+        this.workspace.select(node.path);
+        void this.fileOpener.openAsText(node.path);
+        return;
       case ACTION_NEW_FILE:
         void this.beginCreate('new-file', this.directoryFor(node));
         return;
@@ -761,7 +787,7 @@ export class TreePanel {
         });
         return;
       case ACTION_DELETE:
-        this.deleteTargets.set([node]);
+        this.requestDelete([node]);
         return;
       default:
         return;
@@ -795,7 +821,7 @@ export class TreePanel {
           .catch((): void => undefined);
         return;
       case ACTION_DELETE:
-        this.deleteTargets.set(targets);
+        this.requestDelete(targets);
         return;
       default:
         return;
@@ -930,8 +956,21 @@ export class TreePanel {
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly WorkspaceTreeNode[] = this.deleteTargets() ?? [];
-    return targets.length === 1 ? `Delete ${targets[0].name}?` : `Delete ${targets.length} items?`;
+    const named: string = targets.length === 1 ? targets[0].name : `${targets.length} items`;
+    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
   });
+
+  /**
+   * Asks to delete entries: with the confirmation, unless Confirm Before Deleting is off and they are
+   * only going to the Trash. A permanent delete always asks.
+   * @param targets The entries.
+   */
+  private requestDelete(targets: readonly WorkspaceTreeNode[]): void {
+    this.deleteTargets.set(targets);
+    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+      void this.confirmDelete();
+    }
+  }
 
   /**
    * Closes the delete confirmation without deleting anything.
@@ -955,10 +994,13 @@ export class TreePanel {
     const permanent: WorkspaceTreeNode[] = [];
     for (const node of targets) {
       this.log.info('workspace.tree', 'Delete requested', node.path);
-      const result: FileOperationResult = await this.workspace.delete(node.path);
+      const result: FileOperationResult = await this.workspace.delete(
+        node.path,
+        this.deletesPermanently(),
+      );
       if (!result.success) {
         failed.push({ node, error: result.error });
-      } else if (result.trashed === false) {
+      } else if (result.trashed === false && !this.deletesPermanently()) {
         permanent.push(node);
       }
     }

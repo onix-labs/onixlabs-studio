@@ -10,6 +10,7 @@ import {
   GpuMetric,
   MetricsSample,
   NetworkMetric,
+  SamplingRate,
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
 import { logger } from '../../logger';
@@ -103,6 +104,11 @@ export class SystemMonitorContribution implements MainContribution {
   private gpuUnavailable: boolean = false;
 
   /**
+   * Holds whether the GPU is read at all, as the user's GPU Monitoring setting says.
+   */
+  private readsGpu: boolean = true;
+
+  /**
    * Wires the start/stop requests. Sampling itself does not begin until a consumer starts it.
    * @param context The contribution context.
    */
@@ -110,9 +116,10 @@ export class SystemMonitorContribution implements MainContribution {
     this.context = context;
     context.on(SystemMonitorChannel.Start, (): void => this.addConsumer());
     context.on(SystemMonitorChannel.Stop, (): void => this.removeConsumer());
-    context.on(SystemMonitorChannel.Rate, (_event: IpcMainEvent, payload: unknown): void =>
-      this.setRate(normaliseSamplingInterval(payload)),
-    );
+    context.on(SystemMonitorChannel.Rate, (_event: IpcMainEvent, payload: unknown): void => {
+      this.readsGpu = (payload as Partial<SamplingRate> | null | undefined)?.gpu !== false;
+      this.setRate(normaliseSamplingInterval(payload));
+    });
     logger.info('SystemMonitorContribution', 'Activated; awaiting sampling consumers');
   }
 
@@ -226,7 +233,11 @@ export class SystemMonitorContribution implements MainContribution {
         NetworkMetric | undefined,
         DiskMetric | undefined,
         GpuMetric | undefined,
-      ] = await Promise.all([this.readNetwork(), this.readDisk(), this.readGpu()]);
+      ] = await Promise.all([
+        this.readNetwork(),
+        this.readDisk(),
+        this.readsGpu ? this.readGpu() : undefined,
+      ]);
       this.heavy = { network, disk, gpu };
     }
     return { ...base, ...this.heavy, app: this.readApp() };

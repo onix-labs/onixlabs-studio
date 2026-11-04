@@ -21,16 +21,18 @@
           (valueChange)="destination.name.set($event)"
           (enter)="create()"
         />
-        <span class="agent__workspace-label">Location</span>
-        <div class="agent__workspace-location">
-          <span
-            class="agent__workspace-path"
-            [class.agent__workspace-path--empty]="destination.location() === null"
-            [title]="destination.location() ?? ''"
-            ><bdi>{{ destination.location() ?? 'Not chosen' }}</bdi></span
-          >
-          <app-button label="Browse…" size="small" (click)="destination.browse()" />
-        </div>
+        @if (destination.asksWhere()) {
+          <span class="agent__workspace-label">Location</span>
+          <div class="agent__workspace-location">
+            <span
+              class="agent__workspace-path"
+              [class.agent__workspace-path--empty]="destination.location() === null"
+              [title]="destination.location() ?? ''"
+              ><bdi>{{ destination.location() ?? 'Not chosen' }}</bdi></span
+            >
+            <app-button label="Browse…" size="small" (click)="destination.browse()" />
+          </div>
+        }
         <span class="agent__workspace-label">Repository</span>
         <div class="agent__workspace-choices">
           <app-dropdown

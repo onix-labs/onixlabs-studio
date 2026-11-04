@@ -227,15 +227,12 @@ function fakeMonacoNamespace(
       registerSelectionRangeProvider: (language: string, provider: unknown): void => {
         (captured.structure ??= new Map()).set(`${language}:selectionRanges`, provider);
       },
-      registerDocumentFormattingEditProvider: (language: string, provider: unknown): void => {
-        (captured.formatting ??= new Map()).set(`${language}:document`, provider);
-      },
-      registerDocumentRangeFormattingEditProvider: (language: string, provider: unknown): void => {
-        (captured.formatting ??= new Map()).set(`${language}:range`, provider);
-      },
-      registerOnTypeFormattingEditProvider: (language: string, provider: unknown): void => {
-        (captured.formatting ??= new Map()).set(`${language}:onType`, provider);
-      },
+      registerDocumentFormattingEditProvider: (language: string, provider: unknown): unknown =>
+        captureFormatter(captured, `${language}:document`, provider),
+      registerDocumentRangeFormattingEditProvider: (language: string, provider: unknown): unknown =>
+        captureFormatter(captured, `${language}:range`, provider),
+      registerOnTypeFormattingEditProvider: (language: string, provider: unknown): unknown =>
+        captureFormatter(captured, `${language}:onType`, provider),
       registerDocumentSemanticTokensProvider: (language: string, provider: unknown): void => {
         captured.semantic = provider as CapturedProviders['semantic'];
         const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
@@ -247,6 +244,22 @@ function fakeMonacoNamespace(
     Emitter: emitterClass,
     Uri: { parse: (value: string): unknown => ({ value }) },
   };
+}
+
+/**
+ * Captures a formatter as Monaco would register it: until its registration is disposed.
+ * @param captured Receives the formatter.
+ * @param key The formatter's key.
+ * @param provider The formatter.
+ * @returns Returns the registration.
+ */
+function captureFormatter(
+  captured: CapturedProviders,
+  key: string,
+  provider: unknown,
+): MonacoApi.IDisposable {
+  (captured.formatting ??= new Map()).set(key, provider);
+  return { dispose: (): void => void captured.formatting?.delete(key) };
 }
 
 /**
@@ -456,13 +469,35 @@ describe('LspFeatures', () => {
       ]);
     });
 
-    it('registersOnlyWhatTheServerOffers_andNothingForLanguagesMonacoAlreadyFormats', async () => {
+    it('registersOnlyWhatTheServerOffers', async () => {
       const features: LspFeatures = await build();
       features.enableFormatting('python', { document: true, range: false, onTypeTriggers: [] });
-      // Two formatters for one language would leave which one runs to chance.
-      features.enableFormatting('typescript', ROSLYN);
 
       expect([...(captured.formatting?.keys() ?? [])]).toEqual(['python:document']);
+    });
+
+    it('defaultFormatter_keepsTheServersFormatterOutOfALanguageWhileBuiltInIsChosen', async () => {
+      const features: LspFeatures = await build();
+      TestBed.inject(Settings).setLanguageOverride('typescript', 'defaultFormatter', 'built-in');
+
+      features.enableFormatting('typescript', ROSLYN);
+
+      expect(captured.formatting?.size ?? 0).toBe(0);
+    });
+
+    it('defaultFormatter_addsAndWithdrawsTheServersFormatterAsTheSettingChanges', async () => {
+      const features: LspFeatures = await build();
+      const settings: Settings = TestBed.inject(Settings);
+      features.enableFormatting('typescript', ROSLYN);
+      expect(captured.formatting?.has('typescript:document')).toBe(true);
+
+      settings.setLanguageOverride('typescript', 'defaultFormatter', 'built-in');
+      TestBed.tick();
+      expect(captured.formatting?.has('typescript:document')).toBe(false);
+
+      settings.clearLanguageOverride('typescript', 'defaultFormatter');
+      TestBed.tick();
+      expect(captured.formatting?.has('typescript:document')).toBe(true);
     });
 
     it('formatDocument_asksTheServerWithTheEditorsIndentation_andMapsItsEdits', async () => {
@@ -1525,6 +1560,20 @@ describe('LspFeatures', () => {
       expect(await provider?.provideSelectionRanges?.(owned, [{ lineNumber: 1, column: 1 }])).toBe(
         undefined,
       );
+    });
+
+    it('folds_leavesTheDocumentAlone_whenFoldingProviderChoosesSomethingElse', async () => {
+      structureSupport = ALL;
+      responses['textDocument/foldingRange'] = [{ startLine: 0, endLine: 2 }];
+      const features: LspFeatures = await build();
+      TestBed.inject(Settings).setLanguageOverride('csharp', 'foldingProvider', 'braces');
+      features.enableStructure('csharp', ALL);
+
+      const folds: unknown = await captured.structure
+        ?.get('csharp:folding')
+        ?.provideFoldingRanges?.(fakeModel(MODEL_URI));
+
+      expect(folds).toBeUndefined();
     });
 
     it('folds_asTheServerFoldsThem_withTheirKinds_droppingWhatFoldsNothing', async () => {

@@ -10,6 +10,7 @@ import { Search } from '@shared/angular/services/search/search';
 import {
   ReplaceRequest,
   ReplaceResponse,
+  SearchLimits,
   SearchMatch,
   SearchResponse,
   SearchResultFile,
@@ -139,6 +140,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
    * @param rootOf Resolves the active workspace root, or null when no folder is open.
    * @param pathsOf Resolves the folders or files under the root to confine the search to, or undefined
    * to search the whole root (#1007: a project's folder for the Current Project scope).
+   * @param limitsOf Resolves the limits a search runs under, read as each one starts.
    */
   public constructor(
     private readonly search: Search,
@@ -146,6 +148,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
     private readonly editors: Editors,
     private readonly rootOf: () => string | null,
     private readonly pathsOf: () => readonly string[] | undefined = (): undefined => undefined,
+    private readonly limitsOf: () => SearchLimits | undefined = (): undefined => undefined,
   ) {}
 
   /**
@@ -354,6 +357,8 @@ export class WorkspaceSearchAdapter implements FindAdapter {
         wholeWord: query.wholeWord,
         regexp: query.regexp,
         ...(paths === undefined ? {} : { paths }),
+        ...(query.files === undefined ? {} : { files: query.files }),
+        ...this.limits(),
       });
     } catch {
       response = { files: [], total: 0, capped: false };
@@ -371,12 +376,22 @@ export class WorkspaceSearchAdapter implements FindAdapter {
           text: match.text,
           after: match.after,
           file: file.relativePath,
+          ...(match.occurrences === undefined ? {} : { occurrences: match.occurrences }),
         },
       })),
     );
     this.flat = flat;
     this.matchesState.set(flat.map((entry: FlatMatch): FindResultItem => entry.item));
     this.activeIndexState.set(-1);
+  }
+
+  /**
+   * Builds the part of a search request the settings decide.
+   * @returns Returns the limits field, or nothing without any.
+   */
+  private limits(): { readonly limits?: SearchLimits } {
+    const limits: SearchLimits | undefined = this.limitsOf();
+    return limits === undefined ? {} : { limits };
   }
 
   /**

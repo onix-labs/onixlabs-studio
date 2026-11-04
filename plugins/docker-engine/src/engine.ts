@@ -364,7 +364,9 @@ export class DockerEngine {
    * @param request What to run.
    * @returns Returns the new container's id, or why it could not be run.
    */
-  public async run(request: RunContainerRequest): Promise<{ id?: string; error?: string }> {
+  public async run(
+    request: RunContainerRequest,
+  ): Promise<{ id?: string; error?: string; missingImage?: boolean }> {
     const query: string =
       request.name === undefined || request.name.length === 0
         ? ''
@@ -380,7 +382,10 @@ export class DockerEngine {
       return { error: 'The engine could not be reached.' };
     }
     if (created.statusCode === 404) {
-      return { error: `There is no image "${request.image}" on this machine. Pull it first.` };
+      return {
+        error: `There is no image "${request.image}" on this machine. Pull it first.`,
+        missingImage: true,
+      };
     }
     if (created.statusCode < 200 || created.statusCode >= 300) {
       return {
@@ -428,10 +433,11 @@ export class DockerEngine {
   /**
    * Removes a container.
    * @param id The container id.
+   * @param volumes Whether its anonymous volumes go with it.
    * @returns Returns true when the daemon accepted the request.
    */
-  public remove(id: string): Promise<boolean> {
-    return this.act('DELETE', `/containers/${encodeURIComponent(id)}`);
+  public remove(id: string, volumes: boolean = false): Promise<boolean> {
+    return this.act('DELETE', `/containers/${encodeURIComponent(id)}${volumes ? '?v=1' : ''}`);
   }
 
   /**

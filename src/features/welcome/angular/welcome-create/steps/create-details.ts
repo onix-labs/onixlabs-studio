@@ -1,9 +1,36 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import {
+  GITIGNORE_TEMPLATES,
+  LICENCE_TEMPLATES,
+  RepositoryFileTemplate,
+} from '@shared/api/repository-files';
 import { Icon } from '@shared/angular/icons/icon';
 import { PROJECT_LAYOUT_OPTIONS } from '@shared/angular/services/new-project/project-destination';
 import { ProjectAccount, ProjectDraft, ProjectLayout, ProjectRepository } from '../project-draft';
+
+/**
+ * Lists a set of templates as dropdown choices, none first.
+ * @param none The label of having none.
+ * @param templates The templates, by id.
+ * @returns Returns the choices.
+ */
+function templateOptions(
+  none: string,
+  templates: Readonly<Record<string, RepositoryFileTemplate>>,
+): readonly DropdownOption[] {
+  return [
+    { value: '', label: none },
+    ...Object.entries(templates).map(
+      ([value, template]: [string, RepositoryFileTemplate]): DropdownOption => ({
+        value,
+        label: template.label,
+      }),
+    ),
+  ];
+}
 
 /**
  * The New Project wizard's Project Details step (#806): a summary of the project, its name, where it
@@ -12,7 +39,7 @@ import { ProjectAccount, ProjectDraft, ProjectLayout, ProjectRepository } from '
  */
 @Component({
   selector: 'app-create-details',
-  imports: [AppIcon, Dropdown],
+  imports: [AppIcon, Checkbox, Dropdown],
   templateUrl: './create-details.html',
   styleUrl: './create-steps.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -57,6 +84,22 @@ export class CreateDetails {
   );
 
   /**
+   * Gets the `.gitignore` choices.
+   */
+  protected readonly gitignoreOptions: readonly DropdownOption[] = templateOptions(
+    'No .gitignore',
+    GITIGNORE_TEMPLATES,
+  );
+
+  /**
+   * Gets the licence choices.
+   */
+  protected readonly licenceOptions: readonly DropdownOption[] = templateOptions(
+    'No Licence',
+    LICENCE_TEMPLATES,
+  );
+
+  /**
    * Records the summary from the input event.
    * @param event The input event carrying the current value.
    */
@@ -85,7 +128,7 @@ export class CreateDetails {
    * @param value The picked value.
    */
   protected setAccount(value: string): void {
-    this.draft.account.set(
+    this.draft.destination.chooseAccount(
       this.draft.accounts().some((account: ProjectAccount): boolean => account.id === value)
         ? value
         : null,

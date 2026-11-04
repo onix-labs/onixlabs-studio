@@ -65,6 +65,7 @@ interface CollapseSummaryNode {
  */
 interface CollapseNode {
   type: 'collapse';
+  open: boolean;
   children: RootContent[];
 }
 
@@ -72,15 +73,21 @@ interface CollapseNode {
  * Builds the custom mdast nodes for one collapsible section.
  * @param summary The summary's plain text.
  * @param body The body's mdast children.
+ * @param attributes The attributes on the opening tag.
  * @returns Returns the collapse node.
  */
-function makeCollapseNode(summary: string, body: readonly RootContent[]): CollapseNode {
+function makeCollapseNode(
+  summary: string,
+  body: readonly RootContent[],
+  attributes: string | undefined,
+): CollapseNode {
   const summaryNode: CollapseSummaryNode = {
     type: 'collapseSummary',
     children: [{ type: 'text', value: summary }],
   };
   return {
     type: 'collapse',
+    open: /(?:^|\s)open(?:\s|=|$)/i.test(attributes ?? ''),
     children: [summaryNode as unknown as RootContent, ...body],
   };
 }
@@ -154,7 +161,7 @@ export function transformCollapseTree(tree: Root): Root {
         bodyText.length > 0
           ? [{ type: 'paragraph', children: [{ type: 'text', value: bodyText }] }]
           : [];
-      rebuilt.push(makeCollapseNode(whole[2].trim(), body) as unknown as RootContent);
+      rebuilt.push(makeCollapseNode(whole[2].trim(), body, whole[1]) as unknown as RootContent);
       continue;
     }
 
@@ -174,7 +181,7 @@ export function transformCollapseTree(tree: Root): Root {
         body.push(candidate);
       }
       if (closed) {
-        rebuilt.push(makeCollapseNode(open[2].trim(), body) as unknown as RootContent);
+        rebuilt.push(makeCollapseNode(open[2].trim(), body, open[1]) as unknown as RootContent);
         index = scan;
         continue;
       }
@@ -270,7 +277,7 @@ export const collapseNode: $Node = $node('collapse', (): NodeSchema => ({
     match: (node: MarkdownNode): boolean => node.type === 'collapse',
     runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
       const collapse: CollapseNode = node as unknown as CollapseNode;
-      state.openNode(type, { open: true });
+      state.openNode(type, { open: collapse.open });
       state.next(collapse.children as unknown as Parameters<typeof state.next>[0]);
       state.closeNode();
     },
@@ -284,7 +291,8 @@ export const collapseNode: $Node = $node('collapse', (): NodeSchema => ({
       state.addNode(
         'html',
         undefined,
-        `<details>\n<summary>${escapeHtmlText(summaryText)}</summary>`,
+        // The state the reader left it in is the file's own: GitHub opens it the same way.
+        `<details${node.attrs['open'] === true ? ' open' : ''}>\n<summary>${escapeHtmlText(summaryText)}</summary>`,
       );
       node.content.forEach((child: ProseMirrorNode, _offset: number, index: number): void => {
         if (index > 0) {

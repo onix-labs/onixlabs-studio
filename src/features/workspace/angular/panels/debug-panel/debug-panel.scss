@@ -143,3 +143,18 @@
     color: var(--gray-500);
   }
 }
+
+// What the debugger breaks on, under the call stack: the session's choice, not one frame's.
+.debug-exceptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.debug-exceptions__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}

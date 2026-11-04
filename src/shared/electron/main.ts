@@ -76,6 +76,7 @@ import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
 import { projectSystems } from './project-system/default-project-systems';
+import { setProjectScanDepth } from './project-system/dotnet-project-system';
 import { DebugAdapterLocator } from './debug/debug-adapter-locator';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
@@ -412,11 +413,12 @@ class Program {
   );
 
   /**
-   * Owns the user's skill library (#301): a folder of `SKILL.md` folders under the user-data path,
-   * which runs draw their in-scope skills from and Settings edits.
+   * Owns the user's skill library (#301): a folder of `SKILL.md` folders, under the user-data path
+   * unless the user chose another, which runs draw their in-scope skills from and Settings edits.
    */
   private readonly skillLibrary: SkillLibrary = new SkillLibrary(
-    path.join(app.getPath('userData'), 'skills'),
+    StartupPreferencesStore.read().settings.skillLibraryFolder ||
+      path.join(app.getPath('userData'), 'skills'),
   );
 
   /**
@@ -572,7 +574,10 @@ class Program {
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
    * {@link workspaceContext} tracks.
    */
-  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
+  private readonly studioStore: StudioStore = new StudioStore(
+    this.workspaceContext,
+    (): boolean => this.startupSettings.addStudioUserFileToGitignore,
+  );
 
   /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
@@ -614,6 +619,7 @@ class Program {
     this.versionControlHost,
     this.trustedPaths,
     (): BrowserWindow | null => this.windows.main(),
+    path.join(app.getPath('userData'), 'new-project.json'),
   );
 
   /**
@@ -770,6 +776,7 @@ class Program {
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
     this.startupSettings = startupPreferences.settings;
+    setProjectScanDepth(this.startupSettings.projectScanDepth);
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -780,6 +787,7 @@ class Program {
     );
     this.logger.setFloor(logFloor);
     this.logger.info('startup', `Log level: ${logFloor}`);
+    this.applyLogLimits(startupPreferences.settings);
     // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
     // a relaunch, which is the right way round — a first launch should not start degraded.
     const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
@@ -1083,6 +1091,8 @@ class Program {
           return;
         }
         this.startupSettings = parsed;
+        setProjectScanDepth(parsed.projectScanDepth);
+        this.applyLogLimits(parsed);
         StartupPreferencesStore.write({ settings: parsed });
       },
     );
@@ -1380,10 +1390,23 @@ class Program {
   }
 
   /**
+   * Applies the user's limits on what is logged and kept.
+   * @param settings The startup settings.
+   */
+  private applyLogLimits(settings: StartupSettings): void {
+    this.logger.applyLimits({
+      liveRecords: settings.liveLogRecords,
+      fileSizeMb: settings.logFileSizeMb,
+      rotatedCopies: settings.logRotatedCopies,
+    });
+  }
+
+  /**
    * Handles the app whenReady event.
    */
   private async onReady(): Promise<void> {
     this.logger.info('app', `Studio ready (v${app.getVersion()} on ${process.platform})`);
+    this.logger.pruneSessions(this.startupSettings.keepSessionLogsDays);
     this.installApplicationMenu();
     this.registerIpcHandlers();
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when

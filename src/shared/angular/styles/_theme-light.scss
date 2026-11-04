@@ -189,4 +189,11 @@
   --change-margin-unsaved: #d7a824;
   --change-margin-saved: #2ea043;
   --change-margin-deleted: #d13438;
+
+  // The same marks in an Okabe-Ito palette, which stays distinct for colour-blind eyes.
+  &[data-colour-blind-safe='true'] {
+    --change-margin-unsaved: #e69f00;
+    --change-margin-saved: #0072b2;
+    --change-margin-deleted: #d55e00;
+  }
 }

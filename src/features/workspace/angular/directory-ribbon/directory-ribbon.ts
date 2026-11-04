@@ -27,7 +27,12 @@ import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
-import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
+import { ActiveRun, BuildActionOptions, Builds } from '@shared/angular/services/tasks/builds';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type {
+  WhenBuildRunning,
+  WhenConfigurationRunning,
+} from '@shared/angular/services/settings/settings-registry';
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
@@ -258,6 +263,16 @@ export class DirectoryRibbon {
    * Holds the navigation that shows a symbol's call or type hierarchy (#1153).
    */
   private readonly navigation: EditorNavigation = inject(EditorNavigation);
+
+  /**
+   * Holds the settings, for what Run and Build do with a busy terminal.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether to ask about saving before a run or build.
+   */
+  protected readonly askingToSave: Signal<boolean> = inject(WorkspaceDocumentCommands).askingToSave;
 
   /**
    * Holds the workspace document seam the File group's Save and Save All dispatch through.
@@ -631,10 +646,33 @@ export class DirectoryRibbon {
       return;
     }
     if (this.isConfigurationRunning(configuration)) {
-      this.pendingRunConfiguration.set(configuration);
+      this.runAgain(configuration);
       return;
     }
-    this.start(configuration);
+    this.workspaceDocuments.afterSaving((): void => this.start(configuration));
+  }
+
+  /**
+   * Does what When a Configuration Is Already Running says with one that is. Only one debug session
+   * runs at a time, so a Debug configuration asks rather than running another.
+   * @param configuration The running configuration.
+   */
+  private runAgain(configuration: RunConfiguration): void {
+    const choice: WhenConfigurationRunning = this.settings.get(
+      'workspaces.whenConfigurationRunning',
+    );
+    if (choice === 'restart') {
+      this.workspaceDocuments.afterSaving((): void => this.restartRun(configuration));
+    } else if (choice === 'run-another' && configuration.mode !== 'debug') {
+      this.log.info('workspace.run', 'Further run started', configuration.name);
+      this.workspaceDocuments.afterSaving((): void =>
+        this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+          another: true,
+        }),
+      );
+    } else {
+      this.pendingRunConfiguration.set(configuration);
+    }
   }
 
   /**
@@ -645,11 +683,33 @@ export class DirectoryRibbon {
     const configuration: RunConfiguration | null = this.pendingRunConfiguration();
     this.pendingRunConfiguration.set(null);
     if (configuration !== null) {
-      this.log.info('workspace.run', 'Run configuration restarted', configuration.name);
-      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-        restart: true,
-      });
+      this.workspaceDocuments.afterSaving((): void => this.restartRun(configuration));
     }
+  }
+
+  /**
+   * Stops a running configuration and starts it again. A Debug configuration goes back through the
+   * debugger, as its first start did.
+   * @param configuration The configuration.
+   */
+  private restartRun(configuration: RunConfiguration): void {
+    this.log.info('workspace.run', 'Run configuration restarted', configuration.name);
+    if (configuration.mode === 'debug' && !isCompoundConfiguration(configuration)) {
+      this.debugger.stop();
+      this.start(configuration);
+      return;
+    }
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: true,
+    });
+  }
+
+  /**
+   * Answers the question about saving before a run or build.
+   * @param answer Save and go on, go on without saving, or stop.
+   */
+  protected answerSaveQuestion(answer: 'save' | 'skip' | 'cancel'): void {
+    this.workspaceDocuments.answerSaveQuestion(answer);
   }
 
   /**
@@ -680,16 +740,25 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Dispatches a build action, or — when the Build terminal is busy — asks whether to stop the
-   * running build and start this one instead (a busy build is never killed silently).
+   * Dispatches a build action, or — when the Build terminal is busy — does what When a Build Is
+   * Already Running says: asks whether to stop the running build and start this one instead (a busy
+   * build is never killed silently, and only Restart, chosen in the settings, skips asking), stops it,
+   * or queues this one behind it.
    * @param action The requested build action.
    */
   private requestBuildAction(action: 'build' | 'rebuild' | 'clean'): void {
     if (this.builds.buildBusy()) {
-      this.pendingBuildAction.set(action);
+      const choice: WhenBuildRunning = this.settings.get('workspaces.whenBuildRunning');
+      if (choice === 'ask') {
+        this.pendingBuildAction.set(action);
+        return;
+      }
+      this.workspaceDocuments.afterSaving((): void =>
+        this.dispatchBuildAction(action, choice === 'restart', choice === 'queue'),
+      );
       return;
     }
-    this.dispatchBuildAction(action, false);
+    this.workspaceDocuments.afterSaving((): void => this.dispatchBuildAction(action, false));
   }
 
   /**
@@ -700,7 +769,7 @@ export class DirectoryRibbon {
     const action: 'build' | 'rebuild' | 'clean' | null = this.pendingBuildAction();
     this.pendingBuildAction.set(null);
     if (action !== null) {
-      this.dispatchBuildAction(action, true);
+      this.workspaceDocuments.afterSaving((): void => this.dispatchBuildAction(action, true));
     }
   }
 
@@ -719,13 +788,19 @@ export class DirectoryRibbon {
    * ecosystems with no capability provider at all.
    * @param action The build action.
    * @param restart Whether a busy build may be stopped and replaced.
+   * @param queue Whether a busy build is to run this one when it ends.
    */
-  private dispatchBuildAction(action: 'build' | 'rebuild' | 'clean', restart: boolean): void {
-    this.log.info('workspace.run', 'Build action dispatched', action, { restart });
+  private dispatchBuildAction(
+    action: 'build' | 'rebuild' | 'clean',
+    restart: boolean,
+    queue: boolean = false,
+  ): void {
+    this.log.info('workspace.run', 'Build action dispatched', action, { restart, queue });
+    const options: BuildActionOptions = queue ? { restart, queue } : { restart };
     if (this.capabilities()?.actions.includes(action) === true) {
-      this.builds.runAction(action, { restart });
+      this.builds.runAction(action, options);
     } else if (action === 'build') {
-      this.builds.build({ restart });
+      this.builds.build(options);
     }
   }
 

@@ -212,6 +212,7 @@ export class FileManager {
       return { success: false, error: 'Invalid file content' };
     }
     try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, bytes);
       logger.info('FileManager', `Wrote ${bytes.byteLength} bytes to ${filePath}`);
       return { success: true, path: filePath };

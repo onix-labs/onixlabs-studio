@@ -101,7 +101,9 @@
             {{ prompt.name }}
             {{ prompt.withLibrary ? 'is already in your library' : 'is already being imported' }}
           </h2>
-          <p class="import__message">Replace it, import this one under another name, or skip it.</p>
+          <p class="import__message">
+            Replace it, keep both by importing this one under another name, or skip it.
+          </p>
           <div class="import__rename">
             <app-text-field
               [value]="rename()"
@@ -124,10 +126,10 @@
             </p>
           }
           <app-button-row class="import__buttons">
-            <app-button variant="solid" label="Rename" (click)="resolveClash('rename')" />
+            <app-button variant="solid" label="Keep Both" (click)="resolveClash('rename')" />
             <app-button label="Replace" (click)="resolveClash('replace')" />
             <app-button label="Skip" (click)="resolveClash('skip')" />
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button label="Cancel" (click)="cancel()" />
           </app-button-row>
         }
         @case ('committing') {

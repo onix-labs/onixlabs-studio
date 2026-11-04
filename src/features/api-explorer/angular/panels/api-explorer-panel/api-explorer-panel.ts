@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -148,6 +149,11 @@ export class ApiExplorerPanel {
    * Holds the API workspace the tree presents.
    */
   protected readonly workspace: ApiWorkspace = inject(ApiWorkspace);
+
+  /**
+   * Holds the settings, which say whether a delete asks first.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the opener that puts a request into the API well.
@@ -437,6 +443,9 @@ export class ApiExplorerPanel {
         return;
       case ACTION_DELETE:
         this.deleteTarget.set(target);
+        if (!this.settings.get('apiExplorer.confirmDelete')) {
+          this.confirmDelete();
+        }
         return;
       default:
         return;

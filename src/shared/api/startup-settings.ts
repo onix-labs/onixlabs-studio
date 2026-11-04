@@ -23,6 +23,17 @@ export type CornerStyle = 'automatic' | 'squircle' | 'rounded' | 'square';
 export type ConfirmExternalLinks = 'never' | 'untrusted' | 'always';
 
 /**
+ * What happens to an Ollama server Studio started, when Studio quits: Automatic stops Studio's own
+ * private copy and leaves the user's install running.
+ */
+export type OllamaStopOnQuit = 'automatic' | 'always' | 'never';
+
+/**
+ * When Studio starts the Ollama runtime.
+ */
+export type OllamaStart = 'manual' | 'needed' | 'launch';
+
+/**
  * Defines the settings the main process has to know before any window exists, or while none does.
  *
  * Settings live in the renderer's store, which the main process cannot reach at launch. Each of these
@@ -57,6 +68,80 @@ export interface StartupSettings {
    * the ones a page navigates to by itself, so it is the one that asks.
    */
   readonly confirmExternalLinks: ConfirmExternalLinks;
+
+  /**
+   * Gets whether the first write of a folder's `.studio` files adds the per-developer file to the
+   * folder's `.gitignore`. The main process does the writing.
+   */
+  readonly addStudioUserFileToGitignore: boolean;
+
+  /**
+   * Gets how many folder levels are searched for .NET projects where there is no solution. The main
+   * process builds the project model.
+   */
+  readonly projectScanDepth: number;
+
+  /**
+   * Gets the size the rolling log file reaches before it rotates, in MB. The main process writes the
+   * log from the first line of a launch, before any renderer exists.
+   */
+  readonly logFileSizeMb: number;
+
+  /**
+   * Gets how many rotated log files are kept.
+   */
+  readonly logRotatedCopies: number;
+
+  /**
+   * Gets how many days a past session's log is kept, 0 for ever.
+   */
+  readonly keepSessionLogsDays: number;
+
+  /**
+   * Gets how many of the running session's log records are held in memory.
+   */
+  readonly liveLogRecords: number;
+
+  /**
+   * Gets the address the user set for the container engine, empty for discovery. Main resolves the
+   * engine as it starts, with no window open.
+   */
+  readonly containerEngineAddress: string;
+
+  /**
+   * Gets the Ollama server's address, which the environment's overrides.
+   */
+  readonly ollamaAddress: string;
+
+  /**
+   * Gets the folder Ollama keeps models in, empty for its own default.
+   */
+  readonly ollamaModelsFolder: string;
+
+  /**
+   * Gets the folder Studio installs its own Ollama in, empty for under the user data.
+   */
+  readonly ollamaRuntimeFolder: string;
+
+  /**
+   * Gets what happens to a server Studio started, when Studio quits.
+   */
+  readonly ollamaStopOnQuit: OllamaStopOnQuit;
+
+  /**
+   * Gets when Studio starts the runtime.
+   */
+  readonly ollamaStart: OllamaStart;
+
+  /**
+   * Gets how long a model stays loaded after its last use, in minutes; -1 until Studio quits.
+   */
+  readonly ollamaKeepAliveMinutes: number;
+
+  /**
+   * Gets the folder the skill library lives in, empty for under the user data.
+   */
+  readonly skillLibraryFolder: string;
 }
 
 /**
@@ -68,6 +153,20 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   restoreFullScreen: true,
   cornerStyle: 'automatic',
   confirmExternalLinks: 'never',
+  addStudioUserFileToGitignore: true,
+  projectScanDepth: 2,
+  logFileSizeMb: 5,
+  logRotatedCopies: 5,
+  keepSessionLogsDays: 30,
+  liveLogRecords: 5000,
+  containerEngineAddress: '',
+  ollamaAddress: '127.0.0.1:11434',
+  ollamaModelsFolder: '',
+  ollamaRuntimeFolder: '',
+  ollamaStopOnQuit: 'automatic',
+  ollamaStart: 'needed',
+  ollamaKeepAliveMinutes: 5,
+  skillLibraryFolder: '',
 };
 
 /**
@@ -77,10 +176,22 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
  * @param fallback The value used otherwise.
  * @returns Returns the candidate when it is allowed, otherwise the fallback.
  */
-function oneOf<T extends string>(candidate: unknown, allowed: readonly T[], fallback: T): T {
-  return typeof candidate === 'string' && (allowed as readonly string[]).includes(candidate)
-    ? (candidate as T)
-    : fallback;
+function oneOf<T extends string | number>(
+  candidate: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return (allowed as readonly unknown[]).includes(candidate) ? (candidate as T) : fallback;
+}
+
+/**
+ * Reads a text setting.
+ * @param candidate The stored value.
+ * @param fallback The value used when it is not text.
+ * @returns Returns the text.
+ */
+function text(candidate: unknown, fallback: string): string {
+  return typeof candidate === 'string' ? candidate : fallback;
 }
 
 /**
@@ -118,5 +229,49 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       ['never', 'untrusted', 'always'],
       defaults.confirmExternalLinks,
     ),
+    addStudioUserFileToGitignore:
+      typeof record['addStudioUserFileToGitignore'] === 'boolean'
+        ? record['addStudioUserFileToGitignore']
+        : defaults.addStudioUserFileToGitignore,
+    projectScanDepth:
+      Number.isSafeInteger(record['projectScanDepth']) && (record['projectScanDepth'] as number) > 0
+        ? (record['projectScanDepth'] as number)
+        : defaults.projectScanDepth,
+    logFileSizeMb: oneOf<number>(record['logFileSizeMb'], [5, 10, 50], defaults.logFileSizeMb),
+    logRotatedCopies: oneOf<number>(
+      record['logRotatedCopies'],
+      [3, 5, 10],
+      defaults.logRotatedCopies,
+    ),
+    keepSessionLogsDays: oneOf<number>(
+      record['keepSessionLogsDays'],
+      [7, 30, 90, 0],
+      defaults.keepSessionLogsDays,
+    ),
+    liveLogRecords: oneOf<number>(
+      record['liveLogRecords'],
+      [1000, 5000, 20_000, 50_000],
+      defaults.liveLogRecords,
+    ),
+    containerEngineAddress: text(record['containerEngineAddress'], defaults.containerEngineAddress),
+    ollamaAddress: text(record['ollamaAddress'], defaults.ollamaAddress),
+    ollamaModelsFolder: text(record['ollamaModelsFolder'], defaults.ollamaModelsFolder),
+    ollamaRuntimeFolder: text(record['ollamaRuntimeFolder'], defaults.ollamaRuntimeFolder),
+    ollamaStopOnQuit: oneOf<OllamaStopOnQuit>(
+      record['ollamaStopOnQuit'],
+      ['automatic', 'always', 'never'],
+      defaults.ollamaStopOnQuit,
+    ),
+    ollamaStart: oneOf<OllamaStart>(
+      record['ollamaStart'],
+      ['manual', 'needed', 'launch'],
+      defaults.ollamaStart,
+    ),
+    ollamaKeepAliveMinutes: oneOf<number>(
+      record['ollamaKeepAliveMinutes'],
+      [1, 5, 30, -1],
+      defaults.ollamaKeepAliveMinutes,
+    ),
+    skillLibraryFolder: text(record['skillLibraryFolder'], defaults.skillLibraryFolder),
   };
 }

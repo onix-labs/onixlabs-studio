@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { effect, inject, Service, untracked } from '@angular/core';
 import {
   CompletionName,
@@ -305,6 +306,11 @@ export class DatabaseCompletions {
   private readonly client: DatabaseClient = inject(DatabaseClient);
 
   /**
+   * Holds the settings, read for whether completions are wanted at all.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the cached names, by session and database.
    */
   private readonly cache: Map<string, CachedNames> = new Map<string, CachedNames>();
@@ -341,6 +347,7 @@ export class DatabaseCompletions {
     const engine: DatabaseEngineInfo | undefined =
       connection === undefined ? undefined : this.workspace.engine(connection.engine);
     if (
+      !this.settings.get('databaseExplorer.schemaCompletions') ||
       query === undefined ||
       session === undefined ||
       engine?.capabilities.includes('completion') !== true

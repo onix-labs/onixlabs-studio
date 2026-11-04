@@ -14,11 +14,14 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   DatabaseValue,
   GraphNodeValue,
   GraphRelationshipValue,
 } from '@shared/api/database-engine-protocol';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { cellText } from '../database-values';
 import { ForceSimulation } from './force-simulation';
 
@@ -44,10 +47,17 @@ const ZOOM_STEP_LIMIT: number = 40;
 const SETTLED_OUT_OF_SIGHT: number = 0.08;
 
 /**
- * The most nodes the view draws. A larger result is drawn in part, with a note: a force layout of
- * thousands of nodes is a hairball nobody can read, and Neo4j Browser caps its view the same way.
+ * The caption menu's item for leaving a label's caption to the view.
  */
-const MAX_NODES: number = 300;
+const CAPTION_AUTOMATIC: string = 'caption-automatic';
+
+/**
+ * A label the graph draws, and the menu choosing its caption.
+ */
+interface GraphLabel {
+  readonly name: string;
+  readonly items: readonly MenuItem[];
+}
 
 /**
  * A node as the view lays it out.
@@ -90,6 +100,7 @@ export interface GraphPick {
  */
 @Component({
   selector: 'app-graph-view',
+  imports: [CdkMenuTrigger, Menu],
   templateUrl: './graph-view.html',
   styleUrl: './graph-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -100,6 +111,33 @@ export class GraphView {
    */
   public readonly rows: InputSignal<readonly (readonly DatabaseValue[])[]> =
     input.required<readonly (readonly DatabaseValue[])[]>();
+
+  /**
+   * Gets what the captions chosen here are remembered against: the database the query ran on.
+   */
+  public readonly captionScope: InputSignal<string> = input<string>('');
+
+  /**
+   * Holds the settings, for the node limit and the captions chosen per database.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets the most nodes the view draws. A larger result is drawn in part, with a note: a force layout
+   * of thousands of nodes is a hairball nobody can read, and Neo4j Browser caps its view the same way.
+   */
+  protected readonly maxNodes: Signal<number> = this.settings.value(
+    'databaseExplorer.graphMaxNodes',
+  );
+
+  /**
+   * Gets the property each label is captioned with in this database, for the labels the user chose one
+   * for.
+   */
+  private readonly captions: Signal<Readonly<Record<string, string>>> = computed(
+    (): Readonly<Record<string, string>> =>
+      this.settings.value('databaseExplorer.graphCaptions')()[this.captionScope()] ?? {},
+  );
 
   /**
    * Emits what a click picked.
@@ -154,14 +192,15 @@ export class GraphView {
       }
     }
     const all: GraphNodeValue[] = [...nodes.values()];
-    const kept: GraphNodeValue[] = all.slice(0, MAX_NODES);
+    const kept: GraphNodeValue[] = all.slice(0, this.maxNodes());
+    const captions: Readonly<Record<string, string>> = this.captions();
     const keptIds: ReadonlySet<string> = new Set<string>(
       kept.map((node: GraphNodeValue): string => node.id),
     );
     return {
       nodes: kept.map((node: GraphNodeValue): LaidNode => ({
         value: node,
-        caption: captionOf(node),
+        caption: captionOf(node, captions),
       })),
       relationships: [...relationships.values()]
         .filter(
@@ -172,6 +211,51 @@ export class GraphView {
       truncated: all.length > kept.length,
     };
   });
+
+  /**
+   * Gets the labels drawn, each with the properties its nodes have, for the caption menus.
+   */
+  protected readonly labels: Signal<readonly GraphLabel[]> = computed((): readonly GraphLabel[] => {
+    const labels: Map<string, Set<string>> = new Map<string, Set<string>>();
+    for (const { value } of this.graph().nodes) {
+      for (const label of value.labels) {
+        const keys: Set<string> = labels.get(label) ?? new Set<string>();
+        Object.keys(value.properties).forEach((key: string): void => void keys.add(key));
+        labels.set(label, keys);
+      }
+    }
+    const chosen: Readonly<Record<string, string>> = this.captions();
+    return [...labels].map(([name, keys]: [string, Set<string>]): GraphLabel => ({
+      name,
+      items: [
+        { id: CAPTION_AUTOMATIC, label: 'Automatic', checked: chosen[name] === undefined },
+        ...[...keys].sort().map((key: string): MenuItem => ({
+          id: key,
+          label: key,
+          checked: chosen[name] === key,
+        })),
+      ],
+    }));
+  });
+
+  /**
+   * Remembers the caption chosen for a label, for this database.
+   * @param label The label.
+   * @param id The item chosen: a property's name, or {@link CAPTION_AUTOMATIC}.
+   */
+  protected chooseCaption(label: string, id: string): void {
+    const all: Readonly<Record<string, Readonly<Record<string, string>>>> = this.settings.get(
+      'databaseExplorer.graphCaptions',
+    );
+    const scope: string = this.captionScope();
+    const others: Readonly<Record<string, string>> = Object.fromEntries(
+      Object.entries(all[scope] ?? {}).filter(([key]: [string, string]): boolean => key !== label),
+    );
+    this.settings.set('databaseExplorer.graphCaptions', {
+      ...all,
+      [scope]: id === CAPTION_AUTOMATIC ? others : { ...others, [label]: id },
+    });
+  }
 
   /**
    * Holds each node's position, keyed by node id.
@@ -543,11 +627,22 @@ function unitsPerPixel(svg: SVGSVGElement): number {
 }
 
 /**
- * Picks the caption a node is drawn with: its name, title or first string property, else its label.
+ * Picks the caption a node is drawn with: the property chosen for its label, else its name, title or
+ * first string property, else its label.
  * @param node The node.
+ * @param captions The property chosen for each label.
  * @returns Returns the caption.
  */
-function captionOf(node: GraphNodeValue): string {
+function captionOf(node: GraphNodeValue, captions: Readonly<Record<string, string>>): string {
+  const chosen: string | undefined = node.labels
+    .map((label: string): string | undefined => captions[label])
+    .find((key: string | undefined): key is string => key !== undefined);
+  for (const key of chosen === undefined ? [] : [chosen]) {
+    const value: DatabaseValue | undefined = node.properties[key];
+    if (value !== undefined && value !== null) {
+      return shorten(cellText(value).text);
+    }
+  }
   for (const key of ['name', 'title', 'label', 'id']) {
     const value: DatabaseValue | undefined = node.properties[key];
     if (value !== undefined && value !== null) {

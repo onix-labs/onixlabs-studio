@@ -41,6 +41,10 @@ const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.20.0': '10c07ebba93084b2bb850e5e55ea7aaf707036a82f88063758c40cf7fe5b1d54',
   '1.21.0': 'a264aaf1a111e6b8426362d0f1d35cd2fc2c386eedf28bfff1b6d4f037e56e7b',
   '1.22.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
+  // The same shape as 1.22.0: what changed is the database-engine protocol (#1248).
+  '1.23.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
+  // The same shape again: what changed is the container-engine protocol (#1250).
+  '1.24.0': '2a5aaeda4c88616834ad26c41a652125422da4bfc82a03b72595ff069f008b2c',
 };
 
 /**

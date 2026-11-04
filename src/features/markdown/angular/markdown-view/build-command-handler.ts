@@ -75,7 +75,8 @@ export function buildMarkdownCommandHandler(
     toggleBulletList: (): void => deps.paneOf()?.run(callCommand(wrapInBulletListCommand.key)),
     toggleOrderedList: (): void => deps.paneOf()?.run(callCommand(wrapInOrderedListCommand.key)),
     toggleTaskList: (): void => deps.paneOf()?.run(toggleTaskList),
-    insertTable: (): void => deps.paneOf()?.run(callCommand(insertTableCommand.key)),
+    insertTable: (rows: number, columns: number): void =>
+      deps.paneOf()?.run(callCommand(insertTableCommand.key, { row: rows, col: columns })),
     insertHorizontalRule: (): void => deps.paneOf()?.run(callCommand(insertHrCommand.key)),
     insertMarkdown: (markdown: string): void => deps.clipboard.insertParsedBlock(markdown),
     insertInlineMarkdown: (markdown: string): void => deps.clipboard.insertParsedInline(markdown),

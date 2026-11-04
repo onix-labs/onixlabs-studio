@@ -7,7 +7,8 @@ import { effect, inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
-import { Settings } from '@shared/angular/services/settings/settings';
+import { type FoldingProvider, Settings } from '@shared/angular/services/settings/settings';
+import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
   LspSemanticTokensLegend,
@@ -428,21 +429,6 @@ export const STUDIO_RUN_TESTS_COMMAND: string = 'studio.lsp.runTests';
 const SNIPPET_TEXT_EDIT_FORMAT: number = 2;
 
 /**
- * The languages whose Monaco build already formats them (the TypeScript, JSON, CSS and HTML workers).
- * A language server's formatter is not added for these: Monaco offers no way to choose between two
- * formatters in a standalone editor, so a second one would make which formatter runs arbitrary.
- */
-const MONACO_FORMATTED_LANGUAGES: ReadonlySet<string> = new Set<string>([
-  'typescript',
-  'javascript',
-  'json',
-  'css',
-  'scss',
-  'less',
-  'html',
-]);
-
-/**
  * What a language server says of the symbol at a position before the new name is asked for (#1015).
  */
 export type LspRenamePreparation =
@@ -835,10 +821,22 @@ export class LspFeatures {
   private registered: boolean = false;
 
   /**
-   * Holds the formatting providers registered so far, as `<language>:<document|range|onType>`, so
-   * each is registered once (#1141).
+   * Holds the formatting providers registered so far, by `<language>:<document|range|onType>`, so
+   * each is registered once (#1141), and one Default Formatter withdraws can be disposed.
    */
-  private readonly formattingRegistered: Set<string> = new Set<string>();
+  private readonly formattingRegistered: Map<string, MonacoApi.IDisposable> = new Map<
+    string,
+    MonacoApi.IDisposable
+  >();
+
+  /**
+   * Holds how a server formats each language with a built-in formatter, so Default Formatter can add
+   * or withdraw the server's formatter whenever it changes.
+   */
+  private readonly formattingOffered: Map<string, LspFormattingSupport> = new Map<
+    string,
+    LspFormattingSupport
+  >();
 
   /**
    * Holds the languages hints are registered for (#1145).
@@ -975,6 +973,10 @@ export class LspFeatures {
       }
       previous = choices;
     });
+    effect((): void => {
+      this.settings.defaultFormatterChoices();
+      this.applyDefaultFormatter();
+    });
   }
 
   /**
@@ -1041,30 +1043,41 @@ export class LspFeatures {
    * rather than for every language up front: Monaco offers Format Document (in the menu, on its chord,
    * on the ribbon) exactly when a formatter is registered for the language, and one registered for a
    * language whose server cannot format would offer a command that does nothing. Each kind is
-   * registered once per language. Languages Monaco already formats are left to Monaco (see
-   * {@link MONACO_FORMATTED_LANGUAGES}).
+   * registered once per language.
+   *
+   * A language Monaco already formats (see {@link BUILT_IN_FORMATTER_LANGUAGES}) gets the server's
+   * formatter only while Default Formatter asks for it. Monaco runs the formatter registered last, and
+   * offers no way to choose per call, so the choice is made by what is registered.
    * @param language The Monaco language identifier.
    * @param support How the serving server formats.
    */
   public enableFormatting(language: string, support: LspFormattingSupport): void {
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
-    if (monaco === undefined || MONACO_FORMATTED_LANGUAGES.has(language)) {
+    if (monaco === undefined) {
       return;
     }
-    const registered: Set<string> = this.formattingRegistered;
+    if (BUILT_IN_FORMATTER_LANGUAGES.has(language)) {
+      this.formattingOffered.set(language, support);
+      if (this.settings.resolveSettingsForLanguage(language).defaultFormatter === 'built-in') {
+        return;
+      }
+    }
+    const registered: Map<string, MonacoApi.IDisposable> = this.formattingRegistered;
     if (support.document && !registered.has(`${language}:document`)) {
-      registered.add(`${language}:document`);
-      monaco.languages.registerDocumentFormattingEditProvider(language, {
+      const provider: MonacoApi.languages.DocumentFormattingEditProvider = {
         provideDocumentFormattingEdits: (
           model: MonacoApi.editor.ITextModel,
           options: MonacoApi.languages.FormattingOptions,
         ): Promise<MonacoApi.languages.TextEdit[] | undefined> =>
           this.provideFormatting(model, 'textDocument/formatting', options),
-      });
+      };
+      registered.set(
+        `${language}:document`,
+        monaco.languages.registerDocumentFormattingEditProvider(language, provider),
+      );
     }
     if (support.range && !registered.has(`${language}:range`)) {
-      registered.add(`${language}:range`);
-      monaco.languages.registerDocumentRangeFormattingEditProvider(language, {
+      const provider: MonacoApi.languages.DocumentRangeFormattingEditProvider = {
         provideDocumentRangeFormattingEdits: (
           model: MonacoApi.editor.ITextModel,
           range: MonacoApi.Range,
@@ -1076,11 +1089,14 @@ export class LspFeatures {
               end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
             },
           }),
-      });
+      };
+      registered.set(
+        `${language}:range`,
+        monaco.languages.registerDocumentRangeFormattingEditProvider(language, provider),
+      );
     }
     if (support.onTypeTriggers.length > 0 && !registered.has(`${language}:onType`)) {
-      registered.add(`${language}:onType`);
-      monaco.languages.registerOnTypeFormattingEditProvider(language, {
+      const provider: MonacoApi.languages.OnTypeFormattingEditProvider = {
         autoFormatTriggerCharacters: [...support.onTypeTriggers],
         provideOnTypeFormattingEdits: async (
           model: MonacoApi.editor.ITextModel,
@@ -1099,7 +1115,28 @@ export class LspFeatures {
           }
           return (await this.placeOpeningBrace(model, position, options)) ?? typed;
         },
-      });
+      };
+      registered.set(
+        `${language}:onType`,
+        monaco.languages.registerOnTypeFormattingEditProvider(language, provider),
+      );
+    }
+  }
+
+  /**
+   * Adds or withdraws the servers' formatters of the languages Monaco also formats, to match Default
+   * Formatter.
+   */
+  private applyDefaultFormatter(): void {
+    for (const [language, support] of this.formattingOffered) {
+      if (this.settings.resolveSettingsForLanguage(language).defaultFormatter !== 'built-in') {
+        this.enableFormatting(language, support);
+        continue;
+      }
+      for (const kind of ['document', 'range', 'onType']) {
+        this.formattingRegistered.get(`${language}:${kind}`)?.dispose();
+        this.formattingRegistered.delete(`${language}:${kind}`);
+      }
     }
   }
 
@@ -1409,7 +1446,7 @@ export class LspFeatures {
         provideFoldingRanges: (
           model: MonacoApi.editor.ITextModel,
         ): Promise<MonacoApi.languages.FoldingRange[] | undefined> =>
-          this.provideFoldingRanges(monaco, model),
+          this.provideFoldingRanges(monaco, model, language),
       });
     }
     if (support.highlights && !registered.has(`${language}:highlights`)) {
@@ -1505,14 +1542,22 @@ export class LspFeatures {
    * Asks the server serving a model for its folds, and maps them to Monaco's.
    * @param monaco The Monaco namespace.
    * @param model The model.
-   * @returns Returns the folds, or undefined when no server serving the model folds it.
+   * @param language The model's language.
+   * @returns Returns the folds, or undefined when no server serving the model folds it, or Folding
+   * Provider leaves the language to something else.
    */
   private async provideFoldingRanges(
     monaco: typeof MonacoApi,
     model: MonacoApi.editor.ITextModel,
+    language: string,
   ): Promise<MonacoApi.languages.FoldingRange[] | undefined> {
     const ref: LspDocumentRef | null = this.resolve(model);
     if (ref === null || this.bridge === undefined || ref.structure?.folding !== true) {
+      return undefined;
+    }
+    const provider: FoldingProvider =
+      this.settings.resolveSettingsForLanguage(language).foldingProvider;
+    if (provider === 'braces' || provider === 'indentation') {
       return undefined;
     }
     await ref.sync?.(model.getValue());

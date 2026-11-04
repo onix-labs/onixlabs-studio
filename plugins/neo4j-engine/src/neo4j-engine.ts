@@ -1,4 +1,5 @@
 import neo4j, {
+  Config,
   Driver,
   Integer,
   isDate,
@@ -22,10 +23,12 @@ import neo4j, {
   Record as Neo4jRecord,
   Relationship,
   Session,
+  Transaction,
 } from 'neo4j-driver';
 import {
   CompletionName,
   ConnectionValues,
+  ConnectOptions,
   DatabaseEngineInfo,
   DatabaseNode,
   DatabaseValue,
@@ -35,6 +38,9 @@ import {
   NamesScope,
   NodeActionOutcome,
   QueryMessage,
+  TransactionAction,
+  TransactionOutcome,
+  TreeOptions,
 } from '../../protocol/database/protocol';
 import { splitStatements } from '../../protocol/database/statements';
 import {
@@ -47,7 +53,7 @@ import {
   EngineResultSet,
   EngineSession,
   splitQualifiedName,
-  MAX_RESULT_ROWS,
+  maxResultRows,
 } from '../../protocol/database/engine';
 
 /**
@@ -60,6 +66,11 @@ const DATABASE_FOLDERS: readonly { readonly id: string; readonly label: string }
   { id: 'indexes', label: 'Indexes' },
   { id: 'constraints', label: 'Constraints' },
 ];
+
+/**
+ * How many a Match action reads when Studio does not say.
+ */
+const DEFAULT_MATCH_COUNT: number = 25;
 
 /**
  * Neo4j through `neo4j-driver`, the pure-JavaScript Bolt driver. It is here to prove the
@@ -76,7 +87,7 @@ export class Neo4jEngine implements DatabaseEngine {
     displayName: 'Neo4j',
     language: 'cypher',
     queryExtension: 'cypher',
-    capabilities: ['cancel', 'multipleDatabases', 'script', 'graph', 'completion'],
+    capabilities: ['cancel', 'multipleDatabases', 'script', 'graph', 'completion', 'transactions'],
     connectionFields: [
       {
         id: 'uri',
@@ -108,15 +119,36 @@ export class Neo4jEngine implements DatabaseEngine {
         defaultValue: 'neo4j',
         section: 'database',
       },
+      {
+        id: 'encryption',
+        label: 'Encryption',
+        kind: 'choice',
+        defaultValue: 'address',
+        section: 'security',
+        options: [
+          { value: 'address', label: 'As the address says (neo4j+s://, bolt+s://)' },
+          { value: 'off', label: 'Disabled' },
+          { value: 'on', label: 'Required' },
+          { value: 'no-verify', label: 'Required, without verifying the certificate' },
+        ],
+      },
+      {
+        id: 'readOnly',
+        label: 'Open read-only',
+        kind: 'boolean',
+        defaultValue: 'false',
+        section: 'options',
+      },
     ],
   };
 
   /**
    * Opens a driver and checks it can reach the server.
    * @param values The connection's field values.
+   * @param options How Studio wants it opened.
    * @returns Returns a promise resolving the session.
    */
-  public async connect(values: ConnectionValues): Promise<EngineSession> {
+  public async connect(values: ConnectionValues, options?: ConnectOptions): Promise<EngineSession> {
     const uri: string = (values['uri'] ?? '').trim();
     if (uri === '') {
       throw new Error('Enter the server address.');
@@ -124,7 +156,11 @@ export class Neo4jEngine implements DatabaseEngine {
     const driver: Driver = neo4j.driver(
       uri,
       neo4j.auth.basic((values['user'] ?? '').trim(), values['password'] ?? ''),
-      { connectionTimeout: 10_000, disableLosslessIntegers: false },
+      {
+        connectionTimeout: options?.timeoutMs ?? 10_000,
+        disableLosslessIntegers: false,
+        ...encryptionConfig(uri, values['encryption']),
+      },
     );
     try {
       const info: { agent?: string } = await driver.getServerInfo();
@@ -132,12 +168,44 @@ export class Neo4jEngine implements DatabaseEngine {
         driver,
         (values['database'] ?? '').trim() || 'neo4j',
         info.agent ?? 'Neo4j',
+        values['readOnly'] === 'true',
       );
     } catch (error: unknown) {
       await driver.close();
       throw new Error(describeError(error), { cause: error });
     }
   }
+}
+
+/**
+ * Works out the driver's encryption settings from the Encryption field. An address that names its
+ * own (`neo4j+s://`, `bolt+ssc://`) always wins: the driver refuses to be told twice.
+ * @param uri The server address.
+ * @param encryption The field's value.
+ * @returns Returns the settings to spread into the driver's configuration.
+ */
+export function encryptionConfig(uri: string, encryption: string | undefined): Partial<Config> {
+  if (/^[a-z0-9]+\+/i.test(uri)) {
+    return {};
+  }
+  switch (encryption) {
+    case 'off':
+      return { encrypted: 'ENCRYPTION_OFF' };
+    case 'on':
+      return { encrypted: 'ENCRYPTION_ON', trust: 'TRUST_SYSTEM_CA_SIGNED_CERTIFICATES' };
+    case 'no-verify':
+      return { encrypted: 'ENCRYPTION_ON', trust: 'TRUST_ALL_CERTIFICATES' };
+    default:
+      return {};
+  }
+}
+
+/**
+ * A manual transaction left open, and the Bolt session it lives on.
+ */
+interface OpenTransaction {
+  readonly session: Session;
+  readonly transaction: Transaction;
 }
 
 /**
@@ -155,26 +223,49 @@ class Neo4jSession implements EngineSession {
   private readonly cancelled: Set<string> = new Set<string>();
 
   /**
+   * Holds the manual transactions left open, keyed by database.
+   */
+  private readonly transactions: Map<string, OpenTransaction> = new Map<string, OpenTransaction>();
+
+  /**
    * Creates the session.
    * @param driver The connected driver.
    * @param database The connection's default database.
    * @param serverVersion The server's agent string.
+   * @param readOnly Whether queries run in read access mode, which the server holds them to.
    */
   public constructor(
     private readonly driver: Driver,
     private readonly database: string,
     public readonly serverVersion: string,
+    private readonly readOnly: boolean = false,
   ) {}
+
+  /**
+   * Opens a Bolt session for running queries.
+   * @param database The database.
+   * @returns Returns the session.
+   */
+  private querySession(database: string): Session {
+    return this.driver.session({
+      database,
+      ...(this.readOnly ? { defaultAccessMode: neo4j.session.READ } : {}),
+    });
+  }
 
   /**
    * Lists a node's children: the databases, the schema folders of one, and each folder's entries.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the children.
    */
-  public async expand(path: string | null): Promise<readonly DatabaseNode[]> {
+  public async expand(
+    path: string | null,
+    options?: TreeOptions,
+  ): Promise<readonly DatabaseNode[]> {
     const [, database, folder] = path === null ? [] : decodePath(path);
     if (database === undefined) {
-      return this.databases();
+      return this.databases(options?.systemObjects === true);
     }
     if (folder === undefined) {
       return DATABASE_FOLDERS.map(
@@ -187,19 +278,20 @@ class Neo4jSession implements EngineSession {
         }),
       );
     }
-    return this.folder(database, folder);
+    return this.folder(database, folder, options?.matchCount ?? DEFAULT_MATCH_COUNT);
   }
 
   /**
    * Lists the databases the user can see, falling back to the connection's own when the server will
    * not say (an older server, or a user without access to `system`).
+   * @param system Whether to list the `system` database too.
    * @returns Returns a promise resolving the database nodes.
    */
-  private async databases(): Promise<readonly DatabaseNode[]> {
+  private async databases(system: boolean): Promise<readonly DatabaseNode[]> {
     let rows: readonly { name: string; status: string; home: boolean }[];
     try {
       const result: QueryResult = await this.driver.executeQuery(
-        'SHOW DATABASES YIELD name, currentStatus, home WHERE name <> "system" RETURN name, currentStatus, home',
+        `SHOW DATABASES YIELD name, currentStatus, home ${system ? '' : 'WHERE name <> "system" '}RETURN name, currentStatus, home`,
         {},
         { database: 'system' },
       );
@@ -231,9 +323,14 @@ class Neo4jSession implements EngineSession {
    * Lists one schema folder of a database.
    * @param database The database.
    * @param folder The folder.
+   * @param matchCount How many a Match action reads.
    * @returns Returns a promise resolving the entries.
    */
-  private async folder(database: string, folder: string): Promise<readonly DatabaseNode[]> {
+  private async folder(
+    database: string,
+    folder: string,
+    matchCount: number,
+  ): Promise<readonly DatabaseNode[]> {
     const leaf: (label: string) => string = (label: string): string =>
       encodePath('db', database, folder, label);
     switch (folder) {
@@ -246,7 +343,7 @@ class Neo4jSession implements EngineSession {
           icon: 'label',
           leaf: true,
           database,
-          actions: [{ id: 'match-nodes', label: 'Match 25 Nodes' }],
+          actions: [{ id: 'match-nodes', label: `Match ${matchCount} Nodes` }],
           properties: [{ name: 'Label', value: label }],
         }));
       case 'types':
@@ -261,7 +358,7 @@ class Neo4jSession implements EngineSession {
           icon: 'relationship',
           leaf: true,
           database,
-          actions: [{ id: 'match-relationships', label: 'Match 25 Relationships' }],
+          actions: [{ id: 'match-relationships', label: `Match ${matchCount} Relationships` }],
           properties: [{ name: 'Relationship type', value: type }],
         }));
       case 'keys':
@@ -364,12 +461,19 @@ class Neo4jSession implements EngineSession {
   }
 
   /**
-   * Runs a script statement by statement in one Bolt session, stopping at the first error.
+   * Runs a script statement by statement in one Bolt session, stopping at the first error unless
+   * asked to carry on. The server keeps the time limit, when there is one.
    * @param request The execution.
    * @returns Returns a promise resolving what it produced.
    */
   public async execute(request: ExecuteRequest): Promise<EngineExecution> {
-    const session: Session = this.driver.session({ database: request.database ?? this.database });
+    const database: string = request.database ?? this.database;
+    const maxRows: number = maxResultRows(request);
+    const limit: number = request.options?.timeoutMs ?? 0;
+    const config: { readonly timeout?: number } = limit > 0 ? { timeout: limit } : {};
+    const manual: OpenTransaction | null =
+      request.options?.manualTransaction === true ? this.transactionOn(database, config) : null;
+    const session: Session = manual?.session ?? this.querySession(database);
     this.running.set(request.id, session);
     const resultSets: EngineResultSet[] = [];
     const messages: QueryMessage[] = [];
@@ -380,7 +484,10 @@ class Neo4jSession implements EngineSession {
           break;
         }
         try {
-          const running: Result = session.run(statement.text);
+          const running: Result =
+            manual === null
+              ? session.run(statement.text, {}, config)
+              : manual.transaction.run(statement.text);
           // Asked of the result rather than read off its first record, so a query that matches
           // nothing still shows its columns.
           const keys: readonly string[] = (await running.keys()).map(String);
@@ -389,7 +496,7 @@ class Neo4jSession implements EngineSession {
             resultSets.push({
               columns: keys.map((name: string) => ({ name })),
               rows: result.records
-                .slice(0, MAX_RESULT_ROWS)
+                .slice(0, maxRows)
                 .map((record: Neo4jRecord): readonly DatabaseValue[] =>
                   keys.map((key: string): DatabaseValue => toValue(record.get(key))),
                 ),
@@ -397,10 +504,10 @@ class Neo4jSession implements EngineSession {
             });
           }
           messages.push(
-            result.records.length > MAX_RESULT_ROWS
+            result.records.length > maxRows
               ? {
                   severity: 'warning',
-                  text: `${result.records.length} rows returned; the first ${MAX_RESULT_ROWS} are kept`,
+                  text: `${result.records.length} rows returned; the first ${maxRows} are kept`,
                   line: statement.line,
                 }
               : { severity: 'info', text: describeSummary(result), line: statement.line },
@@ -432,15 +539,83 @@ class Neo4jSession implements EngineSession {
             line: at === null ? statement.line : statement.line + Number(at[1]) - 1,
           });
           failed = true;
-          break;
+          if (request.options?.continueOnError !== true) {
+            break;
+          }
         }
       }
     } finally {
       this.running.delete(request.id);
-      await session.close().catch((): void => undefined);
+      if (manual === null) {
+        await session.close().catch((): void => undefined);
+      } else if (!manual.transaction.isOpen()) {
+        // An error, or a cancel, ends a Neo4j transaction there and then.
+        await this.endTransaction(database);
+      }
     }
     const cancelled: boolean = this.cancelled.delete(request.id);
-    return { resultSets, messages, failed: failed && !cancelled, cancelled };
+    return {
+      resultSets,
+      messages,
+      failed: failed && !cancelled,
+      cancelled,
+      ...(manual === null ? {} : { transactionOpen: this.transactions.has(database) }),
+    };
+  }
+
+  /**
+   * Gets a database's manual transaction, beginning one when there is none.
+   * @param database The database.
+   * @param config The transaction's configuration.
+   * @returns Returns the transaction and its Bolt session.
+   */
+  private transactionOn(database: string, config: { readonly timeout?: number }): OpenTransaction {
+    const open: OpenTransaction | undefined = this.transactions.get(database);
+    if (open !== undefined) {
+      return open;
+    }
+    const session: Session = this.querySession(database);
+    const begun: OpenTransaction = { session, transaction: session.beginTransaction(config) };
+    this.transactions.set(database, begun);
+    return begun;
+  }
+
+  /**
+   * Forgets a database's manual transaction and closes its Bolt session.
+   * @param database The database.
+   */
+  private async endTransaction(database: string): Promise<void> {
+    const open: OpenTransaction | undefined = this.transactions.get(database);
+    this.transactions.delete(database);
+    await open?.session.close().catch((): void => undefined);
+  }
+
+  /**
+   * Commits or rolls back a database's manual transaction.
+   * @param action What to do with it.
+   * @param database The database, or the connection's own.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public async transaction(
+    action: TransactionAction,
+    database?: string,
+  ): Promise<TransactionOutcome> {
+    const target: string = database ?? this.database;
+    const open: OpenTransaction | undefined = this.transactions.get(target);
+    if (open === undefined) {
+      return { failed: false, message: 'No transaction is open.' };
+    }
+    try {
+      await (action === 'commit' ? open.transaction.commit() : open.transaction.rollback());
+      return {
+        failed: false,
+        message: action === 'commit' ? 'Transaction committed.' : 'Transaction rolled back.',
+      };
+    } catch (error: unknown) {
+      return { failed: true, message: describeError(error) };
+    } finally {
+      await this.endTransaction(target);
+    }
   }
 
   /**
@@ -459,10 +634,12 @@ class Neo4jSession implements EngineSession {
    * Builds the query a node's action asks for.
    * @param path The node's path.
    * @param action The action.
+   * @param options How Studio wants the tree described.
    * @returns Returns a promise resolving the query.
    */
-  public action(path: string, action: string): Promise<NodeActionOutcome> {
+  public action(path: string, action: string, options?: TreeOptions): Promise<NodeActionOutcome> {
     const [, database, , name] = decodePath(path);
+    const matchCount: number = options?.matchCount ?? DEFAULT_MATCH_COUNT;
     if (database === undefined) {
       return Promise.resolve({ kind: 'failure', message: 'Nothing to act on.' });
     }
@@ -481,7 +658,7 @@ class Neo4jSession implements EngineSession {
           kind: 'script',
           reads: true,
           title: name ?? 'Nodes',
-          text: `MATCH (n:${quoted})\nRETURN n\nLIMIT 25;\n`,
+          text: `MATCH (n:${quoted})\nRETURN n\nLIMIT ${matchCount};\n`,
           database,
         });
       case 'match-relationships':
@@ -489,7 +666,7 @@ class Neo4jSession implements EngineSession {
           kind: 'script',
           reads: true,
           title: name ?? 'Relationships',
-          text: `MATCH p = ()-[r:${quoted}]->()\nRETURN p\nLIMIT 25;\n`,
+          text: `MATCH p = ()-[r:${quoted}]->()\nRETURN p\nLIMIT ${matchCount};\n`,
           database,
         });
       default:
@@ -501,6 +678,9 @@ class Neo4jSession implements EngineSession {
    * Closes the driver.
    */
   public async close(): Promise<void> {
+    await Promise.allSettled(
+      [...this.transactions.keys()].map((database: string) => this.endTransaction(database)),
+    );
     await this.driver.close();
   }
 }

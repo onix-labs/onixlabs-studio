@@ -137,7 +137,7 @@ export class AgentWorkspaceCard implements OnInit {
    * @param value The dropdown's value.
    */
   protected setAccount(value: string): void {
-    this.destination.account.set(value === '' ? null : value);
+    this.destination.chooseAccount(value === '' ? null : value);
   }
 
   /**

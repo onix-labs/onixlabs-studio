@@ -1,6 +1,13 @@
 import { ChildProcess, fork } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { ExecuteRequest } from '../../protocol/database/protocol';
+import { randomUUID } from 'node:crypto';
+import {
+  ExecuteOptions,
+  ExecuteRequest,
+  QueryMessage,
+  TransactionAction,
+  TransactionOutcome,
+} from '../../protocol/database/protocol';
 import { describeError, EngineExecution } from '../../protocol/database/engine';
 import { runScript } from './sqlite-run';
 
@@ -14,6 +21,7 @@ type RunnerCommand =
       readonly id: string;
       readonly text: string;
       readonly firstLine: number;
+      readonly options?: ExecuteOptions;
     };
 
 /**
@@ -109,6 +117,33 @@ export class SqliteRunner {
   }
 
   /**
+   * Ends the transaction the runner's connection holds. Killing the runner (a cancel) has rolled it
+   * back already, and then there is nothing to end.
+   * @param action What to do with it.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public async transaction(action: TransactionAction): Promise<TransactionOutcome> {
+    if (this.child === null) {
+      return { failed: false, message: 'No transaction is open.' };
+    }
+    const execution: EngineExecution = await this.run({
+      id: randomUUID(),
+      session: '',
+      text: action,
+      firstLine: 1,
+    });
+    const error: string | undefined = execution.messages.find(
+      (message: QueryMessage): boolean => message.severity === 'error',
+    )?.text;
+    return error === undefined
+      ? {
+          failed: false,
+          message: action === 'commit' ? 'Transaction committed.' : 'Transaction rolled back.',
+        }
+      : { failed: true, message: error };
+  }
+
+  /**
    * Stops the runner for good, failing any run still waiting.
    */
   public close(): void {
@@ -141,6 +176,7 @@ export class SqliteRunner {
       id: entry.request.id,
       text: entry.request.text,
       firstLine: entry.request.firstLine,
+      ...(entry.request.options === undefined ? {} : { options: entry.request.options }),
     };
     this.runner().send(command);
   }
@@ -242,7 +278,7 @@ export function serveAsRunner(): void {
     const reply: RunnerReply = {
       kind: 'done',
       id: command.id,
-      execution: runScript(database, command.text, command.firstLine),
+      execution: runScript(database, command.text, command.firstLine, command.options),
     };
     send(reply);
   });
@@ -258,6 +294,8 @@ function cancelled(): EngineExecution {
     messages: [{ severity: 'warning', text: 'The query was cancelled.' }],
     failed: false,
     cancelled: true,
+    // The runner is killed to cancel, which rolls back whatever its connection held.
+    transactionOpen: false,
   };
 }
 
@@ -272,5 +310,6 @@ function failed(message: string): EngineExecution {
     messages: [{ severity: 'error', text: message }],
     failed: true,
     cancelled: false,
+    transactionOpen: false,
   };
 }

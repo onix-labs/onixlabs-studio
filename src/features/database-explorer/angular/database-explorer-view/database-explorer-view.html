@@ -248,6 +248,31 @@
   </ng-template>
 </app-modal>
 
+<!-- The confirmation before statements that cannot be taken back: Confirm Destructive Statements. -->
+<app-modal
+  [open]="prompts.destructive() !== null"
+  [width]="30"
+  ariaLabel="Run destructive statements"
+  (dismiss)="prompts.settleDestructive(false)"
+>
+  <ng-template appModalContent>
+    <h2 class="database-dialog__title">Run This Statement?</h2>
+    <p class="database-dialog__message">
+      This can't be undone. It drops or truncates something, or changes every row of a table.
+    </p>
+    @for (statement of prompts.destructive() ?? []; track $index) {
+      <pre class="connection__statement">{{ statement }}</pre>
+    }
+    <div class="connection__actions">
+      <span></span>
+      <app-button-row>
+        <app-button variant="solid" label="Run" (click)="prompts.settleDestructive(true)" />
+        <app-button label="Cancel" (click)="prompts.settleDestructive(false)" />
+      </app-button-row>
+    </div>
+  </ng-template>
+</app-modal>
+
 <!-- The passphrase prompt: unlocking a document whose passwords are sealed with one, or setting a new
      one. A passphrase protects only the remembered passwords; the connections and queries stay
      readable without it. -->

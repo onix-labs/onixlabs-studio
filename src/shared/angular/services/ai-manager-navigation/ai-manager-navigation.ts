@@ -1,11 +1,17 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
  * The AI Manager's sub-views, in the order its ribbon lists them.
  */
 export type AiManagerSection = 'models' | 'profiles' | 'skills';
+
+/**
+ * The sub-views, for checking a remembered one still is one.
+ */
+const AI_MANAGER_SECTIONS: readonly AiManagerSection[] = ['models', 'profiles', 'skills'];
 
 /**
  * The deep-link seam for the AI Manager tab (#948), the counterpart of the Settings tab's own. The
@@ -24,6 +30,11 @@ export class AiManagerNavigation {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, which remember the section left open.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the section shown, or null when none is: every section of the sidebar is closed and the
@@ -49,6 +60,7 @@ export class AiManagerNavigation {
    */
   public show(section: AiManagerSection): void {
     this.sectionState.set(section);
+    this.settings.set('aiManager.lastSection', section);
   }
 
   /**
@@ -56,6 +68,7 @@ export class AiManagerNavigation {
    */
   public collapse(): void {
     this.sectionState.set(null);
+    this.settings.set('aiManager.lastSection', '');
   }
 
   /**
@@ -63,19 +76,21 @@ export class AiManagerNavigation {
    * @param section The section to show.
    */
   public open(section: AiManagerSection): void {
-    this.sectionState.set(section);
+    this.show(section);
     this.requested = true;
     this.tabs.open('model-manager');
     this.log.info('AiManagerNavigation', `Opened the AI Manager at '${section}'`);
   }
 
   /**
-   * Starts a newly shown AI Manager with every section closed, unless it was opened at one on
-   * purpose; either way the next showing starts closed again.
+   * Starts a newly shown AI Manager where it was left, unless it was opened at a section on purpose.
    */
   public begin(): void {
     if (!this.requested) {
-      this.sectionState.set(null);
+      const last: string = this.settings.get('aiManager.lastSection');
+      this.sectionState.set(
+        AI_MANAGER_SECTIONS.find((section: AiManagerSection): boolean => section === last) ?? null,
+      );
     }
     this.requested = false;
   }

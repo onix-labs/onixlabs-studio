@@ -46,7 +46,17 @@ export type ImageEdit =
   | { readonly kind: 'rotate'; readonly clockwise: boolean }
   | { readonly kind: 'flip'; readonly axis: 'horizontal' | 'vertical' }
   | { readonly kind: 'crop'; readonly rect: ImageRect }
-  | { readonly kind: 'resize'; readonly width: number; readonly height: number };
+  | {
+      readonly kind: 'resize';
+      readonly width: number;
+      readonly height: number;
+      readonly resampling?: ImageResampling;
+    };
+
+/**
+ * Names how a resize draws the new pixels: blended smoothly, or copied so edges stay hard.
+ */
+export type ImageResampling = 'smooth' | 'pixelated';
 
 /**
  * Specifies the smallest zoom the viewer allows, as a scale factor.
@@ -106,11 +116,12 @@ export function clampZoom(scale: number): number {
  * @param viewport The viewport's size.
  * @returns Returns the fitting scale, or 1 when either size is empty.
  */
-export function fitScale(image: ImageSize, viewport: ImageSize): number {
+export function fitScale(image: ImageSize, viewport: ImageSize, enlarge: boolean = false): number {
   if (image.width <= 0 || image.height <= 0 || viewport.width <= 0 || viewport.height <= 0) {
     return 1;
   }
-  return clampZoom(Math.min(1, viewport.width / image.width, viewport.height / image.height));
+  const scale: number = Math.min(viewport.width / image.width, viewport.height / image.height);
+  return clampZoom(enlarge ? scale : Math.min(1, scale));
 }
 
 /**

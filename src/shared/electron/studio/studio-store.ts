@@ -36,8 +36,12 @@ export class StudioStore {
   /**
    * Initializes a new instance of the {@link StudioStore} class.
    * @param workspace The shared workspace context, used to confine every operation to an open root.
+   * @param addsUserFileToGitignore Reads Add Studio User File to .gitignore.
    */
-  public constructor(workspace: WorkspaceContext) {
+  public constructor(
+    workspace: WorkspaceContext,
+    private readonly addsUserFileToGitignore: () => boolean = (): boolean => true,
+  ) {
     this.workspace = workspace;
   }
 
@@ -137,7 +141,9 @@ export class StudioStore {
   private async write(root: string, file: string, contents: string): Promise<void> {
     const directory: string = path.join(root, STUDIO_DIR);
     await fs.mkdir(directory, { recursive: true });
-    await this.seedGitignore(root);
+    if (this.addsUserFileToGitignore()) {
+      await this.seedGitignore(root);
+    }
     const target: string = path.join(directory, file);
     const temporary: string = `${target}.${process.pid}.tmp`;
     logger.trace('StudioStore.write', `Atomically writing ${target} via ${temporary}`);

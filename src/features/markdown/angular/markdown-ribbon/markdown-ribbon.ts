@@ -42,6 +42,8 @@ import { FootnoteInsert, MarkdownFootnoteModal } from './insert-modals/markdown-
 import { ImageInsert, MarkdownImageModal } from './insert-modals/markdown-image-modal';
 import { LinkInsert, MarkdownLinkModal } from './insert-modals/markdown-link-modal';
 import { MarkdownMathModal, MathInsert } from './insert-modals/markdown-math-modal';
+import { MarkdownTableModal, TableInsert } from './insert-modals/markdown-table-modal';
+import { styleImagePath } from '@shared/angular/milkdown/markdown-image-path';
 
 /**
  * Maps each style-field label back to its block type.
@@ -105,6 +107,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
     MarkdownImageModal,
     MarkdownLinkModal,
     MarkdownMathModal,
+    MarkdownTableModal,
     MarkdownCollapseModal,
     MarkdownFootnoteModal,
     MarkdownEmojiModal,
@@ -618,6 +621,11 @@ export class MarkdownRibbon {
   protected readonly linkOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether the table insert modal is open.
+   */
+  protected readonly tableOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds whether the math insert modal is open.
    */
   protected readonly mathOpen: WritableSignal<boolean> = signal<boolean>(false);
@@ -643,11 +651,19 @@ export class MarkdownRibbon {
   private footnoteCounter: number = 0;
 
   /**
-   * Inserts a table at the cursor.
+   * Opens the table insert modal.
    */
   protected onTable(): void {
-    this.log.info('markdown.ribbon', 'Insert table');
-    this.commands.insertTable();
+    this.tableOpen.set(true);
+  }
+
+  /**
+   * Inserts a table of the size chosen in the modal at the cursor.
+   * @param table The table's size.
+   */
+  protected onTableSubmit(table: TableInsert): void {
+    this.log.info('markdown.ribbon', 'Insert table confirmed', { ...table });
+    this.commands.insertTable(table.rows, table.columns);
   }
 
   /**
@@ -671,7 +687,14 @@ export class MarkdownRibbon {
    */
   protected onImageSubmit(image: ImageInsert): void {
     this.log.info('markdown.ribbon', 'Insert image confirmed', { url: image.url });
-    this.commands.insertMarkdown(`![${image.alt}](${image.url})`);
+    const id: string | null = this.documents.activeDocumentId();
+    const path: string = (id === null ? null : this.documents.get(id)?.filePath()) ?? '';
+    const source: string = styleImagePath(
+      image.url,
+      path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'), 0)),
+      this.settings.get('markdownEditor.insertedImagePaths'),
+    );
+    this.commands.insertMarkdown(`![${image.alt}](${source})`);
   }
 
   /**
@@ -754,7 +777,7 @@ export class MarkdownRibbon {
     this.log.info('markdown.ribbon', 'Insert collapsible block confirmed');
     const body: string = collapse.body.length > 0 ? collapse.body : '';
     this.commands.insertMarkdown(
-      `<details>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
+      `<details open>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
     );
   }
 

@@ -25,9 +25,7 @@
       variant="solid"
       [icon]="running() ? Icon.STOP : Icon.PLAY"
       [label]="running() ? 'Cancel' : 'Execute'"
-      [tooltip]="
-        running() ? 'Cancel the running query' : 'Run the selection, or the whole query (⌘↵)'
-      "
+      [tooltip]="running() ? 'Cancel the running query' : executeTooltip()"
       [disabled]="!canRun()"
       (click)="execute()"
     />
@@ -195,6 +193,7 @@
                   <app-graph-view
                     class="results__fill"
                     [rows]="set.rows"
+                    [captionScope]="captionScope()"
                     (picked)="onGraphPick($event)"
                   />
                 }
@@ -210,6 +209,7 @@
                 @default {
                   <app-table
                     class="results__fill results__grid"
+                    [style.font-family]="gridFont()"
                     [columns]="columns()"
                     [rows]="gridRows()"
                     [virtual]="true"

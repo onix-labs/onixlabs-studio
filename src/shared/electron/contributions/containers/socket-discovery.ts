@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { logger } from '../../logger';
+import { StartupPreferencesStore } from '../../startup-preferences';
 
 // Finding the container engine's socket. This exists because the obvious answer is wrong: Studio used
 // to look for `/var/run/docker.sock` and nothing else, and on macOS that path exists *only* because
@@ -51,7 +52,7 @@ export interface EndpointDiscovery {
  * Where an endpoint came from, kept so the resolution can be explained in a log line rather than
  * inferred from behaviour.
  */
-export type EndpointSource = 'environment' | 'docker-context' | 'default';
+export type EndpointSource = 'environment' | 'docker-context' | 'default' | 'custom';
 
 /**
  * The outcome of resolving an engine's endpoint.
@@ -96,6 +97,12 @@ export interface DiscoveryEnvironment {
   readonly home: string;
 
   /**
+   * Gets the address the user set in Containers › Engine Address, which overrides discovery; empty
+   * or absent for none.
+   */
+  readonly customAddress?: string;
+
+  /**
    * Determines whether a path exists.
    * @param target The path to test.
    * @returns Returns true when the path exists.
@@ -111,6 +118,25 @@ export interface DiscoveryEnvironment {
 }
 
 /**
+ * Resolves the address the user set, when there is one. A network address is taken on trust, since
+ * only connecting can tell; a socket path is checked like a discovered one.
+ * @param environment The discovery environment.
+ * @returns Returns the endpoint, or null to go on with discovery.
+ */
+export function customEndpoint(environment: DiscoveryEnvironment): ResolvedEndpoint | null {
+  const address: string = environment.customAddress?.trim() ?? '';
+  if (address === '') {
+    return null;
+  }
+  return {
+    path: address,
+    exists:
+      /^(tcp|ssh):\/\//.test(address) || environment.exists(address.replace(/^unix:\/\//, '')),
+    source: 'custom',
+  };
+}
+
+/**
  * Builds the discovery environment from the running process.
  * @returns Returns the environment.
  */
@@ -119,6 +145,7 @@ export function processDiscoveryEnvironment(): DiscoveryEnvironment {
     platform: process.platform,
     env: process.env,
     home: homedir(),
+    customAddress: StartupPreferencesStore.read().settings.containerEngineAddress,
     exists: (target: string): boolean => existsSync(target),
     read: (target: string): string | null => {
       try {

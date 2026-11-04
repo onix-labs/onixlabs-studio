@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
@@ -35,6 +36,11 @@ export class SystemMonitorStatusStrip {
    * Holds the view whose log and readings are reported.
    */
   private readonly view: SystemMonitorView = inject(SystemMonitorView);
+
+  /**
+   * Holds the settings, which decide whether Studio's own readings are shown.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets the start-aligned segments: the log session being read.
@@ -80,6 +86,9 @@ export class SystemMonitorStatusStrip {
           id: 'monitor-selected',
           text: `${COUNT.format(summary.selected)} selected`,
         });
+      }
+      if (!this.settings.value('systemMonitor.statusChips')()) {
+        return segments;
       }
       if (summary.appCpu !== null) {
         segments.push({

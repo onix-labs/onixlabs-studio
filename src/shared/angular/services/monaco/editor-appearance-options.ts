@@ -45,6 +45,7 @@ export function editorAppearanceOptions(
     cursorWidth: resolved.cursorWidth,
     scrollBeyondLastLine: resolved.scrollBeyondLastLine,
     showFoldingControls: resolved.foldingControls === 'always' ? 'always' : 'mouseover',
+    foldingStrategy: resolved.foldingProvider === 'indentation' ? 'indentation' : 'auto',
     colorDecorators: resolved.colourSwatches,
     extraEditorClassName: SEVERITY_CLASSES[resolved.minimumDiagnosticSeverity],
   };

@@ -6,6 +6,7 @@
 // one the version-control plugin makes it in place; with none, the folder is simply made.
 
 import type { CloneLayout } from './clone-channels';
+import type { InitialRepositoryFiles } from './repository-files';
 
 /**
  * The new-project IPC channels.
@@ -21,6 +22,21 @@ export enum NewProjectChannel {
    * to the agent's first message (invoke).
    */
   PickDocuments = 'new-project:pick-documents',
+
+  /**
+   * Reads the folder new projects are made in, for showing (invoke).
+   */
+  Parent = 'new-project:parent',
+
+  /**
+   * Asks the user for the folder this project is made in, in the main process's own dialog (invoke).
+   */
+  PickParent = 'new-project:pick-parent',
+
+  /**
+   * Asks the user for the Default Projects Folder, in the main process's own dialog (invoke).
+   */
+  PickDefaultParent = 'new-project:pick-default-parent',
 }
 
 /**
@@ -166,6 +182,11 @@ export interface NewProjectRequest {
    * Repositories), or absent for git's own default. A hosted repository keeps the host's.
    */
   readonly defaultBranch?: string;
+
+  /**
+   * Gets the files a new repository starts with; a project with no repository ignores them.
+   */
+  readonly initialFiles?: InitialRepositoryFiles;
 }
 
 /**
@@ -211,4 +232,22 @@ export interface NewProjectClient {
    * @returns Returns what was read and what was left out; nothing when the dialog was cancelled.
    */
   pickDocuments(): Promise<PickedDocuments>;
+
+  /**
+   * Gets the folder new projects are made in.
+   * @returns Returns the folder, or null before one is known.
+   */
+  defaultFolder(): Promise<string | null>;
+
+  /**
+   * Asks the user where this project goes, without changing the Default Projects Folder.
+   * @returns Returns the folder chosen, or null when the dialog was cancelled.
+   */
+  pickFolder(): Promise<string | null>;
+
+  /**
+   * Asks the user for the Default Projects Folder.
+   * @returns Returns the folder chosen, or null when the dialog was cancelled.
+   */
+  pickDefaultFolder(): Promise<string | null>;
 }

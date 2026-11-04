@@ -1,9 +1,9 @@
 import { Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
- * Holds the average reading speed, in words per minute, used to estimate a document's read time.
+ * Holds the reading speed, in words per minute, an estimate assumes unless it is told otherwise.
  */
-const WORDS_PER_MINUTE: number = 200;
+const DEFAULT_WORDS_PER_MINUTE: number = 200;
 
 /**
  * Splits text into what a reader counts as characters: an emoji or an accented letter built from
@@ -36,13 +36,17 @@ export interface MarkdownStats {
  * Computes the word count, character count and estimated read time of text — the text a reader sees,
  * not the markdown source, so a heading's `#` or a link's address is not counted as words (#882).
  * @param text The text to measure.
+ * @param wordsPerMinute The reading speed the read time is estimated at.
  * @returns Returns the derived statistics.
  */
-export function computeMarkdownStats(text: string): MarkdownStats {
+export function computeMarkdownStats(
+  text: string,
+  wordsPerMinute: number = DEFAULT_WORDS_PER_MINUTE,
+): MarkdownStats {
   const trimmed: string = text.trim();
   const words: number = trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
   const characters: number = [...GRAPHEMES.segment(text.replace(/[\r\n]/g, ''))].length;
-  const readMinutes: number = words === 0 ? 0 : Math.max(1, Math.round(words / WORDS_PER_MINUTE));
+  const readMinutes: number = words === 0 ? 0 : Math.max(1, Math.round(words / wordsPerMinute));
   return { words, characters, readMinutes };
 }
 

@@ -21,7 +21,7 @@
  * The protocol version this build speaks. A plugin answering with a different major version is
  * refused; a newer minor is accepted, and its additions go unused.
  */
-export const DATABASE_ENGINE_PROTOCOL: string = '1.3';
+export const DATABASE_ENGINE_PROTOCOL: string = '1.4';
 
 /**
  * The capabilities an engine may declare. A closed list: Studio only offers what it knows how to
@@ -32,9 +32,11 @@ export const DATABASE_ENGINE_PROTOCOL: string = '1.3';
  *   lists them and a query document can name which one it runs against.
  * - `script` — node actions can produce a script (Select Top N, Script as CREATE) to open as a query.
  * - `graph` — results may carry nodes, relationships and paths, so the Graph view is offered.
+ * - `transactions` — an execution can leave a transaction open for a later `transaction` request to
+ *   commit or roll back (protocol 1.4).
  */
 export type DatabaseEngineCapability =
-  'cancel' | 'multipleDatabases' | 'script' | 'graph' | 'completion';
+  'cancel' | 'multipleDatabases' | 'script' | 'graph' | 'completion' | 'transactions';
 
 /**
  * The kinds of connection field an engine may ask for. A closed list, rendered by Studio's own form
@@ -168,6 +170,32 @@ export interface DatabaseEngineInfo {
  * exactly as they are entered, and the engine parses them.
  */
 export type ConnectionValues = Readonly<Record<string, string>>;
+
+/**
+ * How Studio wants a connection opened (protocol 1.4). All optional: an engine falls back on its own
+ * defaults for anything absent.
+ */
+export interface ConnectOptions {
+  /**
+   * Gets how long to wait for the server, in milliseconds. An engine with no server ignores it.
+   */
+  readonly timeoutMs?: number;
+}
+
+/**
+ * How Studio wants the object tree described (protocol 1.4).
+ */
+export interface TreeOptions {
+  /**
+   * Gets whether the tree lists the engine's own system schemas and objects.
+   */
+  readonly systemObjects?: boolean;
+
+  /**
+   * Gets how many nodes or relationships a Match action reads, for a graph engine.
+   */
+  readonly matchCount?: number;
+}
 
 /**
  * The icons a tree node may ask for. A closed list of meanings, not of glyphs: Studio picks the glyph,
@@ -494,6 +522,44 @@ export interface ExecuteOutcome {
    * Gets whether it was cancelled.
    */
   readonly cancelled: boolean;
+
+  /**
+   * Gets whether a transaction it began or carried on is still open (protocol 1.4), when it ran under
+   * {@link ExecuteOptions.manualTransaction}.
+   */
+  readonly transactionOpen?: boolean;
+}
+
+/**
+ * How Studio wants one execution run (protocol 1.4). All optional: absent keeps what an engine did
+ * before them.
+ */
+export interface ExecuteOptions {
+  /**
+   * Gets how long it may run, in milliseconds; 0 for no limit.
+   */
+  readonly timeoutMs?: number;
+
+  /**
+   * Gets whether the statements after one that fails still run.
+   */
+  readonly continueOnError?: boolean;
+
+  /**
+   * Gets the most rows a result set keeps.
+   */
+  readonly maxRows?: number;
+
+  /**
+   * Gets how many rows of a result set travel with the execution's answer.
+   */
+  readonly pageRows?: number;
+
+  /**
+   * Gets whether the text runs inside a transaction left open for a `transaction` request, for an
+   * engine that declares `transactions`.
+   */
+  readonly manualTransaction?: boolean;
 }
 
 /**
@@ -525,6 +591,11 @@ export interface ExecuteRequest {
    * Gets the database to run against, for an engine that reaches several; otherwise absent.
    */
   readonly database?: string;
+
+  /**
+   * Gets how to run it (protocol 1.4).
+   */
+  readonly options?: ExecuteOptions;
 }
 
 /**
@@ -683,7 +754,7 @@ export interface DatabaseEngineOperations {
    * own session id, or why there is none. A failure to connect is an answer, not an error.
    */
   readonly connect: {
-    readonly params: { readonly values: ConnectionValues };
+    readonly params: { readonly values: ConnectionValues; readonly options?: ConnectOptions };
     readonly result: ConnectOutcome;
   };
 
@@ -696,7 +767,11 @@ export interface DatabaseEngineOperations {
    * Lists a tree node's children; a null path lists the top of the tree.
    */
   readonly expand: {
-    readonly params: { readonly session: string; readonly path: string | null };
+    readonly params: {
+      readonly session: string;
+      readonly path: string | null;
+      readonly options?: TreeOptions;
+    };
     readonly result: ExpandOutcome;
   };
 
@@ -724,7 +799,12 @@ export interface DatabaseEngineOperations {
    * Runs a node action.
    */
   readonly action: {
-    readonly params: { readonly session: string; readonly path: string; readonly action: string };
+    readonly params: {
+      readonly session: string;
+      readonly path: string;
+      readonly action: string;
+      readonly options?: TreeOptions;
+    };
     readonly result: NodeActionOutcome;
   };
 
@@ -733,12 +813,61 @@ export interface DatabaseEngineOperations {
    * object that does not exist answers with no members rather than an error.
    */
   readonly names: { readonly params: NamesRequest; readonly result: readonly CompletionName[] };
+
+  /**
+   * Commits or rolls back the transaction an execution left open (protocol 1.4), for an engine that
+   * declares `transactions`.
+   */
+  readonly transaction: {
+    readonly params: TransactionRequest;
+    readonly result: TransactionOutcome;
+  };
 }
 
 /**
  * Identifies one operation.
  */
 export type DatabaseEngineOp = keyof DatabaseEngineOperations;
+
+/**
+ * What to do with a transaction left open.
+ */
+export type TransactionAction = 'commit' | 'rollback';
+
+/**
+ * Asks an engine to end the transaction an execution left open (protocol 1.4).
+ */
+export interface TransactionRequest {
+  /**
+   * Gets the session.
+   */
+  readonly session: string;
+
+  /**
+   * Gets what to do with it.
+   */
+  readonly action: TransactionAction;
+
+  /**
+   * Gets the database it is open on, for an engine that reaches several.
+   */
+  readonly database?: string;
+}
+
+/**
+ * What ending a transaction came to. A database error is an answer, never a failed request.
+ */
+export interface TransactionOutcome {
+  /**
+   * Gets whether it failed.
+   */
+  readonly failed: boolean;
+
+  /**
+   * Gets what happened, fit to show.
+   */
+  readonly message: string;
+}
 
 /**
  * What an operation takes.
