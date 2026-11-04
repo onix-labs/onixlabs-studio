@@ -60,6 +60,15 @@ describe('Button', () => {
     expect(host.classList.contains('button--solid')).toBe(false);
   });
 
+  it('variant_whenGhost_marksTheHost_andNoOtherVariant', () => {
+    render({ variant: 'ghost' });
+
+    expect(host.classList.contains('button--ghost')).toBe(true);
+    expect(host.classList.contains('button--outline')).toBe(false);
+    expect(host.classList.contains('button--solid')).toBe(false);
+    expect(host.classList.contains('button--none')).toBe(false);
+  });
+
   it('label_whenGiven_isRendered_andTheButtonIsNotIconOnly', () => {
     render({ label: 'Clear', icon: Icon.TRASH });
 

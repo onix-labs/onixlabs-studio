@@ -1,5 +1,11 @@
 @if (question(); as asked) {
-  <app-modal [open]="true" [width]="28" ariaLabel="Set upstream" (dismiss)="answer('cancel')">
+  <app-modal
+    [open]="true"
+    [width]="32"
+    [frameless]="true"
+    ariaLabel="Set upstream"
+    (dismiss)="answer('cancel')"
+  >
     <ng-template appModalContent>
       <div class="upstream">
         <h2 class="upstream__title">Set Upstream?</h2>
@@ -7,7 +13,6 @@
           {{ asked.branch }} has no upstream yet. Set {{ asked.remote }}/{{ asked.branch }} as its
           upstream while pushing, so later pulls and pushes know where to go?
         </p>
-        <p class="upstream__context">Set Upstream Automatically on Push: Ask</p>
         <app-button-row>
           <app-button
             variant="solid"
@@ -16,6 +21,7 @@
             (click)="answer('set')"
           />
           <app-button
+            variant="ghost"
             label="Push Only"
             data-testid="upstream-push-only"
             (click)="answer('push-only')"

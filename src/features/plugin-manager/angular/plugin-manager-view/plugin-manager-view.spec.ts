@@ -521,7 +521,7 @@ describe('PluginManagerView', () => {
     render([summary()]);
     click('Install');
 
-    clickIn(windows.contentHost, 'Accept and install');
+    clickIn(windows.contentHost, 'Install');
     await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
@@ -548,14 +548,14 @@ describe('PluginManagerView', () => {
     expect(stub.installed).toEqual([]);
     expect(windows.openWindows).toBe(1);
     expect(modalText()).toContain('Update Dockerfile Language Server?');
-    expect(modalText()).toContain('Accept and update');
+    expect(modalText()).toContain('Update');
   });
 
   it('update_acceptedInstallsTheOfferedVersion', async () => {
     render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
     click('Update');
 
-    clickIn(windows.contentHost, 'Accept and update');
+    clickIn(windows.contentHost, 'Update');
     await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);

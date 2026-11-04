@@ -64,9 +64,8 @@
 
 // Rename Symbol's confirmation (#1015): the line under the title, and each file's count of changes,
 // set at the row's end.
-.go-to-dialog__summary {
+.go-to-dialog__message {
   margin: 0;
-  font-size: 0.85rem;
   line-height: 1.5;
 }
 
@@ -80,4 +79,5 @@
 // height for the list's rows to fill.
 .go-to-dialog__list--files {
   block-size: 12rem;
+  background: var(--form-control-background-color);
 }

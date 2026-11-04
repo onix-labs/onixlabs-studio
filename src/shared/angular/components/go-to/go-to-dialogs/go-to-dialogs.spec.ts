@@ -327,9 +327,9 @@ describe('Go to dialogs', () => {
       fixture.detectChanges();
       const host: HTMLElement = flush();
 
-      expect(host.textContent).toContain('Remove unusual line terminators?');
+      expect(host.textContent).toContain('Remove Unusual Line Terminators?');
       expect(host.textContent).toContain('“notes.txt” contains Line Separator');
-      button(host, 'Remove Them').click();
+      button(host, 'Remove').click();
 
       await expect(answer).resolves.toBe(true);
       expect(confirmation.pending()).toBeNull();
@@ -344,7 +344,7 @@ describe('Go to dialogs', () => {
       const answer: Promise<boolean> = confirmation.ask({ document: 'This document' });
       fixture.detectChanges();
 
-      button(flush(), 'Leave As Is').click();
+      button(flush(), 'Cancel').click();
 
       await expect(answer).resolves.toBe(false);
     });

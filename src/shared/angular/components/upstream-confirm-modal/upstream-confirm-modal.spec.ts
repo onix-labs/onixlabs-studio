@@ -38,4 +38,25 @@ describe('UpstreamConfirmModal', () => {
 
     expect(await answer).toBe('push-only');
   });
+
+  it('theActions_stepDownFromSolidToGhostToNone', async (): Promise<void> => {
+    void confirmation.ask({ branch: 'feature', remote: 'origin' });
+    await fixture.whenStable();
+
+    const classesOf: (testId: string) => DOMTokenList | undefined = (
+      testId: string,
+    ): DOMTokenList | undefined =>
+      windows.contentHost?.querySelector(`[data-testid="${testId}"]`)?.classList;
+    expect(classesOf('upstream-set')?.contains('button--solid')).toBe(true);
+    expect(classesOf('upstream-push-only')?.contains('button--ghost')).toBe(true);
+    expect(classesOf('upstream-cancel')?.contains('button--none')).toBe(true);
+  });
+
+  it('showsNoLineNamingTheSetting', async (): Promise<void> => {
+    void confirmation.ask({ branch: 'feature', remote: 'origin' });
+    await fixture.whenStable();
+
+    expect(windows.contentHost?.querySelector('.upstream__context')).toBeNull();
+    expect(windows.contentHost?.textContent).not.toContain('Set Upstream Automatically on Push');
+  });
 });
