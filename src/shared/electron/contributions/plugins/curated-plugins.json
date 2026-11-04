@@ -1,5 +1,5 @@
 {
-  "revision": 60,
+  "revision": 61,
   "plugins": [
     {
       "id": "pyright",
@@ -998,12 +998,12 @@
       "name": "Docker",
       "description": "Talk to a Docker-compatible container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the docker command-line tool when one is installed.",
-      "version": "30.2.0",
+      "version": "30.3.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/docker-engine.lock.json",
-        "sha256": "cbf1ee60b3a251d376f0fa62a90763d224dc503b9eeafed49bd9917442b372d7",
+        "sha256": "423a8ab0f744d1d67fdf839f6dcac468c42e2598563147a240a3f3dab28d0110",
         "executablePath": "node_modules/@onixlabs/docker-engine/main.js"
       },
       "contributes": {
@@ -1040,12 +1040,12 @@
       "name": "Podman",
       "description": "Talk to a Podman container engine over its local socket.",
       "detail": "Speaks to the engine over its local socket; it does not install or run a container engine itself. Open Shell uses the podman command-line tool when one is installed.",
-      "version": "7.2.0",
+      "version": "7.3.0",
       "apiVersion": "1.19.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/podman-engine.lock.json",
-        "sha256": "4d2ef48bd234e24f8def53b8604b149d0754fcc2aa69517805b0945838791b2c",
+        "sha256": "ebfed83beababbccef030deedf64b93e7eb0cfeeec795af07f4ffafc9c1aeb4a",
         "executablePath": "node_modules/@onixlabs/podman-engine/main.js"
       },
       "contributes": {
@@ -1086,12 +1086,12 @@
       "name": "SQLite",
       "description": "Connect the Database Explorer to SQLite database files.",
       "detail": "Opens SQLite database files on this machine with the SQLite built into Studio's own runtime; it installs nothing else.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/sqlite-engine.lock.json",
-        "sha256": "231dc358ac54247b84aa624b4aaa786c93e4f607a63ac26a50ad4c2be53a7d12",
+        "sha256": "585cec746b987561bbbce21eb25598f4649b3e2455cec5c57302fc15ff1a3950",
         "executablePath": "node_modules/@onixlabs/sqlite-engine/main.js"
       },
       "contributes": {
@@ -1114,12 +1114,12 @@
       "name": "PostgreSQL",
       "description": "Connect the Database Explorer to PostgreSQL servers.",
       "detail": "Connects to PostgreSQL servers over the network with `pg`, a pure-JavaScript client; it installs no database and no native code.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/postgres-engine.lock.json",
-        "sha256": "848638b2edb9e5304076ebe0a4d6e408ec5e440cd5e73386500b131e4dbfb431",
+        "sha256": "7160ad682ac35de9ba84fa974ebd9ecd620e0b12e3249e69ffc6c76b7399238d",
         "executablePath": "node_modules/@onixlabs/postgres-engine/main.js"
       },
       "contributes": {
@@ -1142,12 +1142,12 @@
       "name": "Neo4j",
       "description": "Connect the Database Explorer to Neo4j graph databases.",
       "detail": "Connects to Neo4j over Bolt with the official JavaScript driver; it installs no database and no native code.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "apiVersion": "1.20.0",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/neo4j-engine.lock.json",
-        "sha256": "052d59b9686e3bc4c1af4f8425b49d4e5260c2bb03163d1c1bd4535f79acdc63",
+        "sha256": "0dd029a56e9aa83016ef7b3ac473aa5d3172f91ee51421ead3b82e38236ec431",
         "executablePath": "node_modules/@onixlabs/neo4j-engine/main.js"
       },
       "contributes": {
@@ -1169,13 +1169,13 @@
       "id": "onixlabs.git",
       "name": "Git",
       "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases, worktree checkouts, ignore rules and per-file history.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "apiVersion": "1.14.0",
       "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-        "sha256": "946a4f5e7e4e6e572cea834ad5c2cf0388cb780851fd0d4736d6b048d80f129f",
+        "sha256": "32c7e86dc7a8840f041d468176b2ec881bc5f0e5d5bca0113f3b1303986d37c3",
         "executablePath": "node_modules/@onixlabs/git/main.js"
       },
       "contributes": {
@@ -1213,13 +1213,13 @@
       "id": "onixlabs.github",
       "name": "GitHub",
       "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "apiVersion": "1.17.0",
       "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
-        "sha256": "9018598a2b1b3024ce9da34ff2d7d554556041813c2d09b1504543166ae8faa1",
+        "sha256": "36aa0017eee38be9ea584be7619af481cb76915554d0521a56e48eccc9a90fc0",
         "executablePath": "node_modules/@onixlabs/github/main.js"
       },
       "contributes": {
@@ -1259,13 +1259,13 @@
       "id": "onixlabs.claude-harness",
       "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.17.0",
+      "version": "0.18.0",
       "apiVersion": "1.12.0",
       "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "d713aeda09ab5890d0129441f944dd01a31c75d3c5e21ef71c99b9afa94735e4",
+        "sha256": "50dbc6db83d7e7b223b5b66ac49834fe8072d3f8814419557ae851751c262190",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1378,13 +1378,13 @@
       "id": "onixlabs.ai-sdk-harness",
       "name": "AI SDK",
       "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "apiVersion": "1.12.0",
       "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB — the SDK is pure JavaScript and ships inside the plugin.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-        "sha256": "366eab78e4d6b84645a9e00194637428b54398cc256a180f5db8cd90a157f1fe",
+        "sha256": "c1f2af712bcc1b8dd5ab0f195b4011a27185b355da1b46a16ffdd9dff0d27213",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
       "contributes": {
