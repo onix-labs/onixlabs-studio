@@ -786,6 +786,7 @@ class Program {
     );
     this.logger.setFloor(logFloor);
     this.logger.info('startup', `Log level: ${logFloor}`);
+    this.applyLogLimits(startupPreferences.settings);
     // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
     // a relaunch, which is the right way round — a first launch should not start degraded.
     const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
@@ -1090,6 +1091,7 @@ class Program {
         }
         this.startupSettings = parsed;
         setProjectScanDepth(parsed.projectScanDepth);
+        this.applyLogLimits(parsed);
         StartupPreferencesStore.write({ settings: parsed });
       },
     );
@@ -1387,10 +1389,23 @@ class Program {
   }
 
   /**
+   * Applies the user's limits on what is logged and kept.
+   * @param settings The startup settings.
+   */
+  private applyLogLimits(settings: StartupSettings): void {
+    this.logger.applyLimits({
+      liveRecords: settings.liveLogRecords,
+      fileSizeMb: settings.logFileSizeMb,
+      rotatedCopies: settings.logRotatedCopies,
+    });
+  }
+
+  /**
    * Handles the app whenReady event.
    */
   private async onReady(): Promise<void> {
     this.logger.info('app', `Studio ready (v${app.getVersion()} on ${process.platform})`);
+    this.logger.pruneSessions(this.startupSettings.keepSessionLogsDays);
     this.installApplicationMenu();
     this.registerIpcHandlers();
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when

@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -144,5 +147,87 @@ describe('LogArchive', () => {
     expect(existsSync(join(dir, 'studio.1.log'))).toBe(true);
     expect(readFileSync(join(dir, 'studio.1.log'), 'utf8')).toBe('12345\n');
     expect(readFileSync(join(dir, 'studio.log'), 'utf8')).toBe('67890\n');
+  });
+});
+
+describe('LogArchive retention', () => {
+  let directory: string;
+
+  beforeEach(() => {
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'log-retention-'));
+    fs.mkdirSync(path.join(directory, 'sessions'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  /**
+   * Writes a session file, last touched a number of days ago.
+   * @param name The session's id.
+   * @param days How many days ago.
+   */
+  function session(name: string, days: number): void {
+    const file: string = path.join(directory, 'sessions', `${name}.jsonl`);
+    fs.writeFileSync(file, '{}\n');
+    const when: Date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    fs.utimesSync(file, when, when);
+  }
+
+  it('pruneSessions_deletesWhatIsOlderThanTheDays_andNeverTheCurrentSession', () => {
+    session('old', 40);
+    session('recent', 5);
+    session('current', 100);
+
+    const deleted: number = new LogArchive(directory).pruneSessions(30, 'current');
+
+    expect(deleted).toBe(1);
+    expect(fs.readdirSync(path.join(directory, 'sessions')).sort()).toEqual([
+      'current.jsonl',
+      'recent.jsonl',
+    ]);
+  });
+
+  it('setRotation_deletesCopiesPastTheNewCount', () => {
+    for (const index of [1, 2, 3, 4]) {
+      fs.writeFileSync(path.join(directory, `studio.${index}.log`), 'x');
+    }
+
+    new LogArchive(directory).setRotation(1024, 2);
+
+    expect(
+      fs
+        .readdirSync(directory)
+        .filter((name: string) => name.endsWith('.log'))
+        .sort(),
+    ).toEqual(['studio.1.log', 'studio.2.log']);
+  });
+});
+
+describe('LogArchive.relocate', () => {
+  it('writesWhatIsQueued_andPrunes_inTheNewDirectory_andLeavesTheOldAlone', () => {
+    const first: string = fs.mkdtempSync(path.join(os.tmpdir(), 'log-first-'));
+    const second: string = fs.mkdtempSync(path.join(os.tmpdir(), 'log-second-'));
+    fs.mkdirSync(path.join(first, 'sessions'));
+    fs.mkdirSync(path.join(second, 'sessions'));
+    const stale: Date = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+    for (const directory of [first, second]) {
+      const file: string = path.join(directory, 'sessions', 'old.jsonl');
+      fs.writeFileSync(file, '{}\n');
+      fs.utimesSync(file, stale, stale);
+    }
+    const archive: LogArchive = new LogArchive(first);
+
+    archive.enqueueHuman('line\n');
+    archive.relocate(second);
+    archive.flush();
+    archive.pruneSessions(30, 'current');
+
+    expect(fs.existsSync(path.join(first, 'studio.log'))).toBe(false);
+    expect(fs.existsSync(path.join(second, 'studio.log'))).toBe(true);
+    expect(fs.readdirSync(path.join(first, 'sessions'))).toEqual(['old.jsonl']);
+    expect(fs.readdirSync(path.join(second, 'sessions'))).toEqual([]);
+    fs.rmSync(first, { recursive: true, force: true });
+    fs.rmSync(second, { recursive: true, force: true });
   });
 });

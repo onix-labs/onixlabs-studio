@@ -92,3 +92,16 @@ describe('LogStore', () => {
     expect(kept.map((record: LogRecord): string => record.message)).toEqual(['b', 'c']);
   });
 });
+
+describe('LogStore.setCap', () => {
+  it('dropsTheOldestRecords_whenTheCapFalls', () => {
+    const store: LogStore = new LogStore('session');
+    for (let index: number = 0; index < 5; index += 1) {
+      store.add({ origin: 'main', severity: 'info', source: 'test', message: `${index}` });
+    }
+
+    store.setCap(2);
+
+    expect(store.current().map((record: LogRecord): string => record.message)).toEqual(['3', '4']);
+  });
+});

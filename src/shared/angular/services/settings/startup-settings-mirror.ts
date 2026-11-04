@@ -32,6 +32,10 @@ export class StartupSettingsMirror {
     confirmExternalLinks: this.settings.value('privacy.confirmExternalLinks')(),
     addStudioUserFileToGitignore: this.settings.value('workspaces.addStudioUserFileToGitignore')(),
     projectScanDepth: this.settings.value('workspaces.projectScanDepth')(),
+    logFileSizeMb: this.settings.value('systemMonitor.logFileSizeMb')(),
+    logRotatedCopies: this.settings.value('systemMonitor.logRotatedCopies')(),
+    keepSessionLogsDays: this.settings.value('systemMonitor.keepSessionLogsDays')(),
+    liveLogRecords: this.settings.value('systemMonitor.liveLogRecords')(),
   }));
 
   /**

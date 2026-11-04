@@ -1,3 +1,4 @@
+import type { Severity } from '@shared/api/log-channels';
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
 import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
@@ -844,6 +845,14 @@ export interface SettingsValues {
 
   readonly 'systemMonitor.refreshRate': number;
   readonly 'systemMonitor.logLevel': LogLevelSetting;
+  readonly 'systemMonitor.graphHistoryMinutes': number;
+  readonly 'systemMonitor.gpuMonitoring': boolean;
+  readonly 'systemMonitor.statusChips': boolean;
+  readonly 'systemMonitor.defaultSeverities': readonly Severity[];
+  readonly 'systemMonitor.liveLogRecords': number;
+  readonly 'systemMonitor.logFileSizeMb': number;
+  readonly 'systemMonitor.logRotatedCopies': number;
+  readonly 'systemMonitor.keepSessionLogsDays': number;
 
   readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
   readonly 'databaseExplorer.gridlines': DatabaseGridlines;
@@ -5129,7 +5138,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'How often the System Monitor reads the machine while it is showing. A faster rate shows ' +
           'changes sooner and costs a little more to gather; Paused keeps the last readings on ' +
-          'screen and reads nothing.',
+          'screen and reads nothing. Network, disk and GPU refresh every 3 seconds at most, ' +
+          'whatever the rate, because reading them is costly.',
         control: {
           kind: 'select',
           valueType: 'number',
@@ -5141,6 +5151,109 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 1000,
+      },
+      {
+        key: 'systemMonitor.graphHistoryMinutes',
+        title: 'Graph History',
+        description:
+          "How far back the graphs reach. It's a span of time, whatever the Refresh Rate.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 minute' },
+            { value: '5', label: '5 minutes' },
+            { value: '15', label: '15 minutes' },
+          ],
+        },
+        default: 1,
+      },
+      {
+        key: 'systemMonitor.gpuMonitoring',
+        title: 'GPU Monitoring',
+        description:
+          'Read the GPU and show its graph. Off saves running a process every 3 seconds.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'systemMonitor.statusChips',
+        title: 'Show CPU and Memory in the Status Strip',
+        description: "Show Studio's own CPU and memory on the System Monitor's status strip.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        // Drawn by its own row, which ticks severities: a choice of several the renderer cannot model.
+        key: 'systemMonitor.defaultSeverities',
+        title: 'Severities Shown by Default',
+        description:
+          'The severities the log shows when it opens; the filter changes them for the session.',
+        control: { kind: 'custom', component: 'default-severities' },
+        default: ['info', 'warning', 'error'],
+      },
+      {
+        key: 'systemMonitor.liveLogRecords',
+        title: 'Live Log Records',
+        description: "How many of the running session's records are held in memory for the log.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '20000', label: '20,000' },
+            { value: '50000', label: '50,000' },
+          ],
+        },
+        default: 5000,
+      },
+      {
+        key: 'systemMonitor.logFileSizeMb',
+        title: 'Log File Size',
+        description: 'How large studio.log grows before it rotates.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '5', label: '5 MB' },
+            { value: '10', label: '10 MB' },
+            { value: '50', label: '50 MB' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'systemMonitor.logRotatedCopies',
+        title: 'Rotated Copies',
+        description: 'How many rotated copies of studio.log are kept.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '3', label: '3' },
+            { value: '5', label: '5' },
+            { value: '10', label: '10' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'systemMonitor.keepSessionLogsDays',
+        title: 'Keep Session Logs For',
+        description:
+          'How long a past session stays in the log. Older ones are deleted at start-up.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '7', label: '7 days' },
+            { value: '30', label: '30 days' },
+            { value: '90', label: '90 days' },
+            { value: '0', label: 'Forever' },
+          ],
+        },
+        default: 30,
       },
       {
         key: 'systemMonitor.logLevel',

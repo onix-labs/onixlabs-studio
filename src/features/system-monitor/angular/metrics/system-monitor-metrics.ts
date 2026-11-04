@@ -36,9 +36,10 @@ export class SystemMonitorMetrics {
   /**
    * Tells the backend how often to sample. Takes effect at once on a running loop.
    * @param intervalMs The time between samples, in milliseconds.
+   * @param gpu Whether to read the GPU.
    */
-  public setRate(intervalMs: number): void {
-    const rate: SamplingRate = { intervalMs };
+  public setRate(intervalMs: number, gpu: boolean = true): void {
+    const rate: SamplingRate = { intervalMs, gpu };
     this.bridge?.send(SystemMonitorChannel.Rate, rate);
   }
 

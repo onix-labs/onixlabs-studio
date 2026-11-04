@@ -50,7 +50,7 @@ describe('SystemMonitorMetrics', () => {
   it('setRate_sendsTheRateChannelWithTheInterval', () => {
     setup().setRate(4000);
     expect(sent).toEqual([SystemMonitorChannel.Rate]);
-    expect(payloads).toEqual([[{ intervalMs: 4000 }]]);
+    expect(payloads).toEqual([[{ intervalMs: 4000, gpu: true }]]);
   });
 
   it('onSample_subscribesToTheSampleChannelAndUnwrapsThePayload', () => {

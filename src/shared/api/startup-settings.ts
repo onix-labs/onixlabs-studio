@@ -69,6 +69,27 @@ export interface StartupSettings {
    * process builds the project model.
    */
   readonly projectScanDepth: number;
+
+  /**
+   * Gets the size the rolling log file reaches before it rotates, in MB. The main process writes the
+   * log from the first line of a launch, before any renderer exists.
+   */
+  readonly logFileSizeMb: number;
+
+  /**
+   * Gets how many rotated log files are kept.
+   */
+  readonly logRotatedCopies: number;
+
+  /**
+   * Gets how many days a past session's log is kept, 0 for ever.
+   */
+  readonly keepSessionLogsDays: number;
+
+  /**
+   * Gets how many of the running session's log records are held in memory.
+   */
+  readonly liveLogRecords: number;
 }
 
 /**
@@ -82,6 +103,10 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   confirmExternalLinks: 'never',
   addStudioUserFileToGitignore: true,
   projectScanDepth: 2,
+  logFileSizeMb: 5,
+  logRotatedCopies: 5,
+  keepSessionLogsDays: 30,
+  liveLogRecords: 5000,
 };
 
 /**
@@ -91,10 +116,12 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
  * @param fallback The value used otherwise.
  * @returns Returns the candidate when it is allowed, otherwise the fallback.
  */
-function oneOf<T extends string>(candidate: unknown, allowed: readonly T[], fallback: T): T {
-  return typeof candidate === 'string' && (allowed as readonly string[]).includes(candidate)
-    ? (candidate as T)
-    : fallback;
+function oneOf<T extends string | number>(
+  candidate: unknown,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return (allowed as readonly unknown[]).includes(candidate) ? (candidate as T) : fallback;
 }
 
 /**
@@ -140,5 +167,21 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       Number.isSafeInteger(record['projectScanDepth']) && (record['projectScanDepth'] as number) > 0
         ? (record['projectScanDepth'] as number)
         : defaults.projectScanDepth,
+    logFileSizeMb: oneOf<number>(record['logFileSizeMb'], [5, 10, 50], defaults.logFileSizeMb),
+    logRotatedCopies: oneOf<number>(
+      record['logRotatedCopies'],
+      [3, 5, 10],
+      defaults.logRotatedCopies,
+    ),
+    keepSessionLogsDays: oneOf<number>(
+      record['keepSessionLogsDays'],
+      [7, 30, 90, 0],
+      defaults.keepSessionLogsDays,
+    ),
+    liveLogRecords: oneOf<number>(
+      record['liveLogRecords'],
+      [1000, 5000, 20_000, 50_000],
+      defaults.liveLogRecords,
+    ),
   };
 }

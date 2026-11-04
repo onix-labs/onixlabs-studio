@@ -17,7 +17,7 @@ describe('parseStartupSettings', () => {
         addStudioUserFileToGitignore: false,
         projectScanDepth: 5,
       }),
-    ).toEqual({
+    ).toMatchObject({
       addStudioUserFileToGitignore: false,
       projectScanDepth: 5,
       quitWhenLastWindowCloses: 'quit',
@@ -36,5 +36,17 @@ describe('parseStartupSettings', () => {
         cornerStyle: 'rounded',
       }),
     ).toEqual({ ...DEFAULT_STARTUP_SETTINGS, cornerStyle: 'rounded' });
+  });
+});
+
+describe('parseStartupSettings log limits', () => {
+  it('keeps a value the setting offers', () => {
+    expect(parseStartupSettings({ logFileSizeMb: 50 }).logFileSizeMb).toBe(50);
+    expect(parseStartupSettings({ keepSessionLogsDays: 0 }).keepSessionLogsDays).toBe(0);
+  });
+
+  it('falls back on the default for one it does not', () => {
+    expect(parseStartupSettings({ logRotatedCopies: 99 }).logRotatedCopies).toBe(5);
+    expect(parseStartupSettings({ liveLogRecords: '5000' }).liveLogRecords).toBe(5000);
   });
 });

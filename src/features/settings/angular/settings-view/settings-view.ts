@@ -23,6 +23,8 @@ import { LanguageEditorOverrides } from './language-editor-overrides/language-ed
 import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
+import { DefaultSeverities } from './sections/default-severities/default-severities';
+import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
 import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
@@ -291,6 +293,8 @@ interface SettingsTreeData {
   imports: [
     Button,
     ButtonRow,
+    DefaultSeverities,
+    LogFolder,
     Modal,
     ModalContent,
     PersonalDictionary,

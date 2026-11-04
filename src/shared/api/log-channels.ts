@@ -13,6 +13,11 @@ export enum LogChannel {
   Write = 'log:write',
 
   /**
+   * Opens the folder Studio's logs are kept in (invoke).
+   */
+  OpenFolder = 'log:open-folder',
+
+  /**
    * Forwards one structured renderer log record to the main-process logger (renderer→main,
    * fire-and-forget). The payload is a {@link StructuredLogInput} carrying a real {@link Severity} and
    * source ("Where"); the main process stamps the session, timestamp and origin window.

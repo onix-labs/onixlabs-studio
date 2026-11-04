@@ -50,10 +50,68 @@ export class LogArchive {
    * @param maxRotated The number of rotated human-readable files kept beside the active one.
    */
   public constructor(
-    private readonly directory: string,
-    private readonly maxFileBytes: number = DEFAULT_MAX_FILE_BYTES,
-    private readonly maxRotated: number = DEFAULT_MAX_ROTATED,
+    private directory: string,
+    private maxFileBytes: number = DEFAULT_MAX_FILE_BYTES,
+    private maxRotated: number = DEFAULT_MAX_ROTATED,
   ) {}
+
+  /**
+   * Points the archive at another base directory. Whatever is still queued is written there.
+   * @param directory The base `logs` directory.
+   */
+  public relocate(directory: string): void {
+    if (directory !== this.directory) {
+      this.directory = directory;
+      this.currentFileBytes = null;
+    }
+  }
+
+  /**
+   * Changes when the human-readable log rotates and how many rotated files are kept. Copies beyond a
+   * lowered count are deleted now rather than left behind for good.
+   * @param maxFileBytes The size cap for the active file.
+   * @param maxRotated The number of rotated files kept beside it.
+   */
+  public setRotation(maxFileBytes: number, maxRotated: number): void {
+    this.maxFileBytes = maxFileBytes;
+    this.maxRotated = maxRotated;
+    try {
+      for (const name of fs.readdirSync(this.directory)) {
+        const index: number = Number(/^studio\.(\d+)\.log$/.exec(name)?.[1] ?? 0);
+        if (index > maxRotated) {
+          fs.rmSync(path.join(this.directory, name), { force: true });
+        }
+      }
+    } catch {
+      // No log folder yet means there is nothing to tidy.
+    }
+  }
+
+  /**
+   * Deletes the logs of sessions last written before a number of days ago. Never throws, and never
+   * touches the session being written.
+   * @param days The days to keep.
+   * @param currentSessionId The running session.
+   * @param now The time now, in milliseconds.
+   * @returns Returns how many were deleted.
+   */
+  public pruneSessions(days: number, currentSessionId: string, now: number = Date.now()): number {
+    let deleted: number = 0;
+    try {
+      const cutoff: number = now - days * 24 * 60 * 60 * 1000;
+      const current: string = `${currentSessionId}.jsonl`;
+      for (const name of fs.readdirSync(this.sessionsDirectory)) {
+        const file: string = path.join(this.sessionsDirectory, name);
+        if (name.endsWith('.jsonl') && name !== current && fs.statSync(file).mtimeMs < cutoff) {
+          fs.rmSync(file, { force: true });
+          deleted += 1;
+        }
+      }
+    } catch {
+      // No sessions folder yet means there is nothing to delete; a file that will not go stays.
+    }
+    return deleted;
+  }
 
   /**
    * Gets the directory the per-session JSONL record files live in.

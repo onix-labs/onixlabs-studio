@@ -29,7 +29,7 @@ import {
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
-import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
+import { historySamples, MetricsSample } from '@shared/api/system-monitor-channels';
 import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import {
@@ -46,12 +46,6 @@ import {
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { SystemMonitorAgentCapabilities } from '../system-monitor-agent/system-monitor-agent-capabilities';
 import { SystemMonitorAgentPanel } from '../system-monitor-agent/system-monitor-agent-panel';
-
-/**
- * The severities shown by default: the notable ones. Trace and debug are fine-grained diagnostics,
- * off by default so the audit stays readable, and toggled on when investigating.
- */
-const DEFAULT_SEVERITIES: readonly Severity[] = ['info', 'warning', 'error'];
 
 /**
  * The audit table's columns: a fixed-width severity badge and timestamp bracket a fixed-width source
@@ -226,6 +220,25 @@ export class SystemMonitorView implements OnInit {
    * user paused it (the Refresh rate setting).
    */
   private readonly refreshRate: Signal<number> = inject(Settings).systemMonitorRefreshRate;
+
+  /**
+   * Holds the settings, which decide what is shown and kept.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether the GPU is read and its tile shown.
+   */
+  protected readonly gpuMonitoring: Signal<boolean> = this.settings.value(
+    'systemMonitor.gpuMonitoring',
+  );
+
+  /**
+   * Gets how many samples a sparkline holds: Graph History's span of time at the Refresh Rate.
+   */
+  private readonly historyLength: Signal<number> = computed((): number =>
+    historySamples(this.settings.value('systemMonitor.graphHistoryMinutes')(), this.refreshRate()),
+  );
 
   /**
    * Holds whether the window is on screen. A tab in front of a minimised or covered window is still
@@ -492,10 +505,11 @@ export class SystemMonitorView implements OnInit {
   protected readonly selectedSessionId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the severities currently shown; all are shown initially.
+   * Holds the severities currently shown, the Severities Shown by Default to begin with; the filter
+   * chips change them for the session.
    */
   protected readonly enabled: WritableSignal<ReadonlySet<Severity>> = signal<ReadonlySet<Severity>>(
-    new Set<Severity>(DEFAULT_SEVERITIES),
+    new Set<Severity>(this.settings.get('systemMonitor.defaultSeverities')),
   );
 
   /**
@@ -747,10 +761,11 @@ export class SystemMonitorView implements OnInit {
     // The backend's ref-count sees one start per stop, whatever the rate does in between.
     effect((): void => {
       const rate: number = this.refreshRate();
+      const gpu: boolean = this.gpuMonitoring();
       const wanted: boolean = this.isActive() && this.onScreen() && rate > 0;
       untracked((): void => {
         if (wanted) {
-          this.metrics.setRate(rate);
+          this.metrics.setRate(rate, gpu);
         }
         if (wanted && !sampling) {
           this.metrics.start();
@@ -791,7 +806,11 @@ export class SystemMonitorView implements OnInit {
             lastId = record.id;
           }
         }
-        return fresh.length === 0 ? records : [...records, ...fresh];
+        // Held to Live Log Records, as the main process holds its own buffer: a long session's stream
+        // would otherwise grow without end.
+        return fresh.length === 0
+          ? records
+          : [...records, ...fresh].slice(-this.settings.get('systemMonitor.liveLogRecords'));
       });
     });
     void this.loadRecords();
@@ -808,7 +827,7 @@ export class SystemMonitorView implements OnInit {
 
   /**
    * Records one metrics sample: it becomes the current reading and is appended to the sparkline
-   * histories, which are bounded to {@link METRICS_HISTORY} points.
+   * histories, which hold {@link historyLength} points.
    * @param sample The sample to accept.
    */
   private accept(sample: MetricsSample): void {
@@ -827,7 +846,7 @@ export class SystemMonitorView implements OnInit {
       this.push(this.diskReadHistory, sample.disk.readBytesPerSec);
       this.push(this.diskWriteHistory, sample.disk.writeBytesPerSec);
     }
-    if (sample.gpu?.available === true) {
+    if (sample.gpu?.available === true && this.gpuMonitoring()) {
       this.push(this.gpuHistory, sample.gpu.percent);
     }
   }
@@ -839,7 +858,7 @@ export class SystemMonitorView implements OnInit {
    */
   private push(history: WritableSignal<readonly number[]>, value: number): void {
     history.update((values: readonly number[]): readonly number[] =>
-      [...values, value].slice(-METRICS_HISTORY),
+      [...values, value].slice(-this.historyLength()),
     );
   }
 
@@ -880,7 +899,7 @@ export class SystemMonitorView implements OnInit {
    * Resets the severity and text filters to their defaults (ribbon action).
    */
   protected clearFilters(): void {
-    this.enabled.set(new Set<Severity>(DEFAULT_SEVERITIES));
+    this.enabled.set(new Set<Severity>(this.settings.get('systemMonitor.defaultSeverities')));
     this.text.set('');
   }
 
