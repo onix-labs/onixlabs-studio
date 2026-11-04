@@ -122,6 +122,27 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['node_modules'
 const PROJECT_SCAN_DEPTH: number = 2;
 
 /**
+ * Holds Project Scan Depth, kept current from the settings the renderer mirrors.
+ */
+let projectScanDepth: number = PROJECT_SCAN_DEPTH;
+
+/**
+ * Sets how many folder levels are searched for projects where there is no solution.
+ * @param depth Project Scan Depth.
+ */
+export function setProjectScanDepth(depth: number): void {
+  projectScanDepth = depth;
+}
+
+/**
+ * Gets how many folder levels are searched for projects where there is no solution.
+ * @returns Returns Project Scan Depth.
+ */
+export function currentProjectScanDepth(): number {
+  return projectScanDepth;
+}
+
+/**
  * Models a .NET workspace: an `.slnx` or `.sln` solution when one is present (parsed into its solution
  * folders and projects), or the loose projects discovered under the root otherwise. A project's files
  * are loaded on demand by evaluating its MSBuild items.
@@ -170,7 +191,7 @@ export class DotnetProjectSystem implements ProjectSystem {
     if ((await this.solutionFile(root)) !== null) {
       return true;
     }
-    return (await this.findProjects(root, PROJECT_SCAN_DEPTH)).length > 0;
+    return (await this.findProjects(root, projectScanDepth)).length > 0;
   }
 
   /**
@@ -202,7 +223,7 @@ export class DotnetProjectSystem implements ProjectSystem {
         },
       };
     }
-    const files: string[] = await this.findProjects(root, PROJECT_SCAN_DEPTH);
+    const files: string[] = await this.findProjects(root, projectScanDepth);
     if (files.length === 0) {
       logger.debug('DotnetProjectSystem', `No solution or loose projects found under '${root}'.`);
       return null;

@@ -14,8 +14,12 @@ describe('parseStartupSettings', () => {
         restoreFullScreen: false,
         cornerStyle: 'square',
         confirmExternalLinks: 'always',
+        addStudioUserFileToGitignore: false,
+        projectScanDepth: 5,
       }),
     ).toEqual({
+      addStudioUserFileToGitignore: false,
+      projectScanDepth: 5,
       quitWhenLastWindowCloses: 'quit',
       windowSizeOnLaunch: 'default',
       restoreFullScreen: false,

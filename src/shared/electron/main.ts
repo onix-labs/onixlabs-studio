@@ -76,6 +76,7 @@ import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
 import { projectSystems } from './project-system/default-project-systems';
+import { setProjectScanDepth } from './project-system/dotnet-project-system';
 import { DebugAdapterLocator } from './debug/debug-adapter-locator';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
@@ -572,7 +573,10 @@ class Program {
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
    * {@link workspaceContext} tracks.
    */
-  private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
+  private readonly studioStore: StudioStore = new StudioStore(
+    this.workspaceContext,
+    (): boolean => this.startupSettings.addStudioUserFileToGitignore,
+  );
 
   /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
@@ -770,6 +774,7 @@ class Program {
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
     this.startupSettings = startupPreferences.settings;
+    setProjectScanDepth(this.startupSettings.projectScanDepth);
     // The log floor is applied as early as the preferences can be read: everything logged from here
     // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
     // records that are nineteen in twenty of what would otherwise be written.
@@ -1083,6 +1088,7 @@ class Program {
           return;
         }
         this.startupSettings = parsed;
+        setProjectScanDepth(parsed.projectScanDepth);
         StartupPreferencesStore.write({ settings: parsed });
       },
     );

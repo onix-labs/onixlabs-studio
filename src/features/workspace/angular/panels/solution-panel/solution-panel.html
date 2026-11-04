@@ -107,7 +107,9 @@
   <ng-template appModalContent>
     <h2 class="solution-panel__confirm-title">{{ deleteTitle() }}</h2>
     <p class="solution-panel__confirm-message">
-      @if ((deleteTargets()?.length ?? 0) > 1) {
+      @if (deletesPermanently()) {
+        This skips the Trash and cannot be undone.
+      } @else if ((deleteTargets()?.length ?? 0) > 1) {
         They move to the Trash, so you can put them back from there if you need them.
       } @else {
         It moves to the Trash, so you can put it back from there if you need it.

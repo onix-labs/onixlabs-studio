@@ -179,6 +179,16 @@ export type TerminalOnShellExit = 'keep' | 'close' | 'close-if-clean';
 export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
 
 /**
+ * Identifies how an explorer orders the entries of a folder.
+ */
+export type ExplorerSortOrder = 'folders-first' | 'files-first' | 'mixed';
+
+/**
+ * Identifies how an explorer's row opens its file: one click, or two.
+ */
+export type ExplorerOpenFilesWith = 'single' | 'double';
+
+/**
  * The languages Monaco formats itself (the TypeScript, JSON, CSS and HTML workers), which are the ones
  * Default Formatter chooses for: every other language has its language server's formatter or none.
  */
@@ -295,6 +305,19 @@ export interface SettingsValues {
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
   readonly 'workspaces.documentDiffSwitch': DocumentDiffSwitch;
   readonly 'workspaces.documentWellPlacement': DocumentWellPlacement;
+  readonly 'workspaces.addStudioUserFileToGitignore': boolean;
+  readonly 'workspaces.showErrorSquiggles': boolean;
+  readonly 'workspaces.sortOrder': ExplorerSortOrder;
+  readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
+  readonly 'workspaces.confirmBeforeDeleting': boolean;
+  readonly 'workspaces.moveToTrash': boolean;
+  readonly 'workspaces.projectScanDepth': number;
+  readonly 'workspaces.searchMaximumResults': number;
+  readonly 'workspaces.searchTimeout': number;
+  readonly 'workspaces.searchMaximumFileSize': number;
+  readonly 'workspaces.followSymbolicLinks': boolean;
+  readonly 'workspaces.problemsShown': number;
+  readonly 'workspaces.showDebugPanelsOnStart': boolean;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
@@ -1057,6 +1080,171 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    // The File Explorer and the Solution Explorer alike.
+    id: 'workspaces-explorers',
+    label: 'Explorers',
+    settings: [
+      {
+        key: 'workspaces.showErrorSquiggles',
+        title: 'Show Error Squiggles',
+        description: 'Underline the name of a file with an error, and the folders above it.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.sortOrder',
+        title: 'Sort Order',
+        description: 'How the entries of a folder are ordered.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'folders-first', label: 'Folders First' },
+            { value: 'files-first', label: 'Files First' },
+            { value: 'mixed', label: 'Mixed' },
+          ],
+        },
+        default: 'folders-first',
+      },
+      {
+        key: 'workspaces.openFilesWith',
+        title: 'Open Files With',
+        description: 'How a file opens from an explorer.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'single', label: 'Single Click' },
+            { value: 'double', label: 'Double Click' },
+          ],
+        },
+        default: 'double',
+      },
+      {
+        key: 'workspaces.confirmBeforeDeleting',
+        title: 'Confirm Before Deleting',
+        description:
+          'Ask before moving files and folders to the Trash. Deleting permanently always asks.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.moveToTrash',
+        title: 'Move to Trash',
+        description:
+          'Move deleted files and folders to the Trash. Off deletes them permanently, after a stronger confirmation.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.projectScanDepth',
+        title: 'Project Scan Depth',
+        description:
+          'How many folder levels are searched for .NET projects in a folder with no solution. Takes effect the next time a folder is opened.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 level' },
+            { value: '2', label: '2 levels' },
+            { value: '3', label: '3 levels' },
+            { value: '5', label: '5 levels' },
+          ],
+        },
+        default: 2,
+      },
+    ],
+  },
+  {
+    id: 'workspaces-search',
+    label: 'Search and Problems',
+    settings: [
+      {
+        key: 'workspaces.searchMaximumResults',
+        title: 'Search Maximum Results',
+        description: 'The most matches a search returns across all files.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '10000', label: '10,000' },
+            { value: '20000', label: '20,000' },
+          ],
+        },
+        default: 5000,
+      },
+      {
+        key: 'workspaces.searchTimeout',
+        title: 'Search Timeout',
+        description: 'How long a search may run before it stops with what it has found.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '30', label: '30 seconds' },
+            { value: '60', label: '1 minute' },
+            { value: '300', label: '5 minutes' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 60,
+      },
+      {
+        key: 'workspaces.searchMaximumFileSize',
+        title: 'Search Maximum File Size',
+        description: 'Files larger than this are left out of a search.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 MB' },
+            { value: '10', label: '10 MB' },
+            { value: '50', label: '50 MB' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 10,
+      },
+      {
+        key: 'workspaces.followSymbolicLinks',
+        title: 'Follow Symbolic Links',
+        description: 'Search through symbolic links, including into folders outside the workspace.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'workspaces.problemsShown',
+        title: 'Problems Shown',
+        description:
+          'The most problems the Error List shows at once. Its counts always cover them all.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '500', label: '500' },
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 1000,
+      },
+    ],
+  },
+  {
+    id: 'workspaces-run',
+    label: 'Run and Debug',
+    settings: [
+      {
+        key: 'workspaces.showDebugPanelsOnStart',
+        title: 'Show Debug and Logs Panels on Debug Start',
+        description: 'Add the Debug panel and bring Logs forward when a debug session starts.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
     id: 'workspaces',
     label: 'Workspaces',
     settings: [
@@ -1102,6 +1290,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'split-horizontal',
+      },
+      {
+        key: 'workspaces.addStudioUserFileToGitignore',
+        title: 'Add Studio User File to .gitignore',
+        description:
+          "Add your personal workspace file, .studio/workspace.user.json, to the folder's .gitignore the first time Studio writes it, so it is never committed.",
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'appearance.workspaceTexture',

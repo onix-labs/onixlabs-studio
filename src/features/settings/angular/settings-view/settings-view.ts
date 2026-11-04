@@ -140,6 +140,9 @@ type SettingsSectionId =
   | 'language-providers'
   | 'security'
   | 'workspaces'
+  | 'workspaces-explorers'
+  | 'workspaces-search'
+  | 'workspaces-run'
   // One per capability whose shortcuts are catalogued, each a Keyboard leaf under that capability's
   // root; the bare `keyboard` is Application › Keyboard, for the shortcuts that belong to no one view.
   | `keyboard-${string}`;
@@ -520,7 +523,12 @@ export class SettingsView {
       group: 'capabilities',
       label: 'Workspaces',
       icon: Icon.DIRECTORY,
-      children: [{ id: 'workspaces-general', label: 'General', sectionId: 'workspaces' }],
+      children: [
+        { id: 'workspaces-general', label: 'General', sectionId: 'workspaces' },
+        { id: 'workspaces-explorers', label: 'Explorers', sectionId: 'workspaces-explorers' },
+        { id: 'workspaces-search', label: 'Search and Problems', sectionId: 'workspaces-search' },
+        { id: 'workspaces-run', label: 'Run and Debug', sectionId: 'workspaces-run' },
+      ],
     },
     {
       // API Explorer has no settings of its own yet; it carries its Keyboard leaf alone.

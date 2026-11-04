@@ -18,6 +18,7 @@ import {
 import { Editors } from '@shared/angular/services/editors/editors';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -38,6 +39,7 @@ import {
   ProblemFileGroup,
   ProblemProjectGroup,
 } from './problems-grouping';
+import { ProblemsPanelOptions, SeverityFilter } from './problems-panel-options';
 
 /**
  * Maps each severity to its icon.
@@ -50,21 +52,9 @@ const SEVERITY_ICONS: Readonly<Record<DiagnosticSeverity, Icon>> = {
 };
 
 /**
- * The severity filter selection: everything, or only one severity.
- */
-type SeverityFilter = 'all' | DiagnosticSeverity;
-
-/**
  * The source value used for "all sources" in the source filter.
  */
 const ALL_SOURCES: string = '';
-
-/**
- * The most problem rows rendered at once. A large solution mid-analysis can hold many thousands of
- * diagnostics; past this the list adds no navigational value — the filters are the tool — and every
- * row past it is pure DOM cost.
- */
-const MAX_RENDERED_PROBLEMS: number = 1000;
 
 /**
  * A severity filter option shown as a toggle button in the tool-strip.
@@ -193,9 +183,16 @@ export class ProblemsPanel {
   private readonly lspStatus: LspStatus = inject(LspStatus);
 
   /**
+   * Gets Problems Shown: the most rows rendered at once, or 0 for no limit.
+   */
+  private readonly problemsShown: Signal<number> = inject(Settings).value(
+    'workspaces.problemsShown',
+  );
+
+  /**
    * Holds whether the list is grouped by project and file (#1182), or flat.
    */
-  protected readonly grouped: WritableSignal<boolean> = signal<boolean>(true);
+  protected readonly grouped: WritableSignal<boolean> = inject(ProblemsPanelOptions).grouped;
 
   /**
    * Holds the groups folded, by row id. Every group starts open.
@@ -212,7 +209,8 @@ export class ProblemsPanel {
   /**
    * Holds the selected severity filter.
    */
-  protected readonly severity: WritableSignal<SeverityFilter> = signal<SeverityFilter>('all');
+  protected readonly severity: WritableSignal<SeverityFilter> =
+    inject(ProblemsPanelOptions).severity;
 
   /**
    * Holds the selected source filter, or {@link ALL_SOURCES} for every source.
@@ -338,19 +336,22 @@ export class ProblemsPanel {
   ]);
 
   /**
-   * Gets the filtered diagnostics actually rendered, capped so a large solution's thousands of
-   * problems cannot materialise thousands of DOM rows; the toolbar counts still reflect the full
-   * set, and {@link overflowCount} tells the user what the list is holding back.
+   * Gets the filtered diagnostics actually rendered, capped by Problems Shown so a large solution's
+   * thousands of problems cannot materialise thousands of DOM rows; the toolbar counts still reflect
+   * the full set, and {@link overflowCount} tells the user what the list is holding back.
    */
-  protected readonly visible: Signal<readonly Diagnostic[]> = computed((): readonly Diagnostic[] =>
-    this.filtered().slice(0, MAX_RENDERED_PROBLEMS),
+  protected readonly visible: Signal<readonly Diagnostic[]> = computed(
+    (): readonly Diagnostic[] => {
+      const cap: number = this.problemsShown();
+      return cap === 0 ? this.filtered() : this.filtered().slice(0, cap);
+    },
   );
 
   /**
    * Gets how many filtered diagnostics are beyond the rendered cap.
    */
   protected readonly overflowCount: Signal<number> = computed((): number =>
-    Math.max(0, this.filtered().length - MAX_RENDERED_PROBLEMS),
+    this.problemsShown() === 0 ? 0 : Math.max(0, this.filtered().length - this.problemsShown()),
   );
 
   /**

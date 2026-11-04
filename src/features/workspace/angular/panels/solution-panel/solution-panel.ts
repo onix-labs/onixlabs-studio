@@ -48,6 +48,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -195,6 +196,18 @@ export class SolutionPanel {
   private readonly problems: WorkspaceProblems = inject(WorkspaceProblems);
 
   /**
+   * Holds the settings that decide how a file opens and how a delete goes.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets whether a delete is permanent: Move to Trash is off.
+   */
+  protected readonly deletesPermanently: Signal<boolean> = computed(
+    (): boolean => !this.settings.value('workspaces.moveToTrash')(),
+  );
+
+  /**
    * Holds the version-control commands a row offers, shared with the File Explorer (#1041).
    */
   private readonly vcsMenu: ExplorerVcsMenu = inject(ExplorerVcsMenu);
@@ -235,8 +248,21 @@ export class SolutionPanel {
    */
   protected readonly deleteTitle: Signal<string> = computed((): string => {
     const targets: readonly SolutionRow[] = this.deleteTargets() ?? [];
-    return targets.length === 1 ? `Delete ${targets[0].label}?` : `Delete ${targets.length} items?`;
+    const named: string = targets.length === 1 ? targets[0].label : `${targets.length} items`;
+    return this.deletesPermanently() ? `Delete ${named} Permanently?` : `Delete ${named}?`;
   });
+
+  /**
+   * Asks to delete rows: with the confirmation, unless Confirm Before Deleting is off and they are only
+   * going to the Trash. A permanent delete always asks.
+   * @param targets The rows.
+   */
+  private requestDelete(targets: readonly SolutionRow[]): void {
+    this.deleteTargets.set(targets);
+    if (!this.deletesPermanently() && !this.settings.get('workspaces.confirmBeforeDeleting')) {
+      void this.confirmDelete();
+    }
+  }
 
   /**
    * Holds the row being renamed in place — a solution folder, a file or a folder on disk — or null
@@ -449,10 +475,13 @@ export class SolutionPanel {
         continue;
       }
       this.log.info('workspace.solution', 'Delete requested', path);
-      const result: FileOperationResult = await this.workspace.delete(path);
+      const result: FileOperationResult = await this.workspace.delete(
+        path,
+        this.deletesPermanently(),
+      );
       if (!result.success) {
         failed.push({ row, error: result.error });
-      } else if (result.trashed === false) {
+      } else if (result.trashed === false && !this.deletesPermanently()) {
         permanent.push(row);
       }
     }
@@ -615,7 +644,9 @@ export class SolutionPanel {
       // Explorer shows source-control state at all.
       ...(this.solution.showsGitStatus() ? scmRowFields(this.scmStateFor(row)) : {}),
       // An error in what the row stands for, or anywhere beneath it, squiggles its name.
-      ...(this.hasProblems(row, 'error') ? { squiggle: true } : {}),
+      ...(this.settings.value('workspaces.showErrorSquiggles')() && this.hasProblems(row, 'error')
+        ? { squiggle: true }
+        : {}),
       data: row,
     })),
   );
@@ -904,7 +935,7 @@ export class SolutionPanel {
       return;
     }
     if (selection.itemId === ACTION_DELETE) {
-      this.deleteTargets.set([row]);
+      this.requestDelete([row]);
       return;
     }
     const path: string | null = this.pathFor(row);
@@ -1014,7 +1045,7 @@ export class SolutionPanel {
     }
     switch (itemId) {
       case ACTION_DELETE:
-        this.deleteTargets.set(targets);
+        this.requestDelete(targets);
         return;
       case ACTION_OPEN:
         for (const path of paths) {
@@ -1185,6 +1216,8 @@ export class SolutionPanel {
     if (row.expandable) {
       this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
+    } else if (this.settings.get('workspaces.openFilesWith') === 'single') {
+      this.onRowOpen(treeRow);
     }
   }
 

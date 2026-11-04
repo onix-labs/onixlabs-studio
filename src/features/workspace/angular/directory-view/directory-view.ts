@@ -1816,6 +1816,9 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @param running Whether a debug session is currently running in this tab.
    */
   private syncDebugPanel(running: boolean): void {
+    if (!this.settings.get('workspaces.showDebugPanelsOnStart')) {
+      return;
+    }
     const present: boolean = collectPanelIds(this.dockState.layout()).includes('debug');
     if (running && !present) {
       const anchor: StackNode | null =

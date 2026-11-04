@@ -260,9 +260,13 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.Delete,
-      (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> => {
+      (
+        _event: IpcMainInvokeEvent,
+        targetPath: unknown,
+        permanent: unknown,
+      ): Promise<FileOperationResult> => {
         logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Delete}`);
-        return this.delete(targetPath);
+        return this.delete(targetPath, permanent === true);
       },
     );
     ipcMain.handle(
@@ -964,10 +968,13 @@ export class WorkspaceManager {
    * (network volumes, some containers), and a delete the user asked for should still happen — so the
    * fallback removes permanently and says so in the result, letting the caller word its confirmation
    * for what actually occurred rather than for what it hoped would.
+   * Move to Trash turned off asks for the permanent removal outright, and the renderer's confirmation
+   * says so.
    * @param targetPath The absolute path of the entry to delete.
+   * @param permanent Whether to skip the trash.
    * @returns Returns the result describing success or failure, and whether the entry was trashed.
    */
-  private async delete(targetPath: unknown): Promise<FileOperationResult> {
+  private async delete(targetPath: unknown, permanent: boolean): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(targetPath)) {
       logger.warn('WorkspaceManager.delete', 'Rejected target outside the workspace');
       return { success: false, error: 'Target is outside the workspace' };
@@ -979,7 +986,8 @@ export class WorkspaceManager {
     }
     const result: FileOperationResult = await trashOrRemove(
       resolved,
-      (target: string): Promise<void> => shell.trashItem(target),
+      (target: string): Promise<void> =>
+        permanent ? Promise.reject(new Error('Permanent')) : shell.trashItem(target),
       (target: string): Promise<void> => fs.rm(target, { recursive: true, force: false }),
     );
     if (!result.success) {

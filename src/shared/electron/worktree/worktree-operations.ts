@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { STUDIO_DIR } from '@shared/api/studio';
 import {
   addCheckoutEntry,
+  checkoutIdForBranch,
   defaultWorktreeConfig,
   isSafeCheckoutId,
   mintCheckoutId,
@@ -281,7 +282,10 @@ export class WorktreeOperations {
     if (plugin === null) {
       return worktreeError('No installed version-control plugin can make the checkout.');
     }
-    const id: string = mintCheckoutId();
+    const id: string = checkoutIdForBranch(branch, [
+      ...config.checkouts.map((checkout: { readonly id: string }): string => checkout.id),
+      ...(await fs.readdir(resolved).catch((): string[] => [])),
+    ]);
     const directory: string = path.join(resolved, id);
     // A branch only another worktree has (made there, never pushed) is fetched from that worktree
     // into the new clone, which still clones from — and keeps as its origin — the usual source.

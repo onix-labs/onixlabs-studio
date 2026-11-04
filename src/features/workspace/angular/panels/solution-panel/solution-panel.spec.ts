@@ -463,7 +463,10 @@ describe('SolutionPanel', () => {
       expect(remove).not.toHaveBeenCalled();
       await component.confirmDelete();
 
-      expect(remove.mock.calls).toEqual([['/root/A/g.cs'], ['/root/A/h.cs']]);
+      expect(remove.mock.calls).toEqual([
+        ['/root/A/g.cs', false],
+        ['/root/A/h.cs', false],
+      ]);
       expect(component.deleteTargets()).toBeNull();
     });
 

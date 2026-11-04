@@ -6,6 +6,8 @@ import { rgPath } from '@vscode/ripgrep';
 import {
   ReplaceResponse,
   SearchChannel,
+  SearchFileFilter,
+  SearchLimits,
   SearchMatch,
   SearchRequest,
   SearchResponse,
@@ -28,6 +30,13 @@ const MAX_MATCHES_PER_FILE: number = 500;
  * renderer. When reached, the search is stopped early and the response is marked capped.
  */
 const MAX_TOTAL_MATCHES: number = 5000;
+
+/**
+ * The folders Studio leaves out of every search unless asked: the version control systems' own, which
+ * are never what a search is for. Ripgrep skips them only as hidden folders, so they are named for a
+ * search that reads hidden files.
+ */
+const EXCLUDED_FOLDERS: readonly string[] = ['.git', '.hg', '.svn'];
 
 /**
  * Caps the length of each match's line preview, so a long line does not bloat the payload.
@@ -280,6 +289,8 @@ export class SearchManager {
     }
     const candidate: Partial<Record<keyof SearchRequest, unknown>> = request;
     return (
+      isFileFilter(candidate.files) &&
+      isLimits(candidate.limits) &&
       typeof candidate.query === 'string' &&
       typeof candidate.root === 'string' &&
       typeof candidate.caseSensitive === 'boolean' &&
@@ -300,6 +311,8 @@ export class SearchManager {
    * @returns Returns the grouped matches.
    */
   private spawnSearch(request: SearchRequest, targets: readonly string[]): Promise<SearchResponse> {
+    const maxResults: number = request.limits?.maxResults ?? MAX_TOTAL_MATCHES;
+    const timeout: number = (request.limits?.timeoutSeconds ?? RG_TIMEOUT_MS / 1000) * 1000;
     return new Promise<SearchResponse>((resolve: (value: SearchResponse) => void): void => {
       const child: ChildProcessWithoutNullStreams = spawn(
         rgPath,
@@ -338,12 +351,9 @@ export class SearchManager {
         while (newline !== -1) {
           const line: string = buffer.slice(0, newline);
           buffer = buffer.slice(newline + 1);
-          if (this.consumeLine(line, files, order) && ++total >= MAX_TOTAL_MATCHES) {
+          if (this.consumeLine(line, files, order) && ++total >= maxResults) {
             capped = true;
-            logger.warn(
-              'SearchManager.spawnSearch',
-              `Capped search at ${MAX_TOTAL_MATCHES} matches`,
-            );
+            logger.warn('SearchManager.spawnSearch', `Capped search at ${maxResults} matches`);
             child.kill();
             finish();
             return;
@@ -352,11 +362,15 @@ export class SearchManager {
         }
       });
 
-      const deadline: NodeJS.Timeout = setTimeout((): void => {
-        logger.warn('SearchManager.spawnSearch', `ripgrep timed out after ${RG_TIMEOUT_MS}ms`);
-        child.kill('SIGKILL');
-        finish();
-      }, RG_TIMEOUT_MS);
+      // No Limit runs until ripgrep is done; a capped search still stops it above.
+      const deadline: NodeJS.Timeout | undefined =
+        timeout === 0
+          ? undefined
+          : setTimeout((): void => {
+              logger.warn('SearchManager.spawnSearch', `ripgrep timed out after ${timeout}ms`);
+              child.kill('SIGKILL');
+              finish();
+            }, timeout);
       child.on('error', (error: Error): void => {
         logger.error('SearchManager.spawnSearch', 'ripgrep failed', error);
         finish();
@@ -415,6 +429,7 @@ export class SearchManager {
       before,
       text,
       after,
+      occurrences: event.data.submatches.length,
     };
     let matches: SearchMatch[] | undefined = files.get(relativePath);
     if (matches === undefined) {
@@ -442,9 +457,99 @@ export class SearchManager {
     if (!request.regexp) {
       args.push('--fixed-strings');
     }
+    args.push(...fileArgs(request.files), ...limitArgs(request.limits));
     args.push('--', request.query, ...targets);
     return args;
   }
+}
+
+/**
+ * Determines whether a value is a list of strings.
+ * @param value The value to check.
+ * @returns Returns true when it is.
+ */
+function isStringList(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) && value.every((entry: unknown): boolean => typeof entry === 'string')
+  );
+}
+
+/**
+ * Determines whether a value is absent or a well-formed {@link SearchFileFilter}.
+ * @param value The value to check.
+ * @returns Returns true when it can be used.
+ */
+function isFileFilter(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate: Partial<Record<keyof SearchFileFilter, unknown>> = value;
+  return (
+    (candidate.include === undefined || isStringList(candidate.include)) &&
+    (candidate.exclude === undefined || isStringList(candidate.exclude))
+  );
+}
+
+/**
+ * Determines whether a value is absent or a well-formed {@link SearchLimits}: every number whole and
+ * not negative, as each ends up in a ripgrep flag or a timer, and a result cap above nothing.
+ * @param value The value to check.
+ * @returns Returns true when it can be used.
+ */
+function isLimits(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate: Partial<Record<keyof SearchLimits, unknown>> = value;
+  const count: (entry: unknown) => boolean = (entry: unknown): boolean =>
+    entry === undefined || (Number.isSafeInteger(entry) && (entry as number) >= 0);
+  return (
+    count(candidate.maxResults) &&
+    candidate.maxResults !== 0 &&
+    count(candidate.timeoutSeconds) &&
+    count(candidate.maxFileSizeMegabytes)
+  );
+}
+
+/**
+ * Builds the ripgrep flags for which files a search reads. A pattern travels inside its flag, so one
+ * beginning with a dash is not read as an option of its own.
+ * @param files The filter, if any.
+ * @returns Returns the flags.
+ */
+function fileArgs(files: SearchFileFilter | undefined): string[] {
+  const args: string[] = [];
+  if (files?.ignored === true) {
+    args.push('--no-ignore');
+  }
+  if (files?.hidden === true || files?.excluded === true) {
+    args.push('--hidden');
+  }
+  args.push(...(files?.include ?? []).map((pattern: string): string => `--glob=${pattern}`));
+  if (files?.excluded !== true) {
+    args.push(...EXCLUDED_FOLDERS.map((folder: string): string => `--glob=!${folder}`));
+  }
+  args.push(...(files?.exclude ?? []).map((pattern: string): string => `--glob=!${pattern}`));
+  return args;
+}
+
+/**
+ * Builds the ripgrep flags for the limits a search runs under.
+ * @param limits The limits, if any.
+ * @returns Returns the flags.
+ */
+function limitArgs(limits: SearchLimits | undefined): string[] {
+  const size: number = limits?.maxFileSizeMegabytes ?? 0;
+  return [
+    ...(size > 0 ? [`--max-filesize=${size}M`] : []),
+    ...(limits?.followSymlinks === true ? ['--follow'] : []),
+  ];
 }
 
 /**

@@ -57,6 +57,18 @@ export interface StartupSettings {
    * the ones a page navigates to by itself, so it is the one that asks.
    */
   readonly confirmExternalLinks: ConfirmExternalLinks;
+
+  /**
+   * Gets whether the first write of a folder's `.studio` files adds the per-developer file to the
+   * folder's `.gitignore`. The main process does the writing.
+   */
+  readonly addStudioUserFileToGitignore: boolean;
+
+  /**
+   * Gets how many folder levels are searched for .NET projects where there is no solution. The main
+   * process builds the project model.
+   */
+  readonly projectScanDepth: number;
 }
 
 /**
@@ -68,6 +80,8 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   restoreFullScreen: true,
   cornerStyle: 'automatic',
   confirmExternalLinks: 'never',
+  addStudioUserFileToGitignore: true,
+  projectScanDepth: 2,
 };
 
 /**
@@ -118,5 +132,13 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       ['never', 'untrusted', 'always'],
       defaults.confirmExternalLinks,
     ),
+    addStudioUserFileToGitignore:
+      typeof record['addStudioUserFileToGitignore'] === 'boolean'
+        ? record['addStudioUserFileToGitignore']
+        : defaults.addStudioUserFileToGitignore,
+    projectScanDepth:
+      Number.isSafeInteger(record['projectScanDepth']) && (record['projectScanDepth'] as number) > 0
+        ? (record['projectScanDepth'] as number)
+        : defaults.projectScanDepth,
   };
 }

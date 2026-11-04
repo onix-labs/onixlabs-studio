@@ -1,4 +1,5 @@
 import { Service, signal, WritableSignal } from '@angular/core';
+import type { FindScope } from '@shared/angular/components/find-panel/find-request';
 
 /**
  * Holds one surface's find options: case sensitivity, whole words, and regular expressions.
@@ -49,4 +50,9 @@ export class FindOptions {
    * Gets the options of the search view that searches a workspace.
    */
   public readonly search: FindOptionSet = optionSet();
+
+  /**
+   * Gets the workspace search's scope, so its panel opened again searches where it last did.
+   */
+  public readonly searchScope: WritableSignal<FindScope> = signal<FindScope>('workspace');
 }

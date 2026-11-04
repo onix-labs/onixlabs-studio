@@ -4,7 +4,7 @@ import { FindScope } from '@shared/angular/components/find-panel/find-request';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Search } from '@shared/angular/services/search/search';
-import { ReplaceResponse } from '@shared/api/search-channels';
+import { ReplaceResponse, SearchLimits } from '@shared/api/search-channels';
 import { SearchAdapter } from '@shared/angular/components/search-view/search-adapter';
 import {
   EditorSearchTarget,
@@ -40,6 +40,16 @@ export interface ScopedSearchSources {
    * Resolves the absolute path of the active file's project folder, or null when it has none.
    */
   readonly projectDirectoryOf: () => string | null;
+
+  /**
+   * Gets where the chosen scope is remembered for the session, if anywhere; it starts from there.
+   */
+  readonly scope?: WritableSignal<FindScope>;
+
+  /**
+   * Resolves the limits a disk search runs under, read as each one starts.
+   */
+  readonly limitsOf?: () => SearchLimits;
 
   /**
    * Resolves the open editors an in-memory scope searches.
@@ -123,7 +133,7 @@ export class ScopedSearchAdapter implements SearchAdapter {
    * Initializes a new instance of the {@link ScopedSearchAdapter} class.
    * @param sources What each scope reaches into.
    */
-  public constructor(sources: ScopedSearchSources) {
+  public constructor(private readonly sources: ScopedSearchSources) {
     this.disk = new WorkspaceSearchAdapter(
       sources.search,
       sources.fileOpener,
@@ -136,11 +146,15 @@ export class ScopedSearchAdapter implements SearchAdapter {
         const directory: string | null = sources.projectDirectoryOf();
         return directory === null ? undefined : [directory];
       },
+      sources.limitsOf,
     );
     this.memory = new OpenEditorsFindAdapter(
       (scope: FindScope): readonly EditorSearchTarget[] => sources.editorTargetsOf(scope),
       'open-files',
     );
+    if (sources.scope !== undefined) {
+      this.setScope(sources.scope());
+    }
   }
 
   /**
@@ -153,6 +167,7 @@ export class ScopedSearchAdapter implements SearchAdapter {
     }
     this.backend().clear();
     this.scopeState.set(scope);
+    this.sources.scope?.set(scope);
     if (!searchesDisk(scope)) {
       this.memory.setScope(scope);
     }

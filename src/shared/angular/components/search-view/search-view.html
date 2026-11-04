@@ -82,6 +82,28 @@
     />
   </div>
 
+  <!-- Which files to read, per search: only the files on disk have a choice to make. -->
+  @if (adapter().onDisk()) {
+    <div class="search-view__field">
+      <app-text-field
+        class="search-view__input"
+        placeholder="Files to Include"
+        ariaLabel="Files to Include"
+        [(value)]="filesToInclude"
+        (keydown.enter)="find()"
+      />
+    </div>
+    <div class="search-view__field">
+      <app-text-field
+        class="search-view__input"
+        placeholder="Files to Exclude"
+        ariaLabel="Files to Exclude"
+        [(value)]="filesToExclude"
+        (keydown.enter)="find()"
+      />
+    </div>
+  }
+
   <div class="search-view__options">
     <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
          rule cannot see through the component boundary to verify this statically. -->
@@ -100,6 +122,23 @@
       <app-checkbox [(checked)]="regexp" (checkedChange)="optionChanged()" />
       <span>Match Regex</span>
     </label>
+    @if (adapter().onDisk()) {
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="search-view__option">
+        <app-checkbox [(checked)]="searchIgnored" (checkedChange)="optionChanged()" />
+        <span>Search Ignored Files and Folders</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="search-view__option">
+        <app-checkbox [(checked)]="searchExcluded" (checkedChange)="optionChanged()" />
+        <span>Search Excluded Files and Folders</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="search-view__option">
+        <app-checkbox [(checked)]="searchHidden" (checkedChange)="optionChanged()" />
+        <span>Search Hidden Files and Folders</span>
+      </label>
+    }
   </div>
 
   <div class="search-view__actions">
@@ -141,3 +180,30 @@
     (chosen)="adapter().select($event)"
   />
 </div>
+
+<!-- A Replace All across files says what it is about to do first: the files are changed on disk, where
+     there is no undo. -->
+<app-modal
+  [open]="pendingReplace() !== null"
+  [width]="26"
+  ariaLabel="Replace All"
+  (dismiss)="pendingReplace.set(null)"
+>
+  <ng-template appModalContent>
+    @if (pendingReplace(); as pending) {
+      <h2 class="search-view__dialog-title">Replace All?</h2>
+      <p class="search-view__dialog-message">
+        {{ pending.replacements }}
+        {{ pending.replacements === 1 ? 'replacement' : 'replacements' }} in {{ pending.files }}
+        {{ pending.files === 1 ? 'file' : 'files' }}.
+        @if (pending.skipped.length > 0) {
+          Files with unsaved edits are left alone.
+        }
+      </p>
+      <app-button-row>
+        <app-button variant="solid" label="Replace All" (click)="confirmReplaceEvery()" />
+        <app-button label="Cancel" (click)="pendingReplace.set(null)" />
+      </app-button-row>
+    }
+  </ng-template>
+</app-modal>
