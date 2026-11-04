@@ -18,7 +18,11 @@ import {
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
-import { codeSettings, findSection } from '@shared/angular/services/settings/settings-registry';
+import {
+  BUILT_IN_FORMATTER_LANGUAGES,
+  codeSettings,
+  findSection,
+} from '@shared/angular/services/settings/settings-registry';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import type { LspServerSummary } from '@shared/api/lsp-channels';
 import {
@@ -59,6 +63,11 @@ const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
  * The key of the brace-style setting, which only a language server that takes it can honour.
  */
 const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
+
+/**
+ * The key of the formatter choice, which means something only for a language with a built-in formatter.
+ */
+const DEFAULT_FORMATTER_KEY: string = 'textEditor.global.defaultFormatter';
 
 /**
  * The keys of the per-language settings a project's `.editorconfig` can decide.
@@ -128,7 +137,12 @@ export class LanguageEditorOverrides {
           : SECTION_IDS[section].flatMap(
               (id: string): readonly SettingDef[] => findSection(id)?.settings ?? [],
             );
-      return settings.filter((setting: SettingDef): boolean => setting.profileOverridable === true);
+      const hasBuiltInFormatter: boolean = BUILT_IN_FORMATTER_LANGUAGES.has(this.language());
+      return settings.filter(
+        (setting: SettingDef): boolean =>
+          setting.profileOverridable === true &&
+          (setting.key !== DEFAULT_FORMATTER_KEY || hasBuiltInFormatter),
+      );
     },
   );
 

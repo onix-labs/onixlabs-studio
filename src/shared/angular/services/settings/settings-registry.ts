@@ -35,7 +35,9 @@ import type {
   ChangeMarginMode,
   EditorCursorStyle,
   FormatOnSave,
+  DefaultFormatter,
   FoldingControls,
+  FoldingProvider,
   IndentGuides,
   InlayHintsMode,
   MinimumDiagnosticSeverity,
@@ -177,6 +179,20 @@ export type TerminalOnShellExit = 'keep' | 'close' | 'close-if-clean';
 export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
 
 /**
+ * The languages Monaco formats itself (the TypeScript, JSON, CSS and HTML workers), which are the ones
+ * Default Formatter chooses for: every other language has its language server's formatter or none.
+ */
+export const BUILT_IN_FORMATTER_LANGUAGES: ReadonlySet<string> = new Set<string>([
+  'typescript',
+  'javascript',
+  'json',
+  'css',
+  'scss',
+  'less',
+  'html',
+]);
+
+/**
  * Names whether Studio asks first or acts on its own when a housekeeping setting comes due.
  */
 export type AskOrAutomatic = 'ask' | 'automatic';
@@ -316,6 +332,8 @@ export interface SettingsValues {
   readonly 'textEditor.global.smoothScrolling': boolean;
   readonly 'textEditor.global.scrollBeyondLastLine': boolean;
   readonly 'textEditor.global.foldingControls': FoldingControls;
+  readonly 'textEditor.global.foldingProvider': FoldingProvider;
+  readonly 'textEditor.global.defaultFormatter': DefaultFormatter;
   readonly 'textEditor.global.changeMargin': ChangeMarginMode;
   readonly 'textEditor.global.inlayHints': InlayHintsMode;
   readonly 'textEditor.global.semanticHighlighting': boolean;
@@ -1610,6 +1628,23 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'always',
       },
       {
+        key: 'textEditor.global.foldingProvider',
+        title: 'Folding Provider',
+        description:
+          'What folds the code. Automatic uses the language server where it folds, then brace folding where the language has it, then indentation. A choice that cannot fold a file falls back to indentation.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'language-server', label: 'Language Server' },
+            { value: 'braces', label: 'Braces' },
+            { value: 'indentation', label: 'Indentation' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'automatic',
+      },
+      {
         key: 'textEditor.global.changeMargin',
         title: 'Change Margin',
         description: 'Which lines the bars beside the line numbers mark.',
@@ -1897,6 +1932,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         profileOverridable: true,
         default: 'kr',
+      },
+      {
+        key: 'textEditor.global.defaultFormatter',
+        title: 'Default Formatter',
+        description:
+          'Which formatter runs for TypeScript, JavaScript, JSON, CSS, SCSS, Less and HTML, the languages with a built-in one. With no language server formatting the language, the built-in one runs.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'built-in', label: 'Built-in' },
+            { value: 'language-server', label: 'Language Server' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'language-server',
       },
       {
         key: 'textEditor.global.autoCloseBrackets',

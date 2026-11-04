@@ -2,6 +2,7 @@ import { effect, inject, Injector, Service, signal, Signal, WritableSignal } fro
 import type * as MonacoApi from 'monaco-editor';
 import {
   CurrentLineHighlightStyle,
+  FoldingProvider,
   Settings,
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
@@ -292,6 +293,21 @@ export class Monaco {
       (predicate: (model: MonacoApi.editor.ITextModel) => boolean): boolean => predicate(model),
     );
 
+  /**
+   * Reads a document's Folding Provider setting.
+   * @param model The document.
+   * @returns Returns what folds its language.
+   */
+  private readonly foldingProvider: (model: MonacoApi.editor.ITextModel) => FoldingProvider = (
+    model: MonacoApi.editor.ITextModel,
+  ): FoldingProvider =>
+    this.settings.resolveSettingsForLanguage(model.getLanguageId()).foldingProvider;
+
+  /**
+   * Holds the functions that fold open documents again, one per loaded Monaco.
+   */
+  private readonly foldingRefreshers: (() => void)[] = [];
+
   private readonly heuristicTokenSuppressors: Set<(model: MonacoApi.editor.ITextModel) => boolean> =
     new Set<(model: MonacoApi.editor.ITextModel) => boolean>();
 
@@ -335,6 +351,10 @@ export class Monaco {
     effect((): void => {
       this.settings.semanticHighlightingChoices();
       this.heuristicTokensChanged?.fire();
+    });
+    effect((): void => {
+      this.settings.foldingProviderChoices();
+      this.foldingRefreshers.forEach((refresh: () => void): void => refresh());
     });
   }
 
@@ -659,7 +679,14 @@ export class Monaco {
     registerAsmLanguage(window.monaco);
     registerScssLanguage(window.monaco);
     registerCypherLanguage(window.monaco);
-    registerBraceFolding(window.monaco, this.braceFoldingSuppressed, this.largeFileLines);
+    this.foldingRefreshers.push(
+      registerBraceFolding(
+        window.monaco,
+        this.braceFoldingSuppressed,
+        this.largeFileLines,
+        this.foldingProvider,
+      ),
+    );
     this.installFindCommands(window.monaco);
     this.installGoToCommands(window.monaco);
     this.installNavigationCommands(window.monaco);
@@ -919,7 +946,14 @@ export class Monaco {
       registerAsmLanguage(monaco, target);
       registerScssLanguage(monaco, target);
       registerCypherLanguage(monaco, target);
-      registerBraceFolding(monaco, this.braceFoldingSuppressed, this.largeFileLines);
+      this.foldingRefreshers.push(
+        registerBraceFolding(
+          monaco,
+          this.braceFoldingSuppressed,
+          this.largeFileLines,
+          this.foldingProvider,
+        ),
+      );
       this.installFindCommands(monaco);
       this.installGoToCommands(monaco);
       this.installNavigationCommands(monaco);

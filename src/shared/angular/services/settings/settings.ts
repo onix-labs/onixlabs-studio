@@ -87,6 +87,17 @@ export type EditorCursorStyle = 'line' | 'block' | 'underline';
 export type FoldingControls = 'always' | 'hover';
 
 /**
+ * Identifies what folds a language's code: the best there is (the language server where one folds, the
+ * brace folding, then indentation), the language server, the brace folding, or indentation alone.
+ */
+export type FoldingProvider = 'automatic' | 'language-server' | 'braces' | 'indentation';
+
+/**
+ * Identifies which formatter a language with a built-in one uses: that, or its language server's.
+ */
+export type DefaultFormatter = 'built-in' | 'language-server';
+
+/**
  * Identifies what the change margin marks: nothing, lines that differ from the saved file, or those
  * and the lines in sync with it.
  */
@@ -441,6 +452,16 @@ export interface TextEditorSettings {
    * Gets when the fold controls show.
    */
   readonly foldingControls: FoldingControls;
+
+  /**
+   * Gets what folds the code.
+   */
+  readonly foldingProvider: FoldingProvider;
+
+  /**
+   * Gets which formatter runs, for a language with a built-in one.
+   */
+  readonly defaultFormatter: DefaultFormatter;
 
   /**
    * Gets what the change margin marks.
@@ -997,6 +1018,8 @@ export class Settings {
       smoothScrolling: this.read('textEditor.global.smoothScrolling'),
       scrollBeyondLastLine: this.read('textEditor.global.scrollBeyondLastLine'),
       foldingControls: this.read('textEditor.global.foldingControls'),
+      foldingProvider: this.read('textEditor.global.foldingProvider'),
+      defaultFormatter: this.read('textEditor.global.defaultFormatter'),
       changeMargin: this.read('textEditor.global.changeMargin'),
       inlayHints: this.read('textEditor.global.inlayHints'),
       semanticHighlighting: this.read('textEditor.global.semanticHighlighting'),
@@ -1049,6 +1072,38 @@ export class Settings {
           language,
           own.semanticHighlighting,
         ],
+      ),
+    ]),
+  );
+
+  /**
+   * Gets a value that changes only when Folding Provider does, globally or for any language, so open
+   * documents are folded again for that and not for every other code setting.
+   */
+  public readonly foldingProviderChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.foldingProvider'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [
+          string,
+          FoldingProvider | undefined,
+        ] => [language, own.foldingProvider],
+      ),
+    ]),
+  );
+
+  /**
+   * Gets a value that changes only when Default Formatter does, globally or for any language, so the
+   * language servers' formatters are added or withdrawn for that alone.
+   */
+  public readonly defaultFormatterChoices: Signal<string> = computed((): string =>
+    JSON.stringify([
+      this.read('textEditor.global.defaultFormatter'),
+      Object.entries(this.languageOverrides()).map(
+        ([language, own]: [string, PartialTextEditorSettings]): [
+          string,
+          DefaultFormatter | undefined,
+        ] => [language, own.defaultFormatter],
       ),
     ]),
   );
