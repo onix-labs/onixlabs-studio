@@ -197,6 +197,7 @@ describe('ContainersView', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+    localStorage.removeItem('settings');
   });
 
   it('showsTheEngineAbsentEmptyStateWithoutOfferingToStartIt', async () => {

@@ -44,6 +44,8 @@ import {
   VolumeSummary,
 } from '@shared/api/container-types';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { ContainerShell } from '@shared/angular/services/settings/settings-registry';
 import { ContainerPullDialog } from '../container-run/container-pull-dialog';
 import { ContainerRunDialog } from '../container-run/container-run-dialog';
 import { PluginSummary } from '@shared/api/plugin-channels';
@@ -173,7 +175,6 @@ const VOLUME_COLUMNS: readonly TableColumn[] = [
 /**
  * How often the running containers' CPU and memory are read while the list shows (#974).
  */
-const STATS_REFRESH_MS: number = 3_000;
 
 /**
  * How long a burst of engine events is allowed to settle before the list reloads once.
@@ -298,6 +299,11 @@ export class ContainersView implements OnInit, OnDestroy {
   private readonly enginePrompt: ContainerEnginePrompt = inject(ContainerEnginePrompt);
 
   /**
+   * Holds the settings, which decide what a removal does and how the view behaves.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the file-system service, whose native dialog confirms a removal.
    */
   private readonly fileSystem: FileSystem = inject(FileSystem);
@@ -393,7 +399,9 @@ export class ContainersView implements OnInit, OnDestroy {
   /**
    * Holds whether only running containers are listed.
    */
-  protected readonly runningOnly: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly runningOnly: WritableSignal<boolean> = signal<boolean>(
+    this.settings.get('containers.runningOnly'),
+  );
 
   /**
    * Holds the image selected in the Images list, such as the one a container's image link showed.
@@ -776,6 +784,13 @@ export class ContainersView implements OnInit, OnDestroy {
 
     // The running containers' CPU and memory are read while their list shows, and not otherwise:
     // sampling takes the engine a moment per container (#974).
+    // Only Show Running is remembered from one tab to the next.
+    effect((): void => {
+      const running: boolean = this.runningOnly();
+      if (running !== untracked((): boolean => this.settings.get('containers.runningOnly'))) {
+        this.settings.set('containers.runningOnly', running);
+      }
+    });
     let statsTimer: ReturnType<typeof setInterval> | null = null;
     const stopStats: () => void = (): void => {
       if (statsTimer !== null) {
@@ -786,13 +801,17 @@ export class ContainersView implements OnInit, OnDestroy {
     effect((): void => {
       const showing: boolean =
         this.showing() && this.available() === true && this.kind() === 'containers';
+      // They keep time with the System Monitor: its Refresh Rate, and paused when it is paused.
+      const rate: number = this.settings.value('systemMonitor.refreshRate')();
       untracked((): void => {
         stopStats();
         // A read still in flight from before is superseded: its figures must not land later.
         this.statsTick += 1;
         if (showing) {
           void this.readStats();
-          statsTimer = setInterval((): void => void this.readStats(), STATS_REFRESH_MS);
+          if (rate > 0) {
+            statsTimer = setInterval((): void => void this.readStats(), rate);
+          }
         }
       });
     });
@@ -971,12 +990,23 @@ export class ContainersView implements OnInit, OnDestroy {
       !(await this.confirmRemoval(
         `Remove ${name}?`,
         `“${name}” will be removed.`,
-        'Its own files go with it; its volumes stay.',
+        this.settings.get('containers.removeAnonymousVolumes')
+          ? 'Its own files and anonymous volumes go with it; named volumes stay.'
+          : 'Its own files go with it; its volumes stay.',
       ))
     ) {
       return;
     }
-    await this.actOn(id, (target: string): Promise<boolean> => this.client.remove(target));
+    await this.actOn(id, (target: string): Promise<boolean> => this.removeContainer(target));
+  }
+
+  /**
+   * Removes a container, with its anonymous volumes when the user wants that.
+   * @param id The container's id.
+   * @returns Returns a promise resolving true when it was removed.
+   */
+  private removeContainer(id: string): Promise<boolean> {
+    return this.client.remove(id, this.settings.get('containers.removeAnonymousVolumes'));
   }
 
   /**
@@ -988,6 +1018,9 @@ export class ContainersView implements OnInit, OnDestroy {
    * @returns Returns whether the user agreed.
    */
   private confirmRemoval(title: string, message: string, detail: string): Promise<boolean> {
+    if (!this.settings.get('containers.confirmRemoval')) {
+      return Promise.resolve(true);
+    }
     return this.fileSystem.confirmDestructive({ title, message, detail, confirmLabel: 'Remove' });
   }
 
@@ -1067,7 +1100,9 @@ export class ContainersView implements OnInit, OnDestroy {
     this.busy.set(true);
     try {
       const results: readonly boolean[] = await Promise.all(
-        ids.map((id: string): Promise<boolean> => this.client[action](id)),
+        ids.map((id: string): Promise<boolean> =>
+          action === 'remove' ? this.removeContainer(id) : this.client[action](id),
+        ),
       );
       const failed: number = results.filter((ok: boolean): boolean => !ok).length;
       this.notice.set(
@@ -1283,7 +1318,8 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
-   * Opens an interactive shell in a running container (`<engine> exec`, bash when present, else sh).
+   * Opens an interactive shell in a running container (`<engine> exec`): the shell Open Shell With
+   * names, or for Automatic bash when present, else sh.
    * @param container The container to open a shell in.
    */
   protected openShell(container: ContainerSummary): void {
@@ -1296,8 +1332,36 @@ export class ContainersView implements OnInit, OnDestroy {
     this.terminalsHidden.set(false);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
-      `"${cli}" exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
+      `"${cli}"${this.engineHostFlag()} exec -it ${container.id} ${this.shellCommand()}`,
     );
+  }
+
+  /**
+   * Gets the engine CLI's flag for the Engine Address set, so a shell opens on the engine the view is
+   * showing. Docker and Podman both take `-H`.
+   * @returns Returns the flag and its leading space, or nothing for a discovered engine.
+   */
+  private engineHostFlag(): string {
+    const address: string = this.settings.get('containers.engineAddress').trim();
+    return this.settings.get('containers.engineAddressMode') === 'custom' && address !== ''
+      ? ` -H "${address}"`
+      : '';
+  }
+
+  /**
+   * Gets the command `exec` runs, from the Open Shell With setting.
+   * @returns Returns the command.
+   */
+  private shellCommand(): string {
+    const shell: ContainerShell = this.settings.get('containers.shell');
+    switch (shell) {
+      case 'automatic':
+        return "sh -c 'command -v bash >/dev/null && exec bash || exec sh'";
+      case 'custom':
+        return this.settings.get('containers.shellCustom').trim() || 'sh';
+      default:
+        return shell;
+    }
   }
 
   /**

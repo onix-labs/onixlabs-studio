@@ -23,6 +23,7 @@ import { LanguageEditorOverrides } from './language-editor-overrides/language-ed
 import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
+import { ContainerEngine } from './sections/container-engine/container-engine';
 import { DefaultSeverities } from './sections/default-severities/default-severities';
 import { LogFolder } from './sections/log-folder/log-folder';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
@@ -34,6 +35,8 @@ import { SpellCheckingLanguages } from './sections/spell-checking-languages/spel
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import type { ProviderPage } from '@shared/api/ai-types';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { installedContributions } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { CdkMenuTrigger } from '@angular/cdk/menu';
@@ -137,6 +140,7 @@ type SettingsSectionId =
   | 'mission-control'
   | 'system-monitor'
   | 'api-explorer'
+  | 'containers'
   | 'database-explorer'
   | 'database-results'
   | 'database-connections'
@@ -202,6 +206,7 @@ const KEYBOARD_PAGES: Readonly<Record<string, string>> = {
   'api-explorer': 'API Explorer',
   'database-explorer': 'Database Explorer',
   'system-monitor': 'System Monitor',
+  containers: 'Containers',
 };
 
 /**
@@ -293,6 +298,7 @@ interface SettingsTreeData {
   imports: [
     Button,
     ButtonRow,
+    ContainerEngine,
     DefaultSeverities,
     LogFolder,
     Modal,
@@ -353,6 +359,11 @@ export class SettingsView {
    * Holds the providers installed harnesses contribute, which the Providers branch is built from.
    */
   private readonly providers: AiProviders = inject(AiProviders);
+
+  /**
+   * Holds the installed plugins, which decide whether the Containers root is shown.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
 
   /**
    * Holds the keyboard catalogue, which decides the Keyboard leaves and lets search find a shortcut.
@@ -592,6 +603,14 @@ export class SettingsView {
       icon: Icon.SYSTEM_MONITOR,
       children: [{ id: 'system-monitor-general', label: 'General', sectionId: 'system-monitor' }],
     },
+    {
+      // Only while an engine is installed: its settings have nothing to act on before then.
+      id: 'containers',
+      group: 'tools',
+      label: 'Containers',
+      icon: Icon.CONTAINERS,
+      children: [{ id: 'containers-general', label: 'General', sectionId: 'containers' }],
+    },
   ];
 
   /**
@@ -604,7 +623,12 @@ export class SettingsView {
       // branch, so the branch's open list of entries never pushes the root's own pages out of sight.
       this.withLanguageProviderPages(
         this.withProviderPages(this.withKeyboardPages(this.staticSections)),
-      ).filter((node: SettingsNavNode): boolean => (node.children?.length ?? 1) > 0),
+      ).filter(
+        (node: SettingsNavNode): boolean =>
+          (node.children?.length ?? 1) > 0 &&
+          (node.id !== 'containers' ||
+            installedContributions(this.plugins.plugins(), 'container-engine').length > 0),
+      ),
   );
 
   /**

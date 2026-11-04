@@ -426,6 +426,7 @@ describe('DockerEngine P2 (#974)', () => {
     const missing: Answering = engineAnswering({ '/containers/create': { status: 404, body: {} } });
     expect(await missing.engine.run({ image: 'nope:1' })).toEqual({
       error: 'There is no image "nope:1" on this machine. Pull it first.',
+      missingImage: true,
     });
   });
 
@@ -456,5 +457,42 @@ describe('DockerEngine P2 (#974)', () => {
       ok: false,
       error: 'manifest unknown',
     });
+  });
+});
+
+describe('DockerEngine settings (#1250)', () => {
+  /**
+   * Makes an engine over a transport answering one status.
+   * @param statusCode The status.
+   * @returns Returns the engine, and the paths it asked for.
+   */
+  function engineAnswering(statusCode: number): {
+    readonly engine: DockerEngine;
+    readonly paths: string[];
+  } {
+    const paths: string[] = [];
+    const transport: SocketTransport = {
+      request: (_method: string, path: string): Promise<SocketHttpResponse> => {
+        paths.push(path);
+        return Promise.resolve({ statusCode, body: '{}', bytes: Buffer.from('{}') });
+      },
+      openStream: (): StreamHandle => ({ close: (): void => undefined }),
+    };
+    return { engine: new DockerEngine('/socket', transport), paths };
+  }
+
+  it('remove_takesTheAnonymousVolumes_onlyWhenAsked', async () => {
+    const { engine, paths } = engineAnswering(204);
+
+    await engine.remove('abc');
+    await engine.remove('abc', true);
+
+    expect(paths).toEqual(['/containers/abc', '/containers/abc?v=1']);
+  });
+
+  it('run_saysWhenTheImageIsMissing', async () => {
+    const { engine } = engineAnswering(404);
+
+    expect((await engine.run({ image: 'nope:1' })).missingImage).toBe(true);
   });
 });

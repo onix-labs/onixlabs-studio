@@ -87,7 +87,7 @@ describe('ContainersClient', () => {
     expect(operations()).toEqual([
       { channel: ContainerChannel.Start, args: ['abc'] },
       { channel: ContainerChannel.Stop, args: ['def'] },
-      { channel: ContainerChannel.Remove, args: ['ghi'] },
+      { channel: ContainerChannel.Remove, args: ['ghi', false] },
     ]);
   });
 

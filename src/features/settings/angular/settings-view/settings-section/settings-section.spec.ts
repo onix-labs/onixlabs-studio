@@ -1,3 +1,6 @@
+import { signal } from '@angular/core';
+import type { PluginSummary } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Display } from '@shared/angular/services/display/display';
@@ -253,5 +256,39 @@ describe('SettingsSection', () => {
   it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {
     const element: HTMLElement = await render('application');
     expect(element.textContent).toContain('Automatic resolves to');
+  });
+});
+
+describe('SettingsSection plugin gating', () => {
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  /**
+   * Renders the Queries page with some plugins installed.
+   * @param plugins The plugins.
+   * @returns Returns the page's text.
+   */
+  function renderWith(plugins: readonly PluginSummary[]): string {
+    TestBed.configureTestingModule({
+      imports: [SettingsSection],
+      providers: [{ provide: Plugins, useValue: { plugins: signal(plugins) } }],
+    });
+    const fixture: ComponentFixture<SettingsSection> = TestBed.createComponent(SettingsSection);
+    fixture.componentRef.setInput('sectionId', 'database-explorer');
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  it('hidesASettingForAPluginThatIsNotInstalled', () => {
+    expect(renderWith([])).not.toContain('Neo4j Match Count');
+  });
+
+  it('showsItOnceThePluginIsInstalled', () => {
+    const neo4j: PluginSummary = {
+      state: 'installed',
+      contributions: [{ slot: 'database-engine', id: 'neo4j' }],
+    } as unknown as PluginSummary;
+    expect(renderWith([neo4j])).toContain('Neo4j Match Count');
   });
 });

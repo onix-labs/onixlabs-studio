@@ -3,7 +3,12 @@ import * as http from 'node:http';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SocketHttpResponse, StreamHandle, SocketHttpTransport } from './transport';
+import {
+  endpointOptions,
+  SocketHttpResponse,
+  StreamHandle,
+  SocketHttpTransport,
+} from './transport';
 
 /**
  * Distinguishes the socket file each test creates.
@@ -89,5 +94,23 @@ describe.skipIf(process.platform === 'win32')('SocketHttpTransport', () => {
     });
 
     expect(lines).toEqual(['line1', 'line2']);
+  });
+});
+
+describe('endpointOptions', () => {
+  it('reaches a socket path, with or without its scheme', () => {
+    expect(endpointOptions('/var/run/docker.sock')).toEqual({ socketPath: '/var/run/docker.sock' });
+    expect(endpointOptions('unix:///var/run/docker.sock')).toEqual({
+      socketPath: '/var/run/docker.sock',
+    });
+  });
+
+  it('reaches a TCP address, on the default port when it names none', () => {
+    expect(endpointOptions('tcp://10.0.0.5:2376')).toEqual({ host: '10.0.0.5', port: 2376 });
+    expect(endpointOptions('tcp://engine.local')).toEqual({ host: 'engine.local', port: 2375 });
+  });
+
+  it('reaches an SSH address through a connection of its own', () => {
+    expect(endpointOptions('ssh://me@engine.local:2222').createConnection).toBeTypeOf('function');
   });
 });

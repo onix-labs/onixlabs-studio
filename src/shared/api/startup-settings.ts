@@ -90,6 +90,12 @@ export interface StartupSettings {
    * Gets how many of the running session's log records are held in memory.
    */
   readonly liveLogRecords: number;
+
+  /**
+   * Gets the address the user set for the container engine, empty for discovery. Main resolves the
+   * engine as it starts, with no window open.
+   */
+  readonly containerEngineAddress: string;
 }
 
 /**
@@ -107,6 +113,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   logRotatedCopies: 5,
   keepSessionLogsDays: 30,
   liveLogRecords: 5000,
+  containerEngineAddress: '',
 };
 
 /**
@@ -183,5 +190,9 @@ export function parseStartupSettings(raw: unknown): StartupSettings {
       [1000, 5000, 20_000, 50_000],
       defaults.liveLogRecords,
     ),
+    containerEngineAddress:
+      typeof record['containerEngineAddress'] === 'string'
+        ? record['containerEngineAddress']
+        : defaults.containerEngineAddress,
   };
 }

@@ -156,8 +156,12 @@ import {
  * `1.23.0` moves the database-engine protocol to 1.4 (#1248), with the manifest's shape unchanged:
  * execution, connection and tree options, the `transactions` capability and its `transaction` request.
  * A plugin still on protocol 1.3 keeps working, and ignores what it does not know. Adds only.
+ *
+ * `1.24.0` moves the container-engine protocol to 1.2 (#1250), with the manifest's shape unchanged:
+ * `remove` may take anonymous volumes with the container, and `run` says when the image is missing.
+ * The plugin itself reaches `tcp://` and `ssh://` engine addresses. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.23.0';
+export const PLUGIN_API_VERSION: string = '1.24.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

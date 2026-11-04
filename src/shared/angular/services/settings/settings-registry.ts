@@ -488,6 +488,21 @@ export type DatabaseCsvNull = 'empty' | 'text';
 export type DatabaseResultView = 'table' | 'graph' | 'raw';
 
 /**
+ * Where Studio finds the container engine: by discovery, or at an address the user gives.
+ */
+export type ContainerEngineAddressMode = 'automatic' | 'custom';
+
+/**
+ * The shell Open Shell starts in a container.
+ */
+export type ContainerShell = 'automatic' | 'bash' | 'sh' | 'zsh' | 'ash' | 'custom';
+
+/**
+ * What running a container does about an image that is not on the machine.
+ */
+export type PullMissingImages = 'ask' | 'automatic' | 'never';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -857,6 +872,18 @@ export interface SettingsValues {
   readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
   readonly 'databaseExplorer.gridlines': DatabaseGridlines;
   readonly 'databaseExplorer.gridlineTone': DatabaseGridlineTone;
+  readonly 'containers.engine': string;
+  readonly 'containers.engineAddressMode': ContainerEngineAddressMode;
+  readonly 'containers.engineAddress': string;
+  readonly 'containers.shell': ContainerShell;
+  readonly 'containers.shellCustom': string;
+  readonly 'containers.logLines': number;
+  readonly 'containers.logRefreshSeconds': number;
+  readonly 'containers.logTimestamps': boolean;
+  readonly 'containers.confirmRemoval': boolean;
+  readonly 'containers.removeAnonymousVolumes': boolean;
+  readonly 'containers.pullMissing': PullMissingImages;
+  readonly 'containers.runningOnly': boolean;
   readonly 'databaseExplorer.matchCount': number;
   readonly 'databaseExplorer.queryTimeoutSeconds': number;
   readonly 'databaseExplorer.confirmDestructive': boolean;
@@ -5422,6 +5449,145 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Start a new workspace with a collection, a request and an environment to try.',
         control: { kind: 'toggle' },
+        default: false,
+      },
+    ],
+  },
+  {
+    id: 'containers',
+    label: 'Containers',
+    settings: [
+      {
+        // Drawn by its own row, whose choices are the engines installed.
+        key: 'containers.engine',
+        title: 'Container Engine',
+        description: 'Which installed engine Studio talks to.',
+        control: { kind: 'custom', component: 'container-engine' },
+        default: 'automatic',
+      },
+      {
+        key: 'containers.engineAddressMode',
+        title: 'Engine Address',
+        description:
+          'Where the engine is. Automatic follows DOCKER_HOST, the active docker context, then the ' +
+          "engine's usual socket.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'custom', label: 'Custom' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'containers.engineAddress',
+        visibleWhen: { key: 'containers.engineAddressMode', equals: ['custom'] },
+        title: 'Custom Engine Address',
+        description:
+          'A socket path, tcp://host:port or ssh://user@host. An ssh:// address needs a key your ' +
+          'SSH agent holds, and the engine installed on that host.',
+        control: { kind: 'text', placeholder: 'tcp://127.0.0.1:2375' },
+        default: '',
+      },
+      {
+        key: 'containers.shell',
+        title: 'Open Shell With',
+        description:
+          'The shell Open Shell starts. Automatic uses bash when the container has it, else sh.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'bash', label: 'bash' },
+            { value: 'sh', label: 'sh' },
+            { value: 'zsh', label: 'zsh' },
+            { value: 'ash', label: 'ash' },
+            { value: 'custom', label: 'Custom' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'containers.shellCustom',
+        visibleWhen: { key: 'containers.shell', equals: ['custom'] },
+        title: 'Custom Shell',
+        description: 'The command Open Shell runs in the container.',
+        control: { kind: 'text', placeholder: '/bin/fish' },
+        default: '',
+      },
+      {
+        key: 'containers.logLines',
+        title: 'Log Lines',
+        description: "How many of a container's most recent log lines are shown.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '100', label: '100' },
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+          ],
+        },
+        default: 1000,
+      },
+      {
+        key: 'containers.logRefreshSeconds',
+        title: 'Log Refresh',
+        description: "How often a container's logs are read again while they are showing.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 second' },
+            { value: '2', label: '2 seconds' },
+            { value: '5', label: '5 seconds' },
+            { value: '10', label: '10 seconds' },
+          ],
+        },
+        default: 2,
+      },
+      {
+        key: 'containers.logTimestamps',
+        title: 'Show Timestamps in Logs',
+        description: 'Start each log line with the time the engine recorded it.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'containers.confirmRemoval',
+        title: 'Confirm Before Removing',
+        description: 'Ask before removing a container or a volume.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'containers.removeAnonymousVolumes',
+        title: 'Remove Anonymous Volumes',
+        description: "Remove a container's anonymous volumes with it. Named volumes always stay.",
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'containers.pullMissing',
+        title: 'Pull Missing Images When Running',
+        description: "What to do when the image to run isn't on this machine.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'automatic', label: 'Pull automatically' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        // The switch above the list, remembered; it has no row of its own.
+        key: 'containers.runningOnly',
+        title: 'Only Show Running',
+        description: 'Whether the Containers list shows only running containers.',
+        control: { kind: 'custom', component: 'containers-running-only' },
         default: false,
       },
     ],

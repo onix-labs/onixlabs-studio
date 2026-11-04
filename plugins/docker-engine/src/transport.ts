@@ -1,5 +1,46 @@
+import { ChildProcessByStdio, spawn } from 'node:child_process';
 import * as http from 'node:http';
+import { Duplex, Readable, Writable } from 'node:stream';
 import { trace } from './log';
+
+/**
+ * Works out how to reach an engine from the address Studio gave: a socket path or `unix://` path, a
+ * `tcp://host:port`, or an `ssh://user@host`, which runs the engine's own `system dial-stdio` on the
+ * far side as the Docker CLI does: Docker's when the host has it, else Podman's. An SSH address needs
+ * a key the agent holds: nothing can ask for a password here.
+ * @param address The address.
+ * @returns Returns the request options that connect there.
+ */
+export function endpointOptions(address: string): http.RequestOptions {
+  if (address.startsWith('tcp://')) {
+    const url: URL = new URL(`http://${address.slice('tcp://'.length)}`);
+    return { host: url.hostname, port: Number(url.port) || 2375 };
+  }
+  if (address.startsWith('ssh://')) {
+    const url: URL = new URL(address);
+    const target: string = url.username === '' ? url.hostname : `${url.username}@${url.hostname}`;
+    const args: readonly string[] = [
+      '-o',
+      'BatchMode=yes',
+      ...(url.port === '' ? [] : ['-p', url.port]),
+      target,
+      'docker system dial-stdio 2>/dev/null || podman system dial-stdio',
+    ];
+    return {
+      createConnection: (): Duplex => {
+        const tunnel: ChildProcessByStdio<Writable, Readable, null> = spawn('ssh', args, {
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        // Node takes a pair of its own streams here too; its types name only the web ones.
+        return Duplex.from({
+          readable: tunnel.stdout,
+          writable: tunnel.stdin,
+        } as unknown as Iterable<unknown>);
+      },
+    };
+  }
+  return { socketPath: address.replace(/^unix:\/\//, '') };
+}
 
 /**
  * A buffered HTTP response: the status and the full body text.
@@ -87,10 +128,17 @@ export interface SocketTransport {
  */
 export class SocketHttpTransport implements SocketTransport {
   /**
-   * Initializes a new instance of the {@link SocketHttpTransport} class.
-   * @param socketPath The daemon socket path.
+   * Holds how each request reaches the engine.
    */
-  public constructor(private readonly socketPath: string) {}
+  private readonly endpoint: http.RequestOptions;
+
+  /**
+   * Initializes a new instance of the {@link SocketHttpTransport} class.
+   * @param address The daemon's address: a socket path, or a `tcp://` or `ssh://` address.
+   */
+  public constructor(address: string) {
+    this.endpoint = endpointOptions(address);
+  }
 
   /**
    * Performs one buffered request over the daemon socket.
@@ -106,7 +154,7 @@ export class SocketHttpTransport implements SocketTransport {
       (resolve: (response: SocketHttpResponse) => void, reject: (error: Error) => void): void => {
         const request: http.ClientRequest = http.request(
           {
-            socketPath: this.socketPath,
+            ...this.endpoint,
             method,
             path,
             ...(payload === null
@@ -157,7 +205,7 @@ export class SocketHttpTransport implements SocketTransport {
       (resolve: (status: number) => void, reject: (error: Error) => void): void => {
         let buffer: string = '';
         const request: http.ClientRequest = http.request(
-          { socketPath: this.socketPath, method, path },
+          { ...this.endpoint, method, path },
           (response: http.IncomingMessage): void => {
             response.setEncoding('utf8');
             response.on('data', (chunk: string): void => {
@@ -205,7 +253,7 @@ export class SocketHttpTransport implements SocketTransport {
     trace('transport', `Opening event stream ${method} ${path}`);
     let buffer: string = '';
     const request: http.ClientRequest = http.request(
-      { socketPath: this.socketPath, method, path },
+      { ...this.endpoint, method, path },
       (response: http.IncomingMessage): void => {
         response.setEncoding('utf8');
         response.on('data', (chunk: string): void => {

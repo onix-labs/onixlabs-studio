@@ -18,6 +18,9 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import type { RunContainerRequest } from '@shared/api/container-types';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type { PullMissingImages } from '@shared/angular/services/settings/settings-registry';
 import { ContainersClient } from '../client/containers-client';
 import { readRunForm } from './run-request';
 
@@ -91,10 +94,10 @@ import { readRunForm } from './run-request';
         <app-button-row>
           <app-button
             variant="solid"
-            label="Run"
+            [label]="pendingPull() === null ? 'Run' : 'Pull and Run'"
             [loading]="running()"
             [disabled]="running()"
-            (click)="run()"
+            (click)="pendingPull() === null ? run() : pullThenRun()"
           />
           <app-button label="Cancel" [disabled]="running()" (click)="cancel()" />
         </app-button-row>
@@ -169,9 +172,20 @@ export class ContainerRunDialog {
   protected readonly running: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the run waiting for the user to say the missing image may be pulled, or null.
+   */
+  protected readonly pendingPull: WritableSignal<RunContainerRequest | null> =
+    signal<RunContainerRequest | null>(null);
+
+  /**
    * Holds the engine client.
    */
   private readonly client: ContainersClient = inject(ContainersClient);
+
+  /**
+   * Holds the settings, which say what a run does about a missing image.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Resets the form each time the dialog opens.
@@ -211,7 +225,16 @@ export class ContainerRunDialog {
     this.problems.set([]);
     this.running.set(true);
     try {
-      const outcome: { id?: string; error?: string } = await this.client.run(read.request);
+      const outcome: { id?: string; error?: string; missingImage?: boolean } =
+        await this.client.run(read.request);
+      const pulling: PullMissingImages = this.settings.get('containers.pullMissing');
+      if (outcome.missingImage === true && pulling === 'automatic') {
+        await this.pullAndRun(read.request);
+        return;
+      }
+      if (outcome.missingImage === true && pulling === 'ask') {
+        this.pendingPull.set(read.request);
+      }
       if (outcome.error !== undefined) {
         this.problems.set([outcome.error]);
         return;
@@ -220,6 +243,42 @@ export class ContainerRunDialog {
     } finally {
       this.running.set(false);
     }
+  }
+
+  /**
+   * Pulls the missing image the user has said may be pulled, and runs the container.
+   */
+  protected async pullThenRun(): Promise<void> {
+    const request: RunContainerRequest | null = this.pendingPull();
+    if (request === null) {
+      return;
+    }
+    this.pendingPull.set(null);
+    this.running.set(true);
+    try {
+      await this.pullAndRun(request);
+    } finally {
+      this.running.set(false);
+    }
+  }
+
+  /**
+   * Pulls a run's image, then runs it; a failure at either step is shown in the dialog.
+   * @param request The run.
+   */
+  private async pullAndRun(request: RunContainerRequest): Promise<void> {
+    const pulled: { ok: boolean; error?: string } = await this.client.pullImage(request.image);
+    if (!pulled.ok) {
+      this.problems.set([pulled.error ?? `The image "${request.image}" could not be pulled.`]);
+      return;
+    }
+    const outcome: { id?: string; error?: string } = await this.client.run(request);
+    if (outcome.error !== undefined) {
+      this.problems.set([outcome.error]);
+      return;
+    }
+    this.problems.set([]);
+    this.closed.emit(outcome.id ?? null);
   }
 
   /**

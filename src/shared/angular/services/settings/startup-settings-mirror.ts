@@ -36,6 +36,10 @@ export class StartupSettingsMirror {
     logRotatedCopies: this.settings.value('systemMonitor.logRotatedCopies')(),
     keepSessionLogsDays: this.settings.value('systemMonitor.keepSessionLogsDays')(),
     liveLogRecords: this.settings.value('systemMonitor.liveLogRecords')(),
+    containerEngineAddress:
+      this.settings.value('containers.engineAddressMode')() === 'custom'
+        ? this.settings.value('containers.engineAddress')()
+        : '',
   }));
 
   /**
