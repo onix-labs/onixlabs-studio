@@ -217,4 +217,18 @@ describe('transformCollapseTree', () => {
       'list',
     ]);
   });
+
+  it('transformCollapseTree_whenTheFileSaysOpen_keepsItOpen', () => {
+    const open: Root = {
+      type: 'root',
+      children: [{ type: 'html', value: '<details open><summary>A</summary>Body</details>' }],
+    };
+    const shut: Root = {
+      type: 'root',
+      children: [{ type: 'html', value: '<details><summary>A</summary>Body</details>' }],
+    };
+
+    expect(transformCollapseTree(open).children[0]).toMatchObject({ open: true });
+    expect(transformCollapseTree(shut).children[0]).toMatchObject({ open: false });
+  });
 });

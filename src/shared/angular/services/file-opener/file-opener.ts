@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import { effect, inject, Injector, Service } from '@angular/core';
 import { DocumentDiffSwitch } from '@shared/angular/services/diffs/document-diff-switch';
 import {
@@ -60,6 +61,11 @@ export class FileOpener {
    * Holds the document model that backs code and markdown tabs.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the settings, which decide the editor a Markdown file opens in.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the file-system service showing the native confirm-save dialog when a dirty well document is
@@ -272,7 +278,9 @@ export class FileOpener {
         if (this.openSurfaceDocument(selection.file)) {
           return true;
         }
-        const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
+        const type: TabType = this.opensInMarkdownEditor(selection.file.extension)
+          ? 'markdown'
+          : 'code';
         this.documents.openFileInfo(selection.file, type);
         this.recordRecentFile(selection.file);
         return true;
@@ -542,6 +550,17 @@ export class FileOpener {
       fileInfo.path,
       fileInfo.name,
       this.isMarkdown(fileInfo.extension) ? 'markdown' : 'code',
+    );
+  }
+
+  /**
+   * Determines whether a file opens in the markdown editor, rather than the code editor on its source.
+   * @param extension The file extension, including the leading dot.
+   * @returns Returns true for a markdown file while Open Markdown Files In says Visual.
+   */
+  private opensInMarkdownEditor(extension: string): boolean {
+    return (
+      this.isMarkdown(extension) && this.settings.get('markdownEditor.openFilesIn') === 'visual'
     );
   }
 

@@ -201,6 +201,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     this.commands,
     this.zone,
     (): boolean => this.isActive(),
+    (): number => this.settings.get('markdownEditor.outlineDepth'),
   );
 
   /**
@@ -324,6 +325,14 @@ export class MarkdownView implements OnInit, OnDestroy {
         }
         this.reviewReveal.unregister();
         this.readAlong.unregister();
+      }
+    });
+
+    // The outline lists headings down to the Outline Depth setting.
+    effect((): void => {
+      this.settings.value('markdownEditor.outlineDepth')();
+      if (this.paneReady()) {
+        untracked((): void => this.outline.refresh());
       }
     });
 

@@ -1,7 +1,7 @@
 /**
  * Which span of text the in-document highlight covers during playback.
  */
-export type HighlightMode = 'word' | 'sentence';
+export type HighlightMode = 'word' | 'sentence' | 'none';
 
 /**
  * A selectable text-to-speech voice.

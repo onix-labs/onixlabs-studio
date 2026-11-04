@@ -278,6 +278,79 @@ export type DatabaseGridlines = 'none' | 'horizontal' | 'full';
 export type DatabaseGridlineTone = 'light' | 'dark';
 
 /**
+ * Names how much larger than body text Markdown's headings are set.
+ */
+export type MarkdownHeadingScale = 'compact' | 'standard' | 'large';
+
+/**
+ * Names when a link in a Markdown document is underlined.
+ */
+export type MarkdownUnderlineLinks = 'hover' | 'always';
+
+/**
+ * Names the theme a Mermaid diagram is drawn in; automatic follows Studio's light or dark theme.
+ */
+export type MarkdownMermaidTheme = 'automatic' | 'neutral' | 'forest' | 'base';
+
+/**
+ * Names where an image pasted or dropped into a Markdown document goes: into the document itself,
+ * beside its file, or into a folder beside its file.
+ */
+export type MarkdownPastedImageStorage = 'embed' | 'beside' | 'folder';
+
+/**
+ * Names how a path to a local image is written into a Markdown document.
+ */
+export type MarkdownInsertedImagePaths = 'relative' | 'absolute';
+
+/**
+ * Names what opens a link in a Markdown document: a click with the command modifier, a plain click,
+ * or only the link's own tooltip.
+ */
+export type MarkdownOpenLinks = 'modifier' | 'click' | 'tooltip';
+
+/**
+ * Names how a raw HTML block in a Markdown document shows: rendered through the sanitiser, or as
+ * text.
+ */
+export type MarkdownRenderHtmlBlocks = 'safe' | 'text';
+
+/**
+ * Names what a Markdown math block shows while the caret is elsewhere.
+ */
+export type MarkdownMathBlocks = 'preview' | 'source';
+
+/**
+ * Names how text on the clipboard is pasted into a Markdown document.
+ */
+export type MarkdownDefaultPaste = 'markdown' | 'plain' | 'code';
+
+/**
+ * Names how much of a rich clipboard's formatting a paste into a Markdown document keeps.
+ */
+export type MarkdownRichPaste = 'keep' | 'basic' | 'none';
+
+/**
+ * Names the editor a Markdown file opens in: the visual editor, or the code editor on its source.
+ */
+export type MarkdownOpenFilesIn = 'visual' | 'source';
+
+/**
+ * Names whether review asks for the comma before the last item of a list, flags it, or says nothing.
+ */
+export type MarkdownSerialComma = 'require' | 'forbid' | 'off';
+
+/**
+ * Names the pitch Markdown is read aloud in.
+ */
+export type ReadAloudPitch = 'low' | 'normal' | 'high';
+
+/**
+ * Names what is highlighted in the document as it is read aloud.
+ */
+export type ReadAlongHighlight = 'word' | 'sentence' | 'none';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -458,6 +531,47 @@ export interface SettingsValues {
   readonly 'markdownEditor.imageAlignment': ImageAlignment;
   readonly 'markdownEditor.selectAllScope': SelectAllScope;
   readonly 'markdownEditor.printMargin': PrintMargin;
+  readonly 'markdownEditor.paragraphLineHeight': number;
+  readonly 'markdownEditor.headingScale': MarkdownHeadingScale;
+  readonly 'markdownEditor.underlineLinks': MarkdownUnderlineLinks;
+  readonly 'markdownEditor.maxImageWidth': number;
+  readonly 'markdownEditor.cursorBlinking': CursorBlinkingStyle;
+  readonly 'markdownEditor.codeBlockLineNumbers': boolean;
+  readonly 'markdownEditor.mermaidTheme': MarkdownMermaidTheme;
+  readonly 'markdownEditor.mermaidBodyFont': boolean;
+  readonly 'markdownEditor.pastedImageStorage': MarkdownPastedImageStorage;
+  readonly 'markdownEditor.pastedImageFolder': string;
+  readonly 'markdownEditor.insertedImagePaths': MarkdownInsertedImagePaths;
+  readonly 'markdownEditor.openLinks': MarkdownOpenLinks;
+  readonly 'markdownEditor.renderHtmlBlocks': MarkdownRenderHtmlBlocks;
+  readonly 'markdownEditor.convertEmoji': boolean;
+  readonly 'markdownEditor.convertAlerts': boolean;
+  readonly 'markdownEditor.subSuperscriptShortcuts': boolean;
+  readonly 'markdownEditor.colourSwatches': boolean;
+  readonly 'markdownEditor.floatingToolbar': boolean;
+  readonly 'markdownEditor.blockHandles': boolean;
+  readonly 'markdownEditor.slashMenu': boolean;
+  readonly 'markdownEditor.mathBlocks': MarkdownMathBlocks;
+  readonly 'markdownEditor.smartPunctuation': boolean;
+  readonly 'markdownEditor.undoHistory': number;
+  readonly 'markdownEditor.defaultPaste': MarkdownDefaultPaste;
+  readonly 'markdownEditor.richPaste': MarkdownRichPaste;
+  readonly 'markdownEditor.openFilesIn': MarkdownOpenFilesIn;
+  readonly 'markdownEditor.outlineDepth': number;
+  readonly 'markdownEditor.checkSpelling': boolean;
+  readonly 'markdownEditor.reviewRepeatedWord': boolean;
+  readonly 'markdownEditor.reviewPassiveVoice': boolean;
+  readonly 'markdownEditor.reviewArticleAgreement': boolean;
+  readonly 'markdownEditor.reviewWeakIntensifier': boolean;
+  readonly 'markdownEditor.reviewSerialComma': MarkdownSerialComma;
+  readonly 'markdownEditor.readAloudVoice': string;
+  readonly 'markdownEditor.enhancedVoicesOnly': boolean;
+  readonly 'markdownEditor.readAloudSpeed': number;
+  readonly 'markdownEditor.readAloudPitch': ReadAloudPitch;
+  readonly 'markdownEditor.readAloudVolume': number;
+  readonly 'markdownEditor.readAlongHighlight': ReadAlongHighlight;
+  readonly 'markdownEditor.followSpokenWord': boolean;
+  readonly 'markdownEditor.readingSpeed': number;
 
   readonly 'plugins.notifyUpdates': boolean;
   readonly 'plugins.showUnsupported': boolean;
@@ -2748,8 +2862,8 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'markdownEditor.monospaceFontFamily',
-        title: 'Monospace Font',
-        description: 'Font family used for code blocks.',
+        title: 'Inline Code Font',
+        description: 'Font family used for inline code. Code blocks follow the Code font.',
         control: {
           kind: 'select',
           options: [{ value: 'JetBrains Mono', label: 'JetBrains Mono' }],
@@ -2823,6 +2937,111 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'left',
       },
       {
+        key: 'markdownEditor.maxImageWidth',
+        title: 'Maximum Image Width',
+        description: 'The widest an image is drawn, as a share of the text column.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '50', label: '50%' },
+            { value: '75', label: '75%' },
+            { value: '100', label: '100%' },
+          ],
+        },
+        default: 100,
+      },
+      {
+        key: 'markdownEditor.paragraphLineHeight',
+        title: 'Paragraph Line Height',
+        description: 'The line height of body text, as a multiple of the font size.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1.4', label: '1.4' },
+            { value: '1.6', label: '1.6' },
+            { value: '1.8', label: '1.8' },
+            { value: '2', label: '2.0' },
+          ],
+        },
+        default: 1.6,
+      },
+      {
+        key: 'markdownEditor.headingScale',
+        title: 'Heading Size Scale',
+        description: 'How much larger than body text headings are set.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'compact', label: 'Compact' },
+            { value: 'standard', label: 'Standard' },
+            { value: 'large', label: 'Large' },
+          ],
+        },
+        default: 'standard',
+      },
+      {
+        key: 'markdownEditor.underlineLinks',
+        title: 'Underline Links',
+        description: 'Underline a link only while the pointer is over it, or always.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'hover', label: 'On Hover' },
+            { value: 'always', label: 'Always' },
+          ],
+        },
+        default: 'hover',
+      },
+      {
+        key: 'markdownEditor.cursorBlinking',
+        title: 'Cursor Blinking',
+        description:
+          "How the caret blinks in a Markdown document. Code's cursor is set separately.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'blink', label: 'Blink' },
+            { value: 'smooth', label: 'Smooth' },
+            { value: 'phase', label: 'Phase' },
+            { value: 'expand', label: 'Expand' },
+            { value: 'solid', label: 'Solid' },
+          ],
+        },
+        default: 'blink',
+      },
+      {
+        key: 'markdownEditor.codeBlockLineNumbers',
+        title: 'Code Block Line Numbers',
+        description: 'Number the lines of code blocks. Off keeps them compact.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'markdownEditor.mermaidTheme',
+        title: 'Mermaid Theme',
+        description:
+          "The theme diagrams are drawn in. Automatic follows Studio's light or dark theme.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'neutral', label: 'Neutral' },
+            { value: 'forest', label: 'Forest' },
+            { value: 'base', label: 'Base' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'markdownEditor.mermaidBodyFont',
+        title: 'Use Body Font in Diagrams',
+        description: "Set a diagram's labels in the Body Font, rather than the system's font.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
         key: 'markdownEditor.selectAllScope',
         title: 'Select All (Cmd/Ctrl+A)',
         description:
@@ -2853,6 +3072,244 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
         default: 'regular',
       },
+    ],
+  },
+  {
+    // How Markdown documents are edited: images, links, conversions, the editor's helpers and pasting.
+    id: 'markdown-editing',
+    label: 'Markdown Editing',
+    settings: [
+      {
+        key: 'markdownEditor.pastedImageStorage',
+        title: 'Pasted Image Storage',
+        description:
+          'Where an image pasted or dropped into a document goes. A document never saved yet embeds it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'embed', label: 'Embed in the Document' },
+            { value: 'beside', label: 'Save Beside the Document' },
+            { value: 'folder', label: 'Save in a Folder' },
+          ],
+        },
+        default: 'folder',
+      },
+      {
+        key: 'markdownEditor.pastedImageFolder',
+        title: 'Pasted Image Folder',
+        description: 'The folder beside the document that pasted images are saved in.',
+        control: { kind: 'text', placeholder: 'assets' },
+        visibleWhen: { key: 'markdownEditor.pastedImageStorage', equals: ['folder'] },
+        default: 'assets',
+      },
+      {
+        key: 'markdownEditor.insertedImagePaths',
+        title: 'Inserted Image Paths',
+        description:
+          'How the path to a local image is written. Relative needs a document that has been saved.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'relative', label: 'Relative' },
+            { value: 'absolute', label: 'Absolute' },
+          ],
+        },
+        default: 'relative',
+      },
+      {
+        key: 'markdownEditor.openLinks',
+        title: 'Open Links',
+        description:
+          'What opens a link in a document. Its tooltip offers to open it whichever you choose.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'modifier', label: MODIFIER_CLICK },
+            { value: 'click', label: 'Click' },
+            { value: 'tooltip', label: 'Tooltip Only' },
+          ],
+        },
+        default: 'modifier',
+      },
+      {
+        key: 'markdownEditor.renderHtmlBlocks',
+        title: 'Render HTML Blocks',
+        description:
+          'Render raw HTML through the sanitiser, which never lets a script through, or show it as text.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'safe', label: 'Safe Subset' },
+            { value: 'text', label: 'Show as Text' },
+          ],
+        },
+        default: 'safe',
+      },
+      {
+        key: 'markdownEditor.convertEmoji',
+        title: 'Convert Emoji Shortcodes',
+        description: 'Show a shortcode such as :smile: as its emoji.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.convertAlerts',
+        title: 'Auto-Convert GitHub Alerts',
+        description: 'Turn a quote into an alert as you type its [!NOTE] marker.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.subSuperscriptShortcuts',
+        title: 'Sub/Superscript Shortcuts',
+        description: 'Turn ~text~ into subscript and ^text^ into superscript as you type.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.colourSwatches',
+        title: 'Colour Swatches in Inline Code',
+        description: 'Show a swatch beside a colour written in inline code.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.floatingToolbar',
+        title: 'Floating Formatting Toolbar',
+        description: 'Show formatting buttons above selected text.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'markdownEditor.blockHandles',
+        title: 'Block Handles',
+        description: 'Show the handle beside a block that drags it and adds a block under it.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.slashMenu',
+        title: 'Slash Menu',
+        description: 'Open the block menu when you type a slash on an empty line.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.mathBlocks',
+        title: 'Math Blocks Show',
+        description:
+          'What a math block shows while the caret is elsewhere: the equation, or its LaTeX.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'preview', label: 'Preview' },
+            { value: 'source', label: 'Source' },
+          ],
+        },
+        default: 'preview',
+      },
+      {
+        key: 'markdownEditor.smartPunctuation',
+        title: 'Smart Punctuation',
+        description:
+          'Turn straight quotes into curly ones, three dots into an ellipsis and two hyphens into a dash as you type.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'markdownEditor.undoHistory',
+        title: 'Undo History',
+        description: 'How many steps Undo can go back in a document.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '100', label: '100 Steps' },
+            { value: '250', label: '250 Steps' },
+            { value: '500', label: '500 Steps' },
+            { value: '1000', label: '1000 Steps' },
+          ],
+        },
+        default: 100,
+      },
+      {
+        key: 'markdownEditor.defaultPaste',
+        title: 'Default Paste',
+        description:
+          'How text on the clipboard pastes: read as Markdown, as plain text, or as a code block. The ribbon offers the others.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'markdown', label: 'Markdown' },
+            { value: 'plain', label: 'Plain Text' },
+            { value: 'code', label: 'Code Block' },
+          ],
+        },
+        default: 'markdown',
+      },
+      {
+        key: 'markdownEditor.richPaste',
+        title: 'Rich Paste Formatting',
+        description:
+          'How much formatting survives a paste from a web page or a word processor. Basic Only keeps emphasis, links, lists and headings.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'keep', label: 'Keep' },
+            { value: 'basic', label: 'Basic Only' },
+            { value: 'none', label: 'None' },
+          ],
+        },
+        default: 'keep',
+      },
+      {
+        key: 'markdownEditor.openFilesIn',
+        title: 'Open Markdown Files In',
+        description:
+          'Which editor a Markdown file opens in: the visual editor, or the code editor on its source.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'visual', label: 'Visual' },
+            { value: 'source', label: 'Source' },
+          ],
+        },
+        default: 'visual',
+      },
+      {
+        key: 'markdownEditor.outlineDepth',
+        title: 'Outline Depth',
+        description:
+          'The deepest heading level the Outline panel lists. It shows that level and above.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: 'Heading Level 1' },
+            { value: '2', label: 'Heading Level 2' },
+            { value: '3', label: 'Heading Level 3' },
+            { value: '4', label: 'Heading Level 4' },
+            { value: '5', label: 'Heading Level 5' },
+            { value: '6', label: 'Heading Level 6' },
+          ],
+        },
+        default: 6,
+      },
+    ],
+  },
+  {
+    // Checking and reading a Markdown document: spelling, review rules, Read Aloud and reading time.
+    id: 'markdown-review',
+    label: 'Markdown Review and Reading',
+    settings: [
+      {
+        key: 'markdownEditor.checkSpelling',
+        title: 'Check Spelling as You Type',
+        description:
+          'Underline misspelled words in the document, whether or not the Review panel is open. Spell Checking under Application › General has to be on too.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
       {
         key: 'spelling.personalDictionary',
         title: 'Personal Dictionary',
@@ -2861,6 +3318,149 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           "the system's own dictionary on macOS and Windows.",
         control: { kind: 'custom', component: 'personal-dictionary' },
         default: [],
+      },
+      {
+        key: 'markdownEditor.reviewRepeatedWord',
+        title: 'Review Repeated Words',
+        description: 'Flag a word written twice in a row.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.reviewPassiveVoice',
+        title: 'Review Passive Voice',
+        description: 'Flag sentences written in the passive voice.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.reviewArticleAgreement',
+        title: 'Review Article Agreement',
+        description: 'Flag "a" written before a vowel.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.reviewWeakIntensifier',
+        title: 'Review Weak Intensifiers',
+        description: 'Flag "very" and "really".',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.reviewSerialComma',
+        title: 'Serial Comma',
+        description: 'Ask for a comma before the last item of a list, flag one, or say nothing.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'require', label: 'Require' },
+            { value: 'forbid', label: 'Forbid' },
+            { value: 'off', label: 'Off' },
+          ],
+        },
+        default: 'require',
+      },
+      {
+        key: 'markdownEditor.readAloudVoice',
+        title: 'Read Aloud Voice',
+        description:
+          'The voice documents are read in. The Reader panel can change it for a session.',
+        control: { kind: 'custom', component: 'read-aloud-voice' },
+        default: '',
+      },
+      {
+        key: 'markdownEditor.enhancedVoicesOnly',
+        title: 'Show Only Enhanced Voices',
+        description:
+          'List only the higher-quality voices. All voices are listed when none are installed.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.readAloudSpeed',
+        title: 'Read Aloud Speed',
+        description: 'How fast documents are read.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0.5', label: '0.5×' },
+            { value: '0.75', label: '0.75×' },
+            { value: '1', label: '1×' },
+            { value: '1.25', label: '1.25×' },
+            { value: '1.5', label: '1.5×' },
+            { value: '2', label: '2×' },
+          ],
+        },
+        default: 1,
+      },
+      {
+        key: 'markdownEditor.readAloudPitch',
+        title: 'Read Aloud Pitch',
+        description: 'The pitch of the reading voice.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'low', label: 'Low' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'high', label: 'High' },
+          ],
+        },
+        default: 'normal',
+      },
+      {
+        key: 'markdownEditor.readAloudVolume',
+        title: 'Read Aloud Volume',
+        description: 'How loud documents are read.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '25', label: '25%' },
+            { value: '50', label: '50%' },
+            { value: '75', label: '75%' },
+            { value: '100', label: '100%' },
+          ],
+        },
+        default: 100,
+      },
+      {
+        key: 'markdownEditor.readAlongHighlight',
+        title: 'Read-Along Highlight',
+        description: 'What is highlighted as a document is read.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'word', label: 'Word' },
+            { value: 'sentence', label: 'Sentence' },
+            { value: 'none', label: 'None' },
+          ],
+        },
+        default: 'word',
+      },
+      {
+        key: 'markdownEditor.followSpokenWord',
+        title: 'Follow Spoken Word',
+        description: 'Scroll the document to keep the word being read in view.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'markdownEditor.readingSpeed',
+        title: 'Reading Speed',
+        description: "The words per minute behind the status strip's reading time.",
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '150', label: '150 Words per Minute' },
+            { value: '200', label: '200 Words per Minute' },
+            { value: '250', label: '250 Words per Minute' },
+            { value: '300', label: '300 Words per Minute' },
+          ],
+        },
+        default: 200,
       },
     ],
   },

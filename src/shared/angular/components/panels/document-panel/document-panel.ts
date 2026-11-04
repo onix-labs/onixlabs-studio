@@ -13,6 +13,7 @@ import { FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { DockPanel, DockPanelSwitch } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Documents } from '@shared/angular/services/documents/documents';
 
 /**
@@ -57,6 +58,13 @@ export class DocumentPanel {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Gets whether Markdown documents open in the code editor, as they were when this panel opened: a
+   * change to the setting does not swap the editor under an open document.
+   */
+  private readonly opensAsSource: boolean =
+    inject(Settings).get('markdownEditor.openFilesIn') === 'source';
+
+  /**
    * Holds the dock layout used to derive whether this document is the active one in its well.
    */
   private readonly dockState: DockState = inject(DockState);
@@ -78,7 +86,7 @@ export class DocumentPanel {
    * registry.
    */
   protected readonly documentType: Signal<string> = computed((): string =>
-    this.isMarkdown() ? MARKDOWN_TYPE : CODE_TYPE,
+    this.isMarkdown() && !this.opensAsSource ? MARKDOWN_TYPE : CODE_TYPE,
   );
 
   /**

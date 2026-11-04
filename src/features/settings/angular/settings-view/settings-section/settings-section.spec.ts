@@ -118,7 +118,7 @@ describe('SettingsSection', () => {
 
   it('render_whenMarkdownSection_rendersEverySetting', async () => {
     const element: HTMLElement = await render('markdown');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(8);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
   });
 
   it('render_whenSectionUnknown_rendersNothing', async () => {

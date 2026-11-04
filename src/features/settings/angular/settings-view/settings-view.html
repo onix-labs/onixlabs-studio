@@ -108,6 +108,13 @@
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
+        }
+        @case ('markdown-editing') {
+          <app-settings-section sectionId="markdown-editing" />
+        }
+        @case ('markdown-review') {
+          <app-settings-section sectionId="markdown-review" />
+          <app-read-aloud-voice />
           <app-personal-dictionary />
         }
         @case ('terminal') {

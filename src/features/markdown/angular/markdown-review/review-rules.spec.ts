@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { analyzeMarkdown, maskText } from './review-rules';
+import { ALL_REVIEW_RULES, analyzeMarkdown, maskText } from './review-rules';
 import { ReviewIssue } from './review-types';
 import { SpellChecker } from './review-spell';
 
@@ -68,5 +68,27 @@ describe('analyzeMarkdown', () => {
     const positions: number[] = issues.map((issue: ReviewIssue): number => issue.start);
     const sorted: number[] = [...positions].sort((a: number, b: number): number => a - b);
     expect(positions).toEqual(sorted);
+  });
+
+  it('analyzeMarkdown_whenARuleIsOff_leavesItsIssuesOut', () => {
+    const issues: readonly string[] = analyzeMarkdown(
+      'This is very good.',
+      { isCorrect: (): boolean => true, suggest: (): string[] => [] },
+      new Set<string>(),
+      { ...ALL_REVIEW_RULES, weakIntensifier: false },
+    ).map((issue: ReviewIssue): string => issue.ruleName);
+
+    expect(issues).not.toContain('Weak intensifier');
+  });
+
+  it('analyzeMarkdown_whenTheSerialCommaIsForbidden_flagsOneAndOffersItsRemoval', () => {
+    const issues: readonly ReviewIssue[] = analyzeMarkdown(
+      'Red, green, and blue.',
+      { isCorrect: (): boolean => true, suggest: (): string[] => [] },
+      new Set<string>(),
+      { ...ALL_REVIEW_RULES, serialComma: 'forbid' },
+    );
+
+    expect(issues[0]?.suggestions).toEqual(['Red, green and blue']);
   });
 });

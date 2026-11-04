@@ -27,6 +27,11 @@ const NEXT_TICK_DELAY: number = 0;
 const READING_LINE_OFFSET: number = 56;
 
 /**
+ * Heading level of an H6, the deepest there is.
+ */
+const HEADING_LEVEL_6: number = 6;
+
+/**
  * Divisor applied to the viewport width to probe the reading line at the editor's horizontal centre,
  * where the centred document content always sits.
  */
@@ -101,6 +106,7 @@ export class OutlineScrollSpy {
     commands: MarkdownCommands,
     zone: NgZone,
     isActive: () => boolean,
+    private readonly depth: () => number = (): number => HEADING_LEVEL_6,
   ) {
     this.paneOf = paneOf;
     this.commands = commands;
@@ -142,16 +148,21 @@ export class OutlineScrollSpy {
       if (!this.isActive() || view === null) {
         return;
       }
+      const depth: number = this.depth();
       const headings: OutlineHeading[] = [];
       const positions: number[] = [];
       view.state.doc.descendants((node: ProseMirrorNode, pos: number): boolean => {
         if (node.type.name !== 'heading') {
           return true;
         }
+        const level: number = (node.attrs['level'] as number) || HEADING_LEVEL_1;
+        if (level > depth) {
+          return false;
+        }
         positions.push(pos);
         headings.push({
           id: `heading-${headings.length}`,
-          level: (node.attrs['level'] as number) || HEADING_LEVEL_1,
+          level,
           text: node.textContent,
           index: headings.length,
         });

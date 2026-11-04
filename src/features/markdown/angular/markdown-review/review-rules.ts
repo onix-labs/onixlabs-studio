@@ -1,5 +1,47 @@
 import type { ReviewIssue, ReviewKind } from './review-types';
+import type { MarkdownSerialComma } from '@shared/angular/services/settings/settings-registry';
 import type { WordChecker } from './review-spell';
+
+/**
+ * Holds which of the curated rules review runs.
+ */
+export interface ReviewRuleOptions {
+  /**
+   * Gets whether a word written twice in a row is flagged.
+   */
+  readonly repeatedWord: boolean;
+
+  /**
+   * Gets whether the passive voice is flagged.
+   */
+  readonly passiveVoice: boolean;
+
+  /**
+   * Gets whether "a" before a vowel is flagged.
+   */
+  readonly articleAgreement: boolean;
+
+  /**
+   * Gets whether "very" and "really" are flagged.
+   */
+  readonly weakIntensifier: boolean;
+
+  /**
+   * Gets whether the serial comma is asked for, flagged, or left alone.
+   */
+  readonly serialComma: MarkdownSerialComma;
+}
+
+/**
+ * Holds what review runs unless told otherwise: every rule, asking for the serial comma.
+ */
+export const ALL_REVIEW_RULES: ReviewRuleOptions = {
+  repeatedWord: true,
+  passiveVoice: true,
+  articleAgreement: true,
+  weakIntensifier: true,
+  serialComma: 'require',
+};
 
 /**
  * Zero (indices, lengths, comparisons).
@@ -91,6 +133,11 @@ interface RuleSpec {
   readonly kind: ReviewKind;
 
   /**
+   * Gets whether the rule runs under the given options.
+   */
+  readonly applies: (options: ReviewRuleOptions) => boolean;
+
+  /**
    * Gets the rule name shown on the card.
    */
   readonly name: string;
@@ -114,6 +161,7 @@ interface RuleSpec {
 const RULES: readonly RuleSpec[] = [
   {
     kind: 'grammar',
+    applies: (options: ReviewRuleOptions): boolean => options.repeatedWord,
     name: 'Repeated word',
     regex: /\b(\w+)\s+\1\b/gi,
     build: (match: RegExpExecArray): RuleMatch => ({
@@ -124,6 +172,7 @@ const RULES: readonly RuleSpec[] = [
   },
   {
     kind: 'grammar',
+    applies: (options: ReviewRuleOptions): boolean => options.passiveVoice,
     name: 'Passive voice',
     regex: /\b(?:am|is|are|was|were|be|been|being)\s+\w+(?:ed|en)\b/gi,
     build: (match: RegExpExecArray): RuleMatch => ({
@@ -134,6 +183,7 @@ const RULES: readonly RuleSpec[] = [
   },
   {
     kind: 'grammar',
+    applies: (options: ReviewRuleOptions): boolean => options.articleAgreement,
     name: 'Article agreement',
     regex: /\ba\s+[aeio]\w*/gi,
     build: (match: RegExpExecArray): RuleMatch => ({
@@ -144,6 +194,7 @@ const RULES: readonly RuleSpec[] = [
   },
   {
     kind: 'style',
+    applies: (options: ReviewRuleOptions): boolean => options.serialComma === 'require',
     name: 'Serial comma',
     regex: /\b(\w+),\s+(\w+)\s+(and|or)\s+(\w+)/g,
     build: (match: RegExpExecArray): RuleMatch => ({
@@ -154,6 +205,18 @@ const RULES: readonly RuleSpec[] = [
   },
   {
     kind: 'style',
+    applies: (options: ReviewRuleOptions): boolean => options.serialComma === 'forbid',
+    name: 'Serial comma',
+    regex: /\b(\w+),\s+(\w+),\s+(and|or)\s+(\w+)/g,
+    build: (match: RegExpExecArray): RuleMatch => ({
+      start: match.index,
+      end: match.index + match[0].length,
+      suggestions: [`${match[1]}, ${match[2]} ${match[3]} ${match[4]}`],
+    }),
+  },
+  {
+    kind: 'style',
+    applies: (options: ReviewRuleOptions): boolean => options.weakIntensifier,
     name: 'Weak intensifier',
     regex: /\b(?:very|really)\b/gi,
     build: (match: RegExpExecArray): RuleMatch => ({
@@ -286,11 +349,12 @@ function findSpellingIssues(
  * Finds style/grammar issues by running the curated rules over masked text.
  * @param source The original source.
  * @param masked The masked source.
+ * @param options The rules to run.
  * @returns Returns the rule issues.
  */
-function findRuleIssues(source: string, masked: string): ReviewIssue[] {
+function findRuleIssues(source: string, masked: string, options: ReviewRuleOptions): ReviewIssue[] {
   const issues: ReviewIssue[] = [];
-  for (const rule of RULES) {
+  for (const rule of RULES.filter((candidate: RuleSpec): boolean => candidate.applies(options))) {
     rule.regex.lastIndex = ZERO;
     let match: RegExpExecArray | null;
     while ((match = rule.regex.exec(masked)) !== null) {
@@ -309,17 +373,19 @@ function findRuleIssues(source: string, masked: string): ReviewIssue[] {
  * @param source The markdown source.
  * @param checker The spell checker.
  * @param userDictionary The user's added words (lowercased).
+ * @param options The rules to run.
  * @returns Returns the issues in document order.
  */
 export function analyzeMarkdown(
   source: string,
   checker: WordChecker,
   userDictionary: ReadonlySet<string>,
+  options: ReviewRuleOptions = ALL_REVIEW_RULES,
 ): ReviewIssue[] {
   const masked: string = maskText(source);
   const issues: ReviewIssue[] = [
     ...findSpellingIssues(source, masked, checker, userDictionary),
-    ...findRuleIssues(source, masked),
+    ...findRuleIssues(source, masked, options),
   ];
   return issues.sort((a: ReviewIssue, b: ReviewIssue): number => a.start - b.start);
 }

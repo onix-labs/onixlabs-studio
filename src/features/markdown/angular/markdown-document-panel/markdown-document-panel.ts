@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -115,6 +116,11 @@ export class MarkdownDocumentPanel {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the settings, which give the reading speed behind the reading time.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the file system, whose native dialog asks before Reopen with Encoding gives up unsaved
    * edits.
    */
@@ -178,7 +184,10 @@ export class MarkdownDocumentPanel {
         this.documentStatus.clear(this.documentId());
         return;
       }
-      const stats: MarkdownStats = computeMarkdownStats(document.content());
+      const stats: MarkdownStats = computeMarkdownStats(
+        document.content(),
+        this.settings.get('markdownEditor.readingSpeed'),
+      );
       this.documentStatus.set(this.documentId(), {
         words: stats.words,
         readMinutes: stats.readMinutes,

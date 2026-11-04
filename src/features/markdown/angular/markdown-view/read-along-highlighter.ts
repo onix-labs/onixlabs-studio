@@ -145,6 +145,10 @@ export class ReadAlongHighlighter {
     if (!supportsHighlight()) {
       return;
     }
+    if (mode === 'none') {
+      this.clearReadHighlight();
+      return;
+    }
     const word: ReadWord | undefined = this.readWords[wordIndex];
     const wordRange: Range | undefined = this.readWordRanges[wordIndex];
     if (word === undefined || wordRange === undefined) {

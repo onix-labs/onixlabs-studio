@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import {
@@ -36,6 +37,13 @@ export class MarkdownStatusStrip {
   private readonly status: MarkdownStatus = inject(MarkdownStatus);
 
   /**
+   * Gets the reading speed behind the reading time.
+   */
+  private readonly readingSpeed: Signal<number> = inject(Settings).value(
+    'markdownEditor.readingSpeed',
+  );
+
+  /**
    * Gets the start-aligned segments: the document's path.
    */
   protected readonly leading: Signal<readonly StatusSegment[]> = computed(
@@ -57,7 +65,7 @@ export class MarkdownStatusStrip {
       if (context === null) {
         return [];
       }
-      const stats: MarkdownStats = computeMarkdownStats(context.text);
+      const stats: MarkdownStats = computeMarkdownStats(context.text, this.readingSpeed());
       const total: string = stats.words === 1 ? '1 word' : `${COUNT.format(stats.words)} words`;
       const selected: number | null =
         context.selectedText === null ? null : computeMarkdownStats(context.selectedText).words;

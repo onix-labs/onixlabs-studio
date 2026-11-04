@@ -24,6 +24,7 @@ import { ProjectsFolder } from './sections/projects-folder/projects-folder';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { PersonalDictionary } from './sections/personal-dictionary/personal-dictionary';
+import { ReadAloudVoice } from './sections/read-aloud-voice/read-aloud-voice';
 import { PluginsFolder } from './sections/plugins-folder/plugins-folder';
 import { PluginSuggestionsDismissed } from './sections/plugin-suggestions-dismissed/plugin-suggestions-dismissed';
 import { RememberedFileAccess } from './sections/remembered-file-access/remembered-file-access';
@@ -121,6 +122,8 @@ type SettingsSectionId =
   | 'code-diffs'
   | 'code-language-servers'
   | 'markdown'
+  | 'markdown-editing'
+  | 'markdown-review'
   | 'terminal'
   | 'terminal-appearance'
   | 'terminal-input'
@@ -285,6 +288,7 @@ interface SettingsTreeData {
     Modal,
     ModalContent,
     PersonalDictionary,
+    ReadAloudVoice,
     PluginsFolder,
     PluginSuggestionsDismissed,
     RememberedFileAccess,
@@ -511,7 +515,11 @@ export class SettingsView {
       group: 'documents',
       label: 'Markdown',
       icon: Icon.SETTINGS_MARKDOWN,
-      children: [{ id: 'markdown-general', label: 'General', sectionId: 'markdown' }],
+      children: [
+        { id: 'markdown-general', label: 'General', sectionId: 'markdown' },
+        { id: 'markdown-editing-leaf', label: 'Editing', sectionId: 'markdown-editing' },
+        { id: 'markdown-review-leaf', label: 'Review and Reading', sectionId: 'markdown-review' },
+      ],
     },
     {
       // Images have no settings of their own yet; the root carries its Keyboard leaf alone.
