@@ -454,7 +454,7 @@ describe('TerminalSessions', () => {
 
     sessions.terminate(session.id);
 
-    expect(terminate).toHaveBeenCalledWith(session.id);
+    expect(terminate).toHaveBeenCalledWith(session.id, 5000);
     expect(sessions.sessions()).toHaveLength(1);
   });
 

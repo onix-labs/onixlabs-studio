@@ -21,6 +21,13 @@ import { DebugPanel } from './debug-panel';
  * A controllable fake of the workspace debug session, exposing the signals and methods the panel reads.
  */
 class FakeSession {
+  public readonly hasMoreFrames: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly exceptionChoices: [boolean, boolean][] = [];
+
+  public setBreakOnExceptions(uncaught: boolean, all: boolean): void {
+    this.exceptionChoices.push([uncaught, all]);
+  }
+
   public readonly state: WritableSignal<DebugState> = signal<DebugState>('stopped');
   public readonly callStack: WritableSignal<readonly DebugFrame[]> = signal<readonly DebugFrame[]>(
     [],
@@ -190,6 +197,17 @@ describe('DebugPanel', () => {
     );
     // The fake session starts paused, so the strip offers Continue.
     expect(labels).toEqual(['Continue', 'Stop', 'Step Over', 'Step Into', 'Step Out']);
+  });
+
+  it('theExceptionBoxes_changeOneChoice_andKeepTheOther', () => {
+    const c: { onBreakOnAll(all: boolean): void } = fixture.componentInstance as unknown as {
+      onBreakOnAll(all: boolean): void;
+    };
+
+    c.onBreakOnAll(true);
+
+    // Uncaught is on until the user turns it off.
+    expect(session.exceptionChoices).toEqual([[true, true]]);
   });
 
   it('callStackRows_mapFramesAndMarkTheSelected', () => {

@@ -44,6 +44,17 @@ export type RunMode = 'run' | 'debug';
 export type RunPresentation = 'panel' | 'window';
 
 /**
+ * What is built before a configuration runs: nothing when a build exists (building when none does), a
+ * plain build, or a rebuild.
+ */
+export type RunBeforeRun = 'last-build' | 'build' | 'rebuild';
+
+/**
+ * Where a debuggee's console is, for a debugger that offers both.
+ */
+export type RunDebugConsole = 'integrated-terminal' | 'debug-console';
+
+/**
  * The provider kind stamped on a compound configuration, which is launched by Studio itself (by starting
  * its members) rather than by any one ecosystem's provider.
  */
@@ -120,6 +131,28 @@ export interface RunConfiguration {
   readonly presentation?: RunPresentation;
 
   /**
+   * Gets what is built before the configuration runs, or undefined for a plain build. Only a
+   * configuration whose run has a build step reads it.
+   */
+  readonly beforeRun?: RunBeforeRun;
+
+  /**
+   * Gets whether the debugger stops on the program's first line, or undefined for no.
+   */
+  readonly stopAtEntry?: boolean;
+
+  /**
+   * Gets where a debuggee's console is, or undefined for the adapter's usual place. Only an adapter
+   * that supports both reads it.
+   */
+  readonly debugConsole?: RunDebugConsole;
+
+  /**
+   * Gets the CMake build folder relative to the workspace root, or undefined for `build`.
+   */
+  readonly cmakeBuildFolder?: string;
+
+  /**
    * Gets the ids of the configurations a compound launches in parallel, or undefined for an ordinary
    * configuration. A compound's own command fields are ignored — its members carry them.
    */
@@ -181,6 +214,21 @@ export interface StudioUser {
    * Gets the id of the last-selected build configuration, or undefined when none was selected.
    */
   readonly lastBuildConfiguration?: string;
+
+  /**
+   * Gets whether the debugger breaks on uncaught exceptions, or undefined for the default, yes.
+   */
+  readonly breakOnUncaughtExceptions?: boolean;
+
+  /**
+   * Gets whether the debugger breaks on every exception, or undefined for the default, no.
+   */
+  readonly breakOnAllExceptions?: boolean;
+
+  /**
+   * Gets the Debug panel's watch expressions, or undefined when there are none.
+   */
+  readonly watchExpressions?: readonly string[];
 }
 
 /**
@@ -298,7 +346,33 @@ export function parseRunConfiguration(value: unknown): RunConfiguration | null {
           : undefined,
     members,
     default: record['default'] === true ? true : undefined,
+    beforeRun:
+      record['beforeRun'] === 'last-build' ||
+      record['beforeRun'] === 'build' ||
+      record['beforeRun'] === 'rebuild'
+        ? record['beforeRun']
+        : undefined,
+    stopAtEntry: record['stopAtEntry'] === true ? true : undefined,
+    debugConsole:
+      record['debugConsole'] === 'integrated-terminal' || record['debugConsole'] === 'debug-console'
+        ? record['debugConsole']
+        : undefined,
+    cmakeBuildFolder: safeBuildFolder(optionalString(record, 'cmakeBuildFolder')),
   };
+}
+
+/**
+ * Reads a CMake build folder, which ends up in a shell command: only a plain relative path is kept, so
+ * a hand-edited or agent-written file cannot smuggle anything else in.
+ * @param folder The raw folder.
+ * @returns Returns the folder, or undefined when it is not one.
+ */
+export function safeBuildFolder(folder: string | undefined): string | undefined {
+  return folder !== undefined &&
+    /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/.test(folder) &&
+    !folder.split('/').includes('..')
+    ? folder
+    : undefined;
 }
 
 /**
@@ -415,6 +489,19 @@ export function parseUser(raw: unknown): StudioUser {
     selectedRunConfigurationId: optionalString(record, 'selectedRunConfigurationId'),
     lastTarget: optionalString(record, 'lastTarget'),
     lastBuildConfiguration: optionalString(record, 'lastBuildConfiguration'),
+    breakOnUncaughtExceptions:
+      typeof record['breakOnUncaughtExceptions'] === 'boolean'
+        ? record['breakOnUncaughtExceptions']
+        : undefined,
+    breakOnAllExceptions:
+      typeof record['breakOnAllExceptions'] === 'boolean'
+        ? record['breakOnAllExceptions']
+        : undefined,
+    watchExpressions: Array.isArray(record['watchExpressions'])
+      ? record['watchExpressions'].filter(
+          (expression: unknown): expression is string => typeof expression === 'string',
+        )
+      : undefined,
   };
 }
 

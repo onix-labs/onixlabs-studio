@@ -10,7 +10,13 @@ import {
 } from '@angular/core';
 import { DirectoryEntry, DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
-import { expandRunConfiguration, RunConfiguration } from '@shared/api/studio';
+import {
+  expandRunConfiguration,
+  RunBeforeRun,
+  RunConfiguration,
+  safeBuildFolder,
+} from '@shared/api/studio';
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   Diagnostic,
   Diagnostics,
@@ -170,6 +176,32 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings a run goes by.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the builds waiting for the Build terminal, oldest first.
+   */
+  private readonly queuedBuilds: BuildTask[] = [];
+
+  /**
+   * Holds the number of the last run given a terminal of its own, so each gets a fresh one.
+   */
+  private runNumber: number = 0;
+
+  /**
+   * Holds the configurations run this session, which is what Use Last Build takes as built. A build
+   * that succeeded counts for them all, in {@link buildSucceeded}.
+   */
+  private readonly builtConfigurations: Set<string> = new Set<string>();
+
+  /**
+   * Holds whether a build has succeeded this session.
+   */
+  private buildSucceeded: boolean = false;
 
   /**
    * Holds the session identifiers of runs the user stopped, consumed as each stop's exit lands. A
@@ -385,6 +417,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       const task: BuildTask | null = this.toTask(leaf);
       if (task !== null) {
         this.dispatchRun(task, options);
+        this.builtConfigurations.add(leaf.id);
       } else {
         // Never a silent no-op: the failure surfaces in the leaf's own run session (exactly where
         // the user is looking), named after it, with the reason on stderr.
@@ -398,15 +431,29 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * program's stdin is wired to, revealed as it starts, one session per configuration so parallel
    * configurations stay separate and a relaunch replaces the same tab (fresh PTY, fresh buffer). One
    * launch per configuration runs at a time — a busy session leaves the request ignored unless the
-   * caller passed `restart` (granted by the ribbon's stop-and-restart prompt).
+   * caller passed `restart` (granted by the ribbon's stop-and-restart prompt) or `another`.
+   *
+   * Run Terminal set to New Each Run, and `another`, give the run a session of its own instead. A
+   * restart then has no session to replace, so it stops the runs it would have replaced.
    * @param task The run task to execute.
    * @param options The action options.
    */
   private dispatchRun(task: BuildTask, options?: BuildActionOptions): void {
-    const sessionId: string = this.runSessionId(task.id);
-    if (this.currentRuns.has(sessionId) && options?.restart !== true) {
+    const fresh: boolean =
+      options?.another === true || this.settings.get('workspaces.runTerminal') === 'new';
+    if (fresh && options?.restart === true) {
+      for (const run of this.runs()) {
+        if (run.taskId === task.id) {
+          this.cancel(run.id);
+        }
+      }
+    }
+    if (!fresh && this.currentRuns.has(this.runSessionId(task.id)) && options?.restart !== true) {
       return;
     }
+    const sessionId: string = fresh
+      ? `${this.runSessionId(task.id)}:${(this.runNumber += 1)}`
+      : this.runSessionId(task.id);
     const token: symbol = Symbol(task.id);
     this.log.info('BuildRunner', `Run started '${task.label}'`, task.id, sessionId);
     this.currentRuns.set(sessionId, token);
@@ -443,6 +490,8 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         env: task.env,
         cwd: task.cwd,
         presentation: task.presentation,
+        reveal: this.settings.get('workspaces.revealTerminalOnRun') === 'always',
+        keepOutput: this.settings.get('workspaces.runTerminal') === 'reuse-keep',
       });
     } finally {
       // The terminal has started (or the launch failed): the launching window is over either way.
@@ -462,6 +511,9 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     }
     if (!stoppedByUser) {
       this.notifyRunOutcome(task, sessionId, exitCode);
+      if (exitCode !== 0 && this.settings.get('workspaces.revealTerminalOnRun') === 'failure') {
+        this.sessions.activateAndReveal(sessionId);
+      }
     }
     const replay: { data: string } = await this.terminalBridge.replay(sessionId);
     this.publishProblems(task, replay.data);
@@ -640,13 +692,23 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * Executes a build-flavoured task in the workspace's reused Build terminal session: a read-only
    * PTY, revealed as it starts, interruptible with Ctrl+C. One build runs at a time — a busy Build
    * terminal leaves the request ignored unless the caller passed `restart` (granted by the ribbon's
-   * stop-and-restart prompt, so a running build is never killed silently). The task's previous
-   * problems are cleared up front and re-matched from the session's scrollback when it exits.
+   * stop-and-restart prompt, so a running build is never killed silently) or `queue`, which starts it
+   * when the terminal is free. The task's previous problems are cleared up front and re-matched from
+   * the session's scrollback when it exits.
    * @param task The build-flavoured task to execute.
    * @param options The action options.
    */
   private dispatchBuild(task: BuildTask, options?: BuildActionOptions): void {
     if (this.buildBusyState() && options?.restart !== true) {
+      if (options?.queue === true) {
+        this.log.info('BuildRunner', `Build queued '${task.label}'`, task.id);
+        this.queuedBuilds.push(task);
+        this.notifications.notify({
+          severity: 'info',
+          title: 'Build queued',
+          detail: `${task.label} starts when the running build ends.`,
+        });
+      }
       return;
     }
     const token: symbol = Symbol(task.id);
@@ -683,9 +745,14 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (exitCode === DISPOSED_EXIT_CODE) {
       return;
     }
+    this.buildSucceeded ||= exitCode === 0;
     this.notifyBuildOutcome(task, exitCode);
     const replay: { data: string } = await this.terminalBridge.replay(this.buildSessionId);
     this.publishProblems(task, replay.data);
+    const next: BuildTask | undefined = this.queuedBuilds.shift();
+    if (next !== undefined) {
+      this.dispatchBuild(next);
+    }
   }
 
   /**
@@ -778,8 +845,18 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         : { command: configuration.program };
     }
     const target: string = configuration.target ?? configuration.id;
+    const beforeRun: RunBeforeRun = this.beforeRunOf(configuration);
     if (configuration.providerKind === 'dotnet') {
-      return { command: `dotnet run --project "${this.resolveDotnetProject(target)}"` };
+      const project: string = this.resolveDotnetProject(target);
+      if (beforeRun === 'last-build') {
+        return { command: `dotnet run --no-build --project "${project}"` };
+      }
+      return {
+        command:
+          beforeRun === 'rebuild'
+            ? `dotnet build "${project}" --no-incremental && dotnet run --no-build --project "${project}"`
+            : `dotnet run --project "${project}"`,
+      };
     }
     if (configuration.providerKind === 'node') {
       return { command: `npm run ${target}` };
@@ -790,17 +867,47 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     }
     if (configuration.providerKind === 'cpp') {
       // Build the selected CMake executable target, then run the produced binary. A single-config
-      // generator places it at `build/<target>`.
-      return { command: `cmake --build build --target ${target} && ./build/${target}` };
+      // generator places it at `<build folder>/<target>`.
+      const folder: string = safeBuildFolder(configuration.cmakeBuildFolder) ?? 'build';
+      if (beforeRun === 'last-build') {
+        return { command: `./${folder}/${target}` };
+      }
+      const clean: string = beforeRun === 'rebuild' ? ' --clean-first' : '';
+      return {
+        command: `cmake --build ${folder} --target ${target}${clean} && ./${folder}/${target}`,
+      };
     }
     if (configuration.providerKind === 'rust') {
+      if (beforeRun === 'last-build') {
+        return { command: `./target/debug/${target}` };
+      }
       // The target is the crate name; `-p` selects it in both a single crate and a workspace.
-      return { command: `cargo run -p ${target}` };
+      return {
+        command:
+          beforeRun === 'rebuild'
+            ? `cargo clean -p ${target} && cargo run -p ${target}`
+            : `cargo run -p ${target}`,
+      };
     }
     if (configuration.providerKind === 'go') {
       return { command: 'go run .' };
     }
     return null;
+  }
+
+  /**
+   * Resolves what a configuration builds first. Use Last Build needs a build to use, so it builds until
+   * the configuration has run, or a build has succeeded, this session.
+   * @param configuration The run configuration.
+   * @returns Returns what to build.
+   */
+  private beforeRunOf(configuration: RunConfiguration): RunBeforeRun {
+    const beforeRun: RunBeforeRun = configuration.beforeRun ?? 'build';
+    return beforeRun === 'last-build' &&
+      !this.buildSucceeded &&
+      !this.builtConfigurations.has(configuration.id)
+      ? 'build'
+      : beforeRun;
   }
 
   /**

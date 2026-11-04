@@ -140,8 +140,10 @@ export class TerminalManager {
     ipcMain.handle(TerminalChannel.Dispose, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
       typeof id === 'string' ? this.dispose(id) : false,
     );
-    ipcMain.handle(TerminalChannel.Terminate, (_event: IpcMainInvokeEvent, id: unknown): boolean =>
-      typeof id === 'string' ? this.terminate(id) : false,
+    ipcMain.handle(
+      TerminalChannel.Terminate,
+      (_event: IpcMainInvokeEvent, id: unknown, grace: unknown): boolean =>
+        typeof id === 'string' ? this.terminate(id, grace) : false,
     );
     ipcMain.handle(
       TerminalChannel.GetCwd,
@@ -208,6 +210,7 @@ export class TerminalManager {
       return { success: false, error: 'Invalid terminal options' };
     }
     const candidate: {
+      earlierOutput?: unknown;
       id?: unknown;
       kind?: unknown;
       cols?: unknown;
@@ -297,6 +300,9 @@ export class TerminalManager {
       // A fresh spawn starts a fresh scrollback record, so a session re-created under a reused
       // identifier never replays its predecessor's output.
       this.scrollback.reset(id);
+      if (typeof candidate.earlierOutput === 'string' && candidate.earlierOutput.length > 0) {
+        this.scrollback.append(id, `${candidate.earlierOutput}\r\n`);
+      }
 
       if (command !== undefined) {
         // Echo what the session runs, like a prompt would: without it, a command that fails before
@@ -406,9 +412,10 @@ export class TerminalManager {
    * a session leader, so signalling its negated pid reaches the whole group a non-interactive shell
    * runs its children in.
    * @param id The terminal identifier.
+   * @param grace How many milliseconds the process has to end, or the default when not a usable number.
    * @returns Returns true when the session exists and was signalled.
    */
-  private terminate(id: string): boolean {
+  private terminate(id: string, grace?: unknown): boolean {
     const terminal: pty.IPty | undefined = this.terminals.get(id);
     if (terminal === undefined) {
       return false;
@@ -432,7 +439,7 @@ export class TerminalManager {
             );
             signalProcessTree(pid, 'SIGKILL');
           }
-        }, TERMINATE_GRACE_MS),
+        }, graceOf(grace)),
       );
     }
     return true;
@@ -738,4 +745,15 @@ export class TerminalManager {
       window.webContents.send(channel, ...args);
     }
   }
+}
+
+/**
+ * Reads a stop's grace period from an untrusted value.
+ * @param grace The value the renderer sent.
+ * @returns Returns the milliseconds to wait, or the default when it is not a usable number.
+ */
+function graceOf(grace: unknown): number {
+  return typeof grace === 'number' && Number.isFinite(grace) && grace > 0
+    ? grace
+    : TERMINATE_GRACE_MS;
 }

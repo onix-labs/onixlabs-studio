@@ -130,6 +130,24 @@
 
 <!-- Asked when Start targets a configuration that is still running: the program is only ever
      stopped after explicit confirmation, never silently. -->
+<!-- Save Documents Before Run or Build set to Ask. -->
+<app-modal
+  [open]="askingToSave()"
+  [width]="26"
+  ariaLabel="Save changes before running"
+  (dismiss)="answerSaveQuestion('cancel')"
+>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">Save Changes First?</h2>
+    <p class="directory-ribbon__confirm-message">Some open files have unsaved changes.</p>
+    <app-button-row>
+      <app-button variant="solid" label="Save" (click)="answerSaveQuestion('save')" />
+      <app-button label="Don't Save" (click)="answerSaveQuestion('skip')" />
+      <app-button label="Cancel" (click)="answerSaveQuestion('cancel')" />
+    </app-button-row>
+  </ng-template>
+</app-modal>
+
 <app-modal
   [open]="pendingRunConfiguration() !== null"
   [width]="26"

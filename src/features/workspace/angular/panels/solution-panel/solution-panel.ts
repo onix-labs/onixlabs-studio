@@ -49,6 +49,8 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
 import { PanelStatus } from '@shared/angular/components/panel-status/panel-status';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Settings } from '@shared/angular/services/settings/settings';
+import type { WhenBuildRunning } from '@shared/angular/services/settings/settings-registry';
+import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -199,6 +201,11 @@ export class SolutionPanel {
    * Holds the settings that decide how a file opens and how a delete goes.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the seam that saves documents before a build.
+   */
+  private readonly documentCommands: WorkspaceDocumentCommands = inject(WorkspaceDocumentCommands);
 
   /**
    * Gets whether a delete is permanent: Move to Trash is off.
@@ -1118,10 +1125,17 @@ export class SolutionPanel {
       project,
     };
     if (this.buildRunner.buildBusy()) {
-      this.pendingAction.set(pending);
+      const choice: WhenBuildRunning = this.settings.get('workspaces.whenBuildRunning');
+      if (choice === 'ask') {
+        this.pendingAction.set(pending);
+      } else {
+        this.documentCommands.afterSaving((): void =>
+          this.dispatchProjectAction(pending, choice === 'restart', choice === 'queue'),
+        );
+      }
       return;
     }
-    this.dispatchProjectAction(pending, false);
+    this.documentCommands.afterSaving((): void => this.dispatchProjectAction(pending, false));
   }
 
   /**
@@ -1132,7 +1146,7 @@ export class SolutionPanel {
     const pending: PendingProjectAction | null = this.pendingAction();
     this.pendingAction.set(null);
     if (pending !== null) {
-      this.dispatchProjectAction(pending, true);
+      this.documentCommands.afterSaving((): void => this.dispatchProjectAction(pending, true));
     }
   }
 
@@ -1147,15 +1161,24 @@ export class SolutionPanel {
    * Sends a capability action to this workspace's build runner, aimed at one project.
    * @param pending The action and the project it runs against.
    * @param restart Whether a busy build may be stopped and replaced.
+   * @param queue Whether a busy build is to run this one when it ends.
    */
-  private dispatchProjectAction(pending: PendingProjectAction, restart: boolean): void {
+  private dispatchProjectAction(
+    pending: PendingProjectAction,
+    restart: boolean,
+    queue: boolean = false,
+  ): void {
     this.log.info(
       'workspace.solution',
       `Project action '${pending.action}'`,
       pending.project.path,
       { restart },
     );
-    this.buildRunner.runAction(pending.action, { project: pending.project, restart });
+    this.buildRunner.runAction(pending.action, {
+      project: pending.project,
+      restart,
+      ...(queue ? { queue } : {}),
+    });
   }
 
   /**

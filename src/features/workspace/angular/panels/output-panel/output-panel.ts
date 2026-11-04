@@ -22,6 +22,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Output, OutputChannelInfo } from '@shared/angular/services/output/output';
 import { Theme } from '@shared/angular/services/theme/theme';
 
@@ -61,6 +62,11 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
    * Holds the structured logger for output panel actions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the settings, for Output Scrollback Lines.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Gets the active channel rendered by the terminal.
@@ -182,7 +188,7 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
       disableStdin: true,
       convertEol: true,
       allowProposedApi: true,
-      scrollback: 5000,
+      scrollback: this.settings.get('workspaces.outputScrollbackLines'),
     });
     const fitAddon: FitAddon = new FitAddon();
     xterm.loadAddon(fitAddon);

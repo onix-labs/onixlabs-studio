@@ -1,6 +1,7 @@
 import type { VcsPullMode, VcsSignCommits } from '@shared/api/version-control-protocol';
 import type { CloneLayout } from '@shared/api/clone-channels';
 import { encodingLabel, TEXT_ENCODINGS, type TextEncoding } from '@shared/api/text-encodings';
+import type { RunPresentation } from '@shared/api/studio';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -189,6 +190,32 @@ export type ExplorerSortOrder = 'folders-first' | 'files-first' | 'mixed';
 export type ExplorerOpenFilesWith = 'single' | 'double';
 
 /**
+ * Identifies what happens to edited files when a run or build starts.
+ */
+export type SaveBeforeRun = 'never' | 'ask' | 'always';
+
+/**
+ * Identifies what Run does while its configuration is already running.
+ */
+export type WhenConfigurationRunning = 'ask' | 'restart' | 'run-another';
+
+/**
+ * Identifies what a build does while another is running.
+ */
+export type WhenBuildRunning = 'ask' | 'restart' | 'queue';
+
+/**
+ * Identifies which terminal a run uses: the configuration's own, cleared or carrying on from the last
+ * run, or a new one each time.
+ */
+export type RunTerminalChoice = 'reuse-clear' | 'reuse-keep' | 'new';
+
+/**
+ * Identifies when a run brings its terminal forward.
+ */
+export type RevealTerminalOnRun = 'always' | 'failure' | 'never';
+
+/**
  * The languages Monaco formats itself (the TypeScript, JSON, CSS and HTML workers), which are the ones
  * Default Formatter chooses for: every other language has its language server's formatter or none.
  */
@@ -318,6 +345,15 @@ export interface SettingsValues {
   readonly 'workspaces.followSymbolicLinks': boolean;
   readonly 'workspaces.problemsShown': number;
   readonly 'workspaces.showDebugPanelsOnStart': boolean;
+  readonly 'workspaces.saveBeforeRun': SaveBeforeRun;
+  readonly 'workspaces.whenConfigurationRunning': WhenConfigurationRunning;
+  readonly 'workspaces.whenBuildRunning': WhenBuildRunning;
+  readonly 'workspaces.runTerminal': RunTerminalChoice;
+  readonly 'workspaces.revealTerminalOnRun': RevealTerminalOnRun;
+  readonly 'workspaces.newConfigurationsShowOutputIn': RunPresentation;
+  readonly 'workspaces.stopGracePeriod': number;
+  readonly 'workspaces.revealDebugOutputOnStart': boolean;
+  readonly 'workspaces.outputScrollbackLines': number;
 
   readonly 'textEditor.global.showLineNumbers': boolean;
   readonly 'textEditor.global.showMinimap': boolean;
@@ -1236,9 +1272,133 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Run and Debug',
     settings: [
       {
+        key: 'workspaces.saveBeforeRun',
+        title: 'Save Documents Before Run or Build',
+        description:
+          'What happens to edited files when a run or build starts. Files never saved yet are left alone.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'never', label: 'Never' },
+            { value: 'ask', label: 'Ask' },
+            { value: 'always', label: 'Always' },
+          ],
+        },
+        default: 'always',
+      },
+      {
+        key: 'workspaces.whenConfigurationRunning',
+        title: 'When a Configuration Is Already Running',
+        description:
+          'What Run does while its configuration is running. Only one debug session runs at a time, so Run Another asks instead for one.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'restart', label: 'Restart' },
+            { value: 'run-another', label: 'Run Another' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'workspaces.whenBuildRunning',
+        title: 'When a Build Is Already Running',
+        description: 'What a new build does while another is running.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ask', label: 'Ask' },
+            { value: 'restart', label: 'Restart' },
+            { value: 'queue', label: 'Queue' },
+          ],
+        },
+        default: 'ask',
+      },
+      {
+        key: 'workspaces.runTerminal',
+        title: 'Run Terminal',
+        description: 'Which terminal a run uses.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'reuse-clear', label: 'Reuse and Clear' },
+            { value: 'reuse-keep', label: 'Reuse and Keep' },
+            { value: 'new', label: 'New Each Run' },
+          ],
+        },
+        default: 'reuse-clear',
+      },
+      {
+        key: 'workspaces.revealTerminalOnRun',
+        title: 'Reveal Terminal on Run',
+        description: 'When a run brings its terminal forward.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'always', label: 'Always' },
+            { value: 'failure', label: 'On Failure' },
+            { value: 'never', label: 'Never' },
+          ],
+        },
+        default: 'always',
+      },
+      {
+        key: 'workspaces.newConfigurationsShowOutputIn',
+        title: 'New Configurations Show Output In',
+        description: 'Where a new run configuration shows its terminal. Each can change its own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'panel', label: 'Panel' },
+            { value: 'window', label: 'Window' },
+          ],
+        },
+        default: 'panel',
+      },
+      {
+        key: 'workspaces.stopGracePeriod',
+        title: 'Stop Grace Period',
+        description: 'How long a stopped program has to finish before it is ended by force.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1', label: '1 second' },
+            { value: '5', label: '5 seconds' },
+            { value: '10', label: '10 seconds' },
+            { value: '30', label: '30 seconds' },
+          ],
+        },
+        default: 5,
+      },
+      {
+        key: 'workspaces.revealDebugOutputOnStart',
+        title: 'Reveal Debug Output on Start',
+        description: 'Bring the Logs panel forward when a debug session starts.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'workspaces.outputScrollbackLines',
+        title: 'Output Scrollback Lines',
+        description: 'How many lines the Logs panel keeps to scroll back through.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+            { value: '10000', label: '10,000' },
+            { value: '50000', label: '50,000' },
+          ],
+        },
+        default: 5000,
+      },
+      {
         key: 'workspaces.showDebugPanelsOnStart',
         title: 'Show Debug and Logs Panels on Debug Start',
-        description: 'Add the Debug panel and bring Logs forward when a debug session starts.',
+        description: 'Add the Debug and Logs panels to the layout when a debug session starts.',
         control: { kind: 'toggle' },
         default: true,
       },

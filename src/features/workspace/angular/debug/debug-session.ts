@@ -1,3 +1,4 @@
+import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { Bridge } from '@shared/api/bridge';
@@ -35,13 +36,40 @@ const DEFAULT_THREAD_ID: number = 1;
  * to host the debuggee in a run terminal, so stdin-reading programs are debuggable. netcoredbg stays
  * on internalConsole until a real .NET run confirms its support (see #343).
  */
-const RUN_IN_TERMINAL_ADAPTERS: ReadonlySet<string> = new Set<string>(['js-debug']);
+export const RUN_IN_TERMINAL_ADAPTERS: ReadonlySet<string> = new Set<string>(['js-debug']);
 
 /**
  * The maximum number of stack frames requested for the call stack, a bound so a runaway recursion does
  * not fetch an unbounded stack.
  */
 const MAX_STACK_FRAMES: number = 50;
+
+/**
+ * Matches the adapters' names for their uncaught-exception filter (`uncaught`, `unhandled`,
+ * `user-unhandled`).
+ */
+const UNCAUGHT_FILTER: RegExp = /uncaught|unhandled/i;
+
+/**
+ * Matches the adapters' names for their every-exception filter (`all`, `raised`).
+ */
+const ALL_FILTER: RegExp = /^(all|raised)/i;
+
+/**
+ * Determines whether a stack goes on past the frames read: the adapter's total says so where it gives
+ * one, and otherwise a full page means there may be more.
+ * @param body The last stackTrace response.
+ * @param loaded How many frames are loaded in all.
+ * @returns Returns true when more can be asked for.
+ */
+function hasMoreFrames(
+  body: DebugProtocol.StackTraceResponse['body'] | undefined,
+  loaded: number,
+): boolean {
+  return body?.totalFrames !== undefined
+    ? body.totalFrames > loaded
+    : (body?.stackFrames ?? []).length === MAX_STACK_FRAMES;
+}
 
 /**
  * A call-stack frame the debug UI renders, mapped from the adapter's richer frame.
@@ -191,6 +219,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the workspace's `.studio` configuration, which remembers the exceptions to break on.
+   */
+  private readonly studio: StudioConfig = inject(StudioConfig);
+
+  /**
    * Holds the generic transport, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -250,6 +283,16 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Gets the call stack of the stopped thread, top frame first.
    */
   public readonly callStack: Signal<readonly DebugFrame[]> = this.callStackSignal.asReadonly();
+
+  /**
+   * Holds whether the call stack goes on beyond the frames loaded.
+   */
+  private readonly moreFramesSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the call stack goes on beyond the frames loaded.
+   */
+  public readonly hasMoreFrames: Signal<boolean> = this.moreFramesSignal.asReadonly();
 
   /**
    * Holds the id of the selected stack frame (whose scopes are shown), or null when none is stopped.
@@ -636,6 +679,10 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private async configure(): Promise<void> {
     await this.syncBreakpoints();
+    await this.sendExceptionBreakpoints(
+      this.studio.breakOnUncaughtExceptions(),
+      this.studio.breakOnAllExceptions(),
+    );
     if (this.capabilities.supportsConfigurationDoneRequest === true) {
       void this.request('configurationDone');
     }
@@ -726,6 +773,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
       >('stackTrace', { threadId, startFrame: 0, levels: MAX_STACK_FRAMES });
       const frames: readonly DebugFrame[] = (body?.stackFrames ?? []).map(toFrame);
       this.callStackSignal.set(frames);
+      this.moreFramesSignal.set(hasMoreFrames(body, frames.length));
       const top: DebugFrame | undefined = frames[0];
       this.currentFrameSignal.set(top?.id ?? null);
       this.locationSignal.set(locationOf(top));
@@ -737,6 +785,70 @@ export class DebugSession implements DebugHandler, OnDestroy {
     } catch {
       // A failed stackTrace leaves the call stack empty; the session is still usable.
       this.clearInspection();
+    }
+  }
+
+  /**
+   * Loads the next page of the stopped thread's call stack, onto the end of what is shown.
+   * @returns Returns a promise that resolves once the frames are in.
+   */
+  public async loadMoreFrames(): Promise<void> {
+    const start: number = this.callStackSignal().length;
+    try {
+      const body: DebugProtocol.StackTraceResponse['body'] = await this.request<
+        DebugProtocol.StackTraceResponse['body']
+      >('stackTrace', {
+        threadId: this.threadId ?? DEFAULT_THREAD_ID,
+        startFrame: start,
+        levels: MAX_STACK_FRAMES,
+      });
+      const frames: readonly DebugFrame[] = (body?.stackFrames ?? []).map(toFrame);
+      this.callStackSignal.update((current: readonly DebugFrame[]): readonly DebugFrame[] => [
+        ...current,
+        ...frames,
+      ]);
+      this.moreFramesSignal.set(hasMoreFrames(body, start + frames.length));
+    } catch {
+      // What is shown stays; the frames beyond it could not be read.
+      this.moreFramesSignal.set(false);
+    }
+  }
+
+  /**
+   * Chooses which exceptions the debugger breaks on, remembering the choice for this workspace and
+   * telling a running session.
+   * @param uncaught Whether it breaks on uncaught exceptions.
+   * @param all Whether it breaks on every exception.
+   */
+  public setBreakOnExceptions(uncaught: boolean, all: boolean): void {
+    void this.studio.setBreakOnExceptions(uncaught, all);
+    if (this.currentSession !== null) {
+      void this.sendExceptionBreakpoints(uncaught, all);
+    }
+  }
+
+  /**
+   * Tells the adapter which exceptions to break on, in its own filter names. An adapter that offers no
+   * such filters is not asked.
+   * @param uncaught Whether it breaks on uncaught exceptions.
+   * @param all Whether it breaks on every exception.
+   */
+  private async sendExceptionBreakpoints(uncaught: boolean, all: boolean): Promise<void> {
+    const offered: readonly DebugProtocol.ExceptionBreakpointsFilter[] =
+      this.capabilities.exceptionBreakpointFilters ?? [];
+    if (offered.length === 0) {
+      return;
+    }
+    const filters: readonly string[] = offered
+      .map((filter: DebugProtocol.ExceptionBreakpointsFilter): string => filter.filter)
+      .filter(
+        (filter: string): boolean =>
+          (uncaught && UNCAUGHT_FILTER.test(filter)) || (all && ALL_FILTER.test(filter)),
+      );
+    try {
+      await this.request('setExceptionBreakpoints', { filters });
+    } catch (error: unknown) {
+      this.log.warn('debug-session', 'Exception breakpoints refused', error);
     }
   }
 
@@ -827,6 +939,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
    */
   private clearInspection(): void {
     this.callStackSignal.set([]);
+    this.moreFramesSignal.set(false);
     this.scopesSignal.set([]);
     this.currentFrameSignal.set(null);
     this.locationSignal.set(null);
@@ -874,10 +987,14 @@ export class DebugSession implements DebugHandler, OnDestroy {
       // Adapters that honour runInTerminal host the debuggee in the workspace's run terminal (real
       // stdin, coloured output); the rest run it under their own console, stdout/stderr arriving as
       // `output` events this session routes into the Logs channel.
-      console: RUN_IN_TERMINAL_ADAPTERS.has(this.activeAdapterId)
-        ? 'integratedTerminal'
-        : 'internalConsole',
+      console:
+        RUN_IN_TERMINAL_ADAPTERS.has(this.activeAdapterId) &&
+        configuration.debugConsole !== 'debug-console'
+          ? 'integratedTerminal'
+          : 'internalConsole',
       noDebug: false,
+      // Adapters name this one of two ways, and ignore the one that is not theirs.
+      ...(configuration.stopAtEntry === true ? { stopOnEntry: true, stopAtEntry: true } : {}),
     };
   }
 

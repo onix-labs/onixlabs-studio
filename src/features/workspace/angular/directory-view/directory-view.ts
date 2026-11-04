@@ -524,7 +524,7 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.workspaceRunConfigurations.defaultConfiguration(),
       starting: (): boolean => this.defaultRunStarting(),
       running: (): boolean => this.defaultRunRunning(),
-      run: (): void => this.runDefaultConfiguration(),
+      run: (): void => void this.runDefaultConfiguration(),
       stop: (): void => this.stopDefaultConfiguration(),
     },
   });
@@ -1153,6 +1153,8 @@ export class DirectoryView implements OnInit, OnDestroy {
     ),
     save: (): void => void this.saveActive(),
     saveAll: (): void => void this.saveAll(),
+    hasUnsavedFiles: (): boolean => this.unsavedFiles().length > 0,
+    saveFiles: (): Promise<void> => this.saveFiles(),
   };
 
   /**
@@ -1678,6 +1680,27 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Gets the documents with a file and unsaved changes: what a run or build saves first.
+   * @returns Returns the documents.
+   */
+  private unsavedFiles(): readonly CodeDocument[] {
+    return this.documents
+      .list()
+      .filter(
+        (document: CodeDocument): boolean => document.dirty() && document.filePath() !== null,
+      );
+  }
+
+  /**
+   * Saves the documents with a file and unsaved changes.
+   */
+  private async saveFiles(): Promise<void> {
+    for (const document of this.unsavedFiles()) {
+      await this.documents.save(document.id);
+    }
+  }
+
+  /**
    * Reveals the Find & Replace panel in this tab's dock — tabbing it into the right-hand group, or
    * docking a new one on the right when the layout has none — then activating and focusing it. A
    * request (#1007) is posted to the panel first, so a panel the reveal creates takes it as it opens.
@@ -1816,11 +1839,9 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @param running Whether a debug session is currently running in this tab.
    */
   private syncDebugPanel(running: boolean): void {
-    if (!this.settings.get('workspaces.showDebugPanelsOnStart')) {
-      return;
-    }
+    const shown: boolean = this.settings.get('workspaces.showDebugPanelsOnStart');
     const present: boolean = collectPanelIds(this.dockState.layout()).includes('debug');
-    if (running && !present) {
+    if (running && shown && !present) {
       const anchor: StackNode | null =
         findStackOfPanel(this.dockState.layout(), 'errors') ??
         firstStackOfRole(this.dockState.layout(), 'tool');
@@ -1828,10 +1849,12 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.dockState.tabInto(anchor.id, 'debug');
       }
     }
-    if (running) {
+    if (running && shown) {
       // Until runInTerminal lands, the debuggee's output arrives in the Logs channel: bring Logs
       // forward for the session's start, with the Debug panel a tab away for the first break.
-      this.ensureLogsPanel(true);
+      this.ensureLogsPanel(this.settings.get('workspaces.revealDebugOutputOnStart'));
+    } else if (running && this.settings.get('workspaces.revealDebugOutputOnStart')) {
+      this.dockReveal.reveal('output');
     }
   }
 
@@ -2198,7 +2221,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * this only guards a race). The workspace's other configurations are passed as siblings so a default
    * that is a compound resolves its members.
    */
-  private runDefaultConfiguration(): void {
+  private async runDefaultConfiguration(): Promise<void> {
     const configuration: RunConfiguration | null =
       this.workspaceRunConfigurations.defaultConfiguration();
     if (configuration === null) {
@@ -2207,6 +2230,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Latch the spinner first, so a near-instant launch still shows one long enough to register.
     this.log.info('workspace.run', 'Default run configuration started', configuration.name);
     this.runStartingHold.begin();
+    // Mission Control has no ribbon to ask from, so Ask runs what is on disk, as Never does.
+    if (this.settings.get('workspaces.saveBeforeRun') === 'always') {
+      await this.saveFiles();
+    }
     this.buildRunner.runConfiguration(
       configuration,
       this.workspaceRunConfigurations.configurations(),

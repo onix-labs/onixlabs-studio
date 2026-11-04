@@ -144,6 +144,47 @@
               <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
             </app-setting-row>
 
+            @if (isDebug()) {
+              <app-setting-row label="Stop at Entry" description="Stop on the program's first line">
+                <app-toggle
+                  [checked]="configuration.stopAtEntry === true"
+                  (checkedChange)="onStopAtEntry($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (hasDebugConsoleChoice()) {
+              <app-setting-row label="Debug Console">
+                <app-dropdown
+                  [options]="debugConsoleOptions"
+                  [value]="configuration.debugConsole ?? 'integrated-terminal'"
+                  [fullWidth]="true"
+                  (valueChange)="onDebugConsole($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (hasBuildStep()) {
+              <app-setting-row label="Before Run">
+                <app-dropdown
+                  [options]="beforeRunOptions"
+                  [value]="configuration.beforeRun ?? 'build'"
+                  [fullWidth]="true"
+                  (valueChange)="onBeforeRun($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (isCmake()) {
+              <app-setting-row label="CMake Build Folder">
+                <app-text-field
+                  [value]="configuration.cmakeBuildFolder ?? ''"
+                  placeholder="build"
+                  (valueChange)="onCmakeBuildFolder($event)"
+                />
+              </app-setting-row>
+            }
+
             <app-setting-row
               label="New Window"
               description="Show this run's terminal in its own window"

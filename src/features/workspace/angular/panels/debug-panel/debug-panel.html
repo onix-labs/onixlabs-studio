@@ -71,9 +71,26 @@
           }
         </ng-template>
       </app-tree-view>
+      @if (hasMoreFrames()) {
+        <app-button label="Load More Frames" size="small" (click)="onLoadMoreFrames()" />
+      }
     } @else {
       <p class="debug-empty">Not paused.</p>
     }
+    <!-- The labels wrap the checkboxes' projected native inputs, associating them at runtime; the lint
+         rule cannot see through the component boundary to verify this statically. -->
+    <div class="debug-exceptions">
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="debug-exceptions__option">
+        <app-checkbox [checked]="breakOnUncaught()" (checkedChange)="onBreakOnUncaught($event)" />
+        <span>Uncaught Exceptions</span>
+      </label>
+      <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+      <label class="debug-exceptions__option">
+        <app-checkbox [checked]="breakOnAll()" (checkedChange)="onBreakOnAll($event)" />
+        <span>All Exceptions</span>
+      </label>
+    </div>
   </section>
 
   <section class="debug-column">
