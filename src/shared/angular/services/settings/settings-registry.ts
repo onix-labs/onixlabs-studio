@@ -474,6 +474,7 @@ export interface SettingsValues {
   readonly 'accessibility.tooltipDelay': number;
   readonly 'accessibility.reduceMotion': ReduceMotion;
   readonly 'accessibility.scrollBars': ScrollBars;
+  readonly 'accessibility.colourBlindSafe': boolean;
 
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestToasts': boolean;
@@ -1110,6 +1111,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'auto-hide',
+      },
+      {
+        key: 'accessibility.colourBlindSafe',
+        title: 'Colour-Blind Safe Colours',
+        description:
+          'Show saved, unsaved and deleted changes in blue, orange and vermilion rather than ' +
+          'green, yellow and red, in the change margin, diffs, commit details, the status strip ' +
+          'and agent edit cards.',
+        control: { kind: 'toggle' },
+        default: false,
       },
     ],
   },

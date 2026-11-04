@@ -1,3 +1,4 @@
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
@@ -180,6 +181,11 @@ export class CodeDocumentPanel {
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
    */
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
+
+  /**
+   * Holds the accessibility choices, one of which changes the change margin's colours.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
 
   /**
    * Holds the editor-command registry this panel registers its editor with, keyed by document id. A
@@ -519,6 +525,7 @@ export class CodeDocumentPanel {
     // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
       this.theme.resolvedMode();
+      this.accessibility.colourBlindSafe();
       if (!this.paneReady()) {
         return;
       }

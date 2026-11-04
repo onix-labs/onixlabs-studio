@@ -27,6 +27,19 @@ describe('Accessibility', () => {
     expect(document.documentElement.hasAttribute('data-reduced-motion')).toBe(false);
   });
 
+  it('colourBlindSafe_whenOn_marksTheRootAndOffClearsIt', () => {
+    TestBed.inject(Accessibility);
+    const settings: Settings = TestBed.inject(Settings);
+
+    settings.assign('accessibility.colourBlindSafe', true);
+    TestBed.tick();
+    expect(document.documentElement.getAttribute('data-colour-blind-safe')).toBe('true');
+
+    settings.assign('accessibility.colourBlindSafe', false);
+    TestBed.tick();
+    expect(document.documentElement.hasAttribute('data-colour-blind-safe')).toBe(false);
+  });
+
   it('scrollBars_marksTheRootWithTheChoice', () => {
     TestBed.inject(Accessibility);
     TestBed.inject(Settings).assign('accessibility.scrollBars', 'always');

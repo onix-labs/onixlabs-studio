@@ -1,3 +1,4 @@
+import { Accessibility } from '@shared/angular/services/accessibility/accessibility';
 import { governedByEditorConfig } from '@shared/angular/services/document-status/document-status';
 import {
   ChangeDetectionStrategy,
@@ -245,6 +246,11 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
   private readonly changeMargins: ChangeMargins = inject(ChangeMargins);
 
   /**
+   * Holds the accessibility choices, one of which changes the change margin's colours.
+   */
+  private readonly accessibility: Accessibility = inject(Accessibility);
+
+  /**
    * Holds the document-bound code editor core this view drives, or undefined before the view
    * initialises.
    */
@@ -336,6 +342,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
     // themselves follow CSS automatically, but the ruler is a canvas colour).
     effect((): void => {
       this.theme.resolvedMode();
+      this.accessibility.colourBlindSafe();
       if (!this.paneReady()) {
         return;
       }

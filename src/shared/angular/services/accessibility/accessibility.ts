@@ -46,12 +46,19 @@ export class Accessibility {
   });
 
   /**
+   * Gets whether changes are shown in the colour-blind safe palette.
+   */
+  public readonly colourBlindSafe: Signal<boolean> = this.settings.value(
+    'accessibility.colourBlindSafe',
+  );
+
+  /**
    * Gets how scroll bars are shown.
    */
   private readonly scrollBars: Signal<ScrollBars> = this.settings.value('accessibility.scrollBars');
 
   /**
-   * Initializes the service, following the system's motion preference and applying both settings to
+   * Initializes the service, following the system's motion preference and applying the settings to
    * the document root now and on every change.
    */
   public constructor() {
@@ -71,6 +78,11 @@ export class Accessibility {
         root.removeAttribute('data-reduced-motion');
       }
       root.setAttribute('data-scrollbars', this.scrollBars());
+      if (this.colourBlindSafe()) {
+        root.setAttribute('data-colour-blind-safe', 'true');
+      } else {
+        root.removeAttribute('data-colour-blind-safe');
+      }
     });
   }
 
