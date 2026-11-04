@@ -4,6 +4,7 @@
   <app-modal
     [open]="true"
     [width]="reviewing() ? 36 : 28"
+    [frameless]="true"
     ariaLabel="Delete old conversations"
     (dismiss)="keep()"
   >
@@ -17,20 +18,21 @@
             for more than {{ period() }}. Delete {{ due().length === 1 ? 'it' : 'them' }}, or review
             which go.
           </p>
-          <p class="retention__context">Delete Conversations After: {{ period() }}</p>
           <app-button-row>
             <app-button
               variant="solid"
-              label="Yes"
+              tone="danger"
+              label="Delete"
               data-testid="retention-yes"
               (click)="deleteAll()"
             />
             <app-button
+              variant="ghost"
               label="Review"
               data-testid="retention-review"
               (click)="reviewing.set(true)"
             />
-            <app-button variant="none" label="No" data-testid="retention-no" (click)="keep()" />
+            <app-button variant="none" label="Keep" data-testid="retention-no" (click)="keep()" />
           </app-button-row>
         </div>
       } @else {

@@ -159,6 +159,12 @@
   }
 }
 
+// A disabled solid button fades like any other, but its label takes a very light shade of its tone
+// rather than fading to grey.
+:host(.button--solid:not(.button--loading)) .button:disabled {
+  color: color-mix(in srgb, var(--btn-tone-color) 25%, white);
+}
+
 // Ghost: a secondary action that needs to stand out. At rest it is already stronger than any button's
 // hover, so a borderless button lit up beside it still reads as the quieter of the two; pointing at it
 // goes further again.

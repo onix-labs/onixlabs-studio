@@ -29,6 +29,7 @@
 // host's height, which a fixed height gives it.
 .go-to-dialog__list {
   block-size: 18rem;
+  background: var(--form-control-background-color);
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
@@ -79,5 +80,4 @@
 // height for the list's rows to fill.
 .go-to-dialog__list--files {
   block-size: 12rem;
-  background: var(--form-control-background-color);
 }

@@ -1,8 +1,16 @@
 @if (binding(); as current) {
-  <app-modal [open]="true" [width]="26" ariaLabel="Set chord" (dismiss)="cancel()">
+  <app-modal
+    [open]="true"
+    [width]="26"
+    [frameless]="true"
+    ariaLabel="Set chord"
+    (dismiss)="cancel()"
+  >
     <ng-template appModalContent>
       <div class="chord-modal">
         <h2 class="chord-modal__title">Set Chord</h2>
+
+        <p class="chord-modal__context">{{ current.description }} · {{ current.view }}</p>
 
         <!-- Focused when the dialog opens, so the first key combination pressed is read here. -->
         <div
@@ -28,15 +36,16 @@
           <p class="chord-modal__hint">Press the key combination, then Enter to accept it.</p>
         }
 
-        <p class="chord-modal__context">{{ current.description }} · {{ current.view }}</p>
-
         <div class="chord-modal__footer">
-          <app-button
-            label="Clear"
-            [disabled]="captured() === ''"
-            data-testid="chord-clear"
-            (click)="clear()"
-          />
+          <app-button-row align="start">
+            <app-button
+              variant="ghost"
+              label="Clear"
+              [disabled]="captured() === ''"
+              data-testid="chord-clear"
+              (click)="clear()"
+            />
+          </app-button-row>
           <app-button-row>
             <app-button
               variant="solid"

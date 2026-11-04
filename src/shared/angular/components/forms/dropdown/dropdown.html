@@ -59,3 +59,6 @@
     }
   }
 </select>
+@if (label(); as text) {
+  <span class="dropdown__floating-label" aria-hidden="true">{{ text }}</span>
+}

@@ -176,3 +176,24 @@
   max-block-size: calc(var(--dropdown-menu-max-items, 16) * 1lh + 1.5rem);
   overflow-y: auto;
 }
+
+// The floating variant: as tall as a floating text field, with its label risen at the top of the box
+// and the choice on the line below it.
+:host(.dropdown--floating) {
+  position: relative;
+}
+
+:host(.dropdown--floating) .dropdown {
+  block-size: 2.75rem;
+  padding: 1.1rem 0.6rem 0.3rem;
+}
+
+.dropdown__floating-label {
+  position: absolute;
+  inset-block-start: 0.4rem;
+  inset-inline-start: calc(0.6rem + 0.0625rem);
+  font-size: 0.64rem;
+  line-height: 1;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+}

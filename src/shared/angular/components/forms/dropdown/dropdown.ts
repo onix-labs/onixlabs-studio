@@ -95,6 +95,7 @@ interface MutableDropdownGroup {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.dropdown--full]': 'fullWidth()',
+    '[class.dropdown--floating]': 'label() !== undefined',
   },
 })
 export class Dropdown {
@@ -118,6 +119,13 @@ export class Dropdown {
    * Gets the accessible name applied to the underlying select when there is no visible label.
    */
   public readonly ariaLabel: InputSignal<string | undefined> = input<string>();
+
+  /**
+   * Gets the label carried inside the box, or undefined for a plain dropdown. Given one, the dropdown
+   * stands as tall as a floating text field and keeps its label at the top of the box, risen, since a
+   * dropdown always shows a choice beneath it.
+   */
+  public readonly label: InputSignal<string | undefined> = input<string>();
 
   /**
    * Gets a value indicating whether the dropdown stretches to fill its container's width rather than
