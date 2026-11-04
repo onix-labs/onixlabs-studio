@@ -283,6 +283,8 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
+  readonly 'textEditor.global.detectIndentation': boolean;
+  readonly 'textEditor.honourEditorConfig': boolean;
   readonly 'textEditor.global.renderWhitespace': RenderWhitespace;
   readonly 'textEditor.global.rulers': string;
   readonly 'textEditor.global.indentGuides': IndentGuides;
@@ -1775,6 +1777,26 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'code-editing',
     label: 'Code Editing',
     settings: [
+      {
+        key: 'textEditor.honourEditorConfig',
+        title: 'Honour EditorConfig',
+        description:
+          "Let a project's .editorconfig decide indentation, line endings, encoding, trailing " +
+          'whitespace, the final newline and the ruler for the files it covers, over these settings ' +
+          'and each language page.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'textEditor.global.detectIndentation',
+        title: 'Detect Indentation',
+        description:
+          "Read a file's indentation from its content. Tab Size and Insert Spaces apply to new and " +
+          'empty files.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
       {
         key: 'textEditor.global.tabSize',
         title: 'Tab Size',

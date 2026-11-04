@@ -1,4 +1,4 @@
-import { effect, inject, OnDestroy, Service, untracked } from '@angular/core';
+import { DestroyRef, effect, inject, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
@@ -70,6 +70,7 @@ import {
   supportsPullDiagnostics,
 } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
 import {
@@ -786,6 +787,11 @@ export class LspClient implements OnDestroy {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the EditorConfig resolver, which says when an `.editorconfig` changes.
+   */
+  private readonly editorConfigs: EditorConfigs = inject(EditorConfigs);
+
+  /**
    * Holds the notification store a server's errors and warnings are raised in (#1134).
    */
   private readonly notifications: Notifications = inject(Notifications);
@@ -1147,6 +1153,9 @@ export class LspClient implements OnDestroy {
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
+    inject(DestroyRef).onDestroy(
+      this.editorConfigs.onChanged((path: string): void => this.restartForEditorConfig(path)),
+    );
     // Stop any session whose server has stopped being installed. Uninstalling a language server should
     // stop it, not leave it serving until the window is next reopened — and a plugin removed from the
     // sideload directory is the same situation arriving a different way.
@@ -1853,6 +1862,27 @@ export class LspClient implements OnDestroy {
       this.log.info('LspClient', `Brace style is now '${braceStyle}'; restarting`, sessionId);
       this.sessionInfo.set(sessionId, { ...info, braceStyle });
       void this.restart(sessionId, braceStyle);
+    }
+  }
+
+  /**
+   * Restarts each session whose server reads `.editorconfig` only as it starts, where the changed
+   * file reaches its files: from above its root, at it, or from a folder within (#1177).
+   * @param path The changed `.editorconfig`.
+   */
+  private restartForEditorConfig(path: string): void {
+    const folder: string = parentDir(path);
+    for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
+      const reads: boolean = this.lspSettings
+        .catalogue()
+        .some(
+          (server: LspServerSummary): boolean =>
+            server.id === info.serverId && server.readsEditorConfigAtStart === true,
+        );
+      if (reads && (isWithin(info.rootPath, folder) || isWithin(folder, info.rootPath))) {
+        this.log.info('LspClient', `${path} changed; restarting`, sessionId);
+        void this.restart(sessionId);
+      }
     }
   }
 

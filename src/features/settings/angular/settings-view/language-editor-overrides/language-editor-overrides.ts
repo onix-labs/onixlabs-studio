@@ -61,6 +61,16 @@ const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
 const BRACE_STYLE_KEY: string = 'textEditor.global.braceStyle';
 
 /**
+ * The keys of the per-language settings a project's `.editorconfig` can decide.
+ */
+const EDITOR_CONFIG_KEYS: ReadonlySet<string> = new Set<string>([
+  'textEditor.global.tabSize',
+  'textEditor.global.insertSpaces',
+  'textEditor.global.detectIndentation',
+  'textEditor.global.rulers',
+]);
+
+/**
  * Edits one language's overrides of the code settings: the Appearance or Editing section of a
  * language's page under Code › Languages. Rows are driven by the same registry metadata as the global editor settings — every
  * setting marked `profileOverridable` gets a row with an Override tick and the setting's own control,
@@ -149,9 +159,13 @@ export class LanguageEditorOverrides {
    * @returns Returns the description.
    */
   protected describe(setting: SettingDef): string {
+    const note: string =
+      EDITOR_CONFIG_KEYS.has(setting.key) && this.settings.get('textEditor.honourEditorConfig')
+        ? ' Set by .editorconfig for the files one covers.'
+        : '';
     return setting.key === BRACE_STYLE_KEY && !this.takesBraceStyle()
       ? `${setting.description} Not supported by this language's server yet.`
-      : setting.description;
+      : `${setting.description}${note}`;
   }
 
   /**

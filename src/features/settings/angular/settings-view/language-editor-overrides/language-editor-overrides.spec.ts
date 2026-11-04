@@ -66,7 +66,7 @@ describe('LanguageEditorOverrides', () => {
       'Rust files',
     );
     // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(15);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(16);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -186,12 +186,26 @@ describe('LanguageEditorOverrides', () => {
     fixture.componentRef.setInput('section', 'code-editing');
     await fixture.whenStable();
     expect(titles()).toEqual([
+      'Detect Indentation',
       'Tab Size',
       'Insert Spaces',
       'Word Wrap',
       'Format on Type',
       'Brace Style',
     ]);
+  });
+
+  it('saysWhatAnEditorConfigDecides_whileItIsHonoured', async () => {
+    const note: string = 'Set by .editorconfig';
+    fixture.componentRef.setInput('section', 'code-editing');
+    await fixture.whenStable();
+    expect(element.textContent).toContain(note);
+
+    TestBed.inject(Settings).set('textEditor.honourEditorConfig', false);
+    fixture.componentRef.setInput('section', 'code-appearance');
+    fixture.componentRef.setInput('section', 'code-editing');
+    await fixture.whenStable();
+    expect(element.textContent).not.toContain(note);
   });
 
   it('rulers_whenOverridden_keepsTheTextTypedForTheLanguage', async () => {

@@ -151,6 +151,7 @@ export class LspServerRegistry {
         languages: descriptor.languages,
         priority: descriptor.priority,
         ...(descriptor.takesBraceStyle === true ? { takesBraceStyle: true } : {}),
+        ...(descriptor.readsEditorConfigAtStart === true ? { readsEditorConfigAtStart: true } : {}),
         ...(descriptor.settings === undefined || descriptor.settings.length === 0
           ? {}
           : { settings: descriptor.settings }),

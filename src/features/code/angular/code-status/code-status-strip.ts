@@ -2,7 +2,10 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { StatusStripSegments } from '@shared/angular/components/strips/status-strip/status-strip-segments/status-strip-segments';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import type { MenuItem } from '@shared/angular/components/menu/menu';
-import type { DocumentStatusActions } from '@shared/angular/services/document-status/document-status';
+import {
+  SET_BY_EDITOR_CONFIG,
+  type DocumentStatusActions,
+} from '@shared/angular/services/document-status/document-status';
 import {
   chooseEncoding,
   chooseEol,
@@ -58,11 +61,32 @@ export class CodeStatusStrip {
         : [
             { id: 'code-line', text: `Ln ${context.line}` },
             { id: 'code-col', text: `Col ${context.column}` },
+            ...this.indentSegment(context),
             this.eolSegment(context),
             this.encodingSegment(context),
           ];
     },
   );
+
+  /**
+   * Builds the indentation segment, once the editor has reported it.
+   * @param context The document's status.
+   * @returns Returns the segment, or none.
+   */
+  private indentSegment(context: CodeContext): readonly StatusSegment[] {
+    const indent: string | undefined = context.indent;
+    return indent === undefined || indent === ''
+      ? []
+      : [
+          {
+            id: 'code-indent',
+            text: indent,
+            ...(context.editorConfig?.includes('indent') === true
+              ? { title: SET_BY_EDITOR_CONFIG }
+              : {}),
+          },
+        ];
+  }
 
   /**
    * Builds the end-of-line segment: a menu converting the line endings when the document can.
@@ -74,6 +98,7 @@ export class CodeStatusStrip {
     return {
       id: 'code-eol',
       text: context.eol,
+      ...(context.editorConfig?.includes('eol') === true ? { title: SET_BY_EDITOR_CONFIG } : {}),
       ...(actions?.setEol === undefined
         ? {}
         : {
@@ -96,6 +121,9 @@ export class CodeStatusStrip {
     return {
       id: 'code-encoding',
       text: context.encoding,
+      ...(context.editorConfig?.includes('encoding') === true
+        ? { title: SET_BY_EDITOR_CONFIG }
+        : {}),
       ...(items.length === 0
         ? {}
         : {

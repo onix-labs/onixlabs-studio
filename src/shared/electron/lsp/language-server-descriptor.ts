@@ -226,6 +226,12 @@ export interface LanguageServerDescriptor {
   readonly takesBraceStyle?: boolean;
 
   /**
+   * Gets a value indicating whether the server reads `.editorconfig` only as it starts, so one
+   * changing needs a restart to reach it (#1177).
+   */
+  readonly readsEditorConfigAtStart?: boolean;
+
+  /**
    * Gets whether the server answers `workspace/diagnostic` — diagnostics for every file, open or not
    * (#1144) — whatever its static capabilities say.
    */

@@ -127,10 +127,10 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // Code › Editing has five scalar settings (Format on Type, #1141, among them) plus a custom
-    // "language overrides" entry, which is rendered by a bespoke host rather than this component.
+    // Code › Editing has scalar settings (Format on Type, #1141, among them) plus a custom "language
+    // overrides" entry, which is rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('code-editing');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(7);
   });
 
   it('render_whenCodeAppearanceSection_rendersEverySetting', async () => {

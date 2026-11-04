@@ -164,21 +164,20 @@ export class FileWatcher {
       target,
       setTimeout((): void => {
         this.timers.delete(target);
-        if (fs.existsSync(target)) {
-          this.send(target);
-        }
+        this.send(fs.existsSync(target) ? FileChannel.Changed : FileChannel.Removed, target);
       }, DEBOUNCE_MS),
     );
   }
 
   /**
-   * Sends a change notification to the renderer window, if one is available and not destroyed.
-   * @param target The absolute path of the file that changed.
+   * Sends a notification to the renderer window, if one is available and not destroyed.
+   * @param channel Whether the file changed or is gone.
+   * @param target The absolute path of the file.
    */
-  private send(target: string): void {
+  private send(channel: FileChannel, target: string): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
-      window.webContents.send(FileChannel.Changed, target);
+      window.webContents.send(channel, target);
     }
   }
 }

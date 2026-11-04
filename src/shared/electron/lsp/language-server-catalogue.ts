@@ -355,6 +355,7 @@ const CSHARP: LanguageServerDescriptor = {
   languages: ['csharp'],
   priority: DEFAULT_PRIORITY,
   takesBraceStyle: true,
+  readsEditorConfigAtStart: true,
   // Roslyn answers workspace/diagnostic though it advertises otherwise without dynamic registration;
   // how far it reaches is the analysis scope below (#1144).
   servesWorkspaceDiagnostics: true,

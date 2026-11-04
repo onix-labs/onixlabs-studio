@@ -314,6 +314,12 @@ export interface TextEditorSettings {
   readonly braceStyle: BraceStyle;
 
   /**
+   * Gets a value indicating whether a file's indentation is read from its content, leaving the tab
+   * size and insert spaces settings to new and empty files.
+   */
+  readonly detectIndentation: boolean;
+
+  /**
    * Gets which whitespace the editor draws.
    */
   readonly renderWhitespace: RenderWhitespace;
@@ -766,6 +772,7 @@ export class Settings {
       fontSize: this.read('textEditor.global.fontSize'),
       lineHeight: this.read('textEditor.global.lineHeight'),
       braceStyle: this.read('textEditor.global.braceStyle'),
+      detectIndentation: this.read('textEditor.global.detectIndentation'),
       renderWhitespace: this.read('textEditor.global.renderWhitespace'),
       rulers: this.read('textEditor.global.rulers'),
       indentGuides: this.read('textEditor.global.indentGuides'),

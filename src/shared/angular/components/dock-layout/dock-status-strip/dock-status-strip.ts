@@ -15,6 +15,8 @@ import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import {
   DocumentStatus,
   DocumentStatusInfo,
+  EditorConfigSegment,
+  SET_BY_EDITOR_CONFIG,
 } from '@shared/angular/services/document-status/document-status';
 import {
   chooseEncoding,
@@ -126,6 +128,18 @@ export class DockStatusStrip {
   protected readonly eolItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
     eolMenuItems(this.status()?.eol),
   );
+
+  /**
+   * Gets a segment's tooltip, which says so when an `.editorconfig` decided its value.
+   * @param segment The segment.
+   * @param otherwise The tooltip it has otherwise.
+   * @returns Returns the tooltip.
+   */
+  protected titleFor(segment: EditorConfigSegment, otherwise: string): string {
+    return this.status()?.editorConfig?.includes(segment) === true
+      ? SET_BY_EDITOR_CONFIG
+      : otherwise;
+  }
 
   /**
    * Converts the active document's line endings.

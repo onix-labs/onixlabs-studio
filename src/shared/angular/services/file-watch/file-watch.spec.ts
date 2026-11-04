@@ -20,6 +20,7 @@ describe('FileWatch', () => {
   let watched: string[];
   let unwatched: string[];
   let fireChange: (path: string) => void;
+  let fireRemoval: (path: string) => void;
 
   /**
    * Flushes pending microtasks so the asynchronous re-read settles.
@@ -47,6 +48,9 @@ describe('FileWatch', () => {
       on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
         if (channel === (FileChannel.Changed as string)) {
           fireChange = (path: string): void => listener(path);
+        }
+        if (channel === (FileChannel.Removed as string)) {
+          fireRemoval = (path: string): void => listener(path);
         }
         return (): void => undefined;
       },
@@ -139,5 +143,22 @@ describe('FileWatch', () => {
 
     disposeContent();
     expect(unwatched).toEqual(['/ws/main.ts']);
+  });
+
+  it('watchPresence_tellsOfAChangeAndOfTheFileGoing_withoutReadingIt', async () => {
+    let told: number = 0;
+    fileWatch.watchPresence('/ws/.editorconfig', (): void => void (told += 1));
+
+    fireChange('/ws/.editorconfig');
+    fireRemoval('/ws/.editorconfig');
+    await flush();
+
+    expect(told).toBe(2);
+  });
+
+  it('watchPresence_stopsWatchingWhenDisposed', () => {
+    fileWatch.watchPresence('/ws/.editorconfig', (): void => undefined)();
+
+    expect(unwatched).toEqual(['/ws/.editorconfig']);
   });
 });

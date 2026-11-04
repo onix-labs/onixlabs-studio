@@ -19,6 +19,7 @@ export const TEXT_EDITOR_SETTINGS: TextEditorSettings = {
   fontSize: 14,
   lineHeight: 0,
   braceStyle: 'kr',
+  detectIndentation: true,
   renderWhitespace: 'selection',
   rulers: '',
   indentGuides: 'highlight-active',

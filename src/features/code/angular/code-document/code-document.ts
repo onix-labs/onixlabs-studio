@@ -254,6 +254,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
   public readonly eolChange: OutputEmitterRef<TextEditorEol> = output<TextEditorEol>();
 
   /**
+   * Emits the label of the indentation in force whenever it changes.
+   */
+  public readonly indentationChange: OutputEmitterRef<string> = output<string>();
+
+  /**
    * Emits whether the editor holds a selection whenever that changes, so the owning leaf can report
    * it against the tab it registered.
    */

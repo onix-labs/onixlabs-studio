@@ -17,6 +17,11 @@ import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { vi } from 'vitest';
 import { AUTO_SAVE_DELAY_MS, CodeDocument, Documents, effectiveViewToggles } from './documents';
+import type {
+  EditorConfigProperties,
+  EditorConfigResolution,
+} from '@shared/api/editor-config-channels';
+import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
 
 /**
  * A sample file used by the open-from-info tests.
@@ -696,5 +701,178 @@ describe('Documents, in an encoding (#1236)', () => {
     expect(document?.content()).toBe('naÃ¯ve');
     expect(document?.dirty()).toBe(false);
     expect(document?.encoding()).toBe('iso88591');
+  });
+});
+
+describe('Documents, under an .editorconfig (#1049)', () => {
+  let documents: Documents;
+  let resolution: EditorConfigResolution;
+  let writes: { content: string; hasBom: boolean; encoding: TextEncoding }[];
+  let onChange: (() => void) | undefined;
+  let onDisk: ((info: FileInfo) => void) | undefined;
+  let conflicts: number;
+
+  beforeEach(() => {
+    localStorage.removeItem('settings');
+    resolution = { properties: {}, candidates: ['/ws/.editorconfig'] };
+    writes = [];
+    onChange = undefined;
+    onDisk = undefined;
+    conflicts = 0;
+    TestBed.configureTestingModule({
+      providers: [
+        provideUnsavedWork(Documents),
+        {
+          provide: FileSystem,
+          useValue: {
+            write: (
+              path: string,
+              content: string,
+              hasBom: boolean,
+              encoding: TextEncoding,
+            ): Promise<FileWriteResult> => {
+              writes.push({ content, hasBom, encoding });
+              return Promise.resolve({ success: true, path });
+            },
+          },
+        },
+        {
+          provide: FileWatch,
+          useValue: {
+            watch: (_path: string, callback: (info: FileInfo) => void): (() => void) => {
+              onDisk = callback;
+              return (): void => undefined;
+            },
+          },
+        },
+        {
+          provide: FileConflicts,
+          useValue: {
+            changedOnDisk: (): void => void (conflicts += 1),
+            raise: (): void => void (conflicts += 1),
+            clear: (): void => undefined,
+          },
+        },
+        {
+          provide: EditorConfigs,
+          useValue: {
+            resolve: (): Promise<EditorConfigResolution> => Promise.resolve(resolution),
+            watch: (_candidates: readonly string[], callback: () => void): (() => void) => {
+              onChange = callback;
+              return (): void => undefined;
+            },
+          },
+        },
+      ],
+    });
+    documents = TestBed.inject(Documents);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  /**
+   * Opens a file and lets EditorConfig answer.
+   * @param properties What EditorConfig says.
+   * @param file The file.
+   * @returns Returns the tab.
+   */
+  async function open(
+    properties: EditorConfigProperties,
+    file: FileInfo = SAMPLE_FILE,
+  ): Promise<Tab> {
+    resolution = { properties, candidates: ['/ws/.editorconfig'] };
+    const tab: Tab = documents.openFileInfo(file, 'code');
+    await Promise.resolve();
+    await Promise.resolve();
+    return tab;
+  }
+
+  it('writesExactlyWhatItsaysOnSave', async () => {
+    const tab: Tab = await open({
+      endOfLine: 'crlf',
+      trimTrailingWhitespace: true,
+      insertFinalNewline: true,
+    });
+    documents.setContent(tab.id, 'a  \nb');
+
+    await documents.save(tab.id);
+
+    expect(writes[0].content).toBe('a\r\nb\r\n');
+    expect(documents.get(tab.id)?.content()).toBe('a\r\nb\r\n');
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+  });
+
+  it('changesNothingWithNoEditorConfig', async () => {
+    const tab: Tab = await open({});
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes[0].content).toBe('a  ');
+    expect(documents.get(tab.id)?.editorConfig()).toBeNull();
+  });
+
+  it('exposesWhatItSaysToTheEditor', async () => {
+    const tab: Tab = await open({ indentStyle: 'tab' });
+
+    expect(documents.get(tab.id)?.editorConfig()).toEqual({ indentStyle: 'tab' });
+  });
+
+  it('appliesAChangedEditorConfigToAnOpenDocument', async () => {
+    const tab: Tab = await open({ indentStyle: 'tab' });
+
+    resolution = { properties: { indentStyle: 'space' }, candidates: [] };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(documents.get(tab.id)?.editorConfig()).toEqual({ indentStyle: 'space' });
+  });
+
+  it('savesInTheCharset_andGoesBackWhenItIsTakenAway', async () => {
+    const tab: Tab = await open({ charset: 'latin1' });
+    documents.setContent(tab.id, 'changed');
+
+    await documents.save(tab.id);
+    expect(writes[0]).toMatchObject({ encoding: 'iso88591', hasBom: false });
+
+    resolution = { properties: {}, candidates: [] };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(documents.get(tab.id)?.encoding()).toBe('utf8');
+  });
+
+  it('readsUtf8BomAsAByteOrderMark', async () => {
+    const tab: Tab = await open({ charset: 'utf-8-bom' });
+
+    expect(documents.get(tab.id)?.hasBom()).toBe(true);
+  });
+
+  it('keepsAMarkdownDocumentsTextAndCharset_followingOnlyTheWhitespaceRules', async () => {
+    const tab: Tab = await open(
+      { trimTrailingWhitespace: true, insertFinalNewline: true, charset: 'latin1' },
+      { ...SAMPLE_FILE, path: '/ws/a.md', name: 'a.md' },
+    );
+    documents.setLanguage(tab.id, 'markdown');
+    resolution = {
+      properties: { trimTrailingWhitespace: true, insertFinalNewline: true, charset: 'latin1' },
+      candidates: [],
+    };
+    onChange?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    documents.setContent(tab.id, 'a  ');
+
+    await documents.save(tab.id);
+
+    expect(writes[0]).toMatchObject({ content: 'a\n', encoding: 'utf8' });
+    expect(documents.get(tab.id)?.content()).toBe('a  ');
+    expect(documents.get(tab.id)?.dirty()).toBe(false);
+
+    onDisk?.({ ...SAMPLE_FILE, path: '/ws/a.md', content: 'a\n' });
+    expect(conflicts).toBe(0);
   });
 });
