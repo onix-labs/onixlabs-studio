@@ -128,6 +128,9 @@ export class BinaryDisasmPanel implements OnDestroy {
     if (document.listing() !== null) {
       return null;
     }
+    if (document.decodeSkipped() !== null) {
+      return 'This file is over the Decode Limit, so it was not decoded. Settings › Binary raises it.';
+    }
     const key: string | null = formatKey(document.format());
     if (key === null) {
       return 'No listing available for this format.';

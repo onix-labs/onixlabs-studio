@@ -125,6 +125,7 @@ type SettingsSectionId =
   | 'markdown-editing'
   | 'markdown-review'
   | 'images'
+  | 'binary'
   | 'terminal'
   | 'terminal-appearance'
   | 'terminal-input'
@@ -528,6 +529,13 @@ export class SettingsView {
       label: 'Images',
       icon: Icon.IMAGE_FILE,
       children: [{ id: 'images-general', label: 'General', sectionId: 'images' }],
+    },
+    {
+      id: 'binary',
+      group: 'documents',
+      label: 'Binary',
+      icon: Icon.BINARY,
+      children: [{ id: 'binary-general', label: 'General', sectionId: 'binary' }],
     },
     {
       id: 'workspaces',

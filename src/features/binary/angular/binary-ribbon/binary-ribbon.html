@@ -9,11 +9,18 @@
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Edit">
+    <app-ribbon-strip-button
+      [icon]="Icon.PENCIL"
+      label="Edit"
+      [toggle]="true"
+      [pressed]="!readOnly()"
+      (action)="onToggleReadOnly()"
+    />
     <app-ribbon-strip-menu-button
       [icon]="Icon.CUT"
       label="Cut"
       [items]="cutItems"
-      [disabled]="!insertMode()"
+      [disabled]="!insertMode() || readOnly()"
       (action)="onCut()"
       (selected)="onCutVariant($event)"
     />

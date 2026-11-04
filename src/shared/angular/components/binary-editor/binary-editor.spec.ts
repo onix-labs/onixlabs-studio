@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { BinaryEditor, BinaryVisibleRange } from './binary-editor';
+import { BinaryEditor, BinaryVisibleRange, formatAddress, textOf } from './binary-editor';
 
 describe('BinaryEditor', () => {
   function create(): ComponentFixture<BinaryEditor> {
@@ -77,5 +77,20 @@ describe('BinaryEditor', () => {
     // the overscan rows above the (zero-height) viewport are requested, but the offset is the origin.
     expect(ranges.length).toBeGreaterThan(0);
     expect(ranges[ranges.length - 1].offset).toBe(0);
+  });
+});
+
+describe('binary text and addresses', () => {
+  it('formatAddress_writesEachFormat', () => {
+    expect(formatAddress(0xabcdef)).toBe('00AB:CDEF');
+    expect(formatAddress(0xabcdef, 'hex', 'lower')).toBe('00abcdef');
+    expect(formatAddress(255, 'decimal')).toBe('000000255');
+  });
+
+  it('textOf_readsTheByteInEachEncoding', () => {
+    const none: () => null = (): null => null;
+    expect(textOf(0, 0xe9, 'ascii', none)).toBe('·');
+    expect(textOf(0, 0xe9, 'latin1', none)).toBe('é');
+    expect(textOf(0, 0xc3, 'utf8', (): number => 0xa9)).toBe('é');
   });
 });

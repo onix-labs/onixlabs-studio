@@ -8,7 +8,7 @@ import { Notifications } from '@shared/angular/services/notifications/notificati
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { BinaryPanels } from '../binary-panels/binary-panels';
-import { BinaryRibbon } from './binary-ribbon';
+import { BinaryRibbon, formatBytes } from './binary-ribbon';
 
 /**
  * Exposes the protected members the ribbon's controls are wired to, so their behaviour can be
@@ -286,4 +286,17 @@ describe('BinaryRibbon', () => {
     }
     return match;
   }
+});
+
+describe('formatBytes', () => {
+  it('formatBytes_writesEachCopyFormat', () => {
+    const bytes: readonly number[] = [0xab, 0x41];
+
+    expect(formatBytes(bytes, 'hex', 'upper')).toBe('AB 41');
+    expect(formatBytes(bytes, 'hex', 'lower')).toBe('ab 41');
+    expect(formatBytes(bytes, '0x', 'lower')).toBe('0xab, 0x41');
+    expect(formatBytes(bytes, 'c-array', 'lower')).toBe('{ 0xab, 0x41 }');
+    expect(formatBytes(bytes, 'base64', 'upper')).toBe('q0E=');
+    expect(formatBytes(bytes, 'text', 'upper')).toBe('.A');
+  });
 });

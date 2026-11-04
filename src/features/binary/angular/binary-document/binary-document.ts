@@ -1,3 +1,4 @@
+import { Settings } from '@shared/angular/services/settings/settings';
 import {
   computed,
   effect,
@@ -35,7 +36,35 @@ import { BinaryFormat, codeOffset, formatKey, sniffFormat } from '../binary-form
  * nothing. Assemblies are small; this is a guard against a pathological file rather than a limit
  * anyone should meet.
  */
-const MAX_WHOLE_FILE_DECODE: number = 64 * 1024 * 1024;
+const DEFAULT_DECODE_LIMIT_MB: number = 64;
+
+/**
+ * Specifies how many bytes a megabyte holds, for the decode limit.
+ */
+const BYTES_PER_MB: number = 1024 * 1024;
+
+/**
+ * Holds the Binary settings a document reads as a file opens and decodes.
+ */
+export interface BinaryDocumentOptions {
+  /**
+   * Gets the largest file a whole-file decoder reads.
+   * @returns Returns the limit in megabytes, or zero for none.
+   */
+  decodeLimitMb(): number;
+
+  /**
+   * Gets whether a decoder is given the file's symbol file.
+   * @returns Returns true to read the file beside it.
+   */
+  loadSymbolFiles(): boolean;
+
+  /**
+   * Gets whether an executable opens at its entry point.
+   * @returns Returns true to jump there.
+   */
+  jumpToEntry(): boolean;
+}
 
 /**
  * Specifies the largest companion file that will be read and sent alongside a decode. A portable PDB
@@ -196,6 +225,16 @@ export class BinaryDocumentEntry {
   public readonly insertMode: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Gets a value indicating whether the file is locked against typing.
+   */
+  public readonly readOnly: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the size of a file too large for its whole-file decoder, or null when nothing was skipped.
+   */
+  public readonly decodeSkipped: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
    * Holds whether there is an edit to undo.
    */
   public readonly canUndo: WritableSignal<boolean> = signal<boolean>(false);
@@ -290,6 +329,7 @@ export class BinaryDocumentEntry {
    * @param workspace The workspace client used to read byte windows from the main process.
    * @param disassembly The disassembly client used to decode instructions.
    * @param assembly The assembly client used to assemble instructions the agent writes.
+   * @param options The Binary settings read as a file opens and decodes.
    */
   public constructor(
     public readonly tabId: string,
@@ -298,6 +338,11 @@ export class BinaryDocumentEntry {
     private readonly workspace: Workspace,
     private readonly disassembly: BinaryDisassembly,
     private readonly assembly: BinaryAssembly,
+    private readonly options: BinaryDocumentOptions = {
+      decodeLimitMb: (): number => DEFAULT_DECODE_LIMIT_MB,
+      loadSymbolFiles: (): boolean => true,
+      jumpToEntry: (): boolean => true,
+    },
   ) {}
 
   /**
@@ -605,9 +650,12 @@ export class BinaryDocumentEntry {
       return;
     }
     const size: number = this.size();
-    if (size > MAX_WHOLE_FILE_DECODE) {
+    const limit: number = this.options.decodeLimitMb() * BYTES_PER_MB;
+    if (limit > 0 && size > limit) {
+      this.decodeSkipped.set(size);
       return;
     }
+    this.decodeSkipped.set(null);
     this.wholeFileDecodeVersion = version;
     const bytes: number[] = await this.readBytes(0, size);
     const listing: CodeListing | null = await this.disassembly.decodeListing(
@@ -637,7 +685,7 @@ export class BinaryDocumentEntry {
    */
   private async readCompanions(): Promise<Readonly<Record<string, Uint8Array>> | undefined> {
     const pdbPath: string = this.path.replace(/\.[^./\\]+$/, '.pdb');
-    if (pdbPath === this.path) {
+    if (pdbPath === this.path || !this.options.loadSymbolFiles()) {
       return undefined;
     }
     const chunk: BinaryChunk | null = await this.workspace.readBytes(
@@ -1029,7 +1077,7 @@ export class BinaryDocumentEntry {
           this.format.set(sniffFormat(chunk.bytes));
           const code: number | null = codeOffset(chunk.bytes);
           this.codeOffset.set(code);
-          if (code !== null) {
+          if (code !== null && this.options.jumpToEntry()) {
             this.reveal(code);
           }
         }
@@ -1118,6 +1166,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the Binary settings a document starts from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the disassembly client each document decodes its instructions through.
    */
   private readonly disassembly: BinaryDisassembly = inject(BinaryDisassembly);
@@ -1187,7 +1240,15 @@ export class BinaryDocuments implements UnsavedWorkSource {
         this.workspace,
         this.disassembly,
         this.assembly,
+        {
+          decodeLimitMb: (): number => this.settings.get('binaryEditor.decodeLimit'),
+          loadSymbolFiles: (): boolean => this.settings.get('binaryEditor.loadSymbolFiles'),
+          jumpToEntry: (): boolean => this.settings.get('binaryEditor.jumpOnOpen') === 'entry',
+        },
       );
+      entry.bytesPerRow.set(this.settings.get('binaryEditor.bytesPerRow'));
+      entry.insertMode.set(this.settings.get('binaryEditor.typingMode') === 'insert');
+      entry.readOnly.set(this.settings.get('binaryEditor.openReadOnly'));
       this.entries.set(tab.id, entry);
       this.tabs.rename(tab.id, fileName);
       // Mirror the document's dirty flag onto its tab, so edited binary files show the same dirty

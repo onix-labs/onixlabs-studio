@@ -392,6 +392,51 @@ export type ImageOpenIn = 'workspace' | 'tab';
 export type ImageOpenSvgAs = 'image' | 'code';
 
 /**
+ * Names the case hex is written in.
+ */
+export type BinaryHexCase = 'upper' | 'lower';
+
+/**
+ * Names how the binary editor's text column reads bytes.
+ */
+export type BinaryTextEncoding = 'ascii' | 'latin1' | 'utf8';
+
+/**
+ * Names how the binary editor writes a row's offset.
+ */
+export type BinaryAddressFormat = 'hex-split' | 'hex' | 'decimal';
+
+/**
+ * Names whether typing in the binary editor replaces bytes or adds them.
+ */
+export type BinaryTypingMode = 'overwrite' | 'insert';
+
+/**
+ * Names where an executable opens.
+ */
+export type BinaryJumpOnOpen = 'entry' | 'start';
+
+/**
+ * Names how the binary editor's Copy writes bytes.
+ */
+export type BinaryCopyFormat = 'hex' | '0x' | 'c-array' | 'base64' | 'text';
+
+/**
+ * Names the byte order the Inspector starts with.
+ */
+export type BinaryInspectorEndian = 'little' | 'big';
+
+/**
+ * Names whether the Inspector starts with signed or unsigned integers.
+ */
+export type BinaryInspectorSign = 'signed' | 'unsigned';
+
+/**
+ * Names what a double-click in the binary editor selects.
+ */
+export type BinaryDoubleClick = 'instruction' | 'byte';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -625,6 +670,22 @@ export interface SettingsValues {
   readonly 'imageViewer.fallbackSaveFormat': ImageFallbackSaveFormat;
   readonly 'imageViewer.openIn': ImageOpenIn;
   readonly 'imageViewer.openSvgAs': ImageOpenSvgAs;
+
+  readonly 'binaryEditor.bytesPerRow': number;
+  readonly 'binaryEditor.byteGrouping': number;
+  readonly 'binaryEditor.hexCase': BinaryHexCase;
+  readonly 'binaryEditor.showTextColumn': boolean;
+  readonly 'binaryEditor.textEncoding': BinaryTextEncoding;
+  readonly 'binaryEditor.addressFormat': BinaryAddressFormat;
+  readonly 'binaryEditor.typingMode': BinaryTypingMode;
+  readonly 'binaryEditor.openReadOnly': boolean;
+  readonly 'binaryEditor.jumpOnOpen': BinaryJumpOnOpen;
+  readonly 'binaryEditor.copyFormat': BinaryCopyFormat;
+  readonly 'binaryEditor.inspectorEndian': BinaryInspectorEndian;
+  readonly 'binaryEditor.inspectorSign': BinaryInspectorSign;
+  readonly 'binaryEditor.doubleClickSelects': BinaryDoubleClick;
+  readonly 'binaryEditor.loadSymbolFiles': boolean;
+  readonly 'binaryEditor.decodeLimit': number;
 
   readonly 'plugins.notifyUpdates': boolean;
   readonly 'plugins.showUnsupported': boolean;
@@ -3670,6 +3731,206 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'image',
+      },
+    ],
+  },
+  {
+    id: 'binary',
+    label: 'Binary',
+    settings: [
+      {
+        key: 'binaryEditor.bytesPerRow',
+        title: 'Bytes per Row',
+        description: 'How many bytes a row starts with. The ribbon changes it per file.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '8', label: '8' },
+            { value: '16', label: '16' },
+            { value: '32', label: '32' },
+            { value: '64', label: '64' },
+          ],
+        },
+        default: 16,
+      },
+      {
+        key: 'binaryEditor.byteGrouping',
+        title: 'Byte Grouping',
+        description: 'Set a gap after every few bytes in a row.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'None' },
+            { value: '2', label: '2 Bytes' },
+            { value: '4', label: '4 Bytes' },
+            { value: '8', label: '8 Bytes' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'binaryEditor.hexCase',
+        title: 'Hex Letter Case',
+        description: 'Whether hex is shown in upper or lower case. Copy follows it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'upper', label: 'Upper' },
+            { value: 'lower', label: 'Lower' },
+          ],
+        },
+        default: 'upper',
+      },
+      {
+        key: 'binaryEditor.showTextColumn',
+        title: 'Show Text Column',
+        description: 'Show the bytes as text beside their hex.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'binaryEditor.textEncoding',
+        title: 'Text Column Encoding',
+        description: 'How the text column reads the bytes.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'ascii', label: 'ASCII' },
+            { value: 'latin1', label: 'Latin-1' },
+            { value: 'utf8', label: 'UTF-8' },
+          ],
+        },
+        visibleWhen: { key: 'binaryEditor.showTextColumn', equals: [true] },
+        default: 'ascii',
+      },
+      {
+        key: 'binaryEditor.addressFormat',
+        title: 'Address Format',
+        description: "How a row's offset is written: hex split into two halves, hex, or decimal.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'hex-split', label: 'Hex Split' },
+            { value: 'hex', label: 'Hex' },
+            { value: 'decimal', label: 'Decimal' },
+          ],
+        },
+        default: 'hex-split',
+      },
+      {
+        key: 'binaryEditor.typingMode',
+        title: 'Typing Mode',
+        description: 'Whether typing replaces bytes or adds them. The ribbon changes it per file.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'overwrite', label: 'Overwrite' },
+            { value: 'insert', label: 'Insert' },
+          ],
+        },
+        default: 'overwrite',
+      },
+      {
+        key: 'binaryEditor.openReadOnly',
+        title: 'Open Read-Only',
+        description: "Open files locked against typing. The ribbon's Edit button unlocks one.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'binaryEditor.jumpOnOpen',
+        title: 'Jump on Open',
+        description: 'Where an executable opens: at its entry point, or at the start of the file.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'entry', label: 'Entry Point' },
+            { value: 'start', label: 'Start of File' },
+          ],
+        },
+        default: 'entry',
+      },
+      {
+        key: 'binaryEditor.copyFormat',
+        title: 'Copy Format',
+        description: "How the ribbon's Copy writes the selected bytes.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'hex', label: 'Hex' },
+            { value: '0x', label: '0x List' },
+            { value: 'c-array', label: 'C Array' },
+            { value: 'base64', label: 'Base64' },
+            { value: 'text', label: 'Text' },
+          ],
+        },
+        default: 'hex',
+      },
+      {
+        key: 'binaryEditor.inspectorEndian',
+        title: 'Inspector Byte Order',
+        description:
+          'The byte order the Inspector starts with. Its own switch changes it for the session.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'little', label: 'Little Endian' },
+            { value: 'big', label: 'Big Endian' },
+          ],
+        },
+        default: 'little',
+      },
+      {
+        key: 'binaryEditor.inspectorSign',
+        title: 'Inspector Integers',
+        description: 'Whether the Inspector starts with signed or unsigned integers.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'signed', label: 'Signed' },
+            { value: 'unsigned', label: 'Unsigned' },
+          ],
+        },
+        default: 'signed',
+      },
+      {
+        key: 'binaryEditor.doubleClickSelects',
+        title: 'Double-Click Selects',
+        description:
+          'What a double-click on a byte selects: the instruction around it, or the byte itself.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'instruction', label: 'Instruction' },
+            { value: 'byte', label: 'Byte' },
+          ],
+        },
+        default: 'instruction',
+      },
+      {
+        key: 'binaryEditor.loadSymbolFiles',
+        title: 'Load Symbol Files (PDB)',
+        description: 'Give a decoder the .pdb beside a file, so its listing can name things.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'binaryEditor.decodeLimit',
+        title: 'Decode Limit',
+        description:
+          'The largest file a whole-file decoder reads. A file over it says so in the Assembly panel.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '64', label: '64 MB' },
+            { value: '256', label: '256 MB' },
+            { value: '0', label: 'No Limit' },
+          ],
+        },
+        default: 64,
       },
     ],
   },
