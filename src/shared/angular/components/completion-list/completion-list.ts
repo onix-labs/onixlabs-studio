@@ -23,11 +23,6 @@ import type {
 import { Shell } from '@shared/angular/services/shell/shell';
 
 /**
- * Holds how many rows the list shows at most before it scrolls.
- */
-export const VISIBLE_ROWS: number = 12;
-
-/**
  * Holds the row height the list assumes before it has measured a rendered row, in pixels.
  */
 const ESTIMATED_ROW_PX: number = 22;
@@ -56,6 +51,11 @@ export interface CompletionListView {
    * Gets how many rows there are.
    */
   readonly count: number;
+
+  /**
+   * Gets how many rows the list shows at most before it scrolls.
+   */
+  readonly visibleRows: number;
 
   /**
    * Builds a row, for the rows that are rendered.
@@ -170,11 +170,12 @@ export class CompletionList {
   private revealed: string = '';
 
   /**
-   * Gets the list's height, in pixels: as many rows as there are, up to {@link VISIBLE_ROWS}.
+   * Gets the list's height, in pixels: as many rows as there are, up to the view's visible rows.
    */
-  protected readonly listHeight: Signal<number> = computed(
-    (): number => Math.min(this.view().count, VISIBLE_ROWS) * this.rowHeight(),
-  );
+  protected readonly listHeight: Signal<number> = computed((): number => {
+    const view: CompletionListView = this.view();
+    return Math.min(view.count, view.visibleRows) * this.rowHeight();
+  });
 
   /**
    * Gets the identifier of the focused row's element, or null when no row is focused.
@@ -189,10 +190,10 @@ export class CompletionList {
    */
   private readonly window: Signal<{ readonly start: number; readonly end: number }> = computed(
     (): { readonly start: number; readonly end: number } => {
-      const count: number = this.view().count;
+      const { count, visibleRows }: CompletionListView = this.view();
       const first: number = Math.floor(this.scrollTop() / this.rowHeight());
-      const start: number = Math.max(0, Math.min(first, count - VISIBLE_ROWS) - OVERSCAN_ROWS);
-      return { start, end: Math.min(count, first + VISIBLE_ROWS + OVERSCAN_ROWS) };
+      const start: number = Math.max(0, Math.min(first, count - visibleRows) - OVERSCAN_ROWS);
+      return { start, end: Math.min(count, first + visibleRows + OVERSCAN_ROWS) };
     },
     {
       equal: (

@@ -20,7 +20,14 @@ import type {
 import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
+  AcceptSuggestionWith,
   BraceStyle,
+  CompletionInsertMode,
+  QuickSuggestions,
+  ShowHoverCards,
+  SnippetSuggestions,
+  SuggestionSelection,
+  WordBasedSuggestions,
   BracketPairGuides,
   ChangeMarginMode,
   EditorCursorStyle,
@@ -313,6 +320,19 @@ export interface SettingsValues {
   readonly 'textEditor.global.minimumDiagnosticSeverity': MinimumDiagnosticSeverity;
   readonly 'textEditor.global.mouseWheelZoom': boolean;
   readonly 'textEditor.zoom': number;
+  readonly 'textEditor.global.hoverDelay': number;
+  readonly 'textEditor.global.showHoverCards': ShowHoverCards;
+  readonly 'textEditor.global.quickSuggestions': QuickSuggestions;
+  readonly 'textEditor.global.quickSuggestionsDelay': number;
+  readonly 'textEditor.global.suggestOnTriggerCharacters': boolean;
+  readonly 'textEditor.global.acceptSuggestionWith': AcceptSuggestionWith;
+  readonly 'textEditor.global.acceptOnCommitCharacter': boolean;
+  readonly 'textEditor.global.wordBasedSuggestions': WordBasedSuggestions;
+  readonly 'textEditor.global.snippetSuggestions': SnippetSuggestions;
+  readonly 'textEditor.global.suggestionSelection': SuggestionSelection;
+  readonly 'textEditor.global.completionInsertMode': CompletionInsertMode;
+  readonly 'textEditor.global.suggestionListSize': number;
+  readonly 'textEditor.global.parameterHints': boolean;
   readonly 'textEditor.goToStyle': GoToStyle;
   readonly 'textEditor.goToSymbolMatching': 'contains' | 'fuzzy';
   readonly 'textEditor.seedFindFrom': 'selection' | 'selection-or-word';
@@ -1954,6 +1974,191 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     ],
   },
   {
+    // How the editor offers help: its hover cards and its completion list.
+    id: 'code-suggestions',
+    label: 'Code Suggestions and Hover',
+    settings: [
+      {
+        key: 'textEditor.global.showHoverCards',
+        title: 'Show Hover Cards',
+        description:
+          'When resting the pointer shows a card. While Holding means ⌥ on macOS, and Ctrl+Alt elsewhere. ⌘K ⌘I always shows one at the cursor.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+            { value: 'while-holding', label: 'While Holding' },
+          ],
+        },
+        default: 'on',
+      },
+      {
+        key: 'textEditor.global.hoverDelay',
+        title: 'Hover Delay',
+        description: 'How long the pointer rests before a card shows.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+            { value: '1000', label: '1000 ms' },
+          ],
+        },
+        default: 500,
+      },
+      {
+        key: 'textEditor.global.quickSuggestions',
+        title: 'Quick Suggestions',
+        description:
+          'Where the completion list opens by itself as you type. ⌃Space always opens it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'code', label: 'Code Only' },
+            { value: 'code-and-strings', label: 'Code and Strings' },
+            { value: 'everywhere', label: 'Everywhere' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'code',
+      },
+      {
+        key: 'textEditor.global.quickSuggestionsDelay',
+        title: 'Quick Suggestions Delay',
+        description: 'How long after you stop typing the completion list opens by itself.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '0', label: 'Instant' },
+            { value: '100', label: '100 ms' },
+            { value: '250', label: '250 ms' },
+            { value: '500', label: '500 ms' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'textEditor.global.suggestOnTriggerCharacters',
+        title: 'Suggest on Trigger Characters',
+        description:
+          "Open the completion list on the language's own trigger characters, such as a dot.",
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.acceptSuggestionWith',
+        title: 'Accept Suggestion With',
+        description:
+          'Which keys accept the focused completion. The other key does what it always does.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'enter-and-tab', label: 'Enter and Tab' },
+            { value: 'tab', label: 'Tab Only' },
+            { value: 'enter', label: 'Enter Only' },
+          ],
+        },
+        default: 'tab',
+      },
+      {
+        key: 'textEditor.global.acceptOnCommitCharacter',
+        title: 'Accept on Commit Character',
+        description:
+          'Accept the focused completion when you type a character it commits on, such as a dot after a member.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+      {
+        key: 'textEditor.global.wordBasedSuggestions',
+        title: 'Word-Based Suggestions',
+        description: 'Where the completion list finds words, for a file no language server serves.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'off', label: 'Off' },
+            { value: 'this-file', label: 'This File' },
+            { value: 'all-open-files', label: 'All Open Files' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'this-file',
+      },
+      {
+        key: 'textEditor.global.snippetSuggestions',
+        title: 'Snippet Suggestions',
+        description: 'Where snippets sit in the completion list.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'top', label: 'Top' },
+            { value: 'inline', label: 'Inline' },
+            { value: 'bottom', label: 'Bottom' },
+            { value: 'none', label: 'None' },
+          ],
+        },
+        profileOverridable: true,
+        default: 'inline',
+      },
+      {
+        key: 'textEditor.global.suggestionSelection',
+        title: 'Suggestion Selection',
+        description: 'Which completion is focused when the list opens.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'first', label: 'First' },
+            { value: 'recently-used', label: 'Recently Used' },
+          ],
+        },
+        default: 'recently-used',
+      },
+      {
+        key: 'textEditor.global.completionInsertMode',
+        title: 'Completion Insert Mode',
+        description:
+          'Whether accepting a completion keeps the text after the cursor, or replaces it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'insert', label: 'Insert' },
+            { value: 'replace', label: 'Replace' },
+          ],
+        },
+        default: 'insert',
+      },
+      {
+        key: 'textEditor.global.suggestionListSize',
+        title: 'Suggestion List Size',
+        description: 'How many rows the completion list shows before it scrolls.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '8', label: '8' },
+            { value: '12', label: '12' },
+            { value: '16', label: '16' },
+            { value: '20', label: '20' },
+          ],
+        },
+        default: 12,
+      },
+      {
+        key: 'textEditor.global.parameterHints',
+        title: 'Parameter Hints',
+        description: 'Show the signature card as you type a call. ⌘⇧Space always shows it.',
+        control: { kind: 'toggle' },
+        profileOverridable: true,
+        default: true,
+      },
+    ],
+  },
+  {
     id: 'markdown',
     label: 'Markdown',
     settings: [
@@ -3405,6 +3610,7 @@ export const CODE_SECTION_IDS: readonly string[] = [
   'code-highlighting',
   'code-editing',
   'code-saving',
+  'code-suggestions',
   'code-find',
   'code-diffs',
   'code-language-servers',

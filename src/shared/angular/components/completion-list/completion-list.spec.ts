@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import type { CompletionRow } from '@shared/angular/services/autocomplete/completion-rows';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { CompletionList, CompletionListView, revealTop, VISIBLE_ROWS } from './completion-list';
+import { CompletionList, CompletionListView, revealTop } from './completion-list';
 
 /**
  * Builds a row.
@@ -33,6 +33,7 @@ function row(index: number): CompletionRow {
 function view(count: number, extra: Partial<CompletionListView> = {}): CompletionListView {
   return {
     count,
+    visibleRows: 12,
     row,
     focused: 0,
     message: null,
@@ -114,7 +115,7 @@ describe('CompletionList (#1021)', () => {
     await show(view(5000));
 
     // A dozen visible and an overscan below: nowhere near five thousand.
-    expect(rows().length).toBeLessThanOrEqual(VISIBLE_ROWS + 8);
+    expect(rows().length).toBeLessThanOrEqual(12 + 8);
     expect(rows()[0].getAttribute('aria-posinset')).toBe('1');
   });
 

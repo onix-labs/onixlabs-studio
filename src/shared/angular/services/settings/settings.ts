@@ -239,6 +239,42 @@ export type GoToStyle = 'quick-open' | 'dialogs';
 export type DiffLayout = 'side-by-side' | 'inline';
 
 /**
+ * Identifies when the pointer brings up a hover card: always, never, or while a modifier is held.
+ * ⌘K ⌘I shows one at the caret whichever is chosen.
+ */
+export type ShowHoverCards = 'on' | 'off' | 'while-holding';
+
+/**
+ * Identifies where the completion list opens by itself as you type. ⌃Space opens it anywhere.
+ */
+export type QuickSuggestions = 'off' | 'code' | 'code-and-strings' | 'everywhere';
+
+/**
+ * Identifies which keys accept the completion list's focused row.
+ */
+export type AcceptSuggestionWith = 'enter-and-tab' | 'tab' | 'enter';
+
+/**
+ * Identifies which documents the words the completion list offers come from.
+ */
+export type WordBasedSuggestions = 'off' | 'this-file' | 'all-open-files';
+
+/**
+ * Identifies where snippets sit in the completion list, or that they are left out.
+ */
+export type SnippetSuggestions = 'top' | 'inline' | 'bottom' | 'none';
+
+/**
+ * Identifies which row of the completion list is focused when it opens.
+ */
+export type SuggestionSelection = 'first' | 'recently-used';
+
+/**
+ * Identifies what accepting a completion does to the text after the caret: keeps it, or replaces it.
+ */
+export type CompletionInsertMode = 'insert' | 'replace';
+
+/**
  * Defines the global text editor settings.
  */
 export interface TextEditorSettings {
@@ -453,6 +489,71 @@ export interface TextEditorSettings {
    * Gets a value indicating whether pasted text is formatted.
    */
   readonly formatOnPaste: boolean;
+
+  /**
+   * Gets how long the pointer rests before a hover card shows, in milliseconds.
+   */
+  readonly hoverDelay: number;
+
+  /**
+   * Gets when the pointer brings up a hover card.
+   */
+  readonly showHoverCards: ShowHoverCards;
+
+  /**
+   * Gets where the completion list opens by itself as you type.
+   */
+  readonly quickSuggestions: QuickSuggestions;
+
+  /**
+   * Gets how long after typing the completion list opens by itself, in milliseconds.
+   */
+  readonly quickSuggestionsDelay: number;
+
+  /**
+   * Gets a value indicating whether a language's trigger characters open the completion list.
+   */
+  readonly suggestOnTriggerCharacters: boolean;
+
+  /**
+   * Gets which keys accept the completion list's focused row.
+   */
+  readonly acceptSuggestionWith: AcceptSuggestionWith;
+
+  /**
+   * Gets a value indicating whether a character a completion commits on accepts it.
+   */
+  readonly acceptOnCommitCharacter: boolean;
+
+  /**
+   * Gets which documents the completion list's words come from.
+   */
+  readonly wordBasedSuggestions: WordBasedSuggestions;
+
+  /**
+   * Gets where snippets sit in the completion list.
+   */
+  readonly snippetSuggestions: SnippetSuggestions;
+
+  /**
+   * Gets which row of the completion list is focused when it opens.
+   */
+  readonly suggestionSelection: SuggestionSelection;
+
+  /**
+   * Gets what accepting a completion does to the text after the caret.
+   */
+  readonly completionInsertMode: CompletionInsertMode;
+
+  /**
+   * Gets how many rows the completion list shows before it scrolls.
+   */
+  readonly suggestionListSize: number;
+
+  /**
+   * Gets a value indicating whether the signature card shows as you type a call.
+   */
+  readonly parameterHints: boolean;
 }
 
 /**
@@ -839,6 +940,19 @@ export class Settings {
       trimFinalNewlines: this.read('textEditor.global.trimFinalNewlines'),
       addByteOrderMark: this.read('textEditor.global.addByteOrderMark'),
       formatOnPaste: this.read('textEditor.global.formatOnPaste'),
+      hoverDelay: this.read('textEditor.global.hoverDelay'),
+      showHoverCards: this.read('textEditor.global.showHoverCards'),
+      quickSuggestions: this.read('textEditor.global.quickSuggestions'),
+      quickSuggestionsDelay: this.read('textEditor.global.quickSuggestionsDelay'),
+      suggestOnTriggerCharacters: this.read('textEditor.global.suggestOnTriggerCharacters'),
+      acceptSuggestionWith: this.read('textEditor.global.acceptSuggestionWith'),
+      acceptOnCommitCharacter: this.read('textEditor.global.acceptOnCommitCharacter'),
+      wordBasedSuggestions: this.read('textEditor.global.wordBasedSuggestions'),
+      snippetSuggestions: this.read('textEditor.global.snippetSuggestions'),
+      suggestionSelection: this.read('textEditor.global.suggestionSelection'),
+      completionInsertMode: this.read('textEditor.global.completionInsertMode'),
+      suggestionListSize: this.read('textEditor.global.suggestionListSize'),
+      parameterHints: this.read('textEditor.global.parameterHints'),
     }),
   );
 

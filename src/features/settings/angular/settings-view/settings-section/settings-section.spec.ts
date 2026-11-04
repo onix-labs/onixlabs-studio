@@ -144,6 +144,11 @@ describe('SettingsSection', () => {
     expect(element.querySelectorAll('app-setting-row').length).toBe(7);
   });
 
+  it('render_whenCodeSuggestionsSection_rendersEverySetting', async () => {
+    const element: HTMLElement = await render('code-suggestions');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(13);
+  });
+
   it('render_whenCodeHighlightingSection_rendersEverySetting', async () => {
     const element: HTMLElement = await render('code-highlighting');
     expect(element.querySelectorAll('app-setting-row').length).toBe(12);

@@ -43,7 +43,7 @@ export type CodeOverrideSection = 'code-appearance' | 'code-editing';
  */
 const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
   'code-appearance': 'Code › Appearance and Code › Guides and Highlights',
-  'code-editing': 'Code › Editing and Code › Saving',
+  'code-editing': 'Code › Editing, Code › Saving and Code › Suggestions and Hover',
 };
 
 /**
@@ -52,7 +52,7 @@ const SECTION_NAMES: Readonly<Record<CodeOverrideSection, string>> = {
  */
 const SECTION_IDS: Readonly<Record<CodeOverrideSection, readonly string[]>> = {
   'code-appearance': ['code-appearance', 'code-highlighting'],
-  'code-editing': ['code-editing', 'code-saving'],
+  'code-editing': ['code-editing', 'code-saving', 'code-suggestions'],
 };
 
 /**

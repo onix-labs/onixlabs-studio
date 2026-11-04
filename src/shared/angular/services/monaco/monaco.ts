@@ -23,6 +23,7 @@ import {
 } from './monaco-heuristic-tokens';
 import { defineThemes } from './monaco-themes';
 import { editorAppearanceOptions } from './editor-appearance-options';
+import { editorSuggestOptions, wordSuggestionsOption } from './editor-suggest-options';
 import { registerAsmLanguage } from './monaco-asm-language';
 import { registerScssLanguage } from './monaco-scss-language';
 import { registerCypherLanguage } from './monaco-cypher-language';
@@ -48,6 +49,7 @@ import {
   installSuggestCommands,
   ParameterHintsPresenter,
   SuggestPresenter,
+  WordSuggestionsOption,
 } from './monaco-suggest-commands';
 import {
   DIFF_GUARD_EDITOR_OPTIONS,
@@ -526,6 +528,7 @@ export class Monaco {
       formatOnPaste: resolved.formatOnPaste,
       renderLineHighlight: resolved.currentLineHighlight === 'filled' ? 'all' : 'line',
       ...editorAppearanceOptions(resolved),
+      ...editorSuggestOptions(resolved),
       tabSize: resolved.tabSize,
       insertSpaces: resolved.insertSpaces,
       // Honour the configured indent verbatim rather than inferring it from file contents, so the
@@ -828,6 +831,8 @@ export class Monaco {
       (): SuggestPresenter => this.assist ?? IDLE_SUGGEST_PRESENTER,
       (): ParameterHintsPresenter => this.assist ?? IDLE_PARAMETER_HINTS_PRESENTER,
       (model: MonacoApi.editor.ITextModel): boolean => this.isWordSuggestionSuppressed(model),
+      (language: string): WordSuggestionsOption =>
+        wordSuggestionsOption(this.settings.resolveSettingsForLanguage(language)),
     );
   }
 

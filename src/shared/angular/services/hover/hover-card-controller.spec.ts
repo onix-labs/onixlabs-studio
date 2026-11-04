@@ -2,7 +2,6 @@ import type * as MonacoApi from 'monaco-editor';
 import {
   decorationMessages,
   glyphMessages,
-  HOVER_CARD_DELAY_MS,
   HOVER_CARD_GRACE_MS,
   HoverCardController,
   HoverCardHandle,
@@ -10,6 +9,7 @@ import {
   HoverCardOrigin,
   HoverSpot,
 } from './hover-card-controller';
+import type { ShowHoverCards } from '@shared/angular/services/settings/settings';
 import { HoverCardContent, MARKER_SEVERITY } from './hover-content';
 
 /**
@@ -122,6 +122,11 @@ function fakeEditor(lines: readonly string[]): FakeEditor {
 }
 
 /**
+ * Holds the delay the fake hooks report, in milliseconds.
+ */
+const HOVER_CARD_DELAY_MS: number = 500;
+
+/**
  * One card the controller presented.
  */
 interface Presented {
@@ -139,6 +144,7 @@ describe('HoverCardController (#1020)', () => {
   let presented: Presented[];
   let answers: Map<string, Promise<HoverCardContent | null>>;
   let markers: MonacoApi.editor.IMarker[];
+  let pointerCards: ShowHoverCards;
 
   /**
    * Builds the content a card about a spot shows by default: one section naming the spot.
@@ -161,6 +167,8 @@ describe('HoverCardController (#1020)', () => {
   function build(lines: readonly string[] = ['alpha beta', '    gamma', '']): void {
     fake = fakeEditor(lines);
     const hooks: HoverCardHooks = {
+      delay: (): number => HOVER_CARD_DELAY_MS,
+      pointerCards: (): ShowHoverCards => pointerCards,
       markers: (): readonly MonacoApi.editor.IMarker[] => markers,
       content: (spot: HoverSpot): Promise<HoverCardContent | null> => {
         asked.push(spot);
@@ -205,12 +213,63 @@ describe('HoverCardController (#1020)', () => {
     presented = [];
     answers = new Map();
     markers = [];
+    pointerCards = 'on';
   });
 
   afterEach(() => {
     controller.dispose();
     document.body.innerHTML = '';
     vi.useRealTimers();
+  });
+
+  it('showHoverCardsOff_thePointerAsksForNothing_butTheKeyboardStillCan', async () => {
+    pointerCards = 'off';
+    build();
+
+    fake.move(1, 8);
+    await vi.advanceTimersByTimeAsync(HOVER_CARD_DELAY_MS * 2);
+    expect(presented).toHaveLength(0);
+
+    await controller.showAt({ lineNumber: 1, column: 8 });
+    expect(presented).toHaveLength(1);
+  });
+
+  it('whileHolding_waitsForTheModifier_andLettingGoTakesTheCardAway', async () => {
+    pointerCards = 'while-holding';
+    build();
+
+    fake.move(1, 8);
+    await vi.advanceTimersByTimeAsync(HOVER_CARD_DELAY_MS * 2);
+    expect(presented).toHaveLength(0);
+
+    controller.setHeld(true);
+    await vi.advanceTimersByTimeAsync(HOVER_CARD_DELAY_MS);
+    expect(showing()).toBe(1);
+
+    controller.setHeld(false);
+    expect(showing()).toBe(0);
+  });
+
+  it('whileHolding_movingWithTheModifierHeld_showsTheCardOfTheNewSpot', async () => {
+    pointerCards = 'while-holding';
+    build();
+
+    controller.setHeld(true);
+    fake.move(1, 8);
+    await vi.advanceTimersByTimeAsync(HOVER_CARD_DELAY_MS);
+
+    expect(showing()).toBe(1);
+  });
+
+  it('whileHolding_lettingGo_leavesACardTheKeyboardOpened', async () => {
+    pointerCards = 'while-holding';
+    build();
+
+    controller.setHeld(true);
+    await controller.showAt({ lineNumber: 1, column: 8 });
+    controller.setHeld(false);
+
+    expect(showing()).toBe(1);
   });
 
   it('restingOnAWord_showsItsCardAfterTheDelay_aboveTheWord', async () => {

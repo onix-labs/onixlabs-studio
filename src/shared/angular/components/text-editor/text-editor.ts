@@ -27,9 +27,10 @@ import {
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
 import { editorAppearanceOptions } from '@shared/angular/services/monaco/editor-appearance-options';
+import { editorSuggestOptions } from '@shared/angular/services/monaco/editor-suggest-options';
 import type { EditorConfigProperties } from '@shared/api/editor-config-channels';
 import { parseRulers } from '@shared/angular/services/monaco/parse-rulers';
-import { watchInlayHintsHold } from './inlay-hints-hold';
+import { watchHeldModifier } from '@shared/angular/services/monaco/held-modifier';
 import {
   BaseIndentation,
   fixesIndentation,
@@ -461,6 +462,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
         cursorBlinking: resolved.cursorBlinking,
         ...this.monaco.motionOptions(resolved),
         ...editorAppearanceOptions(resolved),
+        ...editorSuggestOptions(resolved),
         rulers: this.rulers(resolved),
         tabSize: resolved.tabSize,
         insertSpaces: resolved.insertSpaces,
@@ -1026,7 +1028,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     });
 
     const element: HTMLElement = this.host().nativeElement;
-    this.detachInlayHintsHold = watchInlayHintsHold(
+    this.detachInlayHintsHold = watchHeldModifier(
       element.ownerDocument.defaultView ?? window,
       (held: boolean): void => this.inlayHintsHeld.set(held),
     );

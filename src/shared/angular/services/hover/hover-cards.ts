@@ -13,9 +13,14 @@ import {
   ProvidedHover,
   providedHovers,
 } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import { watchHeldModifier } from '@shared/angular/services/monaco/held-modifier';
 import type { ProblemDirection } from '@shared/angular/services/monaco/monaco-hover-commands';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
-import { MinimumDiagnosticSeverity, Settings } from '@shared/angular/services/settings/settings';
+import {
+  MinimumDiagnosticSeverity,
+  Settings,
+  ShowHoverCards,
+} from '@shared/angular/services/settings/settings';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import {
   decorationMessages,
@@ -115,6 +120,8 @@ export class HoverCards {
    */
   public attach(editor: MonacoApi.editor.ICodeEditor, injector: Injector): () => void {
     const controller: HoverCardController = new HoverCardController(editor, {
+      delay: (): number => this.settings.get('textEditor.global.hoverDelay'),
+      pointerCards: (): ShowHoverCards => this.settings.get('textEditor.global.showHoverCards'),
       markers: (): readonly MonacoApi.editor.IMarker[] => this.underlined(editor),
       content: (spot: HoverSpot): Promise<HoverCardContent | null> => this.contentAt(editor, spot),
       present: (
@@ -125,7 +132,12 @@ export class HoverCards {
     });
     const attachment: Attachment = { controller, injector };
     this.attachments.set(editor, attachment);
+    const stopWatching: () => void = watchHeldModifier(
+      editor.getContainerDomNode().ownerDocument.defaultView ?? window,
+      (held: boolean): void => controller.setHeld(held),
+    );
     return (): void => {
+      stopWatching();
       controller.dispose();
       if (this.attachments.get(editor) === attachment) {
         this.attachments.delete(editor);

@@ -69,7 +69,7 @@ describe('LanguageEditorOverrides', () => {
       'Rust files',
     );
     // Every overridable setting, Format on Type (#1141) among them; Line Height is global only.
-    expect(element.querySelectorAll('app-setting-row').length).toBe(23);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(29);
     expect(checks().every((check: HTMLInputElement): boolean => !check.checked)).toBe(true);
   });
 
@@ -202,6 +202,12 @@ describe('LanguageEditorOverrides', () => {
       'Trim Final Newlines',
       'Add Byte-Order Mark to New Files',
       'Format on Paste',
+      'Quick Suggestions',
+      'Suggest on Trigger Characters',
+      'Accept on Commit Character',
+      'Word-Based Suggestions',
+      'Snippet Suggestions',
+      'Parameter Hints',
     ]);
   });
 

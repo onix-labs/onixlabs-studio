@@ -3,10 +3,11 @@ import type {
   CompletionListView,
   CompletionPlacement,
 } from '@shared/angular/components/completion-list/completion-list';
-import { VISIBLE_ROWS } from '@shared/angular/components/completion-list/completion-list';
 import {
   COMPOSING_CONTEXT_KEY,
+  SUGGEST_ENTER_ACCEPTS_CONTEXT_KEY,
   SUGGEST_FOCUSED_CONTEXT_KEY,
+  SUGGEST_TAB_ACCEPTS_CONTEXT_KEY,
   SUGGEST_VISIBLE_CONTEXT_KEY,
   SuggestControl,
   SuggestItem,
@@ -14,6 +15,7 @@ import {
   SuggestMove,
 } from '@shared/angular/services/monaco/monaco-suggest-commands';
 import { isStudioProvider } from '@shared/angular/services/monaco/monaco-editor-capabilities';
+import type { AcceptSuggestionWith } from '@shared/angular/services/settings/settings';
 import { canResolve, CompletionDetails, CompletionRow, detailsOf, rowOf } from './completion-rows';
 
 /**
@@ -143,6 +145,18 @@ export interface SuggestSessionHost {
    * @returns Returns the cancellation.
    */
   cancellation(): Cancellation;
+
+  /**
+   * Reads which keys accept the focused row.
+   * @returns Returns the choice.
+   */
+  acceptWith(): AcceptSuggestionWith;
+
+  /**
+   * Reads how many rows the list shows before it scrolls.
+   * @returns Returns the row count.
+   */
+  visibleRows(): number;
 }
 
 /**
@@ -248,6 +262,16 @@ export class SuggestSession {
   private readonly focusedKey: MonacoApi.editor.IContextKey<boolean>;
 
   /**
+   * Holds the context key that says Enter accepts the focused row.
+   */
+  private readonly enterAcceptsKey: MonacoApi.editor.IContextKey<boolean>;
+
+  /**
+   * Holds the context key that says Tab accepts the focused row.
+   */
+  private readonly tabAcceptsKey: MonacoApi.editor.IContextKey<boolean>;
+
+  /**
    * Holds the context key that says an input method is composing.
    */
   private readonly composingKey: MonacoApi.editor.IContextKey<boolean>;
@@ -274,6 +298,8 @@ export class SuggestSession {
   ) {
     this.visibleKey = contextKey(editor, SUGGEST_VISIBLE_CONTEXT_KEY);
     this.focusedKey = contextKey(editor, SUGGEST_FOCUSED_CONTEXT_KEY);
+    this.enterAcceptsKey = contextKey(editor, SUGGEST_ENTER_ACCEPTS_CONTEXT_KEY);
+    this.tabAcceptsKey = contextKey(editor, SUGGEST_TAB_ACCEPTS_CONTEXT_KEY);
     this.composingKey = contextKey(editor, COMPOSING_CONTEXT_KEY);
     this.subscriptions.push(
       editor.onDidCompositionStart((): void => this.setComposing(true)),
@@ -388,7 +414,7 @@ export class SuggestSession {
       return;
     }
     const at: number = this.focused;
-    const page: number = VISIBLE_ROWS - 1;
+    const page: number = this.host.visibleRows() - 1;
     switch (move) {
       case 'next':
         this.focused = at < 0 ? 0 : (at + 1) % count;
@@ -456,6 +482,9 @@ export class SuggestSession {
    */
   private show(): void {
     this.visible = true;
+    const acceptWith: AcceptSuggestionWith = this.host.acceptWith();
+    this.enterAcceptsKey.set(acceptWith !== 'tab');
+    this.tabAcceptsKey.set(acceptWith !== 'enter');
     this.visibleKey.set(true);
     this.focusedKey.set(this.focusedItem() !== undefined);
     this.render();
@@ -567,6 +596,7 @@ export class SuggestSession {
         return row;
       },
       focused: item === undefined ? -1 : this.focused,
+      visibleRows: this.host.visibleRows(),
       message: items.length === 0 ? this.message : null,
       details,
       placement: this.placement(origin),

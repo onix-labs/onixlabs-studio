@@ -17,6 +17,7 @@ import {
   servedOnly,
   SuggestSessionHost,
 } from './suggest-session';
+import type { AcceptSuggestionWith } from '@shared/angular/services/settings/settings';
 
 /**
  * A listener of one of the fake editor's events.
@@ -107,6 +108,8 @@ interface FakeHost {
   disposed: number;
   frames: (() => void)[];
   timers: (() => void)[];
+  acceptWith: AcceptSuggestionWith;
+  visibleRows: number;
   flush(): void;
 }
 
@@ -125,6 +128,8 @@ function fakeHost(): FakeHost {
     disposed: 0,
     frames: [],
     timers: [],
+    acceptWith: 'tab',
+    visibleRows: 12,
     flush: (): void => {
       const frames: (() => void)[] = fake.frames;
       fake.frames = [];
@@ -162,6 +167,8 @@ function fakeHost(): FakeHost {
           dispose: (): void => undefined,
         };
       },
+      acceptWith: (): AcceptSuggestionWith => fake.acceptWith,
+      visibleRows: (): number => fake.visibleRows,
     },
   };
   return fake;
@@ -244,6 +251,34 @@ describe('SuggestSession (#1021)', () => {
   function lastView(): CompletionListView {
     return host.views[host.views.length - 1];
   }
+
+  it('saysWhichKeysAccept_asTheListOpens', () => {
+    const items: SuggestItem[] = [item('alpha')];
+
+    session.suggestions(control.control, answer(items));
+    host.flush();
+    expect(editor.keys.get('studioSuggestEnterAccepts')).toBe(false);
+    expect(editor.keys.get('studioSuggestTabAccepts')).toBe(true);
+
+    host.acceptWith = 'enter';
+    session.suggestions(control.control, answer(items));
+    expect(editor.keys.get('studioSuggestEnterAccepts')).toBe(true);
+    expect(editor.keys.get('studioSuggestTabAccepts')).toBe(false);
+  });
+
+  it('sizesItsPages_andTheList_fromTheSuggestionListSize', () => {
+    const items: SuggestItem[] = Array.from({ length: 30 }, (_: unknown, index: number) =>
+      item(`item${index}`),
+    );
+    host.visibleRows = 8;
+
+    session.suggestions(control.control, answer(items));
+    host.flush();
+    session.move('nextPage');
+
+    expect(session.focusedItem()?.textLabel).toBe('item7');
+    expect(lastView().visibleRows).toBe(8);
+  });
 
   it('showsAnAnswer_withMonacosChoiceFocused_andSetsItsKeys', () => {
     const items: SuggestItem[] = [item('alpha'), item('beta')];

@@ -93,6 +93,7 @@ describe('TextEditor over a stand-in Monaco editor (#1007)', () => {
       updateOptions: (): void => undefined,
     };
     const named: Record<string, unknown> = {
+      getContainerDomNode: (): HTMLElement => document.body,
       getModel: (): unknown => model,
       getPosition: (): null => null,
       getValue: (): string => '',
