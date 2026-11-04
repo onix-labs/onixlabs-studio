@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { inflateRawSync } from 'node:zlib';
 import { DatabaseValue, ResultColumn } from '@shared/api/database-engine-protocol';
-import { toCsv, toXlsx } from './result-export';
+import { toJson, toCsv, toXlsx } from './result-export';
 
 /**
  * One file read back out of a zip archive.
@@ -217,5 +217,29 @@ describe('toXlsx', () => {
     const sheet: string = await sheetOf([{ name: 'n' }], [['café — 東京']]);
 
     expect(sheet).toContain('café — 東京');
+  });
+});
+
+describe('toCsv options', () => {
+  const columns: readonly { readonly name: string }[] = [{ name: 'a' }, { name: 'b' }];
+
+  it('writes the delimiter chosen, quoting a field that holds it', () => {
+    expect(toCsv(columns, [['x;y', 1]], { delimiter: ';' })).toBe('a;b\r\n"x;y";1\r\n');
+    expect(toCsv(columns, [['x,y', 1]], { delimiter: '\t' })).toBe('a\tb\r\nx,y\t1\r\n');
+  });
+
+  it('leaves the header out when asked', () => {
+    expect(toCsv(columns, [[1, 2]], { header: false })).toBe('1,2\r\n');
+  });
+
+  it('writes a NULL as the text chosen', () => {
+    expect(toCsv(columns, [[null, 2]], { nullText: 'NULL' })).toBe('a,b\r\nNULL,2\r\n');
+  });
+});
+
+describe('toJson', () => {
+  it('writes one object per row, a NULL staying null', () => {
+    const text: string = toJson([{ name: 'a' }, { name: 'b' }], [[1, null]]);
+    expect(JSON.parse(text)).toEqual([{ a: 1, b: null }]);
   });
 });

@@ -84,9 +84,34 @@ export interface DatabaseExplorerCommandHandler {
   readonly locked: Signal<boolean>;
 
   /**
+   * Gets whether the open query runs in manual transactions, so Commit and Rollback are offered.
+   */
+  readonly manualTransactions: Signal<boolean>;
+
+  /**
+   * Gets whether a transaction is open where the open query runs.
+   */
+  readonly transactionOpen: Signal<boolean>;
+
+  /**
    * Runs the open query (its selection, or all of it), or cancels it when it is running.
    */
   execute(): void;
+
+  /**
+   * Runs the statement the open query's caret is in.
+   */
+  executeStatement(): void;
+
+  /**
+   * Commits the open transaction.
+   */
+  commit(): void;
+
+  /**
+   * Rolls back the open transaction.
+   */
+  rollback(): void;
 
   /**
    * Opens a new query against the selected connection.
@@ -201,6 +226,20 @@ export class DatabaseExplorerCommands {
   );
 
   /**
+   * Gets whether the active view's open query runs in manual transactions.
+   */
+  public readonly manualTransactions: Signal<boolean> = computed(
+    (): boolean => this.handler()?.manualTransactions() ?? false,
+  );
+
+  /**
+   * Gets whether a transaction is open where the active view's open query runs.
+   */
+  public readonly transactionOpen: Signal<boolean> = computed(
+    (): boolean => this.handler()?.transactionOpen() ?? false,
+  );
+
+  /**
    * Registers the active view's handler.
    * @param handler The handler.
    */
@@ -223,6 +262,27 @@ export class DatabaseExplorerCommands {
    */
   public execute(): void {
     this.handler()?.execute();
+  }
+
+  /**
+   * Runs the statement the open query's caret is in.
+   */
+  public executeStatement(): void {
+    this.handler()?.executeStatement();
+  }
+
+  /**
+   * Commits the open transaction.
+   */
+  public commit(): void {
+    this.handler()?.commit();
+  }
+
+  /**
+   * Rolls back the open transaction.
+   */
+  public rollback(): void {
+    this.handler()?.rollback();
   }
 
   /**

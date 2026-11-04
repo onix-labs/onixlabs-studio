@@ -230,6 +230,7 @@ describe('DatabaseContribution', () => {
         DatabaseChannel.Fetch,
         DatabaseChannel.Action,
         DatabaseChannel.Names,
+        DatabaseChannel.Transaction,
         DatabaseChannel.SecretsMachineSealing,
         DatabaseChannel.SecretsUnlock,
         DatabaseChannel.SecretsSeal,

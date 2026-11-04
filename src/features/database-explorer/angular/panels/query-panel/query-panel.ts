@@ -20,7 +20,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { FileWriteResult } from '@shared/api/file-channels';
-import { toCsv, toXlsx } from '../../database-export/result-export';
+import { CsvOptions, toCsv, toJson, toXlsx } from '../../database-export/result-export';
 import { ExportRows } from '../../database-workspace/database-workspace';
 import {
   DatabaseEngineInfo,
@@ -52,8 +52,10 @@ import {
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
+  DatabaseCsvDelimiter,
   DatabaseGridlines,
   DatabaseGridlineTone,
+  DatabaseResultView,
 } from '@shared/angular/services/settings/settings-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -66,8 +68,14 @@ import {
   DatabaseCompletions,
   QueryCompletion,
 } from '../../database-completions/database-completions';
-import { CellText, cellText, holdsGraph, plainValue } from '../../database-values';
+import { CellFormat, CellText, cellText, holdsGraph, plainValue } from '../../database-values';
+import { DatabasePrompts } from '../../database-prompts/database-prompts';
 import { DatabaseQueryOpener } from '../../database-query-opener/database-query-opener';
+import {
+  destructiveStatements,
+  StatementSpan,
+  statementAt,
+} from '../../database-statements/database-statements';
 import {
   DatabaseWorkspace,
   NodeChildren,
@@ -110,9 +118,18 @@ function formatElapsed(ms: number): string {
 }
 
 /**
+ * The character each CSV Delimiter choice writes.
+ */
+const CSV_DELIMITERS: Readonly<Record<DatabaseCsvDelimiter, string>> = {
+  comma: ',',
+  semicolon: ';',
+  tab: '\t',
+};
+
+/**
  * How a result is shown.
  */
-type ResultView = 'table' | 'graph' | 'raw';
+type ResultView = DatabaseResultView;
 
 /**
  * How the grid's columns are sized: sharing the grid's width (`view`), or each as wide as its values
@@ -215,6 +232,36 @@ export class QueryPanel {
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
   private readonly settings: Settings = inject(Settings);
   private readonly keybindings: Keybindings = inject(Keybindings);
+  private readonly prompts: DatabasePrompts = inject(DatabasePrompts);
+
+  /**
+   * Gets the font the results grid is drawn in: Code's.
+   */
+  protected readonly gridFont: Signal<string> = this.settings.value('textEditor.global.fontFamily');
+
+  /**
+   * Gets how the grid shows a value, from the user's settings.
+   */
+  private readonly cellFormat: Signal<CellFormat> = computed((): CellFormat => ({
+    nullText: this.settings.value('databaseExplorer.nullText')(),
+    local: this.settings.value('databaseExplorer.valueFormat')() === 'local',
+  }));
+
+  /**
+   * Gets what the graph's captions are remembered against: the database the query runs on.
+   */
+  protected readonly captionScope: Signal<string> = computed(
+    (): string => `${this.query()?.connectionId ?? ''}\u0000${this.query()?.database ?? ''}`,
+  );
+
+  /**
+   * Gets Execute's tooltip, naming the shortcut in force.
+   */
+  protected readonly executeTooltip: Signal<string> = computed((): string => {
+    const chord: string | null = this.keybindings.chordFor('database.execute');
+    const keys: string = chord === null ? '' : ` (${this.keybindings.formatChord(chord)})`;
+    return `Run the selection, or the whole query${keys}`;
+  });
 
   /**
    * Gets which rules the results grid draws between its cells, from the user's setting.
@@ -278,15 +325,21 @@ export class QueryPanel {
   protected readonly resultIndex: WritableSignal<number> = signal<number>(0);
 
   /**
-   * Holds how the result is shown; null until chosen, when a graph result opens as a graph.
+   * Gets how the result is shown: what was last chosen for this query, remembered with it; null until
+   * then, when a graph result opens as a graph.
    */
-  private readonly chosenView: WritableSignal<ResultView | null> = signal<ResultView | null>(null);
+  private readonly chosenView: Signal<ResultView | null> = computed(
+    (): ResultView | null =>
+      this.settings.value('databaseExplorer.resultViews')()[this.panel().id] ?? null,
+  );
 
   /**
-   * Holds how the grid's columns are sized; they share the grid's width until the user fits them to
-   * their data.
+   * Holds how the grid's columns are sized: the Column Sizing setting, until the buttons above the grid
+   * change it for this query.
    */
-  protected readonly columnFit: WritableSignal<ColumnFit> = signal<ColumnFit>('view');
+  protected readonly columnFit: WritableSignal<ColumnFit> = signal<ColumnFit>(
+    this.settings.get('databaseExplorer.columnSizing'),
+  );
 
   /**
    * Holds the selected grid row.
@@ -422,6 +475,7 @@ export class QueryPanel {
     return [
       { id: EXPORT_CSV, label: 'Export to CSV', icon: Icon.EXPORT, disabled: none },
       { id: EXPORT_XLSX, label: 'Export to XLSX', icon: Icon.EXPORT, disabled: none },
+      { id: EXPORT_JSON, label: 'Export to JSON', icon: Icon.EXPORT, disabled: none },
     ];
   });
 
@@ -602,14 +656,18 @@ export class QueryPanel {
   /**
    * Gets the grid's rows, formatted once per result rather than once per change detection.
    */
-  protected readonly gridRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    (this.resultSet()?.rows ?? []).map(
+  protected readonly gridRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
+    const format: CellFormat = this.cellFormat();
+    return (this.resultSet()?.rows ?? []).map(
       (row: readonly DatabaseValue[], index: number): TableRow => ({
         id: `${index}`,
-        data: { index: index + 1, cells: row.map(cellText) } satisfies GridRow,
+        data: {
+          index: index + 1,
+          cells: row.map((value: DatabaseValue): CellText => cellText(value, format)),
+        } satisfies GridRow,
       }),
-    ),
-  );
+    );
+  });
 
   /**
    * Gets the result as JSON, for the Raw view.
@@ -692,7 +750,11 @@ export class QueryPanel {
 
     // The ribbon's Execute runs this panel exactly as its own button does, selection and all.
     effect((onCleanup: (cleanup: () => void) => void): void => {
-      const detach: () => void = this.opener.attach(this.panel().id, (): void => this.execute());
+      const detach: () => void = this.opener.attach(
+        this.panel().id,
+        (): void => this.execute(),
+        (): void => this.executeStatement(),
+      );
       onCleanup(detach);
     });
     // Fit to View shares out the grid's width, so it follows the grid as the panel is resized.
@@ -727,7 +789,6 @@ export class QueryPanel {
       untracked((): void => {
         const outcome: ExecuteOutcome | null = this.outcome();
         this.resultIndex.set(0);
-        this.chosenView.set(null);
         this.selectedRows.set(new Set<string>());
         if (outcome !== null) {
           this.tab.set(outcome.resultSets.length === 0 ? 'messages' : 'results');
@@ -823,6 +884,10 @@ export class QueryPanel {
         event.preventDefault();
         event.stopPropagation();
         this.execute();
+      } else if (this.keybindings.matches(event.browserEvent, 'database.executeStatement')) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.executeStatement();
       }
     });
     this.completionProviders = QUERY_LANGUAGES.map((language: string): MonacoApi.IDisposable =>
@@ -892,8 +957,8 @@ export class QueryPanel {
    * @param id The item's id.
    */
   protected onMoreAction(id: string): void {
-    if (id === EXPORT_CSV || id === EXPORT_XLSX) {
-      void this.exportResult(id === EXPORT_CSV ? 'csv' : 'xlsx');
+    if (id === EXPORT_CSV || id === EXPORT_XLSX || id === EXPORT_JSON) {
+      void this.exportResult(id === EXPORT_CSV ? 'csv' : id === EXPORT_XLSX ? 'xlsx' : 'json');
     }
   }
 
@@ -902,7 +967,7 @@ export class QueryPanel {
    * user chooses, and says how it went.
    * @param format The file format.
    */
-  private async exportResult(format: 'csv' | 'xlsx'): Promise<void> {
+  private async exportResult(format: 'csv' | 'xlsx' | 'json'): Promise<void> {
     const resultSet: ResultSet | undefined = this.resultSet();
     const title: string = this.query()?.title ?? 'Results';
     if (resultSet === undefined) {
@@ -922,8 +987,14 @@ export class QueryPanel {
     const result: FileWriteResult =
       format === 'csv'
         ? // A byte-order mark, so Excel reads the file as UTF-8 rather than guessing.
-          await this.fileSystem.write(path, toCsv(gathered.columns, gathered.rows), true)
-        : await this.fileSystem.writeBytes(path, await toXlsx(gathered.columns, gathered.rows));
+          await this.fileSystem.write(
+            path,
+            toCsv(gathered.columns, gathered.rows, this.csvOptions()),
+            this.settings.get('databaseExplorer.csvByteOrderMark'),
+          )
+        : format === 'json'
+          ? await this.fileSystem.write(path, toJson(gathered.columns, gathered.rows))
+          : await this.fileSystem.writeBytes(path, await toXlsx(gathered.columns, gathered.rows));
     const rows: string = `${gathered.rows.length.toLocaleString()} row${gathered.rows.length === 1 ? '' : 's'}`;
     if (!result.success) {
       this.notifications.notify({
@@ -943,6 +1014,21 @@ export class QueryPanel {
   }
 
   /**
+   * Gets how a CSV export is written, from the user's settings.
+   * @returns Returns the options.
+   */
+  private csvOptions(): CsvOptions {
+    return {
+      delimiter: CSV_DELIMITERS[this.settings.get('databaseExplorer.csvDelimiter')],
+      header: this.settings.get('databaseExplorer.csvHeaderRow'),
+      nullText:
+        this.settings.get('databaseExplorer.csvNull') === 'text'
+          ? this.settings.get('databaseExplorer.nullText')
+          : '',
+    };
+  }
+
+  /**
    * Runs the selection, or the whole query when nothing is selected; cancels it when it is running.
    */
   public execute(): void {
@@ -956,10 +1042,48 @@ export class QueryPanel {
     const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
     const selection: MonacoApi.Selection | null = editor?.getSelection() ?? null;
     if (model !== null && selection !== null && !selection.isEmpty()) {
-      void this.workspace.execute(id, model.getValueInRange(selection), selection.startLineNumber);
+      void this.run(model.getValueInRange(selection), selection.startLineNumber);
       return;
     }
-    void this.workspace.execute(id, this.query()?.text ?? '', 1);
+    void this.run(this.query()?.text ?? '', 1);
+  }
+
+  /**
+   * Runs the statement the caret is in, and only that. The selection plays no part, as Execute covers
+   * it.
+   */
+  public executeStatement(): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.editor()?.getEditor() ?? null;
+    const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
+    const position: MonacoApi.Position | null = editor?.getPosition() ?? null;
+    if (this.running() || model === null || position === null) {
+      return;
+    }
+    const span: StatementSpan | undefined = statementAt(
+      model.getValue(),
+      model.getOffsetAt(position),
+      this.language() === 'cypher',
+    );
+    if (span !== undefined) {
+      void this.run(span.text, span.line);
+    }
+  }
+
+  /**
+   * Runs some of the query's text, first asking about any statement that cannot be taken back when the
+   * user wants that.
+   * @param text The text.
+   * @param line The document line it starts on.
+   */
+  private async run(text: string, line: number): Promise<void> {
+    if (this.settings.get('databaseExplorer.confirmDestructive')) {
+      const statements: readonly string[] = destructiveStatements(text, this.language());
+      if (statements.length > 0 && !(await this.prompts.confirmDestructive(statements))) {
+        return;
+      }
+    }
+    await this.workspace.execute(this.panel().id, text, line);
   }
 
   /**
@@ -997,7 +1121,10 @@ export class QueryPanel {
    * @param view The view.
    */
   protected chooseView(view: ResultView): void {
-    this.chosenView.set(view);
+    this.settings.set('databaseExplorer.resultViews', {
+      ...this.settings.get('databaseExplorer.resultViews'),
+      [this.panel().id]: view,
+    });
   }
 
   /**
@@ -1006,7 +1133,6 @@ export class QueryPanel {
    */
   protected chooseResult(index: number): void {
     this.resultIndex.set(index);
-    this.chosenView.set(null);
     this.selectedRows.set(new Set<string>());
   }
 
@@ -1026,7 +1152,7 @@ export class QueryPanel {
       title: `Row ${Number(row.id) + 1}`,
       properties: set.columns.map((column, index: number) => ({
         name: column.name,
-        value: cellText(cells[index] ?? null).text,
+        value: cellText(cells[index] ?? null, this.cellFormat()).text,
       })),
     });
   }
@@ -1154,3 +1280,4 @@ function completionKind(
  */
 const EXPORT_CSV: string = 'export-csv';
 const EXPORT_XLSX: string = 'export-xlsx';
+const EXPORT_JSON: string = 'export-json';

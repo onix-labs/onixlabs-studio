@@ -1,6 +1,7 @@
 import { DatabaseSync, SQLOutputValue, StatementSync } from 'node:sqlite';
 import {
   DatabaseValue,
+  ExecuteOptions,
   QueryMessage,
   ResultColumn,
   ResultColumnKey,
@@ -17,33 +18,48 @@ import {
 import { ScriptStatement, splitStatements } from '../../protocol/database/statements';
 
 /**
- * Runs a script against a database statement by statement, stopping at the first error: each
+ * Runs a script against a database statement by statement, stopping at the first error unless asked
+ * to carry on: each
  * row-returning statement becomes a result set, every other one a row count, and an error a message
  * on the line its statement starts on. Synchronous, as `node:sqlite` is — callers run it outside the
  * process that must stay responsive.
  * @param database The open database.
  * @param script The text to run.
  * @param firstLine The document line the text starts on.
+ * @param options How Studio wants it run.
  * @returns Returns what the script produced.
  */
 export function runScript(
   database: DatabaseSync,
   script: string,
   firstLine: number,
+  options?: ExecuteOptions,
 ): EngineExecution {
   const resultSets: EngineResultSet[] = [];
   const messages: QueryMessage[] = [];
   let failed: boolean = false;
+  const manual: boolean = options?.manualTransaction === true;
+  if (manual && !database.isTransaction) {
+    database.exec('begin');
+  }
   for (const statement of splitStatements(script, firstLine)) {
     try {
-      runStatement(database, statement, resultSets, messages);
+      runStatement(database, statement, resultSets, messages, options?.maxRows ?? MAX_RESULT_ROWS);
     } catch (error: unknown) {
       messages.push({ severity: 'error', text: describeError(error), line: statement.line });
       failed = true;
-      break;
+      if (options?.continueOnError !== true) {
+        break;
+      }
     }
   }
-  return { resultSets, messages, failed, cancelled: false };
+  return {
+    resultSets,
+    messages,
+    failed,
+    cancelled: false,
+    ...(manual ? { transactionOpen: database.isTransaction } : {}),
+  };
 }
 
 /**
@@ -52,12 +68,14 @@ export function runScript(
  * @param statement The statement.
  * @param resultSets The result sets being built.
  * @param messages The messages being built.
+ * @param maxRows The most rows a result set keeps.
  */
 function runStatement(
   database: DatabaseSync,
   statement: ScriptStatement,
   resultSets: EngineResultSet[],
   messages: QueryMessage[],
+  maxRows: number,
 ): void {
   const prepared: StatementSync = database.prepare(statement.text);
   const columns: readonly SourceColumn[] = prepared.columns();
@@ -76,7 +94,7 @@ function runStatement(
   let total: number = 0;
   for (const row of prepared.iterate() as Iterable<unknown>) {
     total += 1;
-    if (rows.length < MAX_RESULT_ROWS) {
+    if (rows.length < maxRows) {
       rows.push((row as readonly SQLOutputValue[]).map(toValue));
     }
   }

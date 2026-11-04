@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { DatabaseSettingsStandIn } from '../database-workspace/database-settings.testing';
+import type { DatabaseSelectAction } from '@shared/angular/services/settings/settings-registry';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import {
@@ -264,7 +266,10 @@ describe('DatabaseAgentCapabilities', () => {
         { provide: AiRuntime, useValue: runtime },
         { provide: DatabaseClient, useValue: client },
         { provide: FileSystem, useValue: {} },
-        { provide: Settings, useValue: { databaseSelectAction: signal<string>('open') } },
+        {
+          provide: Settings,
+          useValue: new DatabaseSettingsStandIn(signal<DatabaseSelectAction>('open')),
+        },
         { provide: DatabaseEnginePrompt, useValue: { installedKey: signal<string>('postgres') } },
         {
           provide: DatabasePrompts,

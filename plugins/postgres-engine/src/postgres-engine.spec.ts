@@ -69,6 +69,7 @@ interface FakeClient {
 interface PgMock {
   readonly clients: FakeClient[];
   respond: Responder | null;
+  encryptionRefused: boolean;
   connectError: Error | null;
   versionError: Error | null;
   readonly getTypeParser: Mock<(oid: number, format?: string) => unknown>;
@@ -93,6 +94,9 @@ const pgMock: PgMock = vi.hoisted((): PgMock => {
     }
 
     public connect(): Promise<void> {
+      if (state.encryptionRefused && this.config['ssl'] !== false) {
+        return Promise.reject(new Error('The server does not support SSL connections'));
+      }
       return state.connectError === null ? Promise.resolve() : Promise.reject(state.connectError);
     }
 
@@ -160,6 +164,7 @@ const pgMock: PgMock = vi.hoisted((): PgMock => {
     clients,
     respond: null,
     connectError: null,
+    encryptionRefused: false,
     versionError: null,
     getTypeParser: vi.fn((): unknown => 'the default parser'),
     Client,
@@ -332,6 +337,7 @@ describe('PostgresEngine', (): void => {
     pgMock.clients.length = 0;
     pgMock.respond = null;
     pgMock.connectError = null;
+    pgMock.encryptionRefused = false;
     pgMock.versionError = null;
     pgMock.getTypeParser.mockClear();
     sessions = [];
@@ -394,7 +400,7 @@ describe('PostgresEngine', (): void => {
       displayName: 'PostgreSQL',
       language: 'pgsql',
       queryExtension: 'sql',
-      capabilities: ['cancel', 'multipleDatabases', 'script', 'completion'],
+      capabilities: ['cancel', 'multipleDatabases', 'script', 'completion', 'transactions'],
     });
     expect(engine.info.connectionFields.map((field: { id: string }): string => field.id)).toEqual([
       'host',
@@ -403,6 +409,7 @@ describe('PostgresEngine', (): void => {
       'password',
       'database',
       'ssl',
+      'readOnly',
     ]);
     expect(engine.info.connectionFields[1]).toMatchObject({ section: 'server', inline: true });
     expect(engine.info.connectionFields[3]).toMatchObject({ kind: 'password', secret: true });
@@ -410,13 +417,21 @@ describe('PostgresEngine', (): void => {
       engine.info.connectionFields.map(
         (field: { section?: string }): string | undefined => field.section,
       ),
-    ).toEqual(['server', 'server', 'authentication', 'authentication', 'database', 'security']);
+    ).toEqual([
+      'server',
+      'server',
+      'authentication',
+      'authentication',
+      'database',
+      'security',
+      'options',
+    ]);
     expect(engine.info.connectionFields[5]).toMatchObject({ id: 'ssl', label: 'Encryption' });
     expect(
       engine.info.connectionFields[5].options?.map(
         (option: { value: string }): string => option.value,
       ),
-    ).toEqual(['disable', 'require', 'no-verify']);
+    ).toEqual(['disable', 'prefer', 'require', 'no-verify']);
   });
 
   it('connect_fallsBackToTheDefaults_andReportsTheServerVersion', async (): Promise<void> => {
@@ -430,10 +445,41 @@ describe('PostgresEngine', (): void => {
       user: '',
       password: '',
       database: 'postgres',
-      ssl: false,
+      ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 10_000,
     });
     expect(session.serverVersion).toBe('PostgreSQL 16.4');
+  });
+
+  it('connect_prefer_fallsBackToAPlainConnection_whenTheServerHasNoEncryption', async (): Promise<void> => {
+    pgMock.encryptionRefused = true;
+
+    const session: EngineSession = await new PostgresEngine().connect({ ssl: 'prefer' });
+    sessions.push(session);
+
+    expect(session.serverVersion).toBe('PostgreSQL 16.4');
+    expect(pgMock.clients.map((client: FakeClient): unknown => client.config['ssl'])).toEqual([
+      { rejectUnauthorized: false },
+      false,
+    ]);
+  });
+
+  it('connect_required_doesNotFallBack', async (): Promise<void> => {
+    pgMock.connectError = new Error('The server does not support SSL connections');
+
+    await expect(new PostgresEngine().connect({ ssl: 'require' })).rejects.toThrow('SSL');
+  });
+
+  it('connect_readOnly_asksTheServerForReadOnlyTransactions', async (): Promise<void> => {
+    await open({ readOnly: 'true' });
+
+    expect(pgMock.clients[0].config['options']).toBe('-c default_transaction_read_only=on');
+  });
+
+  it('connect_takesTheTimeoutStudioAsksFor', async (): Promise<void> => {
+    sessions.push(await new PostgresEngine().connect({}, { timeoutMs: 30_000 }));
+
+    expect(pgMock.clients[0].config['connectionTimeoutMillis']).toBe(30_000);
   });
 
   it('connect_trimsTheValues_andParsesThePort', async (): Promise<void> => {

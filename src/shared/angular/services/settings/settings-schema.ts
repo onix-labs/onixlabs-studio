@@ -92,6 +92,21 @@ export interface VisibilityDef {
 }
 
 /**
+ * Names the plugin contribution a setting needs installed.
+ */
+export interface ContributionRequirement {
+  /**
+   * Gets the slot it fills.
+   */
+  readonly slot: 'container-engine' | 'database-engine';
+
+  /**
+   * Gets its identifier, for a setting about one provider of the slot; absent for any of them.
+   */
+  readonly id?: string;
+}
+
+/**
  * Holds the display and control fields shared by every setting definition.
  */
 interface BaseSettingDef {
@@ -99,6 +114,12 @@ interface BaseSettingDef {
    * Gets the condition under which the setting is shown, or undefined for a setting that always is.
    */
   readonly visibleWhen?: VisibilityDef;
+
+  /**
+   * Gets the plugin contribution the setting is for, when it does nothing without one: it is shown
+   * only while such a plugin is installed, so a setting for a plugin is never offered ahead of it.
+   */
+  readonly requiresContribution?: ContributionRequirement;
 
   /**
    * Gets the label shown for the setting.

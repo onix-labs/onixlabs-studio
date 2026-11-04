@@ -136,6 +136,9 @@ type SettingsSectionId =
   | 'system-monitor'
   | 'api-explorer'
   | 'database-explorer'
+  | 'database-results'
+  | 'database-connections'
+  | 'database-export'
   | 'plugins'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
@@ -568,7 +571,14 @@ export class SettingsView {
       label: 'Database Explorer',
       icon: Icon.DATABASE,
       children: [
-        { id: 'database-explorer-general', label: 'General', sectionId: 'database-explorer' },
+        { id: 'database-explorer-general', label: 'Queries', sectionId: 'database-explorer' },
+        { id: 'database-explorer-results', label: 'Results', sectionId: 'database-results' },
+        {
+          id: 'database-explorer-connections',
+          label: 'Connections',
+          sectionId: 'database-connections',
+        },
+        { id: 'database-explorer-export', label: 'Export', sectionId: 'database-export' },
       ],
     },
     {

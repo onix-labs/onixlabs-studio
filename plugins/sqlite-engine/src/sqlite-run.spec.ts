@@ -87,6 +87,43 @@ describe('runScript', (): void => {
     expect(execution.messages).toHaveLength(2);
   });
 
+  it('carriesOnPastAnError_whenAsked', (): void => {
+    const execution: EngineExecution = runScript(database, 'select nope;\nselect 2 as two;', 1, {
+      continueOnError: true,
+    });
+
+    expect(execution.failed).toBe(true);
+    expect(execution.resultSets).toHaveLength(1);
+  });
+
+  it('keepsTheRowsAsked', (): void => {
+    const execution: EngineExecution = runScript(
+      database,
+      'with recursive n(i) as (select 1 union all select i + 1 from n where i < 5) select i from n',
+      1,
+      { maxRows: 2 },
+    );
+
+    expect(execution.resultSets[0].rows).toHaveLength(2);
+    expect(execution.messages[0].severity).toBe('warning');
+  });
+
+  it('leavesAManualTransactionOpen_untilItIsEnded', (): void => {
+    database.exec('create table t (a)');
+
+    const first: EngineExecution = runScript(database, 'insert into t values (1)', 1, {
+      manualTransaction: true,
+    });
+    expect(first.transactionOpen).toBe(true);
+    runScript(database, 'rollback', 1);
+
+    expect(database.prepare('select count(*) as c from t').get()?.['c']).toBe(0);
+  });
+
+  it('saysNothingAboutTransactions_outsideManualRuns', (): void => {
+    expect(runScript(database, 'select 1', 1).transactionOpen).toBeUndefined();
+  });
+
   it('runsNothingForAnEmptyScript', (): void => {
     expect(runScript(database, '  -- nothing\n', 1)).toEqual({
       resultSets: [],

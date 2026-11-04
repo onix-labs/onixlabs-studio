@@ -109,6 +109,28 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The labels drawn, each opening the menu that chooses its caption.
+.graph__labels {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  max-inline-size: calc(100% - 1rem);
+}
+
+.graph__label {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--form-border-color);
+  border-radius: 999px;
+  background: var(--form-background-color);
+  color: var(--form-foreground-color);
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
 .graph__note {
   position: absolute;
   inset-block-end: 0;

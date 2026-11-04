@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DatabasePrompts } from '../../database-prompts/database-prompts';
+import { Settings } from '@shared/angular/services/settings/settings';
 import type * as MonacoApi from 'monaco-editor';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
@@ -444,6 +446,7 @@ describe('QueryPanel', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    localStorage.removeItem('settings');
   });
 
   /**
@@ -501,6 +504,47 @@ describe('QueryPanel', () => {
       { id: 1, name: 'Ada' },
       { id: 2, name: null },
     ]);
+  });
+
+  it('execute_asksFirstAboutADestructiveStatement_andRunsNothingWhenRefused', async () => {
+    const connection: DatabaseConnection = postgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'drop table a');
+    build(query);
+    const prompts: DatabasePrompts = TestBed.inject(DatabasePrompts);
+
+    component.execute();
+    await settle();
+    expect(prompts.destructive()).toEqual(['drop table a']);
+    prompts.settleDestructive(false);
+    await settle();
+
+    expect(client.executes).toHaveLength(0);
+  });
+
+  it('execute_runsADestructiveStatementOnceConfirmed', async () => {
+    const connection: DatabaseConnection = postgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'drop table a');
+    build(query);
+    const prompts: DatabasePrompts = TestBed.inject(DatabasePrompts);
+
+    component.execute();
+    await settle();
+    prompts.settleDestructive(true);
+    await settle();
+
+    expect(client.executes).toHaveLength(1);
+  });
+
+  it('execute_asksNothing_whenTheSettingIsOff', async () => {
+    TestBed.inject(Settings).set('databaseExplorer.confirmDestructive', false);
+    const connection: DatabaseConnection = postgres();
+    const query: DatabaseQuery = workspace.addQuery(connection.id, undefined, 'drop table a');
+    build(query);
+
+    component.execute();
+    await settle();
+
+    expect(client.executes).toHaveLength(1);
   });
 
   it('execute_aFailureWithNoResult_opensOnMessages', async () => {
@@ -740,6 +784,7 @@ describe('QueryPanel', () => {
     ).toEqual([
       ['Export to CSV', true],
       ['Export to XLSX', true],
+      ['Export to JSON', true],
     ]);
   });
 

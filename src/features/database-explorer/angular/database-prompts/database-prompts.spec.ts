@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
 import {
@@ -475,6 +476,47 @@ describe('DatabasePrompts', () => {
     expect(prompts.passphraseMode()).toBeNull();
     expect(prompts.passphrase()).toBe('');
     expect(prompts.passphraseConfirm()).toBe('');
+  });
+});
+
+describe('DatabasePrompts settings', () => {
+  let prompts: DatabasePrompts;
+  let settings: Settings;
+
+  beforeEach(() => {
+    localStorage.removeItem('settings');
+    TestBed.configureTestingModule({
+      providers: [DatabasePrompts, { provide: DatabaseWorkspace, useValue: new FakeWorkspace() }],
+    });
+    prompts = TestBed.inject(DatabasePrompts);
+    settings = TestBed.inject(Settings);
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
+  it('newConnection_startsRememberingAsTheSettingSays', () => {
+    settings.set('databaseExplorer.rememberPasswords', false);
+    prompts.newConnection();
+    expect(prompts.remember()).toBe(false);
+  });
+
+  it('confirmDestructive_answersAsTheUserDoes_andClosesThePrompt', async () => {
+    const answer: Promise<boolean> = prompts.confirmDestructive(['drop table a']);
+    expect(prompts.destructive()).toEqual(['drop table a']);
+
+    prompts.settleDestructive(true);
+
+    expect(await answer).toBe(true);
+    expect(prompts.destructive()).toBeNull();
+  });
+
+  it('confirmDestructive_asked again_refusesTheFirst', async () => {
+    const first: Promise<boolean> = prompts.confirmDestructive(['drop table a']);
+    void prompts.confirmDestructive(['drop table b']);
+    expect(await first).toBe(false);
+    expect(prompts.destructive()).toEqual(['drop table b']);
   });
 });
 

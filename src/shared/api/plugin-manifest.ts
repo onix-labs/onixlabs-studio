@@ -152,8 +152,12 @@ import {
  * `1.22.0` adds a hosting contribution's optional `customHosts` (#1233): whether the plugin can serve
  * hosts the user adds in Settings, such as a GitHub Enterprise server, beside the ones it names.
  * Absent means no, as before. Adds only.
+ *
+ * `1.23.0` moves the database-engine protocol to 1.4 (#1248), with the manifest's shape unchanged:
+ * execution, connection and tree options, the `transactions` capability and its `transaction` request.
+ * A plugin still on protocol 1.3 keeps working, and ignores what it does not know. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.22.0';
+export const PLUGIN_API_VERSION: string = '1.23.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

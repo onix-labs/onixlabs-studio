@@ -5,6 +5,7 @@ import { PassphraseLock, SealedSecrets } from '@shared/api/database-document';
 import {
   CompletionName,
   ConnectionValues,
+  ConnectOptions,
   ConnectOutcome,
   DatabaseEngineInfo,
   DatabaseValue,
@@ -14,6 +15,9 @@ import {
   FetchRequest,
   NamesRequest,
   NodeActionOutcome,
+  TransactionOutcome,
+  TransactionRequest,
+  TreeOptions,
 } from '@shared/api/database-engine-protocol';
 
 /**
@@ -48,11 +52,16 @@ export class DatabaseClient {
    * Opens a connection.
    * @param engine The engine's id.
    * @param values The field values, secrets included.
+   * @param options How to open it.
    * @returns Returns a promise resolving the outcome.
    */
-  public connect(engine: string, values: ConnectionValues): Promise<ConnectOutcome> {
+  public connect(
+    engine: string,
+    values: ConnectionValues,
+    options?: ConnectOptions,
+  ): Promise<ConnectOutcome> {
     return (
-      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Connect, engine, values) ??
+      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Connect, engine, values, options) ??
       Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
     );
   }
@@ -61,11 +70,16 @@ export class DatabaseClient {
    * Tests a connection without keeping it open.
    * @param engine The engine's id.
    * @param values The field values, secrets included.
+   * @param options How to open it.
    * @returns Returns a promise resolving the outcome.
    */
-  public test(engine: string, values: ConnectionValues): Promise<ConnectOutcome> {
+  public test(
+    engine: string,
+    values: ConnectionValues,
+    options?: ConnectOptions,
+  ): Promise<ConnectOutcome> {
     return (
-      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Test, engine, values) ??
+      this.bridge?.invoke<ConnectOutcome>(DatabaseChannel.Test, engine, values, options) ??
       Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
     );
   }
@@ -83,11 +97,16 @@ export class DatabaseClient {
    * Lists a tree node's children.
    * @param session The session's id.
    * @param path The node's path, or null for the top of the tree.
+   * @param options How to describe the tree.
    * @returns Returns a promise resolving the outcome.
    */
-  public expand(session: string, path: string | null): Promise<ExpandOutcome> {
+  public expand(
+    session: string,
+    path: string | null,
+    options?: TreeOptions,
+  ): Promise<ExpandOutcome> {
     return (
-      this.bridge?.invoke<ExpandOutcome>(DatabaseChannel.Expand, session, path) ??
+      this.bridge?.invoke<ExpandOutcome>(DatabaseChannel.Expand, session, path, options) ??
       Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
     );
   }
@@ -136,12 +155,35 @@ export class DatabaseClient {
    * @param session The session's id.
    * @param path The node's path.
    * @param action The action's id.
+   * @param options How to describe the tree.
    * @returns Returns a promise resolving what it produced.
    */
-  public action(session: string, path: string, action: string): Promise<NodeActionOutcome> {
+  public action(
+    session: string,
+    path: string,
+    action: string,
+    options?: TreeOptions,
+  ): Promise<NodeActionOutcome> {
     return (
-      this.bridge?.invoke<NodeActionOutcome>(DatabaseChannel.Action, session, path, action) ??
-      Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+      this.bridge?.invoke<NodeActionOutcome>(
+        DatabaseChannel.Action,
+        session,
+        path,
+        action,
+        options,
+      ) ?? Promise.resolve({ kind: 'failure', message: UNAVAILABLE })
+    );
+  }
+
+  /**
+   * Commits or rolls back the transaction an execution left open.
+   * @param request What to do.
+   * @returns Returns a promise resolving what it came to.
+   */
+  public transaction(request: TransactionRequest): Promise<TransactionOutcome> {
+    return (
+      this.bridge?.invoke<TransactionOutcome>(DatabaseChannel.Transaction, request) ??
+      Promise.resolve({ failed: true, message: UNAVAILABLE })
     );
   }
 

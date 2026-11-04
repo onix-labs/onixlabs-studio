@@ -447,6 +447,46 @@ export type ApiAcceptSelfSigned = 'never' | 'localhost' | 'always';
 export type ApiProxyMode = 'none' | 'system' | 'custom';
 
 /**
+ * What the Database Explorer does when a statement in a script fails.
+ */
+export type DatabaseOnError = 'stop' | 'continue';
+
+/**
+ * How the Database Explorer's queries are committed.
+ */
+export type DatabaseTransactions = 'autocommit' | 'manual';
+
+/**
+ * How the Database Explorer's results grid shows numbers, dates and times.
+ */
+export type DatabaseValueFormat = 'as-sent' | 'local';
+
+/**
+ * How the Database Explorer's results grid sizes its columns to begin with.
+ */
+export type DatabaseColumnSizing = 'view' | 'data';
+
+/**
+ * Where the Database Explorer keeps a remembered password.
+ */
+export type DatabaseSecretStorage = 'keychain' | 'passphrase';
+
+/**
+ * What separates the fields of a Database Explorer CSV export.
+ */
+export type DatabaseCsvDelimiter = 'comma' | 'semicolon' | 'tab';
+
+/**
+ * What a NULL is written as in a Database Explorer CSV export.
+ */
+export type DatabaseCsvNull = 'empty' | 'text';
+
+/**
+ * How the Database Explorer shows a result.
+ */
+export type DatabaseResultView = 'table' | 'graph' | 'raw';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -808,6 +848,33 @@ export interface SettingsValues {
   readonly 'databaseExplorer.selectAction': DatabaseSelectAction;
   readonly 'databaseExplorer.gridlines': DatabaseGridlines;
   readonly 'databaseExplorer.gridlineTone': DatabaseGridlineTone;
+  readonly 'databaseExplorer.matchCount': number;
+  readonly 'databaseExplorer.queryTimeoutSeconds': number;
+  readonly 'databaseExplorer.confirmDestructive': boolean;
+  readonly 'databaseExplorer.onError': DatabaseOnError;
+  readonly 'databaseExplorer.transactions': DatabaseTransactions;
+  readonly 'databaseExplorer.schemaCompletions': boolean;
+  readonly 'databaseExplorer.maxRows': number;
+  readonly 'databaseExplorer.pageSize': number;
+  readonly 'databaseExplorer.nullText': string;
+  readonly 'databaseExplorer.valueFormat': DatabaseValueFormat;
+  readonly 'databaseExplorer.columnSizing': DatabaseColumnSizing;
+  readonly 'databaseExplorer.graphMaxNodes': number;
+  readonly 'databaseExplorer.rememberPasswords': boolean;
+  readonly 'databaseExplorer.secretStorage': DatabaseSecretStorage;
+  readonly 'databaseExplorer.connectionTimeoutSeconds': number;
+  readonly 'databaseExplorer.showSystemObjects': boolean;
+  readonly 'databaseExplorer.disconnectIdleMinutes': number;
+  readonly 'databaseExplorer.openFirstQuery': boolean;
+  readonly 'databaseExplorer.csvDelimiter': DatabaseCsvDelimiter;
+  readonly 'databaseExplorer.csvHeaderRow': boolean;
+  readonly 'databaseExplorer.csvByteOrderMark': boolean;
+  readonly 'databaseExplorer.csvNull': DatabaseCsvNull;
+  readonly 'databaseExplorer.lastEngine': string;
+  readonly 'databaseExplorer.resultViews': Readonly<Record<string, DatabaseResultView>>;
+  readonly 'databaseExplorer.graphCaptions': Readonly<
+    Record<string, Readonly<Record<string, string>>>
+  >;
 }
 
 /**
@@ -5248,7 +5315,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
   },
   {
     id: 'database-explorer',
-    label: 'Database Explorer',
+    label: 'Queries',
     settings: [
       {
         key: 'databaseExplorer.selectAction',
@@ -5266,6 +5333,159 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'open',
+      },
+      {
+        key: 'databaseExplorer.matchCount',
+        requiresContribution: { slot: 'database-engine', id: 'neo4j' },
+        title: 'Neo4j Match Count',
+        description: 'How many nodes or relationships the Match actions on a Neo4j label read.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '25', label: '25' },
+            { value: '100', label: '100' },
+            { value: '500', label: '500' },
+          ],
+        },
+        default: 25,
+      },
+      {
+        key: 'databaseExplorer.queryTimeoutSeconds',
+        title: 'Query Timeout',
+        description:
+          'How long a query may run before Studio stops it. PostgreSQL and Neo4j are told the limit ' +
+          'as well, so the server stops it too.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '30', label: '30 seconds' },
+            { value: '300', label: '5 minutes' },
+            { value: '1800', label: '30 minutes' },
+            { value: '3600', label: '60 minutes' },
+            { value: '0', label: 'No limit' },
+          ],
+        },
+        default: 3600,
+      },
+      {
+        key: 'databaseExplorer.confirmDestructive',
+        title: 'Confirm Destructive Statements',
+        description:
+          'Ask before running DROP, TRUNCATE, or a DELETE or UPDATE with no WHERE. An agent is ' +
+          'governed by its own permissions, not by this.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'databaseExplorer.onError',
+        title: 'On Error',
+        description:
+          'What a script does when one of its statements fails: stop there, or carry on with the ' +
+          'next. In a transaction PostgreSQL refuses everything after a failure until it is rolled back.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'stop', label: 'Stop' },
+            { value: 'continue', label: 'Continue' },
+          ],
+        },
+        default: 'stop',
+      },
+      {
+        key: 'databaseExplorer.transactions',
+        title: 'Transactions',
+        description:
+          'Autocommit makes each statement permanent as it runs. Manual keeps them in a transaction, ' +
+          'with Commit and Rollback on the ribbon, until you end it; disconnecting rolls it back.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'autocommit', label: 'Autocommit' },
+            { value: 'manual', label: 'Manual' },
+          ],
+        },
+        default: 'autocommit',
+      },
+      {
+        key: 'databaseExplorer.schemaCompletions',
+        title: 'Schema Completions',
+        description: "Suggest the connected database's tables, columns and labels while you type.",
+        control: { kind: 'toggle' },
+        default: true,
+      },
+    ],
+  },
+  {
+    id: 'database-results',
+    label: 'Results',
+    settings: [
+      {
+        key: 'databaseExplorer.maxRows',
+        title: 'Maximum Rows Kept',
+        description:
+          'The most rows one result holds. Anything beyond it is dropped, with a message saying so.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10000', label: '10,000' },
+            { value: '100000', label: '100,000' },
+            { value: '1000000', label: '1,000,000' },
+          ],
+        },
+        default: 100_000,
+      },
+      {
+        key: 'databaseExplorer.pageSize',
+        title: 'Page Size',
+        description: 'How many rows a result shows first, and each Load More adds.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '500', label: '500' },
+            { value: '1000', label: '1,000' },
+            { value: '5000', label: '5,000' },
+          ],
+        },
+        default: 1000,
+      },
+      {
+        key: 'databaseExplorer.nullText',
+        title: 'NULL Shown As',
+        description: 'The text the results grid shows for a NULL.',
+        control: { kind: 'text', placeholder: 'NULL' },
+        default: 'NULL',
+      },
+      {
+        key: 'databaseExplorer.valueFormat',
+        title: 'Value Format',
+        description:
+          "How the results grid shows numbers, dates and times: as the database sent them, or in this computer's local format. An export always takes them as sent.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'as-sent', label: 'As sent' },
+            { value: 'local', label: 'Local format' },
+          ],
+        },
+        default: 'as-sent',
+      },
+      {
+        key: 'databaseExplorer.columnSizing',
+        title: 'Column Sizing',
+        description:
+          "How a results grid's columns start out; the buttons above the grid change it for that query.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'view', label: 'Fit to View' },
+            { value: 'data', label: 'Fit to Data' },
+          ],
+        },
+        default: 'view',
       },
       {
         key: 'databaseExplorer.gridlines',
@@ -5298,6 +5518,173 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'light',
+      },
+      {
+        key: 'databaseExplorer.graphMaxNodes',
+        title: 'Graph Maximum Nodes',
+        description: 'The most nodes the Graph view draws. A larger result is drawn in part.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '100', label: '100' },
+            { value: '300', label: '300' },
+            { value: '1000', label: '1,000' },
+            { value: '3000', label: '3,000' },
+          ],
+        },
+        default: 300,
+      },
+      {
+        // Chosen in the query panel and remembered, per query; it has no row of its own.
+        key: 'databaseExplorer.resultViews',
+        title: 'Result Views',
+        description: 'How each query last showed its result.',
+        control: { kind: 'custom', component: 'database-remembered' },
+        default: {},
+      },
+      {
+        // Chosen in the Graph view and remembered, per database; it has no row of its own.
+        key: 'databaseExplorer.graphCaptions',
+        title: 'Graph Captions',
+        description: "The property each label's nodes are captioned with, per database.",
+        control: { kind: 'custom', component: 'database-remembered' },
+        default: {},
+      },
+    ],
+  },
+  {
+    id: 'database-connections',
+    label: 'Connections',
+    settings: [
+      {
+        key: 'databaseExplorer.rememberPasswords',
+        title: 'Remember Passwords by Default',
+        description: 'Start a new connection with its password remembered in the document.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'databaseExplorer.secretStorage',
+        title: 'Secret Storage',
+        description:
+          "How a remembered password is sealed. Keychain ties it to this computer's keychain; " +
+          'Document Passphrase asks for a passphrase when a document first remembers one, so the ' +
+          'document can be opened on any computer.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'keychain', label: 'Keychain' },
+            { value: 'passphrase', label: 'Document passphrase' },
+          ],
+        },
+        default: 'keychain',
+      },
+      {
+        key: 'databaseExplorer.connectionTimeoutSeconds',
+        title: 'Connection Timeout',
+        description: 'How long to wait for a network database to answer when connecting.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '5', label: '5 seconds' },
+            { value: '10', label: '10 seconds' },
+            { value: '30', label: '30 seconds' },
+            { value: '60', label: '60 seconds' },
+          ],
+        },
+        default: 10,
+      },
+      {
+        key: 'databaseExplorer.showSystemObjects',
+        title: 'Show System Schemas and Objects',
+        description:
+          "List the engine's own schemas and objects in the Object Explorer, such as PostgreSQL's " +
+          'pg_catalog and information_schema.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'databaseExplorer.disconnectIdleMinutes',
+        title: 'Disconnect When Idle',
+        description:
+          'Close a connection nothing has used for this long. One with a query running or a ' +
+          'transaction open stays connected.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '15', label: '15 minutes' },
+            { value: '30', label: '30 minutes' },
+            { value: '60', label: '60 minutes' },
+            { value: '0', label: 'Never' },
+          ],
+        },
+        default: 0,
+      },
+      {
+        key: 'databaseExplorer.openFirstQuery',
+        title: 'Open First Query on Open',
+        description: "Open a document's first query when the document opens.",
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        // The engine the last connection was made with, which the next one starts on; no row of its own.
+        key: 'databaseExplorer.lastEngine',
+        title: 'Last Engine',
+        description: 'The engine the last connection was made with.',
+        control: { kind: 'custom', component: 'database-remembered' },
+        default: '',
+      },
+    ],
+  },
+  {
+    id: 'database-export',
+    label: 'Export',
+    settings: [
+      {
+        key: 'databaseExplorer.csvDelimiter',
+        title: 'CSV Delimiter',
+        description: 'The character between the fields of a CSV export.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'comma', label: 'Comma' },
+            { value: 'semicolon', label: 'Semicolon' },
+            { value: 'tab', label: 'Tab' },
+          ],
+        },
+        default: 'comma',
+      },
+      {
+        key: 'databaseExplorer.csvHeaderRow',
+        title: 'CSV Header Row',
+        description: 'Start a CSV export with a row of the column names.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'databaseExplorer.csvByteOrderMark',
+        title: 'CSV Byte-Order Mark',
+        description: 'Start a CSV export with a byte-order mark, so Excel reads it as UTF-8.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'databaseExplorer.csvNull',
+        title: 'CSV NULL As',
+        description:
+          'What a NULL is written as in a CSV export: nothing, or the text in Results › NULL Shown As.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'empty', label: 'Empty' },
+            { value: 'text', label: 'NULL text' },
+          ],
+        },
+        default: 'empty',
       },
     ],
   },

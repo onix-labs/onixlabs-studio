@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { createInterface, Interface } from 'node:readline';
 import {
+  ConnectOptions,
   DATABASE_ENGINE_PROTOCOL,
   DatabaseEngineResponse,
   DatabaseValue,
@@ -19,6 +20,9 @@ import {
   NamesRequest,
   NamesScope,
   ResultSet,
+  TransactionOutcome,
+  TransactionRequest,
+  TreeOptions,
 } from './protocol';
 import {
   DatabaseEngine,
@@ -60,6 +64,15 @@ function field(record: Record<string, unknown>, key: string): string {
 }
 
 /**
+ * Names a time limit in the words the setting uses.
+ * @param ms The limit, in milliseconds.
+ * @returns Returns the words.
+ */
+function describeLimit(ms: number): string {
+  return ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`;
+}
+
+/**
  * The rows of a large result, kept for paging, and the session they belong to.
  */
 interface KeptResult {
@@ -78,12 +91,13 @@ export function serve(engine: DatabaseEngine): void {
   // when that session does.
   const results: Map<string, KeptResult> = new Map<string, KeptResult>();
 
-  const keep: (owner: string, result: EngineResultSet) => ResultSet = (
+  const keep: (owner: string, result: EngineResultSet, pageRows: number) => ResultSet = (
     owner: string,
     result: EngineResultSet,
+    pageRows: number,
   ): ResultSet => {
     const id: string = randomUUID();
-    if (result.rows.length > FIRST_PAGE_ROWS) {
+    if (result.rows.length > pageRows) {
       results.set(id, { session: owner, rows: result.rows });
       while (results.size > KEPT_RESULT_SETS) {
         const oldest: string | undefined = results.keys().next().value;
@@ -96,7 +110,7 @@ export function serve(engine: DatabaseEngine): void {
     return {
       id,
       columns: result.columns,
-      rows: result.rows.slice(0, FIRST_PAGE_ROWS),
+      rows: result.rows.slice(0, pageRows),
       totalRows: result.rows.length,
       line: result.line,
     };
@@ -123,6 +137,7 @@ export function serve(engine: DatabaseEngine): void {
         try {
           const opened: EngineSession = await engine.connect(
             (params['values'] ?? {}) as Record<string, string>,
+            params['options'] as ConnectOptions | undefined,
           );
           const id: string = randomUUID();
           sessions.set(id, opened);
@@ -149,6 +164,7 @@ export function serve(engine: DatabaseEngine): void {
             kind: 'nodes',
             nodes: await session(params).expand(
               typeof params['path'] === 'string' ? params['path'] : null,
+              params['options'] as TreeOptions | undefined,
             ),
           };
         } catch (error: unknown) {
@@ -157,7 +173,18 @@ export function serve(engine: DatabaseEngine): void {
       case 'execute': {
         const request: ExecuteRequest = params as unknown as ExecuteRequest;
         const started: number = performance.now();
+        const limit: number = request.options?.timeoutMs ?? 0;
+        let timedOut: boolean = false;
         let execution: EngineExecution;
+        // Set here as well as on the server, where the engine can: this one holds for every engine,
+        // and for whatever a server's own limit does not reach.
+        const timer: NodeJS.Timeout | undefined =
+          limit > 0
+            ? setTimeout((): void => {
+                timedOut = true;
+                executions.get(request.id)?.cancel(request.id);
+              }, limit)
+            : undefined;
         try {
           const running: EngineSession = session(params);
           executions.set(request.id, running);
@@ -170,17 +197,30 @@ export function serve(engine: DatabaseEngine): void {
             cancelled: false,
           };
         } finally {
+          clearTimeout(timer);
           executions.delete(request.id);
         }
+        const stopped: boolean = timedOut && execution.cancelled;
         const outcome: ExecuteOutcome = {
           id: request.id,
           resultSets: execution.resultSets.map((result: EngineResultSet): ResultSet =>
-            keep(request.session, result),
+            keep(request.session, result, request.options?.pageRows ?? FIRST_PAGE_ROWS),
           ),
-          messages: execution.messages,
+          messages: stopped
+            ? [
+                ...execution.messages,
+                {
+                  severity: 'error',
+                  text: `The query ran past its ${describeLimit(limit)} limit.`,
+                },
+              ]
+            : execution.messages,
           elapsedMs: performance.now() - started,
-          failed: execution.failed,
-          cancelled: execution.cancelled,
+          failed: execution.failed || stopped,
+          cancelled: execution.cancelled && !stopped,
+          ...(execution.transactionOpen === undefined
+            ? {}
+            : { transactionOpen: execution.transactionOpen }),
         };
         return outcome;
       }
@@ -199,7 +239,11 @@ export function serve(engine: DatabaseEngine): void {
       }
       case 'action':
         try {
-          return await session(params).action(field(params, 'path'), field(params, 'action'));
+          return await session(params).action(
+            field(params, 'path'),
+            field(params, 'action'),
+            params['options'] as TreeOptions | undefined,
+          );
         } catch (error: unknown) {
           return { kind: 'failure', message: describeError(error) };
         }
@@ -219,6 +263,18 @@ export function serve(engine: DatabaseEngine): void {
           );
         } catch {
           return [];
+        }
+      }
+      case 'transaction': {
+        const request: TransactionRequest = params as unknown as TransactionRequest;
+        try {
+          const outcome: TransactionOutcome | undefined = await session(params).transaction?.(
+            request.action,
+            request.database,
+          );
+          return outcome ?? { failed: true, message: 'This engine has no transactions to end.' };
+        } catch (error: unknown) {
+          return { failed: true, message: describeError(error) };
         }
       }
       default:

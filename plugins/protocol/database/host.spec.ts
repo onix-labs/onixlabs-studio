@@ -468,6 +468,57 @@ describe('serve', (): void => {
     expect(engine.sessions[0].cancelled).toEqual(['run-1']);
   });
 
+  it('execute_pagesAsStudioAsks', async (): Promise<void> => {
+    const session: string = await connect();
+    engine.sessions[0].executeAnswer = (): Promise<EngineExecution> =>
+      Promise.resolve({
+        resultSets: [{ columns: [{ name: 'n' }], rows: rows(1200), line: 1 }],
+        messages: [],
+        failed: false,
+        cancelled: false,
+      });
+
+    const outcome: ExecuteOutcome = await call<ExecuteOutcome>('execute', {
+      id: 'run-1',
+      session,
+      text: 'select 1',
+      firstLine: 1,
+      options: { pageRows: 500 },
+    });
+
+    expect(outcome.resultSets[0].rows).toHaveLength(500);
+    expect(outcome.resultSets[0].totalRows).toBe(1200);
+  });
+
+  it('execute_stopsARunPastItsLimit_andReportsItAsAFailure', async (): Promise<void> => {
+    const session: string = await connect();
+    const running: Deferred<EngineExecution> = new Deferred<EngineExecution>();
+    engine.sessions[0].executeAnswer = (): Promise<EngineExecution> => running.promise;
+    const execution: number = send('execute', {
+      id: 'run-1',
+      session,
+      text: 'select slow()',
+      firstLine: 1,
+      options: { timeoutMs: 5 },
+    });
+
+    await vi.waitFor((): void => {
+      expect(engine.sessions[0].cancelled).toEqual(['run-1']);
+    });
+    running.resolve({ resultSets: [], messages: [], failed: false, cancelled: true });
+
+    const outcome: ExecuteOutcome = (await answerTo(execution))['result'] as ExecuteOutcome;
+    expect(outcome.failed).toBe(true);
+    expect(outcome.cancelled).toBe(false);
+    expect(outcome.messages.at(-1)?.text).toContain('ran past its');
+  });
+
+  it('transaction_answersAFailure_forAnEngineWithNoneToEnd', async (): Promise<void> => {
+    const session: string = await connect();
+    const outcome: { failed: boolean } = await call('transaction', { session, action: 'commit' });
+    expect(outcome.failed).toBe(true);
+  });
+
   it('cancel_ofAnUnknownExecution_isHarmless', async (): Promise<void> => {
     expect(await call('cancel', { id: 'never-ran' })).toBe(true);
   });

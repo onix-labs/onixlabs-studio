@@ -85,7 +85,30 @@
       }
     </g>
   </svg>
+  @if (labels().length > 0) {
+    <div class="graph__labels" role="group" aria-label="Captions">
+      @for (label of labels(); track label.name) {
+        <button
+          type="button"
+          class="graph__label"
+          title="Choose what this label's nodes are captioned with"
+          [cdkMenuTriggerFor]="captionMenu.panel() ?? null"
+          [cdkMenuPosition]="captionMenu.position()"
+        >
+          {{ label.name }}
+        </button>
+        <app-menu
+          #captionMenu
+          [items]="label.items"
+          placement="down-start"
+          (selected)="chooseCaption(label.name, $event)"
+        />
+      }
+    </div>
+  }
   @if (graph().truncated) {
-    <p class="graph__note">Showing the first 300 nodes. Narrow the query to see the rest.</p>
+    <p class="graph__note">
+      Showing the first {{ maxNodes() }} nodes. Narrow the query to see the rest.
+    </p>
   }
 }
