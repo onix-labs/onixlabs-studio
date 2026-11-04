@@ -34,6 +34,7 @@ export interface ChoiceOption {
 export type ControlDef =
   | { readonly kind: 'toggle' }
   | { readonly kind: 'text'; readonly placeholder?: string }
+  | { readonly kind: 'folder'; readonly placeholder?: string }
   | {
       readonly kind: 'number';
       readonly min?: number;
