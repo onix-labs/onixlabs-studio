@@ -11,6 +11,7 @@ import {
 } from './window-state';
 import {
   CHILD_WINDOW_NAME_PATTERN,
+  MODAL_FRAMELESS_FEATURE,
   MODAL_UNPARENTED_FEATURE,
   WindowChannel,
 } from '@shared/api/window-channels';
@@ -604,7 +605,9 @@ export class WindowManager {
       closable: parseFeatureFlag(features, 'closable', true),
       minimizable: false,
       fullscreenable: false,
-      ...this.chrome(),
+      ...(parseFeatureFlag(features, MODAL_FRAMELESS_FEATURE, false)
+        ? { frame: false }
+        : this.chrome()),
     };
   }
 

@@ -98,6 +98,11 @@ export const MODAL_WINDOW_URL: string = 'about:blank#studio-modal';
 export const MODAL_UNPARENTED_FEATURE: string = 'studio-unparented';
 
 /**
+ * Names the `window.open` feature that asks for a modal window with no platform window controls.
+ */
+export const MODAL_FRAMELESS_FEATURE: string = 'studio-frameless';
+
+/**
  * Matches the name a pop-out or modal window is opened with: `studio-window-` and a UUID. The name is
  * the window's handle across the process boundary — the main process records each child under it
  * when the window is created, and the window-control channels name their target with it.

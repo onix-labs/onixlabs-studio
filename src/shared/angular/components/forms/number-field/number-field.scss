@@ -52,3 +52,37 @@
     cursor: default;
   }
 }
+
+// The floating variant: the text field's, for numbers. A taller box whose label rests where the digits
+// will go, and rises to the top edge once the field has focus or a value.
+:host(.number-field--floating) {
+  position: relative;
+}
+
+:host(.number-field--floating) .number-field {
+  block-size: 2.75rem;
+  padding: 1.1rem 0.6rem 0.3rem;
+
+  &::placeholder {
+    color: transparent;
+  }
+}
+
+.number-field__floating-label {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: calc(0.6rem + 0.0625rem);
+  display: flex;
+  align-items: center;
+  block-size: 100%;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+  transform-origin: 0 50%;
+  transition: transform 120ms ease-out;
+}
+
+.number-field:focus ~ .number-field__floating-label,
+.number-field:not(:placeholder-shown) ~ .number-field__floating-label {
+  transform: translateY(-0.7rem) scale(0.8);
+}

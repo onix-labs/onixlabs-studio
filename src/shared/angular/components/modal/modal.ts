@@ -214,6 +214,13 @@ export class Modal implements OnDestroy {
   public readonly chromeless: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether the modal's window has no platform controls, for a dialog whose
+   * own buttons and backdrop already dismiss it. Its content rises into the space they took, and the
+   * window moves by the band over its title.
+   */
+  public readonly frameless: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets the caller's marked content template. A modal is presented in a window, which can only
    * render templated content; a modal that declares none cannot be presented.
    */
@@ -286,6 +293,7 @@ export class Modal implements OnDestroy {
         position: null,
         background: this.openingBackground(),
         dragless: this.chromeless(),
+        frameless: this.frameless(),
         minimum: this.bound(this.minWidth(), this.minHeight()),
         maximum: this.bound(this.maxWidth(), this.maxHeight()),
       },

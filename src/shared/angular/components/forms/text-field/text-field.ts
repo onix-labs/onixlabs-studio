@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   input,
   InputSignal,
@@ -27,8 +28,15 @@ export type TextFieldKind = 'text' | 'search';
  * grid. It still takes the accent on focus, so the cell being edited is unmistakable. `inline` stands
  * in for a label inside a row that is being renamed: it takes the width the label had and the text
  * size around it, with a hairline accent box so the row reads as being edited rather than selected.
+ * `floating` carries its own label inside the box: it rests where the text will go, and rises to the
+ * top of the box once the field has focus or a value. For a form, where a field wants a name.
  */
-export type TextFieldVariant = 'outline' | 'none' | 'inline';
+export type TextFieldVariant = 'outline' | 'none' | 'inline' | 'floating';
+
+/**
+ * Holds the number the next field's control is identified by.
+ */
+let nextFieldId: number = 0;
 
 /**
  * A run of characters to select, by the start and end offsets the platform's selection range takes.
@@ -63,6 +71,7 @@ export interface TextFieldSelection {
     '[class.text-field--search]': "kind() === 'search'",
     '[class.text-field--seamless]': "variant() === 'none'",
     '[class.text-field--inline]': "variant() === 'inline'",
+    '[class.text-field--floating]': "variant() === 'floating'",
   },
 })
 export class TextField {
@@ -75,6 +84,12 @@ export class TextField {
    * Gets the placeholder shown when the field is empty.
    */
   public readonly placeholder: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets the label a `floating` field carries inside its box; other variants take theirs from beside
+   * the field.
+   */
+  public readonly label: InputSignal<string> = input<string>('');
 
   /**
    * Gets the accessible name of the field, for a field with no visible label beside it.
@@ -111,6 +126,19 @@ export class TextField {
    * Emitted when the field loses focus, for a caller that commits on blur.
    */
   public readonly blurred: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Gets the identifier tying a `floating` field's label to its control.
+   */
+  protected readonly controlId: string = `text-field-${String(nextFieldId++)}`;
+
+  /**
+   * Gets the placeholder the control carries. A `floating` field needs one even when none is given:
+   * whether the placeholder is showing is how the stylesheet tells an empty field from a filled one.
+   */
+  protected readonly shownPlaceholder: Signal<string> = computed((): string =>
+    this.variant() === 'floating' && this.placeholder() === '' ? ' ' : this.placeholder(),
+  );
 
   /**
    * Gets the search glyph, exposed for the template.

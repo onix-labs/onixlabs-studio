@@ -61,7 +61,7 @@ describe('FormModal', () => {
    * @returns Returns the primary button element.
    */
   function primaryButton(): HTMLButtonElement {
-    return host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!;
+    return host.querySelector<HTMLButtonElement>('app-button.button--solid button')!;
   }
 
   /**
@@ -70,7 +70,7 @@ describe('FormModal', () => {
    */
   function cancelButton(): HTMLButtonElement {
     const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.insert-modal__button'),
+      host.querySelectorAll<HTMLButtonElement>('app-button button'),
     );
     return buttons.find(
       (button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Cancel',

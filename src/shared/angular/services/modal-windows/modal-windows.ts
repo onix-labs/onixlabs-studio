@@ -1,6 +1,7 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import {
   childWindowName,
+  MODAL_FRAMELESS_FEATURE,
   MODAL_UNPARENTED_FEATURE,
   MODAL_WINDOW_URL,
 } from '@shared/api/window-channels';
@@ -79,6 +80,13 @@ export interface ModalWindowRequest {
    * content.
    */
   readonly dragless?: boolean;
+
+  /**
+   * Gets a value indicating whether the window has no platform controls. Its content rises to the
+   * top edge, where a dragless window's would, but the window can still be moved by that band, which
+   * sits over the dialog's title.
+   */
+  readonly frameless?: boolean;
 }
 
 /**
@@ -254,9 +262,10 @@ export class ModalWindows implements OnDestroy {
     // inset, so the panel's `padding-block-start: max(panel-padding, drag-height)` falls back to the
     // plain panel padding and its content sits flush to the top.
     const dragless: boolean = request.dragless === true;
+    const frameless: boolean = request.frameless === true;
     doc.body.style.setProperty(
       '--modal-window-drag-height',
-      dragless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
+      dragless || frameless ? '0rem' : `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`,
     );
 
     // The drag strip is both the band that moves the frameless window and the inset its controls sit
@@ -265,6 +274,9 @@ export class ModalWindows implements OnDestroy {
     if (!dragless) {
       const drag: HTMLElement = doc.createElement('div');
       drag.className = 'modal-window__drag';
+      if (frameless) {
+        drag.style.blockSize = `${DRAG_STRIP_HEIGHT / this.rootFontSize()}rem`;
+      }
       doc.body.appendChild(drag);
     }
     const contentHost: HTMLElement = doc.createElement('main');
@@ -315,6 +327,7 @@ export class ModalWindows implements OnDestroy {
       `resizable=${request.resizable ? 1 : 0}`,
       `closable=${request.closable ? 1 : 0}`,
       `${MODAL_UNPARENTED_FEATURE}=${request.parented ? 0 : 1}`,
+      `${MODAL_FRAMELESS_FEATURE}=${request.frameless === true ? 1 : 0}`,
       ...(request.background === null ? [] : [`bgcolor=${request.background.replace('#', '')}`]),
       ...(request.minimum === null
         ? []

@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { TextField } from './text-field';
+import { TextField, TextFieldVariant } from './text-field';
 
 describe('TextField', () => {
   let component: TextField;
@@ -65,4 +65,48 @@ describe('TextField', () => {
     expect(host.querySelector('.text-field__glyph')).not.toBeNull();
     expect(host.querySelector('input')?.getAttribute('aria-label')).toBe('Filter the tree');
   });
+
+  it('floating_rendersALabelTiedToTheControl', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.componentRef.setInput('label', 'Summary');
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const label: HTMLLabelElement = host.querySelector<HTMLLabelElement>('label')!;
+    expect(label.textContent?.trim()).toBe('Summary');
+    expect(label.htmlFor).not.toBe('');
+    expect(label.htmlFor).toBe(host.querySelector('input')!.id);
+  });
+
+  it('floating_withNoPlaceholder_stillCarriesOne', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.detectChanges();
+
+    // The stylesheet tells an empty field from a filled one by whether the placeholder is showing.
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+    expect(input.getAttribute('placeholder')).toBe(' ');
+  });
+
+  it('floating_withAPlaceholder_keepsIt', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.componentRef.setInput('placeholder', 'Click to expand');
+    fixture.detectChanges();
+
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+    expect(input.getAttribute('placeholder')).toBe('Click to expand');
+  });
+
+  it.each(['outline', 'none', 'inline'] as const)(
+    'variant_%s_rendersNoFloatingLabel_andKeepsItsPlaceholder',
+    (variant: TextFieldVariant) => {
+      fixture.componentRef.setInput('variant', variant);
+      fixture.componentRef.setInput('label', 'Summary');
+      fixture.componentRef.setInput('placeholder', 'Click to expand');
+      fixture.detectChanges();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('label')).toBeNull();
+      expect(host.querySelector('input')?.getAttribute('placeholder')).toBe('Click to expand');
+    },
+  );
 });

@@ -1,11 +1,25 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   InputSignal,
   model,
   ModelSignal,
+  Signal,
 } from '@angular/core';
+
+/**
+ * Identifies how a number field presents itself: `outline`, a plain box; or `floating`, a taller box
+ * carrying its own label, which rises to the top of the box once the field has focus or a value. The
+ * text field's floating variant, for numbers.
+ */
+export type NumberFieldVariant = 'outline' | 'floating';
+
+/**
+ * Holds the number the next field's control is identified by.
+ */
+let nextFieldId: number = 0;
 
 /**
  * Represents a numeric input field that clamps its value to an optional minimum and maximum.
@@ -19,6 +33,7 @@ import {
   host: {
     '[class.number-field--full]': 'fullWidth()',
     '[class.number-field--no-spinner]': '!spinner()',
+    '[class.number-field--floating]': "variant() === 'floating'",
   },
 })
 export class NumberField {
@@ -84,6 +99,46 @@ export class NumberField {
   public readonly spinner: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * Gets how the field presents itself.
+   */
+  public readonly variant: InputSignal<NumberFieldVariant> = input<NumberFieldVariant>('outline');
+
+  /**
+   * Gets the label a `floating` field carries inside its box.
+   */
+  public readonly label: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets a value indicating whether only digits may be typed. The browser's number box also takes a
+   * sign, a decimal point and an exponent, none of which a count can use.
+   */
+  public readonly digitsOnly: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the identifier tying a `floating` field's label to its control.
+   */
+  protected readonly controlId: string = `number-field-${String(nextFieldId++)}`;
+
+  /**
+   * Gets the placeholder the control carries. A `floating` field needs one even when none is given:
+   * whether the placeholder is showing is how the stylesheet tells an empty field from a filled one.
+   */
+  protected readonly shownPlaceholder: Signal<string | undefined> = computed(
+    (): string | undefined =>
+      this.variant() === 'floating' ? (this.placeholder() ?? ' ') : this.placeholder(),
+  );
+
+  /**
+   * Refuses anything but digits before it reaches the field, when {@link digitsOnly} asks for that.
+   * @param event The DOM event raised before the input changes.
+   */
+  protected onBeforeInput(event: InputEvent): void {
+    if (this.digitsOnly() && event.data !== null && /\D/.test(event.data)) {
+      event.preventDefault();
+    }
+  }
+
+  /**
    * Handles typing in the underlying input, reporting the value at once when the field is live and
    * the value is within its bounds.
    * @param event The DOM input event raised by the input.
@@ -106,13 +161,18 @@ export class NumberField {
    * @param event The DOM change event raised by the input.
    */
   protected onChange(event: Event): void {
-    const text: string = (event.target as HTMLInputElement).value;
+    const element: HTMLInputElement = event.target as HTMLInputElement;
+    const text: string = element.value;
     const raw: number = Number(text);
     if (this.zeroIsEmpty() && (text.trim().length === 0 || raw === 0)) {
       this.value.set(0);
       return;
     }
-    this.value.set(this.clamp(Number.isNaN(raw) ? 0 : raw));
+    const clamped: number = this.clamp(Number.isNaN(raw) ? 0 : raw);
+    this.value.set(clamped);
+    // Written back as well: a clamp landing on the value already held changes no signal, and the
+    // field would go on showing what was typed.
+    element.value = String(clamped);
   }
 
   /**

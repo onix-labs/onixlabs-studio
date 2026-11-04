@@ -62,6 +62,43 @@ describe('Textarea', () => {
     expect(control.style.blockSize).toBe('6lh');
   });
 
+  it('floating_rendersALabelTiedToTheControl', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.componentRef.setInput('label', 'Footnote content');
+    fixture.detectChanges();
+
+    const label: HTMLLabelElement = host.querySelector<HTMLLabelElement>('label')!;
+    expect(label.textContent?.trim()).toBe('Footnote content');
+    expect(label.htmlFor).not.toBe('');
+    expect(label.htmlFor).toBe(host.querySelector('textarea')!.id);
+  });
+
+  it('floating_withNoPlaceholder_stillCarriesOne', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.detectChanges();
+
+    // The stylesheet tells an empty field from a filled one by whether the placeholder is showing.
+    expect(host.querySelector('textarea')!.getAttribute('placeholder')).toBe(' ');
+  });
+
+  it('boxed_rendersNoFloatingLabel_andKeepsItsPlaceholder', () => {
+    fixture.componentRef.setInput('label', 'Footnote content');
+    fixture.componentRef.setInput('placeholder', 'The footnote text');
+    fixture.detectChanges();
+
+    expect(host.querySelector('label')).toBeNull();
+    expect(host.querySelector('textarea')!.getAttribute('placeholder')).toBe('The footnote text');
+  });
+
+  it('monospace_marksTheControl_forCodeRatherThanProse', () => {
+    expect(host.querySelector('textarea')!.classList.contains('textarea--monospace')).toBe(false);
+
+    fixture.componentRef.setInput('monospace', true);
+    fixture.detectChanges();
+
+    expect(host.querySelector('textarea')!.classList.contains('textarea--monospace')).toBe(true);
+  });
+
   it('element_exposesTheControl_forACallerThatMeasuresIt', () => {
     // A composer grows with its content, which needs the element itself rather than its value.
     expect(fixture.componentInstance.element()).toBe(host.querySelector('textarea'));

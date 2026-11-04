@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-channels';
+import {
+  MODAL_FRAMELESS_FEATURE,
+  MODAL_UNPARENTED_FEATURE,
+  MODAL_WINDOW_URL,
+} from '@shared/api/window-channels';
 
 import { ModalWindow, ModalWindowRequest, ModalWindows } from './modal-windows';
 
@@ -155,6 +159,31 @@ describe('ModalWindows', () => {
     expect(modal!.contentHost.className).toContain('modal-window__content');
   });
 
+  it('open_whenFrameless_keepsTheDragStripAtItsOwnSizeAndReservesNoInset', () => {
+    open();
+    const reserved: string = owner.child.document.body.style.getPropertyValue(
+      '--modal-window-drag-height',
+    );
+    const framelessOwner: FakeOwnerWindow = new FakeOwnerWindow();
+
+    windows.open({ ...REQUEST, frameless: true }, framelessOwner as unknown as Window);
+
+    // The strip's stated size no longer comes from the variable, which is zero so the content can
+    // rise to the top edge — the window still moves by the band, as tall as it ever was.
+    const doc: Document = framelessOwner.child.document;
+    const drag: HTMLElement = doc.querySelector<HTMLElement>('.modal-window__drag')!;
+    expect(drag.style.blockSize).toBe(reserved);
+    expect(doc.body.style.getPropertyValue('--modal-window-drag-height')).toBe('0rem');
+  });
+
+  it('open_whenNotFrameless_leavesTheDragStripToTheVariable', () => {
+    open();
+
+    const drag: HTMLElement =
+      owner.child.document.querySelector<HTMLElement>('.modal-window__drag')!;
+    expect(drag.style.blockSize).toBe('');
+  });
+
   it('features_carryTheRequestedSizeAndChrome', () => {
     open({ resizable: true, closable: false });
 
@@ -191,6 +220,14 @@ describe('ModalWindows', () => {
 
     open({ parented: false });
     expect(feature(owner.features!, MODAL_UNPARENTED_FEATURE)).toBe(1);
+  });
+
+  it('features_carryTheFramelessFlag', () => {
+    open();
+    expect(feature(owner.features!, MODAL_FRAMELESS_FEATURE)).toBe(0);
+
+    open({ frameless: true });
+    expect(feature(owner.features!, MODAL_FRAMELESS_FEATURE)).toBe(1);
   });
 
   it('position_whenParented_centresOverTheRaisingWindow', () => {

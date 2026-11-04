@@ -12,6 +12,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { FormModal } from './form-modal';
 
 /**
@@ -36,7 +38,7 @@ export interface FootnoteInsert {
  */
 @Component({
   selector: 'app-markdown-footnote-modal',
-  imports: [FormModal],
+  imports: [FormModal, Textarea, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -49,28 +51,22 @@ export interface FootnoteInsert {
       (cancelled)="cancel()"
     >
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="footnote-label">Reference (optional)</label>
-        <input
-          #labelInput
-          id="footnote-label"
-          class="insert-modal__input"
-          type="text"
+        <app-text-field
+          variant="floating"
+          label="Reference (optional)"
           placeholder="e.g. source"
-          [value]="label()"
-          (input)="label.set(labelInput.value)"
+          [(value)]="label"
         />
       </div>
 
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="footnote-content">Footnote content</label>
-        <textarea
-          #contentInput
-          id="footnote-content"
-          class="insert-modal__textarea"
+        <app-textarea
+          variant="floating"
+          label="Footnote content"
           placeholder="The footnote text…"
-          [value]="content()"
-          (input)="content.set(contentInput.value)"
-        ></textarea>
+          [rows]="3"
+          [(value)]="content"
+        />
       </div>
     </app-form-modal>
   `,

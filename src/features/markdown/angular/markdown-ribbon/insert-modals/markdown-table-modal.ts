@@ -12,6 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { FormModal } from './form-modal';
 
 /**
@@ -50,7 +51,7 @@ export interface TableInsert {
  */
 @Component({
   selector: 'app-markdown-table-modal',
-  imports: [FormModal],
+  imports: [FormModal, NumberField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -62,31 +63,28 @@ export interface TableInsert {
       (confirmed)="confirm()"
       (cancelled)="cancel()"
     >
-      <div class="insert-modal__field">
-        <label class="insert-modal__label" for="table-rows">Rows</label>
-        <input
-          #rowsInput
-          id="table-rows"
-          class="insert-modal__input"
-          type="number"
-          min="1"
+      <div class="insert-modal__pair">
+        <app-number-field
+          variant="floating"
+          label="Rows"
+          [fullWidth]="true"
+          [spinner]="false"
+          [digitsOnly]="true"
+          [live]="true"
+          [min]="1"
           [max]="maximum"
-          [value]="rows()"
-          (input)="rows.set(rowsInput.valueAsNumber)"
+          [(value)]="rows"
         />
-      </div>
-
-      <div class="insert-modal__field">
-        <label class="insert-modal__label" for="table-columns">Columns</label>
-        <input
-          #columnsInput
-          id="table-columns"
-          class="insert-modal__input"
-          type="number"
-          min="1"
+        <app-number-field
+          variant="floating"
+          label="Columns"
+          [fullWidth]="true"
+          [spinner]="false"
+          [digitsOnly]="true"
+          [live]="true"
+          [min]="1"
           [max]="maximum"
-          [value]="columns()"
-          (input)="columns.set(columnsInput.valueAsNumber)"
+          [(value)]="columns"
         />
       </div>
     </app-form-modal>

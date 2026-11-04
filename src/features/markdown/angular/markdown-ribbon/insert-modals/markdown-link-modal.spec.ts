@@ -53,8 +53,35 @@ describe('MarkdownLinkModal', () => {
     host = windows.contentHost!;
   }
 
-  function setInput(selector: string, value: string): void {
-    const input: HTMLInputElement = host.querySelector<HTMLInputElement>(selector)!;
+  /**
+   * Finds a field's control by the label of the atom holding it.
+   * @param label The field's trimmed label text.
+   * @returns Returns the matching control.
+   */
+  function fieldWithLabel(label: string): HTMLInputElement {
+    const labels: HTMLLabelElement[] = Array.from(host.querySelectorAll<HTMLLabelElement>('label'));
+    const match: HTMLLabelElement = labels.find(
+      (candidate: HTMLLabelElement): boolean => candidate.textContent?.trim() === label,
+    )!;
+    return match.parentElement!.querySelector<HTMLInputElement>('input, textarea')!;
+  }
+
+  /**
+   * Finds an action button by its visible label.
+   * @param label The button's trimmed text content.
+   * @returns Returns the matching button element.
+   */
+  function buttonWithLabel(label: string): HTMLButtonElement {
+    const buttons: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('app-button button'),
+    );
+    return buttons.find(
+      (button: HTMLButtonElement): boolean => button.textContent?.trim() === label,
+    )!;
+  }
+
+  function setInput(label: string, value: string): void {
+    const input: HTMLInputElement = fieldWithLabel(label);
     input.value = value;
     input.dispatchEvent(new Event('input'));
     flush();
@@ -65,33 +92,25 @@ describe('MarkdownLinkModal', () => {
   });
 
   it('insert_whenUrlEmpty_isDisabled', () => {
-    const insert: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
-      '.insert-modal__button--primary',
-    )!;
+    const insert: HTMLButtonElement = buttonWithLabel('Insert');
 
     expect(insert.disabled).toBe(true);
   });
 
   it('insert_whenSubmitted_emitsTrimmedTextAndUrl', () => {
-    setInput('#link-text', '  Docs  ');
-    setInput('#link-url', '  https://example.com  ');
+    setInput('Text', '  Docs  ');
+    setInput('URL', '  https://example.com  ');
 
-    host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
+    buttonWithLabel('Insert').click();
 
     expect(component.submitted).toEqual({ text: 'Docs', url: 'https://example.com' });
     expect(component.open()).toBe(false);
   });
 
   it('cancel_whenClicked_closesWithoutEmitting', () => {
-    setInput('#link-url', 'https://example.com');
+    setInput('URL', 'https://example.com');
 
-    const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.insert-modal__button'),
-    );
-    const cancel: HTMLButtonElement = buttons.find(
-      (button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Cancel',
-    )!;
-    cancel.click();
+    buttonWithLabel('Cancel').click();
     flush();
 
     expect(component.submitted).toBeNull();

@@ -67,6 +67,69 @@ describe('NumberField', () => {
     expect(component.value()).toBe(0);
   });
 
+  it('floating_rendersALabelTiedToTheControl', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.componentRef.setInput('label', 'Rows');
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const label: HTMLLabelElement = host.querySelector<HTMLLabelElement>('label')!;
+    expect(label.textContent?.trim()).toBe('Rows');
+    expect(label.htmlFor).not.toBe('');
+    expect(label.htmlFor).toBe(host.querySelector('input')!.id);
+  });
+
+  it('floating_withNoPlaceholder_stillCarriesOne', () => {
+    fixture.componentRef.setInput('variant', 'floating');
+    fixture.detectChanges();
+
+    // The stylesheet tells an empty field from a filled one by whether the placeholder is showing.
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+    expect(input.getAttribute('placeholder')).toBe(' ');
+  });
+
+  it('outline_rendersNoFloatingLabel_andKeepsItsPlaceholder', () => {
+    fixture.componentRef.setInput('label', 'Rows');
+    fixture.componentRef.setInput('placeholder', 'Issue number');
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('label')).toBeNull();
+    expect(host.querySelector('input')?.getAttribute('placeholder')).toBe('Issue number');
+  });
+
+  it('digitsOnly_preventsABeforeInputCarryingNonDigits_andAllowsDigits', () => {
+    fixture.componentRef.setInput('digitsOnly', true);
+    fixture.detectChanges();
+
+    expect(beforeInput('-').defaultPrevented).toBe(true);
+    expect(beforeInput('1e').defaultPrevented).toBe(true);
+    expect(beforeInput('42').defaultPrevented).toBe(false);
+  });
+
+  it('digitsOnly_whenOff_leavesABeforeInputAlone', () => {
+    expect(beforeInput('-').defaultPrevented).toBe(false);
+  });
+
+  it('clamp_landingOnTheValueAlreadyHeld_writesItBackIntoTheElement', () => {
+    fixture.componentRef.setInput('value', 1000);
+    fixture.detectChanges();
+
+    // No signal changes here, so nothing but the clamp itself can correct what was typed.
+    setInputValue('5000');
+
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+    expect(component.value()).toBe(1000);
+    expect(input.value).toBe('1000');
+  });
+
+  function beforeInput(data: string): InputEvent {
+    const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
+    const event: InputEvent = new InputEvent('beforeinput', { data, cancelable: true });
+    input.dispatchEvent(event);
+    return event;
+  }
+
   function typeValue(value: string): void {
     const input: HTMLInputElement = (fixture.nativeElement as HTMLElement).querySelector('input')!;
     input.value = value;

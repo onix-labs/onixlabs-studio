@@ -47,6 +47,10 @@ describe('MarkdownEmojiModal', () => {
     host = windows.contentHost!;
   });
 
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   /**
    * Flushes change detection through the modal window's attached view, then re-points the content
    * host at the current window (a reopen presents a fresh one).
@@ -63,7 +67,7 @@ describe('MarkdownEmojiModal', () => {
   }
 
   function setSearch(value: string): void {
-    const input: HTMLInputElement = host.querySelector<HTMLInputElement>('#emoji-search')!;
+    const input: HTMLInputElement = host.querySelector<HTMLInputElement>('app-text-field input')!;
     input.value = value;
     input.dispatchEvent(new Event('input'));
     flush();
@@ -107,6 +111,29 @@ describe('MarkdownEmojiModal', () => {
     flush();
 
     expect(flags.classList).toContain('emoji-tab--active');
+  });
+
+  it('tabClick_whenClicked_scrollsTheContainerToThatSection', () => {
+    const tabs: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.emoji-tab'),
+    );
+    const flags: HTMLButtonElement = tabs.find(
+      (tab: HTMLButtonElement): boolean => tab.getAttribute('aria-label') === 'Flags',
+    )!;
+    const scroller: HTMLElement = host.querySelector<HTMLElement>('.emoji-scroll')!;
+    // There is no layout here, so the section states where it would sit.
+    Object.defineProperty(
+      scroller.querySelector<HTMLElement>('[data-category="Flags"]')!,
+      'offsetTop',
+      { value: 1234 },
+    );
+
+    flags.click();
+    flush();
+
+    expect(scroller.scrollTop).toBe(1234);
+    expect(flags.classList).toContain('emoji-tab--active');
+    expect(tabs[0].classList).not.toContain('emoji-tab--active');
   });
 
   it('tabs_whenSearching_areHidden', () => {

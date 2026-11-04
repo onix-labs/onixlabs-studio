@@ -11,6 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
 import { FormModal } from './form-modal';
 
@@ -35,7 +36,7 @@ export interface LinkInsert {
  */
 @Component({
   selector: 'app-markdown-link-modal',
-  imports: [FormModal],
+  imports: [FormModal, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -48,28 +49,15 @@ export interface LinkInsert {
       (cancelled)="cancel()"
     >
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="link-text">Text</label>
-        <input
-          #textInput
-          id="link-text"
-          class="insert-modal__input"
-          type="text"
-          placeholder="Link text"
-          [value]="text()"
-          (input)="text.set(textInput.value)"
-        />
+        <app-text-field variant="floating" label="Text" placeholder="Link text" [(value)]="text" />
       </div>
 
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="link-url">URL</label>
-        <input
-          #urlInput
-          id="link-url"
-          class="insert-modal__input"
-          type="text"
+        <app-text-field
+          variant="floating"
+          label="URL"
           placeholder="https://example.com"
-          [value]="url()"
-          (input)="url.set(urlInput.value)"
+          [(value)]="url"
         />
       </div>
     </app-form-modal>
