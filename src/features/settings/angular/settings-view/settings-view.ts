@@ -124,6 +124,7 @@ type SettingsSectionId =
   | 'markdown'
   | 'markdown-editing'
   | 'markdown-review'
+  | 'images'
   | 'terminal'
   | 'terminal-appearance'
   | 'terminal-input'
@@ -522,12 +523,11 @@ export class SettingsView {
       ],
     },
     {
-      // Images have no settings of their own yet; the root carries its Keyboard leaf alone.
       id: 'images',
       group: 'documents',
       label: 'Images',
       icon: Icon.IMAGE_FILE,
-      children: [],
+      children: [{ id: 'images-general', label: 'General', sectionId: 'images' }],
     },
     {
       id: 'workspaces',

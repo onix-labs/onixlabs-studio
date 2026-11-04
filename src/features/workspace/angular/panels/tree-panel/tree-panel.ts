@@ -65,6 +65,7 @@ import { ButtonRow } from '@shared/angular/components/forms/button-row/button-ro
  * Identifies the row context-menu actions the panel offers.
  */
 const ACTION_OPEN: string = 'open';
+const ACTION_OPEN_AS_CODE: string = 'open-as-code';
 const ACTION_NEW_FILE: string = 'new-file';
 const ACTION_NEW_FOLDER: string = 'new-folder';
 const ACTION_COPY_PATH: string = 'copy-path';
@@ -676,6 +677,9 @@ export class TreePanel {
 
     if (node.type === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      if (node.path.toLowerCase().endsWith('.svg')) {
+        items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
     }
     items.push(
       { id: ACTION_NEW_FILE, label: 'New File', icon: Icon.FILE },
@@ -751,6 +755,10 @@ export class TreePanel {
       case ACTION_OPEN:
         this.workspace.select(node.path);
         void this.fileOpener.openPath(node.path);
+        return;
+      case ACTION_OPEN_AS_CODE:
+        this.workspace.select(node.path);
+        void this.fileOpener.openAsText(node.path);
         return;
       case ACTION_NEW_FILE:
         void this.beginCreate('new-file', this.directoryFor(node));

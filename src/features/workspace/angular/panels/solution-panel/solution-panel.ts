@@ -72,6 +72,7 @@ import {
  * Identifies the context-menu and toolbar actions the panel offers.
  */
 const ACTION_OPEN: string = 'open';
+const ACTION_OPEN_AS_CODE: string = 'open-as-code';
 const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
@@ -345,6 +346,9 @@ export class SolutionPanel {
 
     if (row.kind === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+      if (path?.toLowerCase().endsWith('.svg') === true) {
+        items.push({ id: ACTION_OPEN_AS_CODE, label: 'Open as Code', icon: Icon.CODE });
+      }
     }
     if (row.kind === 'project') {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
@@ -959,6 +963,10 @@ export class SolutionPanel {
       case ACTION_EDIT_PROJECT:
         this.solution.select(row.key);
         void this.fileOpener.openPath(path);
+        return;
+      case ACTION_OPEN_AS_CODE:
+        this.solution.select(row.key);
+        void this.fileOpener.openAsText(path);
         return;
       case ACTION_COPY_PATH:
         void navigator.clipboard.writeText(path).catch((): void => undefined);

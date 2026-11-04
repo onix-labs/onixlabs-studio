@@ -39,6 +39,11 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 
 /**
+ * Holds the lowercased extension of an SVG, which Open SVG Files As can send to the code editor.
+ */
+const SVG_EXTENSION: string = '.svg';
+
+/**
  * Holds the lowercased file extensions (including the leading dot) routed to the markdown editor.
  */
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.md', '.markdown']);
@@ -201,8 +206,13 @@ export class FileOpener {
     // An image is document-shaped, unlike a binary: it sits in the well beside the code that
     // references it, falling back to its own tab only when this dock has no document home.
     if (selection.kind === 'image') {
+      if (this.opensAsCode(selection.path)) {
+        return this.openAsText(selection.path);
+      }
       return (
-        this.openImageInWell(selection.path, options) || this.openImage(selection.path, options)
+        (this.settings.get('imageViewer.openIn') === 'workspace' &&
+          this.openImageInWell(selection.path, options)) ||
+        this.openImage(selection.path, options)
       );
     }
     // An API document is a whole surface rather than a document in this workspace's well, so it opens
@@ -286,10 +296,26 @@ export class FileOpener {
         return true;
       }
       case 'image':
+        if (this.opensAsCode(selection.path)) {
+          void this.openAsText(selection.path);
+          return true;
+        }
         return this.openImage(selection.path);
       case 'binary':
         return this.openBinary(selection.path);
     }
+  }
+
+  /**
+   * Determines whether an image opens as its source: an SVG, while Open SVG Files As says Code.
+   * @param path The image's path.
+   * @returns Returns true when it opens in the code editor.
+   */
+  private opensAsCode(path: string): boolean {
+    return (
+      path.toLowerCase().endsWith(SVG_EXTENSION) &&
+      this.settings.get('imageViewer.openSvgAs') === 'code'
+    );
   }
 
   /**

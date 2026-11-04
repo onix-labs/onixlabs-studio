@@ -23,6 +23,10 @@ describe('image geometry', () => {
     expect(fitScale({ width: 1000, height: 4000 }, { width: 1000, height: 1000 })).toBe(0.25);
   });
 
+  it('fitScale_whenEnlarging_scalesASmallImageUpToTheViewport', () => {
+    expect(fitScale({ width: 100, height: 50 }, { width: 1000, height: 1000 }, true)).toBe(10);
+  });
+
   it('fitScale_whenImageIsSmallerThanTheViewport_showsItAtActualSize', () => {
     expect(fitScale({ width: 16, height: 16 }, { width: 1000, height: 800 })).toBe(1);
   });

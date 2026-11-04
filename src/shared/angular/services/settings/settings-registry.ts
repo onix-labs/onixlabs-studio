@@ -351,6 +351,47 @@ export type ReadAloudPitch = 'low' | 'normal' | 'high';
 export type ReadAlongHighlight = 'word' | 'sentence' | 'none';
 
 /**
+ * Names how large an image first shows.
+ */
+export type ImageZoomOnOpen = 'fit' | 'actual';
+
+/**
+ * Names what an image is shown against: a checkerboard that makes transparency visible, a plain light
+ * or dark ground, or the theme's own background.
+ */
+export type ImageDefaultBackground = 'checker' | 'light' | 'dark' | 'theme';
+
+/**
+ * Names the size of the checkerboard behind an image.
+ */
+export type ImageCheckerboardSize = 'small' | 'medium' | 'large';
+
+/**
+ * Names how a scaled image is drawn.
+ */
+export type ImageSmoothing = 'automatic' | 'smooth' | 'sharp';
+
+/**
+ * Names what the mouse wheel does over an image.
+ */
+export type ImageMouseWheel = 'scroll' | 'zoom';
+
+/**
+ * Names what saving an edited image in a format that can't be written back does.
+ */
+export type ImageFallbackSaveFormat = 'png' | 'webp' | 'ask';
+
+/**
+ * Names where an image from a workspace opens.
+ */
+export type ImageOpenIn = 'workspace' | 'tab';
+
+/**
+ * Names how an SVG file opens.
+ */
+export type ImageOpenSvgAs = 'image' | 'code';
+
+/**
  * Maps every setting key to the type of value it holds. This is the type-safe contract consumers read
  * through {@link import('./settings').Settings.get}; the runtime {@link SETTINGS_REGISTRY} is checked
  * against these keys, so a registry entry whose key is not declared here is a compile error.
@@ -572,6 +613,18 @@ export interface SettingsValues {
   readonly 'markdownEditor.readAlongHighlight': ReadAlongHighlight;
   readonly 'markdownEditor.followSpokenWord': boolean;
   readonly 'markdownEditor.readingSpeed': number;
+
+  readonly 'imageViewer.zoomOnOpen': ImageZoomOnOpen;
+  readonly 'imageViewer.enlargeSmallImages': boolean;
+  readonly 'imageViewer.defaultBackground': ImageDefaultBackground;
+  readonly 'imageViewer.checkerboardSize': ImageCheckerboardSize;
+  readonly 'imageViewer.smoothing': ImageSmoothing;
+  readonly 'imageViewer.mouseWheel': ImageMouseWheel;
+  readonly 'imageViewer.undoHistory': number;
+  readonly 'imageViewer.saveQuality': number;
+  readonly 'imageViewer.fallbackSaveFormat': ImageFallbackSaveFormat;
+  readonly 'imageViewer.openIn': ImageOpenIn;
+  readonly 'imageViewer.openSvgAs': ImageOpenSvgAs;
 
   readonly 'plugins.notifyUpdates': boolean;
   readonly 'plugins.showUnsupported': boolean;
@@ -3461,6 +3514,162 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 200,
+      },
+    ],
+  },
+  {
+    id: 'images',
+    label: 'Images',
+    settings: [
+      {
+        key: 'imageViewer.zoomOnOpen',
+        title: 'Zoom on Open',
+        description: 'How large an image first shows.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'fit', label: 'Fit' },
+            { value: 'actual', label: 'Actual Size' },
+          ],
+        },
+        default: 'fit',
+      },
+      {
+        key: 'imageViewer.enlargeSmallImages',
+        title: 'Enlarge Small Images to Fit',
+        description: 'Scale an image smaller than the window up to fill it when fitting.',
+        control: { kind: 'toggle' },
+        default: false,
+      },
+      {
+        key: 'imageViewer.defaultBackground',
+        title: 'Default Background',
+        description: 'What an image is shown against. The ribbon changes it for that image only.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'checker', label: 'Checkerboard' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+            { value: 'theme', label: 'Theme' },
+          ],
+        },
+        default: 'checker',
+      },
+      {
+        key: 'imageViewer.checkerboardSize',
+        title: 'Checkerboard Size',
+        description: 'The size of the checkerboard squares.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'small', label: 'Small' },
+            { value: 'medium', label: 'Medium' },
+            { value: 'large', label: 'Large' },
+          ],
+        },
+        default: 'medium',
+      },
+      {
+        key: 'imageViewer.smoothing',
+        title: 'Image Smoothing',
+        description: 'How a scaled image is drawn. Automatic shows the pixels from 400% up.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'automatic', label: 'Automatic' },
+            { value: 'smooth', label: 'Always Smooth' },
+            { value: 'sharp', label: 'Always Sharp' },
+          ],
+        },
+        default: 'automatic',
+      },
+      {
+        key: 'imageViewer.mouseWheel',
+        title: 'Mouse Wheel',
+        description: 'What the wheel does over an image. Holding ⌘ (Ctrl elsewhere) always zooms.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'scroll', label: 'Scroll' },
+            { value: 'zoom', label: 'Zoom' },
+          ],
+        },
+        default: 'scroll',
+      },
+      {
+        key: 'imageViewer.undoHistory',
+        title: 'Undo History',
+        description: 'How many edits Undo can go back. Each one holds a whole image in memory.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '10', label: '10 Edits' },
+            { value: '20', label: '20 Edits' },
+            { value: '50', label: '50 Edits' },
+          ],
+        },
+        default: 20,
+      },
+      {
+        key: 'imageViewer.saveQuality',
+        title: 'Save Quality',
+        description: 'The quality an edited JPEG or WebP is saved back at.',
+        control: {
+          kind: 'select',
+          valueType: 'number',
+          options: [
+            { value: '75', label: '75%' },
+            { value: '85', label: '85%' },
+            { value: '92', label: '92%' },
+            { value: '100', label: '100%' },
+          ],
+        },
+        default: 92,
+      },
+      {
+        key: 'imageViewer.fallbackSaveFormat',
+        title: 'Fallback Save Format',
+        description:
+          "What saving an edited GIF, BMP, ICO or AVIF does, since those can't be written back: offer to save it as a PNG or a WebP, or open the export tool to ask.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'png', label: 'PNG' },
+            { value: 'webp', label: 'WebP' },
+            { value: 'ask', label: 'Ask' },
+          ],
+        },
+        default: 'png',
+      },
+      {
+        key: 'imageViewer.openIn',
+        title: 'Open Images In',
+        description:
+          'Where an image from a workspace opens: beside its documents, or in a tab of its own.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'workspace', label: 'Workspace' },
+            { value: 'tab', label: 'New Tab' },
+          ],
+        },
+        default: 'workspace',
+      },
+      {
+        key: 'imageViewer.openSvgAs',
+        title: 'Open SVG Files As',
+        description:
+          "Whether an SVG opens as a picture or as its source. Either way, the Explorer's menu offers Open as Code.",
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'image', label: 'Image' },
+            { value: 'code', label: 'Code' },
+          ],
+        },
+        default: 'image',
       },
     ],
   },
