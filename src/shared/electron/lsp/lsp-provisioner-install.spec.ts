@@ -43,6 +43,7 @@ vi.mock('node:crypto', async (importOriginal: () => Promise<typeof import('node:
 });
 
 const {
+  DOWNLOAD_STALL_MS,
   GOPLS_VERSION,
   JDTLS_SHA256,
   JDTLS_VERSION,
@@ -225,6 +226,101 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
 
       expect(fetched).not.toHaveBeenCalled();
       expect(provisioner.isProvisioned('roslyn', ROSLYN_VERSION)).toBe(true);
+    });
+
+    describe('a download that stops moving', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      /**
+       * Serves a response from a source the test feeds by hand, which aborts as a real fetch would.
+       * @param body The body, or null for a server that never answers.
+       * @returns Returns the stub.
+       */
+      function hangs(body: ReadableStream<Uint8Array> | null): ReturnType<typeof vi.fn> {
+        const stub: ReturnType<typeof vi.fn> = vi.fn(
+          (_url: string, init?: RequestInit): Promise<FakeResponse> =>
+            body === null
+              ? new Promise<FakeResponse>(
+                  (_resolve: unknown, reject: (reason: unknown) => void): void => {
+                    init?.signal?.addEventListener('abort', (): void => {
+                      reject(init.signal?.reason as Error);
+                    });
+                  },
+                )
+              : Promise.resolve({ ok: true, status: 200, body }),
+        );
+        vi.stubGlobal('fetch', stub);
+        return stub;
+      }
+
+      it('aServerThatNeverAnswers_givesUp', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const fetched: ReturnType<typeof vi.fn> = hangs(null);
+
+        const install: Promise<string | null> = provisioner.ensureRoslyn();
+        await vi.waitFor(() => {
+          expect(fetched).toHaveBeenCalled();
+        });
+        await vi.advanceTimersByTimeAsync(DOWNLOAD_STALL_MS + 1);
+
+        expect(await install).toBeNull();
+        expect(provisioner.isProvisioned('roslyn', ROSLYN_VERSION)).toBe(false);
+      });
+
+      it('aBodyThatStops_givesUp', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const fetched: ReturnType<typeof vi.fn> = hangs(
+          new ReadableStream<Uint8Array>({
+            start(controller: ReadableStreamDefaultController<Uint8Array>): void {
+              controller.enqueue(new TextEncoder().encode('part of an archive'));
+            },
+          }),
+        );
+
+        const install: Promise<string | null> = provisioner.ensureRoslyn();
+        await vi.waitFor(() => {
+          expect(fetched).toHaveBeenCalled();
+        });
+        await vi.advanceTimersByTimeAsync(DOWNLOAD_STALL_MS + 1);
+
+        expect(await install).toBeNull();
+      });
+
+      it('aSlowBodyThatKeepsMoving_isLetFinish', async () => {
+        forcedDigest = ROSLYN_SHA512[rid];
+        unzipCreates(extracted);
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        let source: ReadableStreamDefaultController<Uint8Array> | null = null;
+        const fetched: ReturnType<typeof vi.fn> = hangs(
+          new ReadableStream<Uint8Array>({
+            start(controller: ReadableStreamDefaultController<Uint8Array>): void {
+              source = controller;
+            },
+          }),
+        );
+
+        const install: Promise<string | null> = provisioner.ensureRoslyn();
+        await vi.waitFor(() => {
+          expect(fetched).toHaveBeenCalled();
+        });
+        for (let chunk: number = 0; chunk < 4; chunk += 1) {
+          (source as unknown as ReadableStreamDefaultController<Uint8Array>).enqueue(
+            new TextEncoder().encode('more'),
+          );
+          await new Promise<void>((resolve: () => void): void => {
+            setImmediate(resolve);
+          });
+          await new Promise<void>((resolve: () => void): void => {
+            setImmediate(resolve);
+          });
+          await vi.advanceTimersByTimeAsync(DOWNLOAD_STALL_MS * 0.75);
+        }
+        (source as unknown as ReadableStreamDefaultController<Uint8Array>).close();
+
+        expect(await install).toBe(binary());
+      });
     });
 
     it('aNetworkFailure_isNull_andNotRemembered_soARetryDownloadsAgain', async () => {

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
@@ -54,6 +54,13 @@ export const JDTLS_SHA256: string =
  * Holds the lowest Java major version the downloaded language server can run on.
  */
 const MINIMUM_JAVA_VERSION: number = 21;
+
+/**
+ * How long a server download may go without a byte before it is given up on. Measured from the last
+ * byte rather than the start: these archives run to hundreds of megabytes, and a slow link that keeps
+ * moving must be left to finish, while a connection that has gone quiet never will.
+ */
+export const DOWNLOAD_STALL_MS: number = 60_000;
 
 /**
  * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
@@ -1212,24 +1219,65 @@ export class LspProvisioner {
   }
 
   /**
-   * Downloads a URL to a file, streaming the response to disk.
+   * Downloads a URL to a file, streaming the response to disk, and gives up on one that stops moving.
    * @param url The URL to download.
    * @param destination The file to write.
    * @returns Returns a promise that resolves once the download completes.
    */
   private async download(url: string, destination: string): Promise<void> {
-    const response: Response = await fetch(url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`Download failed: ${response.status}`);
+    const controller: AbortController = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const arm: () => void = (): void => {
+      clearTimeout(stall);
+      stall = setTimeout((): void => {
+        controller.abort(new Error(`Download stalled: nothing for ${DOWNLOAD_STALL_MS} ms`));
+      }, DOWNLOAD_STALL_MS);
+    };
+    arm();
+    try {
+      const response: Response = await fetch(url, { signal: controller.signal });
+      if (!response.ok || response.body === null) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      arm();
+      await this.writeBody(response.body, destination, arm, controller.signal);
+    } finally {
+      clearTimeout(stall);
     }
+  }
+
+  /**
+   * Streams a response's body to a file, reporting each chunk as it passes.
+   * @param source The response's body.
+   * @param destination The file to write.
+   * @param onChunk Called for each chunk.
+   * @param signal Aborts the write.
+   * @returns Returns a promise that resolves once the body is on disk.
+   */
+  private async writeBody(
+    source: NonNullable<Response['body']>,
+    destination: string,
+    onChunk: () => void,
+    signal: AbortSignal,
+  ): Promise<void> {
     // The two compilations disagree about this type: under the main process's Node libs the cast is
     // redundant, while under the renderer's DOM libs `ReadableStream` is the DOM one and the call will
     // not typecheck without it. It is what lets anything importing this module be tested at all.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    const body: Parameters<typeof Readable.fromWeb>[0] = response.body as Parameters<
+    const body: Parameters<typeof Readable.fromWeb>[0] = source as Parameters<
       typeof Readable.fromWeb
     >[0];
-    await pipeline(Readable.fromWeb(body), createWriteStream(destination));
+    const watched: Transform = new Transform({
+      transform: (
+        chunk: Buffer,
+        _encoding: BufferEncoding,
+        done: (error: null, data: Buffer) => void,
+      ): void => {
+        onChunk();
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(body), watched, createWriteStream(destination), { signal });
   }
 
   /**
