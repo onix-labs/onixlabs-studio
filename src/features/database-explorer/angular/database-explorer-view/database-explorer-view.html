@@ -14,6 +14,7 @@
   [maxWidth]="prompts.mode() === 'secrets' ? undefined : 48"
   [maxHeight]="prompts.mode() === 'secrets' ? undefined : 36"
   [expandable]="prompts.mode() !== 'secrets'"
+  [frameless]="true"
   ariaLabel="Connection"
   (dismiss)="prompts.cancel()"
 >
@@ -45,34 +46,26 @@
 
     <div class="connection__fields">
       @if (prompts.mode() !== 'secrets') {
-        <app-setting-row label="Engine">
-          <app-dropdown
-            class="connection__control"
-            [options]="engineOptions()"
-            [value]="prompts.engineId()"
-            [disabled]="prompts.mode() === 'edit'"
-            [fullWidth]="true"
-            ariaLabel="Engine"
-            (valueChange)="prompts.chooseEngine($event)"
-          />
-        </app-setting-row>
-        <app-setting-row label="Name">
-          <app-text-field
-            class="connection__control"
-            [value]="prompts.name()"
-            placeholder="Connection name"
-            ariaLabel="Connection name"
-            (valueChange)="prompts.name.set($event)"
-          />
-        </app-setting-row>
+        <app-dropdown
+          label="Engine"
+          [options]="engineOptions()"
+          [value]="prompts.engineId()"
+          [disabled]="prompts.mode() === 'edit'"
+          [fullWidth]="true"
+          (valueChange)="prompts.chooseEngine($event)"
+        />
+        <app-text-field
+          variant="floating"
+          label="Name"
+          [value]="prompts.name()"
+          (valueChange)="prompts.name.set($event)"
+        />
       }
 
       @if (prompts.mode() === 'secrets') {
         <!-- Asking only for what is missing: the secrets, with no tabs to look behind. -->
         @for (field of prompts.fields(); track field.id) {
-          <app-setting-row [label]="field.label">
-            <ng-container *ngTemplateOutlet="control; context: { $implicit: field }" />
-          </app-setting-row>
+          <ng-container *ngTemplateOutlet="control; context: { $implicit: field }" />
         }
         <ng-container *ngTemplateOutlet="remember" />
       } @else {
@@ -101,13 +94,18 @@
               @for (group of prompts.layout()[panel]; track group.section) {
                 <div class="connection__section">
                   @for (row of group.rows; track row.field.id) {
-                    <app-setting-row [label]="row.field.label">
+                    @if (row.field.kind === 'boolean') {
+                      <app-setting-row [label]="row.field.label">
+                        <ng-container
+                          *ngTemplateOutlet="control; context: { $implicit: row.field }"
+                        />
+                      </app-setting-row>
+                    } @else {
                       <div class="connection__line">
                         <ng-container
                           *ngTemplateOutlet="control; context: { $implicit: row.field }"
                         />
                         @if (row.beside; as beside) {
-                          <span class="connection__beside-label">{{ beside.label }}</span>
                           <div class="connection__beside">
                             <ng-container
                               *ngTemplateOutlet="control; context: { $implicit: beside }"
@@ -115,7 +113,7 @@
                           </div>
                         }
                       </div>
-                    </app-setting-row>
+                    }
                   }
                   @if (group.section === 'authentication') {
                     <ng-container *ngTemplateOutlet="remember" />
@@ -133,6 +131,7 @@
           @case ('password') {
             <app-password-field
               class="connection__control"
+              [label]="field.label"
               [value]="prompts.values()[field.id] ?? ''"
               [placeholder]="field.placeholder ?? ''"
               (valueChange)="prompts.setValue(field.id, $event)"
@@ -148,10 +147,10 @@
           @case ('choice') {
             <app-dropdown
               class="connection__control"
+              [label]="field.label"
               [options]="choiceOptions(field)"
               [value]="prompts.values()[field.id] ?? ''"
               [fullWidth]="true"
-              [ariaLabel]="field.label"
               (valueChange)="prompts.setValue(field.id, $event)"
             />
           }
@@ -159,20 +158,22 @@
             <div class="connection__file connection__control">
               <app-text-field
                 class="connection__control"
+                variant="floating"
+                [label]="field.label"
                 [value]="prompts.values()[field.id] ?? ''"
                 [placeholder]="field.placeholder ?? ''"
-                [ariaLabel]="field.label"
                 (valueChange)="prompts.setValue(field.id, $event)"
               />
-              <app-button label="Browse" (click)="browse(field)" />
+              <app-button class="connection__browse" label="Browse" (click)="browse(field)" />
             </div>
           }
           @default {
             <app-text-field
               class="connection__control"
+              variant="floating"
+              [label]="field.label"
               [value]="prompts.values()[field.id] ?? ''"
               [placeholder]="field.placeholder ?? ''"
-              [ariaLabel]="field.label"
               (valueChange)="prompts.setValue(field.id, $event)"
               (enter)="prompts.complete() && confirmConnection()"
             />
@@ -184,7 +185,7 @@
            document's passphrase when it has one — and never written as typed. -->
       <ng-template #remember>
         @if (hasSecretFields()) {
-          <app-setting-row label="Remember password">
+          <app-setting-row label="Remember Password">
             <app-toggle
               ariaLabel="Remember password"
               [checked]="prompts.remember()"
@@ -211,17 +212,16 @@
         <p class="connection__test"><app-icon [icon]="Icon.SPINNER" /> Testing…</p>
       }
       @case ('passed') {
-        <p class="connection__test connection__test--passed">
-          <app-icon [icon]="Icon.PLAY" /> Connected to {{ $any(prompts.test()).serverVersion }}
-        </p>
+        <app-alert class="connection__alert" tone="success">
+          Connected to {{ $any(prompts.test()).serverVersion }}
+        </app-alert>
       }
       @case ('failed') {
-        <p class="connection__test connection__test--failed">
-          <app-icon [icon]="Icon.WARNING" />
+        <app-alert class="connection__alert" tone="danger">
           {{
             $any(prompts.test()).message || 'The connection failed, and the engine gave no reason.'
           }}
-        </p>
+        </app-alert>
       }
     }
 
@@ -230,6 +230,7 @@
     <div class="connection__actions">
       <app-button-row align="start">
         <app-button
+          variant="ghost"
           label="Test"
           [disabled]="!prompts.complete() || prompts.test().state === 'testing'"
           (click)="prompts.runTest()"
@@ -242,7 +243,7 @@
           [disabled]="!prompts.complete()"
           (click)="confirmConnection()"
         />
-        <app-button label="Cancel" (click)="prompts.cancel()" />
+        <app-button variant="none" label="Cancel" (click)="prompts.cancel()" />
       </app-button-row>
     </div>
   </ng-template>
@@ -252,6 +253,7 @@
 <app-modal
   [open]="prompts.destructive() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Run destructive statements"
   (dismiss)="prompts.settleDestructive(false)"
 >
@@ -266,8 +268,13 @@
     <div class="connection__actions">
       <span></span>
       <app-button-row>
-        <app-button variant="solid" label="Run" (click)="prompts.settleDestructive(true)" />
-        <app-button label="Cancel" (click)="prompts.settleDestructive(false)" />
+        <app-button
+          variant="solid"
+          tone="danger"
+          label="Run"
+          (click)="prompts.settleDestructive(true)"
+        />
+        <app-button variant="none" label="Cancel" (click)="prompts.settleDestructive(false)" />
       </app-button-row>
     </div>
   </ng-template>
@@ -279,6 +286,7 @@
 <app-modal
   [open]="prompts.passphraseMode() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Passphrase"
   (dismiss)="prompts.closePassphrase()"
 >
@@ -295,28 +303,22 @@
         Without it, only the passwords are lost; the connections and queries stay readable.
       }
     </p>
-    <div class="connection__fields">
-      <app-setting-row label="Passphrase">
-        <app-password-field
-          class="connection__control"
-          [value]="prompts.passphrase()"
-          (valueChange)="prompts.passphrase.set($event); prompts.passphraseError.set(null)"
-        />
-      </app-setting-row>
+    <div class="connection__fields connection__fields--floating">
+      <app-password-field
+        label="Passphrase"
+        [value]="prompts.passphrase()"
+        (valueChange)="prompts.passphrase.set($event); prompts.passphraseError.set(null)"
+      />
       @if (prompts.passphraseMode() === 'set') {
-        <app-setting-row label="Confirm">
-          <app-password-field
-            class="connection__control"
-            [value]="prompts.passphraseConfirm()"
-            (valueChange)="prompts.passphraseConfirm.set($event); prompts.passphraseError.set(null)"
-          />
-        </app-setting-row>
+        <app-password-field
+          label="Confirm Passphrase"
+          [value]="prompts.passphraseConfirm()"
+          (valueChange)="prompts.passphraseConfirm.set($event); prompts.passphraseError.set(null)"
+        />
       }
     </div>
     @if (prompts.passphraseError(); as error) {
-      <p class="connection__test connection__test--failed">
-        <app-icon [icon]="Icon.WARNING" /> {{ error }}
-      </p>
+      <app-alert class="connection__alert" tone="danger">{{ error }}</app-alert>
     }
     <div class="connection__actions">
       <span></span>
@@ -328,6 +330,7 @@
           (click)="prompts.confirmPassphrase()"
         />
         <app-button
+          variant="none"
           [label]="prompts.passphraseMode() === 'unlock' ? 'Skip' : 'Cancel'"
           (click)="prompts.closePassphrase()"
         />
