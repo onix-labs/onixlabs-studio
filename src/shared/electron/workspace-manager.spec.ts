@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -576,6 +577,13 @@ describe('WorkspaceManager', () => {
       fs.mkdirSync(directory);
 
       expect(await invoke(WorkspaceChannel.OpenFile, directory)).toBeNull();
+    });
+
+    it('readFile_ofAFifo_answersNull_ratherThanWaitingForAWriterForever', async () => {
+      const pipe: string = path.join(workspaceRoot, 'README.md');
+      execFileSync('mkfifo', [pipe]);
+
+      expect(await invoke(WorkspaceChannel.OpenFile, pipe)).toBeNull();
     });
   });
 

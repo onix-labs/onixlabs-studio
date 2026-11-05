@@ -1051,6 +1051,11 @@ export class WorkspaceManager {
     policy: TextReadPolicy,
   ): Promise<OpenSelection> {
     const stats: Stats = await fs.stat(filePath);
+    // Opening a FIFO blocks until a writer appears, which pins a thread-pool thread and leaves the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!stats.isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
     // An image is recognised by its extension before its contents are sniffed: a PNG would otherwise
     // sniff as binary and an SVG as text, and both belong in the image viewer. The extension list is
     // the one the media protocol serves, so every file classified here is one the viewer can display.
