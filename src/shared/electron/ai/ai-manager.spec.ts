@@ -1353,6 +1353,16 @@ describe('AiManager', () => {
         expect(eventsOf('edit-decision')).toHaveLength(1);
       });
 
+      it('edit_aYesAutoNamingNoOpenDecision_doesNotTurnOnAutoAccept', async () => {
+        reply(AiChannel.EditDecisionReply, { decisionId: 'forged', choice: 'yes-auto' });
+
+        const [answer, decisionId]: [Promise<string>, unknown] = decision();
+
+        expect(eventsOf('edit-decision')).toHaveLength(1);
+        reply(AiChannel.EditDecisionReply, { decisionId, choice: 'no' });
+        expect(await answer).toBe('no');
+      });
+
       it.each([[null], [{ decisionId: 7, choice: 'yes' }], [{ decisionId: 'x', choice: 'maybe' }]])(
         'edit_aMalformedReply_decidesNothing %#',
         async (bad: unknown) => {

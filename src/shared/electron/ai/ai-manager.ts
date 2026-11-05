@@ -2224,6 +2224,14 @@ export class AiManager {
    * @param reply The renderer's reply.
    */
   private resolveEditDecision(reply: AiEditDecisionReply): void {
+    // ⛔ Only an answer to a decision actually open counts: a stale or forged reply must not be able to
+    // switch off every later edit prompt.
+    const settle: ((choice: EditDecisionOutcome) => void) | undefined = this.editDecisions.get(
+      reply.decisionId,
+    );
+    if (settle === undefined) {
+      return;
+    }
     if (reply.choice === 'yes-auto') {
       logger.debug(
         'AiManager.resolveEditDecision',
@@ -2231,7 +2239,7 @@ export class AiManager {
       );
       this.autoAcceptEdits = true;
     }
-    this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');
+    settle(reply.choice === 'no' ? 'no' : 'yes');
   }
 
   /**
