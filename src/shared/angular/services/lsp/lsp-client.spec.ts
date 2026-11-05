@@ -2825,6 +2825,22 @@ describe('LspClient', () => {
       vi.useRealTimers();
     }
   });
+
+  it('resume_ofADocumentAnEditAlreadyReopened_doesNotOpenItTwice', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+    await flush();
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+
+    client.resume();
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+  });
 });
 
 describe('idleStopMs', () => {

@@ -2139,6 +2139,11 @@ export class LspClient implements OnDestroy {
    * @returns Returns a promise that resolves once the open notification has been sent.
    */
   private async reopen(tracked: TrackedDocument): Promise<void> {
+    // An edit may have got in first and opened it. A second open without a close is a protocol error
+    // that Roslyn treats as fatal, so the one that arrives second must not be sent.
+    if (tracked.opened) {
+      return;
+    }
     await this.open(tracked, this.currentContent(tracked));
   }
 
