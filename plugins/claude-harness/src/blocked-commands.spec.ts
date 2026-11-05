@@ -44,6 +44,10 @@ describe('findBlockedCommand', () => {
     }
   });
 
+  it('treatsACarriageReturnAsTheEndOfACommand', () => {
+    expect(findBlockedCommand('npm test\rgh pr merge 1', BLOCKED)).toBe('gh');
+  });
+
   it('letsALineThatOnlyMentionsTheName_through', () => {
     for (const line of [
       'git log --grep gh',

@@ -166,6 +166,16 @@ describe('workspace studio tools', () => {
       expect(calls).toEqual([]);
     });
 
+    it('writeTerminalInput_refusesABlockedCommandThatCarriesItsOwnEnter', async () => {
+      // `submit: false` only leaves off the newline this tool would add: text holding one still runs.
+      const { context, calls } = contextWith({ ok: true, output: 'ran' });
+      const blocked: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+      expect(await writeTerminalInput(blocked, 'gh auth token\n', false, 't')).toContain('blocked');
+      expect(await writeTerminalInput(blocked, 'gh auth token\r', false, 't')).toContain('blocked');
+      expect(calls).toEqual([]);
+    });
+
     it('writeTerminalInput_letsTextThatIsNotSubmittedThrough', async () => {
       // Typing without pressing Enter runs nothing.
       const { context, calls } = contextWith({ ok: true, output: 'typed' });

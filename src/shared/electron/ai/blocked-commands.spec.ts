@@ -44,6 +44,11 @@ describe('findBlockedCommand', () => {
     }
   });
 
+  it('treatsACarriageReturnAsTheEndOfACommand', () => {
+    // A terminal submits on \r as readily as on \n.
+    expect(findBlockedCommand('npm test\rgh pr merge 1', BLOCKED)).toBe('gh');
+  });
+
   it('letsALineThatOnlyMentionsTheName_through', () => {
     for (const line of [
       'git log --grep gh',

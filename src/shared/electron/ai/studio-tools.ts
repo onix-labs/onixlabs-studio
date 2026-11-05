@@ -616,10 +616,10 @@ export async function writeTerminalInput(
     `Tool invoked: write_terminal_input (tab=${tabId}, submit=${submit})`,
   );
   // A command the user keeps agents off (#853) is refused before it reaches a shell — the AI SDK
-  // providers have no shell of their own, so this tool is their only way to run one.
-  const blocked: string | null = submit
-    ? findBlockedCommand(text, context.blockedCommands ?? [])
-    : null;
+  // providers have no shell of their own, so this tool is their only way to run one. Text carrying
+  // its own line end runs as surely as submitted text does.
+  const blocked: string | null =
+    submit || /[\r\n]/.test(text) ? findBlockedCommand(text, context.blockedCommands ?? []) : null;
   if (blocked !== null) {
     logger.info('StudioTools', `write_terminal_input refused: ${blocked} is blocked`);
     return blockedCommandMessage(blocked);

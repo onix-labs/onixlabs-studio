@@ -1,8 +1,8 @@
 /**
- * Splits a command line into the commands it runs: at `;`, `&`, `|`, newlines, parentheses,
+ * Splits a command line into the commands it runs: at `;`, `&`, `|`, line ends, parentheses,
  * backticks and `$(`, so `cd x && gh pr list` and `echo $(gh auth token)` each yield the `gh` call.
  */
-const COMMAND_SEPARATOR: RegExp = /\$\(|[;&|()`\n]/;
+const COMMAND_SEPARATOR: RegExp = /\$\(|[;&|()`\n\r]/;
 
 /**
  * The words that run the command after them rather than being it, skipped when finding which program
