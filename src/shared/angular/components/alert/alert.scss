@@ -1,0 +1,44 @@
+// The text takes the tone, drawn towards the theme's text colour: the tones alone fall to 2:1 on
+// their own tint, and to 3:1 for red and green even on the dark theme.
+:host {
+  --alert-tone: var(--info-color);
+  --alert-tone-rgb: var(--info-color-rgb);
+
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: rgba(var(--alert-tone-rgb), 0.15);
+  border: 1px solid rgba(var(--alert-tone-rgb), 0.5);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  color: color-mix(in srgb, var(--alert-tone) 55%, var(--body-foreground-color));
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+:host(.alert--success) {
+  --alert-tone: var(--success-color);
+  --alert-tone-rgb: var(--success-color-rgb);
+}
+
+:host(.alert--warning) {
+  --alert-tone: var(--warning-color);
+  --alert-tone-rgb: var(--warning-color-rgb);
+}
+
+:host(.alert--danger) {
+  --alert-tone: var(--danger-color);
+  --alert-tone-rgb: var(--danger-color-rgb);
+}
+
+.alert__icon {
+  flex: none;
+  color: var(--alert-tone);
+  font-size: 1.25rem;
+  line-height: 1.5rem;
+}
+
+.alert__message {
+  min-inline-size: 0;
+}
