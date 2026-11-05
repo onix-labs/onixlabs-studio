@@ -692,15 +692,26 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
       this.settings.get('markdownEditor.pastedImageFolder'),
       pastedImageFileName(file, Date.now()),
     );
-    const written: FileWriteResult = await this.fileSystem.writeBytes(
-      path,
-      new Uint8Array(await file.arrayBuffer()),
-    );
-    if (!written.success) {
-      this.log.warn('MarkdownEditor', 'Could not save pasted image, embedding it', written.error);
-      return fileToDataUrl(file);
+    let failure: unknown;
+    try {
+      const written: FileWriteResult = await this.fileSystem.writeBytes(
+        path,
+        new Uint8Array(await file.arrayBuffer()),
+      );
+      if (written.success) {
+        return styleImagePath(
+          path,
+          directory,
+          this.settings.get('markdownEditor.insertedImagePaths'),
+        );
+      }
+      failure = written.error;
+    } catch (error: unknown) {
+      // A bridge that fails outright is as much "can't be written" as a refused write.
+      failure = error;
     }
-    return styleImagePath(path, directory, this.settings.get('markdownEditor.insertedImagePaths'));
+    this.log.warn('MarkdownEditor', 'Could not save pasted image, embedding it', failure);
+    return fileToDataUrl(file);
   }
 
   /**

@@ -1,9 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
 import type { EditorView } from '@milkdown/kit/prose/view';
 
+import { FileSystem } from '../../services/file-system/file-system';
+import { Settings } from '../../services/settings/settings';
 import { drainMilkdownTimers } from '../../testing/drain-milkdown-timers';
 import { MarkdownEditor } from './markdown-editor';
 
@@ -11,9 +14,13 @@ import { MarkdownEditor } from './markdown-editor';
  * Boots a markdown-editor fixture with the given content and waits for its Crepe editor to become
  * ready, counting ready emissions and captured content changes for the assertions.
  * @param content The initial markdown content.
+ * @param baseDirectory The folder the document sits in.
  * @returns Returns the fixture and the captured output events.
  */
-async function bootEditor(content: string): Promise<{
+async function bootEditor(
+  content: string,
+  baseDirectory: string = '',
+): Promise<{
   fixture: ComponentFixture<MarkdownEditor>;
   readyCount: () => number;
   contentChanges: string[];
@@ -21,6 +28,7 @@ async function bootEditor(content: string): Promise<{
 }> {
   const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
   fixture.componentRef.setInput('content', content);
+  fixture.componentRef.setInput('baseDirectory', baseDirectory);
   let ready: number = 0;
   let saves: number = 0;
   const contentChanges: string[] = [];
@@ -85,8 +93,95 @@ describe('MarkdownEditor', () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
   afterAll(drainMilkdownTimers);
+
+  describe('pasted images', () => {
+    /**
+     * Stores pasted images in a folder, whatever the settings on this machine say.
+     */
+    function storeInFolder(): void {
+      const settings: Settings = TestBed.inject(Settings);
+      const read: Settings['get'] = settings.get.bind(settings);
+      vi.spyOn(settings, 'get').mockImplementation(((key: string): unknown =>
+        key === 'markdownEditor.pastedImageStorage'
+          ? 'folder'
+          : read(key as Parameters<Settings['get']>[0])) as Settings['get']);
+    }
+
+    /**
+     * Pastes an image into the editor as the clipboard would hand it over.
+     */
+    function pasteImage(view: EditorView): void {
+      const file: File = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' });
+      const event: Event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+        clipboardData: { files: [file], getData: (): string => '' },
+      });
+      view.dom.dispatchEvent(event);
+    }
+
+    it('paste_whenTheWriteRejects_embedsTheImageInsteadOfLosingIt', async () => {
+      storeInFolder();
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockRejectedValue(new Error('bridge gone'));
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('data:image/png;base64,AQID');
+      });
+      expect(write).toHaveBeenCalledOnce();
+      fixture.destroy();
+    });
+
+    it('paste_whenTheWriteIsRefused_embedsTheImage', async () => {
+      storeInFolder();
+      vi.spyOn(TestBed.inject(FileSystem), 'writeBytes').mockResolvedValue({
+        success: false,
+        error: 'read-only volume',
+      });
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('data:image/png;base64,AQID');
+      });
+      fixture.destroy();
+    });
+
+    it('paste_whenTheWriteSucceeds_linksTheStoredFile', async () => {
+      storeInFolder();
+      vi.spyOn(TestBed.inject(FileSystem), 'writeBytes').mockResolvedValue({ success: true });
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('shot');
+      });
+      expect(fixture.componentInstance.getMarkdown()).not.toContain('data:image');
+      fixture.destroy();
+    });
+  });
 
   describe('mid-flight', () => {
     /**
