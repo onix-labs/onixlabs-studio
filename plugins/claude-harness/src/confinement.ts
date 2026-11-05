@@ -11,7 +11,7 @@
 // write through it is a write to that place (audit S8). The OS sandbox (see `sandboxFor`) covers the
 // shell path, which is the one this cannot range-check anyway.
 
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 /**
@@ -36,6 +36,12 @@ export const CONFINED_WRITE_TOOLS: readonly string[] = [
 const PATH_KEYS: readonly string[] = ['file_path', 'notebook_path', 'path'];
 
 /**
+ * How many dangling links {@link realPathOf} follows before calling them a cycle, matching the limit
+ * the kernels it runs on apply themselves.
+ */
+const MAX_LINK_HOPS: number = 40;
+
+/**
  * Extracts the filesystem path a confined write tool targets, or null when the input carries none.
  * @param input The tool input.
  * @returns Returns the target path, or null when absent.
@@ -57,14 +63,26 @@ export function writeTargetPath(input: unknown): string | null {
 /**
  * Resolves a path to where it really is: symbolic links followed, for as much of the path as exists.
  * A write's target usually does not exist yet, so the longest existing prefix is resolved and the rest
- * appended.
+ * appended. A link whose target does not exist yet is followed too: `existsSync` calls it absent, but
+ * a write through it creates the target, wherever that is.
  * @param resolved An absolute, `..`-normalised path.
- * @returns Returns the real path, or the path as given when nothing of it exists.
+ * @returns Returns the real path, or the path as given when nothing of it exists or it runs into a
+ * cycle of links, which no write can pass through.
  */
 export function realPathOf(resolved: string): string {
   let existing: string = resolved;
   const trailing: string[] = [];
+  let hops: number = 0;
   while (!existsSync(existing)) {
+    const link: string | null = danglingLinkTarget(existing);
+    if (link !== null) {
+      hops += 1;
+      if (hops > MAX_LINK_HOPS) {
+        return resolved;
+      }
+      existing = resolve(dirname(existing), link);
+      continue;
+    }
     const parent: string = dirname(existing);
     if (parent === existing) {
       return resolved;
@@ -80,6 +98,19 @@ export function realPathOf(resolved: string): string {
 }
 
 /**
+ * Reads where a link points, for a path `existsSync` has already called absent.
+ * @param absent The path to read.
+ * @returns Returns the link's target as written, or null when the path is not a link.
+ */
+function danglingLinkTarget(absent: string): string | null {
+  try {
+    return readlinkSync(absent);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Determines whether a resolved target equals or sits beneath a resolved root.
  * @param resolvedTarget The already-resolved absolute target.
  * @param resolvedRoot The already-resolved absolute root.
@@ -90,7 +121,7 @@ function isWithin(resolvedTarget: string, resolvedRoot: string): boolean {
     return true;
   }
   const rel: string = relative(resolvedRoot, resolvedTarget);
-  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
+  return rel.length > 0 && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 /**

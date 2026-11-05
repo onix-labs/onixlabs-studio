@@ -17,6 +17,34 @@ describe('text encoding', () => {
     }
   });
 
+  it('windows1252_decodesEveryByte_andRoundTripsEachBackToItself', () => {
+    const bytes: Uint8Array = Uint8Array.from(
+      { length: 256 },
+      (_unused: unknown, byte: number) => byte,
+    );
+
+    const text: string = decodeText(bytes, { encoding: 'windows1252' }).text;
+
+    expect(text.length).toBe(256);
+    expect(text.charCodeAt(0x41)).toBe(0x41);
+    expect(text.charCodeAt(0x80)).toBe(0x20ac);
+    expect(text.charCodeAt(0x81)).toBe(0x81);
+    expect(text.charCodeAt(0x9f)).toBe(0x0178);
+    expect(text.charCodeAt(0xa0)).toBe(0xa0);
+    expect(text.charCodeAt(0xff)).toBe(0xff);
+    expect([...encodeText(text, 'windows1252')]).toEqual([...bytes]);
+  });
+
+  it('windows1252_withBytesAtAnOffsetIntoALargerBuffer_readsOnlyThoseBytes', () => {
+    const bytes: Uint8Array = new Uint8Array([0x41, 0x80, 0x42, 0x43]).subarray(1, 3);
+
+    expect(decodeText(bytes, { encoding: 'windows1252' }).text).toBe('€B');
+  });
+
+  it('windows1252_withNoBytes_decodesToNothing', () => {
+    expect(decodeText(new Uint8Array(0), { encoding: 'windows1252' }).text).toBe('');
+  });
+
   it('windows1252_holdsItsHighRange_andTheC1ControlsItLeavesUndefined', () => {
     const text: string = '€ “quoted” – ‘single’ … ™ Ÿ \u0081\u008d\u008f\u0090\u009d';
 

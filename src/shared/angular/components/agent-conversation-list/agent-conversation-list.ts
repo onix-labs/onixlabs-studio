@@ -895,9 +895,10 @@ export class AgentConversationList {
     }
     this.categoryEditor.set(null);
     if (editor.id === null) {
-      const created: AgentCategory | null = await this.categoriesService.create(editor.name);
+      // Taken before the wait: an editor opened meanwhile sets this for its own conversation.
       const fileId: string | null = this.categoryEditorFileId;
       this.categoryEditorFileId = null;
+      const created: AgentCategory | null = await this.categoriesService.create(editor.name);
       if (created !== null && fileId !== null) {
         await this.conversation.setCategory(fileId, created.id);
       }

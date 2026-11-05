@@ -134,8 +134,9 @@ export class AgentCategoryStore {
       typeof record['id'] === 'string' &&
       record['id'].length > 0 &&
       typeof record['name'] === 'string' &&
-      typeof record['sortOrder'] === 'number' &&
-      typeof record['createdAt'] === 'number' &&
+      // Finite, because JSON writes NaN and Infinity as null and the next read would drop the category.
+      Number.isFinite(record['sortOrder']) &&
+      Number.isFinite(record['createdAt']) &&
       (record['color'] === undefined || typeof record['color'] === 'string')
     );
   }

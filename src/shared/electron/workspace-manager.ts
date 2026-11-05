@@ -8,6 +8,7 @@ import {
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
 import { logger } from './logger';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
@@ -75,6 +76,11 @@ const NUL_BYTE: number = 0;
  * bounding the IPC payload however large a viewport the renderer asks for.
  */
 const MAX_READ_BYTES: number = 1024 * 1024;
+
+/**
+ * Specifies the bits of a file's mode that hold its permissions.
+ */
+const PERMISSION_BITS: number = 0o7777;
 
 /**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
@@ -413,7 +419,9 @@ export class WorkspaceManager {
     const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
       typeof options === 'object' && options !== null ? options : {};
     const skip: number =
-      typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
+      typeof record.skip === 'number' && Number.isFinite(record.skip) && record.skip > 0
+        ? Math.floor(record.skip)
+        : 0;
     const take: number =
       typeof record.take === 'number' && record.take > 0
         ? Math.min(Math.floor(record.take), 100)
@@ -708,16 +716,20 @@ export class WorkspaceManager {
     try {
       handle = await fs.open(resolved, 'r+');
       const size: number = (await handle.stat()).size;
+      // Every patch is judged before any is written: a save the caller is told failed must not have
+      // changed the file, so one bad run cannot leave the runs before it on disk.
+      const valid: boolean = runs.every(
+        (run: BinaryPatch): boolean =>
+          typeof run?.offset === 'number' &&
+          Number.isInteger(run.offset) &&
+          run.offset >= 0 &&
+          Array.isArray(run.bytes) &&
+          run.offset + run.bytes.length <= size,
+      );
+      if (!valid) {
+        return false;
+      }
       for (const run of runs) {
-        if (
-          typeof run.offset !== 'number' ||
-          !Number.isInteger(run.offset) ||
-          run.offset < 0 ||
-          !Array.isArray(run.bytes) ||
-          run.offset + run.bytes.length > size
-        ) {
-          return false;
-        }
         if (run.bytes.length > 0) {
           await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
         }
@@ -762,14 +774,16 @@ export class WorkspaceManager {
     const runs: BinarySpan[] = spans as BinarySpan[];
     const addedBuffer: Buffer = Buffer.from(added);
     const resolved: string = path.resolve(filePath);
-    const tempPath: string = `${resolved}.onix-save`;
+    // Unique per save, so two saves of one file never share a temporary, and nothing already sitting
+    // beside the file can be overwritten or written through.
+    const tempPath: string = `${resolved}.${randomUUID()}.onix-save`;
     let source: FileHandle | undefined;
     let temp: FileHandle | undefined;
     try {
       if (runs.some((run: BinarySpan): boolean => run.source === 'original')) {
         source = await fs.open(resolved, 'r');
       }
-      temp = await fs.open(tempPath, 'w');
+      temp = await fs.open(tempPath, 'wx');
       const chunk: Buffer = Buffer.alloc(64 * 1024);
       for (const run of runs) {
         if (
@@ -810,6 +824,12 @@ export class WorkspaceManager {
             remaining -= bytesRead;
           }
         }
+      }
+      // The rename swaps in a new inode, so the rewritten file takes the old one's permissions by hand
+      // or a script edited in the hex editor stops being executable.
+      const existing: Stats | undefined = await fs.stat(resolved).catch((): undefined => undefined);
+      if (existing !== undefined) {
+        await temp.chmod(existing.mode & PERMISSION_BITS);
       }
       await temp.close();
       temp = undefined;
@@ -950,6 +970,10 @@ export class WorkspaceManager {
     }
     const destination: string = path.join(path.dirname(resolved), newName as string);
     try {
+      if (await this.isDifferentEntry(resolved, destination)) {
+        logger.warn('WorkspaceManager.rename', `Rejected rename over ${destination}`);
+        return { success: false, error: `${newName as string} already exists` };
+      }
       await fs.rename(resolved, destination);
       logger.info('WorkspaceManager', `Renamed ${resolved} to ${destination}`);
       return { success: true, path: destination };
@@ -957,6 +981,25 @@ export class WorkspaceManager {
       logger.error('WorkspaceManager', `Failed to rename ${resolved}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Determines whether a rename's destination is an existing entry other than its source. `fs.rename`
+   * replaces what it lands on without a word, which would lose that file. The comparison is by identity
+   * rather than by name because on a case-insensitive volume `readme` → `README` lands on itself.
+   * @param source The entry being renamed.
+   * @param destination The path it would take.
+   * @returns Returns true when the rename would replace a different entry.
+   */
+  private async isDifferentEntry(source: string, destination: string): Promise<boolean> {
+    const existing: Stats | undefined = await fs
+      .lstat(destination)
+      .catch((): undefined => undefined);
+    if (existing === undefined) {
+      return false;
+    }
+    const entry: Stats = await fs.lstat(source);
+    return entry.ino !== existing.ino || entry.dev !== existing.dev;
   }
 
   /**
@@ -1010,6 +1053,11 @@ export class WorkspaceManager {
     policy: TextReadPolicy,
   ): Promise<OpenSelection> {
     const stats: Stats = await fs.stat(filePath);
+    // Opening a FIFO blocks until a writer appears, which pins a thread-pool thread and leaves the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!stats.isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
     // An image is recognised by its extension before its contents are sniffed: a PNG would otherwise
     // sniff as binary and an SVG as text, and both belong in the image viewer. The extension list is
     // the one the media protocol serves, so every file classified here is one the viewer can display.

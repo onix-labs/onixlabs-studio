@@ -151,6 +151,23 @@ function workspaceSymbolsOffered(capabilities: unknown): boolean {
 }
 
 /**
+ * Works out the key a document a server named is tracked under. Servers are untrusted: the name may
+ * not be a string, and a stray `%` makes it impossible to decode.
+ * @param uri The document's URI, as the server gave it.
+ * @returns Returns the key, or null when the URI cannot be read.
+ */
+function documentKeyOf(uri: unknown): string | null {
+  if (typeof uri !== 'string') {
+    return null;
+  }
+  try {
+    return normalise(uriToPath(uri));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reads a `workspace/symbol` answer — `SymbolInformation` or `WorkspaceSymbol`, whose location may
  * name only the file — dropping what names no file.
  * @param result The answer, untrusted.
@@ -1346,6 +1363,11 @@ export class LspClient implements OnDestroy {
       // Best-effort: the server either lacks pull-diagnostic support or is not ready yet.
       return;
     }
+    // The answer can outlast what it was about. Taken for a closed document it would sit in the Error
+    // List with nothing left to clear it, and taken from a server that has gone it would call it ready.
+    if (!tracked.opened || this.tracked.get(normalise(uriToPath(tracked.uri))) !== tracked) {
+      return;
+    }
     // A full report carries the document's current diagnostics; an unchanged report (or a server that
     // answers with neither) leaves the existing set in place.
     const report: { kind?: string; items?: readonly LspDiagnostic[] } | null =
@@ -1420,6 +1442,16 @@ export class LspClient implements OnDestroy {
     for (const timer of timers) {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Cancels a session's pending recolour pass. Run against the server that replaced this one, it would
+   * trust tokens that server is still degrading while it loads, and show it ready too soon.
+   * @param sessionId The session whose pass to cancel.
+   */
+  private clearRecolor(sessionId: string): void {
+    clearTimeout(this.recolorTimers.get(sessionId));
+    this.recolorTimers.delete(sessionId);
   }
 
   /**
@@ -1627,6 +1659,8 @@ export class LspClient implements OnDestroy {
         continue;
       }
       this.tracked.delete(key);
+      clearTimeout(this.diagnosticTimers.get(documentId));
+      this.diagnosticTimers.delete(documentId);
       this.diagnosticsByDocument.delete(documentId);
       this.serverDiagnostics.delete(documentId);
       this.setMarkers(tracked, []);
@@ -1669,7 +1703,12 @@ export class LspClient implements OnDestroy {
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
         this.clearPostLoadPulls(sessionId);
+        this.clearRecolor(sessionId);
         this.sessions.delete(sessionId);
+        // Left in place it would answer to a restart, starting a server for nothing, and its workspace
+        // problems would stay listed.
+        this.sessionInfo.delete(sessionId);
+        this.publish();
       }, idleMs),
     );
   }
@@ -1764,10 +1803,13 @@ export class LspClient implements OnDestroy {
           ? await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId)
           : await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId, braceStyle);
     } catch (error: unknown) {
-      result = {
-        success: false,
-        error: error instanceof Error ? error.message : 'The language server failed to restart.',
-      };
+      // The bridge failed, so no exit will ever come to end the "starting" this has just set.
+      this.status.setState(
+        sessionId,
+        'unavailable',
+        error instanceof Error ? error.message : 'The language server failed to restart.',
+      );
+      return;
     }
     if (result.success || result.error !== 'No such session') {
       // The main process restarted (or failed to restart) a running session; its `restarted` exit
@@ -1912,14 +1954,20 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
+      this.clearRecolor(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
       if (!installed.has(tracked.serverId)) {
         this.tracked.delete(key);
+        // Nothing can clear them later: a close finds no tracked document, and no server is coming.
+        this.diagnosticsByDocument.delete(tracked.documentId);
+        this.serverDiagnostics.delete(tracked.documentId);
+        this.setMarkers(tracked, []);
         orphaned.add(tracked.languageId);
       }
     }
+    this.publish();
     // The documents just left unserved would otherwise sit silent until their next edit; offer the
     // support back right away, the way a fresh open would.
     for (const language of orphaned) {
@@ -1946,6 +1994,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
+      this.clearRecolor(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -2127,33 +2176,38 @@ export class LspClient implements OnDestroy {
 
   /**
    * Re-opens a document against a freshly restarted server, using the latest text from its live editor
-   * model (the client does not retain content, so it reads it back from Monaco).
+   * model when it has one.
    * @param tracked The document to re-open.
    * @returns Returns a promise that resolves once the open notification has been sent.
    */
   private async reopen(tracked: TrackedDocument): Promise<void> {
+    // An edit may have got in first and opened it. A second open without a close is a protocol error
+    // that Roslyn treats as fatal, so the one that arrives second must not be sent.
+    if (tracked.opened) {
+      return;
+    }
     await this.open(tracked, this.currentContent(tracked));
   }
 
   /**
-   * Reads a tracked document's current text from its live Monaco model, or an empty string when Monaco
-   * is unavailable or the document has no live model.
+   * Reads a tracked document's current text from its live Monaco model. Without one, the text last
+   * sent stands: a server told the document is empty answers for nothing and reports nothing in it.
    * @param tracked The document whose text is read.
-   * @returns Returns the current text, or an empty string.
+   * @returns Returns the current text.
    */
   private currentContent(tracked: TrackedDocument): string {
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (monaco === undefined) {
-      return '';
+      return tracked.text;
     }
     const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
-      return '';
+      return tracked.text;
     }
     const model: MonacoApi.editor.ITextModel | null = monaco.editor.getModel(
       monaco.Uri.parse(modelUri),
     );
-    return model?.getValue() ?? '';
+    return model?.getValue() ?? tracked.text;
   }
 
   /**
@@ -2226,8 +2280,10 @@ export class LspClient implements OnDestroy {
     if (!tracked.opened || this.bridge === undefined) {
       return;
     }
-    const sessionId: string | null = await this.ensureSession(tracked);
-    if (sessionId === null) {
+    // Not through ensureSession: a closing document is not joining the session, and joining withdraws
+    // the documentless reap closeDocument has just armed, so a standalone server would never stop.
+    const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    if ((await this.sessions.get(sessionId)) !== true) {
       return;
     }
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didClose', {
@@ -2564,8 +2620,12 @@ export class LspClient implements OnDestroy {
     if (message.method !== 'textDocument/publishDiagnostics') {
       return;
     }
-    const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;
-    const key: string = normalise(uriToPath(params.uri));
+    const params: PublishDiagnosticsParams | null =
+      message.params as PublishDiagnosticsParams | null;
+    const key: string | null = documentKeyOf(params?.uri);
+    if (key === null || params === null || !Array.isArray(params.diagnostics)) {
+      return;
+    }
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
@@ -2700,6 +2760,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(exit.sessionId);
       this.settledSessions.delete(exit.sessionId);
       this.clearPostLoadPulls(exit.sessionId);
+      this.clearRecolor(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -2744,13 +2805,7 @@ export class LspClient implements OnDestroy {
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
     this.clearPostLoadPulls(exit.sessionId);
-    const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
-      exit.sessionId,
-    );
-    if (recolorTimer !== undefined) {
-      clearTimeout(recolorTimer);
-      this.recolorTimers.delete(exit.sessionId);
-    }
+    this.clearRecolor(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;
@@ -3302,16 +3357,16 @@ export class LspClient implements OnDestroy {
     if (batch?.reset === true) {
       files.clear();
     }
-    for (const report of reports as readonly {
+    for (const report of reports as readonly ({
       uri?: unknown;
       kind?: unknown;
       items?: unknown;
-    }[]) {
-      if (typeof report.uri !== 'string' || report.kind !== 'full') {
+    } | null)[]) {
+      const key: string | null = documentKeyOf(report?.uri);
+      if (key === null || typeof report?.uri !== 'string' || report.kind !== 'full') {
         continue;
       }
       const uri: string = report.uri;
-      const key: string = normalise(uriToPath(uri));
       const items: readonly LspDiagnostic[] = Array.isArray(report.items)
         ? (report.items as readonly LspDiagnostic[])
         : [];

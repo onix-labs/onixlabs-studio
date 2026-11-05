@@ -73,10 +73,18 @@ describe('AgentComposer', () => {
   let conversationDraft: WritableSignal<string>;
   let sentEvents: number;
   let windows: FakeModalWindows;
+  let signInSupported: WritableSignal<boolean>;
+  let loginPrompts: number;
+  let logouts: number;
+  let workspaceRoot: WritableSignal<{ path: string } | null>;
 
   beforeEach(async () => {
     localStorage.clear();
     windows = new FakeModalWindows();
+    signInSupported = signal<boolean>(false);
+    loginPrompts = 0;
+    logouts = 0;
+    workspaceRoot = signal<{ path: string } | null>({ path: '/repo' });
     conversationDraft = signal<string>('');
     compacted = 0;
     clearedChats = 0;
@@ -152,13 +160,16 @@ describe('AgentComposer', () => {
       setEffort: (value: AiEffort | null): void => void effortChanges.push(value),
       attachContext: (ref: AgentContextRef): void => void attachedContext.push(ref),
       needsLogin: signal<boolean>(false),
-      supportsSignIn: signal<boolean>(false),
+      supportsSignIn: signInSupported,
       signInName: signal<string>('Claude'),
       signInRequest: (): null => null,
       dismissLoginPrompt: (): void => undefined,
       onLoginSucceeded: (): void => undefined,
-      promptLogin: (): void => undefined,
-      logout: (): Promise<void> => Promise.resolve(),
+      promptLogin: (): void => void (loginPrompts += 1),
+      logout: (): Promise<void> => {
+        logouts += 1;
+        return Promise.resolve();
+      },
       queued,
       removeQueued: (id: string): void => void removedQueued.push(id),
       takeQueued: (id: string): string | null => {
@@ -181,7 +192,7 @@ describe('AgentComposer', () => {
       connection: (): undefined => undefined,
     };
 
-    const workspaceStub: unknown = { root: signal<{ path: string } | null>({ path: '/repo' }) };
+    const workspaceStub: unknown = { root: workspaceRoot };
     const searchStub: Partial<Search> = {
       listFiles: (): Promise<readonly string[]> =>
         Promise.resolve(['src/main.ts', 'README.md', 'src/app/main-menu.ts']),
@@ -885,5 +896,518 @@ describe('AgentComposer', () => {
     TestBed.inject(ApplicationRef).tick();
 
     expect(windows.openWindows).toBe(0);
+  });
+
+  /**
+   * Gets the composer's own element.
+   * @returns Returns the host.
+   */
+  function hostElement(): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  /**
+   * Makes a small image file.
+   * @param name The file's name.
+   * @returns Returns the file.
+   */
+  function png(name: string): File {
+    return new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' });
+  }
+
+  /**
+   * Reads the names of the attached images.
+   * @returns Returns the names, in order.
+   */
+  function attachedImages(): (string | null)[] {
+    fixture.detectChanges();
+    return Array.from(hostElement().querySelectorAll('.agent__image-thumb')).map(
+      (image: Element): string | null => image.getAttribute('alt'),
+    );
+  }
+
+  /**
+   * Raises an event carrying a payload the browser would have attached to it.
+   * @param target The element it lands on.
+   * @param type The event type.
+   * @param property The payload's property.
+   * @param value The payload.
+   * @returns Returns the raised event.
+   */
+  function raise(target: Element, type: string, property: string, value: unknown): Event {
+    const event: Event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, property, { value });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  describe('markdown editor', () => {
+    it('open_cutsTheDraftIntoTheEditor_andCancelHandsItBack', () => {
+      component.onInput('half a thought');
+
+      component.openMarkdown();
+      expect(component.draft()).toBe('');
+
+      component.cancelMarkdown();
+      expect(component.draft()).toBe('half a thought');
+    });
+
+    it('cancel_keepsWhatWasWrittenInTheEditor', () => {
+      component.openMarkdown();
+      component.onMarkdownChange('# written in the editor');
+
+      component.cancelMarkdown();
+
+      expect(component.draft()).toBe('# written in the editor');
+    });
+
+    it('cancel_ofABlankEditor_leavesTheComposerEmpty', () => {
+      component.openMarkdown();
+      component.onMarkdownChange('   ');
+
+      component.cancelMarkdown();
+
+      expect(component.draft()).toBe('');
+    });
+
+    it('submit_sendsTheMarkdown_andRepins', () => {
+      component.openMarkdown();
+      component.onMarkdownChange('# a prompt');
+
+      component.submitMarkdown();
+
+      expect(sent).toEqual(['# a prompt']);
+      expect(sentEvents).toBe(1);
+    });
+
+    it('submit_whenBlank_sendsNothing', () => {
+      component.openMarkdown();
+      component.onMarkdownChange('  ');
+
+      component.submitMarkdown();
+
+      expect(sent).toEqual([]);
+    });
+
+    it('submit_whileARunIsInFlight_keepsTheTextForLater', () => {
+      running.set(true);
+      component.openMarkdown();
+      component.onMarkdownChange('# a prompt');
+
+      component.submitMarkdown();
+      expect(sent).toEqual([]);
+
+      component.cancelMarkdown();
+      expect(component.draft()).toBe('# a prompt');
+    });
+  });
+
+  describe('suggestions', () => {
+    /**
+     * Accepts the suggestion on show with Enter.
+     */
+    function accept(): void {
+      component.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
+    }
+
+    it('discoveredCommand_isWrittenIntoTheDraftForArguments', () => {
+      discoveredCommands.set([{ name: 'review', description: 'Review', argumentHint: '' }]);
+      type('/rev');
+
+      accept();
+
+      expect(component.draft()).toBe('/review ');
+      expect(sent).toEqual([]);
+    });
+
+    it('modeCommand_togglesTheMode', () => {
+      type('/mode');
+
+      accept();
+
+      expect(modeChanges).toEqual(['chat']);
+      expect(component.draft()).toBe('');
+    });
+
+    it('clearCommand_startsAfresh', () => {
+      type('/clear');
+
+      accept();
+
+      expect(clearedChats).toBe(1);
+    });
+
+    it('signInCommands_whereSignInIsSupported_reachTheAgent', () => {
+      signInSupported.set(true);
+      type('/login');
+      accept();
+      type('/logout');
+      accept();
+
+      expect(loginPrompts).toBe(1);
+      expect(logouts).toBe(1);
+    });
+
+    it('signInCommands_whereSignInIsUnsupported_areNotOffered', () => {
+      type('/log');
+
+      expect(hostElement().textContent).not.toContain('/login');
+      expect(hostElement().textContent).not.toContain('/logout');
+    });
+
+    it('mention_withNoFolderOpen_writesTheNameButAttachesNothing', async () => {
+      type('@main');
+      await fixture.whenStable();
+      type('@main');
+      workspaceRoot.set(null);
+
+      accept();
+
+      expect(component.draft()).toBe('@main.ts ');
+      expect(attachedContext).toEqual([]);
+    });
+
+    it('mention_withNothingTyped_listsTheFiles', async () => {
+      type('@');
+      await fixture.whenStable();
+      type('@');
+
+      const labels: string[] = Array.from(
+        hostElement().querySelectorAll('.agent__suggest-label'),
+      ).map((label: Element): string => label.textContent?.trim() ?? '');
+      expect(labels).toContain('README.md');
+    });
+
+    it('highlight_staysOnTheListAsTheQueryNarrowsIt', () => {
+      type('/');
+      for (let press: number = 0; press < 3; press += 1) {
+        component.onKeydown(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      }
+
+      type('/comp');
+
+      expect(hostElement().querySelector('.agent__suggest-item--active')?.textContent).toContain(
+        'Manage prompts',
+      );
+    });
+
+    it('manage_opensTheLibrary_andSavingAddsThePromptAndClearsTheForm', () => {
+      type('/manage');
+      accept();
+      fixture.detectChanges();
+      TestBed.inject(ApplicationRef).tick();
+      const content: HTMLElement | null = windows.contentHost;
+      const name: HTMLInputElement | null | undefined = content?.querySelector<HTMLInputElement>(
+        'input.agent__prompts-field',
+      );
+      const text: HTMLTextAreaElement | null | undefined =
+        content?.querySelector<HTMLTextAreaElement>('textarea.agent__prompts-field');
+      if (name === null || name === undefined || text === null || text === undefined) {
+        throw new Error('The library did not open');
+      }
+
+      name.value = 'tidy';
+      name.dispatchEvent(new Event('input'));
+      text.value = 'Tidy this up.';
+      text.dispatchEvent(new Event('input'));
+      TestBed.inject(ApplicationRef).tick();
+      component.savePrompt();
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(TestBed.inject(AgentPrompts).prompts()[0]?.text).toBe('Tidy this up.');
+      expect(content?.textContent).toContain('/tidy');
+      expect(name.value).toBe('');
+      expect(text.value).toBe('');
+
+      component.closeManagePrompts();
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(windows.openWindows).toBe(0);
+    });
+
+    it('library_withABlankForm_savesNothing', () => {
+      component.savePrompt();
+
+      expect(TestBed.inject(AgentPrompts).prompts()).toEqual([]);
+    });
+
+    it('library_deleteRemovesThePrompt', () => {
+      const library: AgentPrompts = TestBed.inject(AgentPrompts);
+      library.save('gone', 'Soon gone.');
+
+      component.deletePrompt(library.prompts()[0]?.id ?? '');
+
+      expect(library.prompts()).toEqual([]);
+    });
+  });
+
+  describe('attaching images', () => {
+    it('paste_ofText_isLeftToTheTextArea', () => {
+      const pasted: Event = raise(
+        hostElement().querySelector('.agent__input') ?? hostElement(),
+        'paste',
+        'clipboardData',
+        { items: [{ type: 'text/plain', getAsFile: (): null => null }] },
+      );
+
+      expect(pasted.defaultPrevented).toBe(false);
+    });
+
+    it('paste_ofAScreenshot_attachesItInsteadOfPastingText', async () => {
+      const pasted: Event = raise(
+        hostElement().querySelector('.agent__input') ?? hostElement(),
+        'paste',
+        'clipboardData',
+        { items: [{ type: 'image/png', getAsFile: (): File => png('shot.png') }] },
+      );
+
+      expect(pasted.defaultPrevented).toBe(true);
+      await vi.waitFor((): void => {
+        expect(attachedImages()).toEqual(['shot.png']);
+      });
+    });
+
+    it('paste_ofAnImageTheClipboardCannotProduce_isLeftAlone', () => {
+      const pasted: Event = raise(
+        hostElement().querySelector('.agent__input') ?? hostElement(),
+        'paste',
+        'clipboardData',
+        { items: [{ type: 'image/png', getAsFile: (): null => null }] },
+      );
+
+      expect(pasted.defaultPrevented).toBe(false);
+    });
+
+    it('drop_ofAnImage_attachesIt', async () => {
+      const target: Element = hostElement().querySelector('form') ?? hostElement();
+
+      const over: Event = raise(target, 'dragover', 'dataTransfer', undefined);
+      const dropped: Event = raise(target, 'drop', 'dataTransfer', { files: [png('drop.png')] });
+
+      expect(over.defaultPrevented).toBe(true);
+      expect(dropped.defaultPrevented).toBe(true);
+      await vi.waitFor((): void => {
+        expect(attachedImages()).toEqual(['drop.png']);
+      });
+    });
+
+    it('drop_ofNothing_attachesNothing', () => {
+      const target: Element = hostElement().querySelector('form') ?? hostElement();
+
+      raise(target, 'drop', 'dataTransfer', { files: [] });
+
+      expect(attachedImages()).toEqual([]);
+    });
+
+    it('remove_takesOnlyThatImage', async () => {
+      await component.addImageFiles([png('one.png'), png('two.png')]);
+
+      component.removeImage(0);
+
+      expect(attachedImages()).toEqual(['two.png']);
+    });
+
+    it('anUnnamedImage_isAttachedWithoutAName', async () => {
+      await component.addImageFiles([new File([new Uint8Array([1])], '', { type: 'image/png' })]);
+
+      component.onInput('see this');
+      component.send();
+
+      expect(sentImages[0]?.[0]?.name).toBeUndefined();
+    });
+
+    it('theCap_stopsTheRestOfADropAndSaysSo', async () => {
+      TestBed.inject(Settings).set('ai.maxImagesPerMessage', 4);
+
+      await component.addImageFiles(
+        ['1.png', '2.png', '3.png', '4.png', '5.png'].map((name: string): File => png(name)),
+      );
+
+      expect(attachedImages()).toHaveLength(4);
+      expect(hostElement().querySelector('.agent__image-hint')?.textContent).toContain(
+        'At most 4 images',
+      );
+    });
+
+    it('hint_goesAwayByItself', async () => {
+      vi.useFakeTimers();
+      try {
+        const wrong: File = new File([new Uint8Array([1])], 'a.mp4', { type: 'video/mp4' });
+        await component.addImageFiles([wrong]);
+        await component.addImageFiles([wrong]);
+        vi.advanceTimersByTime(4000);
+        fixture.detectChanges();
+
+        expect(hostElement().querySelector('.agent__image-hint')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('queued messages', () => {
+    const waiting: AgentQueuedMessage = { id: 'q1', text: 'queued text' };
+
+    it('edit_loadsTheMessageBackAndTakesItOffTheQueue', () => {
+      queued.set([waiting]);
+
+      component.editQueued(waiting);
+      fixture.detectChanges();
+
+      expect(component.draft()).toBe('queued text');
+      expect(hostElement().querySelector<HTMLTextAreaElement>('.agent__input')?.value).toBe(
+        'queued text',
+      );
+      expect(queued()).toEqual([]);
+    });
+
+    it('edit_ofAMessageThatHasAlreadyGone_leavesTheDraftAlone', () => {
+      component.onInput('still writing');
+
+      component.editQueued(waiting);
+
+      expect(component.draft()).toBe('still writing');
+    });
+
+    it('remove_takesItOffTheQueue', () => {
+      component.removeQueued('q1');
+
+      expect(removedQueued).toEqual(['q1']);
+    });
+  });
+
+  describe('editing a sent message', () => {
+    const earlier: AgentItem = { id: 'item-1', kind: 'user', text: 'an earlier prompt' };
+
+    it('escape_leavesEditModeAndRestoresTheDraft', () => {
+      component.onInput('what I was writing');
+      component.beginEdit(earlier);
+      const escape: KeyboardEvent = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        cancelable: true,
+      });
+
+      component.onKeydown(escape);
+
+      expect(escape.defaultPrevented).toBe(true);
+      expect(component.draft()).toBe('what I was writing');
+    });
+
+    it('cancel_outsideEditMode_leavesTheDraftAlone', () => {
+      component.onInput('what I was writing');
+
+      component.cancelEdit();
+
+      expect(component.draft()).toBe('what I was writing');
+    });
+  });
+
+  describe('keys', () => {
+    /**
+     * Presses Enter in the real text area, so the template's handlers run.
+     * @param modifiers The modifiers held.
+     * @returns Returns the raised event.
+     */
+    function pressEnter(modifiers: KeyboardEventInit): KeyboardEvent {
+      const event: KeyboardEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+        ...modifiers,
+      });
+      hostElement().querySelector('.agent__input')?.dispatchEvent(event);
+      return event;
+    }
+
+    it('modEnter_whenItDoesNotSend_insertsANewLineAtTheCaret', () => {
+      const area: HTMLTextAreaElement = type('ab');
+      area.setSelectionRange(1, 1);
+
+      const pressed: KeyboardEvent = pressEnter({ ctrlKey: true });
+
+      expect(pressed.defaultPrevented).toBe(true);
+      expect(component.draft()).toBe('a\nb');
+      expect(area.selectionStart).toBe(2);
+      expect(sent).toEqual([]);
+    });
+
+    it('modShiftEnter_doesNothing', () => {
+      type('ab');
+
+      const pressed: KeyboardEvent = pressEnter({ ctrlKey: true, shiftKey: true });
+
+      expect(pressed.defaultPrevented).toBe(false);
+      expect(sent).toEqual([]);
+    });
+
+    it('altEnter_doesNothing', () => {
+      type('ab');
+
+      const pressed: KeyboardEvent = pressEnter({ altKey: true });
+
+      expect(pressed.defaultPrevented).toBe(false);
+      expect(sent).toEqual([]);
+    });
+
+    it('history_withNothingSent_leavesTheDraftAlone', () => {
+      const area: HTMLTextAreaElement = type('a draft');
+
+      area.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true }),
+      );
+
+      expect(component.draft()).toBe('a draft');
+    });
+
+    it('history_downBeforeGoingUp_leavesTheDraftAlone', () => {
+      items.set([{ id: 'item-1', kind: 'user', text: 'first prompt' }]);
+      const area: HTMLTextAreaElement = type('a draft');
+
+      area.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }),
+      );
+
+      expect(component.draft()).toBe('a draft');
+    });
+  });
+
+  it('images_twoReadsRacingForTheLastPlace_stillHoldTheCap', async () => {
+    TestBed.inject(Settings).set('ai.maxImagesPerMessage', 4);
+    await component.addImageFiles([png('1.png'), png('2.png'), png('3.png')]);
+
+    await Promise.all([
+      component.addImageFiles([png('4.png')]),
+      component.addImageFiles([png('5.png')]),
+    ]);
+
+    expect(attachedImages()).toEqual(['1.png', '2.png', '3.png', '4.png']);
+    expect(hostElement().querySelector('.agent__image-hint')?.textContent).toContain(
+      'At most 4 images',
+    );
+  });
+
+  it('images_whenAFileCannotBeRead_saysSo', async () => {
+    /**
+     * A reader whose read fails, as one does when the file went away.
+     */
+    class FailingReader {
+      public onerror: (() => void) | null = null;
+
+      public readAsDataURL(): void {
+        queueMicrotask((): void => this.onerror?.());
+      }
+    }
+    vi.stubGlobal('FileReader', FailingReader);
+
+    try {
+      await component.addImageFiles([png('gone.png')]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(attachedImages()).toEqual([]);
+    expect(hostElement().querySelector('.agent__image-hint')?.textContent).toContain(
+      'could not be read',
+    );
   });
 });

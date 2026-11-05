@@ -200,10 +200,14 @@ export class JsDebugSession implements DebugAdapterConnection {
 
   /**
    * Tears the session down: disposes every target, then the parent (which kills the server, ending the
-   * whole tree).
+   * whole tree). Nothing is reported afterwards: the server's exit lands later, and a `terminated` for
+   * this session would be taken for that of whichever session has its id by then.
    */
   public dispose(): void {
     logger.debug('JsDebugSession', `Disposing js-debug session (${this.targets.length} targets)`);
+    this.ended = true;
+    this.eventListeners.clear();
+    this.exitListeners.clear();
     for (const target of this.targets) {
       target.dispose();
     }

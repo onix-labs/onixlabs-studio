@@ -1,0 +1,17 @@
+/* Type-checks and lints the benchmarks. They are bundled by esbuild, never emitted by tsc; without
+   this file `eslint .` fails on them, because no other project includes scripts/. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "importHelpers": false,
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"]
+}

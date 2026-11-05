@@ -127,7 +127,8 @@ export class NpmPackageManager implements PackageManager {
   private async readManifest(manifestPath: string): Promise<Record<string, unknown> | null> {
     try {
       const content: string = await fs.readFile(manifestPath, 'utf8');
-      const parsed: unknown = JSON.parse(content);
+      // JSON has no byte order mark, but editors on Windows write one and npm reads past it.
+      const parsed: unknown = JSON.parse(content.replace(/^\uFEFF/, ''));
       return typeof parsed === 'object' && parsed !== null
         ? (parsed as Record<string, unknown>)
         : null;
@@ -218,7 +219,7 @@ export class NpmPackageManager implements PackageManager {
           continue;
         }
         const name: string = key.slice(marker + 'node_modules/'.length);
-        const version: unknown = (value as { version?: unknown }).version;
+        const version: unknown = (value as { version?: unknown } | null)?.version;
         if (name.length > 0 && typeof version === 'string') {
           versions.set(name, version);
         }
@@ -227,7 +228,7 @@ export class NpmPackageManager implements PackageManager {
     const dependencies: unknown = lock['dependencies'];
     if (typeof dependencies === 'object' && dependencies !== null) {
       for (const [name, value] of Object.entries(dependencies as Record<string, unknown>)) {
-        const version: unknown = (value as { version?: unknown }).version;
+        const version: unknown = (value as { version?: unknown } | null)?.version;
         if (!versions.has(name) && typeof version === 'string') {
           versions.set(name, version);
         }

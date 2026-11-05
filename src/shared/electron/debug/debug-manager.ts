@@ -22,6 +22,13 @@ import {
 import { JsDebugSession } from './js-debug-session';
 
 /**
+ * Specifies how long, in milliseconds, to wait for an adapter to answer `disconnect` when a session is
+ * stopped. The adapter is killed regardless, so this only bounds how long a wedged one can hold up the
+ * stop; the kill that follows escalates to SIGKILL on its own grace period.
+ */
+const DISCONNECT_TIMEOUT_MS: number = 3000;
+
+/**
  * Holds a running debug session: its adapter connection and the workspace root it is rooted at.
  */
 interface DebugSession {
@@ -64,6 +71,13 @@ export class DebugManager {
    * Holds the running sessions, keyed by session identifier.
    */
   private readonly sessions: Map<string, DebugSession> = new Map<string, DebugSession>();
+
+  /**
+   * Counts the times every session has been disposed, so a start that was still resolving its adapter
+   * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
+   * disposes everything too, and the renderer that replaces it starts sessions again.
+   */
+  private disposals: number = 0;
 
   /**
    * Initializes a new instance of the {@link DebugManager} class.
@@ -119,6 +133,7 @@ export class DebugManager {
    */
   public disposeAll(): void {
     logger.info('DebugManager', `Disposing all debug sessions (${this.sessions.size})`);
+    this.disposals += 1;
     for (const [id, session] of [...this.sessions]) {
       void session.client
         .sendRequest('disconnect', { terminateDebuggee: true })
@@ -151,10 +166,20 @@ export class DebugManager {
       logger.warn('DebugManager', `Debug start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    const disposals: number = this.disposals;
     const resolution: DebugAdapterResolution = await this.registry.resolve(
       parsed.adapterId,
       parsed.rootPath,
     );
+    // A second adapter spawned for this session would replace the first in the map, leaving a process
+    // nothing can stop; one spawned after a dispose outlives Studio.
+    if (disposals !== this.disposals) {
+      return { success: false, error: 'Debug sessions were shut down' };
+    }
+    if (this.sessions.has(parsed.sessionId)) {
+      logger.debug('DebugManager', `Debug session ${parsed.sessionId} started meanwhile`);
+      return { success: true };
+    }
     if (resolution.spec === null) {
       logger.warn(
         'DebugManager',
@@ -171,7 +196,7 @@ export class DebugManager {
       this.forwardEvent(parsed.sessionId, event),
     );
     client.onExit((code: number | null, signal: string | null): void =>
-      this.handleExit(parsed.sessionId, code, signal),
+      this.handleExit(parsed.sessionId, client, code, signal),
     );
     client.onRunInTerminal(
       (
@@ -246,22 +271,57 @@ export class DebugManager {
     }
     logger.trace('DebugManager', `Stopping debug session ${id}`);
     try {
-      await session.client.sendRequest('disconnect', { terminateDebuggee: true });
+      await this.disconnect(session.client);
     } catch (error: unknown) {
       // The adapter is being killed regardless; ignore a failed graceful disconnect.
       logger.debug('DebugManager', `Graceful disconnect failed for session ${id}`, error);
     }
-    this.tearDown(id);
+    if (this.sessions.get(id) === session) {
+      this.tearDown(id);
+    }
   }
 
   /**
-   * Handles an adapter process exiting: notifies the renderer and tears the session down.
+   * Asks an adapter to disconnect, terminating its debuggee, without waiting on it for long.
+   * @param client The adapter connection.
+   * @returns Returns a promise that settles when the adapter answers, or rejects when it does not in
+   * time.
+   */
+  private disconnect(client: DebugAdapterConnection): Promise<void> {
+    return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
+      const timer: NodeJS.Timeout = setTimeout((): void => {
+        reject(new Error('The debug adapter did not answer disconnect in time.'));
+      }, DISCONNECT_TIMEOUT_MS);
+      client.sendRequest('disconnect', { terminateDebuggee: true }).then(
+        (): void => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (reason: unknown): void => {
+          clearTimeout(timer);
+          reject(reason instanceof Error ? reason : new Error('Disconnect failed'));
+        },
+      );
+    });
+  }
+
+  /**
+   * Handles an adapter process exiting: notifies the renderer and tears the session down. Only the
+   * adapter the session currently owns counts: an ended adapter's exit lands later, and by then a fresh
+   * one may be running under the same session id (a stop followed by an immediate start, or a renderer
+   * reloaded after a crash) — taking its exit for the new adapter's would end the new session.
    * @param id The session identifier.
+   * @param client The connection whose adapter exited.
    * @param code The process exit code, or null when terminated by a signal.
    * @param signal The terminating signal, or null when exited normally.
    */
-  private handleExit(id: string, code: number | null, signal: string | null): void {
-    if (!this.sessions.has(id)) {
+  private handleExit(
+    id: string,
+    client: DebugAdapterConnection,
+    code: number | null,
+    signal: string | null,
+  ): void {
+    if (this.sessions.get(id)?.client !== client) {
       return;
     }
     logger.info(

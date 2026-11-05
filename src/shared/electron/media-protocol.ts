@@ -1,5 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { Stats } from 'node:fs';
+import { FileHandle, open } from 'node:fs/promises';
 import { extname, isAbsolute, resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { protocol } from 'electron';
 import { IMAGE_MIME_TYPES } from '@shared/api/image-formats';
@@ -73,15 +75,32 @@ export class MediaProtocol {
       return new Response('Not found', { status: 404 });
     }
     logger.trace('media', `Serving media ${resolved.path} (${resolved.mime})`);
+    let file: FileHandle | undefined;
     try {
-      const data: Buffer = await readFile(resolved.path);
+      file = await open(resolved.path, 'r');
+      const stats: Stats = await file.stat();
+      if (!stats.isFile()) {
+        await file.close();
+        return new Response('Not found', { status: 404 });
+      }
+      // Streamed, so a large image costs a read buffer rather than itself twice over, and an image
+      // nobody finished loading stops being read. The stream closes the file when it ends or is
+      // cancelled.
+      const body: ReadableStream<Uint8Array> = Readable.toWeb(
+        file.createReadStream(),
+      ) as ReadableStream<Uint8Array>;
       // Any origin may read the pixels: the scheme only ever serves images, and only to Studio's own
       // renderer, which could already display them. Without this, a canvas drawn from one is tainted.
-      return new Response(new Uint8Array(data), {
-        headers: { 'content-type': resolved.mime, 'access-control-allow-origin': '*' },
+      return new Response(body, {
+        headers: {
+          'content-type': resolved.mime,
+          'content-length': String(stats.size),
+          'access-control-allow-origin': '*',
+        },
       });
     } catch (error: unknown) {
       logger.debug('media', `Media resource unreadable: ${resolved.path}`, error);
+      await file?.close().catch((): void => undefined);
       return new Response('Not found', { status: 404 });
     }
   }

@@ -7,6 +7,8 @@
 import { createInterface, Interface } from 'node:readline';
 import { GitVersionControl } from './git';
 import { note } from './log';
+import { isLimited } from './is-limited';
+import { RootLimiter } from './root-limiter';
 import {
   VersionControlExecutableChoice,
   VersionControlOp,
@@ -18,6 +20,11 @@ import {
  * The git endpoint every request is answered by.
  */
 const git: GitVersionControl = new GitVersionControl();
+
+/**
+ * Holds how many local requests run at once in each repository.
+ */
+const limiter: RootLimiter = new RootLimiter();
 
 /**
  * Writes one response line to stdout.
@@ -73,11 +80,16 @@ async function handle(line: string): Promise<void> {
     return;
   }
   const root: unknown = record['root'];
-  const response: VersionControlResponse = await git.request(
-    op as VersionControlOp,
-    typeof root === 'string' ? root : undefined,
-    record['params'] as VcsParams<VersionControlOp>,
-  );
+  const ask: () => Promise<VersionControlResponse> = async (): Promise<VersionControlResponse> =>
+    git.request(
+      op as VersionControlOp,
+      typeof root === 'string' ? root : undefined,
+      record['params'] as VcsParams<VersionControlOp>,
+    );
+  const response: VersionControlResponse =
+    typeof root === 'string' && isLimited(op as VersionControlOp)
+      ? await limiter.run(root, ask)
+      : await ask();
   reply({ ...response, id });
 }
 
