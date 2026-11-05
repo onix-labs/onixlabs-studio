@@ -135,6 +135,10 @@ export class FileWatcher {
     } else {
       directory.files.delete(name);
     }
+    if (count <= 0) {
+      // Nobody is listening for this file any more, so a debounce still running has no one to tell.
+      this.clearTimer(path.join(directoryPath, name));
+    }
     if (directory.files.size === 0) {
       directory.watcher.close();
       this.directories.delete(directoryPath);
@@ -167,6 +171,18 @@ export class FileWatcher {
         this.send(fs.existsSync(target) ? FileChannel.Changed : FileChannel.Removed, target);
       }, DEBOUNCE_MS),
     );
+  }
+
+  /**
+   * Cancels a file's running debounce, if it has one.
+   * @param target The absolute path of the file.
+   */
+  private clearTimer(target: string): void {
+    const existing: NodeJS.Timeout | undefined = this.timers.get(target);
+    if (existing !== undefined) {
+      clearTimeout(existing);
+      this.timers.delete(target);
+    }
   }
 
   /**

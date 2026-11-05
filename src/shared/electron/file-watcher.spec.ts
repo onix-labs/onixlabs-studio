@@ -211,6 +211,16 @@ describe('FileWatcher', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('unwatch_duringADebounce_sendsNothingLate', async () => {
+    await invoke(FileChannel.Watch, file);
+    nativeEvent('a.txt');
+
+    await invoke(FileChannel.Unwatch, file);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(sent).toEqual([]);
+  });
+
   it('unwatch_ofSomethingNeverWatched_changesNothing', async () => {
     await invoke(FileChannel.Watch, file);
 
