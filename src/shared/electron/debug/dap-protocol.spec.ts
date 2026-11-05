@@ -1,6 +1,12 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { describe, expect, it } from 'vitest';
-import { DapMessageDecoder, DapProtocol, encodeMessage } from './dap-protocol';
+import {
+  DapMessageDecoder,
+  DapProtocol,
+  MAX_DAP_BODY_BYTES,
+  MAX_DAP_HEADER_BYTES,
+  encodeMessage,
+} from './dap-protocol';
 
 /**
  * Encodes a message and returns its bytes, as a stream would deliver them.
@@ -250,6 +256,61 @@ describe('DapMessageDecoder on a misbehaving stream', () => {
     );
 
     expect(seen).toEqual([1, 2]);
+  });
+
+  it('dropsAFrameDeclaringAnImpossibleLength_ratherThanWaitingForItsBody', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+    const huge: Uint8Array = new TextEncoder().encode(
+      `Content-Length: ${MAX_DAP_BODY_BYTES + 1}\r\n\r\n`,
+    );
+
+    expect(decoder.append(huge)).toEqual([]);
+
+    expect(decoder.append(bytes(event))).toEqual([event]);
+  });
+
+  it('dropsALengthTooLargeToBeANumberAtAll', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    const decoded: DebugProtocol.ProtocolMessage[] = decoder.append(
+      new TextEncoder().encode(`Content-Length: ${'9'.repeat(400)}\r\n\r\n${encodeMessage(event)}`),
+    );
+
+    expect(decoded).toEqual([event]);
+  });
+
+  it('stillWaitsForAFrameAtExactlyTheLimit', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    decoder.append(new TextEncoder().encode(`Content-Length: ${MAX_DAP_BODY_BYTES}\r\n\r\n`));
+
+    expect(decoder.append(bytes(event))).toEqual([]);
+  });
+
+  it('doesNotHoardOutputThatNeverReachesAHeader', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    for (let index: number = 0; index < 8; index += 1) {
+      expect(decoder.append(new Uint8Array(MAX_DAP_HEADER_BYTES).fill(46))).toEqual([]);
+    }
+
+    expect(decoder.append(bytes(event))).toEqual([event]);
+    expect(decoder.bufferedBytes).toBe(0);
+  });
+
+  it('keepsAHeaderSplitAcrossTheCap', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+    const frame: Uint8Array = bytes(event);
+
+    decoder.append(new Uint8Array(MAX_DAP_HEADER_BYTES + 1).fill(46));
+    expect(decoder.append(frame.subarray(0, 6))).toEqual([]);
+
+    expect(decoder.append(frame.subarray(6))).toEqual([event]);
   });
 
   it('readsAnEmptyBodyAsADroppedFrame_andCarriesOn', () => {

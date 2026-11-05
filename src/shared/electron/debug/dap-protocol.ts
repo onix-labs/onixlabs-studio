@@ -19,6 +19,24 @@ import { logger } from '../logger';
 const HEADER_TERMINATOR: readonly number[] = [13, 10, 13, 10];
 
 /**
+ * The largest DAP message body held in memory. An adapter's replies are small; a variable dump or a
+ * source request is the most that is ever seen, and this is far past either. Anything claiming more
+ * is a corrupted stream, and waiting for that many bytes would take the main process's heap with it.
+ */
+export const MAX_DAP_BODY_BYTES: number = 256 * 1024 * 1024;
+
+/**
+ * How much of a stream with no header in it is held on to while looking for one. A stdio adapter's
+ * standard output is the protocol stream, so what precedes a header can be anything, of any length.
+ */
+export const MAX_DAP_HEADER_BYTES: number = 64 * 1024;
+
+/**
+ * How much of discarded output is kept, comfortably more than a header cut off part way through.
+ */
+const HEADER_TAIL_BYTES: number = 128;
+
+/**
  * Matches the header naming the byte length of the JSON body that follows, case-insensitively, capturing
  * its value. The character before it may be anything but part of a longer header's name.
  */
@@ -54,6 +72,13 @@ export class DapMessageDecoder {
   private readonly decoder: InstanceType<typeof TextDecoder> = new TextDecoder('utf-8');
 
   /**
+   * Gets how many received bytes are held waiting to complete a message.
+   */
+  public get bufferedBytes(): number {
+    return this.buffer.length;
+  }
+
+  /**
    * Appends a received chunk and returns every complete message it now makes available, in order. A
    * chunk that completes no message returns an empty array; a chunk that completes several returns them
    * all.
@@ -79,6 +104,7 @@ export class DapMessageDecoder {
   private take(messages: DebugProtocol.ProtocolMessage[]): boolean {
     const headerEnd: number = indexOf(this.buffer, HEADER_TERMINATOR);
     if (headerEnd === -1) {
+      this.discardUnframedOutput();
       return false;
     }
     const header: string = this.decoder.decode(this.buffer.subarray(0, headerEnd));
@@ -88,6 +114,13 @@ export class DapMessageDecoder {
       // A header block without a usable Content-Length cannot be interpreted; drop it so a single
       // malformed frame cannot wedge the stream, and resume from the byte after it.
       logger.warn('DapProtocol', 'Dropped a DAP frame with no usable Content-Length header');
+      this.buffer = this.buffer.subarray(bodyStart);
+      return true;
+    }
+    if (length > MAX_DAP_BODY_BYTES) {
+      // Only a corrupted stream declares this, so its "body" is not worth waiting for: what follows
+      // the header is treated as noise ahead of the next one, which is how the stream recovers.
+      logger.warn('DapProtocol', `Dropped a DAP frame declaring ${length} bytes`);
       this.buffer = this.buffer.subarray(bodyStart);
       return true;
     }
@@ -109,6 +142,20 @@ export class DapMessageDecoder {
       logger.error('DapProtocol', 'Dropped a DAP frame with an unparseable JSON body', error);
     }
     return true;
+  }
+
+  /**
+   * Lets go of output that has grown past any header without one turning up, keeping only the tail,
+   * which may be the start of the next header.
+   */
+  private discardUnframedOutput(): void {
+    if (this.buffer.length > MAX_DAP_HEADER_BYTES) {
+      logger.warn(
+        'DapProtocol',
+        `Discarded ${this.buffer.length} bytes with no DAP header in them`,
+      );
+      this.buffer = this.buffer.slice(-HEADER_TAIL_BYTES);
+    }
   }
 }
 
