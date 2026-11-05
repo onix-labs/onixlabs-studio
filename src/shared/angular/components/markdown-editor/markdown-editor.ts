@@ -394,6 +394,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   /**
+   * Holds whether the pane has been torn down, which an editor still building has to find out.
+   */
+  private paneDestroyed: boolean = false;
+
+  /**
    * Creates the editor once the view's elements are available, and captures the scroll container.
    */
   public ngAfterViewInit(): void {
@@ -432,6 +437,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('MarkdownEditor', 'Destroying editor pane');
+    this.paneDestroyed = true;
     void this.destroyEditor();
     this.scrollContainer = null;
   }
@@ -536,6 +542,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * @returns Returns a promise that resolves once the editor has been created.
    */
   private async createEditor(): Promise<void> {
+    // The editor this replaces took a moment to go, and the pane may have gone in that moment.
+    if (this.paneDestroyed) {
+      return;
+    }
     const container: HTMLDivElement = this.editorContainer().nativeElement;
     const imageSizing: ImageSizing = this.milkdown.imageSizing();
     this.builtSignature = untracked(this.milkdown.buildSignature);
@@ -604,6 +614,10 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       this.crepe = crepe;
       await crepe.create();
+      // Torn down while it built: teardown has been and gone, so nothing past here would be undone.
+      if (this.paneDestroyed) {
+        return;
+      }
       this.isCreatingEditor = false;
       this.postCreateMarkdown = crepe.getMarkdown();
 
@@ -712,9 +726,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     this.closeMermaidEditor();
 
     if (this.crepe !== null) {
+      // Before the wait, so a second change arriving meanwhile cannot start a second replacement; the
+      // one under way reads the content when it builds, so the latest still lands.
+      this.isEditorReady.set(false);
       await this.crepe.destroy();
       this.crepe = null;
-      this.isEditorReady.set(false);
     }
 
     this.editorView = null;

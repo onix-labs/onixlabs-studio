@@ -88,6 +88,66 @@ describe('MarkdownEditor', () => {
   // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
   afterAll(drainMilkdownTimers);
 
+  describe('mid-flight', () => {
+    /**
+     * Waits long enough for an editor's creation and teardown to run out.
+     */
+    function settled(): Promise<void> {
+      return new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 300);
+      });
+    }
+
+    /**
+     * Counts the editors rendered into a pane.
+     */
+    function editorsIn(fixture: ComponentFixture<MarkdownEditor>): number {
+      return (fixture.nativeElement as HTMLElement).querySelectorAll('.ProseMirror').length;
+    }
+
+    it('destroy_whileTheEditorIsBeingCreated_neverReportsReady', async () => {
+      const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
+      fixture.componentRef.setInput('content', '# Hello\n');
+      let readied: number = 0;
+      fixture.componentInstance.ready.subscribe((): void => {
+        readied += 1;
+      });
+      fixture.detectChanges();
+
+      fixture.destroy();
+      await settled();
+
+      expect(readied).toBe(0);
+      expect(fixture.componentInstance.getCrepe()).toBeNull();
+      expect(fixture.componentInstance.getEditorView()).toBeNull();
+    });
+
+    it('destroy_whileContentIsSwappingTheEditor_buildsNoNewOne', async () => {
+      const booted: Awaited<ReturnType<typeof bootEditor>> = await bootEditor('# One\n');
+
+      booted.fixture.componentRef.setInput('content', '# Two\n');
+      booted.fixture.detectChanges();
+      booted.fixture.destroy();
+      await settled();
+
+      expect(booted.fixture.componentInstance.getCrepe()).toBeNull();
+    });
+
+    it('content_changedTwiceAtOnce_endsWithOneEditorShowingTheLatest', async () => {
+      const booted: Awaited<ReturnType<typeof bootEditor>> = await bootEditor('# One\n');
+
+      booted.fixture.componentRef.setInput('content', '# Two\n');
+      booted.fixture.detectChanges();
+      booted.fixture.componentRef.setInput('content', '# Three\n');
+      booted.fixture.detectChanges();
+      await settled();
+
+      expect(editorsIn(booted.fixture)).toBe(1);
+      expect(booted.fixture.componentInstance.getMarkdown()).toContain('Three');
+      booted.fixture.destroy();
+    });
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [MarkdownEditor],
