@@ -278,7 +278,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       expect(await started()).toHaveLength(1);
     });
 
-    it.skip('twoStartsInFlightTogether_spawnOneServer_soNoneIsOrphaned', async () => {
+    it('twoStartsInFlightTogether_spawnOneServer_soNoneIsOrphaned', async () => {
       const results: LspStartResult[] = await Promise.all([
         start(new FakeRenderer()),
         start(new FakeRenderer()),
@@ -562,7 +562,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       ).toEqual({ n: 3 });
     });
 
-    it.skip('twoRestartsTogether_leaveOneServerRunning', async () => {
+    it('twoRestartsTogether_leaveOneServerRunning', async () => {
       const renderer: FakeRenderer = new FakeRenderer();
       await start(renderer);
 
@@ -657,7 +657,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       );
     });
 
-    it.skip('aStartStillResolvingWhenStudioQuits_spawnsNothing', async () => {
+    it('aStartStillResolvingWhenStudioQuits_spawnsNothing', async () => {
       let release: () => void = (): void => undefined;
       gate = new Promise<void>((resolve: () => void): void => {
         release = resolve;

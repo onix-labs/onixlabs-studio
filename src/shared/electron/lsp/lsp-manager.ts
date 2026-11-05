@@ -197,6 +197,13 @@ export class LspManager {
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
 
   /**
+   * Counts the times every session has been disposed, so a launch that was still resolving its server
+   * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
+   * disposes everything too, and the renderer that replaces it starts its servers again.
+   */
+  private disposals: number = 0;
+
+  /**
    * Holds the forwarder that hands a server's `workspace/applyEdit` to the renderer (#1015).
    */
   private readonly applyEdits: LspApplyEditForwarder;
@@ -387,6 +394,7 @@ export class LspManager {
    */
   public disposeAll(): void {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
+    this.disposals += 1;
     this.applyEdits.dispose();
     this.attaches.dispose();
     this.questions.dispose();
@@ -478,11 +486,25 @@ export class LspManager {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    const disposals: number = this.disposals;
     const resolution: LspResolution = await this.registry.resolve(
       parsed.serverId,
       parsed.rootPath,
       parsed.braceStyle,
     );
+    // Resolving can take minutes (a first install downloads the server), and the world moves on
+    // meanwhile. A process spawned for a session someone else has since started would replace it in
+    // the map, leaving a server nothing can ever stop; one spawned after a dispose outlives Studio.
+    if (disposals !== this.disposals) {
+      return { success: false, error: 'Language servers were shut down' };
+    }
+    const running: LspSession | undefined = this.sessions.get(parsed.sessionId);
+    if (running !== undefined) {
+      if (sender !== null) {
+        this.attach(running, parsed.sessionId, sender);
+      }
+      return running.ready;
+    }
     const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
       logger.warn(
@@ -839,7 +861,11 @@ export class LspManager {
       // The server is being killed regardless; ignore a failed graceful shutdown.
       logger.debug('LspManager', `Graceful shutdown failed for session ${id}`, error);
     }
-    this.tearDown(id);
+    // Two shutdowns of one session can overlap (a restart racing a stop); by the time the second gets
+    // here its id may belong to the replacement, which is not this shutdown's to end.
+    if (this.sessions.get(id) === session) {
+      this.tearDown(id);
+    }
   }
 
   /**
