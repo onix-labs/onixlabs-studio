@@ -108,6 +108,14 @@ describe('AgentCategoryStore', () => {
     expect(await ids()).toEqual([]);
   });
 
+  it.each([
+    [{ sortOrder: Number.NaN }],
+    [{ sortOrder: Number.POSITIVE_INFINITY }],
+    [{ createdAt: Number.NaN }],
+  ])('save_ofANumberJsonCannotHold_isRefused_notLostOnNextRead %#', async (bad: object) => {
+    expect(await invoke(AgentCategoryChannel.Save, category('a', bad))).toBeNull();
+  });
+
   it('save_whenTheWriteFails_answersNull', async () => {
     fs.writeFileSync(path.join(electron.userData, 'agent-conversations'), 'a file in the way');
 
