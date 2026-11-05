@@ -604,7 +604,16 @@ export class AiManager {
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       logger.trace('AiManager.register', 'Run invoked');
       if (this.isRunRequest(request)) {
-        void this.run(request);
+        // A run that fails before its turn is under way has nothing else to report it, and the
+        // renderer would show it Working for ever.
+        void this.run(request).catch((error: unknown): void => {
+          logger.error('AiManager', `Agent run ${request.requestId} could not start`, error);
+          this.finish(
+            request.requestId,
+            'error',
+            error instanceof Error ? error.message : String(error),
+          );
+        });
       } else {
         logger.warn('AiManager.register', 'Rejected malformed run request');
       }

@@ -781,6 +781,26 @@ describe('AiManager', () => {
       expect(eventsOf('status').at(-1)?.['detail']).toBe('model refused');
     });
 
+    it('run_whoseProviderThrowsSynchronously_landsAsAnError', async () => {
+      provider.onRun = (): Promise<void> => {
+        throw new Error('not even started');
+      };
+
+      await run();
+
+      expect(statesOf().at(-1)).toBe('error');
+      expect(eventsOf('status').at(-1)?.['detail']).toBe('not even started');
+    });
+
+    it('run_whenTheSkillLibraryFails_landsAsAnError', async () => {
+      offerSkills = (): Promise<never> => Promise.reject(new Error('library unreadable'));
+
+      await run();
+
+      expect(statesOf().at(-1)).toBe('error');
+      expect(eventsOf('status').at(-1)?.['detail']).toBe('library unreadable');
+    });
+
     it('abort_landsTheRunAsAborted_notCompleted', async () => {
       const held: Deferred<void> = new Deferred<void>();
       provider.onRun = async (context: AgentRunContext): Promise<void> => {
@@ -1613,6 +1633,19 @@ describe('AiManager', () => {
 
       expect(endings()).toEqual(['evicted']);
       expect(eventsOf('status').at(-1)).toMatchObject({ state: 'error', detail: 'stream died' });
+    });
+
+    it('openSession_thatThrows_landsAsAnError', async () => {
+      provider.onOpen = (): FakeSession => {
+        throw new Error('harness would not start');
+      };
+
+      await turn();
+
+      expect(eventsOf('status').at(-1)).toMatchObject({
+        state: 'error',
+        detail: 'harness would not start',
+      });
     });
 
     it('session_endingOnItsOwn_tellsTheRenderer_andNextTurnReopens', async () => {
