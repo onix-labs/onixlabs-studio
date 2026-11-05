@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import {
+  DirectoryEntry,
   DirectoryListing,
   FileOperationResult,
   WorkspaceChannel,
@@ -47,6 +48,7 @@ class FakeDisk {
   public unreadable: boolean = false;
   public readonly rejecting: Set<string> = new Set<string>();
   public readonly refusing: Set<string> = new Set<string>();
+  public readonly held: Map<string, Promise<void>> = new Map<string, Promise<void>>();
   public reads: string[] = [];
   public operation: FileOperationResult | Error = { success: true, path: '/ws/new.md' };
   public closed: string[] = [];
@@ -61,6 +63,7 @@ class FakeDisk {
         return Promise.resolve(this.listings.get('/ws') ?? null);
       case WorkspaceChannel.ReadDirectory as string:
         this.reads.push(String(args[0]));
+        await this.held.get(String(args[0]));
         if (this.failing || this.rejecting.has(String(args[0]))) {
           throw new Error('the bridge has gone');
         }
@@ -217,6 +220,58 @@ describe('Workspace tree resilience', () => {
         expect(shown()).toContain('/ws/lib/node_modules');
       });
 
+      describe('while a slow folder is being read', () => {
+        let finishRead: () => void;
+        let expanding: Promise<void>;
+
+        beforeEach(() => {
+          disk.held.set(
+            '/ws/lib',
+            new Promise<void>((resolve: () => void): void => {
+              finishRead = resolve;
+            }),
+          );
+          expanding = service.expandAll();
+        });
+
+        it('expandAll_keepsAFileThatAppearedDuringTheWalk', async () => {
+          disk.listings.set('/ws', {
+            path: '/ws',
+            name: 'ws',
+            entries: [
+              ...(disk.listings.get('/ws')?.entries ?? []),
+              { name: 'new.md', path: '/ws/new.md', type: 'file' },
+            ],
+          });
+          listener?.({ root: '/ws', directories: ['/ws'], overflow: false });
+          await afterRefresh();
+
+          finishRead();
+          await expanding;
+
+          expect(shown()).toContain('/ws/new.md');
+          expect(shown()).toContain('/ws/src/main.ts');
+        });
+
+        it('expandAll_doesNotResurrectAFolderDeletedDuringTheWalk', async () => {
+          disk.listings.set('/ws', {
+            path: '/ws',
+            name: 'ws',
+            entries: (disk.listings.get('/ws')?.entries ?? []).filter(
+              (entry: DirectoryEntry): boolean => entry.path !== '/ws/lib',
+            ),
+          });
+          listener?.({ root: '/ws', directories: ['/ws'], overflow: false });
+          await afterRefresh();
+
+          finishRead();
+          await expanding;
+
+          expect(shown()).not.toContain('/ws/lib');
+          expect(row('/ws/src')).toEqual({ loading: false, expanded: true });
+        });
+      });
+
       it('expandAll_whenTheFolderCloses_doesNotResurrectTheTree', async () => {
         const expanding: Promise<void> = service.expandAll();
         service.releaseFolder();
@@ -228,6 +283,7 @@ describe('Workspace tree resilience', () => {
     });
 
     it('expandAll_ofLoadedFolders_readsNothing_andCollapseAllFoldsThemAgain', async () => {
+      TestBed.inject(Settings).set('workspaces.fileExplorerExpandAll', 'loaded-only');
       await service.toggleDirectory('/ws/src');
       service.collapseAll();
       expect(row('/ws/src')).toEqual({ loading: false, expanded: false });

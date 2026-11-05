@@ -1142,6 +1142,34 @@ export class Workspace {
   }
 
   /**
+   * Applies a finished walk to the tree as it stands now, not as it stood when the walk began: the tree
+   * may have taken watcher refreshes in between, and a walk's snapshot would undo them.
+   * @param nodes The current nodes.
+   * @param walked The paths of the directories the walk reached.
+   * @param listed The children the walk read, by directory path.
+   * @returns Returns the expanded node list.
+   */
+  private expandWalked(
+    nodes: readonly WorkspaceTreeNode[],
+    walked: ReadonlySet<string>,
+    listed: ReadonlyMap<string, readonly WorkspaceTreeNode[]>,
+  ): readonly WorkspaceTreeNode[] {
+    return nodes.map((node: WorkspaceTreeNode): WorkspaceTreeNode => {
+      const children: readonly WorkspaceTreeNode[] | null =
+        node.children ?? listed.get(node.path) ?? null;
+      if (node.type !== 'directory' || !walked.has(node.path) || children === null) {
+        return node;
+      }
+      return {
+        ...node,
+        expanded: true,
+        loading: false,
+        children: this.expandWalked(children, walked, listed),
+      };
+    });
+  }
+
+  /**
    * Reads and expands the entire tree from disk, loading each directory's children where they have not
    * been loaded yet. The result is applied in one update once the whole walk completes; it is discarded
    * when the open root changed while the walk was in flight.
@@ -1171,14 +1199,19 @@ export class Workspace {
       waiters.shift()?.();
     };
     let visited: number = 0;
-    const expandNode: (node: WorkspaceTreeNode) => Promise<WorkspaceTreeNode> = async (
+    const walked: Set<string> = new Set<string>();
+    const listed: Map<string, readonly WorkspaceTreeNode[]> = new Map<
+      string,
+      readonly WorkspaceTreeNode[]
+    >();
+    const walk: (node: WorkspaceTreeNode) => Promise<void> = async (
       node: WorkspaceTreeNode,
-    ): Promise<WorkspaceTreeNode> => {
+    ): Promise<void> => {
       if (node.type !== 'directory') {
-        return node;
+        return;
       }
       if (EXPAND_SKIPPED_DIRECTORIES.has(node.name) || visited >= EXPAND_DIRECTORY_CAP) {
-        return node;
+        return;
       }
       visited += 1;
       let children: readonly WorkspaceTreeNode[];
@@ -1195,18 +1228,21 @@ export class Workspace {
         // One folder that cannot be read must not cost the rest of the walk, and stays unloaded so the
         // next expand tries again rather than showing it as empty.
         if (listing === null) {
-          return node;
+          return;
         }
         children = listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
           this.toNode(entry),
         );
+        listed.set(node.path, children);
       }
-      const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
-      return { ...node, expanded: true, loading: false, children: expanded };
+      walked.add(node.path);
+      await Promise.all(children.map(walk));
     };
-    const nodes: readonly WorkspaceTreeNode[] = await Promise.all(this.treeNodes().map(expandNode));
+    await Promise.all(this.treeNodes().map(walk));
     if (this.rootListing()?.path === root) {
-      this.treeNodes.set(nodes);
+      this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+        this.expandWalked(nodes, walked, listed),
+      );
     }
   }
 }
