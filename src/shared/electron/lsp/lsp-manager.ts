@@ -513,6 +513,18 @@ export class LspManager {
       logger.error('LspManager', `Failed to spawn LSP server ${spec.command}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
+    // A program that cannot be run does not throw: `spawn` returns a child with no pid and emits
+    // `error` on the next tick, which with no listener is an uncaught exception in the main process.
+    if (child.pid === undefined) {
+      const failure: Error = await new Promise<Error>((resolve: (error: Error) => void): void => {
+        child.once('error', resolve);
+      });
+      logger.warn('LspManager', `Failed to spawn LSP server ${spec.command}`, failure);
+      return { success: false, error: failure.message };
+    }
+    child.on('error', (error: Error): void => {
+      logger.warn('LspManager', `LSP server ${spec.command} reported an error`, error);
+    });
     pidJournal()?.register(child.pid, 'lsp', spec.command);
     logger.info('LspManager', `Started LSP server ${spec.command} (pid ${child.pid})`);
     // Reading stderr keeps the pipe drained so a chatty server cannot stall on it, and keeps its
