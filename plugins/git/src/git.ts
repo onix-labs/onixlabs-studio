@@ -705,24 +705,22 @@ export class GitVersionControl {
     if (confined === null || confined.length === 0) {
       return fail('Invalid path');
     }
-    const tracked: Set<string> = await this.listed(root, ['ls-files'], confined);
-    const untracked: Set<string> = await this.listed(
+    const tracked: Set<string> = await this.listed(root, ['ls-files', '-z'], confined);
+    const toDelete: Set<string> = await this.listed(
       root,
-      ['ls-files', '--others', '--exclude-standard'],
+      ['ls-files', '--others', '--exclude-standard', '-z'],
       confined,
     );
-    const toRestore: string[] = confined.filter((candidate: string): boolean =>
-      tracked.has(candidate),
-    );
-    // An untracked directory is discarded by deleting it; ls-files lists the files inside it, so a
-    // candidate counts as untracked when it is listed itself or is a listed file's ancestor.
-    const toDelete: string[] = confined.filter(
-      (candidate: string): boolean =>
-        !tracked.has(candidate) &&
-        [...untracked].some(
-          (listed: string): boolean => listed === candidate || listed.startsWith(`${candidate}/`),
-        ),
-    );
+    // A folder is discarded by what git lists under it, never by removing the folder: that takes its
+    // tracked files and its ignored ones (a `.env`, a `node_modules`) with it, and neither is the
+    // user's to lose here.
+    const toRestore: string[] = confined.filter((candidate: string): boolean => {
+      const relative: string = path.relative(root, path.resolve(root, candidate));
+      return [...tracked].some(
+        (listed: string): boolean =>
+          relative.length === 0 || listed === relative || listed.startsWith(`${relative}/`),
+      );
+    });
     for (const relative of toDelete) {
       try {
         await rm(path.resolve(root, relative), { recursive: true, force: true });
@@ -852,7 +850,9 @@ export class GitVersionControl {
   ): Promise<Set<string>> {
     const run: GitRun = await this.git(root, [...listing, '--', ...confined]);
     return new Set<string>(
-      run.success ? run.stdout.split('\n').filter((line: string): boolean => line.length > 0) : [],
+      run.success
+        ? run.stdout.split('\0').filter((entry: string): boolean => entry.length > 0)
+        : [],
     );
   }
 

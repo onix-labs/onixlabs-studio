@@ -29,6 +29,17 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set<number>([301, 302, 303, 3
 const DEFAULT_PORTS: Readonly<Record<string, number>> = { 'http:': 80, 'https:': 443 };
 
 /**
+ * Matches an IPv4 loopback address. Whole-address, because `127.example.com` is somebody else's server
+ * and being taken for this machine would turn off its certificate check.
+ */
+const LOOPBACK_ADDRESS: RegExp = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+/**
+ * The schemes a request may go to, by redirect or otherwise.
+ */
+const WEB_SCHEMES: ReadonlySet<string> = new Set<string>(['http:', 'https:']);
+
+/**
  * Describes one request as the transport sends it.
  */
 export interface TransportRequest {
@@ -146,7 +157,10 @@ export type SystemProxyResolver = (url: string) => Promise<string>;
 export function isLocalHost(hostname: string): boolean {
   const host: string = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   return (
-    host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host.startsWith('127.')
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '::1' ||
+    LOOPBACK_ADDRESS.test(host)
   );
 }
 
@@ -319,6 +333,9 @@ async function sendHop(
   if (secure) {
     options.rejectUnauthorized = verify;
   }
+  // A listener added below hears nothing of an abort that has already happened, which is what one
+  // landing between redirect hops, or before the send began, would be.
+  signal.throwIfAborted();
   if (proxy !== null && secure) {
     const tunnel: Socket = await openTunnel(proxy, hostname, port, signal);
     options.agent = false;
@@ -395,13 +412,19 @@ function readBody(
       stream.on('data', (chunk: Buffer): void => {
         chunks.push(chunk);
         length += chunk.byteLength;
-        if (length >= limit) {
-          resolve({ body: Buffer.concat(chunks).subarray(0, limit), truncated: length > limit });
+        // Past the limit rather than at it: a body of exactly the limit has more to say, namely that
+        // it ended, and only reading on tells it from one that was cut.
+        if (length > limit) {
+          resolve({ body: Buffer.concat(chunks).subarray(0, limit), truncated: true });
+          // Both ends: a decompressor holds more than the network delivered, by any factor.
+          stream.destroy();
           response.destroy();
         }
       });
       stream.once('end', (): void => resolve({ body: Buffer.concat(chunks), truncated: false }));
       stream.once('error', reject);
+      // A decompressor is not told when the connection under it is lost, and would wait for good.
+      response.once('error', reject);
     },
   );
 }
@@ -434,6 +457,9 @@ export function createApiTransport(system: SystemProxyResolver): ApiTransport {
     let wasRedirected: boolean = false;
     for (let hops: number = 0; ; hops += 1) {
       const url: URL = new URL(hop.url);
+      if (!WEB_SCHEMES.has(url.protocol)) {
+        throw new Error(`Refused to send a request to ${url.protocol}`);
+      }
       const verify: boolean =
         request.acceptSelfSigned === 'never' ||
         (request.acceptSelfSigned === 'localhost' && !isLocalHost(url.hostname));

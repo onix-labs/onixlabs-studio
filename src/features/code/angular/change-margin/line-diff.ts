@@ -1,4 +1,4 @@
-import { ArrayChange, diffArrays } from 'diff';
+import { diffArrays } from 'diff';
 
 /**
  * Describes the per-line save-state changes of one document version relative to another, expressed in
@@ -17,6 +17,13 @@ export interface LineChangeSet {
    */
   readonly deletionAnchors: ReadonlySet<number>;
 }
+
+/**
+ * The most changed lines a diff works through before giving up. This runs on the UI thread and its
+ * cost grows with the square of this number: uncapped, rewriting every line of a 19,000-line file
+ * froze the editor for over a minute.
+ */
+const MAX_DIFF_EDIT_LENGTH: number = 1000;
 
 /**
  * Splits document content into lines using the one canonical splitter, so CRLF, CR and LF inputs all
@@ -71,8 +78,8 @@ function isBlank(line: string): boolean {
  * @param input The raw diff hunks.
  * @returns Returns the normalised hunks.
  */
-function slideChangesUpward(input: ArrayChange<string>[]): DiffHunk[] {
-  const hunks: DiffHunk[] = input.map((hunk: ArrayChange<string>): DiffHunk => ({
+function slideChangesUpward(input: readonly DiffHunk[]): DiffHunk[] {
+  const hunks: DiffHunk[] = input.map((hunk: DiffHunk): DiffHunk => ({
     value: [...hunk.value],
     added: hunk.added === true,
     removed: hunk.removed === true,
@@ -112,6 +119,45 @@ function slideChangesUpward(input: ArrayChange<string>[]): DiffHunk[] {
 }
 
 /**
+ * Reads a change too large to diff line by line as one replaced run, between the lines the two
+ * documents still share at their start and end.
+ * @param originalLines The baseline lines.
+ * @param modifiedLines The current lines.
+ * @returns Returns the hunks.
+ */
+function replacedRun(
+  originalLines: readonly string[],
+  modifiedLines: readonly string[],
+): DiffHunk[] {
+  const shared: number = Math.min(originalLines.length, modifiedLines.length);
+  let start: number = 0;
+  while (start < shared && originalLines[start] === modifiedLines[start]) {
+    start += 1;
+  }
+  let end: number = 0;
+  while (
+    end < shared - start &&
+    originalLines[originalLines.length - 1 - end] === modifiedLines[modifiedLines.length - 1 - end]
+  ) {
+    end += 1;
+  }
+  return [
+    { value: modifiedLines.slice(0, start), added: false, removed: false },
+    {
+      value: originalLines.slice(start, originalLines.length - end),
+      added: false,
+      removed: true,
+    },
+    {
+      value: modifiedLines.slice(start, modifiedLines.length - end),
+      added: true,
+      removed: false,
+    },
+    { value: modifiedLines.slice(modifiedLines.length - end), added: false, removed: false },
+  ].filter((hunk: DiffHunk): boolean => hunk.value.length > 0);
+}
+
+/**
  * Computes the per-line changes of {@link modifiedLines} relative to {@link originalLines}. A removed
  * hunk immediately followed by an added hunk is treated as an in-place modification (marked by the
  * added lines); a removed hunk not followed by an addition is a pure deletion, anchored on the
@@ -128,7 +174,9 @@ export function computeLineChanges(
   const deletionAnchors: Set<number> = new Set<number>();
 
   const hunks: DiffHunk[] = slideChangesUpward(
-    diffArrays(originalLines as string[], modifiedLines as string[]),
+    diffArrays(originalLines as string[], modifiedLines as string[], {
+      maxEditLength: MAX_DIFF_EDIT_LENGTH,
+    }) ?? replacedRun(originalLines, modifiedLines),
   );
 
   let currentLine: number = 0;

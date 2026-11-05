@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, Signal, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DetectedRepository,
@@ -639,6 +639,27 @@ describe('WorkspaceGit', () => {
     expect(git.branch()).toBe('develop');
     expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
     expect(git.stateFor('/repo/src')).toBeNull();
+  });
+
+  it('refresh_whenTheStatusIsUnchanged_leavesEveryTreeRowsStateAlone', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    let reads: number = 0;
+    const row: Signal<unknown> = computed(() => {
+      reads += 1;
+      return git.stateFor('/repo/src/app/main.ts');
+    });
+    row();
+
+    status = { ...status };
+    await git.refresh();
+    row();
+    expect(reads).toBe(1);
+
+    status = { ...status, staged: [], unstaged: [] };
+    await git.refresh();
+    row();
+    expect(reads).toBe(2);
   });
 
   it('watch_whenTheRepositoryChangesOnDisk_refreshesBranchWithoutReactivation', async () => {

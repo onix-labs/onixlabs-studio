@@ -554,7 +554,8 @@ export async function createWorkspaceTerminalTools(context: AgentRunContext): Pr
       description:
         "Open a new terminal in the workspace's terminal panel, rooted at the workspace, where the user can watch it. Returns the id to drive it with. Use this when the user should see a command run rather than a hidden shell.",
       inputSchema: z.object({}),
-      execute: (): Promise<string> => openTerminal(context, true),
+      // Gated as the workbench declaration it overrides is: this spawns a real shell.
+      execute: gated(context, OPEN_TERMINAL, (): Promise<string> => openTerminal(context, true)),
     }),
     [WRITE_TERMINAL_INPUT]: tool({
       description:

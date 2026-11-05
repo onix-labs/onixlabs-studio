@@ -1,6 +1,12 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { describe, expect, it } from 'vitest';
-import { DapMessageDecoder, DapProtocol, encodeMessage } from './dap-protocol';
+import {
+  DapMessageDecoder,
+  DapProtocol,
+  MAX_DAP_BODY_BYTES,
+  MAX_DAP_HEADER_BYTES,
+  encodeMessage,
+} from './dap-protocol';
 
 /**
  * Encodes a message and returns its bytes, as a stream would deliver them.
@@ -208,5 +214,186 @@ describe('DapProtocol', () => {
     const pending: Promise<unknown> = protocol.sendRequest('initialize');
     protocol.dispose('closed');
     await expect(pending).rejects.toThrow('closed');
+  });
+});
+
+describe('DapMessageDecoder on a misbehaving stream', () => {
+  /**
+   * Frames a message.
+   * @param seq The sequence number that identifies it.
+   * @returns Returns the framed text.
+   */
+  function frame(seq: number): string {
+    return encodeMessage({ seq, type: 'event' });
+  }
+
+  /**
+   * Decodes text, as one chunk.
+   * @param text The text.
+   * @param decoder The decoder, when a spec carries on with one.
+   * @returns Returns the sequence numbers decoded.
+   */
+  function decode(text: string, decoder: DapMessageDecoder = new DapMessageDecoder()): number[] {
+    return decoder
+      .append(new TextEncoder().encode(text))
+      .map((message: { seq: number }): number => message.seq);
+  }
+
+  it('reassemblesAHeaderSplitInsideTheTerminator', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const text: string = frame(1);
+    const middle: number = text.indexOf('\r\n\r\n') + 2;
+
+    expect(decode(text.slice(0, middle), decoder)).toEqual([]);
+    expect(decode(text.slice(middle), decoder)).toEqual([1]);
+  });
+
+  it('survivesAFeedOfOneByteAtATime', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    const seen: number[] = [...`${frame(1)}${frame(2)}`].flatMap((character: string): number[] =>
+      decode(character, decoder),
+    );
+
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it('dropsAFrameDeclaringAnImpossibleLength_ratherThanWaitingForItsBody', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+    const huge: Uint8Array = new TextEncoder().encode(
+      `Content-Length: ${MAX_DAP_BODY_BYTES + 1}\r\n\r\n`,
+    );
+
+    expect(decoder.append(huge)).toEqual([]);
+
+    expect(decoder.append(bytes(event))).toEqual([event]);
+  });
+
+  it('dropsALengthTooLargeToBeANumberAtAll', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    const decoded: DebugProtocol.ProtocolMessage[] = decoder.append(
+      new TextEncoder().encode(`Content-Length: ${'9'.repeat(400)}\r\n\r\n${encodeMessage(event)}`),
+    );
+
+    expect(decoded).toEqual([event]);
+  });
+
+  it('stillWaitsForAFrameAtExactlyTheLimit', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    decoder.append(new TextEncoder().encode(`Content-Length: ${MAX_DAP_BODY_BYTES}\r\n\r\n`));
+
+    expect(decoder.append(bytes(event))).toEqual([]);
+  });
+
+  it('doesNotHoardOutputThatNeverReachesAHeader', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+
+    for (let index: number = 0; index < 8; index += 1) {
+      expect(decoder.append(new Uint8Array(MAX_DAP_HEADER_BYTES).fill(46))).toEqual([]);
+    }
+
+    expect(decoder.append(bytes(event))).toEqual([event]);
+    expect(decoder.bufferedBytes).toBe(0);
+  });
+
+  it('keepsAHeaderSplitAcrossTheCap', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const event: DebugProtocol.Event = { seq: 1, type: 'event', event: 'stopped' };
+    const frame: Uint8Array = bytes(event);
+
+    decoder.append(new Uint8Array(MAX_DAP_HEADER_BYTES + 1).fill(46));
+    expect(decoder.append(frame.subarray(0, 6))).toEqual([]);
+
+    expect(decoder.append(frame.subarray(6))).toEqual([event]);
+  });
+
+  it('readsAnEmptyBodyAsADroppedFrame_andCarriesOn', () => {
+    expect(decode(`Content-Length: 0\r\n\r\n${frame(2)}`)).toEqual([2]);
+  });
+
+  it.each<[string, string]>([
+    ['aWordForALength', 'Content-Length: many'],
+    ['aNegativeLength', 'Content-Length: -4'],
+    ['aFractionalLength', 'Content-Length: 1.5'],
+    ['noLengthAtAll', 'X-Other: 1'],
+  ])('dropsAHeaderWith_%s_andDeliversTheFrameBehindIt', (_name: string, header: string) => {
+    expect(decode(`${header}\r\n\r\n${frame(2)}${frame(3)}`)).toEqual([2, 3]);
+  });
+
+  it('dropsABodyThatIsNotJson_andDeliversTheFrameBehindIt_inTheSameChunk', () => {
+    expect(decode(`Content-Length: 4\r\n\r\nnope${frame(2)}`)).toEqual([2]);
+  });
+
+  it.each<[string, string]>([
+    ['null', 'null'],
+    ['aNumber', '7'],
+    ['aString', '"x"'],
+  ])('dropsABodyThatIs_%s_ratherThanHandingItToTheProtocol', (_name: string, body: string) => {
+    expect(decode(`Content-Length: ${body.length}\r\n\r\n${body}${frame(2)}`)).toEqual([2]);
+  });
+
+  it('keepsItsPlace_whenAnAdapterPrintsALogLineBeforeAFrame', () => {
+    // Stdout is the protocol stream, and adapters and the runtimes under them do write to it.
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    expect(decode(`warning: no symbols\n${frame(1)}`, decoder)).toEqual([1]);
+    expect(decode(frame(2), decoder)).toEqual([2]);
+  });
+
+  it('recoversTheNextFrame_whenAFrameHadNoUsableLength', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const body: string = JSON.stringify({ seq: 1, type: 'event' });
+
+    expect(decode(`Content-Length: bad\r\n\r\n${body}${frame(2)}${frame(3)}`, decoder)).toEqual([
+      2, 3,
+    ]);
+    expect(decode(frame(4), decoder)).toEqual([4]);
+  });
+
+  it('holdsOffOnALengthLongerThanWhatHasArrived', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    expect(decode('Content-Length: 99999999999\r\n\r\n{}', decoder)).toEqual([]);
+  });
+
+  it('doesNotTakeALookalikeHeaderForContentLength', () => {
+    expect(decode(`X-Content-Length: 2\r\n\r\n${frame(1)}`)).toEqual([1]);
+  });
+});
+
+describe('DapProtocol failures', () => {
+  it('namesTheCommand_whenAFailedResponseCarriesNoMessage', async () => {
+    const protocol: DapProtocol = new DapProtocol((): void => undefined);
+    const outcome: Promise<unknown> = protocol.sendRequest('launch');
+
+    protocol.handleMessage({
+      seq: 9,
+      type: 'response',
+      request_seq: 1,
+      success: false,
+      command: 'launch',
+    } as DebugProtocol.Response);
+
+    await expect(outcome).rejects.toThrow('launch failed');
+  });
+
+  it('rejectsARequestWhoseSinkThrows_ratherThanLeavingItPending', async () => {
+    const protocol: DapProtocol = new DapProtocol((): void => {
+      throw new Error('stream closed');
+    });
+
+    await expect(protocol.sendRequest('threads')).rejects.toThrow('stream closed');
+  });
+
+  it('ignoresAMessageOfAnUnknownType', () => {
+    const protocol: DapProtocol = new DapProtocol((): void => undefined);
+
+    expect((): void => protocol.handleMessage({ seq: 1, type: 'other' })).not.toThrow();
   });
 });

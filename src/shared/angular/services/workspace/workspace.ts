@@ -655,20 +655,39 @@ export class Workspace {
       ...current,
       loading: true,
     }));
-    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
-      WorkspaceChannel.ReadDirectory,
-      path,
-    ) ?? Promise.resolve(null));
-    const children: readonly WorkspaceTreeNode[] =
-      listing === null
-        ? []
-        : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
+    // A folder that could not be read stays unloaded, so the next expand tries again rather than
+    // showing it as empty for the rest of the session.
+    if (listing === null) {
+      this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+        ...current,
+        loading: false,
+      }));
+      return;
+    }
+    const children: readonly WorkspaceTreeNode[] = listing.entries.map(
+      (entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry),
+    );
     this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
       ...current,
       loading: false,
       expanded: true,
       children,
     }));
+  }
+
+  /**
+   * Reads a directory's listing, a bridge that fails outright counting as a failed read.
+   * @param path The directory.
+   * @returns Returns the listing, or null when it could not be read.
+   */
+  private async readListingOrNull(path: string): Promise<DirectoryListing | null> {
+    try {
+      return await this.readDirectoryListing(path);
+    } catch (error: unknown) {
+      this.log.warn('Workspace', `Could not read '${path}'`, error);
+      return null;
+    }
   }
 
   /**
@@ -748,10 +767,13 @@ export class Workspace {
     directory: string,
     args: readonly unknown[],
   ): Promise<FileOperationResult> {
-    const result: FileOperationResult = await (this.bridge?.invoke<FileOperationResult>(
-      channel,
-      ...args,
-    ) ?? Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    let result: FileOperationResult;
+    try {
+      result = await (this.bridge?.invoke<FileOperationResult>(channel, ...args) ??
+        Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    } catch (error: unknown) {
+      result = { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
     if (!result.success) {
       this.log.warn('Workspace', `${channel} failed`, result.error);
       return result;
@@ -823,9 +845,10 @@ export class Workspace {
     }
     this.refreshBurstTimer = setTimeout((): void => {
       this.refreshBurstTimer = null;
-      const pending: ReadonlySet<string> | null = this.pendingRefreshDirs ?? new Set<string>();
+      // Null, not empty, is what an overflow left: `??` here would turn "everything" into "nothing".
+      const pending: ReadonlySet<string> | null | undefined = this.pendingRefreshDirs;
       this.pendingRefreshDirs = undefined;
-      void this.runTreeRefresh(pending);
+      void this.runTreeRefresh(pending === undefined ? new Set<string>() : pending);
     }, TREE_REFRESH_DEBOUNCE_MS);
   }
 
@@ -913,7 +936,7 @@ export class Workspace {
    */
   private async refresh(path: string): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
-    const listing: DirectoryListing | null = await this.readDirectoryListing(path);
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
     if (listing === null || this.rootListing()?.path !== root) {
       return;
     }
@@ -1119,6 +1142,34 @@ export class Workspace {
   }
 
   /**
+   * Applies a finished walk to the tree as it stands now, not as it stood when the walk began: the tree
+   * may have taken watcher refreshes in between, and a walk's snapshot would undo them.
+   * @param nodes The current nodes.
+   * @param walked The paths of the directories the walk reached.
+   * @param listed The children the walk read, by directory path.
+   * @returns Returns the expanded node list.
+   */
+  private expandWalked(
+    nodes: readonly WorkspaceTreeNode[],
+    walked: ReadonlySet<string>,
+    listed: ReadonlyMap<string, readonly WorkspaceTreeNode[]>,
+  ): readonly WorkspaceTreeNode[] {
+    return nodes.map((node: WorkspaceTreeNode): WorkspaceTreeNode => {
+      const children: readonly WorkspaceTreeNode[] | null =
+        node.children ?? listed.get(node.path) ?? null;
+      if (node.type !== 'directory' || !walked.has(node.path) || children === null) {
+        return node;
+      }
+      return {
+        ...node,
+        expanded: true,
+        loading: false,
+        children: this.expandWalked(children, walked, listed),
+      };
+    });
+  }
+
+  /**
    * Reads and expands the entire tree from disk, loading each directory's children where they have not
    * been loaded yet. The result is applied in one update once the whole walk completes; it is discarded
    * when the open root changed while the walk was in flight.
@@ -1148,14 +1199,19 @@ export class Workspace {
       waiters.shift()?.();
     };
     let visited: number = 0;
-    const expandNode: (node: WorkspaceTreeNode) => Promise<WorkspaceTreeNode> = async (
+    const walked: Set<string> = new Set<string>();
+    const listed: Map<string, readonly WorkspaceTreeNode[]> = new Map<
+      string,
+      readonly WorkspaceTreeNode[]
+    >();
+    const walk: (node: WorkspaceTreeNode) => Promise<void> = async (
       node: WorkspaceTreeNode,
-    ): Promise<WorkspaceTreeNode> => {
+    ): Promise<void> => {
       if (node.type !== 'directory') {
-        return node;
+        return;
       }
       if (EXPAND_SKIPPED_DIRECTORIES.has(node.name) || visited >= EXPAND_DIRECTORY_CAP) {
-        return node;
+        return;
       }
       visited += 1;
       let children: readonly WorkspaceTreeNode[];
@@ -1163,28 +1219,30 @@ export class Workspace {
         children = node.children;
       } else {
         await acquire();
+        let listing: DirectoryListing | null;
         try {
-          const listing: DirectoryListing | null =
-            await (this.bridge?.invoke<DirectoryListing | null>(
-              WorkspaceChannel.ReadDirectory,
-              node.path,
-            ) ?? Promise.resolve(null));
-          children =
-            listing === null
-              ? []
-              : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
-                  this.toNode(entry),
-                );
+          listing = await this.readListingOrNull(node.path);
         } finally {
           release();
         }
+        // One folder that cannot be read must not cost the rest of the walk, and stays unloaded so the
+        // next expand tries again rather than showing it as empty.
+        if (listing === null) {
+          return;
+        }
+        children = listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
+          this.toNode(entry),
+        );
+        listed.set(node.path, children);
       }
-      const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
-      return { ...node, expanded: true, loading: false, children: expanded };
+      walked.add(node.path);
+      await Promise.all(children.map(walk));
     };
-    const nodes: readonly WorkspaceTreeNode[] = await Promise.all(this.treeNodes().map(expandNode));
+    await Promise.all(this.treeNodes().map(walk));
     if (this.rootListing()?.path === root) {
-      this.treeNodes.set(nodes);
+      this.treeNodes.update((nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] =>
+        this.expandWalked(nodes, walked, listed),
+      );
     }
   }
 }

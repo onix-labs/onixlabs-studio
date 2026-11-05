@@ -673,7 +673,10 @@ export class WindowManager {
     }
     this.childWindows.set(name, window);
     window.on('closed', (): void => {
-      this.childWindows.delete(name);
+      // The name may have gone to a new window by now; only its own entry is this window's to remove.
+      if (this.childWindows.get(name) === window) {
+        this.childWindows.delete(name);
+      }
     });
   }
 

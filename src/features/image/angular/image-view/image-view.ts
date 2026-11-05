@@ -765,14 +765,20 @@ export class ImageView implements OnInit, OnDestroy {
    * Undoes the most recent edit.
    */
   public undo(): void {
-    void this.document()?.undo();
+    this.edit(async (document: ImageDocument): Promise<boolean> => {
+      await document.undo();
+      return true;
+    });
   }
 
   /**
    * Redoes the most recently undone edit.
    */
   public redo(): void {
-    void this.document()?.redo();
+    this.edit(async (document: ImageDocument): Promise<boolean> => {
+      await document.redo();
+      return true;
+    });
   }
 
   /**

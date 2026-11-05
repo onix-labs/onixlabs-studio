@@ -33,6 +33,12 @@ export class Decoders {
   >();
 
   /**
+   * Counts the calls to {@link disposeAll}, so a start that was under way when one came knows that
+   * nothing will ever stop the process it has just brought up.
+   */
+  private disposals: number = 0;
+
+  /**
    * Initializes the host over a registry.
    * @param registry The decoder registry.
    */
@@ -102,11 +108,13 @@ export class Decoders {
     }
     this.clients.clear();
     this.starting.clear();
+    this.disposals += 1;
     logger.debug('Decoders', 'All decoders stopped');
   }
 
   /**
-   * Gets the running client for a format, starting it on first use.
+   * Gets the running client for a format, starting it on first use, and again if it has since died:
+   * one crash must cost one decode, not every decode for the rest of the session.
    * @param format The canonical format key.
    * @returns Returns the client, or null when none is installed or it could not be started.
    */
@@ -117,13 +125,28 @@ export class Decoders {
     }
     const existing: DecoderClient | undefined = this.clients.get(descriptor.id);
     if (existing !== undefined) {
-      return Promise.resolve(existing);
+      if (existing.describe() !== null) {
+        return Promise.resolve(existing);
+      }
+      logger.info('Decoders', `Decoder '${descriptor.id}' has stopped; starting it again`);
+      existing.dispose();
+      this.clients.delete(descriptor.id);
     }
     const inFlight: Promise<DecoderClient | null> | undefined = this.starting.get(descriptor.id);
     if (inFlight !== undefined) {
       return inFlight;
     }
-    const started: Promise<DecoderClient | null> = this.startClient(descriptor);
+    // 🔥 Cleared here rather than inside `startClient`: that can finish without ever suspending, before
+    // the entry exists, which would leave a settled "no decoder" in place as the start in flight and
+    // the format dark even after the user installs one. Only this start's own entry goes, since a
+    // dispose may have made room for another.
+    const started: Promise<DecoderClient | null> = this.startClient(descriptor).finally(
+      (): void => {
+        if (this.starting.get(descriptor.id) === started) {
+          this.starting.delete(descriptor.id);
+        }
+      },
+    );
     this.starting.set(descriptor.id, started);
     return started;
   }
@@ -134,24 +157,24 @@ export class Decoders {
    * @returns Returns the started client, or null when it could not be started.
    */
   private async startClient(descriptor: DecoderDescriptor): Promise<DecoderClient | null> {
+    const disposals: number = this.disposals;
+    let resolution: DecoderResolution;
     try {
-      const resolution: DecoderResolution = descriptor.resolve();
-      if (!resolution.available) {
-        logger.debug(
-          'Decoders',
-          `Decoder '${descriptor.id}' is not available: ${resolution.reason}`,
-        );
-        return null;
-      }
-      const client: DecoderClient = new DecoderClient(descriptor.id, resolution.spec);
-      if ((await client.start()) === null) {
-        client.dispose();
-        return null;
-      }
-      this.clients.set(descriptor.id, client);
-      return client;
-    } finally {
-      this.starting.delete(descriptor.id);
+      resolution = descriptor.resolve();
+    } catch (error: unknown) {
+      logger.warn('Decoders', `Could not resolve decoder '${descriptor.id}'`, error);
+      return null;
     }
+    if (!resolution.available) {
+      logger.debug('Decoders', `Decoder '${descriptor.id}' is not available: ${resolution.reason}`);
+      return null;
+    }
+    const client: DecoderClient = new DecoderClient(descriptor.id, resolution.spec);
+    if ((await client.start()) === null || disposals !== this.disposals) {
+      client.dispose();
+      return null;
+    }
+    this.clients.set(descriptor.id, client);
+    return client;
   }
 }

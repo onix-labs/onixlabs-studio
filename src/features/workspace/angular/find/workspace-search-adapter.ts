@@ -107,6 +107,17 @@ export class WorkspaceSearchAdapter implements FindAdapter {
   private sequence: number = 0;
 
   /**
+   * Holds how many adapters there have been, which names each one to the search it starts. One window
+   * can hold several, and one must not cancel another's search.
+   */
+  private static adapters: number = 0;
+
+  /**
+   * Holds the name this adapter's searches go under.
+   */
+  private readonly caller: string = `workspace-search-${(WorkspaceSearchAdapter.adapters += 1)}`;
+
+  /**
    * Holds the query, root and paths of the last search asked for, or null before any — what a replace
    * replaces, and what it searches again afterwards.
    */
@@ -351,6 +362,7 @@ export class WorkspaceSearchAdapter implements FindAdapter {
     let response: SearchResponse;
     try {
       response = await this.search.run({
+        caller: this.caller,
         query: query.text,
         root,
         caseSensitive: query.caseSensitive,

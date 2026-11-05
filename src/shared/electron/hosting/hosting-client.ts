@@ -12,6 +12,7 @@ import {
   isHostingCapability,
 } from '@shared/api/hosting-protocol';
 import { logger } from '../logger';
+import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { HostingSpec } from './hosting-descriptor';
@@ -26,13 +27,6 @@ const HANDSHAKE_TIMEOUT_MS: number = 10_000;
  * Specifies the grace period, in milliseconds, between SIGTERM and SIGKILL when stopping a plugin.
  */
 const KILL_GRACE_MS: number = 2_000;
-
-/**
- * Specifies the longest stdout line, in characters, the client will buffer while waiting for its
- * newline — matching the git plugin's own 64 MB output cap. A plugin that writes more than this in one
- * message (or never ends a line) would otherwise grow the buffer without bound.
- */
-const MAX_LINE_LENGTH: number = 64 * 1024 * 1024;
 
 /**
  * Holds a request awaiting its answer.
@@ -79,19 +73,9 @@ export class HostingClient implements HostingEndpoint {
   private readonly pending: Map<number, Pending> = new Map<number, Pending>();
 
   /**
-   * Holds the incomplete trailing line of stdout, since a chunk may split a message in half.
-   */
-  private buffer: string = '';
-
-  /**
    * Holds the longest stdout line the client will buffer before refusing it.
    */
   private readonly maxLineLength: number;
-
-  /**
-   * Holds whether the client is skipping the rest of a refused oversized line, up to its newline.
-   */
-  private discarding: boolean = false;
 
   /**
    * Holds the next correlation identifier.
@@ -160,7 +144,15 @@ export class HostingClient implements HostingEndpoint {
     pidJournal()?.register(this.process.pid, 'hosting', this.spec.command);
 
     this.process.stdout?.setEncoding('utf8');
-    this.process.stdout?.on('data', (chunk: string): void => this.onData(chunk));
+    // One per process, so what a dead one left half-written, or still has in the pipe, can never
+    // be read as the start of its successor's first line.
+    const lines: LineSplitter = new LineSplitter({
+      trim: true,
+      maxLineLength: this.maxLineLength,
+      onLine: (line: string): void => this.dispatch(line),
+      onOversized: (): void => this.refuseOversizedLine(),
+    });
+    this.process.stdout?.on('data', (chunk: string): void => lines.push(chunk));
     this.process.stderr?.setEncoding('utf8');
     this.process.stderr?.on('data', (chunk: string): void => {
       logger.debug('HostingClient', `[${this.id}] ${chunk.trimEnd()}`);
@@ -299,34 +291,6 @@ export class HostingClient implements HostingEndpoint {
   }
 
   /**
-   * Consumes stdout, dispatching each complete line.
-   * @param chunk The received text.
-   */
-  private onData(chunk: string): void {
-    if (this.discarding) {
-      const end: number = chunk.indexOf('\n');
-      if (end === -1) {
-        return;
-      }
-      this.discarding = false;
-      chunk = chunk.slice(end + 1);
-    }
-    this.buffer += chunk;
-    let newline: number = this.buffer.indexOf('\n');
-    while (newline !== -1) {
-      const line: string = this.buffer.slice(0, newline).trim();
-      this.buffer = this.buffer.slice(newline + 1);
-      if (line.length > 0) {
-        this.dispatch(line);
-      }
-      newline = this.buffer.indexOf('\n');
-    }
-    if (this.buffer.length > this.maxLineLength) {
-      this.refuseOversizedLine();
-    }
-  }
-
-  /**
    * Refuses a stdout line that has outgrown {@link maxLineLength} without ending: the buffered part
    * is dropped and the rest skipped up to its newline, so the stream stays in step for the messages
    * after it. Which request the line answered cannot be read without parsing it whole, so every
@@ -337,8 +301,6 @@ export class HostingClient implements HostingEndpoint {
       'HostingClient',
       `'${this.id}' wrote a message over ${this.maxLineLength} characters; it was dropped`,
     );
-    this.buffer = '';
-    this.discarding = true;
     this.failPending(`${this.id} sent an answer too large to read.`);
   }
 

@@ -364,8 +364,22 @@ export class Monaco {
    * @returns Returns a promise that resolves once Monaco is ready.
    */
   public ensureLoaded(): Promise<void> {
-    this.loadPromise ??= this.load();
+    this.loadPromise ??= this.loadForgettingFailure();
     return this.loadPromise;
+  }
+
+  /**
+   * Loads Monaco into the main window, forgetting a load that fails. Kept, a failure would answer
+   * every later editor for the rest of the session, when the file it wanted may be back by then.
+   * @returns Returns a promise that resolves once Monaco is ready.
+   */
+  private async loadForgettingFailure(): Promise<void> {
+    try {
+      await this.load();
+    } catch (error: unknown) {
+      this.loadPromise = null;
+      throw error;
+    }
   }
 
   /**
@@ -399,10 +413,25 @@ export class Monaco {
     }
     let load: Promise<typeof MonacoApi> | undefined = this.childLoads.get(target);
     if (load === undefined) {
-      load = this.loadIntoChild(target);
+      load = this.loadIntoChildForgettingFailure(target);
       this.childLoads.set(target, load);
     }
     return load;
+  }
+
+  /**
+   * Loads Monaco into a child window, forgetting a load that fails (see
+   * {@link loadForgettingFailure}).
+   * @param target The child window.
+   * @returns Returns a promise that resolves to the window's Monaco namespace.
+   */
+  private async loadIntoChildForgettingFailure(target: Window): Promise<typeof MonacoApi> {
+    try {
+      return await this.loadIntoChild(target);
+    } catch (error: unknown) {
+      this.childLoads.delete(target);
+      throw error;
+    }
   }
 
   /**
@@ -999,14 +1028,20 @@ export class Monaco {
         script.onload = (): void => {
           const loader: {
             config: (config: { paths: { vs: string } }) => void;
-            (modules: readonly string[], callback: (monaco: typeof MonacoApi) => void): void;
+            (
+              modules: readonly string[],
+              callback: (monaco: typeof MonacoApi) => void,
+              errorCallback: (reason: Error) => void,
+            ): void;
           } = (target as unknown as { require: typeof loader }).require;
           loader.config({ paths: { vs: assetUrl('./vs') } });
-          loader(['vs/editor/editor.main'], resolve);
+          // Without the error callback a module that will not load leaves this waiting for ever.
+          loader(['vs/editor/editor.main'], resolve, reject);
         };
         script.onerror = (): void => {
           const error: Error = new Error('Failed to load the Monaco editor loader.');
           this.log.error('Monaco', 'Failed to load the Monaco editor loader', error);
+          script.remove();
           reject(error);
         };
         targetDocument.head.appendChild(script);

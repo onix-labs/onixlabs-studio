@@ -87,6 +87,12 @@ interface PopoutWindow {
   watcher: EffectRef | null;
 
   /**
+   * Gets the function that deregisters the window dock's outside-drop handler, which holds this
+   * record and so the whole window's dock until it runs.
+   */
+  releaseDrop: (() => void) | null;
+
+  /**
    * Gets the identifiers of the panels this window currently owns.
    */
   tracked: ReadonlySet<string>;
@@ -297,6 +303,7 @@ export class PanelPopout implements OnDestroy {
       floating: host.injector.get(DockFloating),
       reveal: host.injector.get(DockReveal),
       watcher: null,
+      releaseDrop: null,
       tracked: new Set<string>(),
     };
     this.windows.push(popout);
@@ -318,13 +325,11 @@ export class PanelPopout implements OnDestroy {
 
     // The window's dock takes over outside drops released from ITS drags, so panels move between
     // windows and back to the main dock by the same gesture.
-    this.unregister.push(
-      host.injector
-        .get(DockDrag)
-        .registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
-          this.handleWindowDrop(popout, panel, event),
-        ),
-    );
+    popout.releaseDrop = host.injector
+      .get(DockDrag)
+      .registerExternalDrop((panel: DockPanel, event: MouseEvent): boolean =>
+        this.handleWindowDrop(popout, panel, event),
+      );
 
     // Reconcile membership as the window's dock changes: a panel closed there leaves the popped
     // set entirely (exactly as a close in the main dock would), and a window with nothing left —
@@ -340,6 +345,17 @@ export class PanelPopout implements OnDestroy {
       { injector: this.injector },
     );
     return popout;
+  }
+
+  /**
+   * Detaches a window from the dock's changes and its drops, on any of the ways it goes away.
+   * @param popout The window.
+   */
+  private stopWatching(popout: PopoutWindow): void {
+    popout.watcher?.destroy();
+    popout.watcher = null;
+    popout.releaseDrop?.();
+    popout.releaseDrop = null;
   }
 
   /**
@@ -525,8 +541,7 @@ export class PanelPopout implements OnDestroy {
     if (index !== -1) {
       this.windows.splice(index, 1);
     }
-    popout.watcher?.destroy();
-    popout.watcher = null;
+    this.stopWatching(popout);
     const returning: readonly string[] = [...popout.tracked];
     popout.tracked = new Set<string>();
     this.applicationRef.detachView(popout.host.hostView);
@@ -615,8 +630,7 @@ export class PanelPopout implements OnDestroy {
       if (index !== -1) {
         this.windows.splice(index, 1);
       }
-      popout.watcher?.destroy();
-      popout.watcher = null;
+      this.stopWatching(popout);
       for (const panelId of popout.tracked) {
         this.origins.delete(panelId);
         this.popouts.clear(panelId);
@@ -638,8 +652,7 @@ export class PanelPopout implements OnDestroy {
       dispose();
     }
     for (const popout of [...this.windows]) {
-      popout.watcher?.destroy();
-      popout.watcher = null;
+      this.stopWatching(popout);
       this.applicationRef.detachView(popout.host.hostView);
       popout.host.destroy();
       popout.window.close();

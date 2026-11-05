@@ -143,7 +143,8 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * Holds the decorations collection drawing the current-execution-line marker, or null before the
    * editor is ready.
    */
-  private stoppedDecorations: MonacoApi.editor.IEditorDecorationsCollection | null = null;
+  private readonly stoppedDecorations: WritableSignal<MonacoApi.editor.IEditorDecorationsCollection | null> =
+    signal<MonacoApi.editor.IEditorDecorationsCollection | null>(null);
 
   /**
    * Holds the breakpoint-gutter controller once the pane's editor is ready, or null before then (and
@@ -304,8 +305,9 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     effect((): void => {
       const location: DebugLocation | null = this.debugger.stoppedLocation();
       const path: string | null = this.backingDocument()?.filePath() ?? null;
+      // A signal, because a step into a new file stops before that file's editor is ready.
       const collection: MonacoApi.editor.IEditorDecorationsCollection | null =
-        this.stoppedDecorations;
+        this.stoppedDecorations();
       if (collection === null) {
         return;
       }
@@ -475,7 +477,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
           (line: number): void => this.openBreakpointEditor(line),
         ),
       );
-      this.stoppedDecorations = editor.createDecorationsCollection([]);
+      this.stoppedDecorations.set(editor.createDecorationsCollection([]));
     }
     this.ready.emit();
   }

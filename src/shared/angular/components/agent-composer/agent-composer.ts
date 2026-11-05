@@ -1253,17 +1253,24 @@ export class AgentComposer {
         return;
       }
       const data: string | null = await this.readAsBase64(file);
-      if (data !== null) {
-        const image: AiImageRef = {
-          mediaType: file.type,
-          data,
-          ...(file.name.length > 0 ? { name: file.name } : {}),
-        };
-        this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] => [
-          ...images,
-          image,
-        ]);
+      if (data === null) {
+        this.showImageHint(`${file.name.length > 0 ? file.name : 'The image'} could not be read.`);
+        continue;
       }
+      // Asked again after the wait: a second paste can have taken the last place during the read.
+      if (this.pendingImages().length >= maxImages) {
+        this.showImageHint(`At most ${maxImages} images can be attached to one message.`);
+        return;
+      }
+      const image: AiImageRef = {
+        mediaType: file.type,
+        data,
+        ...(file.name.length > 0 ? { name: file.name } : {}),
+      };
+      this.pendingImages.update((images: readonly AiImageRef[]): readonly AiImageRef[] => [
+        ...images,
+        image,
+      ]);
     }
   }
 

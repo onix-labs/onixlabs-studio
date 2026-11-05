@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { ReplaceRequest, ReplaceResponse } from '@shared/api/search-channels';
+import { MAX_EDIT_FILE_BYTES } from './apply-text-edits';
 import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
 
@@ -49,6 +50,33 @@ describe('replaceInFiles (#882)', () => {
       ...overrides,
     };
   }
+
+  it('replaceInFiles_withAFileOverTheLimit_reportsIt_leavesItAlone_andCarriesOn', async () => {
+    const huge: string = path.join(root, 'huge.txt');
+    const small: string = path.join(root, 'small.txt');
+    writeFileSync(huge, `name${'x'.repeat(MAX_EDIT_FILE_BYTES)}`);
+    writeFileSync(small, 'name');
+
+    const response: ReplaceResponse = await replaceInFiles(request([huge, small]), workspace);
+
+    expect(response).toEqual({
+      replaced: 1,
+      files: 1,
+      failed: [{ path: huge, reason: 'It is too large to change on disk.' }],
+    });
+    expect(read('huge.txt').startsWith('name')).toBe(true);
+    expect(read('small.txt')).toBe('id');
+  });
+
+  it('replaceInFiles_withAFileExactlyAtTheLimit_stillChangesIt', async () => {
+    const atLimit: string = path.join(root, 'limit.txt');
+    writeFileSync(atLimit, `name${'x'.repeat(MAX_EDIT_FILE_BYTES - 4)}`);
+
+    const response: ReplaceResponse = await replaceInFiles(request([atLimit]), workspace);
+
+    expect(response).toMatchObject({ replaced: 1, files: 1, failed: [] });
+    expect(read('limit.txt').startsWith('idxx')).toBe(true);
+  });
 
   /**
    * Reads a file under the workspace.
