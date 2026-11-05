@@ -1,5 +1,6 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 
 import { AgentConversationSummary } from '@shared/api/agent-conversation-channels';
 import { AgentCategory } from '@shared/api/agent-category-channels';
@@ -668,15 +669,13 @@ describe('AgentConversationList', () => {
     it('collapse_whenStorageRefuses_stillCollapses', async () => {
       summaries.set([SUMMARY]);
       await settle();
-      const refusing: ReturnType<typeof vi.spyOn> = vi
-        .spyOn(Storage.prototype, 'setItem')
-        .mockImplementation((): void => {
-          throw new Error('quota exceeded');
-        });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation((): void => {
+        throw new Error('quota exceeded');
+      });
 
       nodeRow(0).click();
       await settle();
-      refusing.mockRestore();
+      vi.restoreAllMocks();
 
       expect(titles()).toEqual([]);
     });
