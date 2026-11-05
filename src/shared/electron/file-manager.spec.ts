@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -142,6 +143,13 @@ describe('FileManager', () => {
       fs.chmodSync(file, 0o000);
 
       expect(await invoke(FileChannel.Read, file)).toBeNull();
+    });
+
+    it('read_ofAFifo_answersNull_ratherThanWaitingForAWriterForever', async () => {
+      const pipe: string = path.join(directory, 'pipe.txt');
+      execFileSync('mkfifo', [pipe]);
+
+      expect(await invoke(FileChannel.Read, pipe)).toBeNull();
     });
 
     it('read_withANulInThePath_answersNull', async () => {
@@ -408,6 +416,17 @@ describe('FileManager', () => {
       const opened: readonly FileInfo[] = await invoke(FileChannel.OpenFileDialog);
 
       expect(opened.map((file: FileInfo): string => file.content)).toEqual(['1', '2']);
+    });
+
+    it('openDialog_doesNotHangOnAFifoAmongTheChosenFiles', async () => {
+      const pipe: string = path.join(directory, 'pipe.txt');
+      execFileSync('mkfifo', [pipe]);
+      const file: string = fixture('real.txt', 'real');
+      electron.chosen = [pipe, file];
+
+      const opened: readonly FileInfo[] = await invoke(FileChannel.OpenFileDialog);
+
+      expect(opened.map((entry: FileInfo): string => entry.path)).toEqual([file]);
     });
 
     it('pickImage_answersThePathWithoutReadingIt', async () => {

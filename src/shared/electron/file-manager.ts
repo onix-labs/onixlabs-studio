@@ -404,6 +404,11 @@ export class FileManager {
   private async readFileInfo(filePath: string, decode: TextDecodeOptions = {}): Promise<FileInfo> {
     // The byte-order mark is stripped from the content but recorded, so it is written back and the
     // editor never shows it as an invisible character.
+    // Reading a FIFO blocks until a writer appears, pinning a thread-pool thread and leaving the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!(await fs.stat(filePath)).isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
     const decoded: DecodedText = decodeText(await fs.readFile(filePath), decode);
     logger.debug(
       'FileManager.readFileInfo',
