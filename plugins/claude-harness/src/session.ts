@@ -254,6 +254,11 @@ export class Session {
   private settle: (() => void) | null = null;
 
   /**
+   * Settles when every turn started so far has, so the next one can follow it. Never rejects.
+   */
+  private lastTurn: Promise<void> = Promise.resolve();
+
+  /**
    * Fails the turn Studio is awaiting, or null when nothing is.
    */
   private fail: ((error: string) => void) | null = null;
@@ -386,10 +391,27 @@ export class Session {
   }
 
   /**
-   * Runs one turn, settling when the SDK reports its result.
+   * Runs one turn, settling when the SDK reports its result. A turn that arrives while another is
+   * awaited waits its go: `main` starts every `turn.start` as it reads it, and a session has one slot
+   * for the awaited turn, so running both at once would leave the first with no terminal status and
+   * its run in Studio "Working" forever.
+   * @param turn The turn envelope.
+   * @returns Returns a promise that settles with the turn.
+   */
+  public run(turn: TurnRequest): Promise<void> {
+    const running: Promise<void> = this.lastTurn.then((): Promise<void> => this.runTurn(turn));
+    // The caller hears about a failure from `running`; the next turn must not.
+    this.lastTurn = running.catch((error: unknown): void => {
+      note(`session: a turn ended in an unexpected failure: ${String(error)}`);
+    });
+    return running;
+  }
+
+  /**
+   * Runs a turn now that it is this turn's go.
    * @param turn The turn envelope.
    */
-  public async run(turn: TurnRequest): Promise<void> {
+  private async runTurn(turn: TurnRequest): Promise<void> {
     // Read before the reset below, which would otherwise hide a turn the CLI is still running.
     const busy: boolean = this.isBusy();
     this.current = turn;
@@ -414,7 +436,11 @@ export class Session {
           // The query's model was bound at open, so a later turn applies the change live rather than
           // forcing a reopen for it.
           this.appliedModel = turn.model;
-          void this.query.setModel(turn.model);
+          // A model the CLI refuses leaves the turn on the one it has; nothing awaits this, so an
+          // unhandled refusal would take the whole process with it.
+          void this.query.setModel(turn.model).catch((error: unknown): void => {
+            note(`session: changing the model to ${turn.model} failed: ${String(error)}`);
+          });
         }
         // The offer depends on the turn, so ask the CLI to re-read it.
         this.refreshTools();

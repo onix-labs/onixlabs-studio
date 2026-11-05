@@ -296,7 +296,10 @@ export class StudioConfig {
       return;
     }
     this.suppressReloadUntil = Date.now() + SELF_WRITE_GUARD_MS;
-    await this.bridge.invoke(channel, root, payload);
+    const saved: boolean = await this.bridge.invoke<boolean>(channel, root, payload);
+    if (!saved) {
+      this.log.error('StudioConfig', `Could not save the configuration in '${root}'`);
+    }
   }
 
   /**

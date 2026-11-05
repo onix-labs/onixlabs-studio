@@ -39,7 +39,13 @@ export class MenuManager {
       if (!Array.isArray(sections)) {
         return;
       }
-      this.install(sections as readonly AppMenuSection[]);
+      // The shape is the renderer's word for it, and a listener that throws is an uncaught exception
+      // here: a menu that cannot be built leaves the current one up.
+      try {
+        this.install(sections as readonly AppMenuSection[]);
+      } catch (error: unknown) {
+        logger.warn('MenuManager', 'Ignored a menu that could not be built', error);
+      }
     });
     ipcMain.on(MenuChannel.RunRole, (_event: IpcMainEvent, role: unknown): void => {
       if (typeof role === 'string') {
