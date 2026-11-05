@@ -582,22 +582,56 @@ describe('Session lifecycle', () => {
       ]);
     });
 
-    it.fails('aSecondTurnWhileOneIsAwaited_settlesBoth', async () => {
-      // `main` starts every `turn.start` it reads without waiting; only Studio holding turns back
-      // keeps this from happening. The first run's settle is overwritten, so it never ends.
+    it('aSecondTurnWhileOneIsAwaited_settlesBothInOrder', async () => {
+      // `main` starts every `turn.start` it reads without waiting, so the session is what keeps the
+      // two apart. Overlapping, the second overwrote the first's settle and the first never ended.
       const first: Promise<void> = (await start(turn('r1'))).done;
       const second: Promise<void> = (await start(turn('r2'))).done;
+
+      expect(queries[0].received).toHaveLength(1);
+
+      queries[0].answer();
+      await first;
+      await flush();
+
+      expect(queries[0].received).toHaveLength(2);
+
       queries[0].answer();
       await second;
 
-      const outcome: string = await Promise.race([
-        first.then((): string => 'settled'),
-        new Promise<string>((resolve: (value: string) => void): void => {
-          setTimeout((): void => resolve('hung'), 50);
-        }),
-      ]);
+      expect(
+        sentOf('turn.completed').map((message: HarnessMessage): unknown =>
+          message.type === 'turn.completed' ? message.requestId : null,
+        ),
+      ).toEqual(['r1', 'r2']);
+    });
 
-      expect(outcome).toBe('settled');
+    it('aWaitingTurn_failsWhenTheStreamEndsUnderTheOneAhead', async () => {
+      const first: Promise<void> = (await start(turn('r1'))).done;
+      const second: Promise<void> = (await start(turn('r2'))).done;
+
+      queries[0].end();
+      await Promise.all([first, second]);
+
+      expect(sentOf('turn.failed')).toEqual([
+        { type: 'turn.failed', requestId: 'r2', error: 'The Claude session has ended.' },
+      ]);
+    });
+
+    it('aWaitingTurn_leavesTheRunningQueryAloneUntilItsGo', async () => {
+      const first: Promise<void> = (await start(turn('r1'))).done;
+      const second: Promise<void> = (await start(turn('r2', { model: 'model-b' }))).done;
+
+      // The waiting turn has not touched the query the first is running on.
+      expect(queries[0].models).toEqual([]);
+
+      queries[0].answer();
+      await first;
+      await flush();
+      queries[0].answer();
+      await second;
+
+      expect(queries[0].models).toEqual(['model-b']);
     });
   });
 
