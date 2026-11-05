@@ -655,20 +655,39 @@ export class Workspace {
       ...current,
       loading: true,
     }));
-    const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
-      WorkspaceChannel.ReadDirectory,
-      path,
-    ) ?? Promise.resolve(null));
-    const children: readonly WorkspaceTreeNode[] =
-      listing === null
-        ? []
-        : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
+    // A folder that could not be read stays unloaded, so the next expand tries again rather than
+    // showing it as empty for the rest of the session.
+    if (listing === null) {
+      this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+        ...current,
+        loading: false,
+      }));
+      return;
+    }
+    const children: readonly WorkspaceTreeNode[] = listing.entries.map(
+      (entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry),
+    );
     this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
       ...current,
       loading: false,
       expanded: true,
       children,
     }));
+  }
+
+  /**
+   * Reads a directory's listing, a bridge that fails outright counting as a failed read.
+   * @param path The directory.
+   * @returns Returns the listing, or null when it could not be read.
+   */
+  private async readListingOrNull(path: string): Promise<DirectoryListing | null> {
+    try {
+      return await this.readDirectoryListing(path);
+    } catch (error: unknown) {
+      this.log.warn('Workspace', `Could not read '${path}'`, error);
+      return null;
+    }
   }
 
   /**
@@ -748,10 +767,13 @@ export class Workspace {
     directory: string,
     args: readonly unknown[],
   ): Promise<FileOperationResult> {
-    const result: FileOperationResult = await (this.bridge?.invoke<FileOperationResult>(
-      channel,
-      ...args,
-    ) ?? Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    let result: FileOperationResult;
+    try {
+      result = await (this.bridge?.invoke<FileOperationResult>(channel, ...args) ??
+        Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    } catch (error: unknown) {
+      result = { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
     if (!result.success) {
       this.log.warn('Workspace', `${channel} failed`, result.error);
       return result;
@@ -823,9 +845,10 @@ export class Workspace {
     }
     this.refreshBurstTimer = setTimeout((): void => {
       this.refreshBurstTimer = null;
-      const pending: ReadonlySet<string> | null = this.pendingRefreshDirs ?? new Set<string>();
+      // Null, not empty, is what an overflow left: `??` here would turn "everything" into "nothing".
+      const pending: ReadonlySet<string> | null | undefined = this.pendingRefreshDirs;
       this.pendingRefreshDirs = undefined;
-      void this.runTreeRefresh(pending);
+      void this.runTreeRefresh(pending === undefined ? new Set<string>() : pending);
     }, TREE_REFRESH_DEBOUNCE_MS);
   }
 
@@ -913,7 +936,7 @@ export class Workspace {
    */
   private async refresh(path: string): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
-    const listing: DirectoryListing | null = await this.readDirectoryListing(path);
+    const listing: DirectoryListing | null = await this.readListingOrNull(path);
     if (listing === null || this.rootListing()?.path !== root) {
       return;
     }
