@@ -3065,6 +3065,137 @@ describe('LspClient', () => {
         .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
     ).toBe('main process stalled');
   });
+
+  it('start_whoseInvokeRejects_saysWhy_andOpensNothing', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    openDocument(client);
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
+  it('closeDocument_ofOneOfTwoStandaloneDocuments_leavesTheServerRunning', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/scratch/a.ts',
+      languageId: 'typescript',
+      content: 'a',
+    });
+    client.syncDocument({
+      documentId: 'doc-2',
+      path: '/tmp/scratch/b.ts',
+      languageId: 'typescript',
+      content: 'b',
+    });
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+    expect(client.rootForDocument('doc-2')).toBe('/tmp/scratch');
+    expect(client.rootForDocument('doc-1')).toBeNull();
+  });
+
+  it('closeDocument_whileItsOpenIsStillStarting_neverStrandsAnOpenDocument', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('closeDocument_afterTheServerCrashed_startsNothingToCloseIt', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.exit('/root::typescript');
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toEqual([]);
+  });
+
+  it('attachDebugger_whenAttachingThrows_tellsTheServerItDidNot', async () => {
+    const client: LspClient = build();
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.spyOn(TestBed.inject(DebugAttachRouter), 'attach').mockRejectedValue(
+      new Error('no adapter'),
+    );
+
+    lsp.attachDebugger({ requestId: 'r1', sessionId: '/root::csharp', processId: 7 });
+    await flush();
+
+    expect(lsp.attachReplies).toEqual([{ requestId: 'r1', didAttach: false }]);
+    expect(client.rootForDocument('doc-1')).toBe('/root');
+  });
+
+  it('applyEdit_whenApplyingThrows_tellsTheServerWhy', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.spyOn(TestBed.inject(WorkspaceEditApplier), 'apply').mockRejectedValue(
+      new Error('read only'),
+    );
+
+    lsp.applyEdit('/root::typescript', { changes: {} });
+    await flush();
+
+    expect(lsp.applyEditReplies).toEqual([
+      { requestId: 'r1', applied: false, failureReason: 'Error: read only' },
+    ]);
+  });
+
+  it('destroy_answersWhatIsStillAsked_stopsEverything_andCancelsWhatIsPending', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.ask({
+      requestId: 'q1',
+      sessionId: '/root::typescript',
+      type: 3,
+      message: 'Sure?',
+      actions: ['Yes'],
+    });
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.ngOnDestroy();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: null }]);
+      expect(lsp.stops).toEqual(['/root::typescript']);
+      expect(lsp.requests).toHaveLength(before);
+      expect(client.rootForDocument('doc-1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('idleStopMs', () => {
