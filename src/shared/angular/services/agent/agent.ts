@@ -2769,6 +2769,8 @@ export class Agent {
         );
         this.activeRequestId = null;
         this.busy.set(false);
+        // Nothing failed here, and no status will come along to carry on with what was queued.
+        this.dispatchQueue();
       }, ADOPTION_DEADLINE_MS),
     };
   }

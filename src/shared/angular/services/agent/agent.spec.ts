@@ -2988,4 +2988,30 @@ describe('Agent', () => {
     expect(lastItem()?.permissionState).toBe('pending');
     expect(lastItem()?.permissionDiff).toBeUndefined();
   });
+
+  it('backgroundTask_whenTheAdoptedTurnIsReleased_sendsWhatWasQueuedMeanwhile', async () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      completeTurn();
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      agent.send('while it was adopted');
+      await vi.advanceTimersByTimeAsync(0);
+
+      await vi.advanceTimersByTimeAsync(ADOPTION_DEADLINE_MS + 100);
+
+      expect(runCalls[runCalls.length - 1].prompt).toBe('while it was adopted');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
