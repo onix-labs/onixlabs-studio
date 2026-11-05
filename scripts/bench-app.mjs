@@ -273,10 +273,16 @@ try {
   makeCodeFile(small, 50_000);
   makeCodeFile(medium, 1_000_000);
   makeCodeFile(large, 8_000_000);
+  const csharp = path.join(scratch, 'heuristic.cs');
+  makeCodeFile(csharp, 800_000);
+  const csharpLarge = path.join(scratch, 'heuristic-large.cs');
+  makeCodeFile(csharpLarge, 4_000_000);
   if (only === undefined || only === 'file') {
     results.file50k = await openFile('open + type 50 kB file', small);
     results.file1m = await openFile('open + type 1 MB file', medium);
     results.file8m = await openFile('open + type 8 MB file', large);
+  results.csharp = await openFile('open + type 800 kB C#', csharp);
+  results.csharpLarge = await openFile('open + type 4 MB C#', csharpLarge);
   }
   if (only === undefined || only === 'markdown') {
     const doc = path.join(scratch, 'large.md');

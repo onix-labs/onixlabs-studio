@@ -9,6 +9,12 @@ import { GitFileChange } from './repository-data';
 import { Repository } from './repository';
 
 /**
+ * The most changed lines a diff works through before giving up. It runs on the UI thread and its cost
+ * grows with the square of this; a rewritten file tells the model what it needs to know anyway.
+ */
+const MAX_EDIT_LENGTH: number = 1000;
+
+/**
  * The largest unified-diff excerpt included per file, so one big file cannot crowd out the rest.
  */
 const PATCH_CHAR_BUDGET: number = 4_000;
@@ -133,12 +139,16 @@ export class CommitMessageGenerator {
         break;
       }
       const diff: FileDiff = await this.repository.loadDiff(file);
-      const patch: string = createTwoFilesPatch(
-        file.previousPath ?? file.path,
-        file.path,
-        diff.original,
-        diff.modified,
-      );
+      const patch: string =
+        createTwoFilesPatch(
+          file.previousPath ?? file.path,
+          file.path,
+          diff.original,
+          diff.modified,
+          undefined,
+          undefined,
+          { maxEditLength: MAX_EDIT_LENGTH },
+        ) ?? `${file.path}: most of this file changed`;
       const excerpt: string =
         patch.length > PATCH_CHAR_BUDGET
           ? `${patch.slice(0, PATCH_CHAR_BUDGET)}\n… (diff truncated)`

@@ -95,6 +95,53 @@ const CONTEXT_LINES: number = 3;
 const MAX_LINES: number = 400;
 
 /**
+ * The most changed lines a diff works through before giving up. It runs on the UI thread, and its cost
+ * grows with the square of this: uncapped, an agent rewriting a large file froze the card asking
+ * whether to allow it.
+ */
+const MAX_EDIT_LENGTH: number = 1000;
+
+/**
+ * Reads a change too large to diff line by line as one replaced run, between the lines the two texts
+ * still share at their start and end.
+ * @param original The text as it is.
+ * @param modified The text as the change would leave it.
+ * @returns Returns the patch.
+ */
+function replacedRun(original: string, modified: string): Pick<StructuredPatch, 'hunks'> {
+  const before: string[] = original.split('\n');
+  const after: string[] = modified.split('\n');
+  const shared: number = Math.min(before.length, after.length);
+  let start: number = 0;
+  while (start < shared && before[start] === after[start]) {
+    start += 1;
+  }
+  let end: number = 0;
+  while (
+    end < shared - start &&
+    before[before.length - 1 - end] === after[after.length - 1 - end]
+  ) {
+    end += 1;
+  }
+  const removed: string[] = before.slice(start, before.length - end);
+  const added: string[] = after.slice(start, after.length - end);
+  return {
+    hunks: [
+      {
+        oldStart: start + 1,
+        oldLines: removed.length,
+        newStart: start + 1,
+        newLines: added.length,
+        lines: [
+          ...removed.map((line: string): string => `-${line}`),
+          ...added.map((line: string): string => `+${line}`),
+        ],
+      },
+    ],
+  };
+}
+
+/**
  * Computes the diff an approval card shows for a proposed change.
  * @param path The file the change is to.
  * @param original The file's text as it is, or null when it does not exist yet.
@@ -106,9 +153,11 @@ export function proposedDiff(
   original: string | null,
   modified: string,
 ): ProposedDiff {
-  const patch: StructuredPatch = structuredPatch(path, path, original ?? '', modified, '', '', {
-    context: CONTEXT_LINES,
-  });
+  const patch: Pick<StructuredPatch, 'hunks'> =
+    structuredPatch(path, path, original ?? '', modified, '', '', {
+      context: CONTEXT_LINES,
+      maxEditLength: MAX_EDIT_LENGTH,
+    }) ?? replacedRun(original ?? '', modified);
   let additions: number = 0;
   let deletions: number = 0;
   let shown: number = 0;
