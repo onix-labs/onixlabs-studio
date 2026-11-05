@@ -10,6 +10,7 @@ import {
   isCompatibleDatabaseEngineProtocol,
 } from '@shared/api/database-engine-protocol';
 import { logger } from '../../logger';
+import { LineSplitter, MAX_LINE_LENGTH } from '../../line-splitter';
 import { pidJournal } from '../../pid-journal';
 import { pluginEnvironment } from '../../plugin-environment';
 import type { NodeRuntimeSpec } from '../plugins/plugin-loader';
@@ -102,11 +103,6 @@ export class DatabaseEngineClient {
   private readonly pending: Map<number, Pending> = new Map<number, Pending>();
 
   /**
-   * Holds the partial line read so far.
-   */
-  private buffer: string = '';
-
-  /**
    * Holds the next request id.
    */
   private nextId: number = 1;
@@ -125,10 +121,12 @@ export class DatabaseEngineClient {
    * Initializes a new instance of the {@link DatabaseEngineClient} class.
    * @param id The engine's id, for the log.
    * @param spec How to run the plugin process.
+   * @param maxLineLength The longest stdout line to buffer; defaults to {@link MAX_LINE_LENGTH}.
    */
   public constructor(
     public readonly id: string,
     private readonly spec: NodeRuntimeSpec,
+    private readonly maxLineLength: number = MAX_LINE_LENGTH,
   ) {}
 
   /**
@@ -230,7 +228,15 @@ export class DatabaseEngineClient {
     pidJournal()?.register(this.process.pid, 'database-engine', this.spec.command);
     const child: ChildProcess = this.process;
     child.stdout?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string): void => this.onData(chunk));
+    // One per process, so what a dead one left half-written, or still has in the pipe, can never
+    // be read as the start of its successor's first line.
+    const lines: LineSplitter = new LineSplitter({
+      trim: true,
+      maxLineLength: this.maxLineLength,
+      onLine: (line: string): void => this.dispatch(line),
+      onOversized: (): void => this.refuseOversizedLine(),
+    });
+    child.stdout?.on('data', (chunk: string): void => lines.push(chunk));
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string): void => {
       logger.debug('DatabaseEngineClient', `[${this.id}] ${chunk.trimEnd()}`);
@@ -318,20 +324,16 @@ export class DatabaseEngineClient {
   }
 
   /**
-   * Splits what the plugin wrote into lines.
-   * @param chunk The text read.
+   * Refuses a stdout line that has outgrown {@link maxLineLength} without ending. Which request the
+   * line answered cannot be read without parsing it whole, so every request in flight is failed
+   * rather than left to wait out its timeout for an answer that is gone.
    */
-  private onData(chunk: string): void {
-    this.buffer += chunk;
-    let newline: number = this.buffer.indexOf('\n');
-    while (newline !== -1) {
-      const line: string = this.buffer.slice(0, newline).trim();
-      this.buffer = this.buffer.slice(newline + 1);
-      if (line.length > 0) {
-        this.dispatch(line);
-      }
-      newline = this.buffer.indexOf('\n');
-    }
+  private refuseOversizedLine(): void {
+    logger.error(
+      'DatabaseEngineClient',
+      `'${this.id}' wrote a message over ${this.maxLineLength} characters; it was dropped`,
+    );
+    this.failPending(`The ${this.id} engine sent an answer too large to read.`);
   }
 
   /**

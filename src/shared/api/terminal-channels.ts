@@ -66,6 +66,12 @@ export enum TerminalChannel {
    * Notifies the renderer that a session has exited (main→renderer, send).
    */
   Exit = 'terminal:exit',
+
+  /**
+   * Tells main how many characters of a session's output the renderer has parsed, which is what
+   * paces a session producing faster than it can be shown (renderer→main, invoke).
+   */
+  Acknowledge = 'terminal:acknowledge',
 }
 
 /**

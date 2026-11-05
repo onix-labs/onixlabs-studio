@@ -577,4 +577,179 @@ describe('installGoToCommands', () => {
 
     expect(installed.opened).toEqual([]);
   });
+
+  describe('loading', () => {
+    let scripts: HTMLScriptElement[];
+    let monaco: Monaco;
+
+    /**
+     * Lets a load reach its script and adds the element to what the test can see.
+     */
+    async function nextTurn(): Promise<void> {
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    /**
+     * Spies on where a document's loader scripts go, without letting them load.
+     * @param target The document.
+     */
+    function capture(target: Document): void {
+      vi.spyOn(target.head, 'appendChild').mockImplementation(<T extends Node>(node: T): T => {
+        if (node instanceof (target.defaultView?.HTMLScriptElement ?? HTMLScriptElement)) {
+          scripts.push(node);
+        }
+        return node;
+      });
+    }
+
+    /**
+     * Gets the newest loader script.
+     * @returns Returns it.
+     */
+    function latestScript(): HTMLScriptElement {
+      const script: HTMLScriptElement | undefined = scripts[scripts.length - 1];
+      if (script === undefined) {
+        throw new Error('No loader script was added');
+      }
+      return script;
+    }
+
+    /**
+     * Fails the newest loader script as a missing file would.
+     */
+    function failScript(): void {
+      latestScript().onerror?.(new Event('error'));
+    }
+
+    beforeEach((): void => {
+      scripts = [];
+      capture(document);
+      monaco = TestBed.inject(Monaco);
+    });
+
+    afterEach((): void => {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(window, 'MonacoEnvironment');
+      Reflect.deleteProperty(window, 'require');
+    });
+
+    it('ensureLoaded_calledTwiceWhileLoading_addsOneScript', async () => {
+      const first: Promise<void> = monaco.ensureLoaded();
+      const second: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(scripts).toHaveLength(1);
+      failScript();
+      await expect(first).rejects.toThrow('Failed to load');
+      await expect(second).rejects.toThrow('Failed to load');
+    });
+
+    it('ensureLoaded_afterAFailedLoad_triesAgain', async () => {
+      const first: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+      failScript();
+      await expect(first).rejects.toThrow('Failed to load');
+
+      const second: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(scripts).toHaveLength(2);
+      failScript();
+      await expect(second).rejects.toThrow('Failed to load');
+    });
+
+    it('ensureLoaded_editorModulesFailToLoad_rejectsRatherThanHanging', async () => {
+      const failure: Error = new Error('editor.main.js missing');
+      const loader: ((
+        modules: readonly string[],
+        loaded: () => void,
+        failed: (error: Error) => void,
+      ) => void) & { config?: () => void } = (
+        _modules: readonly string[],
+        _loaded: () => void,
+        failed: (error: Error) => void,
+      ): void => {
+        failed(failure);
+      };
+      loader.config = (): void => undefined;
+      Object.defineProperty(window, 'require', { value: loader, configurable: true });
+
+      const loading: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+      latestScript().onload?.(new Event('load'));
+
+      await expect(loading).rejects.toBe(failure);
+    });
+
+    it.each([
+      ['json', 'vs/language/json/json.worker.js'],
+      ['css', 'vs/language/css/css.worker.js'],
+      ['scss', 'vs/language/css/css.worker.js'],
+      ['less', 'vs/language/css/css.worker.js'],
+      ['html', 'vs/language/html/html.worker.js'],
+      ['handlebars', 'vs/language/html/html.worker.js'],
+      ['razor', 'vs/language/html/html.worker.js'],
+      ['typescript', 'vs/language/typescript/ts.worker.js'],
+      ['javascript', 'vs/language/typescript/ts.worker.js'],
+      ['anything-else', 'vs/editor/editor.worker.js'],
+    ])('workerUrl_%s_is_%s', async (label: string, worker: string) => {
+      const loading: Promise<void> = monaco.ensureLoaded();
+      await nextTurn();
+
+      expect(window.MonacoEnvironment?.getWorkerUrl?.('module', label)).toContain(worker);
+      failScript();
+      await expect(loading).rejects.toThrow();
+    });
+
+    it('ensureLoadedIn_aDocumentWithNoWindow_refuses', async () => {
+      const detached: Document = document.implementation.createHTMLDocument('detached');
+
+      await expect(monaco.ensureLoadedIn(detached)).rejects.toThrow('no window');
+    });
+
+    describe('in a child window', () => {
+      let frame: HTMLIFrameElement;
+      let child: Document;
+
+      beforeEach((): void => {
+        frame = document.body.appendChild(document.createElement('iframe'));
+        const contents: Document | null = frame.contentDocument;
+        if (contents === null) {
+          throw new Error('The frame has no document');
+        }
+        child = contents;
+        capture(child);
+      });
+
+      afterEach((): void => {
+        frame.remove();
+      });
+
+      it('ensureLoadedIn_calledTwiceWhileLoading_addsOneScript', async () => {
+        const first: Promise<unknown> = monaco.ensureLoadedIn(child);
+        const second: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+
+        expect(scripts).toHaveLength(1);
+        failScript();
+        await expect(first).rejects.toThrow('Failed to load');
+        await expect(second).rejects.toThrow('Failed to load');
+      });
+
+      it('ensureLoadedIn_afterAFailedLoad_triesAgain', async () => {
+        const first: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+        failScript();
+        await expect(first).rejects.toThrow('Failed to load');
+
+        const second: Promise<unknown> = monaco.ensureLoadedIn(child);
+        await nextTurn();
+
+        expect(scripts).toHaveLength(2);
+        failScript();
+        await expect(second).rejects.toThrow('Failed to load');
+      });
+    });
+  });
 });

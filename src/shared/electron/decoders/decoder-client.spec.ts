@@ -138,6 +138,51 @@ describe('DecoderClient', (): void => {
     client.dispose();
   });
 
+  it('decode_whenTheAnswerOutgrowsTheLineCap_answersNothing_andTheNextAnswerStillArrives', async (): Promise<void> => {
+    const oversized: string = `
+      let first = true;
+      const lines = require('node:readline').createInterface({ input: process.stdin });
+      lines.on('line', (line) => {
+        const request = JSON.parse(line);
+        if (request.op === 'describe') {
+          process.stdout.write(JSON.stringify({
+            id: request.id, ok: true,
+            description: { protocol: '1.0', formats: ['elf/x64'], requiresWholeFile: false },
+          }) + '\\n');
+        } else if (first) {
+          first = false;
+          process.stdout.write('{"id":' + request.id + ',"ok":true,"listing":"' + 'x'.repeat(3000));
+          setTimeout(() => process.stdout.write('x'.repeat(3000) + '"}\\n'), 30);
+        } else {
+          process.stdout.write(JSON.stringify({
+            id: request.id, ok: true,
+            listing: { language: 'x64', addressing: 'file-offset', origin: { kind: 'buffer', path: null }, sections: [] },
+          }) + '\\n');
+        }
+      });
+    `;
+    const client: DecoderClient = new DecoderClient(
+      'oversized',
+      stub('oversized', oversized),
+      1024,
+    );
+    await client.start();
+    const started: number = Date.now();
+
+    const refused: CodeListing | null = await client.decode('elf/x64', new Uint8Array([0xc3]), 0);
+    const elapsed: number = Date.now() - started;
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 100);
+    });
+    const next: CodeListing | null = await client.decode('elf/x64', new Uint8Array([0xc3]), 0);
+
+    expect(refused).toBeNull();
+    // Well inside the ten-second request timeout: the refusal answers, it is not waited out.
+    expect(elapsed).toBeLessThan(2_000);
+    expect(next?.language).toBe('x64');
+    client.dispose();
+  });
+
   it('decodes and returns the listing, passing the base offset through', async (): Promise<void> => {
     const client: DecoderClient = new DecoderClient('decode', stub('decode', wellBehaved('1.0')));
     await client.start();

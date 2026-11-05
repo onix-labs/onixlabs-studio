@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { FileChangeType, FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import { FileChangeType, FileEvent, LspFileWatcher, MAX_PENDING_PATHS } from './lsp-file-watcher';
+
+/**
+ * The private steps driven directly, since a storm of native events cannot be produced on demand.
+ */
+interface WatcherInternals {
+  onEvent(eventType: string, filename: string): void;
+  flush(): Promise<void>;
+}
 
 /**
  * Waits long enough for a coalescing window (and the platform watcher's own latency) to pass.
@@ -130,6 +138,103 @@ describe('LspFileWatcher', () => {
     expect(uris.some((uri: string): boolean => uri.endsWith('/Tests/Tests.csproj'))).toBe(true);
     // Neither registration asked for source files under Tests.
     expect(uris.some((uri: string): boolean => uri.endsWith('/Tests/B.cs'))).toBe(false);
+  });
+
+  /**
+   * Reaches the watcher's private steps.
+   * @returns Returns them.
+   */
+  function internals(): WatcherInternals {
+    return watcher as unknown as WatcherInternals;
+  }
+
+  it('flush_acrossManyBatches_classifiesEachPathAndKeepsTheirOrder', async () => {
+    start();
+    writeFileSync(path.join(root, 'entry-0.ts'), 'x');
+    writeFileSync(path.join(root, 'entry-600.ts'), 'x');
+    for (let index: number = 0; index <= 600; index += 1) {
+      internals().onEvent('rename', `entry-${index}.ts`);
+    }
+
+    await internals().flush();
+
+    expect(events()).toHaveLength(601);
+    expect(events()[0]).toMatchObject({ type: FileChangeType.Created });
+    expect(events()[0].uri.endsWith('/entry-0.ts')).toBe(true);
+    expect(events()[300]).toMatchObject({ type: FileChangeType.Deleted });
+    expect(events()[600]).toMatchObject({ type: FileChangeType.Created });
+    expect(events()[600].uri.endsWith('/entry-600.ts')).toBe(true);
+  });
+
+  it('flush_doesNotHoldTheEventLoopForTheWholeWindow', async () => {
+    start();
+    for (let index: number = 0; index < 600; index += 1) {
+      internals().onEvent('change', `entry-${index}.ts`);
+    }
+    let turns: number = 0;
+    const counting: NodeJS.Timeout = setInterval((): void => {
+      turns += 1;
+    }, 0);
+
+    await internals().flush();
+    clearInterval(counting);
+
+    expect(events()).toHaveLength(600);
+    expect(turns).toBeGreaterThan(0);
+  });
+
+  it('close_whileAFlushIsResolving_deliversNothing', async () => {
+    start();
+    for (let index: number = 0; index < 600; index += 1) {
+      internals().onEvent('rename', `entry-${index}.ts`);
+    }
+
+    const flushing: Promise<void> = internals().flush();
+    watcher?.close();
+    await flushing;
+
+    expect(batches).toEqual([]);
+  });
+
+  it('eventsArrivingDuringAFlush_goOutInTheNextWindow', async () => {
+    start();
+    // The native watcher's own first events for the new root are not what is under test.
+    await settle();
+    batches.length = 0;
+    for (let index: number = 0; index < 600; index += 1) {
+      internals().onEvent('change', `entry-${index}.ts`);
+    }
+
+    const flushing: Promise<void> = internals().flush();
+    internals().onEvent('change', 'latecomer.ts');
+    await flushing;
+
+    expect(batches).toHaveLength(1);
+    await settle();
+    expect(batches).toHaveLength(2);
+    expect(batches[1]).toHaveLength(1);
+    expect(batches[1][0].uri.endsWith('/latecomer.ts')).toBe(true);
+  });
+
+  it('onEvent_pastTheCap_dropsNewPaths_butAPathAlreadyHeldStillUpdates', async () => {
+    start();
+    // The native watcher's own first events for the new root are not what is under test.
+    await settle();
+    batches.length = 0;
+    for (let index: number = 0; index < MAX_PENDING_PATHS; index += 1) {
+      internals().onEvent('change', `entry-${index}.ts`);
+    }
+
+    internals().onEvent('change', 'one-too-many.ts');
+    internals().onEvent('rename', 'entry-0.ts');
+    await internals().flush();
+
+    expect(events()).toHaveLength(MAX_PENDING_PATHS);
+    expect(
+      events().some((event: FileEvent): boolean => event.uri.endsWith('/one-too-many.ts')),
+    ).toBe(false);
+    // Gone from disk and renamed: resolved at flush, so it did not stay a mere change.
+    expect(events()[0]).toMatchObject({ type: FileChangeType.Deleted });
   });
 
   it('close_stopsDelivering', async () => {

@@ -138,6 +138,39 @@ describe('computeLineChanges', () => {
 });
 
 describe('splitLines', () => {
+  it('rewrite_ofEveryLine_marksEveryLine_withoutWalkingTheWholeDiff', () => {
+    const before: string[] = Array.from({ length: 19000 }, (_, i) => `before ${i}`);
+    const after: string[] = before.map((_, i) => `after ${i}`);
+
+    const changes: LineChangeSet = computeLineChanges(before, after);
+
+    expect(changes.changedLines.size).toBe(19000);
+    expect(changes.deletionAnchors.size).toBe(0);
+  }, 5000);
+
+  it('changeTooLargeToDiff_keepsTheUnchangedStartAndEndUnmarked', () => {
+    const lines: string[] = Array.from({ length: 6000 }, (_, i) => `line ${i}`);
+    const after: string[] = lines.map((line, i) => (i >= 1000 && i < 5000 ? `new ${i}` : line));
+
+    const changes: LineChangeSet = computeLineChanges(lines, after);
+
+    expect(changes.changedLines.size).toBe(4000);
+    expect(changes.changedLines.has(1000)).toBe(false);
+    expect(changes.changedLines.has(1001)).toBe(true);
+    expect(changes.changedLines.has(5000)).toBe(true);
+    expect(changes.changedLines.has(5001)).toBe(false);
+  });
+
+  it('changeTooLargeToDiff_thatOnlyRemovesLines_anchorsTheDeletion', () => {
+    const lines: string[] = Array.from({ length: 6000 }, (_, i) => `line ${i}`);
+    const after: string[] = [...lines.slice(0, 500), ...lines.slice(5500)];
+
+    const changes: LineChangeSet = computeLineChanges(lines, after);
+
+    expect(changes.changedLines.size).toBe(0);
+    expect([...changes.deletionAnchors]).toEqual([500]);
+  });
+
   it('split_whenMixedLineEndings_splitsOnCrlfCrAndLf', () => {
     expect(splitLines('a\r\nb\rc\nd')).toEqual(['a', 'b', 'c', 'd']);
   });
