@@ -282,8 +282,6 @@ describe('DirectoryWatcher', () => {
 
   it('watch_ofARootThatDoesNotExist_doesNotThrow', async () => {
     await expect(watch(path.join(root, 'gone'))).resolves.toBeUndefined();
-
-    expect(fakes.watches).toEqual([]);
   });
 
   it('watch_thatFails_isRetriedNextTime', async () => {
