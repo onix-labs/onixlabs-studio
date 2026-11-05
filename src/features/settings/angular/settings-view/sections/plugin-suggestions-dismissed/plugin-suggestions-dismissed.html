@@ -1,6 +1,7 @@
 @if (suggestions.dismissedCount() > 0) {
   <app-setting-row label="Turned-Down Suggestions" [description]="description()">
     <app-button
+      variant="ghost"
       label="Suggest Them Again"
       data-testid="plugin-suggestions-restore"
       (click)="suggestions.restore()"

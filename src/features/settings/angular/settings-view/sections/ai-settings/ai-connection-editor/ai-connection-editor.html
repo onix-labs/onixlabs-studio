@@ -70,6 +70,8 @@
             (click)="saveKey()"
           />
           <app-button
+            variant="ghost"
+            tone="danger"
             label="Clear"
             [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
             (click)="clearKey()"
@@ -122,6 +124,7 @@
     description="The models this configuration can run. Discover asks the provider what it offers now and adds any new models, including ones you said Not now to. Nothing is removed: a model the provider no longer offers is marked, and you can remove it here."
   >
     <app-button
+      variant="ghost"
       [icon]="Icon.REFRESH"
       [label]="discovering() ? 'Discovering…' : 'Discover'"
       [disabled]="!isAvailable || discovering()"
