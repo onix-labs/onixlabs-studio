@@ -131,10 +131,10 @@
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageInclude": ["src/**/*.ts", "../plugins/**/*.ts"],
             "coverageThresholds": {
-              "statements": 71.3,
-              "branches": 67.6,
-              "functions": 67.0,
-              "lines": 72.4
+              "statements": 86,
+              "branches": 80.3,
+              "functions": 83.4,
+              "lines": 86
             }
           }
         }
