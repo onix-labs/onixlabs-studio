@@ -33,10 +33,12 @@ const fakes: {
   handlers: Map<string, Handler>;
   watches: OpenedWatch[];
   watchError: Error | undefined;
+  realEvents: boolean;
 } = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
   watches: [],
   watchError: undefined,
+  realEvents: false,
 }));
 
 vi.mock('electron', () => ({
@@ -46,7 +48,9 @@ vi.mock('electron', () => ({
 }));
 
 // A real recursive watcher on a real directory with its listener captured, so a test can drive an
-// exact burst or raise an error the operating system will not produce on request.
+// exact burst or raise an error the operating system will not produce on request. What the operating
+// system reports reaches the listener only when a test asks for it: a stray event for the fresh
+// directory would otherwise land in a burst counted to the exact cap.
 vi.mock('node:fs', async (importOriginal: () => Promise<typeof fs>) => {
   const real: typeof fs = await importOriginal();
   const watch: (root: string, options: fs.WatchOptions, listener: WatchListener) => FSWatcher = (
@@ -57,7 +61,11 @@ vi.mock('node:fs', async (importOriginal: () => Promise<typeof fs>) => {
     if (fakes.watchError !== undefined) {
       throw fakes.watchError;
     }
-    const watcher: FSWatcher = real.watch(root, options, listener);
+    const watcher: FSWatcher = real.watch(root, options, (eventType, filename): void => {
+      if (fakes.realEvents) {
+        listener(eventType, filename);
+      }
+    });
     fakes.watches.push({ root, watcher, listener });
     return watcher;
   };
@@ -127,6 +135,7 @@ describe('DirectoryWatcher', () => {
   }
 
   beforeEach(() => {
+    fakes.realEvents = false;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'directory-watcher-')));
     fakes.handlers.clear();
@@ -422,6 +431,7 @@ describe('DirectoryWatcher', () => {
 
   it('realFileSystem_aFileCreatedUnderTheRoot_reachesTheRenderer', async () => {
     vi.useRealTimers();
+    fakes.realEvents = true;
     await watch();
 
     await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 100));
