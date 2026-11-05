@@ -13,9 +13,9 @@ import {
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import type { RunContainerRequest } from '@shared/api/container-types';
@@ -31,66 +31,59 @@ import { readRunForm } from './run-request';
  */
 @Component({
   selector: 'app-container-run-dialog',
-  imports: [Button, ButtonRow, Modal, ModalContent, SettingRow, TextField, Textarea],
+  imports: [Alert, Button, ButtonRow, Modal, ModalContent, TextField, Textarea],
   template: `
-    <app-modal [open]="open()" [width]="36" ariaLabel="Run a container" (dismiss)="cancel()">
+    <app-modal
+      [open]="open()"
+      [width]="36"
+      [frameless]="true"
+      ariaLabel="Run a container"
+      (dismiss)="cancel()"
+    >
       <ng-template appModalContent>
-        <h2 class="run__title">Run a container</h2>
-        <app-setting-row label="Image" description="The image to run, as in postgres:16.">
+        <h2 class="run__title">Run a Container</h2>
+        <div class="run__fields">
           <app-text-field
+            variant="floating"
+            label="Image"
+            placeholder="The image to run, as in postgres:16"
             [value]="image()"
-            ariaLabel="Image"
-            placeholder="postgres:16"
             (valueChange)="image.set($event)"
           />
-        </app-setting-row>
-        <app-setting-row label="Name" description="Leave empty to let the engine choose one.">
           <app-text-field
+            variant="floating"
+            label="Name"
+            placeholder="Leave empty to let the engine choose one"
             [value]="name()"
-            ariaLabel="Container name"
-            placeholder="my-database"
             (valueChange)="name.set($event)"
           />
-        </app-setting-row>
-        <app-setting-row
-          label="Ports"
-          description="host:container, separated by commas; add /udp for UDP."
-        >
           <app-text-field
+            variant="floating"
+            label="Ports"
+            placeholder="host:container, separated by commas; add /udp for UDP"
             [value]="ports()"
-            ariaLabel="Ports"
-            placeholder="5432:5432"
             (valueChange)="ports.set($event)"
           />
-        </app-setting-row>
-        <div class="run__block">
-          <span class="run__label">Environment</span>
-          <span class="run__hint">One KEY=value per line.</span>
           <app-textarea
-            [value]="env()"
+            variant="floating"
+            label="Environment"
+            placeholder="One KEY=value per line"
             [rows]="3"
-            ariaLabel="Environment variables"
-            placeholder="POSTGRES_PASSWORD=secret"
+            [value]="env()"
             (valueChange)="env.set($event)"
           />
-        </div>
-        <div class="run__block">
-          <span class="run__label">Volumes</span>
-          <span class="run__hint">
-            source:/path inside — a volume name or a folder on this machine; add :ro to mount it
-            read-only.
-          </span>
           <app-textarea
-            [value]="volumes()"
+            variant="floating"
+            label="Volumes"
+            placeholder="source:/path inside, a volume name or a folder on this machine; add :ro to mount it read-only"
             [rows]="2"
-            ariaLabel="Volumes"
-            placeholder="pgdata:/var/lib/postgresql/data"
+            [value]="volumes()"
             (valueChange)="volumes.set($event)"
           />
+          @for (problem of problems(); track problem) {
+            <app-alert tone="danger">{{ problem }}</app-alert>
+          }
         </div>
-        @for (problem of problems(); track problem) {
-          <p class="run__problem" role="alert">{{ problem }}</p>
-        }
         <app-button-row>
           <app-button
             variant="solid"
@@ -99,7 +92,7 @@ import { readRunForm } from './run-request';
             [disabled]="running()"
             (click)="pendingPull() === null ? run() : pullThenRun()"
           />
-          <app-button label="Cancel" [disabled]="running()" (click)="cancel()" />
+          <app-button variant="none" label="Cancel" [disabled]="running()" (click)="cancel()" />
         </app-button-row>
       </ng-template>
     </app-modal>
@@ -111,27 +104,11 @@ import { readRunForm } from './run-request';
       font-weight: 600;
     }
 
-    .run__block {
+    .run__fields {
       display: flex;
       flex-direction: column;
-      gap: 0.3rem;
-      padding-block: 0.5rem;
-    }
-
-    .run__label {
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .run__hint {
-      font-size: 0.75rem;
-      color: var(--settings-muted-foreground-color);
-    }
-
-    .run__problem {
-      margin: 0.25rem 0;
-      font-size: 0.8rem;
-      color: var(--danger-color);
+      gap: 0.75rem;
+      margin-block-end: 0.75rem;
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,

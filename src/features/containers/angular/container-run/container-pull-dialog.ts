@@ -15,8 +15,8 @@ import {
 import type { ImagePullProgress } from '@shared/api/container-types';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
@@ -28,27 +28,33 @@ import { ContainersClient } from '../client/containers-client';
  */
 @Component({
   selector: 'app-container-pull-dialog',
-  imports: [Button, ButtonRow, Modal, ModalContent, ProgressBar, SettingRow, TextField],
+  imports: [Alert, Button, ButtonRow, Modal, ModalContent, ProgressBar, TextField],
   template: `
-    <app-modal [open]="open()" [width]="30" ariaLabel="Pull an image" (dismiss)="close()">
+    <app-modal
+      [open]="open()"
+      [width]="30"
+      [frameless]="true"
+      ariaLabel="Pull an image"
+      (dismiss)="close()"
+    >
       <ng-template appModalContent>
-        <h2 class="pull__title">Pull an image</h2>
-        <app-setting-row label="Image" description="As in postgres:16, or ghcr.io/owner/name:tag.">
-          <app-text-field
-            [value]="reference()"
-            ariaLabel="Image to pull"
-            placeholder="postgres:16"
-            [disabled]="pulling()"
-            (valueChange)="reference.set($event)"
-            (enter)="pull()"
-          />
-        </app-setting-row>
+        <h2 class="pull__title">Pull an Image</h2>
+        <app-text-field
+          class="pull__field"
+          variant="floating"
+          label="Image"
+          placeholder="postgres:16, or ghcr.io/owner/name:tag"
+          [value]="reference()"
+          [disabled]="pulling()"
+          (valueChange)="reference.set($event)"
+          (enter)="pull()"
+        />
         @if (pulling()) {
           <app-progress-bar [label]="progressText()" />
           <p class="pull__status">{{ progressText() }}</p>
         }
         @if (error(); as message) {
-          <p class="pull__error" role="alert">{{ message }}</p>
+          <app-alert class="pull__alert" tone="danger">{{ message }}</app-alert>
         }
         <app-button-row>
           <app-button
@@ -58,7 +64,7 @@ import { ContainersClient } from '../client/containers-client';
             [disabled]="pulling() || reference().trim().length === 0"
             (click)="pull()"
           />
-          <app-button [label]="pulling() ? 'Close' : 'Cancel'" (click)="close()" />
+          <app-button variant="none" [label]="pulling() ? 'Close' : 'Cancel'" (click)="close()" />
         </app-button-row>
       </ng-template>
     </app-modal>
@@ -71,15 +77,17 @@ import { ContainersClient } from '../client/containers-client';
     }
 
     .pull__status {
-      margin: 0.4rem 0 0;
-      font-size: 0.78rem;
-      color: var(--settings-muted-foreground-color);
+      margin: 0.4rem 0 0.75rem;
+      font-size: 1rem;
+      color: var(--form-muted-foreground-color);
     }
 
-    .pull__error {
-      margin: 0.4rem 0 0;
-      font-size: 0.8rem;
-      color: var(--danger-color);
+    .pull__field {
+      margin-block-end: 0.75rem;
+    }
+
+    .pull__alert {
+      margin-block-end: 0.75rem;
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
