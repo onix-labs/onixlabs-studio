@@ -29,6 +29,12 @@ const REDIRECT_STATUSES: ReadonlySet<number> = new Set<number>([301, 302, 303, 3
 const DEFAULT_PORTS: Readonly<Record<string, number>> = { 'http:': 80, 'https:': 443 };
 
 /**
+ * Matches an IPv4 loopback address. Whole-address, because `127.example.com` is somebody else's server
+ * and being taken for this machine would turn off its certificate check.
+ */
+const LOOPBACK_ADDRESS: RegExp = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+/**
  * Describes one request as the transport sends it.
  */
 export interface TransportRequest {
@@ -146,7 +152,10 @@ export type SystemProxyResolver = (url: string) => Promise<string>;
 export function isLocalHost(hostname: string): boolean {
   const host: string = hostname.toLowerCase().replace(/^\[|\]$/g, '');
   return (
-    host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host.startsWith('127.')
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '::1' ||
+    LOOPBACK_ADDRESS.test(host)
   );
 }
 
