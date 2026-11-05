@@ -9,6 +9,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import {
   MENU_SEPARATOR,
@@ -102,6 +103,7 @@ const COMMIT_STASH: string = 'stash';
 @Component({
   selector: 'app-directory-ribbon',
   imports: [
+    Alert,
     Radio,
     TextField,
     Button,

@@ -9,9 +9,9 @@
 
 .directory-ribbon__confirm-message {
   margin: 0 0 1.3rem;
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.5;
-  color: var(--form-muted-foreground-color);
+  color: var(--body-foreground-color);
 }
 
 // The Save As dialog's Default box, sitting between the name field and the actions.
@@ -20,7 +20,7 @@
   align-items: center;
   gap: 0.5rem;
   margin-block-end: 1.3rem;
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--body-foreground-color);
   cursor: default;
 }
@@ -52,7 +52,7 @@
 }
 .directory-ribbon__preset-name {
   flex: 1 1 auto;
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--body-foreground-color);
 }
 
@@ -68,34 +68,20 @@
   margin-block: 0.75rem 1rem;
 }
 
-// The template picker heads the layout list: a prompt on the left, the control on the right, reading
-// as one line of "start a new one from…" above the layouts it adds to.
+// The template picker heads the layout list, as one line of "start a new one from…" above it.
 .directory-ribbon__preset-templates {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-block: 1rem 0.75rem;
-  font-size: 0.85rem;
-  color: var(--body-foreground-color);
+  margin-block-end: 0.75rem;
 }
 
 // Stands in for the list when the user has deleted every layout, saying what the workspace falls back
 // to meanwhile so an empty list does not read as something broken.
 .directory-ribbon__preset-empty {
   padding: 0.5rem 0.25rem;
-  font-size: 0.8rem;
-  color: var(--form-muted-foreground-color);
+  font-size: 1rem;
+  color: var(--body-foreground-color);
 }
 
-// Says what confirming Save As will replace. It appears only when the entered name is taken, so it
-// must not shift the buttons under a pointer already on its way to them — hence the reserved block
-// size rather than a warning that grows the dialog as it is typed into.
-.directory-ribbon__prompt-warning {
-  display: flex;
-  align-items: start;
-  gap: 0.4rem;
-  margin-block: 0 1rem;
-  font-size: 0.8rem;
-  color: var(--state-warning-color, var(--body-foreground-color));
+// Says what confirming Save As will replace. It appears only when the entered name is taken.
+.directory-ribbon__prompt-alert {
+  margin-block-end: 1.3rem;
 }
