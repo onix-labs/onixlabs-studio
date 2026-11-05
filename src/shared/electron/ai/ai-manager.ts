@@ -1115,6 +1115,9 @@ export class AiManager {
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
     const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
+    // Registered before the first wait, so a Stop arriving during it has something to reach.
+    const controller: AbortController = new AbortController();
+    this.runs.set(request.requestId, controller);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
     if (skills.length > 0) {
       logger.debug(
@@ -1135,8 +1138,11 @@ export class AiManager {
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
     );
-    const controller: AbortController = new AbortController();
-    this.runs.set(request.requestId, controller);
+    if (controller.signal.aborted) {
+      logger.debug('AiManager.run', `Run ${request.requestId} was stopped before it started`);
+      this.finish(request.requestId, 'aborted', '');
+      return;
+    }
     // Arm the wall-clock budget when one is set; expiry aborts through the ordinary abort path and
     // finish() turns the stop into a structured timeout error.
     const runTimeoutMs: number =

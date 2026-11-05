@@ -801,6 +801,19 @@ describe('AiManager', () => {
       expect(eventsOf('status').at(-1)?.['detail']).toBe('library unreadable');
     });
 
+    it('run_stoppedWhileItsSkillsAreStillLoading_neverReachesTheProvider', async () => {
+      const skills: Deferred<readonly never[]> = new Deferred<readonly never[]>();
+      offerSkills = (): Promise<readonly never[]> => skills.promise;
+
+      await run();
+      await invoke(AiChannel.Abort, 'r1');
+      skills.resolve([]);
+      await settled();
+
+      expect(provider.contexts).toEqual([]);
+      expect(statesOf().at(-1)).toBe('aborted');
+    });
+
     it('abort_landsTheRunAsAborted_notCompleted', async () => {
       const held: Deferred<void> = new Deferred<void>();
       provider.onRun = async (context: AgentRunContext): Promise<void> => {
