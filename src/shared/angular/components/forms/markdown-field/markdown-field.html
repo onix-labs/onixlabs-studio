@@ -31,6 +31,7 @@
   [width]="50"
   [height]="37.5"
   [expandable]="true"
+  [frameless]="true"
   [ariaLabel]="modalTitle()"
   (dismiss)="cancelModal()"
 >
@@ -48,8 +49,8 @@
         </div>
       }
       <app-button-row>
-        <app-button variant="solid" [icon]="Icon.CHECK" label="Apply" (click)="applyModal()" />
-        <app-button label="Cancel" (click)="cancelModal()" />
+        <app-button variant="solid" label="Apply" (click)="applyModal()" />
+        <app-button variant="none" label="Cancel" (click)="cancelModal()" />
       </app-button-row>
     </div>
   </ng-template>

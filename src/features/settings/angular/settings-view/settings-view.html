@@ -240,25 +240,31 @@
 </div>
 
 @if (pendingImport(); as pending) {
-  <app-modal [open]="true" [width]="30" ariaLabel="Import settings" (dismiss)="cancelImport()">
+  <app-modal
+    [open]="true"
+    [width]="30"
+    [frameless]="true"
+    ariaLabel="Import settings"
+    (dismiss)="cancelImport()"
+  >
     <ng-template appModalContent>
       <div class="settings-import">
         <h2 class="settings-import__title">Import Settings</h2>
         <p class="settings-import__body">
           <strong>{{ pending.fileName }}</strong> sets {{ importCount(pending) }}
-          {{ importCount(pending) === 1 ? 'setting' : 'settings' }}. What should happen to the
-          settings it doesn't mention?
+          {{ importCount(pending) === 1 ? 'setting' : 'settings' }}. <strong>Keep</strong> leaves
+          your other settings as they are. <strong>Reset</strong> returns them to their defaults.
         </p>
         @if (pending.skipped > 0) {
-          <p class="settings-import__note">
+          <app-alert tone="warning">
             {{ pending.skipped }} {{ pending.skipped === 1 ? 'entry' : 'entries' }} in the file will
             be skipped: Studio doesn't recognise {{ pending.skipped === 1 ? 'it' : 'them' }}, or the
             value doesn't fit the setting.
-          </p>
+          </app-alert>
         }
         <app-button-row class="settings-import__actions">
-          <app-button variant="solid" label="Keep them" (click)="confirmImport(false)" />
-          <app-button label="Reset them to default" (click)="confirmImport(true)" />
+          <app-button variant="solid" label="Keep" (click)="confirmImport(false)" />
+          <app-button variant="ghost" tone="warning" label="Reset" (click)="confirmImport(true)" />
           <app-button variant="none" label="Cancel" (click)="cancelImport()" />
         </app-button-row>
       </div>
