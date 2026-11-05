@@ -81,6 +81,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return process.exit(1);
     case 'cancel':
       return;
+    case 'oversized':
+      process.stdout.write('{"id":' + request.id + ',"result":"' + 'x'.repeat(3000));
+      return setTimeout(() => process.stdout.write('x'.repeat(3000) + '"}\\n'), 30);
+    case 'oversized-and-die':
+      process.stdout.write('x'.repeat(3000));
+      return setTimeout(() => process.exit(1), 30);
     default:
       return write({ id: request.id, ok: false, error: 'unknown' });
   }
@@ -107,15 +113,17 @@ describe('DatabaseEngineClient', () => {
   /**
    * Builds a client over a fake plugin.
    * @param handshake How the plugin answers the handshake.
+   * @param maxLineLength The longest stdout line the client buffers, or undefined for the default.
    * @returns Returns the client.
    */
-  function clientFor(handshake: Handshake = 'ok'): Client {
+  function clientFor(handshake: Handshake = 'ok', maxLineLength?: number): Client {
     const script: string = join(directory, `plugin-${clients.length}.js`);
     writeFileSync(script, fakePlugin(handshake), 'utf8');
-    const client: Client = new DatabaseEngineClient('fake', {
-      command: process.execPath,
-      args: [script],
-    });
+    const client: Client = new DatabaseEngineClient(
+      'fake',
+      { command: process.execPath, args: [script] },
+      maxLineLength,
+    );
     clients.push(client);
     return client;
   }
@@ -160,6 +168,37 @@ describe('DatabaseEngineClient', () => {
       ok: true,
       result: { kind: 'connected', session: 's1' },
     });
+  });
+
+  it('send_whenTheAnswerOutgrowsTheLineCap_failsCleanly_andTheNextAnswerStillArrives', async () => {
+    const client: Client = clientFor('ok', 1024);
+    await serverOf(client);
+
+    const refused: { ok: boolean; error?: string } = await sendRaw(client, 'oversized', 2_000);
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 100);
+    });
+
+    expect(refused).toEqual({
+      ok: false,
+      error: 'The fake engine sent an answer too large to read.',
+    });
+    expect((await serverOf(client)).endsWith(':1')).toBe(true);
+  });
+
+  it('start_afterAProcessDiesInsideARefusedLine_readsTheNewProcesssHandshake', async () => {
+    // The skip belongs to the dead process's stream: carried over, it would swallow the handshake.
+    const client: Client = clientFor('ok', 1024);
+    const first: string = await serverOf(client);
+
+    await sendRaw(client, 'oversized-and-die', 2_000);
+    await vi.waitFor((): void => {
+      expect((client as unknown as { process: unknown }).process).toBeNull();
+    });
+    const second: string = await serverOf(client);
+
+    expect(second).not.toBe('');
+    expect(second).not.toBe(first);
   });
 
   it('sharesOneStartBetweenConcurrentCallers', async () => {

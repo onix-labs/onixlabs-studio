@@ -1,6 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import * as nodePath from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { rgPath } from '@vscode/ripgrep';
 import {
@@ -17,6 +18,7 @@ import {
 import { applyTextEdits, isTextEditsRequest } from './apply-text-edits';
 import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
+import { LineSplitter } from './line-splitter';
 import { logger } from './logger';
 
 /**
@@ -152,7 +154,6 @@ export class SearchManager {
     return new Promise<readonly string[]>((resolve: (value: readonly string[]) => void): void => {
       const child: ChildProcessWithoutNullStreams = spawn(rgPath, ['--files'], { cwd: root });
       const paths: string[] = [];
-      let buffer: string = '';
       let settled: boolean = false;
 
       const finish: () => void = (): void => {
@@ -163,22 +164,26 @@ export class SearchManager {
         }
       };
 
-      child.stdout.on('data', (chunk: Buffer): void => {
-        buffer += chunk.toString();
-        let newline: number = buffer.indexOf('\n');
-        while (newline !== -1) {
-          const line: string = buffer.slice(0, newline).replace(/\r$/, '');
-          buffer = buffer.slice(newline + 1);
-          if (line.length > 0) {
-            paths.push(line.startsWith('./') ? line.slice(2) : line);
-            if (paths.length >= MAX_LISTED_FILES) {
-              logger.warn('SearchManager.listFiles', `Capped file listing at ${MAX_LISTED_FILES}`);
-              child.kill();
-              finish();
-              return;
-            }
+      // A chunk ends wherever the pipe decides, which can be inside a multi-byte character.
+      const decoder: StringDecoder = new StringDecoder('utf8');
+      const lines: LineSplitter = new LineSplitter({
+        onLine: (raw: string): void => {
+          const line: string = raw.replace(/\r$/, '');
+          if (line.length === 0) {
+            return;
           }
-          newline = buffer.indexOf('\n');
+          paths.push(line.startsWith('./') ? line.slice(2) : line);
+          if (paths.length >= MAX_LISTED_FILES) {
+            logger.warn('SearchManager.listFiles', `Capped file listing at ${MAX_LISTED_FILES}`);
+            child.kill();
+            finish();
+            lines.reset();
+          }
+        },
+      });
+      child.stdout.on('data', (chunk: Buffer): void => {
+        if (!settled) {
+          lines.push(decoder.write(chunk));
         }
       });
 
@@ -325,7 +330,6 @@ export class SearchManager {
       const order: string[] = [];
       let total: number = 0;
       let capped: boolean = false;
-      let buffer: string = '';
       let settled: boolean = false;
 
       const finish: () => void = (): void => {
@@ -345,20 +349,22 @@ export class SearchManager {
         resolve({ files: results, total, capped });
       };
 
-      child.stdout.on('data', (chunk: Buffer): void => {
-        buffer += chunk.toString();
-        let newline: number = buffer.indexOf('\n');
-        while (newline !== -1) {
-          const line: string = buffer.slice(0, newline);
-          buffer = buffer.slice(newline + 1);
+      // A chunk ends wherever the pipe decides, which can be inside a multi-byte character.
+      const decoder: StringDecoder = new StringDecoder('utf8');
+      const lines: LineSplitter = new LineSplitter({
+        onLine: (line: string): void => {
           if (this.consumeLine(line, files, order) && ++total >= maxResults) {
             capped = true;
             logger.warn('SearchManager.spawnSearch', `Capped search at ${maxResults} matches`);
             child.kill();
             finish();
-            return;
+            lines.reset();
           }
-          newline = buffer.indexOf('\n');
+        },
+      });
+      child.stdout.on('data', (chunk: Buffer): void => {
+        if (!settled) {
+          lines.push(decoder.write(chunk));
         }
       });
 

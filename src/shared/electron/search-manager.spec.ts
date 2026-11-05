@@ -11,10 +11,12 @@ import { SearchChannel, SearchRequest, SearchResponse } from '@shared/api/search
 const captured: {
   spawns: { args: readonly string[]; cwd: string }[];
   output: string;
+  chunks: readonly Buffer[] | null;
   handlers: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
 } = vi.hoisted(() => ({
   spawns: [],
   output: '',
+  chunks: null,
   handlers: new Map<string, (event: unknown, request: unknown) => Promise<unknown>>(),
 }));
 
@@ -38,9 +40,11 @@ vi.mock('node:child_process', () => {
     captured.spawns.push({ args, cwd: options.cwd });
     let onData: ((chunk: Buffer) => void) | null = null;
     const listeners: Map<string, () => void> = new Map<string, () => void>();
-    const output: string = captured.output;
+    const chunks: readonly Buffer[] = captured.chunks ?? [Buffer.from(captured.output)];
     setTimeout((): void => {
-      onData?.(Buffer.from(output));
+      for (const chunk of chunks) {
+        onData?.(chunk);
+      }
       listeners.get('close')?.();
     }, 0);
     return {
@@ -79,6 +83,7 @@ describe('SearchManager (#1007 paths)', () => {
     captured.spawns.length = 0;
     captured.handlers.clear();
     captured.output = '';
+    captured.chunks = null;
     const workspace: InstanceType<typeof WorkspaceContext> = new WorkspaceContext();
     workspace.addRoot(root);
     new SearchManager(workspace).register();
@@ -106,6 +111,46 @@ describe('SearchManager (#1007 paths)', () => {
       captured.handlers.get(SearchChannel.Run);
     return handler!(null, request) as Promise<SearchResponse>;
   }
+
+  /**
+   * Cuts a text's UTF-8 bytes in two, inside its first occurrence of a multi-byte character.
+   * @param text The text.
+   * @param character The character to cut through.
+   * @returns Returns the two chunks.
+   */
+  function cutInside(text: string, character: string): readonly Buffer[] {
+    const bytes: Buffer = Buffer.from(text);
+    const at: number = bytes.indexOf(Buffer.from(character)) + 1;
+    return [bytes.subarray(0, at), bytes.subarray(at)];
+  }
+
+  it('run_whenAChunkEndsInsideAMultiByteCharacter_keepsTheCharacterWhole', async () => {
+    const event: string = JSON.stringify({
+      type: 'match',
+      data: {
+        path: { text: './src/naïve.ts' },
+        lines: { text: 'const café = name;\n' },
+        line_number: 3,
+        submatches: [{ match: { text: 'name' }, start: 14, end: 18 }],
+      },
+    });
+    captured.chunks = cutInside(`${event}\n`, 'é');
+
+    const response: SearchResponse = await search();
+
+    expect(response.files[0].relativePath).toBe('src/naïve.ts');
+    expect(response.files[0].matches[0].before).toBe('const café = ');
+  });
+
+  it('listFiles_whenAChunkEndsInsideAMultiByteCharacter_keepsThePathWhole', async () => {
+    captured.chunks = cutInside('./src/日本語.ts\n./plain file.ts\r\n', '本');
+
+    const handler: ((event: unknown, request: unknown) => Promise<unknown>) | undefined =
+      captured.handlers.get(SearchChannel.ListFiles);
+    const listed: unknown = await handler!(null, root);
+
+    expect(listed).toEqual(['src/日本語.ts', 'plain file.ts']);
+  });
 
   it('run_withoutPaths_searchesTheWholeRoot', async () => {
     await search();
