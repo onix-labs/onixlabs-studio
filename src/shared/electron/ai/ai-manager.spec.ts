@@ -318,6 +318,8 @@ describe('AiManager', () => {
           ? ({
               webContents: {
                 isDestroyed: (): boolean => false,
+                once: (): void => undefined,
+                removeListener: (): void => undefined,
                 send: (channel: string, payload: unknown): void =>
                   void electron.sent.push({ channel, payload }),
               },
