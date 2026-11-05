@@ -881,6 +881,29 @@ describe('AgentConversationList', () => {
       expect(filed).toEqual([]);
     });
 
+    it('newCategory_filesTheConversationItWasAskedFor_whenAnotherEditorOpensMeanwhile', async () => {
+      let finishCreating: (category: AgentCategory) => void = (): void => undefined;
+      categoryCreator = (): Promise<AgentCategory | null> =>
+        new Promise<AgentCategory | null>((resolve: (value: AgentCategory) => void): void => {
+          finishCreating = resolve;
+        });
+      summaries.set([SUMMARY, OTHER]);
+      await settle();
+      await openRowMenu(0);
+      await choose('Move to category');
+      await choose('New category…');
+      await typeCategoryName('Fresh');
+      await clickInWindow('Save');
+
+      await openRowMenu(1);
+      await choose('Move to category');
+      await choose('New category…');
+      finishCreating(CREATED);
+      await settle();
+
+      expect(filed).toEqual([['c1', 'new-cat']]);
+    });
+
     it('renameCategory_savesTheNewName', async () => {
       categories.set([WORK]);
       await settle();
