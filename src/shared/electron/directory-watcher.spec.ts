@@ -231,7 +231,7 @@ describe('DirectoryWatcher', () => {
     },
   );
 
-  it.each([['node_modules/x/index.js'], ['.git/objects/ab/cd'], ['target/debug/main.o']])(
+  it.each([['node_modules/x/index.js'], ['.git/objects/ab/cd'], ['obj/Debug/a.dll']])(
     'churn %s_opensNoWindow',
     async (filename: string) => {
       await watch();
