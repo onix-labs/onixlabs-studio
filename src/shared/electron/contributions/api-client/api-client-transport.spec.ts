@@ -345,9 +345,55 @@ describe('createApiTransport against a local fixture', () => {
       await expect(send()).rejects.toThrow('ftp:');
       expect(hops).toBe(1);
     });
+
+    it('anAbortBetweenHops_stopsTheNextOne', async () => {
+      const controller: AbortController = new AbortController();
+      let hops: number = 0;
+      handler = (_request: IncomingMessage, response: ServerResponse): void => {
+        hops += 1;
+        response.statusCode = 302;
+        response.setHeader('location', 'http://api.invalid/next');
+        response.end();
+      };
+      // The resolver runs between the hops, so the abort lands before the second has begun.
+      const between: SystemProxyResolver = (): Promise<string> => {
+        if (hops > 0) {
+          controller.abort(new Error('Stopped by the user'));
+        }
+        return Promise.resolve(`PROXY 127.0.0.1:${port}`);
+      };
+
+      await expect(
+        createApiTransport(between)({
+          method: 'GET',
+          url: 'http://api.invalid/',
+          headers: {},
+          body: null,
+          followRedirects: true,
+          maxBodyBytes: 1024,
+          acceptSelfSigned: 'never',
+          proxy: { mode: 'system', address: '', bypass: '' },
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow('Stopped by the user');
+      expect(hops).toBe(1);
+    });
   });
 
   describe('abandoning a send', () => {
+    it('aSignalAlreadyAborted_sendsNothing', async () => {
+      const controller: AbortController = new AbortController();
+      controller.abort(new Error('Stopped by the user'));
+      let hits: number = 0;
+      handler = (_request: IncomingMessage, response: ServerResponse): void => {
+        hits += 1;
+        response.end();
+      };
+
+      await expect(send({ signal: controller.signal })).rejects.toThrow('Stopped by the user');
+      expect(hits).toBe(0);
+    });
+
     it('anAbortWhileWaiting_rejectsWithItsReason', async () => {
       const controller: AbortController = new AbortController();
       handler = (): void => {

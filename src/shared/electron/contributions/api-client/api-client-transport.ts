@@ -333,6 +333,9 @@ async function sendHop(
   if (secure) {
     options.rejectUnauthorized = verify;
   }
+  // A listener added below hears nothing of an abort that has already happened, which is what one
+  // landing between redirect hops, or before the send began, would be.
+  signal.throwIfAborted();
   if (proxy !== null && secure) {
     const tunnel: Socket = await openTunnel(proxy, hostname, port, signal);
     options.agent = false;
