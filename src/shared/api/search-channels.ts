@@ -284,6 +284,13 @@ export interface SearchLimits {
  */
 export interface SearchRequest {
   /**
+   * Gets the name of whoever is asking, unique within its window. A new search under the same name
+   * replaces the one before: a person typing asks once per keystroke, and only the last answer is
+   * wanted. Absent, a search runs to its end alongside any others.
+   */
+  readonly caller?: string;
+
+  /**
    * Gets the text (or, when {@link regexp} is set, the pattern) to search for.
    */
   readonly query: string;

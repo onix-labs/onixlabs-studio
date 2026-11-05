@@ -64,12 +64,15 @@ try {
       format: 'cjs',
       tsconfig: join(root, 'tsconfig.json'),
       alias: { electron: join(here, 'electron-stub.ts') },
+      // Finds its binary relative to itself, so it is loaded from node_modules rather than bundled.
+      external: ['@vscode/ripgrep'],
       logLevel: 'warning',
     });
 
     // Run from the temp dir: a bench must not be able to lean on the working directory.
     const child = spawnSync(process.execPath, ['--expose-gc', outfile], {
       cwd: outdir,
+      env: { ...process.env, NODE_PATH: join(root, 'node_modules') },
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'inherit'],
     });

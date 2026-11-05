@@ -83,6 +83,16 @@ interface RipgrepMatchEvent {
 }
 
 /**
+ * Holds a caller's latest search.
+ */
+interface LatestSearch {
+  /**
+   * Holds how to stop it, once its process is running.
+   */
+  cancel: (() => void) | null;
+}
+
+/**
  * Runs workspace text searches in the main process by shelling out to the bundled ripgrep binary.
  * The renderer never spawns processes itself; it names a query and a workspace root, and this manager
  * confines the search to an open root, translates the options to ripgrep flags, parses the streamed
@@ -97,14 +107,19 @@ export class SearchManager {
   public constructor(private readonly workspace: WorkspaceContext) {}
 
   /**
+   * Holds the latest search of each caller, by {@link callerKey}.
+   */
+  private readonly latest: Map<string, LatestSearch> = new Map<string, LatestSearch>();
+
+  /**
    * Registers the search IPC handler.
    */
   public register(): void {
     ipcMain.handle(
       SearchChannel.Run,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => {
+      (event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => {
         logger.trace('SearchManager.register', `IPC ${SearchChannel.Run}`);
-        return this.run(request);
+        return this.run(request, event?.sender?.id);
       },
     );
     ipcMain.handle(
@@ -207,14 +222,60 @@ export class SearchManager {
    * Runs a search for the given request, after validating it and confining it to an open root — and,
    * when it names paths, confining each of those to the root too.
    * @param request The candidate search request.
-   * @returns Returns the grouped matches, or an empty response for an invalid or empty request.
+   * @param senderId The window asking, which a caller's name is unique within.
+   * @returns Returns the grouped matches, or an empty response for an invalid or empty request, and
+   * whatever it had found for one replaced by the same caller's next search.
    */
-  private async run(request: unknown): Promise<SearchResponse> {
+  private async run(request: unknown, senderId?: number): Promise<SearchResponse> {
     const empty: SearchResponse = { files: [], total: 0, capped: false };
     if (!this.isValidRequest(request)) {
       logger.warn('SearchManager.run', 'Rejected malformed search request');
       return empty;
     }
+    // Before anything else can refuse this one: clearing the query must stop the search for it too.
+    const key: string | undefined =
+      request.caller === undefined ? undefined : `${senderId}:${request.caller}`;
+    const search: LatestSearch | undefined = key === undefined ? undefined : this.supersede(key);
+    try {
+      return await this.runConfined(
+        request,
+        empty,
+        (): boolean => key === undefined || this.latest.get(key) === search,
+        search,
+      );
+    } finally {
+      if (key !== undefined && this.latest.get(key) === search) {
+        this.latest.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Stops a caller's search, if it has one running, and makes way for its next.
+   * @param key The caller's key.
+   * @returns Returns the record of the next search.
+   */
+  private supersede(key: string): LatestSearch {
+    this.latest.get(key)?.cancel?.();
+    const search: LatestSearch = { cancel: null };
+    this.latest.set(key, search);
+    return search;
+  }
+
+  /**
+   * Confines a validated search to an open root and runs it.
+   * @param request The search request.
+   * @param empty The response for a search that is refused.
+   * @param isCurrent Reports whether the search has not been replaced.
+   * @param search The record of the search, for one that can be replaced.
+   * @returns Returns the grouped matches.
+   */
+  private async runConfined(
+    request: SearchRequest,
+    empty: SearchResponse,
+    isCurrent: () => boolean,
+    search: LatestSearch | undefined,
+  ): Promise<SearchResponse> {
     if (request.query.length === 0 || !this.workspace.isRoot(request.root)) {
       logger.warn('SearchManager.run', 'Rejected empty query or unknown root');
       return empty;
@@ -230,8 +291,12 @@ export class SearchManager {
       }
       targets = confined;
     }
+    // Confining paths is asynchronous, so a later search can have overtaken this one by here.
+    if (!isCurrent()) {
+      return empty;
+    }
     logger.debug('SearchManager', `Searching ${request.root} for "${request.query}"`);
-    return this.spawnSearch(request, targets);
+    return this.spawnSearch(request, targets, search);
   }
 
   /**
@@ -294,6 +359,7 @@ export class SearchManager {
     }
     const candidate: Partial<Record<keyof SearchRequest, unknown>> = request;
     return (
+      (candidate.caller === undefined || typeof candidate.caller === 'string') &&
       isFileFilter(candidate.files) &&
       isLimits(candidate.limits) &&
       typeof candidate.query === 'string' &&
@@ -313,9 +379,14 @@ export class SearchManager {
    * Spawns ripgrep for a validated request and collects its results.
    * @param request The validated search request.
    * @param targets The root-relative paths to search ('.' for the whole root).
+   * @param search The record to leave a way of stopping it in, for one that can be replaced.
    * @returns Returns the grouped matches.
    */
-  private spawnSearch(request: SearchRequest, targets: readonly string[]): Promise<SearchResponse> {
+  private spawnSearch(
+    request: SearchRequest,
+    targets: readonly string[],
+    search?: LatestSearch,
+  ): Promise<SearchResponse> {
     const maxResults: number = request.limits?.maxResults ?? MAX_TOTAL_MATCHES;
     const timeout: number = (request.limits?.timeoutSeconds ?? RG_TIMEOUT_MS / 1000) * 1000;
     return new Promise<SearchResponse>((resolve: (value: SearchResponse) => void): void => {
@@ -367,6 +438,14 @@ export class SearchManager {
           lines.push(decoder.write(chunk));
         }
       });
+
+      if (search !== undefined) {
+        search.cancel = (): void => {
+          logger.trace('SearchManager.spawnSearch', 'Stopping a replaced search');
+          child.kill();
+          finish();
+        };
+      }
 
       // No Limit runs until ripgrep is done; a capped search still stops it above.
       const deadline: NodeJS.Timeout | undefined =

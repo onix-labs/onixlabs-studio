@@ -12,11 +12,15 @@ const captured: {
   spawns: { args: readonly string[]; cwd: string }[];
   output: string;
   chunks: readonly Buffer[] | null;
+  hold: boolean;
+  kills: number;
   handlers: Map<string, (event: unknown, request: unknown) => Promise<unknown>>;
 } = vi.hoisted(() => ({
   spawns: [],
   output: '',
   chunks: null,
+  hold: false,
+  kills: 0,
   handlers: new Map<string, (event: unknown, request: unknown) => Promise<unknown>>(),
 }));
 
@@ -41,12 +45,14 @@ vi.mock('node:child_process', () => {
     let onData: ((chunk: Buffer) => void) | null = null;
     const listeners: Map<string, () => void> = new Map<string, () => void>();
     const chunks: readonly Buffer[] = captured.chunks ?? [Buffer.from(captured.output)];
-    setTimeout((): void => {
-      for (const chunk of chunks) {
-        onData?.(chunk);
-      }
-      listeners.get('close')?.();
-    }, 0);
+    if (!captured.hold) {
+      setTimeout((): void => {
+        for (const chunk of chunks) {
+          onData?.(chunk);
+        }
+        listeners.get('close')?.();
+      }, 0);
+    }
     return {
       stdout: {
         on: (event: string, listener: (chunk: Buffer) => void): void => {
@@ -56,7 +62,10 @@ vi.mock('node:child_process', () => {
         },
       },
       on: (event: string, listener: () => void): void => void listeners.set(event, listener),
-      kill: (): void => undefined,
+      kill: (): void => {
+        captured.kills += 1;
+        listeners.get('close')?.();
+      },
     };
   };
   return { spawn, default: { spawn } };
@@ -84,6 +93,8 @@ describe('SearchManager (#1007 paths)', () => {
     captured.handlers.clear();
     captured.output = '';
     captured.chunks = null;
+    captured.hold = false;
+    captured.kills = 0;
     const workspace: InstanceType<typeof WorkspaceContext> = new WorkspaceContext();
     workspace.addRoot(root);
     new SearchManager(workspace).register();
@@ -111,6 +122,125 @@ describe('SearchManager (#1007 paths)', () => {
       captured.handlers.get(SearchChannel.Run);
     return handler!(null, request) as Promise<SearchResponse>;
   }
+
+  /**
+   * Sends a search as a window would, naming the window.
+   * @param senderId The window.
+   * @param overrides Any field to change from a plain search for "name".
+   * @returns Returns the response.
+   */
+  function searchFrom(
+    senderId: number,
+    overrides: Partial<SearchRequest>,
+  ): Promise<SearchResponse> {
+    const handler: ((event: unknown, request: unknown) => Promise<unknown>) | undefined =
+      captured.handlers.get(SearchChannel.Run);
+    const request: SearchRequest = {
+      query: 'name',
+      root,
+      caseSensitive: false,
+      wholeWord: false,
+      regexp: false,
+      ...overrides,
+    };
+    return handler!({ sender: { id: senderId } }, request) as Promise<SearchResponse>;
+  }
+
+  /**
+   * Lets the steps ahead of a spawn run.
+   * @returns Returns a promise that resolves once they have.
+   */
+  function spawned(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 5);
+    });
+  }
+
+  it('run_withTheSameCallerAgain_stopsTheSearchBefore_andBothAnswer', async () => {
+    captured.hold = true;
+    const first: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'na' });
+    await spawned();
+
+    captured.hold = false;
+    const second: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'nam' });
+
+    expect(await first).toEqual({ files: [], total: 0, capped: false });
+    await second;
+    expect(captured.kills).toBe(1);
+    expect(captured.spawns).toHaveLength(2);
+  });
+
+  it('run_withDifferentCallersInOneWindow_leavesEachAlone', async () => {
+    captured.hold = true;
+    void searchFrom(1, { caller: 'panel' });
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(1, { caller: 'scoped' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withTheSameCallerInAnotherWindow_leavesItAlone', async () => {
+    captured.hold = true;
+    void searchFrom(1, { caller: 'find' });
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(2, { caller: 'find' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withoutACaller_isNeverStopped', async () => {
+    captured.hold = true;
+    void searchFrom(1, {});
+    await spawned();
+
+    captured.hold = false;
+    await searchFrom(1, {});
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withAnEmptyQuery_stillStopsTheSearchBefore', async () => {
+    captured.hold = true;
+    const first: Promise<SearchResponse> = searchFrom(1, { caller: 'find' });
+    await spawned();
+
+    await searchFrom(1, { caller: 'find', query: '' });
+    await first;
+
+    expect(captured.kills).toBe(1);
+    expect(captured.spawns).toHaveLength(1);
+  });
+
+  it('run_overtakenWhileItsPathsAreConfined_neverSpawns', async () => {
+    const first: Promise<SearchResponse> = searchFrom(1, {
+      caller: 'find',
+      paths: [path.join(root, 'app')],
+    });
+    const second: Promise<SearchResponse> = searchFrom(1, { caller: 'find', query: 'nam' });
+
+    await Promise.all([first, second]);
+
+    expect(captured.spawns).toHaveLength(1);
+    expect(captured.spawns[0].args).toContain('nam');
+  });
+
+  it('run_afterACallersSearchFinished_hasNothingToStop', async () => {
+    await searchFrom(1, { caller: 'find' });
+
+    await searchFrom(1, { caller: 'find' });
+
+    expect(captured.kills).toBe(0);
+  });
+
+  it('run_withACallerThatIsNotAString_isRefusedAsMalformed', async () => {
+    await searchFrom(1, { caller: 42 as unknown as string });
+
+    expect(captured.spawns).toHaveLength(0);
+  });
 
   /**
    * Cuts a text's UTF-8 bytes in two, inside its first occurrence of a multi-byte character.
