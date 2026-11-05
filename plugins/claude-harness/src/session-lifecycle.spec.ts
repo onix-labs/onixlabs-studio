@@ -546,6 +546,30 @@ describe('Session lifecycle', () => {
       expect(queries[0].models).toEqual(['model-b']);
     });
 
+    it('aRefusedModelChange_doesNotBreakTheTurn', async () => {
+      const rejections: unknown[] = [];
+      const onRejection: (reason: unknown) => void = (reason: unknown): void => {
+        rejections.push(reason);
+      };
+      process.on('unhandledRejection', onRejection);
+      try {
+        const first: Promise<void> = (await start(turn('r1'))).done;
+        queries[0].answer();
+        await first;
+        queries[0].modelFailure = new Error('Unknown model');
+
+        const second: Promise<void> = (await start(turn('r2', { model: 'nonsense' }))).done;
+        queries[0].answer();
+        await second;
+        await flush();
+
+        expect(rejections).toEqual([]);
+        expect(sentOf('turn.completed')).toHaveLength(2);
+      } finally {
+        process.off('unhandledRejection', onRejection);
+      }
+    });
+
     it('aTurnAfterTheStreamEnded_failsAtOnce', async () => {
       const first: Promise<void> = (await start(turn('r1'))).done;
       queries[0].end();

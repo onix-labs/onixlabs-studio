@@ -414,7 +414,11 @@ export class Session {
           // The query's model was bound at open, so a later turn applies the change live rather than
           // forcing a reopen for it.
           this.appliedModel = turn.model;
-          void this.query.setModel(turn.model);
+          // A model the CLI refuses leaves the turn on the one it has; nothing awaits this, so an
+          // unhandled refusal would take the whole process with it.
+          void this.query.setModel(turn.model).catch((error: unknown): void => {
+            note(`session: changing the model to ${turn.model} failed: ${String(error)}`);
+          });
         }
         // The offer depends on the turn, so ask the CLI to re-read it.
         this.refreshTools();
