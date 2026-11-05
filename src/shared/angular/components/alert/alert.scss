@@ -32,11 +32,15 @@
   --alert-tone-rgb: var(--danger-color-rgb);
 }
 
+// As tall as a line of the message and centred in it, so the icon stays level with the first line
+// however many lines follow.
 .alert__icon {
+  display: flex;
   flex: none;
+  align-items: center;
+  block-size: 1.5rem;
   color: var(--alert-tone);
   font-size: 1.25rem;
-  line-height: 1.5rem;
 }
 
 .alert__message {
