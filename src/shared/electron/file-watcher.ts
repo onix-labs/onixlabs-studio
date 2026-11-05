@@ -106,6 +106,8 @@ export class FileWatcher {
           (_eventType: fs.WatchEventType, filename: string | Buffer | null): void =>
             this.onDirectoryEvent(directoryPath, filename),
         );
+        // An `error` event with no listener is an uncaught exception in the main process.
+        watcher.on('error', (error: Error): void => this.onWatcherError(directoryPath, error));
         directory = { watcher, files: new Map<string, number>() };
         this.directories.set(directoryPath, directory);
         logger.info('FileWatcher', `Started watching directory ${directoryPath}`);
@@ -159,11 +161,34 @@ export class FileWatcher {
     if (this.directories.get(directoryPath)?.files.has(filename) !== true) {
       return;
     }
-    const target: string = path.join(directoryPath, filename);
-    const existing: NodeJS.Timeout | undefined = this.timers.get(target);
-    if (existing !== undefined) {
-      clearTimeout(existing);
+    this.schedule(path.join(directoryPath, filename));
+  }
+
+  /**
+   * Handles a directory watcher failing, as it does when the folder goes away: drops the dead watcher
+   * so the files can be watched again, and reports each one so subscribers read what is there now.
+   * @param directoryPath The absolute directory path the watcher was on.
+   * @param error The failure.
+   */
+  private onWatcherError(directoryPath: string, error: Error): void {
+    logger.warn('FileWatcher', `Watcher errored for ${directoryPath}; dropping it`, error);
+    const directory: WatchedDirectory | undefined = this.directories.get(directoryPath);
+    if (directory === undefined) {
+      return;
     }
+    directory.watcher.close();
+    this.directories.delete(directoryPath);
+    for (const name of directory.files.keys()) {
+      this.schedule(path.join(directoryPath, name));
+    }
+  }
+
+  /**
+   * Debounces a notification for a file, restarting any already running.
+   * @param target The absolute path of the file.
+   */
+  private schedule(target: string): void {
+    this.clearTimer(target);
     this.timers.set(
       target,
       setTimeout((): void => {

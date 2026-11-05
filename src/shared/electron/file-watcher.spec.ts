@@ -258,6 +258,25 @@ describe('FileWatcher', () => {
     expect(fakes.watches).toHaveLength(1);
   });
 
+  it('watcherError_doesNotBecomeAnUncaughtException_andTheFileIsReported', async () => {
+    await invoke(FileChannel.Watch, file);
+    fs.rmSync(file);
+
+    fakes.watches[0]?.watcher.emit('error', new Error('EPERM'));
+    await vi.advanceTimersByTimeAsync(120);
+
+    expect(sent).toEqual([[FileChannel.Removed, file]]);
+  });
+
+  it('watcherError_letsTheFileBeWatchedAgain', async () => {
+    await invoke(FileChannel.Watch, file);
+    fakes.watches[0]?.watcher.emit('error', new Error('EPERM'));
+
+    await invoke(FileChannel.Watch, file);
+
+    expect(fakes.watches).toHaveLength(2);
+  });
+
   it('disposeAll_duringABurst_sendsNothingLate', async () => {
     await invoke(FileChannel.Watch, file);
     nativeEvent('a.txt');
