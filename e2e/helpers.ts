@@ -78,3 +78,107 @@ export async function ribbonButton(page: Page, name: string): Promise<Locator> {
   await expect(button.first()).toBeVisible();
   return button.first();
 }
+
+/**
+ * Holds the Playwright name of the platform's `Mod` modifier key.
+ */
+export const MOD: string = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+/**
+ * Answers the next native open dialogs with a path. A native dialog is outside every window Playwright
+ * can reach, so it is stubbed in the main process; everything after the choice is the real thing.
+ * @param app The launched application.
+ * @param chosen The path the dialog answers with.
+ */
+export async function answerOpenDialogWith(
+  app: ElectronApplication,
+  chosen: string,
+): Promise<void> {
+  await app.evaluate(({ dialog }, target: string): void => {
+    (dialog as unknown as { showOpenDialog: unknown }).showOpenDialog = (): Promise<unknown> =>
+      Promise.resolve({ canceled: false, filePaths: [target] });
+  }, chosen);
+}
+
+/**
+ * Answers native message boxes with a button, recording what each one asked. The answer is by label,
+ * so the test says what the user clicked rather than where the button happens to sit.
+ * @param app The launched application.
+ * @param label The button the user presses.
+ */
+export async function answerMessageBoxWith(app: ElectronApplication, label: string): Promise<void> {
+  await app.evaluate(({ dialog }, button: string): void => {
+    const asked: string[] = [];
+    (globalThis as unknown as { e2eMessageBoxes: string[] }).e2eMessageBoxes = asked;
+    (dialog as unknown as { showMessageBox: unknown }).showMessageBox = (
+      ...args: readonly unknown[]
+    ): Promise<unknown> => {
+      const options: { message: string; buttons: readonly string[] } = args[
+        args.length - 1
+      ] as never;
+      asked.push(options.message);
+      return Promise.resolve({ response: options.buttons.indexOf(button), checkboxChecked: false });
+    };
+  }, label);
+}
+
+/**
+ * Reads what the native message boxes have asked since {@link answerMessageBoxWith}.
+ * @param app The launched application.
+ * @returns Returns each box's message, in order.
+ */
+export function messageBoxesAsked(app: ElectronApplication): Promise<readonly string[]> {
+  return app.evaluate(
+    (): readonly string[] =>
+      (globalThis as unknown as { e2eMessageBoxes: readonly string[] }).e2eMessageBoxes,
+  );
+}
+
+/**
+ * Opens a folder as a workspace from the welcome screen, through the native dialog's stub.
+ * @param app The launched application.
+ * @param page The main application window.
+ * @param folder The folder to open.
+ */
+export async function openFolderFromWelcome(
+  app: ElectronApplication,
+  page: Page,
+  folder: string,
+): Promise<void> {
+  await answerOpenDialogWith(app, folder);
+  const welcome: Page = await modalWindow(app);
+  await welcome.getByText('Open Directory or File').click();
+  await expect(page.locator('app-directory-view')).toBeVisible();
+}
+
+/**
+ * Finds a row of the workspace's File Explorer. Rows carry their absolute path, so this cannot match
+ * another panel's tree or a file of the same name in another folder.
+ * @param page The main application window.
+ * @param filePath The row's absolute path.
+ * @returns Returns the row.
+ */
+export function explorerRow(page: Page, filePath: string): Locator {
+  return page.locator(`[role="treeitem"][data-tree-id="${filePath}"]`);
+}
+
+/**
+ * Finds the code editor showing in the document well.
+ * @param page The main application window.
+ * @returns Returns the visible lines of the editor.
+ */
+export function editorLines(page: Page): Locator {
+  return page.locator('.monaco-editor:visible .view-lines').first();
+}
+
+/**
+ * Finds a document's tab by the file it shows.
+ * @param page The main application window.
+ * @param fileName The name on the tab.
+ * @returns Returns the tab.
+ */
+export function documentTab(page: Page, fileName: string): Locator {
+  return page.locator('.dock-tab', {
+    has: page.locator('.dock-tab__label', { hasText: fileName }),
+  });
+}

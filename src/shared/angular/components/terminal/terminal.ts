@@ -508,6 +508,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private resizePending: boolean = false;
 
   /**
+   * Holds the number of the session start still allowed to finish. A restart or the pane's destruction
+   * moves it on, which is how a start waiting on the main process learns it has been overtaken: left
+   * to carry on it would spawn a PTY nobody will dispose, and re-add the listeners just removed.
+   */
+  private startGeneration: number = 0;
+
+  /**
    * Initializes a new instance of the {@link Terminal} class, wiring the activation and theme effects.
    */
   public constructor() {
@@ -580,6 +587,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
       `Destroying pane '${this.terminalId()}'`,
       `persistent=${this.persistent()}`,
     );
+    this.startGeneration++;
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
@@ -793,7 +801,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const selection: string = xterm.getSelection();
     const text: string = selection.length > 0 ? selection : this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.focus();
   }
@@ -808,7 +816,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     const text: string = this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.clear();
     xterm.focus();
@@ -819,8 +827,37 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * more than one line and Warn Before Multi-Line Paste is on.
    */
   public paste(): void {
-    void navigator.clipboard.readText().then((text: string): Promise<void> => this.pasteText(text));
+    void this.pasteClipboard();
     this.xterm?.focus();
+  }
+
+  /**
+   * Pastes what the clipboard holds. The system can refuse the read — a window without focus, a
+   * permission withdrawn — and there is then nothing to paste.
+   * @returns Resolves once the text is pasted, the user declined, or the clipboard refused.
+   */
+  private async pasteClipboard(): Promise<void> {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be read', error);
+      return;
+    }
+    await this.pasteText(text);
+  }
+
+  /**
+   * Writes text to the clipboard. The system can refuse, and copying is not worth an error over.
+   * @param text The text.
+   * @returns Resolves once the text is written, or the clipboard refused.
+   */
+  private async writeClipboard(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be written', error);
+    }
   }
 
   /**
@@ -886,6 +923,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     const id: string = this.terminalId();
     this.log.info('Terminal', `Restarting session '${id}'`);
+    const generation: number = ++this.startGeneration;
 
     this.cleanupOnData?.();
     this.cleanupOnData = null;
@@ -898,6 +936,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // Dispose even when the process has already exited: that clears the session's retained
     // scrollback, so the fresh session starts from a clean record rather than replaying the old one.
     await this.bridge.dispose(id);
+    if (generation !== this.startGeneration) {
+      return;
+    }
     this.hasExited = false;
     this.leaveLink();
     this.cwdCache = null;
@@ -926,6 +967,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     const id: string = this.terminalId();
     const host: HTMLDivElement = this.container().nativeElement;
+    const generation: number = this.startGeneration;
 
     const look: TerminalAppearance = untracked((): TerminalAppearance => this.appearance());
     const xterm: Xterm = new Xterm({
@@ -1042,7 +1084,13 @@ export class Terminal implements AfterViewInit, OnDestroy {
           return;
         }
         this.hasExited = true;
-        this.xterm?.writeln(this.exitBanner(exitCode, exitSignal));
+        const banner: string = this.exitBanner(exitCode, exitSignal);
+        if (this.pendingChunks !== null) {
+          // The output it ended is still parked: the banner waits its turn behind all of it.
+          this.pendingChunks.push({ data: `${banner}\r\n`, seq: Number.POSITIVE_INFINITY });
+        } else {
+          this.xterm?.writeln(banner);
+        }
         this.exited.emit({ code: exitCode, signal: exitSignal });
       },
     );
@@ -1050,51 +1098,62 @@ export class Terminal implements AfterViewInit, OnDestroy {
     // Replay whatever the session produced while no pane was attached (empty for a fresh session),
     // then either surface its recorded end or (re)create the PTY — creation reuses a live session
     // under the same identifier, so re-attaching never respawns the shell.
-    const replay: TerminalReplay = await this.bridge.replay(id);
-    if (replay.data.length > 0) {
-      xterm.write(replay.data);
-    }
-
-    if (replay.exitCode !== null) {
-      // The session ended while detached: show its history and exit banner without spawning a new
-      // process in its place; the session stays closable/restartable exactly like a live exit.
-      this.hasExited = true;
-      xterm.writeln(this.exitBanner(replay.exitCode, replay.signal));
-    } else if (this.kind() === 'shell') {
-      const result: TerminalCreateResult = await this.bridge.create({
-        id,
-        cols: xterm.cols,
-        rows: xterm.rows,
-        cwd: this.cwd(),
-        // Default Shell applies wherever a shell starts — a docked terminal names no shell of its own.
-        shell: this.overriddenShell ?? this.shell() ?? this.configuredShell(),
-        shellArguments: this.settings.get('terminal.shellArguments'),
-        login: this.settings.get('terminal.loginShell'),
-      });
-      if (!result.success) {
-        this.pendingChunks = null;
-        this.log.error(
-          'Terminal',
-          `Failed to start session '${id}'`,
-          result.error ?? 'unknown error',
-        );
-        xterm.writeln(
-          `\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`,
-        );
+    let replay: TerminalReplay;
+    try {
+      replay = await this.bridge.replay(id);
+      if (generation !== this.startGeneration) {
         return;
       }
-      // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of
-      // the configured default; a New session explicitly resets this first.
-      this.overriddenShell = result.shell ?? this.overriddenShell;
-      if (result.shell !== undefined) {
-        this.shellChange.emit(result.shell);
+      if (replay.data.length > 0) {
+        xterm.write(replay.data);
       }
-    } else {
-      // Command-backed sessions are spawned by their owning service, never by the pane: attaching
-      // early (before the launch) is fine — the subscription is live and the output streams in —
-      // and attaching to nothing renders an empty pane rather than wrongly spawning a shell. Fit
-      // the PTY to this pane's real size in case it was spawned at the default dimensions.
-      void this.bridge.resize(id, xterm.cols, xterm.rows);
+
+      if (replay.exitCode !== null) {
+        // The session ended while detached: show its history and exit banner without spawning a new
+        // process in its place; the session stays closable/restartable exactly like a live exit. An
+        // exit that reached the pane while the snapshot was in flight has parked its banner already.
+        if (!this.hasExited) {
+          xterm.writeln(this.exitBanner(replay.exitCode, replay.signal));
+        }
+        this.hasExited = true;
+      } else if (this.kind() === 'shell') {
+        const result: TerminalCreateResult = await this.bridge.create({
+          id,
+          cols: xterm.cols,
+          rows: xterm.rows,
+          cwd: this.cwd(),
+          // Default Shell applies wherever a shell starts — a docked terminal names no shell of its own.
+          shell: this.overriddenShell ?? this.shell() ?? this.configuredShell(),
+          shellArguments: this.settings.get('terminal.shellArguments'),
+          login: this.settings.get('terminal.loginShell'),
+        });
+        if (generation !== this.startGeneration) {
+          return;
+        }
+        if (!result.success) {
+          this.reportStartFailure(xterm, id, result.error ?? 'unknown error');
+          return;
+        }
+        // Remember the shell actually spawned so a plain restart reuses it, immune to a later change of
+        // the configured default; a New session explicitly resets this first.
+        this.overriddenShell = result.shell ?? this.overriddenShell;
+        if (result.shell !== undefined) {
+          this.shellChange.emit(result.shell);
+        }
+      } else {
+        // Command-backed sessions are spawned by their owning service, never by the pane: attaching
+        // early (before the launch) is fine — the subscription is live and the output streams in —
+        // and attaching to nothing renders an empty pane rather than wrongly spawning a shell. Fit
+        // the PTY to this pane's real size in case it was spawned at the default dimensions.
+        void this.bridge.resize(id, xterm.cols, xterm.rows);
+      }
+    } catch (error: unknown) {
+      // The bridge going away mid-call (a reloading window, a handler not registered) must leave the
+      // reason on screen and the output flowing, not a blank pane parking chunks for ever.
+      if (generation === this.startGeneration) {
+        this.reportStartFailure(xterm, id, error instanceof Error ? error.message : String(error));
+      }
+      return;
     }
 
     // Go live: write the parked chunks the snapshot did not already contain, in arrival order.
@@ -1124,7 +1183,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     xterm.onSelectionChange((): void => {
       if (this.settings.get('terminal.copyOnSelect') && xterm.hasSelection()) {
-        void navigator.clipboard.writeText(xterm.getSelection());
+        void this.writeClipboard(xterm.getSelection());
       }
     });
 
@@ -1144,13 +1203,25 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.terminals.register(id, { readText: (): string => this.getBufferText() });
 
     setTimeout((): void => {
-      if (!this.holdingFocus) {
+      if (!this.holdingFocus && this.xterm === xterm) {
         xterm.focus();
       }
     }, FOCUS_DELAY_MS);
     this.terminalReady.set(true);
     this.log.info('Terminal', `Session '${id}' ready`, `kind=${this.kind()}`);
     this.ready.emit();
+  }
+
+  /**
+   * Reports a session that did not start, on screen and in the log, and lets its output through.
+   * @param xterm The terminal.
+   * @param id The terminal identifier.
+   * @param reason Why it did not start.
+   */
+  private reportStartFailure(xterm: Xterm, id: string, reason: string): void {
+    this.pendingChunks = null;
+    this.log.error('Terminal', `Failed to start session '${id}'`, reason);
+    xterm.writeln(`\x1b[31mFailed to start terminal: ${reason}\x1b[0m`);
   }
 
   /**
@@ -1324,7 +1395,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
         this.openLink(target);
         return;
       }
-      void navigator.clipboard.writeText(target.kind === 'url' ? target.url : target.path);
+      void this.writeClipboard(target.kind === 'url' ? target.url : target.path);
       this.xterm?.focus();
     });
   }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { DatabasePrompts } from '../../database-prompts/database-prompts';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type * as MonacoApi from 'monaco-editor';
@@ -26,6 +27,8 @@ import {
   ExpandOutcome,
   DatabaseValue,
   FetchRequest,
+  QueryMessage,
+  ResultSet,
 } from '@shared/api/database-engine-protocol';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DatabaseClient } from '../../database-client/database-client';
@@ -36,6 +39,14 @@ import {
 import { DatabaseQueryOpener } from '../../database-query-opener/database-query-opener';
 import { DatabaseWorkspace } from '../../database-workspace/database-workspace';
 import { QueryPanel } from './query-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DocumentStatus,
+  DocumentStatusInfo,
+} from '@shared/angular/services/document-status/document-status';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { GraphPick } from '../../graph-view/graph-view';
 
 /**
  * A PostgreSQL-shaped engine: it reaches several databases and can cancel.
@@ -291,8 +302,21 @@ class FakeMonacoApi {
   public readonly KeyMod: { CtrlCmd: number } = { CtrlCmd: 2048 };
   public readonly KeyCode: { Enter: number } = { Enter: 3 };
   public readonly MarkerSeverity: { Error: number } = { Error: 8 };
-  public readonly editor: { setModelMarkers: () => void } = {
-    setModelMarkers: (): void => undefined,
+  public readonly markers: (readonly MonacoApi.editor.IMarkerData[])[] = [];
+  public readonly editor: {
+    setModelMarkers: (
+      model: unknown,
+      owner: string,
+      markers: readonly MonacoApi.editor.IMarkerData[],
+    ) => void;
+  } = {
+    setModelMarkers: (
+      _model: unknown,
+      _owner: string,
+      markers: readonly MonacoApi.editor.IMarkerData[],
+    ): void => {
+      this.markers.push(markers);
+    },
   };
   public readonly languages: {
     CompletionItemKind: Record<string, number>;
@@ -379,6 +403,20 @@ describe('QueryPanel', () => {
     setConnection(id: string): void;
     setDatabase(name: string): void;
     onRowClick(row: TableRow): void;
+    readonly resultTabs: () => readonly { value: string; badge?: number }[];
+    readonly resultView: () => string;
+    readonly resultsDefaultSize: () => number | null;
+    readonly selectedRows: () => ReadonlySet<string>;
+    readonly executeTooltip: () => string;
+    chooseView(view: string): void;
+    chooseResult(index: number): void;
+    loadMore(): void;
+    reveal(message: QueryMessage): void;
+    onCursor(cursor: { line: number; column: number }): void;
+    onGraphPick(pick: GraphPick): void;
+    messageIcon(message: QueryMessage): Icon;
+    resultLabel(set: ResultSet, index: number): string;
+    onEditorReady(): void;
   }
 
   /**
@@ -1019,5 +1057,522 @@ describe('QueryPanel', () => {
     completions.items = [];
     expect(await provide(monacoApi.registered[0], model, 8)).toBeUndefined();
     expect(completions.asked).toHaveLength(1);
+  });
+
+  describe('with its editor', () => {
+    /**
+     * What a stand-in editor recorded.
+     */
+    interface Stand {
+      readonly revealed: number[];
+      readonly focuses: () => number;
+      readonly pressKey: (event: KeyboardEvent) => void;
+    }
+
+    /**
+     * Stands in the editor the template would render.
+     * @param text The editor's text.
+     * @param place Where the selection and caret are.
+     * @returns Returns what it recorded.
+     */
+    function mount(
+      text: string,
+      place: { selection?: object | null; position?: object | null } = {},
+    ): Stand {
+      const revealed: number[] = [];
+      let focused: number = 0;
+      let onKey: (event: { browserEvent: KeyboardEvent }) => void = (): void => undefined;
+      const model: object = {
+        getValue: (): string => text,
+        getValueInRange: (): string => 'select 2',
+        getOffsetAt: (position: { column: number }): number => position.column - 1,
+        getLineCount: (): number => 3,
+        getLineFirstNonWhitespaceColumn: (): number => 0,
+        getLineMaxColumn: (): number => 9,
+      };
+      const editor: object = {
+        getModel: (): object => model,
+        getSelection: (): object | null => place.selection ?? null,
+        getPosition: (): object | null => place.position ?? null,
+        onKeyDown: (listener: (event: { browserEvent: KeyboardEvent }) => void): void => {
+          onKey = listener;
+        },
+      };
+      (component as unknown as { editor: () => object }).editor = (): object => ({
+        getEditor: (): object => editor,
+        getModel: (): object => model,
+        reveal: (line: number): void => void revealed.push(line),
+        focus: (): void => void (focused += 1),
+      });
+      panel().onEditorReady();
+      return {
+        revealed,
+        focuses: (): number => focused,
+        pressKey: (event: KeyboardEvent): void =>
+          onKey({
+            browserEvent: event,
+            preventDefault: (): void => event.preventDefault(),
+            stopPropagation: (): void => undefined,
+          } as { browserEvent: KeyboardEvent }),
+      };
+    }
+
+    it('execute_withASelection_runsOnlyThat_fromItsLine', async () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1\nselect 2'));
+      mount('select 1\nselect 2', {
+        selection: { isEmpty: (): boolean => false, startLineNumber: 2 },
+      });
+
+      component.execute();
+      await settle();
+
+      expect(client.executes[0]).toMatchObject({ text: 'select 2', firstLine: 2 });
+    });
+
+    it('execute_withACaretOnly_runsTheWholeQuery', async () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      mount('select 1', { selection: { isEmpty: (): boolean => true, startLineNumber: 1 } });
+
+      component.execute();
+      await settle();
+
+      expect(client.executes[0]).toMatchObject({ text: 'select 1', firstLine: 1 });
+    });
+
+    it('executeStatement_runsTheStatementUnderTheCaret', async () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1; select 2'));
+      mount('select 1; select 2', { position: { lineNumber: 1, column: 15 } });
+
+      component.executeStatement();
+      await settle();
+
+      expect(client.executes).toHaveLength(1);
+      expect(client.executes[0]?.text).toBe('select 2');
+    });
+
+    it('executeStatement_withNothingUnderTheCaret_runsNothing', async () => {
+      build(workspace.addQuery(postgres().id, undefined, '   '));
+      mount('   ', { position: { lineNumber: 1, column: 2 } });
+
+      component.executeStatement();
+      await settle();
+
+      expect(client.executes).toEqual([]);
+    });
+
+    it('executeStatement_withoutAnEditor_runsNothing', async () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      component.executeStatement();
+      await settle();
+
+      expect(client.executes).toEqual([]);
+    });
+
+    it('executeStatement_whileRunning_doesNotRunASecond', async () => {
+      let release: () => void = (): void => undefined;
+      client.gate = new Promise<void>((resolve: () => void): void => {
+        release = resolve;
+      });
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      mount('select 1', { position: { lineNumber: 1, column: 2 } });
+      component.execute();
+      await settle();
+
+      component.executeStatement();
+      release();
+      await settle();
+
+      expect(client.executes).toHaveLength(1);
+    });
+
+    it('keys_runTheQueryOrTheStatement_aheadOfTheEditor', async () => {
+      const chord: { held: string } = { held: 'database.execute' };
+      vi.spyOn(TestBed.inject(Keybindings), 'matches').mockImplementation(
+        (_event: KeyboardEvent, command: string): boolean => command === chord.held,
+      );
+      build(workspace.addQuery(postgres().id, undefined, 'select 1; select 2'));
+      const stand: Stand = mount('select 1; select 2', { position: { lineNumber: 1, column: 15 } });
+
+      const whole: KeyboardEvent = new KeyboardEvent('keydown', { cancelable: true });
+      stand.pressKey(whole);
+      await settle();
+      chord.held = 'database.executeStatement';
+      stand.pressKey(new KeyboardEvent('keydown', { cancelable: true }));
+      await settle();
+      chord.held = 'something.else';
+      const other: KeyboardEvent = new KeyboardEvent('keydown', { cancelable: true });
+      stand.pressKey(other);
+      await settle();
+
+      expect(whole.defaultPrevented).toBe(true);
+      expect(other.defaultPrevented).toBe(false);
+      expect(client.executes.map((request: ExecuteRequest): string => request.text)).toEqual([
+        'select 1; select 2',
+        'select 2',
+      ]);
+    });
+
+    it('onEditorReady_twice_registersOnce', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      mount('select 1');
+      const registered: number = monacoApi.registered.length;
+
+      panel().onEditorReady();
+
+      expect(monacoApi.registered).toHaveLength(registered);
+    });
+
+    it('reveal_goesToTheMessagesLine', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      const stand: Stand = mount('select 1');
+
+      panel().reveal({ severity: 'error', text: 'bad', line: 2 });
+
+      expect(stand.revealed).toEqual([2]);
+      expect(stand.focuses()).toBe(1);
+    });
+
+    it('reveal_ofAMessageWithNoLine_staysPut', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      const stand: Stand = mount('select 1');
+
+      panel().reveal({ severity: 'info', text: 'done' });
+
+      expect(stand.revealed).toEqual([]);
+    });
+
+    it('errors_markTheirLines_keepingAnEngineLineInsideTheDocument', async () => {
+      client.outcome = {
+        ...client.outcome,
+        resultSets: [],
+        failed: true,
+        messages: [
+          { severity: 'error', text: 'too far', line: 40 },
+          { severity: 'error', text: 'before the start', line: 0 },
+          { severity: 'error', text: 'nowhere' },
+          { severity: 'warning', text: 'mild', line: 2 },
+        ],
+      };
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+      mount('select 1');
+      fixture.detectChanges();
+
+      component.execute();
+      await settle();
+      TestBed.tick();
+
+      expect(
+        monacoApi.markers
+          .at(-1)
+          ?.map((marker: MonacoApi.editor.IMarkerData): string =>
+            [marker.message, marker.startLineNumber, marker.startColumn].join(':'),
+          ),
+      ).toEqual(['too far:3:1', 'before the start:1:1']);
+    });
+  });
+
+  describe('its status', () => {
+    /**
+     * Brings the query to the front of its well and runs it.
+     * @returns Returns a promise that resolves once it has run.
+     */
+    async function ranInFront(): Promise<void> {
+      const query: DatabaseQuery = workspace.addQuery(postgres().id, undefined, 'select 1');
+      vi.spyOn(TestBed.inject(DockState), 'layout').mockReturnValue({
+        kind: 'stack',
+        id: 'well',
+        panels: [query.id],
+        active: query.id,
+      } as unknown as DockNode);
+      build(query);
+      component.execute();
+      await settle();
+      TestBed.tick();
+    }
+
+    /**
+     * Reads what the status strip was told.
+     * @returns Returns the info.
+     */
+    function status(): DocumentStatusInfo | null {
+      TestBed.tick();
+      return TestBed.inject(DocumentStatus).info();
+    }
+
+    /**
+     * Reads the status strip's details.
+     * @returns Returns their text.
+     */
+    function details(): readonly string[] {
+      return (status()?.details ?? []).map((detail: { text: string }): string => detail.text);
+    }
+
+    it('saysItCompleted_withItsRowsColumnsAndTime', async () => {
+      await ranInFront();
+
+      expect(status()?.chip?.text).toBe('Completed');
+      expect(details()).toEqual(['2 rows', '2 columns', '3 ms']);
+    });
+
+    it('saysWhenItFailed', async () => {
+      client.outcome = { ...client.outcome, failed: true, resultSets: [] };
+
+      await ranInFront();
+
+      expect(status()?.chip?.text).toBe('Failed');
+      expect(details()).toEqual(['3 ms']);
+    });
+
+    it('saysWhenItWasCancelled', async () => {
+      client.outcome = { ...client.outcome, cancelled: true };
+
+      await ranInFront();
+
+      expect(status()?.chip?.text).toBe('Cancelled');
+    });
+
+    it('saysItIsRunning_andHoldsItsDetails', async () => {
+      client.gate = new Promise<void>((): void => undefined);
+
+      await ranInFront();
+
+      expect(status()?.chip?.text).toBe('Running');
+      expect(details()).toEqual([]);
+    });
+
+    it('countsLoadedRowsAgainstTheTotal_andSaysWhichSetShows', async () => {
+      const first: ResultSet = {
+        id: 'a',
+        columns: [{ name: 'one' }],
+        rows: [[1]],
+        totalRows: 1200,
+        line: 1,
+      };
+      client.outcome = {
+        ...client.outcome,
+        resultSets: [first, { ...first, id: 'b', totalRows: 1 }],
+      };
+
+      await ranInFront();
+
+      expect(details().slice(0, 3)).toEqual([
+        'Result 1 of 2',
+        `1 of ${(1200).toLocaleString()} rows`,
+        '1 column',
+      ]);
+
+      panel().chooseResult(1);
+
+      expect(details().slice(0, 2)).toEqual(['Result 2 of 2', '1 row']);
+    });
+
+    it('showsTimesInSeconds_fromASecondUp', async () => {
+      client.outcome = { ...client.outcome, elapsedMs: 1500 };
+
+      await ranInFront();
+
+      expect(details().at(-1)).toBe('1.50 s');
+    });
+
+    it('neverShowsZeroMilliseconds', async () => {
+      client.outcome = { ...client.outcome, elapsedMs: 0.1 };
+
+      await ranInFront();
+
+      expect(details().at(-1)).toBe('1 ms');
+    });
+
+    it('carriesTheCaret', async () => {
+      await ranInFront();
+
+      panel().onCursor({ line: 4, column: 9 });
+
+      expect(status()).toMatchObject({ line: 4, column: 9 });
+    });
+
+    it('goesAway_whenThePanelCloses', async () => {
+      await ranInFront();
+      expect(status()).not.toBeNull();
+
+      fixture.destroy();
+
+      expect(status()).toBeNull();
+    });
+  });
+
+  describe('its results', () => {
+    const NODE: DatabaseValue = { type: 'node', id: '1', labels: ['Person'], properties: {} };
+
+    it('tabs_countResultSetsAndErrors', async () => {
+      client.outcome = {
+        ...client.outcome,
+        messages: [
+          { severity: 'error', text: 'one' },
+          { severity: 'info', text: 'two' },
+        ],
+      };
+
+      await ranQuery();
+
+      expect(panel().resultTabs()).toMatchObject([
+        { value: 'results', badge: 1 },
+        { value: 'messages', badge: 1 },
+      ]);
+    });
+
+    it('tabs_withNothingToCount_carryNoBadge', async () => {
+      await ranQuery();
+      client.outcome = { ...client.outcome, resultSets: [], messages: [] };
+      component.execute();
+      await settle();
+
+      expect(
+        panel()
+          .resultTabs()
+          .map((tab: { badge?: number }): number | undefined => tab.badge),
+      ).toEqual([undefined, undefined]);
+    });
+
+    it('aGraphResult_opensAsAGraph_untilAnotherViewIsChosen', async () => {
+      client.outcome = {
+        ...client.outcome,
+        resultSets: [{ id: 'g', columns: [{ name: 'n' }], rows: [[NODE]], totalRows: 1, line: 1 }],
+      };
+
+      await ranQuery();
+      expect(panel().resultView()).toBe('graph');
+
+      panel().chooseView('table');
+
+      expect(panel().resultView()).toBe('table');
+    });
+
+    it('aChosenGraph_ofAResultWithNoGraphInIt_fallsBackToTheTable', async () => {
+      await ranQuery();
+
+      panel().chooseView('graph');
+
+      expect(panel().resultView()).toBe('table');
+    });
+
+    it('chooseResult_dropsTheSelectedRow', async () => {
+      await ranQuery();
+      panel().onRowClick({ id: '0', data: {} });
+      expect(panel().selectedRows().size).toBe(1);
+
+      panel().chooseResult(0);
+
+      expect(panel().selectedRows().size).toBe(0);
+    });
+
+    it('anewRun_dropsTheSelectedRow', async () => {
+      await ranQuery();
+      panel().onRowClick({ id: '0', data: {} });
+
+      component.execute();
+      await settle();
+      TestBed.tick();
+
+      expect(panel().selectedRows().size).toBe(0);
+    });
+
+    it('onRowClick_ofARowThatIsNoLongerThere_showsNothing', async () => {
+      await ranQuery();
+
+      panel().onRowClick({ id: '99', data: {} });
+
+      expect(workspace.selection()).toBeNull();
+    });
+
+    it('onGraphPick_showsThePickInProperties', async () => {
+      await ranQuery();
+
+      panel().onGraphPick({ title: 'Ada', properties: [] });
+
+      expect(workspace.selection()).toEqual({ kind: 'graph', title: 'Ada', properties: [] });
+    });
+
+    it('loadMore_appendsTheNextPage', async () => {
+      client.outcome = {
+        ...client.outcome,
+        resultSets: [{ id: 'rs', columns: [{ name: 'n' }], rows: [[1]], totalRows: 2, line: 1 }],
+      };
+      vi.spyOn(client, 'fetch').mockResolvedValue([[2]]);
+      await ranQuery();
+
+      panel().loadMore();
+      await settle();
+
+      expect(panel().gridRows()).toHaveLength(2);
+    });
+
+    it('loadMore_withNoResult_asksForNothing', () => {
+      const fetching: MockInstance = vi.spyOn(client, 'fetch');
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      panel().loadMore();
+
+      expect(fetching).not.toHaveBeenCalled();
+    });
+
+    it('labels_nameTheRowCount', async () => {
+      await ranQuery();
+      const set: ResultSet = { id: 'a', columns: [], rows: [], totalRows: 1, line: 1 };
+
+      expect(panel().resultLabel(set, 0)).toBe('Result 1 · 1 row');
+      expect(panel().resultLabel({ ...set, totalRows: 2 }, 1)).toBe('Result 2 · 2 rows');
+    });
+
+    it('icons_followTheSeverity', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      expect(panel().messageIcon({ severity: 'error', text: '' })).toBe(Icon.ERROR);
+      expect(panel().messageIcon({ severity: 'warning', text: '' })).toBe(Icon.WARNING);
+      expect(panel().messageIcon({ severity: 'info', text: '' })).toBe(Icon.INFO);
+    });
+  });
+
+  describe('its pickers', () => {
+    it('databaseOptions_keepADatabaseTheServerNoLongerLists', () => {
+      build(workspace.addQuery(postgres().id, 'archived', 'select 1'));
+
+      expect(
+        panel()
+          .databaseOptions()
+          .map((option: DropdownOption): string => option.value),
+      ).toContain('archived');
+    });
+
+    it('setDatabase_toTheDefault_dropsIt', () => {
+      const query: DatabaseQuery = workspace.addQuery(postgres().id, 'shop', 'select 1');
+      build(query);
+
+      panel().setDatabase('');
+
+      expect(panel().query()?.database).toBeUndefined();
+    });
+
+    it('setConnection_toNone_clearsItAndConnectsNothing', () => {
+      const connecting: MockInstance = vi.spyOn(client, 'connect');
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      panel().setConnection('');
+
+      expect(panel().query()?.connectionId).toBeNull();
+      expect(connecting).not.toHaveBeenCalled();
+    });
+
+    it('executeTooltip_saysWhatItRuns', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      expect(panel().executeTooltip()).toContain('Run the selection, or the whole query');
+    });
+
+    it('resultsDefaultSize_beforeThePanelIsMeasured_isUnset', () => {
+      build(workspace.addQuery(postgres().id, undefined, 'select 1'));
+
+      expect(panel().resultsDefaultSize()).toBeNull();
+    });
   });
 });

@@ -329,7 +329,16 @@ export class TerminalManager {
       }
 
       this.flow.track(id, terminal);
-      terminal.onData((data: string): void => this.emitData(id, data));
+      terminal.onData((data: string): void => {
+        // A disposed session was removed (and possibly replaced under the same id): its last output
+        // must not land in the successor's scrollback, nor bring a dead session's record back. An
+        // exited one keeps its kind until disposed, so what a process printed last still lands.
+        const current: pty.IPty | undefined = this.terminals.get(id);
+        if (current === undefined ? !this.kinds.has(id) : current !== terminal) {
+          return;
+        }
+        this.emitData(id, data);
+      });
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
         pidJournal()?.unregister(terminal.pid);
@@ -417,8 +426,14 @@ export class TerminalManager {
     if (!allowsInput(this.kinds.get(id) ?? 'shell', data)) {
       return false;
     }
-    terminal.write(data);
-    return true;
+    try {
+      terminal.write(data);
+      return true;
+    } catch (error: unknown) {
+      // The process can die between the lookup and the write; the exit event reports that.
+      logger.debug('TerminalManager.write', `Write to ${id} failed`, error);
+      return false;
+    }
   }
 
   /**

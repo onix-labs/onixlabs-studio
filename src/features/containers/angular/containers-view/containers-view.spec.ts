@@ -1,19 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal, WritableSignal } from '@angular/core';
+import { Signal, signal, WritableSignal } from '@angular/core';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { TableRow } from '@shared/angular/components/table/table';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
 import { FileChannel } from '@shared/api/file-channels';
 import {
   ContainerEngineInfo,
+  ContainerStats,
   ContainerStatus,
   ContainerSummary,
   ImageSummary,
+  VolumeSummary,
 } from '@shared/api/container-types';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { DocumentVisibility } from '@shared/angular/services/document-visibility/document-visibility';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { ContainersCommands } from '../containers-commands/containers-commands';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
 
@@ -99,6 +105,13 @@ describe('ContainersView', () => {
    */
   let confirms: boolean = true;
   let imaged: readonly ImageSummary[] = [];
+  let volumed: readonly VolumeSummary[] = [];
+  let sampled: readonly ContainerStats[] = [];
+
+  /**
+   * Holds the channels the engine answers no on.
+   */
+  let refused: ReadonlySet<ContainerChannel> = new Set<ContainerChannel>();
 
   function stubBridge(status: ContainerStatus, engine: ContainerEngineInfo | null = DOCKER): void {
     calls = [];
@@ -118,11 +131,14 @@ describe('ContainersView', () => {
         if ((channel as ContainerChannel) === ContainerChannel.ListImages) {
           return Promise.resolve(imaged as T);
         }
-        if (
-          (channel as ContainerChannel) === ContainerChannel.ListVolumes ||
-          (channel as ContainerChannel) === ContainerChannel.Stats
-        ) {
-          return Promise.resolve([] as T);
+        if ((channel as ContainerChannel) === ContainerChannel.ListVolumes) {
+          return Promise.resolve(volumed as T);
+        }
+        if ((channel as ContainerChannel) === ContainerChannel.Stats) {
+          return Promise.resolve(sampled as T);
+        }
+        if (refused.has(channel as ContainerChannel)) {
+          return Promise.resolve(false as T);
         }
         if ((channel as FileChannel) === FileChannel.ConfirmDestructive) {
           return Promise.resolve(confirms as T);
@@ -600,6 +616,535 @@ describe('ContainersView', () => {
 
       view.viewLogs(STOPPED);
       expect(view.terminalsHidden()).toBe(false);
+    });
+  });
+
+  describe('acting on what is listed', () => {
+    const PAUSED: ContainerSummary = { ...CONTAINER, id: 'paused1', state: 'paused' };
+    const USED: VolumeSummary = {
+      name: 'data',
+      driver: 'local',
+      anonymous: false,
+    } as VolumeSummary;
+    const LOOSE: VolumeSummary = {
+      name: '0123456789abcdef0123',
+      driver: 'local',
+      anonymous: true,
+    } as VolumeSummary;
+    const NGINX: ImageSummary = { id: 'sha256:aaa', tags: ['nginx:latest'], size: 1024 };
+
+    /**
+     * What these tests reach of the view: what its template binds.
+     */
+    interface View {
+      readonly selectedId: WritableSignal<string | null>;
+      readonly menuTarget: WritableSignal<ContainerSummary | null>;
+      readonly notice: Signal<string | null>;
+      readonly query: WritableSignal<string>;
+      readonly kind: WritableSignal<string>;
+      readonly runImage: Signal<string | null>;
+      readonly pullOpen: WritableSignal<boolean>;
+      readonly volumeRows: Signal<readonly TableRow[]>;
+      readonly engineStartCommand: Signal<string | null>;
+      setChecked(id: string, on: boolean): void;
+      clearChecked(): void;
+      toggleAllChecked(): void;
+      allChecked(): boolean;
+      bulk(action: 'start' | 'stop' | 'restart' | 'remove'): Promise<void>;
+      onRowMenu(id: string): void;
+      removeImage(entry: { image: ImageSummary; usedBy: number }): Promise<void>;
+      removeVolume(entry: { volume: VolumeSummary; usedBy: number }): Promise<void>;
+      openRun(image?: string): void;
+      onRunClosed(id: string | null): void;
+      onPullClosed(pulled: boolean): void;
+      formatPorts(container: ContainerSummary): string;
+      formatCpu(id: string): string;
+      formatMemory(id: string): string;
+      displayVolume(volume: VolumeSummary): string;
+    }
+
+    /**
+     * Reaches the view's template-facing members.
+     * @param fixture The view.
+     * @returns Returns them.
+     */
+    function drive(fixture: ComponentFixture<ContainersView>): View {
+      return fixture.componentInstance as unknown as View;
+    }
+
+    /**
+     * Reads which containers a channel was called with.
+     * @param channel The channel.
+     * @returns Returns the first argument of each call.
+     */
+    function calledWith(channel: ContainerChannel): unknown[] {
+      return calls
+        .filter((call: RecordedCall): boolean => (call.channel as ContainerChannel) === channel)
+        .map((call: RecordedCall): unknown => call.args[0]);
+    }
+
+    /**
+     * Lets the actions and reloads started by a synchronous call finish.
+     */
+    async function settled(): Promise<void> {
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    beforeEach(() => {
+      stubBridge({ available: true });
+    });
+
+    afterEach(() => {
+      listed = [CONTAINER];
+      imaged = [];
+      volumed = [];
+      sampled = [];
+      refused = new Set<ContainerChannel>();
+    });
+
+    describe('from the ribbon', () => {
+      it('actsOnTheSelectedContainer', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+        drive(fixture).selectedId.set('abc123');
+
+        ribbon.stop();
+        await settled();
+        ribbon.start();
+        await settled();
+        ribbon.restart();
+        await settled();
+
+        expect(ribbon.hasSelection()).toBe(true);
+        expect(ribbon.selectionRunning()).toBe(true);
+        expect(calledWith(ContainerChannel.Stop)).toEqual(['abc123']);
+        expect(calledWith(ContainerChannel.Start)).toEqual(['abc123']);
+        expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
+      });
+
+      it('doesNothing_withNoSelection', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+        calls = [];
+
+        ribbon.start();
+        ribbon.stop();
+        ribbon.remove();
+        ribbon.restart();
+        ribbon.togglePause();
+        ribbon.viewLogs();
+        ribbon.shell();
+        await settled();
+
+        expect(ribbon.hasSelection()).toBe(false);
+        expect(calls).toEqual([]);
+        expect(fixture.debugElement.injector.get(ContainerTerminals).sessions()).toEqual([]);
+      });
+
+      it('resumesAPausedContainer_andPausesARunningOne', async () => {
+        listed = [CONTAINER, PAUSED];
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+
+        drive(fixture).selectedId.set('paused1');
+        expect(ribbon.selectionPaused()).toBe(true);
+        ribbon.togglePause();
+        await settled();
+        drive(fixture).selectedId.set('abc123');
+        ribbon.togglePause();
+        await settled();
+
+        expect(calledWith(ContainerChannel.Unpause)).toEqual(['paused1']);
+        expect(calledWith(ContainerChannel.Pause)).toEqual(['abc123']);
+      });
+
+      it('opensNoShell_inAContainerThatIsNotRunning', async () => {
+        listed = [PAUSED];
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        drive(fixture).selectedId.set('paused1');
+
+        TestBed.inject(ContainersCommands).shell();
+
+        expect(fixture.debugElement.injector.get(ContainerTerminals).sessions()).toEqual([]);
+      });
+
+      it('removesTheSelectedContainer_afterAsking', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        drive(fixture).selectedId.set('abc123');
+
+        TestBed.inject(ContainersCommands).remove();
+        await settled();
+
+        expect(
+          calledWith(FileChannel.ConfirmDestructive as unknown as ContainerChannel),
+        ).toHaveLength(1);
+        expect(calledWith(ContainerChannel.Remove)).toEqual(['abc123']);
+      });
+
+      it('stopsAnsweringForATabThatWentToTheBack', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+        drive(fixture).selectedId.set('abc123');
+
+        fixture.componentRef.setInput('isActive', false);
+        fixture.detectChanges();
+        ribbon.stop();
+        await settled();
+
+        expect(calledWith(ContainerChannel.Stop)).toEqual([]);
+      });
+    });
+
+    describe('the row menu', () => {
+      it('runsTheChoiceOnTheRowThatOpenedIt', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.menuTarget.set(CONTAINER);
+
+        view.onRowMenu('restart');
+        await settled();
+        view.onRowMenu('pause');
+        await settled();
+        view.onRowMenu('shell');
+
+        expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
+        expect(calledWith(ContainerChannel.Pause)).toEqual(['abc123']);
+        expect(fixture.debugElement.injector.get(ContainerTerminals).sessions()).toHaveLength(1);
+      });
+
+      it('ignoresAChoiceWithNoRow', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        calls = [];
+
+        drive(fixture).onRowMenu('restart');
+        await settled();
+
+        expect(calls).toEqual([]);
+      });
+    });
+
+    describe('ticking', () => {
+      it('toggleAll_ticksWhatIsShown_thenUnticks', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+
+        view.toggleAllChecked();
+        expect(view.allChecked()).toBe(true);
+
+        view.toggleAllChecked();
+        expect(view.allChecked()).toBe(false);
+      });
+
+      it('untickingAndClearing_leavesNothingToActOn', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.setChecked('abc123', true);
+        view.setChecked('abc123', false);
+        await view.bulk('stop');
+        view.setChecked('abc123', true);
+        view.clearChecked();
+        await view.bulk('stop');
+
+        expect(calledWith(ContainerChannel.Stop)).toEqual([]);
+      });
+
+      it('allChecked_ofAnEmptyList_isFalse', async () => {
+        listed = [];
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        drive(fixture).toggleAllChecked();
+
+        expect(drive(fixture).allChecked()).toBe(false);
+      });
+    });
+
+    describe('bulk', () => {
+      it('remove_whenTheUserSaysNo_removesNothing', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.setChecked('abc123', true);
+        confirms = false;
+
+        await view.bulk('remove');
+
+        expect(calledWith(ContainerChannel.Remove)).toEqual([]);
+        expect(view.allChecked()).toBe(true);
+      });
+
+      it('remove_clearsTheTicks', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.setChecked('abc123', true);
+
+        await view.bulk('remove');
+
+        expect(calledWith(ContainerChannel.Remove)).toEqual(['abc123']);
+        expect(view.allChecked()).toBe(false);
+      });
+
+      it('reportsHowManyFailed', async () => {
+        refused = new Set<ContainerChannel>([ContainerChannel.Stop]);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.setChecked('abc123', true);
+        view.setChecked('other', true);
+
+        await view.bulk('stop');
+
+        expect(view.notice()).toBe('2 of 2 containers did not stop.');
+      });
+
+      it('aSecondAction_whileOneRuns_isIgnored', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.setChecked('abc123', true);
+
+        await Promise.all([view.bulk('restart'), view.bulk('restart')]);
+
+        expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
+      });
+    });
+
+    describe('images and volumes', () => {
+      it('removeImage_refused_saysAContainerUsesIt', async () => {
+        refused = new Set<ContainerChannel>([ContainerChannel.RemoveImage]);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        await drive(fixture).removeImage({ image: NGINX, usedBy: 1 });
+
+        expect(drive(fixture).notice()).toBe(
+          'nginx:latest could not be removed: a container uses it.',
+        );
+      });
+
+      it('removeImage_refusedForNoKnownReason_saysOnlyThat', async () => {
+        refused = new Set<ContainerChannel>([ContainerChannel.RemoveImage]);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        await drive(fixture).removeImage({ image: NGINX, usedBy: 0 });
+
+        expect(drive(fixture).notice()).toBe('nginx:latest could not be removed.');
+      });
+
+      it('removeImage_clearsAnEarlierNotice', async () => {
+        refused = new Set<ContainerChannel>([ContainerChannel.RemoveImage]);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        await drive(fixture).removeImage({ image: NGINX, usedBy: 0 });
+        refused = new Set<ContainerChannel>();
+
+        await drive(fixture).removeImage({ image: NGINX, usedBy: 0 });
+
+        expect(drive(fixture).notice()).toBeNull();
+      });
+
+      it('removeVolume_whenTheUserSaysNo_keepsIt', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        confirms = false;
+
+        await drive(fixture).removeVolume({ volume: USED, usedBy: 0 });
+
+        expect(calledWith(ContainerChannel.RemoveVolume)).toEqual([]);
+      });
+
+      it('removeVolume_withConfirmationOff_doesNotAsk', async () => {
+        TestBed.inject(Settings).set('containers.confirmRemoval', false);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        await drive(fixture).removeVolume({ volume: USED, usedBy: 0 });
+
+        expect(calledWith(FileChannel.ConfirmDestructive as unknown as ContainerChannel)).toEqual(
+          [],
+        );
+        expect(calledWith(ContainerChannel.RemoveVolume)).toEqual(['data']);
+      });
+
+      it('removeVolume_refused_saysAContainerMountsIt', async () => {
+        refused = new Set<ContainerChannel>([ContainerChannel.RemoveVolume]);
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        await drive(fixture).removeVolume({ volume: USED, usedBy: 2 });
+
+        expect(drive(fixture).notice()).toBe('data could not be removed: a container mounts it.');
+      });
+
+      it('volumeRows_countMounts_andFollowTheSearch', async () => {
+        volumed = [USED, LOOSE];
+        listed = [{ ...CONTAINER, volumes: ['data'] }];
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+
+        expect(view.volumeRows().map((row: TableRow): unknown => row.data)).toEqual([
+          { volume: USED, usedBy: 1 },
+          { volume: LOOSE, usedBy: 0 },
+        ]);
+
+        view.query.set('DAT');
+
+        expect(view.volumeRows().map((row: TableRow): string => row.id)).toEqual(['data']);
+      });
+
+      it('displayVolume_shortensAnAnonymousName', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        expect(drive(fixture).displayVolume(LOOSE)).toBe('0123456789ab… (anonymous)');
+        expect(drive(fixture).displayVolume(USED)).toBe('data');
+      });
+    });
+
+    describe('the Run and Pull dialogs', () => {
+      it('run_withAnImage_seedsTheDialog', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        drive(fixture).openRun('nginx:latest');
+
+        expect(drive(fixture).runImage()).toBe('nginx:latest');
+      });
+
+      it('run_closedWithAContainer_showsIt', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.kind.set('images');
+        view.openRun();
+
+        view.onRunClosed('abc123');
+        await settled();
+
+        expect(view.runImage()).toBeNull();
+        expect(view.kind()).toBe('containers');
+        expect(view.selectedId()).toBe('abc123');
+      });
+
+      it('run_cancelled_staysWhereItWas', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        view.kind.set('images');
+        view.openRun();
+        calls = [];
+
+        view.onRunClosed(null);
+        await settled();
+
+        expect(view.kind()).toBe('images');
+        expect(calls).toEqual([]);
+      });
+
+      it('pull_reloadsOnlyWhenAnImageCame', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        calls = [];
+
+        drive(fixture).onPullClosed(false);
+        await settled();
+        expect(calledWith(ContainerChannel.ListImages)).toEqual([]);
+
+        drive(fixture).onPullClosed(true);
+        await settled();
+        expect(calledWith(ContainerChannel.ListImages)).toHaveLength(1);
+      });
+    });
+
+    describe('the shell it opens', () => {
+      /**
+       * Opens a shell under given settings.
+       * @param settings The container settings to hold.
+       * @returns Returns the session's command.
+       */
+      async function shellWith(settings: Record<string, string>): Promise<string> {
+        const held: Settings = TestBed.inject(Settings);
+        for (const [key, value] of Object.entries(settings)) {
+          held.set(key as 'containers.shell', value as 'custom');
+        }
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const opened: Mock<(name: string, command: string) => void> =
+          vi.fn<(name: string, command: string) => void>();
+        vi.spyOn(fixture.debugElement.injector.get(ContainerTerminals), 'open').mockImplementation(
+          opened,
+        );
+        drive(fixture).menuTarget.set(CONTAINER);
+        drive(fixture).onRowMenu('shell');
+        return opened.mock.calls[0]?.[1] ?? '';
+      }
+
+      it('usesTheNamedShell', async () => {
+        expect(await shellWith({ 'containers.shell': 'zsh' })).toMatch(/exec -it abc123 zsh$/);
+      });
+
+      it('usesACustomShell', async () => {
+        const command: string = await shellWith({
+          'containers.shell': 'custom',
+          'containers.shellCustom': ' fish -l ',
+        });
+
+        expect(command).toMatch(/exec -it abc123 fish -l$/);
+      });
+
+      it('fallsBackToSh_whenTheCustomShellIsBlank', async () => {
+        const command: string = await shellWith({
+          'containers.shell': 'custom',
+          'containers.shellCustom': '   ',
+        });
+
+        expect(command).toMatch(/exec -it abc123 sh$/);
+      });
+
+      it('reachesTheEngineAtACustomAddress', async () => {
+        const command: string = await shellWith({
+          'containers.engineAddressMode': 'custom',
+          'containers.engineAddress': 'tcp://engine:2375',
+        });
+
+        expect(command).toContain('-H "tcp://engine:2375" exec');
+      });
+    });
+
+    describe('what a row shows', () => {
+      it('formatPorts_showsPublishedPortsOnce_andMarksNonTcp', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        const ports: string = drive(fixture).formatPorts({
+          ...CONTAINER,
+          ports: [
+            { privatePort: 80, publicPort: 8080, protocol: 'tcp' },
+            { privatePort: 80, publicPort: 8080, protocol: 'tcp' },
+            { privatePort: 53, publicPort: 5353, protocol: 'udp' },
+            { privatePort: 443, protocol: 'tcp' },
+          ],
+        });
+
+        expect(ports).toBe('8080→80, 5353→53/udp');
+      });
+
+      it('formatPorts_withNonePublished_isADash', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+
+        expect(drive(fixture).formatPorts(CONTAINER)).toBe('—');
+      });
+
+      it('stats_showForARunningContainer_andDashForOneNotRead', async () => {
+        sampled = [{ id: 'abc123', cpuPercent: 12.34, memoryBytes: 2048 } as ContainerStats];
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        await settled();
+
+        expect(drive(fixture).formatCpu('abc123')).toBe('12.3%');
+        expect(drive(fixture).formatMemory('abc123')).toContain('KB');
+        expect(drive(fixture).formatCpu('other')).toBe('—');
+        expect(drive(fixture).formatMemory('other')).toBe('—');
+      });
+    });
+
+    it('selection_ofAContainerThatWentAway_isDropped', async () => {
+      const fixture: ComponentFixture<ContainersView> = await createView();
+      const view: View = drive(fixture);
+      view.selectedId.set('abc123');
+      view.setChecked('abc123', true);
+      listed = [];
+
+      TestBed.inject(ContainersCommands).refresh();
+      await settled();
+
+      expect(view.selectedId()).toBeNull();
+      expect(TestBed.inject(ContainersCommands).hasSelection()).toBe(false);
     });
   });
 });
