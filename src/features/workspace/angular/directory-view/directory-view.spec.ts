@@ -45,11 +45,20 @@ import {
 } from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import { RepositoryTrust } from '@shared/angular/services/repository-trust/repository-trust';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
+import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
 import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 
 import { DirectoryView } from './directory-view';
+
+/**
+ * What a successful push reports.
+ */
+const PUSHED: MutationResult = { success: true };
 
 const ROOT_LISTING: DirectoryListing = {
   path: '/ws',
@@ -528,6 +537,140 @@ describe('DirectoryView', () => {
       fixture.destroy();
 
       expect(TestBed.inject(ActiveWorkspace).activeWell()?.tabId).not.toBe('tab-2');
+    });
+  });
+
+  describe('binding the repository for an action', () => {
+    const info: RepositoryInfo = { root: '/ws', trust: 'trusted' } as RepositoryInfo;
+    let closed: string[];
+    let resolving: () => Promise<RepositoryInfo | null>;
+    let view: ComponentFixture<DirectoryView>;
+    let repository: Repository;
+
+    /**
+     * Lets the replies in flight land.
+     */
+    async function settle(): Promise<void> {
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    beforeEach(async () => {
+      closed = [];
+      resolving = (): Promise<RepositoryInfo | null> => Promise.resolve(null);
+      const known: Record<string, unknown> = {
+        resolveRepository: (): Promise<RepositoryInfo | null> => resolving(),
+        closeRepository: (root: string): Promise<void> => {
+          closed.push(root);
+          return Promise.resolve();
+        },
+      };
+      // The binding reads far more than these tests are about; everything else is refused.
+      Object.defineProperty(TestBed.inject(SourceControl), 'client', {
+        value: new Proxy(known, {
+          get: (target: Record<string, unknown>, name: string): unknown =>
+            target[name] ?? ((): Promise<unknown> => Promise.resolve({ ok: false, error: 'none' })),
+        }),
+      });
+      TestBed.inject(Workspaces).setInitial('tab-2', ROOT_LISTING);
+      view = TestBed.createComponent(DirectoryView);
+      view.componentRef.setInput('tabId', 'tab-2');
+      view.componentRef.setInput('isActive', true);
+      await view.whenStable();
+      await settle();
+      repository = view.debugElement.injector.get(Repository);
+      closed.length = 0;
+    });
+
+    it('push_notARepository_doesNothing', async () => {
+      const push: Mock = vi.spyOn(repository, 'push');
+
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it('push_trustedRepository_bindsAndPushes', async () => {
+      const push: Mock = vi.spyOn(repository, 'push').mockResolvedValue(PUSHED);
+      resolving = (): Promise<RepositoryInfo> => Promise.resolve(info);
+
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      expect(repository.isBound()).toBe(true);
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+
+    it('push_refusedTrust_releasesItsHoldAndPushesNothing', async () => {
+      const push: Mock = vi.spyOn(repository, 'push');
+      vi.spyOn(TestBed.inject(RepositoryTrust), 'ensureTrusted').mockResolvedValue(false);
+      resolving = (): Promise<RepositoryInfo> => Promise.resolve(info);
+
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      expect(closed).toEqual(['/ws']);
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it('push_twiceAtOnce_balancesTheSecondHold', async () => {
+      vi.spyOn(repository, 'push').mockResolvedValue(PUSHED);
+      resolving = (): Promise<RepositoryInfo> => Promise.resolve(info);
+
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      expect(closed).toEqual(['/ws']);
+    });
+
+    it('push_resolveRejected_staysQuiet', async () => {
+      const push: Mock = vi.spyOn(repository, 'push');
+      resolving = (): Promise<never> => Promise.reject(new Error('git crashed'));
+
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it('destroy_whileResolving_releasesTheHoldAndBindsNothing', async () => {
+      const bind: Mock = vi.spyOn(repository, 'bind');
+      let answer: (value: RepositoryInfo) => void = (): void => undefined;
+      resolving = (): Promise<RepositoryInfo> =>
+        new Promise<RepositoryInfo>((resolve: (value: RepositoryInfo) => void): void => {
+          answer = resolve;
+        });
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+
+      view.destroy();
+      answer(info);
+      await settle();
+
+      expect(bind).not.toHaveBeenCalled();
+      expect(closed).toEqual(['/ws']);
+    });
+
+    it('destroy_whileTheTrustQuestionIsOpen_releasesTheHoldAndBindsNothing', async () => {
+      const bind: Mock = vi.spyOn(repository, 'bind');
+      let answer: (trusted: boolean) => void = (): void => undefined;
+      vi.spyOn(TestBed.inject(RepositoryTrust), 'ensureTrusted').mockReturnValue(
+        new Promise<boolean>((resolve: (trusted: boolean) => void): void => {
+          answer = resolve;
+        }),
+      );
+      resolving = (): Promise<RepositoryInfo> => Promise.resolve(info);
+      TestBed.inject(WorkspaceSourceControlCommands).push();
+      await settle();
+
+      view.destroy();
+      answer(true);
+      await settle();
+
+      expect(bind).not.toHaveBeenCalled();
+      expect(closed).toEqual(['/ws']);
     });
   });
 

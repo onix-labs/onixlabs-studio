@@ -2369,14 +2369,24 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (path === undefined) {
       return false;
     }
-    const info: RepositoryInfo | null = await (this.sourceControlApi?.resolveRepository(path) ??
-      Promise.resolve(null));
+    let info: RepositoryInfo | null;
+    try {
+      info = await (this.sourceControlApi?.resolveRepository(path) ?? Promise.resolve(null));
+    } catch (error: unknown) {
+      this.log.warn('source-control', 'Resolving the repository failed', error);
+      return false;
+    }
     if (info === null) {
       return false;
     }
     // A repository the user has not trusted is not acted on: the main process would refuse anyway,
-    // and the explorer's own binding has already shown why.
-    if (!(await this.repositoryTrust.ensureTrusted(info))) {
+    // and the explorer's own binding has already shown why. A tab that closed meanwhile asks nothing,
+    // and binds nothing, or the hold this resolve took would outlive it: teardown has been and gone.
+    if (this.destroyRef.destroyed || !(await this.repositoryTrust.ensureTrusted(info))) {
+      void this.sourceControlApi?.closeRepository(info.root);
+      return false;
+    }
+    if (this.destroyRef.destroyed) {
       void this.sourceControlApi?.closeRepository(info.root);
       return false;
     }
