@@ -203,7 +203,7 @@ export interface AgentTask {
 /**
  * Identifies the state of a permission request item.
  */
-export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed';
+export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed' | 'expired';
 
 /**
  * Identifies the state of an input-request (agent question) item: awaiting the user's answer,
@@ -1957,6 +1957,9 @@ export class Agent {
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
         }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
+        }
         if (item.kind !== 'input-request') {
           return item;
         }
@@ -3200,8 +3203,9 @@ export class Agent {
   }
 
   /**
-   * Marks every still-pending input request and edit decision dismissed (the run ended before the
-   * user answered).
+   * Settles every prompt still pending when the run ended before the user answered. A permission
+   * expires rather than dismisses, which reads as answered on another device; left pending it would
+   * keep every later turn "waiting" on a run that has gone.
    */
   private dismissPendingInputs(): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
@@ -3211,6 +3215,9 @@ export class Agent {
         }
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
+        }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
         }
         return item;
       }),

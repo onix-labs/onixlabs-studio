@@ -2902,4 +2902,71 @@ describe('Agent', () => {
     expect(toast.detail).toBe('keychain locked');
     expect(closeSessionCalls).toEqual([]);
   });
+
+  /**
+   * Raises a permission prompt in the turn in flight.
+   */
+  function raisePermission(): void {
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Write',
+      detail: 'x',
+      hasWorkspace: true,
+    });
+  }
+
+  it('status_whenRunEndsWithAPendingPermission_expiresItAndTheNextTurnIsNotWaiting', () => {
+    agent.send('hi');
+    raisePermission();
+    const prompt: AgentItem | undefined = lastItem();
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(prompt === undefined ? undefined : itemById(prompt.id)?.permissionState).toBe('expired');
+
+    agent.send('next');
+
+    expect(agent.phase()).toBe('working');
+  });
+
+  it('respondPermission_onAnExpiredPrompt_repliesToNothing', () => {
+    agent.send('hi');
+    raisePermission();
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+    const expired: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'permission');
+
+    if (expired !== undefined) {
+      agent.respondPermission(expired, true);
+    }
+
+    expect(permissionReplies).toEqual([]);
+  });
+
+  it('restore_whenAPermissionWasPersistedPending_expiresIt', () => {
+    agent.restore([
+      {
+        id: 'item-1',
+        kind: 'permission',
+        text: '',
+        permissionId: 'p1',
+        permissionState: 'pending',
+      },
+    ]);
+
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(lastItem()?.permissionState).toBe('expired');
+  });
+
+  /**
+   * Finds a transcript item as it stands now.
+   * @param id The item's identifier.
+   * @returns Returns the item, or undefined when it has gone.
+   */
+  function itemById(id: string): AgentItem | undefined {
+    return agent.items().find((item: AgentItem): boolean => item.id === id);
+  }
 });

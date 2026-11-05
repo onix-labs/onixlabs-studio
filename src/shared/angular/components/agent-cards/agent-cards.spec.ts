@@ -239,6 +239,7 @@ describe('AgentPermissionCard', () => {
     ).toBe('This command always allowed');
     expect(settled({ permissionState: 'denied' })).toBe('Denied');
     expect(settled({ permissionState: 'dismissed' })).toBe('Answered on another device');
+    expect(settled({ permissionState: 'expired' })).toBe('Not answered before the run ended');
   });
 });
 
