@@ -1999,7 +1999,7 @@ describe('SourceControlSidebar', () => {
 
       expect(windows.openWindows).toBe(1);
       const host: HTMLElement | null = windows.contentHost;
-      expect(host?.querySelector('.rail__dialog-title')?.textContent).toContain('New branch');
+      expect(host?.querySelector('.rail__dialog-title')?.textContent).toContain('New Branch');
       expect(host?.querySelector('.rail__dialog-input')).not.toBeNull();
 
       internals().cancelBranch();

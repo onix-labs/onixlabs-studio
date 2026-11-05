@@ -158,19 +158,20 @@
 <app-modal
   [open]="branchDialogOpen()"
   [width]="26"
+  [frameless]="true"
   ariaLabel="New branch"
   (dismiss)="cancelBranch()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">New branch</h2>
+    <h2 class="rail__dialog-title">New Branch</h2>
     <!-- Made from a worktree's menu, the branch is made in that worktree: each is a clone of its own. -->
     @if (branchTarget(); as target) {
       <p class="rail__dialog-message">In the “{{ target.label }}” worktree.</p>
     }
     <app-text-field
       class="rail__dialog-input"
-      placeholder="Branch name"
-      ariaLabel="Branch name"
+      variant="floating"
+      label="Branch name"
       [value]="branchName()"
       (valueChange)="onBranchNameValue($event)"
       (enter)="confirmBranch()"
@@ -193,7 +194,7 @@
         [disabled]="!canCreateBranch()"
         (click)="confirmBranch()"
       />
-      <app-button label="Cancel" (click)="cancelBranch()" />
+      <app-button variant="none" label="Cancel" (click)="cancelBranch()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -201,15 +202,16 @@
 <app-modal
   [open]="renamingBranch() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Rename branch"
   (dismiss)="cancelRenameBranch()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Rename branch</h2>
+    <h2 class="rail__dialog-title">Rename Branch</h2>
     <app-text-field
       class="rail__dialog-input"
-      placeholder="Branch name"
-      ariaLabel="Branch name"
+      variant="floating"
+      label="Branch name"
       [value]="renameName()"
       (valueChange)="onRenameNameValue($event)"
       (enter)="confirmRenameBranch()"
@@ -225,7 +227,7 @@
         [disabled]="!canRenameBranch()"
         (click)="confirmRenameBranch()"
       />
-      <app-button label="Cancel" (click)="cancelRenameBranch()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRenameBranch()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -233,11 +235,12 @@
 <app-modal
   [open]="upstreamBranch() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Set upstream"
   (dismiss)="cancelUpstream()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Set upstream</h2>
+    <h2 class="rail__dialog-title">Set Upstream</h2>
     <p class="rail__dialog-message">
       Which remote-tracking branch “{{ upstreamBranch()?.name }}” follows, and so what its ahead and
       behind counts are measured against.
@@ -249,6 +252,7 @@
     } @else {
       <app-dropdown
         class="rail__dialog-input"
+        label="Upstream branch"
         ariaLabel="Upstream branch"
         [fullWidth]="true"
         [options]="upstreamOptions()"
@@ -263,7 +267,7 @@
         [disabled]="upstreamChoice().length === 0"
         (click)="confirmUpstream()"
       />
-      <app-button label="Cancel" (click)="cancelUpstream()" />
+      <app-button variant="none" label="Cancel" (click)="cancelUpstream()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -273,6 +277,7 @@
 <app-modal
   [open]="pendingRebaseOnto() !== null"
   [width]="32"
+  [frameless]="true"
   ariaLabel="Rebase branch"
   (dismiss)="cancelRebase()"
 >
@@ -290,7 +295,7 @@
     </p>
     <app-button-row>
       <app-button variant="solid" label="Rebase" (click)="confirmRebase()" />
-      <app-button label="Cancel" (click)="cancelRebase()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRebase()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -300,18 +305,19 @@
 <app-modal
   [open]="pendingDeleteBranch() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Delete branch"
   (dismiss)="cancelDeleteBranch()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Delete this branch?</h2>
+    <h2 class="rail__dialog-title">Delete This Branch?</h2>
     <p class="rail__dialog-message">
       “{{ pendingDeleteBranch()?.name }}” is deleted from
       {{ deletionPlace(pendingDeleteBranch()) }}. A copy already pushed to a remote stays there.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Delete" (click)="confirmDeleteBranch()" />
-      <app-button label="Cancel" (click)="cancelDeleteBranch()" />
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDeleteBranch()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDeleteBranch()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -321,19 +327,25 @@
 <app-modal
   [open]="pendingForceDeleteBranch() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Delete unmerged branch"
   (dismiss)="cancelForceDeleteBranch()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Delete it anyway?</h2>
+    <h2 class="rail__dialog-title">Delete It Anyway?</h2>
     <p class="rail__dialog-message">
       “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch
       checked out in {{ deletionPlace(pendingForceDeleteBranch()) }}, or into anything it tracks.
       Deleting it now loses them, and nothing brings them back.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Keep it" (click)="cancelForceDeleteBranch()" />
-      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+      <app-button
+        variant="solid"
+        tone="danger"
+        label="Delete"
+        (click)="confirmForceDeleteBranch()"
+      />
+      <app-button variant="none" label="Cancel" (click)="cancelForceDeleteBranch()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -341,15 +353,17 @@
 <app-modal
   [open]="remoteDialogOpen()"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Add remote"
   (dismiss)="cancelRemote()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Add remote</h2>
+    <h2 class="rail__dialog-title">Add Remote</h2>
     <app-text-field
       class="rail__dialog-input"
-      placeholder="Remote name (for example, upstream)"
-      ariaLabel="Remote name"
+      variant="floating"
+      label="Name"
+      placeholder="for example, upstream"
       [value]="remoteName()"
       (valueChange)="onRemoteNameValue($event)"
       (enter)="confirmRemote()"
@@ -360,8 +374,8 @@
     }
     <app-text-field
       class="rail__dialog-input"
-      placeholder="URL"
-      ariaLabel="Remote URL"
+      variant="floating"
+      label="URL"
       [value]="remoteUrl()"
       (valueChange)="onRemoteUrlValue($event)"
       (enter)="confirmRemote()"
@@ -374,7 +388,7 @@
         [disabled]="!canAddRemote()"
         (click)="confirmRemote()"
       />
-      <app-button label="Cancel" (click)="cancelRemote()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRemote()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -384,32 +398,39 @@
 <app-modal
   [open]="pendingRemoveRemote() !== null"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Remove remote"
   (dismiss)="cancelRemoveRemote()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Remove this remote?</h2>
+    <h2 class="rail__dialog-title">Remove This Remote?</h2>
     <p class="rail__dialog-message">
       “{{ pendingRemoveRemote()?.name }}” and its remote-tracking branches are removed from this
       repository. Nothing on the remote itself is touched.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Remove" (click)="confirmRemoveRemote()" />
-      <app-button label="Cancel" (click)="cancelRemoveRemote()" />
+      <app-button variant="solid" tone="danger" label="Remove" (click)="confirmRemoveRemote()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRemoveRemote()" />
     </app-button-row>
   </ng-template>
 </app-modal>
 
-<app-modal [open]="tagDialogOpen()" [width]="26" ariaLabel="New tag" (dismiss)="cancelTag()">
+<app-modal
+  [open]="tagDialogOpen()"
+  [width]="26"
+  [frameless]="true"
+  ariaLabel="New tag"
+  (dismiss)="cancelTag()"
+>
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">New tag</h2>
+    <h2 class="rail__dialog-title">New Tag</h2>
     <!-- Which commit is being tagged, spelled out: the dialog is opened from a menu rather than from
          the commit itself, so the target is otherwise something the user has to remember. -->
     <p class="rail__dialog-message">Tagging {{ tagTargetLabel() }}.</p>
     <app-text-field
       class="rail__dialog-input"
-      placeholder="Tag name"
-      ariaLabel="Tag name"
+      variant="floating"
+      label="Tag name"
       [value]="tagName()"
       (valueChange)="onTagNameValue($event)"
       (enter)="confirmTag()"
@@ -422,8 +443,9 @@
          why this is a field rather than a switch beside one. -->
     <app-text-field
       class="rail__dialog-input"
-      placeholder="Message (optional — annotates the tag)"
-      ariaLabel="Tag message"
+      variant="floating"
+      label="Message (optional)"
+      placeholder="Annotates the tag"
       [value]="tagMessage()"
       (valueChange)="onTagMessageValue($event)"
       (enter)="confirmTag()"
@@ -436,7 +458,7 @@
         [disabled]="!canCreateTag()"
         (click)="confirmTag()"
       />
-      <app-button label="Cancel" (click)="cancelTag()" />
+      <app-button variant="none" label="Cancel" (click)="cancelTag()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -445,12 +467,13 @@
      is undone by fetching, deleting on the remote is undone by nobody. -->
 <app-modal
   [open]="pendingDeleteTag() !== null"
-  [width]="30"
+  [frameless]="true"
+  [width]="36"
   ariaLabel="Delete tag"
   (dismiss)="cancelDeleteTag()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Delete this tag?</h2>
+    <h2 class="rail__dialog-title">Delete This Tag?</h2>
     @if (deleteTagRemote(); as remote) {
       <p class="rail__dialog-message">
         “{{ pendingDeleteTag()?.name }}” is deleted from this repository. Deleting it on
@@ -461,18 +484,18 @@
         “{{ pendingDeleteTag()?.name }}” is deleted from this repository.
       </p>
     }
-    <!-- The local delete stays the solid one: it is the answer that is nearly always meant, and the
-         far more destructive of the two should not be the one wearing the emphasis. -->
+    <!-- The local delete stays the solid one: it is the answer that is nearly always meant. -->
     <app-button-row>
-      <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDeleteTag()" />
       @if (deleteTagRemote(); as remote) {
         <app-button
+          variant="ghost"
           tone="danger"
           [label]="'Delete on ' + remote + ' too'"
           (click)="confirmDeleteTagEverywhere()"
         />
       }
-      <app-button label="Cancel" (click)="cancelDeleteTag()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDeleteTag()" />
     </app-button-row>
   </ng-template>
 </app-modal>
