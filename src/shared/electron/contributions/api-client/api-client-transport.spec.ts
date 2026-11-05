@@ -242,6 +242,18 @@ describe('createApiTransport against a local fixture', () => {
     await expect(send()).rejects.toThrow();
   });
 
+  it('aConnectionLostInACompressedBody_rejects_ratherThanHanging', async () => {
+    handler = (_request: IncomingMessage, response: ServerResponse): void => {
+      response.setHeader('content-encoding', 'gzip');
+      response.setHeader('content-length', '100000');
+      response.write(gzipSync('part').subarray(0, 8), (): void => {
+        response.destroy();
+      });
+    };
+
+    await expect(send()).rejects.toThrow();
+  });
+
   it('aConnectionLostInAPlainBody_rejects', async () => {
     handler = (_request: IncomingMessage, response: ServerResponse): void => {
       response.setHeader('content-length', '100000');
@@ -273,6 +285,21 @@ describe('createApiTransport against a local fixture', () => {
 
     expect(answer.body).toHaveLength(100);
     expect(answer.truncated).toBe(false);
+  });
+
+  it('aFirstChunkLandingOnTheLimit_stillSaysTheRestWasCut', async () => {
+    handler = (_request: IncomingMessage, response: ServerResponse): void => {
+      response.write('x'.repeat(100), (): void => {
+        setTimeout((): void => {
+          response.end('the rest');
+        }, 20);
+      });
+    };
+
+    const answer: TransportResponse = await send({ maxBodyBytes: 100 });
+
+    expect(answer.body).toHaveLength(100);
+    expect(answer.truncated).toBe(true);
   });
 
   it('aCompressedBomb_isCutAtTheLimit', async () => {

@@ -412,13 +412,19 @@ function readBody(
       stream.on('data', (chunk: Buffer): void => {
         chunks.push(chunk);
         length += chunk.byteLength;
-        if (length >= limit) {
-          resolve({ body: Buffer.concat(chunks).subarray(0, limit), truncated: length > limit });
+        // Past the limit rather than at it: a body of exactly the limit has more to say, namely that
+        // it ended, and only reading on tells it from one that was cut.
+        if (length > limit) {
+          resolve({ body: Buffer.concat(chunks).subarray(0, limit), truncated: true });
+          // Both ends: a decompressor holds more than the network delivered, by any factor.
+          stream.destroy();
           response.destroy();
         }
       });
       stream.once('end', (): void => resolve({ body: Buffer.concat(chunks), truncated: false }));
       stream.once('error', reject);
+      // A decompressor is not told when the connection under it is lost, and would wait for good.
+      response.once('error', reject);
     },
   );
 }
