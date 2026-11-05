@@ -81,9 +81,9 @@ try {
     console.log(`\n${entry}`);
     console.table(
       Object.fromEntries(
-        results.map(({ name, iterations: runs, medianMs, p95Ms, heapDeltaMb }) => [
+        results.map(({ name, iterations: runs, medianMs, p95Ms, heapDeltaMb, note }) => [
           name,
-          { runs, 'median ms': medianMs, 'p95 ms': p95Ms, 'heap MB': heapDeltaMb },
+          { runs, 'median ms': medianMs, 'p95 ms': p95Ms, 'heap MB': heapDeltaMb, note },
         ]),
       ),
     );

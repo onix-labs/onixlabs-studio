@@ -26,4 +26,9 @@ export interface BenchResult {
    * Specifies the median heap growth across one iteration, in mebibytes.
    */
   readonly heapDeltaMb: number;
+
+  /**
+   * Specifies what the case had to add, or an empty string.
+   */
+  readonly note: string;
 }

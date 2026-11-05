@@ -1103,6 +1103,9 @@ export class Terminal implements AfterViewInit, OnDestroy {
     for (const chunk of parked) {
       if (chunk.seq > replay.seq) {
         this.writeOutput(chunk.data);
+      } else {
+        // Already on screen by way of the snapshot, so it counts as parsed.
+        this.bridge.acknowledge(id, chunk.data.length);
       }
     }
 
@@ -1490,12 +1493,16 @@ export class Terminal implements AfterViewInit, OnDestroy {
     if (xterm === null) {
       return;
     }
+    const id: string = this.terminalId();
     if (!this.scrollLocked) {
-      xterm.write(data);
+      xterm.write(data, (): void => this.bridge.acknowledge(id, data.length));
       return;
     }
     const top: number = xterm.buffer.active.viewportY;
-    xterm.write(data, (): void => xterm.scrollToLine(top));
+    xterm.write(data, (): void => {
+      xterm.scrollToLine(top);
+      this.bridge.acknowledge(id, data.length);
+    });
   }
 
   /**

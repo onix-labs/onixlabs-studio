@@ -24,6 +24,11 @@ export interface BenchCase {
   readonly run: () => unknown;
 
   /**
+   * Describes what time and heap cannot show about the runs, for the results.
+   */
+  readonly note?: () => string;
+
+  /**
    * Cleans up once, outside the measurement.
    */
   readonly teardown?: () => Promise<void> | void;

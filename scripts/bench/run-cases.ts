@@ -70,6 +70,7 @@ async function measure(benchCase: BenchCase, iterations: number): Promise<BenchR
     medianMs: round(percentile(durations, 0.5)),
     p95Ms: round(percentile(durations, 0.95)),
     heapDeltaMb: round(percentile(heapDeltas, 0.5) / (1024 * 1024)),
+    note: benchCase.note?.() ?? '',
   };
 }
 
