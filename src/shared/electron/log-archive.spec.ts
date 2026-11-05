@@ -1,7 +1,14 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -51,6 +58,55 @@ describe('LogArchive', () => {
     archive.persist(record({ sessionId: 'session-b', message: 'from-b' }));
     expect(archive.readSession('session-a')).toHaveLength(1);
     expect(archive.readSession('session-b')[0].message).toBe('from-b');
+  });
+
+  it('readSessionFile_readsWhatReadSessionReads', async () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.persist(record({ id: 1, message: 'one' }));
+    archive.persist(record({ id: 2, message: 'two' }));
+
+    expect(await archive.readSessionFile('session-a')).toEqual(archive.readSession('session-a'));
+    expect(await archive.readSessionFile('session-a')).toHaveLength(2);
+  });
+
+  it('readSessionFile_returnsEmptyForAnUnknownSession', async () => {
+    expect(await new LogArchive(dir).readSessionFile('nope')).toEqual([]);
+  });
+
+  it('readSessionFile_skipsMalformedLines_andKeepsALastLineWithNoNewline', async () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.persist(record({ message: 'kept' }));
+    const file: string = join(dir, 'sessions', 'session-a.jsonl');
+    appendFileSync(file, `not json\n${JSON.stringify(record({ message: 'unterminated' }))}`);
+
+    const reloaded: readonly LogRecord[] = await archive.readSessionFile('session-a');
+
+    expect(reloaded.map((entry: LogRecord): string => entry.message)).toEqual([
+      'kept',
+      'unterminated',
+    ]);
+  });
+
+  it('readSessionFile_keepsARecordHoldingALineSeparator', async () => {
+    // JSON leaves U+2028 raw, and a splitter that broke there would lose the record whole.
+    const archive: LogArchive = new LogArchive(dir);
+    archive.persist(record({ message: 'before\u2028after' }));
+
+    const reloaded: readonly LogRecord[] = await archive.readSessionFile('session-a');
+
+    expect(reloaded.map((entry: LogRecord): string => entry.message)).toEqual([
+      'before\u2028after',
+    ]);
+  });
+
+  it('readSessionFile_keepsMultiByteTextAcrossTheStreamsChunks', async () => {
+    const archive: LogArchive = new LogArchive(dir);
+    const message: string = '日本語'.repeat(50_000);
+    archive.persist(record({ message }));
+
+    const reloaded: readonly LogRecord[] = await archive.readSessionFile('session-a');
+
+    expect(reloaded[0].message).toBe(message);
   });
 
   it('readSession_returnsEmptyForAnUnknownSession', () => {

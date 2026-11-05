@@ -58,6 +58,7 @@ import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
 import { diagnosticsForBody } from './api-body-diagnostics';
 import { languageForBodyKind, languageForContentType } from './api-body-language';
+import { indentJson } from './indent-json';
 
 /**
  * The editor sections of a request, in the order the tab strip offers them.
@@ -623,10 +624,11 @@ export class ApiRequestPanel implements FindHost {
       return response.body;
     }
     try {
-      return JSON.stringify(JSON.parse(response.body), null, 2);
+      JSON.parse(response.body);
     } catch {
       return response.body;
     }
+    return indentJson(response.body);
   }
 
   /**

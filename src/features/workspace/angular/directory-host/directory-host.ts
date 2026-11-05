@@ -143,6 +143,18 @@ export class DirectoryHost implements OnInit, OnDestroy {
   private readonly loading: Set<string> = new Set<string>();
 
   /**
+   * Holds whether the tab has gone. What the main process answers afterwards must open nothing more,
+   * and a root it hands back has nobody left to close it but the call that asked for it.
+   */
+  private destroyed: boolean = false;
+
+  /**
+   * Holds whether a promotion is running. It moves the working copy on disk, so a second click must
+   * not start another over the top of it.
+   */
+  private promoting: boolean = false;
+
+  /**
    * Holds the agent conversation a promotion carries across, with the worktree whose view takes it
    * over — the one the repository became — or null when there is none.
    */
@@ -250,6 +262,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * sub-views leave those to the host.
    */
   public ngOnDestroy(): void {
+    this.destroyed = true;
     for (const root of this.session.claimed()) {
       void this.closeRoot(root);
     }
@@ -261,12 +274,32 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * @returns Returns a promise that resolves once the mode is entered.
    */
   private async adopt(listing: DirectoryListing): Promise<void> {
-    const kind: WorkspaceKind | null = (await this.worktrees.client?.resolve(listing.path)) ?? null;
-    if (kind === 'worktree' && (await this.enterContainer(listing.path))) {
+    const kind: WorkspaceKind | null = await this.resolveKind(listing.path);
+    if (!this.destroyed && kind === 'worktree' && (await this.enterContainer(listing.path))) {
+      return;
+    }
+    if (this.destroyed) {
+      // The tab went before any view took the folder over, so nothing else will close it.
+      void this.closeRoot(listing.path);
       return;
     }
     this.singleListing.set(listing);
     this.phase.set('single');
+  }
+
+  /**
+   * Reads what a folder is. A folder that cannot be read as anything more is an ordinary one: better
+   * a plain view of it than a tab that never opens.
+   * @param path The folder's path.
+   * @returns Returns the folder's kind, or null when it is not known.
+   */
+  private async resolveKind(path: string): Promise<WorkspaceKind | null> {
+    try {
+      return (await this.worktrees.client?.resolve(path)) ?? null;
+    } catch (error: unknown) {
+      this.log.warn('directory-host', `Resolving the folder failed: ${String(error)}`);
+      return null;
+    }
   }
 
   /**
@@ -275,9 +308,14 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * @returns Returns true when the container was described and entered.
    */
   private async enterContainer(root: string): Promise<boolean> {
-    const descriptor: WorktreeDescriptor | null =
-      (await this.worktrees.client?.describe(root)) ?? null;
-    if (descriptor === null) {
+    let descriptor: WorktreeDescriptor | null;
+    try {
+      descriptor = (await this.worktrees.client?.describe(root)) ?? null;
+    } catch (error: unknown) {
+      this.log.warn('directory-host', `Describing the container failed: ${String(error)}`);
+      return false;
+    }
+    if (descriptor === null || this.destroyed) {
       return false;
     }
     this.session.claimRoot(root);
@@ -306,8 +344,14 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * @returns Returns a promise that resolves once the check (and any transition) settles.
    */
   private async maybeAdoptContainer(root: string): Promise<void> {
-    const kind: WorkspaceKind | null = (await this.worktrees.client?.resolve(root)) ?? null;
-    if (kind !== 'worktree' || this.phase() !== 'single') {
+    const kind: WorkspaceKind | null = await this.resolveKind(root);
+    // A root the view has moved on from while this was asked is not the view's to rebuild around.
+    if (
+      kind !== 'worktree' ||
+      this.phase() !== 'single' ||
+      this.destroyed ||
+      this.singleRoot !== root
+    ) {
       return;
     }
     // Claim BEFORE the single view is destroyed, so its teardown releases local state only and the
@@ -328,22 +372,38 @@ export class DirectoryHost implements OnInit, OnDestroy {
    */
   private async promote(conversationId: string | null): Promise<void> {
     const root: string | null = this.singleRoot;
-    if (root === null || this.phase() !== 'single' || this.worktrees.client === undefined) {
+    if (
+      root === null ||
+      this.phase() !== 'single' ||
+      this.worktrees.client === undefined ||
+      this.promoting
+    ) {
       return;
     }
-    const outcome: WorktreeOutcome<WorktreeDescriptor> = await this.worktrees.client.promote(root);
-    if (!outcome.ok) {
-      this.log.error('directory-host', `Promotion failed: ${outcome.error}`);
-      return;
+    this.promoting = true;
+    try {
+      const outcome: WorktreeOutcome<WorktreeDescriptor> =
+        await this.worktrees.client.promote(root);
+      if (!outcome.ok) {
+        this.log.error('directory-host', `Promotion failed: ${outcome.error}`);
+        return;
+      }
+      if (this.destroyed) {
+        return;
+      }
+      this.session.claimRoot(root);
+      const first: string | undefined = outcome.value.checkouts[0]?.id;
+      if (conversationId !== null && first !== undefined) {
+        this.carried.set({ checkoutId: first, conversationId });
+      }
+      this.session.initialize(root, outcome.value);
+      this.phase.set('container');
+      this.singleListing.set(null);
+    } catch (error: unknown) {
+      this.log.error('directory-host', `Promotion failed: ${String(error)}`);
+    } finally {
+      this.promoting = false;
     }
-    this.session.claimRoot(root);
-    const first: string | undefined = outcome.value.checkouts[0]?.id;
-    if (conversationId !== null && first !== undefined) {
-      this.carried.set({ checkoutId: first, conversationId });
-    }
-    this.session.initialize(root, outcome.value);
-    this.phase.set('container');
-    this.singleListing.set(null);
   }
 
   /**
@@ -365,14 +425,21 @@ export class DirectoryHost implements OnInit, OnDestroy {
         this.log.error('directory-host', `Opening the checkout failed: ${opened.error}`);
         return;
       }
+      if (this.destroyed) {
+        // Too late to claim: the host has already closed what it held, and this root was not in it.
+        void this.closeRoot(opened.value);
+        return;
+      }
       this.session.claimRoot(opened.value);
       const listing: DirectoryListing | null = await this.readListing(opened.value);
-      if (listing === null) {
+      if (listing === null || this.destroyed) {
         return;
       }
       if (!this.loaded().some((entry: LoadedCheckout): boolean => entry.id === id)) {
         this.loaded.set([...this.loaded(), { id, listing }]);
       }
+    } catch (error: unknown) {
+      this.log.error('directory-host', `Opening the checkout failed: ${String(error)}`);
     } finally {
       this.loading.delete(id);
     }

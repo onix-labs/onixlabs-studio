@@ -6,6 +6,7 @@ import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
 import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
+import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,6 +26,7 @@ import {
   LspServerSummary,
   LspStartRequest,
   LspStartResult,
+  PUBLISH_DIAGNOSTICS_METHOD,
   REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
   WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
@@ -197,6 +199,21 @@ export class LspManager {
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
 
   /**
+   * Holds the diagnostics on their way to the renderer, limiting how fast they cross.
+   */
+  private readonly diagnostics: LspDiagnosticsCoalescer = new LspDiagnosticsCoalescer(
+    (sessionId: string, method: string, params: unknown): void =>
+      this.notifyRenderer(sessionId, method, params),
+  );
+
+  /**
+   * Counts the times every session has been disposed, so a launch that was still resolving its server
+   * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
+   * disposes everything too, and the renderer that replaces it starts its servers again.
+   */
+  private disposals: number = 0;
+
+  /**
    * Holds the forwarder that hands a server's `workspace/applyEdit` to the renderer (#1015).
    */
   private readonly applyEdits: LspApplyEditForwarder;
@@ -315,16 +332,7 @@ export class LspManager {
         if (complete === true && session.loaded) {
           session.analysed = true;
         }
-        const message: LspMessage = {
-          sessionId,
-          method: WORKSPACE_DIAGNOSTICS_METHOD,
-          params: {
-            reports,
-            ...(reset === true ? { reset: true } : {}),
-            ...(complete === true ? { complete: true } : {}),
-          },
-        };
-        this.send(sessionId, LspChannel.Notification, message);
+        this.diagnostics.report(sessionId, reports, reset, complete);
       },
       sessionId,
     );
@@ -367,7 +375,7 @@ export class LspManager {
           ? `Settings changed; telling session ${id} to read them again`
           : `Settings changed; pushing them to session ${id}`,
       );
-      void session.connection.sendNotification('workspace/didChangeConfiguration', {
+      this.tell(session.connection, 'workspace/didChangeConfiguration', {
         settings: pushed ?? null,
       });
       // A setting may change what the server reports at all (its analysis scope): start the
@@ -387,6 +395,7 @@ export class LspManager {
    */
   public disposeAll(): void {
     logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
+    this.disposals += 1;
     this.applyEdits.dispose();
     this.attaches.dispose();
     this.questions.dispose();
@@ -478,11 +487,25 @@ export class LspManager {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    const disposals: number = this.disposals;
     const resolution: LspResolution = await this.registry.resolve(
       parsed.serverId,
       parsed.rootPath,
       parsed.braceStyle,
     );
+    // Resolving can take minutes (a first install downloads the server), and the world moves on
+    // meanwhile. A process spawned for a session someone else has since started would replace it in
+    // the map, leaving a server nothing can ever stop; one spawned after a dispose outlives Studio.
+    if (disposals !== this.disposals) {
+      return { success: false, error: 'Language servers were shut down' };
+    }
+    const running: LspSession | undefined = this.sessions.get(parsed.sessionId);
+    if (running !== undefined) {
+      if (sender !== null) {
+        this.attach(running, parsed.sessionId, sender);
+      }
+      return running.ready;
+    }
     const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
       logger.warn(
@@ -513,6 +536,18 @@ export class LspManager {
       logger.error('LspManager', `Failed to spawn LSP server ${spec.command}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
+    // A program that cannot be run does not throw: `spawn` returns a child with no pid and emits
+    // `error` on the next tick, which with no listener is an uncaught exception in the main process.
+    if (child.pid === undefined) {
+      const failure: Error = await new Promise<Error>((resolve: (error: Error) => void): void => {
+        child.once('error', resolve);
+      });
+      logger.warn('LspManager', `Failed to spawn LSP server ${spec.command}`, failure);
+      return { success: false, error: failure.message };
+    }
+    child.on('error', (error: Error): void => {
+      logger.warn('LspManager', `LSP server ${spec.command} reported an error`, error);
+    });
     pidJournal()?.register(child.pid, 'lsp', spec.command);
     logger.info('LspManager', `Started LSP server ${spec.command} (pid ${child.pid})`);
     // Reading stderr keeps the pipe drained so a chatty server cannot stall on it, and keeps its
@@ -562,7 +597,7 @@ export class LspManager {
             'LspManager',
             `Told ${parsed.sessionId} about ${events.length} file change(s) on disk`,
           );
-          void connection.sendNotification('workspace/didChangeWatchedFiles', { changes: events });
+          this.tell(connection, 'workspace/didChangeWatchedFiles', { changes: events });
         }
       },
     );
@@ -643,16 +678,16 @@ export class LspManager {
       INITIALIZE_TIMEOUT_MS,
     );
     logger.debug('LspManager', `Initialize complete: ${result.serverInfo?.name ?? 'server'}`);
-    void connection.sendNotification('initialized', {});
+    this.tell(connection, 'initialized', {});
     // A server that never asks for its settings hears of them only when it is sent them, as VS Code
     // does at once (#1204): until then typescript-language-server runs with none.
     if (pushed !== undefined) {
-      void connection.sendNotification('workspace/didChangeConfiguration', { settings: pushed });
+      this.tell(connection, 'workspace/didChangeConfiguration', { settings: pushed });
     }
     // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
     // told which solution or project to open here, once the handshake has completed.
     for (const message of spec.postInitialize ?? []) {
-      void connection.sendNotification(message.method, message.params);
+      this.tell(connection, message.method, message.params);
     }
     return result;
   }
@@ -702,7 +737,26 @@ export class LspManager {
     if (sender !== undefined && !this.trackOpenDocument(id, session, method, params, sender)) {
       return;
     }
-    void session.connection.sendNotification(method, params);
+    this.tell(session.connection, method, params);
+  }
+
+  /**
+   * Sends a server a notification nothing waits on. Sending is not safe to leave alone: a connection
+   * whose server closed its output throws, into an IPC listener, and a write to a server that has just
+   * died rejects with EPIPE, with nothing to catch it. Either way the exit handling deals with the
+   * server, so a notification that could not be delivered needs no more than a log line.
+   * @param connection The server connection.
+   * @param method The notification.
+   * @param params Its parameters.
+   */
+  private tell(connection: MessageConnection, method: string, params?: unknown): void {
+    try {
+      connection.sendNotification(method, params).catch((error: unknown): void => {
+        logger.debug('LspManager', `Could not deliver ${method}`, error);
+      });
+    } catch (error: unknown) {
+      logger.debug('LspManager', `Could not deliver ${method}`, error);
+    }
   }
 
   /**
@@ -736,7 +790,7 @@ export class LspManager {
     }
     if (session.openDocuments.open(uri, sender)) {
       logger.debug('LspManager', `Re-opening ${uri} on session ${id}; the server had it open`);
-      void session.connection.sendNotification('textDocument/didClose', { textDocument: { uri } });
+      this.tell(session.connection, 'textDocument/didClose', { textDocument: { uri } });
     }
     return true;
   }
@@ -761,7 +815,7 @@ export class LspManager {
         logger.debug('LspManager', `A renderer holding session ${id} was destroyed`);
         // The documents only it held are closed on the server, for a session that carries on (#1190).
         for (const uri of current.openDocuments.release(sender)) {
-          void current.connection.sendNotification('textDocument/didClose', {
+          this.tell(current.connection, 'textDocument/didClose', {
             textDocument: { uri },
           });
         }
@@ -822,12 +876,16 @@ export class LspManager {
     logger.debug('LspManager', `Last client stopped session ${id}; shutting server down`);
     try {
       await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
-      void session.connection.sendNotification('exit');
+      this.tell(session.connection, 'exit');
     } catch (error: unknown) {
       // The server is being killed regardless; ignore a failed graceful shutdown.
       logger.debug('LspManager', `Graceful shutdown failed for session ${id}`, error);
     }
-    this.tearDown(id);
+    // Two shutdowns of one session can overlap (a restart racing a stop); by the time the second gets
+    // here its id may belong to the replacement, which is not this shutdown's to end.
+    if (this.sessions.get(id) === session) {
+      this.tearDown(id);
+    }
   }
 
   /**
@@ -870,6 +928,8 @@ export class LspManager {
       signal: signal ?? null,
       ...(reason === null ? {} : { reason }),
     };
+    // Ahead of the exit: the renderer forgets the session on hearing it.
+    this.diagnostics.flush(id);
     this.send(id, LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
@@ -884,6 +944,8 @@ export class LspManager {
       return;
     }
     logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
+    // While the session still knows its windows, which is who these are for.
+    this.diagnostics.flush(id);
     this.sessions.delete(id);
     session.watcher.close();
     session.workspaceDiagnostics?.stop();
@@ -1097,6 +1159,20 @@ export class LspManager {
         session.loaded = true;
       }
     }
+    if (method === PUBLISH_DIAGNOSTICS_METHOD) {
+      this.diagnostics.publish(sessionId, params);
+      return;
+    }
+    this.notifyRenderer(sessionId, method, params);
+  }
+
+  /**
+   * Sends a notification to the session's renderers.
+   * @param sessionId The session the notification belongs to.
+   * @param method The LSP method name.
+   * @param params The method parameters.
+   */
+  private notifyRenderer(sessionId: string, method: string, params: unknown): void {
     const message: LspMessage = { sessionId, method, params };
     this.send(sessionId, LspChannel.Notification, message);
   }

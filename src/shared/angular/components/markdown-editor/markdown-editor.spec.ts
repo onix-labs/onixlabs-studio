@@ -1,9 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
-import type { EditorView } from '@milkdown/kit/prose/view';
+import { Slice } from '@milkdown/kit/prose/model';
+import type { DirectEditorProps, EditorView } from '@milkdown/kit/prose/view';
+import type { FileWriteResult } from '@shared/api/file-channels';
 
+import { FileSystem } from '../../services/file-system/file-system';
+import { Settings } from '../../services/settings/settings';
 import { drainMilkdownTimers } from '../../testing/drain-milkdown-timers';
 import { MarkdownEditor } from './markdown-editor';
 
@@ -11,9 +16,13 @@ import { MarkdownEditor } from './markdown-editor';
  * Boots a markdown-editor fixture with the given content and waits for its Crepe editor to become
  * ready, counting ready emissions and captured content changes for the assertions.
  * @param content The initial markdown content.
+ * @param baseDirectory The folder the document sits in.
  * @returns Returns the fixture and the captured output events.
  */
-async function bootEditor(content: string): Promise<{
+async function bootEditor(
+  content: string,
+  baseDirectory: string = '',
+): Promise<{
   fixture: ComponentFixture<MarkdownEditor>;
   readyCount: () => number;
   contentChanges: string[];
@@ -21,6 +30,7 @@ async function bootEditor(content: string): Promise<{
 }> {
   const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
   fixture.componentRef.setInput('content', content);
+  fixture.componentRef.setInput('baseDirectory', baseDirectory);
   let ready: number = 0;
   let saves: number = 0;
   const contentChanges: string[] = [];
@@ -85,8 +95,233 @@ describe('MarkdownEditor', () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
   afterAll(drainMilkdownTimers);
+
+  describe('pasted images', () => {
+    /**
+     * Stores pasted images in a folder, whatever the settings on this machine say.
+     */
+    function storeInFolder(): void {
+      const settings: Settings = TestBed.inject(Settings);
+      const read: Settings['get'] = settings.get.bind(settings);
+      vi.spyOn(settings, 'get').mockImplementation(((key: string): unknown =>
+        key === 'markdownEditor.pastedImageStorage'
+          ? 'folder'
+          : read(key as Parameters<Settings['get']>[0])) as Settings['get']);
+    }
+
+    /**
+     * Pastes an image into the editor as the clipboard would hand it over.
+     */
+    function pasteImage(view: EditorView): void {
+      const file: File = new File([new Uint8Array([1, 2, 3])], 'shot.png', { type: 'image/png' });
+      const event: Event = Object.assign(new Event('paste', { bubbles: true, cancelable: true }), {
+        clipboardData: { files: [file], getData: (): string => '' },
+      });
+      view.dom.dispatchEvent(event);
+    }
+
+    it('paste_whenTheWriteRejects_embedsTheImageInsteadOfLosingIt', async () => {
+      storeInFolder();
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockRejectedValue(new Error('bridge gone'));
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('data:image/png;base64,AQID');
+      });
+      expect(write).toHaveBeenCalledOnce();
+      fixture.destroy();
+    });
+
+    it('paste_whenTheWriteIsRefused_embedsTheImage', async () => {
+      storeInFolder();
+      vi.spyOn(TestBed.inject(FileSystem), 'writeBytes').mockResolvedValue({
+        success: false,
+        error: 'read-only volume',
+      });
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('data:image/png;base64,AQID');
+      });
+      fixture.destroy();
+    });
+
+    it('paste_whenTheWriteSucceeds_linksTheStoredFile', async () => {
+      storeInFolder();
+      vi.spyOn(TestBed.inject(FileSystem), 'writeBytes').mockResolvedValue({ success: true });
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+
+      pasteImage(view);
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('shot');
+      });
+      expect(fixture.componentInstance.getMarkdown()).not.toContain('data:image');
+      fixture.destroy();
+    });
+
+    it('drop_whenTheDocumentShrinksDuringTheWrite_stillPlacesTheImage', async () => {
+      storeInFolder();
+      let finishWrite: (result: FileWriteResult) => void = (): void => undefined;
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockReturnValue(
+          new Promise<FileWriteResult>((resolve: (result: FileWriteResult) => void): void => {
+            finishWrite = resolve;
+          }),
+        );
+      const { fixture } = await bootEditor('a long first paragraph\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+      const file: File = new File([new Uint8Array([1])], 'late.png', { type: 'image/png' });
+      const end: number = view.state.doc.content.size;
+      view.posAtCoords = (): { pos: number; inside: number } => ({ pos: end, inside: -1 });
+      view.someProp('handleDrop', (handle: NonNullable<DirectEditorProps['handleDrop']>): boolean =>
+        Boolean(
+          handle.call(
+            view,
+            view,
+            Object.assign(new Event('drop', { cancelable: true }), {
+              dataTransfer: { files: [file] },
+              clientX: 0,
+              clientY: 0,
+            }) as unknown as DragEvent,
+            Slice.empty,
+            false,
+          ),
+        ),
+      );
+      await vi.waitFor((): void => {
+        expect(write).toHaveBeenCalled();
+      });
+
+      view.dispatch(view.state.tr.delete(1, end - 1));
+      finishWrite({ success: true });
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('late');
+      });
+      fixture.destroy();
+    });
+
+    it('paste_whenTheEditorIsDestroyedDuringTheWrite_doesNotThrow', async () => {
+      storeInFolder();
+      let finishWrite: (result: FileWriteResult) => void = (): void => undefined;
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockReturnValue(
+          new Promise<FileWriteResult>((resolve: (result: FileWriteResult) => void): void => {
+            finishWrite = resolve;
+          }),
+        );
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+      pasteImage(view);
+      await vi.waitFor((): void => {
+        expect(write).toHaveBeenCalled();
+      });
+
+      fixture.destroy();
+      await vi.waitFor((): void => {
+        expect(view.isDestroyed).toBe(true);
+      });
+      finishWrite({ success: true });
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 20);
+      });
+
+      expect(fixture.componentInstance.getEditorView()).toBeNull();
+    });
+  });
+
+  describe('mid-flight', () => {
+    /**
+     * Waits long enough for an editor's creation and teardown to run out.
+     */
+    function settled(): Promise<void> {
+      return new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 300);
+      });
+    }
+
+    /**
+     * Counts the editors rendered into a pane.
+     */
+    function editorsIn(fixture: ComponentFixture<MarkdownEditor>): number {
+      return (fixture.nativeElement as HTMLElement).querySelectorAll('.ProseMirror').length;
+    }
+
+    it('destroy_whileTheEditorIsBeingCreated_neverReportsReady', async () => {
+      const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
+      fixture.componentRef.setInput('content', '# Hello\n');
+      let readied: number = 0;
+      fixture.componentInstance.ready.subscribe((): void => {
+        readied += 1;
+      });
+      fixture.detectChanges();
+
+      fixture.destroy();
+      await settled();
+
+      expect(readied).toBe(0);
+      expect(fixture.componentInstance.getCrepe()).toBeNull();
+      expect(fixture.componentInstance.getEditorView()).toBeNull();
+    });
+
+    it('destroy_whileContentIsSwappingTheEditor_buildsNoNewOne', async () => {
+      const booted: Awaited<ReturnType<typeof bootEditor>> = await bootEditor('# One\n');
+
+      booted.fixture.componentRef.setInput('content', '# Two\n');
+      booted.fixture.detectChanges();
+      booted.fixture.destroy();
+      await settled();
+
+      expect(booted.fixture.componentInstance.getCrepe()).toBeNull();
+    });
+
+    it('content_changedTwiceAtOnce_endsWithOneEditorShowingTheLatest', async () => {
+      const booted: Awaited<ReturnType<typeof bootEditor>> = await bootEditor('# One\n');
+
+      booted.fixture.componentRef.setInput('content', '# Two\n');
+      booted.fixture.detectChanges();
+      booted.fixture.componentRef.setInput('content', '# Three\n');
+      booted.fixture.detectChanges();
+      await settled();
+
+      expect(editorsIn(booted.fixture)).toBe(1);
+      expect(booted.fixture.componentInstance.getMarkdown()).toContain('Three');
+      booted.fixture.destroy();
+    });
+  });
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({

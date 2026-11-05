@@ -372,6 +372,10 @@ export class HarnessAgentProvider implements AgentProvider {
         throw new Error(`${this.definition.label} could not be started.`);
       }
       this.declared = capabilities;
+      // ⚠️ Stopped during the handshake: an abort sent then named a turn the harness had not been given.
+      if (context.signal.aborted) {
+        return;
+      }
       // Steering is offered only when the harness listed it; otherwise the renderer queues the message
       // for the next turn, exactly as it does for an in-core provider with no steer handler. A harness
       // older than 1.5.0 sends no list at all, which reads as "answers none of the optional messages".
@@ -506,6 +510,12 @@ export class HarnessAgentSession implements AgentSession {
   public async turn(context: AgentRunContext): Promise<void> {
     await this.definition.beforeTurn?.();
     const host: HarnessHost = await this.start();
+    // ⚠️ Stopped while the harness was starting. Nothing was in flight for the stop to reach, so the turn
+    // has to be dropped here: dispatching it would run what the user stopped, unwatched, until the panic
+    // stop's grace period killed the session for a turn it never saw.
+    if (context.signal.aborted) {
+      return;
+    }
     this.contexts.set(context.requestId, context);
     this.inFlight.push(context.requestId);
     const abort: () => void = (): void => host.abort(context.requestId);

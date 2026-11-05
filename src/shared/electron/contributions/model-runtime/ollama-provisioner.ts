@@ -40,6 +40,13 @@ const VERSION_PROBE_TIMEOUT_MS: number = 5_000;
 const EXECUTABLE_SEARCH_DEPTH: number = 4;
 
 /**
+ * How long a download may go without a byte before it is given up on. Measured from the last byte
+ * rather than the start: the archive runs to gigabytes, and a slow link that keeps moving must be left
+ * to finish, while a connection gone quiet never will, and would hold the install with it for good.
+ */
+export const DOWNLOAD_STALL_MS: number = 60_000;
+
+/**
  * Receives progress through a managed install.
  */
 export type InstallProgressListener = (progress: RuntimeInstallProgress) => void;
@@ -54,7 +61,9 @@ export type InstallProgressListener = (progress: RuntimeInstallProgress) => void
  *
  * Provisioning mirrors {@link import('../../lsp/lsp-provisioner').LspProvisioner}: a pinned version,
  * a hard-coded SHA-256 verified before anything is extracted, a version-scoped install directory, and
- * in-flight caching so concurrent callers share one download.
+ * in-flight caching so concurrent callers share one download. Everything happens in a staging
+ * directory that takes the install directory's place at the very end, so what sits at the managed path
+ * is always a whole install: {@link detect} and a retry both take a file there at its word.
  */
 export class OllamaProvisioner {
   /**
@@ -84,6 +93,12 @@ export class OllamaProvisioner {
   private readonly locations: readonly string[];
 
   /**
+   * Resolves the archive to install. Injectable because the real ones are pinned to the SHA-256 of a
+   * published release, which a test can neither produce nor should download.
+   */
+  private readonly assets: (platform: string, arch: string) => OllamaAsset | null;
+
+  /**
    * The in-flight or completed managed install, so it happens at most once per session.
    */
   private provision: Promise<RuntimeInstallation> | null = null;
@@ -96,6 +111,7 @@ export class OllamaProvisioner {
    * @param env The environment; defaults to the running process's.
    * @param locations The absolute paths probed after the PATH; defaults to the platform's standard
    * install locations.
+   * @param assets Resolves the archive to install; defaults to the pinned releases.
    */
   public constructor(
     root: string,
@@ -103,12 +119,14 @@ export class OllamaProvisioner {
     arch: string = process.arch,
     env: Record<string, string | undefined> = process.env,
     locations: readonly string[] = ollamaSystemLocations(platform, env),
+    assets: (platform: string, arch: string) => OllamaAsset | null = ollamaAsset,
   ) {
     this.root = root;
     this.platform = platform;
     this.arch = arch;
     this.env = env;
     this.locations = locations;
+    this.assets = assets;
   }
 
   /**
@@ -162,7 +180,7 @@ export class OllamaProvisioner {
    * @returns Returns the resulting installation.
    */
   private async runInstall(onProgress: InstallProgressListener): Promise<RuntimeInstallation> {
-    const asset: OllamaAsset | null = ollamaAsset(this.platform, this.arch);
+    const asset: OllamaAsset | null = this.assets(this.platform, this.arch);
     if (asset === null) {
       const error: string = `Studio cannot provision Ollama for ${this.platform}-${this.arch}`;
       logger.warn('OllamaProvisioner', error);
@@ -178,9 +196,12 @@ export class OllamaProvisioner {
       return { kind: 'managed', executable, version: await this.probeVersion(executable) };
     }
 
-    const archive: string = path.join(installDir, asset.name);
+    const staging: string = `${installDir}.installing`;
+    const archive: string = path.join(staging, asset.name);
     try {
-      await fs.mkdir(installDir, { recursive: true });
+      // What a killed install left behind, which nothing else would ever clear.
+      await fs.rm(staging, { recursive: true, force: true });
+      await fs.mkdir(staging, { recursive: true });
       logger.info('OllamaProvisioner', `Downloading Ollama ${OLLAMA_VERSION} (${asset.name})`);
       await this.download(ollamaAssetUrl(asset), archive, onProgress);
 
@@ -191,28 +212,32 @@ export class OllamaProvisioner {
       }
 
       onProgress({ stage: 'extracting', received: 0, total: 0 });
-      await this.extract(archive, asset, installDir);
+      await this.extract(archive, asset, staging);
       await fs.rm(archive, { force: true });
 
-      const found: string | null = await this.findExtractedExecutable(installDir);
+      const found: string | null = await this.findExtractedExecutable(staging);
       if (found === null) {
         throw new Error('the extracted archive does not contain an ollama executable');
       }
-      if (found !== executable) {
-        await fs.rename(found, executable).catch(async (): Promise<void> => {
-          await fs.copyFile(found, executable);
+      const staged: string = path.join(staging, path.basename(executable));
+      if (found !== staged) {
+        await fs.rename(found, staged).catch(async (): Promise<void> => {
+          await fs.copyFile(found, staged);
         });
       }
       if (this.platform !== 'win32') {
-        await fs.chmod(executable, 0o755);
+        await fs.chmod(staged, 0o755);
       }
+      // Last: until here a failure leaves nothing at the path a later attempt would reuse.
+      await fs.rm(installDir, { recursive: true, force: true });
+      await fs.rename(staging, installDir);
 
       logger.info('OllamaProvisioner', `Installed managed Ollama at ${executable}`);
       onProgress({ stage: 'done', received: 0, total: 0 });
       return { kind: 'managed', executable, version: await this.probeVersion(executable) };
     } catch (error: unknown) {
       logger.error('OllamaProvisioner', 'Failed to provision Ollama', error);
-      await fs.rm(archive, { force: true }).catch((): void => undefined);
+      await fs.rm(staging, { recursive: true, force: true }).catch((): void => undefined);
       // A failed install must not be cached, or the user could never retry it.
       this.provision = null;
       onProgress({
@@ -226,7 +251,7 @@ export class OllamaProvisioner {
   }
 
   /**
-   * Streams a download to disk, reporting progress as it goes.
+   * Streams a download to disk, reporting progress as it goes, and gives up on one that stops moving.
    * @param url The asset URL.
    * @param destination The file to write.
    * @param onProgress Receives download progress.
@@ -237,12 +262,48 @@ export class OllamaProvisioner {
     destination: string,
     onProgress: InstallProgressListener,
   ): Promise<void> {
-    const response: Response = await fetch(url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`download failed: ${response.status}`);
+    const controller: AbortController = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const arm: () => void = (): void => {
+      clearTimeout(stall);
+      stall = setTimeout((): void => {
+        controller.abort(new Error(`download stalled: nothing for ${DOWNLOAD_STALL_MS} ms`));
+      }, DOWNLOAD_STALL_MS);
+    };
+    arm();
+    try {
+      const response: Response = await fetch(url, { signal: controller.signal });
+      if (!response.ok || response.body === null) {
+        throw new Error(`download failed: ${response.status}`);
+      }
+      arm();
+      await this.writeBody(response, destination, onProgress, arm, controller.signal);
+    } catch (error: unknown) {
+      // The abort surfaces as a generic error; what the user is shown should say why it happened.
+      throw controller.signal.aborted ? controller.signal.reason : error;
+    } finally {
+      clearTimeout(stall);
     }
+  }
+
+  /**
+   * Streams a response's body to a file.
+   * @param response The response, whose body is known to be there.
+   * @param destination The file to write.
+   * @param onProgress Receives download progress.
+   * @param onChunk Called for each chunk.
+   * @param signal Abandons the write.
+   * @returns Returns a promise that resolves once the body is on disk.
+   */
+  private async writeBody(
+    response: Response,
+    destination: string,
+    onProgress: InstallProgressListener,
+    onChunk: () => void,
+    signal: AbortSignal,
+  ): Promise<void> {
     const total: number = Number(response.headers.get('content-length') ?? 0);
-    const body: ReadableStream<Uint8Array> = response.body;
+    const body: ReadableStream<Uint8Array> = response.body!;
     let received: number = 0;
 
     // Read the web stream explicitly rather than through `Readable.fromWeb`, whose typing differs
@@ -256,6 +317,7 @@ export class OllamaProvisioner {
           if (done) {
             return;
           }
+          onChunk();
           received += value.byteLength;
           onProgress({ stage: 'downloading', received, total });
           yield value;
@@ -265,7 +327,7 @@ export class OllamaProvisioner {
       }
     }
 
-    await pipeline(Readable.from(chunks()), createWriteStream(destination));
+    await pipeline(Readable.from(chunks()), createWriteStream(destination), { signal });
   }
 
   /**

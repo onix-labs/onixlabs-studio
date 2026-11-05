@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { LogRecord, LogSession } from '@shared/api/log-channels';
+import { LineSplitter } from './line-splitter';
 
 /**
  * Caps the size of the active human-readable log file; when an append would cross it, the files
@@ -214,6 +215,43 @@ export class LogArchive {
           // Skip a truncated or malformed line.
         }
       }
+      return records;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Reads a session's records as {@link readSession} does, without holding the main process up for a
+   * whole file. A past session's log can run to hundreds of megabytes, and this is read while a person
+   * waits on the System Monitor. Split with {@link LineSplitter} rather than `readline`, which also
+   * breaks lines at U+2028: `JSON.stringify` leaves that raw, so a record holding one would be lost.
+   * @param sessionId The session to read.
+   * @returns Returns the session's records, or an empty array when unreadable.
+   */
+  public async readSessionFile(sessionId: string): Promise<readonly LogRecord[]> {
+    const records: LogRecord[] = [];
+    const lines: LineSplitter = new LineSplitter({
+      onLine: (line: string): void => {
+        if (line.length === 0) {
+          return;
+        }
+        try {
+          records.push(JSON.parse(line) as LogRecord);
+        } catch {
+          // Skip a truncated or malformed line.
+        }
+      },
+    });
+    try {
+      const stream: fs.ReadStream = fs.createReadStream(this.sessionFile(sessionId), {
+        encoding: 'utf8',
+      });
+      for await (const chunk of stream) {
+        lines.push(chunk as string);
+      }
+      // A session cut off mid-write has no last newline, and its last line may still be whole.
+      lines.push('\n');
       return records;
     } catch {
       return [];

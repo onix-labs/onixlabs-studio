@@ -2735,6 +2735,467 @@ describe('LspClient', () => {
     expect(lsp.stops).toEqual(['/root::typescript']);
     expect(offeredLanguages).toEqual(['typescript']);
   });
+
+  /**
+   * Opens a document against its server.
+   * @param client The client.
+   * @param path The document's path.
+   * @param languageId The document's language.
+   * @param content The document's text.
+   * @returns Returns a promise that resolves on the next macrotask.
+   */
+  function openDocument(
+    client: LspClient,
+    path: string = '/root/a.ts',
+    languageId: string = 'typescript',
+    content: string = 'const a = 1;',
+  ): void {
+    client.syncDocument({ documentId: 'doc-1', path, languageId, content });
+  }
+
+  /**
+   * Holds back the answer to the next diagnostic pull.
+   * @returns Returns the function that gives the answer.
+   */
+  function holdPullAnswer(): (report: unknown) => void {
+    let answer: (report: unknown) => void = (): void => undefined;
+    lsp.requestAnswers['textDocument/diagnostic'] = new Promise<unknown>(
+      (resolve: (report: unknown) => void): void => {
+        answer = resolve;
+      },
+    );
+    return answer;
+  }
+
+  /**
+   * A problem as a server reports it.
+   */
+  const problem: unknown = {
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    severity: 1,
+    message: 'broken',
+  };
+
+  it('pull_answeredAfterTheDocumentClosed_leavesNoProblemsBehind', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    client.closeDocument('doc-1');
+    await flush();
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it('pull_answeredAfterTheServerCrashed_doesNotCallTheDeadServerReady', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+
+    lsp.exit('/root::typescript');
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+  });
+
+  it('closeDocument_withATypingPullPending_asksTheServerNothingMore', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(lsp.requests).toHaveLength(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('resume_ofADocumentAnEditAlreadyReopened_doesNotOpenItTwice', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+    await flush();
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+
+    client.resume();
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
+  });
+
+  it('restart_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
+
+  it('resume_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    client.resume();
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
+
+  it('restart_cancelsARecolourMeantForTheOldServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      await client.restart('/root::csharp');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      // The new server is still loading: its tokens are degraded until it says otherwise.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('suspend_cancelsARecolourMeantForTheStoppedServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      client.suspend();
+      await vi.advanceTimersByTimeAsync(5_000);
+      client.resume();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The server that comes back is loading from scratch, whatever the old one had reached.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('standaloneReap_stopsAServerWhoseLastDocumentClosed', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+    expect(status.stateOf('/tmp/scratch::typescript')).toBeNull();
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('standaloneReap_forgetsTheSession_soNothingCanBringItBack', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+
+    await client.restart('/tmp/scratch::typescript');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+  });
+
+  it('standaloneReap_dropsTheWorkspaceProblemsTheSessionReported', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    lsp.notify('/tmp/scratch::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [{ uri: 'file:///tmp/scratch/b.ts', kind: 'full', items: [problem] }],
+    });
+    expect(diagnostics.emitted).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it('standaloneReap_whenADocumentReturnedInTime_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(300_000);
+      openDocument(client, '/tmp/scratch/a.ts');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
+
+  it('standaloneReap_withStopSetToNever_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    TestBed.inject(Settings).set('lsp.idleStopMinutes', 0);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
+
+  it('uninstallingAServer_dropsTheProblemsOfTheDocumentsItServed', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+    expect(diagnostics.emitted).toHaveLength(1);
+
+    installedServers.set(
+      CATALOGUE.filter((server: LspServerSummary): boolean => server.id !== 'typescript'),
+    );
+    TestBed.tick();
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it.each<[string, unknown]>([
+    ['NoParams', null],
+    ['NoUri', { diagnostics: [] }],
+    ['NoDiagnostics', { uri: 'file:///root/a.ts' }],
+    ['AnUndecodableUri', { uri: 'file:///root/%zz.ts', diagnostics: [] }],
+  ])('publishDiagnostics_with%s_isIgnored', async (_name: string, params: unknown) => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+
+    lsp.notify('/root::typescript', 'textDocument/publishDiagnostics', params);
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
+
+  it('workspaceDiagnostics_skipsAReportItCannotRead_andKeepsTheRest', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    lsp.notify('/root::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [
+        null,
+        { uri: 'file:///root/%zz.ts', kind: 'full', items: [problem] },
+        { uri: 'file:///root/b.ts', kind: 'full', items: [problem] },
+      ],
+    });
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
+
+  it('restart_whenTheBridgeFails_saysSoRatherThanStartingForever', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    await client.restart('/root::typescript');
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+  });
+
+  it('start_whoseInvokeRejects_saysWhy_andOpensNothing', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    openDocument(client);
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
+  it('closeDocument_ofOneOfTwoStandaloneDocuments_leavesTheServerRunning', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/scratch/a.ts',
+      languageId: 'typescript',
+      content: 'a',
+    });
+    client.syncDocument({
+      documentId: 'doc-2',
+      path: '/tmp/scratch/b.ts',
+      languageId: 'typescript',
+      content: 'b',
+    });
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+    expect(client.rootForDocument('doc-2')).toBe('/tmp/scratch');
+    expect(client.rootForDocument('doc-1')).toBeNull();
+  });
+
+  it('closeDocument_whileItsOpenIsStillStarting_neverStrandsAnOpenDocument', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('closeDocument_afterTheServerCrashed_startsNothingToCloseIt', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.exit('/root::typescript');
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+    expect(lsp.notificationsTo('didClose')).toEqual([]);
+  });
+
+  it('attachDebugger_whenAttachingThrows_tellsTheServerItDidNot', async () => {
+    const client: LspClient = build();
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.spyOn(TestBed.inject(DebugAttachRouter), 'attach').mockRejectedValue(
+      new Error('no adapter'),
+    );
+
+    lsp.attachDebugger({ requestId: 'r1', sessionId: '/root::csharp', processId: 7 });
+    await flush();
+
+    expect(lsp.attachReplies).toEqual([{ requestId: 'r1', didAttach: false }]);
+    expect(client.rootForDocument('doc-1')).toBe('/root');
+  });
+
+  it('applyEdit_whenApplyingThrows_tellsTheServerWhy', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.spyOn(TestBed.inject(WorkspaceEditApplier), 'apply').mockRejectedValue(
+      new Error('read only'),
+    );
+
+    lsp.applyEdit('/root::typescript', { changes: {} });
+    await flush();
+
+    expect(lsp.applyEditReplies).toEqual([
+      { requestId: 'r1', applied: false, failureReason: 'Error: read only' },
+    ]);
+  });
+
+  it('destroy_answersWhatIsStillAsked_stopsEverything_andCancelsWhatIsPending', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.ask({
+      requestId: 'q1',
+      sessionId: '/root::typescript',
+      type: 3,
+      message: 'Sure?',
+      actions: ['Yes'],
+    });
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.ngOnDestroy();
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(lsp.questionReplies).toEqual([{ requestId: 'q1', action: null }]);
+      expect(lsp.stops).toEqual(['/root::typescript']);
+      expect(lsp.requests).toHaveLength(before);
+      expect(client.rootForDocument('doc-1')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('idleStopMs', () => {
