@@ -53,6 +53,8 @@ describe('the permission gate', () => {
       resumeSessionId: null,
       forkSession: false,
       resumeSessionAt: null,
+      // The gate's own subject, not whether this machine has bubblewrap: a CI runner does not.
+      requireSandbox: false,
       permissionPosture: 'prompt',
       toolPolicies: {},
       images: [],

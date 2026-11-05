@@ -324,6 +324,8 @@ function turn(requestId: string, overrides: Partial<TurnRequest> = {}): TurnRequ
     resumeSessionId: null,
     forkSession: false,
     resumeSessionAt: null,
+    // The gate's own subject, not whether this machine has bubblewrap: a CI runner does not.
+    requireSandbox: false,
     permissionPosture: 'prompt',
     toolPolicies: {},
     images: [],
