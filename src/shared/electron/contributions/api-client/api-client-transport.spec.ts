@@ -330,6 +330,21 @@ describe('createApiTransport against a local fixture', () => {
       await expect(send()).rejects.toThrow('Stopped after 20 redirects');
       expect(hops).toBe(21);
     });
+
+    it('refusesToLeaveHttp', async () => {
+      // A server must not be able to send the request anywhere but another web address. Aimed at the
+      // fixture's own port, so a regression lands here and nowhere else on this machine.
+      let hops: number = 0;
+      handler = (_request: IncomingMessage, response: ServerResponse): void => {
+        hops += 1;
+        response.statusCode = 302;
+        response.setHeader('location', `ftp://127.0.0.1:${port}/etc/passwd`);
+        response.end();
+      };
+
+      await expect(send()).rejects.toThrow('ftp:');
+      expect(hops).toBe(1);
+    });
   });
 
   describe('abandoning a send', () => {

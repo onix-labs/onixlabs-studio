@@ -35,6 +35,11 @@ const DEFAULT_PORTS: Readonly<Record<string, number>> = { 'http:': 80, 'https:':
 const LOOPBACK_ADDRESS: RegExp = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
 /**
+ * The schemes a request may go to, by redirect or otherwise.
+ */
+const WEB_SCHEMES: ReadonlySet<string> = new Set<string>(['http:', 'https:']);
+
+/**
  * Describes one request as the transport sends it.
  */
 export interface TransportRequest {
@@ -443,6 +448,9 @@ export function createApiTransport(system: SystemProxyResolver): ApiTransport {
     let wasRedirected: boolean = false;
     for (let hops: number = 0; ; hops += 1) {
       const url: URL = new URL(hop.url);
+      if (!WEB_SCHEMES.has(url.protocol)) {
+        throw new Error(`Refused to send a request to ${url.protocol}`);
+      }
       const verify: boolean =
         request.acceptSelfSigned === 'never' ||
         (request.acceptSelfSigned === 'localhost' && !isLocalHost(url.hostname));
