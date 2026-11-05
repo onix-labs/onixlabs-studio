@@ -4,7 +4,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   ElementRef,
+  inject,
   input,
   InputSignal,
   model,
@@ -78,6 +80,7 @@ interface MultiSelectGroup {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.multi-select--full]': 'fullWidth()',
+    '[class.multi-select--floating]': 'label() !== undefined',
   },
 })
 export class MultiSelect {
@@ -122,6 +125,12 @@ export class MultiSelect {
    * Gets a value indicating whether the face stretches to fill its container.
    */
   public readonly fullWidth: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets the floating label, which draws the control as tall as a floating text field with the label
+   * risen at the top of the box, or undefined for the plain control.
+   */
+  public readonly label: InputSignal<string | undefined> = input<string>();
 
   /**
    * Gets a value indicating whether the panel opens with a search field that narrows the options by
@@ -185,6 +194,13 @@ export class MultiSelect {
   protected readonly open: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Initializes a new instance of the {@link MultiSelect} class.
+   */
+  public constructor() {
+    inject(DestroyRef).onDestroy((): void => this.stopWatchingPresses());
+  }
+
+  /**
    * Gets the face's width in pixels as of the last open, the panel's minimum width.
    */
   protected readonly faceWidth: WritableSignal<number> = signal<number>(0);
@@ -227,9 +243,11 @@ export class MultiSelect {
    * Records that the panel opened, measuring the face so the panel can match its width.
    */
   protected onOpened(): void {
-    this.faceWidth.set(this.face().nativeElement.offsetWidth);
+    const face: HTMLElement = this.face().nativeElement;
+    this.faceWidth.set(face.offsetWidth);
     this.query.set('');
     this.open.set(true);
+    face.ownerDocument.addEventListener('pointerdown', this.onPressWhileOpen, true);
     // The menu focuses its first row as it opens; a searchable panel takes focus into its field
     // instead, once that has settled, so typing searches straight away.
     if (this.searchable()) {
@@ -269,5 +287,42 @@ export class MultiSelect {
    */
   protected onClosed(): void {
     this.open.set(false);
+    this.stopWatchingPresses();
   }
+
+  /**
+   * Stops watching for a press on the control's label.
+   */
+  private stopWatchingPresses(): void {
+    this.face().nativeElement.ownerDocument.removeEventListener(
+      'pointerdown',
+      this.onPressWhileOpen,
+      true,
+    );
+  }
+
+  /**
+   * Keeps a press on the control's label a plain close. The press lands outside the menu, which
+   * closes it, and the click that follows would be forwarded by the label to a face that is now
+   * closed, opening it again: so that one click is cancelled, as the face itself toggles.
+   * @param event The press.
+   */
+  private readonly onPressWhileOpen: (event: PointerEvent) => void = (
+    event: PointerEvent,
+  ): void => {
+    const face: HTMLElement = this.face().nativeElement;
+    const label: HTMLLabelElement | null = face.closest('label');
+    const target: Node = event.target as Node;
+    if (label === null || !label.contains(target) || face.contains(target)) {
+      return;
+    }
+    const cancel: (click: Event) => void = (click: Event): void => click.preventDefault();
+    label.addEventListener('click', cancel, { capture: true, once: true });
+    // A press dragged off the label never clicks, and must not swallow the next one.
+    face.ownerDocument.addEventListener(
+      'pointerup',
+      (): void => void setTimeout((): void => label.removeEventListener('click', cancel, true)),
+      { once: true },
+    );
+  };
 }
