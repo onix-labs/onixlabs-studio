@@ -5,12 +5,16 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { findStackOfPanel, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  collectPanelIds,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WORKSPACE_KEYBINDINGS } from '@features/workspace/angular/workspace-keybindings';
-import { DirectoryListing } from '@shared/api/workspace-channels';
+import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
 import { Documents } from '@shared/angular/services/documents/documents';
 import {
   ActiveWorkspace,
@@ -31,6 +35,19 @@ import { ReferencesPanelState } from '@features/workspace/angular/panels/referen
 import { WorkspaceReferences } from '@features/workspace/angular/workspace-references/workspace-references';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import type { ReferenceList } from '@shared/angular/services/references/reference-list';
+
+import { RepositoryInfo } from '@shared/api/source-control-channels';
+import type { FileWriteResult } from '@shared/api/file-channels';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import {
+  DockPanelCommands,
+  DockPanelState,
+} from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
+import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
+import { Repository } from '@shared/angular/services/repository/repository';
+import { SearchPanelRequests } from '@features/workspace/angular/panels/search-panel/search-panel-requests';
+import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
+import type { FindRequest } from '@shared/angular/components/find-panel/find-request';
 
 import { DirectoryView } from './directory-view';
 
@@ -195,6 +212,305 @@ describe('DirectoryView', () => {
       fixture.detectChanges();
 
       expect(await well().openDiff('/ws/a.ts')).toContain('not a git repository');
+    });
+  });
+
+  describe('the panels menu', () => {
+    let commands: DockPanelCommands;
+
+    /**
+     * Reads a panel's row in the menu.
+     * @param id The panel.
+     * @returns Returns its row.
+     */
+    function row(id: string): DockPanelState | undefined {
+      return commands.panels().find((panel: DockPanelState): boolean => panel.id === id);
+    }
+
+    beforeEach(async () => {
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      commands = TestBed.inject(DockPanelCommands);
+    });
+
+    it('panels_listsToolPanelsOnly', () => {
+      expect(row('files')?.docked).toBe(true);
+      expect(commands.panels().some((panel: DockPanelState) => panel.id.startsWith('doc'))).toBe(
+        false,
+      );
+    });
+
+    it('toggle_aHiddenPanel_docksAndRevealsIt', async () => {
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+      expect(findStackOfPanel(dock.layout(), 'references')).toBeNull();
+
+      commands.toggle('references');
+      await fixture.whenStable();
+
+      expect(findStackOfPanel(dock.layout(), 'references')?.active).toBe('references');
+      expect(row('references')?.docked).toBe(true);
+    });
+
+    it('toggle_aShowingPanel_closesIt', async () => {
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+      commands.toggle('references');
+      await fixture.whenStable();
+
+      commands.toggle('references');
+      await fixture.whenStable();
+
+      expect(findStackOfPanel(dock.layout(), 'references')).toBeNull();
+    });
+
+    it('destroy_takesTheMenuAway', () => {
+      fixture.destroy();
+
+      expect(commands.panels()).toEqual([]);
+    });
+  });
+
+  describe('find and hierarchy', () => {
+    beforeEach(async () => {
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+    });
+
+    it('find_withNoSearchPanel_docksItAndBringsItForward', async () => {
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+
+      TestBed.inject(WorkspaceFind).reveal();
+      await fixture.whenStable();
+
+      expect(findStackOfPanel(dock.layout(), 'search')?.active).toBe('search');
+    });
+
+    it('find_aPanelAlreadyMoved_staysWhereItWasPut', async () => {
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+      TestBed.inject(WorkspaceFind).reveal();
+      await fixture.whenStable();
+      const stack: string | undefined = findStackOfPanel(dock.layout(), 'search')?.id;
+
+      TestBed.inject(WorkspaceFind).reveal();
+      await fixture.whenStable();
+
+      expect(findStackOfPanel(dock.layout(), 'search')?.id).toBe(stack);
+      expect(
+        collectPanelIds(dock.layout()).filter((panel: string): boolean => panel === 'search'),
+      ).toHaveLength(1);
+    });
+
+    it('find_withARequest_postsItToThePanel', async () => {
+      const requests: SearchPanelRequests = fixture.debugElement.injector.get(SearchPanelRequests);
+      const post: Mock = vi.spyOn(requests, 'post');
+
+      TestBed.inject(WorkspaceFind).reveal({
+        term: 'needle',
+        filePath: '/ws/a.ts',
+      } as unknown as FindRequest);
+      await fixture.whenStable();
+
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post.mock.calls[0]?.[1]).toBe(false);
+    });
+
+    it('hierarchy_docksThePanelBesideTheErrorList', async () => {
+      const dock: DockState = fixture.debugElement.injector.get(DockState);
+      const source: HierarchySource = {
+        kind: 'calls',
+        roots: [],
+      } as unknown as HierarchySource;
+
+      expect(TestBed.inject(HierarchyRouter).show(source)).toBe(true);
+      await fixture.whenStable();
+
+      const stack: StackNode | null = findStackOfPanel(dock.layout(), 'hierarchy');
+      expect(stack?.panels).toContain('errors');
+      expect(stack?.active).toBe('hierarchy');
+    });
+  });
+
+  describe('an agent working through the well', () => {
+    let workspace: Workspace;
+    let revealed: Mock;
+
+    /**
+     * Gets the well the active view published.
+     * @returns Returns the well.
+     */
+    function well(): WorkspaceWell {
+      const published: WorkspaceWell | null = TestBed.inject(ActiveWorkspace).activeWell();
+      if (published === null) {
+        throw new Error('The view published no well');
+      }
+      return published;
+    }
+
+    beforeEach(() => {
+      TestBed.inject(Workspaces).setInitial('tab-2', ROOT_LISTING);
+      const seeded: ComponentFixture<DirectoryView> = TestBed.createComponent(DirectoryView);
+      seeded.componentRef.setInput('tabId', 'tab-2');
+      seeded.detectChanges();
+      workspace = seeded.debugElement.injector.get(Workspace);
+      revealed = vi.spyOn(workspace, 'revealPath').mockResolvedValue(undefined);
+      fixture = seeded;
+    });
+
+    it('createFile_empty_createsRevealsAndOpensBehindTheUser', async () => {
+      const made: Mock = vi
+        .spyOn(workspace, 'createFile')
+        .mockResolvedValue({ success: true, path: '/ws/a.ts' });
+      const opener: FileOpener = fixture.debugElement.injector.get(FileOpener);
+      const open: Mock = vi.spyOn(opener, 'openPath').mockResolvedValue(true);
+      const write: Mock = vi.spyOn(fixture.debugElement.injector.get(FileSystem), 'write');
+
+      expect(await well().createFile('/ws/a.ts', null)).toBeNull();
+
+      expect(made).toHaveBeenCalledWith('/ws', 'a.ts');
+      expect(write).not.toHaveBeenCalled();
+      expect(revealed).toHaveBeenCalledWith('/ws/a.ts');
+      expect(open.mock.calls[0]?.[0]).toBe('/ws/a.ts');
+    });
+
+    it('createFile_withContent_writesItWhereTheFileActuallyWent', async () => {
+      vi.spyOn(workspace, 'createFile').mockResolvedValue({ success: true, path: '/ws/a (1).ts' });
+      vi.spyOn(fixture.debugElement.injector.get(FileOpener), 'openPath').mockResolvedValue(true);
+      const write: Mock = vi
+        .spyOn(fixture.debugElement.injector.get(FileSystem), 'write')
+        .mockResolvedValue({ success: true });
+
+      await well().createFile('/ws/a.ts', 'body');
+
+      expect(write).toHaveBeenCalledWith('/ws/a (1).ts', 'body');
+    });
+
+    it.each([
+      [{ success: false, error: 'exists' }, 'exists'],
+      [{ success: false }, 'The file could not be created.'],
+    ])('createFile_refused_%j_saysWhy', async (result: FileOperationResult, reason: string) => {
+      vi.spyOn(workspace, 'createFile').mockResolvedValue(result);
+
+      expect(await well().createFile('/ws/a.ts', 'body')).toBe(reason);
+    });
+
+    it.each([
+      [{ success: false, error: 'disk full' }, 'disk full'],
+      [{ success: false }, 'The file was created but its content could not be written.'],
+    ])('createFile_writeRefused_%j_saysWhy', async (result: FileWriteResult, reason: string) => {
+      vi.spyOn(workspace, 'createFile').mockResolvedValue({ success: true });
+      vi.spyOn(fixture.debugElement.injector.get(FileSystem), 'write').mockResolvedValue(result);
+
+      expect(await well().createFile('/ws/a.ts', 'body')).toBe(reason);
+    });
+
+    it('createFile_windowsPath_splitsOnTheBackslash', async () => {
+      const made: Mock = vi.spyOn(workspace, 'createFile').mockResolvedValue({ success: false });
+
+      await well().createFile('C:\\ws\\a.ts', null);
+
+      expect(made).toHaveBeenCalledWith('C:\\ws', 'a.ts');
+    });
+
+    it('createFile_bareName_isItsOwnParentAndName', async () => {
+      const made: Mock = vi.spyOn(workspace, 'createFile').mockResolvedValue({ success: false });
+
+      await well().createFile('a.ts', null);
+
+      expect(made).toHaveBeenCalledWith('a.ts', 'a.ts');
+    });
+
+    it('createFolder_createsAndReveals', async () => {
+      const made: Mock = vi
+        .spyOn(workspace, 'createFolder')
+        .mockResolvedValue({ success: true, path: '/ws/src' });
+
+      expect(await well().createFolder('/ws/src')).toBeNull();
+
+      expect(made).toHaveBeenCalledWith('/ws', 'src');
+      expect(revealed).toHaveBeenCalledWith('/ws/src');
+    });
+
+    it.each([
+      [{ success: false, error: 'exists' }, 'exists'],
+      [{ success: false }, 'The folder could not be created.'],
+    ])('createFolder_refused_%j_saysWhy', async (result: FileOperationResult, reason: string) => {
+      vi.spyOn(workspace, 'createFolder').mockResolvedValue(result);
+
+      expect(await well().createFolder('/ws/src')).toBe(reason);
+    });
+
+    it('rename_revealsTheNewPath', async () => {
+      vi.spyOn(workspace, 'rename').mockResolvedValue({ success: true, path: '/ws/b.ts' });
+
+      expect(await well().rename('/ws/a.ts', 'b.ts')).toEqual({ path: '/ws/b.ts', error: null });
+
+      expect(revealed).toHaveBeenCalledWith('/ws/b.ts');
+    });
+
+    it('rename_withoutAPathBack_revealsNothing', async () => {
+      vi.spyOn(workspace, 'rename').mockResolvedValue({ success: true });
+
+      expect(await well().rename('/ws/a.ts', 'b.ts')).toEqual({ path: null, error: null });
+
+      expect(revealed).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ success: false, error: 'locked' }, 'locked'],
+      [{ success: false }, 'The entry could not be renamed.'],
+    ])('rename_refused_%j_saysWhy', async (result: FileOperationResult, reason: string) => {
+      vi.spyOn(workspace, 'rename').mockResolvedValue(result);
+
+      expect(await well().rename('/ws/a.ts', 'b.ts')).toEqual({ path: null, error: reason });
+    });
+
+    it.each([
+      [
+        { success: true, trashed: true },
+        { trashed: true, error: null },
+      ],
+      [{ success: true }, { trashed: false, error: null }],
+      [
+        { success: false, error: 'locked' },
+        { trashed: false, error: 'locked' },
+      ],
+      [{ success: false }, { trashed: false, error: 'The entry could not be deleted.' }],
+    ])('delete_%j_reports', async (result: FileOperationResult, reported: unknown) => {
+      vi.spyOn(workspace, 'delete').mockResolvedValue(result);
+
+      expect(await well().delete('/ws/a.ts')).toEqual(reported);
+    });
+
+    it('reveal_insideTheWorkspace_revealsIt', async () => {
+      expect(await well().reveal('/ws/src/a.ts')).toBe(true);
+
+      expect(revealed).toHaveBeenCalledWith('/ws/src/a.ts');
+    });
+
+    it('reveal_theRootItself_isRefused', async () => {
+      expect(await well().reveal('/ws')).toBe(false);
+    });
+
+    it('rootPath_isTheOpenFolder', () => {
+      expect(well().rootPath()).toBe('/ws');
+    });
+
+    it('sourceControl_boundRepository_reportsItsState', () => {
+      const repository: Repository = fixture.debugElement.injector.get(Repository);
+      repository.bind({ root: '/ws', trust: 'trusted' } as RepositoryInfo);
+
+      expect(well().sourceControl()).toMatchObject({
+        root: '/ws',
+        branch: null,
+        ahead: 0,
+        behind: 0,
+        staged: [],
+      });
+    });
+
+    it('destroy_takesTheWellDown', () => {
+      fixture.destroy();
+
+      expect(TestBed.inject(ActiveWorkspace).activeWell()?.tabId).not.toBe('tab-2');
     });
   });
 
