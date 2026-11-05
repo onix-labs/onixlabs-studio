@@ -105,7 +105,7 @@ test.describe('find in files', () => {
     await expect
       .poll((): string => fs.readFileSync(first, 'utf8'))
       .toBe('pin one\nnothing here\npin two\n');
-    expect(fs.readFileSync(second, 'utf8')).toBe('a pin three\n');
+    await expect.poll((): string => fs.readFileSync(second, 'utf8')).toBe('a pin three\n');
     expect(fs.readFileSync(other, 'utf8')).toBe('hay only\n');
   });
 
