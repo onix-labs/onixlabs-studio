@@ -240,8 +240,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Set Upstream</h2>
     <p class="rail__dialog-message">
-      Which remote-tracking branch “{{ upstreamBranch()?.name }}” follows, and so what its ahead and
-      behind counts are measured against.
+      Which remote-tracking branch <strong>{{ upstreamBranch()?.name }}</strong> follows, and so
+      what its ahead and behind counts are measured against.
     </p>
     @if (upstreamOptions().length === 0) {
       <p class="rail__dialog-error" role="alert">
@@ -282,10 +282,9 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Rebase {{ rebaseSubject() }}?</h2>
     <p class="rail__dialog-message">
-      Every commit on “{{ rebaseSubject() }}” is replayed on top of “{{
-        pendingRebaseOnto()?.name
-      }}” as a new commit. The old ones are left behind, so this is a rewrite rather than an
-      addition.
+      Every commit on <strong>{{ rebaseSubject() }}</strong> is replayed on top of
+      <strong>{{ pendingRebaseOnto()?.name }}</strong> as a new commit. The old ones are left
+      behind, so this is a rewrite rather than an addition.
       @if (rebaseRewritesPublished()) {
         This branch has already been pushed: the remote will not take the result without a force
         push, and anyone else working on it will have to recover their own copy.
@@ -308,10 +307,12 @@
   (dismiss)="cancelDeleteBranch()"
 >
   <ng-template appModalContent>
+    @let place = deletionPlace(pendingDeleteBranch());
     <h2 class="rail__dialog-title">Delete This Branch?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingDeleteBranch()?.name }}” is deleted from
-      {{ deletionPlace(pendingDeleteBranch()) }}. A copy already pushed to a remote stays there.
+      <strong>{{ pendingDeleteBranch()?.name }}</strong> is deleted from {{ place.before
+      }}<strong>{{ place.name }}</strong
+      >{{ place.after }}. A copy already pushed to a remote stays there.
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDeleteBranch()" />
@@ -330,11 +331,13 @@
   (dismiss)="cancelForceDeleteBranch()"
 >
   <ng-template appModalContent>
+    @let place = deletionPlace(pendingForceDeleteBranch());
     <h2 class="rail__dialog-title">Delete It Anyway?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch
-      checked out in {{ deletionPlace(pendingForceDeleteBranch()) }}, or into anything it tracks.
-      Deleting it now loses them, and nothing brings them back.
+      <strong>{{ pendingForceDeleteBranch()?.name }}</strong> has commits that are not merged into
+      the branch checked out in {{ place.before }}<strong>{{ place.name }}</strong
+      >{{ place.after }}, or into anything it tracks. Deleting it now loses them, and nothing brings
+      them back.
     </p>
     <app-button-row>
       <app-button
@@ -403,8 +406,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Remove This Remote?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingRemoveRemote()?.name }}” and its remote-tracking branches are removed from this
-      repository. Nothing on the remote itself is touched.
+      <strong>{{ pendingRemoveRemote()?.name }}</strong> and its remote-tracking branches are
+      removed from this repository. Nothing on the remote itself is touched.
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Remove" (click)="confirmRemoveRemote()" />
@@ -474,12 +477,12 @@
     <h2 class="rail__dialog-title">Delete This Tag?</h2>
     @if (deleteTagRemote(); as remote) {
       <p class="rail__dialog-message">
-        “{{ pendingDeleteTag()?.name }}” is deleted from this repository. Deleting it on
-        {{ remote }} as well removes it for everyone, and cannot be undone.
+        <strong>{{ pendingDeleteTag()?.name }}</strong> is deleted from this repository. Deleting it
+        on {{ remote }} as well removes it for everyone, and cannot be undone.
       </p>
     } @else {
       <p class="rail__dialog-message">
-        “{{ pendingDeleteTag()?.name }}” is deleted from this repository.
+        <strong>{{ pendingDeleteTag()?.name }}</strong> is deleted from this repository.
       </p>
     }
     <!-- The local delete stays the solid one: it is the answer that is nearly always meant. -->
@@ -489,7 +492,7 @@
         <app-button
           variant="ghost"
           tone="danger"
-          [label]="'Delete on ' + remote + ' too'"
+          [label]="deleteOnRemoteLabel(remote)"
           (click)="confirmDeleteTagEverywhere()"
         />
       }
@@ -509,7 +512,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Drop This Stash?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingDropName() }}” is deleted without being restored. This cannot be undone.
+      <strong>{{ pendingDropName() }}</strong> is deleted without being restored. This cannot be
+      undone.
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Drop" (click)="confirmDropStash()" />
@@ -529,8 +533,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Re-run This Workflow?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
-      rather than replacing the old one.
+      <strong>{{ pendingRerun()?.name }}</strong> runs again on {{ pendingRerun()?.branch }}. This
+      starts a new run rather than replacing the old one.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
@@ -550,8 +554,8 @@
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Cancel This Run?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
-      finished is abandoned.
+      <strong>{{ pendingCancel()?.name }}</strong> stops on {{ pendingCancel()?.branch }}. Anything
+      it has not finished is abandoned.
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Cancel Run" (click)="confirmCancelRun()" />

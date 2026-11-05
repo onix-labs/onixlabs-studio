@@ -3366,7 +3366,7 @@ describe('SourceControlSidebar', () => {
         pendingForceDeleteBranch(): { name: string } | null;
         confirmDeleteBranch(): Promise<void>;
         confirmForceDeleteBranch(): void;
-        deletionPlace(deletion: unknown): string;
+        deletionPlace(deletion: unknown): { before: string; name: string; after: string };
       } = mounted.componentInstance as unknown as typeof internals;
 
       internals.onContextAction({
@@ -3374,9 +3374,11 @@ describe('SourceControlSidebar', () => {
         row: row(mounted, 'worktree:w2:branch:old'),
       });
       expect(internals.pendingDeleteBranch()?.name).toBe('old');
-      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toBe(
-        'the “review” worktree',
-      );
+      expect(internals.deletionPlace(internals.pendingDeleteBranch())).toEqual({
+        before: 'the ',
+        name: 'review',
+        after: ' worktree',
+      });
 
       await internals.confirmDeleteBranch();
       expect(internals.pendingForceDeleteBranch()?.name).toBe('old');

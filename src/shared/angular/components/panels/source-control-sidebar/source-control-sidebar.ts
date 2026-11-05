@@ -550,6 +550,26 @@ interface SectionDef {
 }
 
 /**
+ * Describes where a branch being deleted lives, split around the name a dialog shows in bold.
+ */
+interface DeletionPlace {
+  /**
+   * Gets the words before the name.
+   */
+  readonly before: string;
+
+  /**
+   * Gets the worktree's name, or an empty string when the place has none.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the words after the name.
+   */
+  readonly after: string;
+}
+
+/**
  * Renders the source-control view's left rail: its own tool strip over the repository tree —
  * collapsible sections for local branches, remotes, tags, and stashes, then placeholder sections for
  * pull requests, issues, and CI/CD actions. The tree is presented through the shared {@link TreeView}:
@@ -1599,15 +1619,24 @@ export class SourceControlSidebar implements OnDestroy {
     signal<BranchDeletion | null>(null);
 
   /**
+   * Gets the Title Case label of the button that deletes a tag on its remote as well.
+   * @param remote The remote's name.
+   * @returns Returns the label.
+   */
+  protected deleteOnRemoteLabel(remote: string): string {
+    return `Delete on ${remote.charAt(0).toUpperCase()}${remote.slice(1)} Too`;
+  }
+
+  /**
    * Says where a branch being deleted lives, for the delete questions: this repository, or another
    * worktree, named.
    * @param deletion The branch being deleted.
-   * @returns Returns the phrase.
+   * @returns Returns the phrase, split around the name a dialog shows in bold.
    */
-  protected deletionPlace(deletion: BranchDeletion | null): string {
+  protected deletionPlace(deletion: BranchDeletion | null): DeletionPlace {
     return deletion?.worktree === undefined
-      ? 'this repository'
-      : `the “${deletion.worktree.label}” worktree`;
+      ? { before: 'this repository', name: '', after: '' }
+      : { before: 'the ', name: deletion.worktree.label, after: ' worktree' };
   }
 
   /**

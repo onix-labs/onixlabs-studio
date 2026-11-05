@@ -10,10 +10,9 @@
   <ng-template appModalContent>
     <h2 class="confirm__title">Start a New Conversation?</h2>
     <p class="confirm__message">
-      Your current conversation ends, and a new one starts about “#{{
-        issueAgent.pending()?.number
-      }}
-      {{ issueAgent.pending()?.title }}”.
+      Your current conversation ends, and a new one starts about
+      <strong>#{{ issueAgent.pending()?.number }} {{ issueAgent.pending()?.title }}</strong
+      >.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Start New" (click)="issueAgent.confirm()" />

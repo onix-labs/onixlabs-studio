@@ -325,8 +325,8 @@
   <ng-template appModalContent>
     <h2 class="directory-ribbon__confirm-title">Delete Layout?</h2>
     <p class="directory-ribbon__confirm-message">
-      “{{ deletingLayout()?.name }}” is deleted for good. Workspaces showing it fall back to the
-      default layout.
+      <strong>{{ deletingLayout()?.name }}</strong> is deleted for good. Workspaces showing it fall
+      back to the default layout.
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDeleteLayout()" />

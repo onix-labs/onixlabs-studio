@@ -86,9 +86,9 @@
   <ng-template appModalContent>
     <h2 class="solution-panel__confirm-title">A Build Is Already Running</h2>
     <p class="solution-panel__confirm-message">
-      Stop the running build and {{ pendingAction()?.label?.toLowerCase() }} “{{
-        pendingAction()?.project?.name
-      }}” instead? Its output stays in the Build terminal until the new build replaces it.
+      Stop the running build and {{ pendingAction()?.label?.toLowerCase() }}
+      <strong>{{ pendingAction()?.project?.name }}</strong> instead? Its output stays in the Build
+      terminal until the new build replaces it.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
