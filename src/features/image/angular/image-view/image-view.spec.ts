@@ -669,6 +669,20 @@ describe('ImageView', () => {
       await flush();
       expect(document().size()).toEqual({ width: 30, height: 40 });
     });
+
+    it('undo_whenTheImageCannotBeRedrawn_saysSo', async () => {
+      await mount('/pictures/photo.png');
+      view.rotate(true);
+      await flush();
+      view.rotate(true);
+      await flush();
+      vi.spyOn(raster, 'objectUrl').mockRejectedValue(new Error('out of memory'));
+
+      view.undo();
+      await flush();
+
+      expect(failures()).toEqual(['Could not edit photo.png']);
+    });
   });
 
   describe('chords', () => {
