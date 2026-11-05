@@ -1688,6 +1688,10 @@ export class LspClient implements OnDestroy {
         this.clearPostLoadPulls(sessionId);
         this.clearRecolor(sessionId);
         this.sessions.delete(sessionId);
+        // Left in place it would answer to a restart, starting a server for nothing, and its workspace
+        // problems would stay listed.
+        this.sessionInfo.delete(sessionId);
+        this.publish();
       }, idleMs),
     );
   }

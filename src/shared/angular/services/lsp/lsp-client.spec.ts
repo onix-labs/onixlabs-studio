@@ -2926,6 +2926,46 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didClose')).toHaveLength(1);
   });
 
+  it('standaloneReap_forgetsTheSession_soNothingCanBringItBack', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+
+    await client.restart('/tmp/scratch::typescript');
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+  });
+
+  it('standaloneReap_dropsTheWorkspaceProblemsTheSessionReported', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    lsp.notify('/tmp/scratch::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [{ uri: 'file:///tmp/scratch/b.ts', kind: 'full', items: [problem] }],
+    });
+    expect(diagnostics.emitted).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
   it('standaloneReap_whenADocumentReturnedInTime_keepsTheServer', async () => {
     root.set(null);
     const client: LspClient = build();
