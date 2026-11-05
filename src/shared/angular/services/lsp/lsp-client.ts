@@ -1428,6 +1428,16 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Cancels a session's pending recolour pass. Run against the server that replaced this one, it would
+   * trust tokens that server is still degrading while it loads, and show it ready too soon.
+   * @param sessionId The session whose pass to cancel.
+   */
+  private clearRecolor(sessionId: string): void {
+    clearTimeout(this.recolorTimers.get(sessionId));
+    this.recolorTimers.delete(sessionId);
+  }
+
+  /**
    * Records a document's diagnostics (from a push or a pull), sets them as editor markers, and
    * republishes the aggregate.
    * @param tracked The document the diagnostics belong to.
@@ -1676,6 +1686,7 @@ export class LspClient implements OnDestroy {
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
         this.clearPostLoadPulls(sessionId);
+        this.clearRecolor(sessionId);
         this.sessions.delete(sessionId);
       }, idleMs),
     );
@@ -1919,6 +1930,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
+      this.clearRecolor(sessionId);
     }
     const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
@@ -1953,6 +1965,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
+      this.clearRecolor(sessionId);
       this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
@@ -2712,6 +2725,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(exit.sessionId);
       this.settledSessions.delete(exit.sessionId);
       this.clearPostLoadPulls(exit.sessionId);
+      this.clearRecolor(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
       for (const tracked of this.tracked.values()) {
         if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
@@ -2756,13 +2770,7 @@ export class LspClient implements OnDestroy {
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
     this.clearPostLoadPulls(exit.sessionId);
-    const recolorTimer: ReturnType<typeof setTimeout> | undefined = this.recolorTimers.get(
-      exit.sessionId,
-    );
-    if (recolorTimer !== undefined) {
-      clearTimeout(recolorTimer);
-      this.recolorTimers.delete(exit.sessionId);
-    }
+    this.clearRecolor(exit.sessionId);
     for (const tracked of this.tracked.values()) {
       if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
         tracked.opened = false;

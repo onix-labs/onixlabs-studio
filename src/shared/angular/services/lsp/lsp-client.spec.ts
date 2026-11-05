@@ -2866,6 +2866,46 @@ describe('LspClient', () => {
     const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
     expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
   });
+
+  it('restart_cancelsARecolourMeantForTheOldServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      await client.restart('/root::csharp');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      // The new server is still loading: its tokens are degraded until it says otherwise.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('suspend_cancelsARecolourMeantForTheStoppedServer', async () => {
+    const features: FakeFeatures = new FakeFeatures();
+    const client: LspClient = build(features);
+    openDocument(client, '/root/a.cs', 'csharp');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      lsp.notify('/root::csharp', 'workspace/semanticTokens/refresh', {});
+
+      client.suspend();
+      await vi.advanceTimersByTimeAsync(5_000);
+      client.resume();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The server that comes back is loading from scratch, whatever the old one had reached.
+      expect(features.resolver?.('/root/a.cs')?.suppressServerTokens).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('idleStopMs', () => {
