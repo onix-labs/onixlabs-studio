@@ -1404,25 +1404,38 @@ export class AiManager {
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
     entry.activeTurns += 1;
-    return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
-      entry.activeTurns -= 1;
-      const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
-      // Its harness was updated or removed during the turn: the turn was let finish, and now the
-      // session ends, so the next turn resumes on whatever is installed now (#881).
-      if (current === entry && entry.retiring && entry.activeTurns === 0) {
-        logger.info(
-          'AiManager',
-          `Ending live session ${key} now its turn is over: harness changed`,
-        );
-        this.endSession(key, entry, 'retired');
-        return;
-      }
-      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
-      if (current !== undefined) {
-        current.lastActivity = Date.now();
-        this.armReap(key, current);
-      }
-    });
+    return this.trackLiveTurn(key, entry.session, this.startTurn(entry.session, context)).finally(
+      (): void => {
+        entry.activeTurns -= 1;
+        const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+        // Its harness was updated or removed during the turn: the turn was let finish, and now the
+        // session ends, so the next turn resumes on whatever is installed now (#881).
+        if (current === entry && entry.retiring && entry.activeTurns === 0) {
+          logger.info(
+            'AiManager',
+            `Ending live session ${key} now its turn is over: harness changed`,
+          );
+          this.endSession(key, entry, 'retired');
+          return;
+        }
+        // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+        if (current !== undefined) {
+          current.lastActivity = Date.now();
+          this.armReap(key, current);
+        }
+      },
+    );
+  }
+
+  /**
+   * Starts a turn in a session, so one that throws rather than rejects is carried the same way: the
+   * caller has already counted the turn, and only a settling promise uncounts it.
+   * @param session The session.
+   * @param context The turn's context.
+   * @returns Returns the turn promise.
+   */
+  private async startTurn(session: AgentSession, context: AgentRunContext): Promise<void> {
+    await session.turn(context);
   }
 
   /**

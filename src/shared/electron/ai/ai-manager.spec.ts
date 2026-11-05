@@ -1658,6 +1658,24 @@ describe('AiManager', () => {
       expect(eventsOf('status').at(-1)).toMatchObject({ state: 'error', detail: 'stream died' });
     });
 
+    it('turn_thatThrowsSynchronously_landsAsAnError_andLeavesTheSessionReapable', async () => {
+      provider.onOpen = (): FakeSession => {
+        const session: FakeSession = new FakeSession();
+        session.onTurn = (): Promise<void> => {
+          throw new Error('no turn for you');
+        };
+        return session;
+      };
+
+      await turn();
+
+      expect(eventsOf('status').at(-1)).toMatchObject({
+        state: 'error',
+        detail: 'no turn for you',
+      });
+      expect(endings()).toEqual(['evicted']);
+    });
+
     it('openSession_thatThrows_landsAsAnError', async () => {
       provider.onOpen = (): FakeSession => {
         throw new Error('harness would not start');
