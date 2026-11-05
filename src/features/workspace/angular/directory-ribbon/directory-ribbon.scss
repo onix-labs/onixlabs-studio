@@ -15,14 +15,13 @@
 }
 
 // The Save As dialog's Default box, sitting between the name field and the actions.
-.directory-ribbon__prompt-check {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.directory-ribbon__prompt-row {
+  display: block;
   margin-block-end: 1.3rem;
-  font-size: 1rem;
-  color: var(--body-foreground-color);
-  cursor: default;
+}
+
+.directory-ribbon__prompt-row:has(+ .directory-ribbon__prompt-alert) {
+  margin-block-end: 0.75rem;
 }
 
 // The Manage dialog's preset list. Scrolls in place rather than growing the dialog, so a long list
@@ -65,7 +64,7 @@
 // Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
 .directory-ribbon__prompt-input {
   inline-size: 100%;
-  margin-block: 0.75rem 1rem;
+  margin-block: 0.75rem 0.5rem;
 }
 
 // The template picker heads the layout list, as one line of "start a new one from…" above it.

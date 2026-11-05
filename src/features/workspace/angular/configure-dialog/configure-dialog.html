@@ -76,13 +76,6 @@
               (valueChange)="onName($event)"
             />
 
-            <app-setting-row
-              label="Default"
-              description="Run this on a single press, from Mission Control's Run button"
-            >
-              <app-toggle [checked]="isDefault()" (checkedChange)="onDefaultChange($event)" />
-            </app-setting-row>
-
             @if (hasBuildConfigs()) {
               <app-dropdown
                 label="Configuration"
@@ -137,28 +130,12 @@
               (blurred)="onEnv(env.value())"
             />
 
-            <app-setting-row label="Debug" description="Run under the debugger">
-              <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
+            <app-setting-row
+              label="Default"
+              description="Run this on a single press, from Mission Control's Run button"
+            >
+              <app-toggle [checked]="isDefault()" (checkedChange)="onDefaultChange($event)" />
             </app-setting-row>
-
-            @if (isDebug()) {
-              <app-setting-row label="Stop at Entry" description="Stop on the program's first line">
-                <app-toggle
-                  [checked]="configuration.stopAtEntry === true"
-                  (checkedChange)="onStopAtEntry($event)"
-                />
-              </app-setting-row>
-            }
-
-            @if (hasDebugConsoleChoice()) {
-              <app-dropdown
-                label="Debug Console"
-                [options]="debugConsoleOptions"
-                [value]="configuration.debugConsole ?? 'integrated-terminal'"
-                [fullWidth]="true"
-                (valueChange)="onDebugConsole($event)"
-              />
-            }
 
             @if (hasBuildStep()) {
               <app-dropdown
@@ -189,6 +166,29 @@
                 (checkedChange)="onPresentationChange($event)"
               />
             </app-setting-row>
+
+            <app-setting-row label="Debug" description="Run under the debugger">
+              <app-toggle [checked]="isDebug()" (checkedChange)="onModeChange($event)" />
+            </app-setting-row>
+
+            @if (isDebug()) {
+              <app-setting-row label="Stop at Entry" description="Stop on the program's first line">
+                <app-toggle
+                  [checked]="configuration.stopAtEntry === true"
+                  (checkedChange)="onStopAtEntry($event)"
+                />
+              </app-setting-row>
+            }
+
+            @if (hasDebugConsoleChoice()) {
+              <app-dropdown
+                label="Debug Console"
+                [options]="debugConsoleOptions"
+                [value]="configuration.debugConsole ?? 'integrated-terminal'"
+                [fullWidth]="true"
+                (valueChange)="onDebugConsole($event)"
+              />
+            }
           } @else {
             <p class="configure__empty">Select or create a configuration to edit.</p>
           }

@@ -58,7 +58,8 @@
           <app-button-row>
             <app-button
               variant="solid"
-              label="Delete Ticked"
+              tone="danger"
+              label="Delete"
               [disabled]="tickedCount() === 0"
               data-testid="retention-delete-ticked"
               (click)="deleteTicked()"

@@ -166,7 +166,9 @@
     <h2 class="rail__dialog-title">New Branch</h2>
     <!-- Made from a worktree's menu, the branch is made in that worktree: each is a clone of its own. -->
     @if (branchTarget(); as target) {
-      <p class="rail__dialog-message">In the “{{ target.label }}” worktree.</p>
+      <p class="rail__dialog-message rail__dialog-message--tight">
+        In the <strong>{{ target.label }}</strong> worktree.
+      </p>
     }
     <app-text-field
       class="rail__dialog-input"
@@ -180,13 +182,9 @@
     @if (branchNameError(); as error) {
       <p class="rail__dialog-error" role="alert">{{ error }}</p>
     }
-    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
-         rule cannot see through the component boundary to verify this statically. -->
-    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-    <label class="rail__dialog-check">
-      <app-checkbox [(checked)]="branchCheckout" />
-      <span>Check out after creating</span>
-    </label>
+    <app-setting-row class="rail__dialog-row" label="Check Out After Creating">
+      <app-toggle ariaLabel="Check out after creating" [(checked)]="branchCheckout" />
+    </app-setting-row>
     <app-button-row>
       <app-button
         variant="solid"

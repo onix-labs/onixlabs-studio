@@ -49,7 +49,8 @@ import {
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
@@ -571,7 +572,8 @@ interface SectionDef {
     ButtonRow,
     Dropdown,
     AppIcon,
-    Checkbox,
+    SettingRow,
+    Toggle,
     Modal,
     ModalContent,
     ExplorerToolbar,

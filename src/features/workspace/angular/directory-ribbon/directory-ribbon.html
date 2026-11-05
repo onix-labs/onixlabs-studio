@@ -173,7 +173,7 @@
 
 <!-- Saves the current arrangement. Layout names are unique, so entering one that is taken saves OVER
      that layout — which is how a layout is updated, there being no separate Save — and the dialog
-     says so before the press rather than after it. The Default box makes it the layout the View
+     says so before the press rather than after it. The Default toggle makes it the layout the View
      button applies, replacing whichever layout held that role. -->
 <app-modal
   [open]="saveAsOpen()"
@@ -194,16 +194,13 @@
       (enter)="confirmSaveAs()"
       (escape)="cancelSaveAs()"
     />
-    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
-         rule cannot see through the component boundary to verify this statically. -->
-    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-    <label class="directory-ribbon__prompt-check">
-      <app-checkbox [(checked)]="saveAsDefault" />
-      <span>Make this the default view</span>
-    </label>
+    <app-setting-row class="directory-ribbon__prompt-row" label="Make This the Default View">
+      <app-toggle ariaLabel="Make this the default view" [(checked)]="saveAsDefault" />
+    </app-setting-row>
     @if (saveAsOverwrites(); as existing) {
       <app-alert class="directory-ribbon__prompt-alert" tone="warning">
-        Saving replaces the “{{ existing.name }}” layout with the current arrangement.
+        Saving replaces the <strong>{{ existing.name }}</strong> layout with the current
+        arrangement.
       </app-alert>
     }
     <app-button-row>

@@ -48,7 +48,8 @@ import {
 } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { LayoutInfo, Layouts } from '@shared/angular/services/layouts/layouts';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
@@ -116,7 +117,8 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripMenuButton,
-    Checkbox,
+    SettingRow,
+    Toggle,
     Modal,
     ModalContent,
   ],
