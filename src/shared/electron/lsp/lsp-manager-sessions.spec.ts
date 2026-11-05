@@ -517,7 +517,7 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       expect(renderer.exits()).toEqual([]);
     });
 
-    it.skip('aNotificationToAServerThatClosedItsOutput_doesNotThrowIntoTheIpcHandler', async () => {
+    it('aNotificationToAServerThatClosedItsOutput_doesNotThrowIntoTheIpcHandler', async () => {
       mode = 'closes-stdout';
       const renderer: FakeRenderer = new FakeRenderer();
       await start(renderer);
