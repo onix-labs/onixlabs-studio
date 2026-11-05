@@ -2686,4 +2686,72 @@ describe('Agent', () => {
     expect(last.prompt).toBe('second after compaction');
     expect(last.prompt).not.toContain('The gist.');
   });
+
+  /**
+   * Ends the turn in flight the way a provider does.
+   */
+  function completeTurn(): void {
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+  }
+
+  /**
+   * Lists the transcript's text, which is what the user reads.
+   * @returns Returns each item's text.
+   */
+  function transcript(): string[] {
+    return agent.items().map((item: AgentItem): string => item.text);
+  }
+
+  it('stop_ofACompactionNobodyAnswers_leavesTheNextTurnInTheTranscript', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('hi');
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'hello' });
+      completeTurn();
+      agent.compact();
+      agent.stop();
+      vi.advanceTimersByTime(8_100);
+      expect(lastItem()?.text).toBe('Compaction stopped');
+
+      agent.send('next');
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the answer' });
+      completeTurn();
+
+      expect(transcript()).toEqual(['hi', 'hello', 'Compaction stopped', 'next', 'the answer']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clear_duringACompaction_abortsItAndTheNextTurnRunsNormally', () => {
+    agent.send('hi');
+    completeTurn();
+    agent.compact();
+    abortCalls = [];
+
+    agent.clear();
+    expect(abortCalls).toEqual(['run-1']);
+
+    agent.send('fresh');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'answer' });
+    completeTurn();
+
+    expect(transcript()).toEqual(['fresh', 'answer']);
+  });
+
+  it('restore_duringACompaction_abortsItAndTheNextTurnRunsNormally', () => {
+    agent.send('hi');
+    completeTurn();
+    agent.compact();
+    abortCalls = [];
+
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'old' }]);
+    expect(abortCalls).toEqual(['run-1']);
+
+    agent.send('more');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'answer' });
+    completeTurn();
+
+    expect(transcript()).toEqual(['old', 'more', 'answer']);
+  });
 });

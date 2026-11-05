@@ -1772,7 +1772,13 @@ export class Agent {
         'Stop deadline passed with no terminal status; landing it locally',
         requestId,
       );
-      this.onStatus('aborted', '');
+      // A compaction ends through its own path, or `compacting` outlives it and the next turn is taken
+      // for the summary: its text swallowed, and the transcript replaced with whatever it said.
+      if (this.compacting) {
+        this.onCompactionStatus('aborted', '');
+      } else {
+        this.onStatus('aborted', '');
+      }
     }, STOP_SETTLE_DEADLINE_MS);
   }
 
@@ -1819,10 +1825,26 @@ export class Agent {
   }
 
   /**
+   * Gives up on a compaction in flight, for a transcript that is being replaced. It has no session for
+   * {@link resetAgentSession} to end, so it is aborted by name or it runs on, unseen, spending tokens.
+   */
+  private abandonCompaction(): void {
+    if (!this.compacting) {
+      return;
+    }
+    this.compacting = false;
+    this.compactionText = '';
+    if (this.activeRequestId !== null) {
+      this.runtime.abort(this.activeRequestId);
+    }
+  }
+
+  /**
    * Clears the transcript.
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.discardStream();
@@ -1863,6 +1885,7 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.activeRequestId = null;
