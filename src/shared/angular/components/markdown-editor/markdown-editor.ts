@@ -561,6 +561,8 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
         behaviour: untracked(this.milkdown.behaviour),
         openLink: (href: string): void => void this.shell.openExternal(href),
         storeImage: (file: File): Promise<string> => this.storeImage(file),
+        imageFailed: (file: File, cause: unknown): void =>
+          this.log.warn('MarkdownEditor', `Could not place pasted image ${file.name}`, cause),
         monaco: this.monaco,
         highlighter: this.highlighter,
         assist: {

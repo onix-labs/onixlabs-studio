@@ -21,16 +21,12 @@ import { blockquoteToAlertPlugin, githubAlertPlugin } from './github-alert-plugi
 import { htmlImagePlugin, htmlImageNode } from './html-image-plugin';
 import { imageTitlePlugin } from './image-title-plugin';
 import { createLinkOpenPlugin } from './link-open-plugin';
-import {
-  basicRichPastePlugin,
-  imageFilesOf,
-  insertImage,
-  pasteClipboardText,
-} from './markdown-paste';
+import { basicRichPastePlugin, imageFilesOf, pasteClipboardText } from './markdown-paste';
 import { fileToDataUrl } from './media-source';
 import { mermaidPlugin } from './mermaid-plugin';
 import { createMonacoCodeBlockPlugin, MonacoCodeBlockDeps } from './monaco-code-block-plugin';
 import { pasteCleanPlugin } from './paste-clean-plugin';
+import { placeImages } from './place-images';
 import { searchPlugin } from './search-plugin';
 import { smartPunctuationPlugin } from './smart-punctuation-plugin';
 import {
@@ -195,29 +191,11 @@ export interface StudioCrepeOptions {
    * Stores a pasted or dropped image and resolves to its source, or undefined to embed it.
    */
   readonly storeImage?: (file: File) => Promise<string>;
-}
 
-/**
- * Pastes an image file at a position, once it has been stored.
- * @param view The editor view.
- * @param files The image files.
- * @param store Stores an image and resolves to its source.
- * @param position The position to insert at, or undefined for the selection.
- */
-function placeImages(
-  view: EditorView,
-  files: readonly File[],
-  store: (file: File) => Promise<string>,
-  position?: number,
-): void {
-  for (const file of files) {
-    void store(file).then((source: string): void => {
-      // Storing can outlast the editor: the tab may close while the image is being written.
-      if (!view.isDestroyed) {
-        insertImage(view, source, file.name, position);
-      }
-    });
-  }
+  /**
+   * Hears about a pasted or dropped image that could not be placed in the document.
+   */
+  readonly imageFailed?: (file: File, cause: unknown) => void;
 }
 
 /**
@@ -246,6 +224,8 @@ function without(
 export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
   const behaviour: StudioCrepeBehaviour = options.behaviour ?? DEFAULT_CREPE_BEHAVIOUR;
   const store: (file: File) => Promise<string> = options.storeImage ?? fileToDataUrl;
+  const imageFailed: (file: File, cause: unknown) => void =
+    options.imageFailed ?? ((): void => undefined);
   // The browser's caret blinks one way, so any other style draws its own, which also stands in for the
   // virtual cursor Crepe shows at the edge of a mark.
   const drawsCaret: boolean = behaviour.cursorBlinking !== 'blink';
@@ -297,7 +277,7 @@ export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
         }
         const images: readonly File[] = imageFilesOf(clipboard);
         if (images.length > 0 && clipboard.getData('text/plain').length === 0) {
-          placeImages(view, images, store);
+          placeImages(view, images, store, imageFailed);
           return true;
         }
         return pasteClipboardText(view, clipboard, behaviour.defaultPaste, behaviour.richPaste);
@@ -312,7 +292,7 @@ export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
           left: event.clientX,
           top: event.clientY,
         });
-        placeImages(view, images, store, at?.pos);
+        placeImages(view, images, store, imageFailed, at?.pos);
         return true;
       },
     }));
