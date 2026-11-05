@@ -73,6 +73,13 @@ export class DebugManager {
   private readonly sessions: Map<string, DebugSession> = new Map<string, DebugSession>();
 
   /**
+   * Counts the times every session has been disposed, so a start that was still resolving its adapter
+   * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
+   * disposes everything too, and the renderer that replaces it starts sessions again.
+   */
+  private disposals: number = 0;
+
+  /**
    * Initializes a new instance of the {@link DebugManager} class.
    * @param windowGetter A function that returns the window adapter events are sent to.
    * @param workspaceContext The open-workspace tracker used to confine sessions to opened roots.
@@ -126,6 +133,7 @@ export class DebugManager {
    */
   public disposeAll(): void {
     logger.info('DebugManager', `Disposing all debug sessions (${this.sessions.size})`);
+    this.disposals += 1;
     for (const [id, session] of [...this.sessions]) {
       void session.client
         .sendRequest('disconnect', { terminateDebuggee: true })
@@ -158,10 +166,20 @@ export class DebugManager {
       logger.warn('DebugManager', `Debug start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
+    const disposals: number = this.disposals;
     const resolution: DebugAdapterResolution = await this.registry.resolve(
       parsed.adapterId,
       parsed.rootPath,
     );
+    // A second adapter spawned for this session would replace the first in the map, leaving a process
+    // nothing can stop; one spawned after a dispose outlives Studio.
+    if (disposals !== this.disposals) {
+      return { success: false, error: 'Debug sessions were shut down' };
+    }
+    if (this.sessions.has(parsed.sessionId)) {
+      logger.debug('DebugManager', `Debug session ${parsed.sessionId} started meanwhile`);
+      return { success: true };
+    }
     if (resolution.spec === null) {
       logger.warn(
         'DebugManager',
