@@ -300,6 +300,14 @@ describe('ApiRequestPanel', () => {
       expect(panel.prettyBody(jsonResponse('{"a":'))).toBe('{"a":');
     });
 
+    it('prettyBody_keepsTheDigitsOfALargeInteger', () => {
+      vi.spyOn(TestBed.inject(Settings), 'get').mockReturnValue(true);
+
+      expect(panel.prettyBody(jsonResponse('{"id":12345678901234567890}'))).toBe(
+        '{\n  "id": 12345678901234567890\n}',
+      );
+    });
+
     it('prettyBody_leavesOtherTypesAlone_andRespectsTheSetting', () => {
       const get: MockInstance<Settings['get']> = vi
         .spyOn(TestBed.inject(Settings), 'get')
