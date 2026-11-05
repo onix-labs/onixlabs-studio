@@ -897,7 +897,9 @@ export class LspProvisioner {
       versionDir,
       roslynBinaryCandidates(rid, process.platform === 'win32')[0],
     );
+    const archive: string = path.join(installDir, 'server.nupkg');
     try {
+      await this.clearInterruptedInstall(archive, versionDir);
       if (existsSync(binary)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -909,7 +911,6 @@ export class LspProvisioner {
       await fs.mkdir(installDir, { recursive: true });
       const id: string = `roslyn-language-server.${rid}`;
       const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
-      const archive: string = path.join(installDir, 'server.nupkg');
       await this.download(url, archive);
       const digest: string = await this.fileDigest(archive, 'sha512', 'base64');
       if (digest !== expected) {
@@ -980,7 +981,9 @@ export class LspProvisioner {
    */
   private async provisionJdtls(): Promise<JdtlsInstall | null> {
     const installDir: string = path.join(this.serversRoot(), 'jdtls', JDTLS_VERSION);
+    const archive: string = path.join(installDir, 'jdtls.tar.gz');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
         // Mark an install that predates the completion marker, so an existing, working server is not
@@ -991,7 +994,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading JDT.LS ${JDTLS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'jdtls.tar.gz');
       await this.download(JDTLS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== JDTLS_SHA256) {
@@ -1037,7 +1039,9 @@ export class LspProvisioner {
       'bin',
       process.platform === 'win32' ? 'kotlin-language-server.bat' : 'kotlin-language-server',
     );
+    const archive: string = path.join(installDir, 'server.zip');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       if (existsSync(launcher)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -1047,7 +1051,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading Kotlin server ${KOTLIN_LS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'server.zip');
       await this.download(KOTLIN_LS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== KOTLIN_LS_SHA256) {
@@ -1193,6 +1196,21 @@ export class LspProvisioner {
     const hash: ReturnType<typeof createHash> = createHash(algorithm);
     await pipeline(createReadStream(file), hash);
     return hash.digest(encoding);
+  }
+
+  /**
+   * Clears what an install that died part way left behind. The archive is removed only once extraction
+   * has finished, so one still there means the files beside it cannot be trusted, however complete
+   * they look: a launcher found among them would otherwise be marked complete, and reused for good.
+   * @param archive The archive the install downloads.
+   * @param installRoot The directory the install owns.
+   * @returns Returns a promise that resolves once any remains are gone.
+   */
+  private async clearInterruptedInstall(archive: string, installRoot: string): Promise<void> {
+    if (existsSync(archive)) {
+      logger.warn('LspProvisioner', `Clearing an interrupted install at ${installRoot}`);
+      await fs.rm(installRoot, { recursive: true, force: true });
+    }
   }
 
   /**

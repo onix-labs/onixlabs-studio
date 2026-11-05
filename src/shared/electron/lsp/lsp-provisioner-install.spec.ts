@@ -228,6 +228,24 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(provisioner.isProvisioned('roslyn', ROSLYN_VERSION)).toBe(true);
     });
 
+    it('anInterruptedExtract_isInstalledAfresh_ratherThanMarkedComplete', async () => {
+      // A crash mid-extract leaves the apphost beside half its assemblies, and the archive, which goes
+      // only once extraction is done, is what tells that apart from a finished install.
+      mkdirSync(path.dirname(binary()), { recursive: true });
+      writeFileSync(binary(), 'half an install');
+      writeFileSync(path.join(roslynDir(), rid, 'server.nupkg'), 'part of an archive');
+      expect(path.relative(userData, roslynDir()).startsWith('..')).toBe(false);
+      forcedDigest = ROSLYN_SHA512[rid];
+      unzipCreates(extracted);
+      const fetched: ReturnType<typeof vi.fn> = serve(delivers());
+
+      expect(await provisioner.ensureRoslyn()).toBe(binary());
+
+      expect(fetched).toHaveBeenCalledTimes(1);
+      expect(readFileSync(binary(), 'utf8')).not.toBe('half an install');
+      expect(provisioner.isProvisioned('roslyn', ROSLYN_VERSION)).toBe(true);
+    });
+
     describe('a download that stops moving', () => {
       afterEach(() => {
         vi.useRealTimers();
@@ -486,6 +504,23 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(await provisioner.ensureJdtls()).not.toBeNull();
     });
 
+    it('anInterruptedExtract_isInstalledAfresh_ratherThanMarkedComplete', async () => {
+      mkdirSync(path.join(jdtlsDir(), 'plugins'), { recursive: true });
+      mkdirSync(path.join(jdtlsDir(), configDir), { recursive: true });
+      writeFileSync(path.join(jdtlsDir(), 'plugins', launcherName), 'half an install');
+      writeFileSync(path.join(jdtlsDir(), 'jdtls.tar.gz'), 'part of an archive');
+      expect(path.relative(userData, jdtlsDir()).startsWith('..')).toBe(false);
+      forcedDigest = JDTLS_SHA256;
+      const fetched: ReturnType<typeof vi.fn> = serve(delivers(complete()));
+
+      expect(await provisioner.ensureJdtls()).not.toBeNull();
+
+      expect(fetched).toHaveBeenCalledTimes(1);
+      expect(readFileSync(path.join(jdtlsDir(), 'plugins', launcherName), 'utf8')).not.toBe(
+        'half an install',
+      );
+    });
+
     it('sharesOneDownload_betweenConcurrentCallers', async () => {
       forcedDigest = JDTLS_SHA256;
       const fetched: ReturnType<typeof vi.fn> = serve(delivers(complete()));
@@ -533,6 +568,22 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
 
       expect(statSync(launcher()).mode & 0o111).toBe(0o111);
       expect(provisioner.isProvisioned('kotlin', KOTLIN_LS_VERSION)).toBe(true);
+    });
+
+    it('anInterruptedExtract_isInstalledAfresh_ratherThanMarkedComplete', async () => {
+      const installDir: string = path.dirname(path.dirname(path.dirname(launcher())));
+      mkdirSync(path.dirname(launcher()), { recursive: true });
+      writeFileSync(launcher(), 'half an install');
+      writeFileSync(path.join(installDir, 'server.zip'), 'part of an archive');
+      expect(path.relative(userData, installDir).startsWith('..')).toBe(false);
+      forcedDigest = KOTLIN_LS_SHA256;
+      unzipCreates(path.join('server', 'bin', 'kotlin-language-server'));
+      const fetched: ReturnType<typeof vi.fn> = serve(delivers());
+
+      expect(await provisioner.ensureKotlin()).toBe(launcher());
+
+      expect(fetched).toHaveBeenCalledTimes(1);
+      expect(readFileSync(launcher(), 'utf8')).not.toBe('half an install');
     });
 
     it('aChecksumMismatch_neverExtracts', async () => {
