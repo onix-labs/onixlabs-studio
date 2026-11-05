@@ -801,7 +801,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     const selection: string = xterm.getSelection();
     const text: string = selection.length > 0 ? selection : this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.focus();
   }
@@ -816,7 +816,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
     }
     const text: string = this.getBufferText();
     if (text.length > 0) {
-      void navigator.clipboard.writeText(text);
+      void this.writeClipboard(text);
     }
     xterm.clear();
     xterm.focus();
@@ -827,8 +827,37 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * more than one line and Warn Before Multi-Line Paste is on.
    */
   public paste(): void {
-    void navigator.clipboard.readText().then((text: string): Promise<void> => this.pasteText(text));
+    void this.pasteClipboard();
     this.xterm?.focus();
+  }
+
+  /**
+   * Pastes what the clipboard holds. The system can refuse the read — a window without focus, a
+   * permission withdrawn — and there is then nothing to paste.
+   * @returns Resolves once the text is pasted, the user declined, or the clipboard refused.
+   */
+  private async pasteClipboard(): Promise<void> {
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be read', error);
+      return;
+    }
+    await this.pasteText(text);
+  }
+
+  /**
+   * Writes text to the clipboard. The system can refuse, and copying is not worth an error over.
+   * @param text The text.
+   * @returns Resolves once the text is written, or the clipboard refused.
+   */
+  private async writeClipboard(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error: unknown) {
+      this.log.warn('Terminal', 'The clipboard could not be written', error);
+    }
   }
 
   /**
@@ -1151,7 +1180,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     xterm.onSelectionChange((): void => {
       if (this.settings.get('terminal.copyOnSelect') && xterm.hasSelection()) {
-        void navigator.clipboard.writeText(xterm.getSelection());
+        void this.writeClipboard(xterm.getSelection());
       }
     });
 
@@ -1363,7 +1392,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
         this.openLink(target);
         return;
       }
-      void navigator.clipboard.writeText(target.kind === 'url' ? target.url : target.path);
+      void this.writeClipboard(target.kind === 'url' ? target.url : target.path);
       this.xterm?.focus();
     });
   }

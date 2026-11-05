@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import { ShellChannel } from '@shared/api/shell-channels';
 import { TerminalChannel, TerminalReplay } from '@shared/api/terminal-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TerminalConfirmation } from '@shared/angular/services/terminal-confirmation/terminal-confirmation';
 import {
@@ -1651,6 +1652,43 @@ describe('Terminal', () => {
         expect(writeText).toHaveBeenCalledWith('a\nb');
       });
 
+      it('copy_clipboardRefuses_isLoggedNotThrown', async () => {
+        const { terminal }: Mounted = await mount();
+        latest().selection = 'picked';
+        const warn: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Log), 'warn');
+        writeText.mockRejectedValue(new Error('Document is not focused'));
+
+        terminal.copy();
+        await settle();
+
+        expect(warn).toHaveBeenCalled();
+        expect(latest().focusCount).toBeGreaterThan(0);
+      });
+
+      it('cut_clipboardRefuses_stillClears', async () => {
+        const { terminal }: Mounted = await mount();
+        latest().active.rowsOfText = [new FakeRow('gone')];
+        writeText.mockRejectedValue(new Error('Document is not focused'));
+
+        terminal.cut();
+        await settle();
+
+        expect(latest().clearCount).toBe(1);
+      });
+
+      it('copyOnSelect_clipboardRefuses_isLoggedNotThrown', async () => {
+        TestBed.inject(Settings).set('terminal.copyOnSelect', true);
+        await mount();
+        latest().selection = 'picked';
+        const warn: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Log), 'warn');
+        writeText.mockRejectedValue(new Error('Document is not focused'));
+
+        latest().selectionChange.fire();
+        await settle();
+
+        expect(warn).toHaveBeenCalled();
+      });
+
       it('copy_ofNothing_leavesTheClipboardAlone', async () => {
         const { terminal }: Mounted = await mount();
 
@@ -1721,6 +1759,18 @@ describe('Terminal', () => {
 
         expect(latest().pasted).toEqual(['ls']);
         expect(TestBed.inject(TerminalConfirmation).pending()).toBeNull();
+      });
+
+      it('paste_clipboardRefuses_isLoggedNotThrown', async () => {
+        const { terminal }: Mounted = await mount();
+        const warn: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Log), 'warn');
+        readText.mockRejectedValue(new Error('Read permission denied'));
+
+        terminal.paste();
+        await settle();
+
+        expect(warn).toHaveBeenCalled();
+        expect(latest().pasted).toEqual([]);
       });
 
       it('paste_emptyClipboard_doesNothing', async () => {
