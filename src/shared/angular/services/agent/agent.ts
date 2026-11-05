@@ -3266,13 +3266,19 @@ export class Agent {
    * @param change The change it proposes.
    */
   private attachProposedDiff(permissionId: string, change: AiProposedChange): void {
-    void this.proposedChanges.diffOf(change).then((diff: ProposedDiff): void => {
-      this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-        items.map((item: AgentItem): AgentItem =>
-          item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
-        ),
-      );
-    });
+    void this.proposedChanges
+      .diffOf(change)
+      .then((diff: ProposedDiff): void => {
+        this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+          items.map((item: AgentItem): AgentItem =>
+            item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
+          ),
+        );
+      })
+      .catch((error: unknown): void => {
+        // The prompt still stands without its diff; the user can answer from its name and detail.
+        this.logger.warn('Agent', 'Could not work out the proposed change', error);
+      });
   }
 
   /**

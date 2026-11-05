@@ -2969,4 +2969,23 @@ describe('Agent', () => {
   function itemById(id: string): AgentItem | undefined {
     return agent.items().find((item: AgentItem): boolean => item.id === id);
   }
+
+  it('permission_whoseDiffCannotBeWorkedOut_stillAsks', async () => {
+    vi.spyOn(TestBed.inject(ProposedChanges), 'diffOf').mockRejectedValue(new Error('too big'));
+    agent.send('hi');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Edit',
+      detail: '/ws/a.ts',
+      hasWorkspace: true,
+      change: { path: '/ws/a.ts', content: 'x' },
+    });
+    await settleStream();
+
+    expect(lastItem()?.permissionState).toBe('pending');
+    expect(lastItem()?.permissionDiff).toBeUndefined();
+  });
 });
