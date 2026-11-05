@@ -1053,6 +1053,22 @@ describe('TextEditor driven through a stand-in Monaco', () => {
 
       expect(calls).not.toContain('restore view');
     });
+
+    it('whenAFormatterFails_stillPutsTheCaretBack', async () => {
+      const { fixture, calls } = await mounted({
+        editor: {
+          getAction: (): unknown => ({
+            run: (): Promise<void> => Promise.reject(new Error('the formatter crashed')),
+          }),
+        },
+      });
+
+      await expect(fixture.componentInstance.formatLinesForSave(lines)).rejects.toThrow(
+        'the formatter crashed',
+      );
+
+      expect(calls).toContain('restore view');
+    });
   });
 
   describe('replacing text', () => {
@@ -1109,6 +1125,30 @@ describe('TextEditor driven through a stand-in Monaco', () => {
       expect(calls).toEqual([]);
       expect(editor.getModel()).toBeNull();
       expect(editor.getSelectionText()).toBe('');
+    });
+
+    it('createsNothing_whenMonacoFinishesLoadingAfterTheTabClosed', async () => {
+      let finishLoading: () => void = (): void => undefined;
+      const create: Mock<() => unknown> = vi.fn<() => unknown>();
+      await TestBed.configureTestingModule({ imports: [TextEditor] }).compileComponents();
+      const monaco: Monaco = TestBed.inject(Monaco);
+      vi.spyOn(monaco, 'ensureLoaded').mockReturnValue(
+        new Promise<void>((resolve: () => void): void => {
+          finishLoading = resolve;
+        }),
+      );
+      vi.spyOn(monaco, 'getMonaco').mockReturnValue({
+        editor: { create },
+      } as unknown as typeof MonacoApi);
+      const fixture: ComponentFixture<TextEditor> = TestBed.createComponent(TextEditor);
+      fixture.detectChanges();
+
+      fixture.destroy();
+      finishLoading();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(create).not.toHaveBeenCalled();
     });
   });
 
