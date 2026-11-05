@@ -367,6 +367,83 @@ describe('WorktreeSession', () => {
       expect(session.descriptor()?.checkouts).toHaveLength(1);
     });
 
+    it('refreshStatus_rejected_keepsWhatItHadAndStaysQuiet', async () => {
+      vi.spyOn(client, 'status').mockRejectedValue(new Error('git crashed'));
+
+      await session.refreshStatus();
+
+      expect(session.statuses().get('a')?.branch).toBe('main');
+    });
+
+    it('initialize_statusRejected_leavesNoRejectionBehind', async () => {
+      vi.spyOn(client, 'status').mockRejectedValue(new Error('git crashed'));
+
+      session.initialize('/container', descriptor(checkout('a')));
+      await settle();
+
+      expect(session.isContainer()).toBe(true);
+    });
+
+    it('refresh_describeRejected_keepsWhatItHadAndStillReadsStatuses', async () => {
+      vi.spyOn(client, 'describe').mockRejectedValue(new Error('corrupt manifest'));
+      client.statuses = [status('a', 'moved')];
+
+      await session.refresh();
+
+      expect(session.descriptor()?.checkouts).toHaveLength(1);
+      expect(session.statuses().get('a')?.branch).toBe('moved');
+    });
+
+    it('add_refreshRejected_stillReportsTheCloneThatHappened', async () => {
+      vi.spyOn(client, 'describe').mockRejectedValue(new Error('corrupt manifest'));
+
+      const outcome: WorktreeOutcome<WorktreeCheckoutInfo> = await session.add({ branch: 'c' });
+
+      expect(outcome.ok).toBe(true);
+    });
+
+    it('refreshStatus_anOlderReplyLandingLast_doesNotUndoTheNewerOne', async () => {
+      let answerOlder: (value: readonly WorktreeCheckoutStatus[]) => void = (): void => undefined;
+      vi.spyOn(client, 'status')
+        .mockImplementationOnce(
+          (): Promise<readonly WorktreeCheckoutStatus[]> =>
+            new Promise<readonly WorktreeCheckoutStatus[]>(
+              (resolve: (value: readonly WorktreeCheckoutStatus[]) => void): void => {
+                answerOlder = resolve;
+              },
+            ),
+        )
+        .mockResolvedValueOnce([status('a', 'newer')]);
+
+      const older: Promise<void> = session.refreshStatus();
+      await session.refreshStatus();
+      answerOlder([status('a', 'older')]);
+      await older;
+
+      expect(session.statuses().get('a')?.branch).toBe('newer');
+    });
+
+    it('refresh_anOlderDescriptorLandingLast_doesNotBringACheckoutBack', async () => {
+      let answerOlder: (value: WorktreeDescriptor) => void = (): void => undefined;
+      vi.spyOn(client, 'describe')
+        .mockImplementationOnce(
+          (): Promise<WorktreeDescriptor> =>
+            new Promise<WorktreeDescriptor>(
+              (resolve: (value: WorktreeDescriptor) => void): void => {
+                answerOlder = resolve;
+              },
+            ),
+        )
+        .mockResolvedValueOnce(descriptor());
+
+      const older: Promise<void> = session.refresh();
+      await session.refresh();
+      answerOlder(descriptor(checkout('a'), checkout('removed')));
+      await older;
+
+      expect(session.descriptor()?.checkouts).toEqual([]);
+    });
+
     it('refreshStatus_unreadable_keepsWhatItHad', async () => {
       client.statuses = null;
 
