@@ -186,6 +186,49 @@ async function openMarkdown(name, file) {
   return summarise(name, rows);
 }
 
+async function manyTabs(count) {
+  const files = [];
+  for (let i = 0; i < count; i += 1) {
+    const file = path.join(scratch, `tab-${i}.ts`);
+    makeCodeFile(file, 100_000);
+    files.push(file);
+  }
+  const rows = [];
+  for (let i = 0; i < Math.min(RUNS, 2); i += 1) {
+    const { app, started } = await launch(files, files);
+    const page = await mainWindow(app);
+    await watchLongTasks(page);
+    const tabs = page.locator('[role="tab"]');
+    await page.waitForFunction(
+      (want) => document.querySelectorAll('[role="tab"]').length >= want,
+      count,
+      { timeout: 120_000 },
+    );
+    const openMs = Math.round(performance.now() - started);
+    await page.waitForTimeout(3000);
+    const idleBefore = await footprint(page);
+    const switches = [];
+    for (let k = 0; k < 12; k += 1) {
+      const before = performance.now();
+      await tabs.nth(k * 2).click();
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0))),
+      );
+      switches.push(performance.now() - before);
+    }
+    rows.push({
+      openMs,
+      switchMs: Math.round(median(switches)),
+      switchMaxMs: Math.round(Math.max(...switches)),
+      ...(await footprint(page)),
+      idleLongTasks: idleBefore.longTasks,
+      tabs: await tabs.count(),
+    });
+    await app.close();
+  }
+  return summarise(`${count} code tabs`, rows);
+}
+
 async function terminalFlood() {
   const rows = [];
   for (let i = 0; i < Math.min(RUNS, 3); i += 1) {
@@ -281,8 +324,8 @@ try {
     results.file50k = await openFile('open + type 50 kB file', small);
     results.file1m = await openFile('open + type 1 MB file', medium);
     results.file8m = await openFile('open + type 8 MB file', large);
-  results.csharp = await openFile('open + type 800 kB C#', csharp);
-  results.csharpLarge = await openFile('open + type 4 MB C#', csharpLarge);
+    results.csharp = await openFile('open + type 800 kB C#', csharp);
+    results.csharpLarge = await openFile('open + type 4 MB C#', csharpLarge);
   }
   if (only === undefined || only === 'markdown') {
     const doc = path.join(scratch, 'large.md');
@@ -292,6 +335,7 @@ try {
     results.markdown = await openMarkdown('open + caret 1 MB markdown', doc);
   }
   if (only === undefined || only === 'terminal') results.terminal = await terminalFlood();
+  if (only === undefined || only === 'tabs') results.tabs = await manyTabs(30);
   const repository = path.join(scratch, 'repository');
   fs.mkdirSync(repository);
   if (only === undefined || only === 'workspace') makeRepository(repository, FILES);
