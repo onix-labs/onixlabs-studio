@@ -1220,6 +1220,7 @@ describe('WorkspaceManager', () => {
         { skip: Number.NaN, take: Number.NaN, prerelease: 'yes' },
         { skip: 0, take: 50, prerelease: false },
       ],
+      [{ skip: Number.POSITIVE_INFINITY }, { skip: 0, take: 50, prerelease: false }],
       [null, { skip: 0, take: 50, prerelease: false }],
       ['options', { skip: 0, take: 50, prerelease: false }],
     ])('search_clampsTheOptions %#', async (options: unknown, expected: unknown) => {

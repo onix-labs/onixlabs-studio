@@ -419,7 +419,9 @@ export class WorkspaceManager {
     const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
       typeof options === 'object' && options !== null ? options : {};
     const skip: number =
-      typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
+      typeof record.skip === 'number' && Number.isFinite(record.skip) && record.skip > 0
+        ? Math.floor(record.skip)
+        : 0;
     const take: number =
       typeof record.take === 'number' && record.take > 0
         ? Math.min(Math.floor(record.take), 100)
