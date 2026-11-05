@@ -29,6 +29,13 @@ interface StudioFixtures {
    * Gets the application's main window, ready for interaction.
    */
   readonly page: Page;
+
+  /**
+   * Gets a throwaway directory for the test's fixture files. It outlives the application — the
+   * application depends on it, so it is removed only after the application has closed — because deleting
+   * a workspace from under a running application is a test of its own, not something to do by accident.
+   */
+  readonly scratch: string;
 }
 
 /**
@@ -116,8 +123,21 @@ export const test: TestType<
   sideloadAdapter: [undefined, { option: true }],
   runSetupWizard: [false, { option: true }],
   seedUserData: [undefined, { option: true }],
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern.
+  scratch: async ({}, use: (scratch: string) => Promise<void>): Promise<void> => {
+    // Resolved, because macOS's temporary directory is reached through a symbolic link and the
+    // application reports the real path of whatever it opens.
+    const scratch: string = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'studio-e2e-scratch-')),
+    );
+    await use(scratch);
+    fs.rmSync(scratch, { recursive: true, force: true });
+  },
   app: async (
     {
+      // Named so the application is set up after the scratch directory, and torn down before it.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      scratch: _scratch,
       trustedPaths,
       sideloadPlugins,
       sideloadEngine,
@@ -125,6 +145,7 @@ export const test: TestType<
       runSetupWizard,
       seedUserData,
     }: {
+      scratch: string;
       trustedPaths: readonly string[] | undefined;
       sideloadPlugins: readonly string[] | undefined;
       sideloadEngine: string | undefined;
