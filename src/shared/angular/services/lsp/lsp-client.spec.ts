@@ -2735,6 +2735,96 @@ describe('LspClient', () => {
     expect(lsp.stops).toEqual(['/root::typescript']);
     expect(offeredLanguages).toEqual(['typescript']);
   });
+
+  /**
+   * Opens a document against its server.
+   * @param client The client.
+   * @param path The document's path.
+   * @param languageId The document's language.
+   * @param content The document's text.
+   * @returns Returns a promise that resolves on the next macrotask.
+   */
+  function openDocument(
+    client: LspClient,
+    path: string = '/root/a.ts',
+    languageId: string = 'typescript',
+    content: string = 'const a = 1;',
+  ): void {
+    client.syncDocument({ documentId: 'doc-1', path, languageId, content });
+  }
+
+  /**
+   * Holds back the answer to the next diagnostic pull.
+   * @returns Returns the function that gives the answer.
+   */
+  function holdPullAnswer(): (report: unknown) => void {
+    let answer: (report: unknown) => void = (): void => undefined;
+    lsp.requestAnswers['textDocument/diagnostic'] = new Promise<unknown>(
+      (resolve: (report: unknown) => void): void => {
+        answer = resolve;
+      },
+    );
+    return answer;
+  }
+
+  /**
+   * A problem as a server reports it.
+   */
+  const problem: unknown = {
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    severity: 1,
+    message: 'broken',
+  };
+
+  it('pull_answeredAfterTheDocumentClosed_leavesNoProblemsBehind', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    client.closeDocument('doc-1');
+    await flush();
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
+
+  it('pull_answeredAfterTheServerCrashed_doesNotCallTheDeadServerReady', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const answer: (report: unknown) => void = holdPullAnswer();
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+
+    lsp.exit('/root::typescript');
+    answer({ kind: 'full', items: [problem] });
+    await flush();
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+  });
+
+  it('closeDocument_withATypingPullPending_asksTheServerNothingMore', async () => {
+    lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    vi.useFakeTimers();
+    try {
+      openDocument(client, '/root/a.ts', 'typescript', 'const a = 2;');
+      await vi.advanceTimersByTimeAsync(0);
+      const before: number = lsp.requests.length;
+
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(lsp.requests).toHaveLength(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('idleStopMs', () => {

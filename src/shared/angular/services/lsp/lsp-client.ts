@@ -1346,6 +1346,11 @@ export class LspClient implements OnDestroy {
       // Best-effort: the server either lacks pull-diagnostic support or is not ready yet.
       return;
     }
+    // The answer can outlast what it was about. Taken for a closed document it would sit in the Error
+    // List with nothing left to clear it, and taken from a server that has gone it would call it ready.
+    if (!tracked.opened || this.tracked.get(normalise(uriToPath(tracked.uri))) !== tracked) {
+      return;
+    }
     // A full report carries the document's current diagnostics; an unchanged report (or a server that
     // answers with neither) leaves the existing set in place.
     const report: { kind?: string; items?: readonly LspDiagnostic[] } | null =
@@ -1627,6 +1632,8 @@ export class LspClient implements OnDestroy {
         continue;
       }
       this.tracked.delete(key);
+      clearTimeout(this.diagnosticTimers.get(documentId));
+      this.diagnosticTimers.delete(documentId);
       this.diagnosticsByDocument.delete(documentId);
       this.serverDiagnostics.delete(documentId);
       this.setMarkers(tracked, []);
