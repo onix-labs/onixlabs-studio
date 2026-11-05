@@ -184,6 +184,7 @@ export const test: TestType<
       },
     });
     await use(app);
+    await answerQuitPrompts(app);
     await app.close();
     fs.rmSync(userDataDir, { recursive: true, force: true });
   },
@@ -207,6 +208,27 @@ export const test: TestType<
 });
 
 export { expect } from '@playwright/test';
+
+/**
+ * Answers any native prompt the application raises as it quits, discarding what it asks about. Quitting
+ * asks while a document is unsaved, and while an agent has not finished settling — which a test that
+ * has seen the agent's last word cannot rule out — and a native prompt is out of Playwright's reach, so
+ * unanswered it would hold the application open past the test's timeout.
+ * @param app The launched application.
+ */
+async function answerQuitPrompts(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ dialog }): void => {
+    (dialog as unknown as { showMessageBox: unknown }).showMessageBox = (
+      ...args: readonly unknown[]
+    ): Promise<unknown> => {
+      const options: { buttons: readonly string[] } = args[args.length - 1] as never;
+      return Promise.resolve({
+        response: Math.max(0, options.buttons.indexOf("Don't Save")),
+        checkboxChecked: false,
+      });
+    };
+  });
+}
 
 /**
  * Writes a synthetic container-engine plugin into a test profile's sideload directory.
