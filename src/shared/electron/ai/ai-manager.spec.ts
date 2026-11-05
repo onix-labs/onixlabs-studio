@@ -686,6 +686,13 @@ describe('AiManager', () => {
     beforeEach(() => {
       spawned = path.join(pluginData, 'plugins', 'test.env-harness', 'spawned.json');
       fs.rmSync(spawned, { force: true });
+      // A session hosted by Studio inherits this variable, which would prove nothing: the harness has
+      // to get it from the spawn spec.
+      vi.stubEnv('ELECTRON_RUN_AS_NODE', undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
     });
 
     it('spawn_carriesTheWholeSpec_soTheHarnessRunsAsNodeAndNotASecondStudio', async () => {
