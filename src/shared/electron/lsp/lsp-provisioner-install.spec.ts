@@ -361,7 +361,7 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(provisioner.isProvisioned('jdtls', JDTLS_VERSION)).toBe(false);
     });
 
-    it.fails('anArchiveWithoutThisPlatformsConfig_isNull_andLeavesNoMarker', async () => {
+    it('anArchiveWithoutThisPlatformsConfig_isNull_andLeavesNoMarker', async () => {
       forcedDigest = JDTLS_SHA256;
       serve(delivers(tarball(path.join('plugins', launcherName))));
 

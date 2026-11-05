@@ -997,9 +997,14 @@ export class LspProvisioner {
       }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
+      const installed: JdtlsInstall | null = await this.readInstall(installDir);
+      if (installed === null) {
+        logger.warn('LspProvisioner', 'Extracted JDT.LS but its launcher or config is missing');
+        return null;
+      }
       await markComplete(installDir);
       logger.info('LspProvisioner', `Installed JDT.LS into ${installDir}`);
-      return await this.readInstall(installDir);
+      return installed;
     } catch (error: unknown) {
       logger.error(
         'LspProvisioner',
