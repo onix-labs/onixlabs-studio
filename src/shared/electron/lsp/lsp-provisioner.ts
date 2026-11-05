@@ -47,7 +47,8 @@ const JDTLS_URL: string =
  * Holds the expected SHA-256 of the pinned distribution. The download is verified against this before
  * it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
+export const JDTLS_SHA256: string =
+  '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
 
 /**
  * Holds the lowest Java major version the downloaded language server can run on.
@@ -82,7 +83,7 @@ const ROSLYN_FEED: string = 'https://api.nuget.org/v3-flatcontainer';
  * A download is verified against this before it is extracted, so a corrupted or substituted package of
  * executable code is never run.
  */
-const ROSLYN_SHA512: Readonly<Record<string, string>> = {
+export const ROSLYN_SHA512: Readonly<Record<string, string>> = {
   'osx-x64':
     'KtsZpvvq7t8KU0l+yFZaDhXx3MEnACjTan7I4e/QxC4HI165spiAVP3TO1dB/Eb7rfYTPQ89rbDnOiO08TAyyA==',
   'osx-arm64':
@@ -198,7 +199,8 @@ const KOTLIN_LS_URL: string =
  * Holds the expected SHA-256 of the pinned Kotlin server distribution. The download is verified against
  * this before it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const KOTLIN_LS_SHA256: string = '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
+export const KOTLIN_LS_SHA256: string =
+  '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
 
 /**
  * Holds the pinned version of the Go language server (gopls). gopls publishes no prebuilt binaries, so
