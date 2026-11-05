@@ -381,7 +381,7 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(existsSync(path.join(jdtlsDir(), 'jdtls.tar.gz'))).toBe(false);
     });
 
-    it.fails('aFailedDownload_isNotRemembered_soAnotherInstallAttemptDownloadsAgain', async () => {
+    it('aFailedDownload_isNotRemembered_soAnotherInstallAttemptDownloadsAgain', async () => {
       forcedDigest = JDTLS_SHA256;
       serve(new Error('getaddrinfo ENOTFOUND'), delivers(complete()));
 
@@ -458,7 +458,7 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(provisioner.isProvisioned('kotlin', KOTLIN_LS_VERSION)).toBe(false);
     });
 
-    it.fails('aFailedDownload_isNotRemembered', async () => {
+    it('aFailedDownload_isNotRemembered', async () => {
       forcedDigest = KOTLIN_LS_SHA256;
       unzipCreates(path.join('server', 'bin', 'kotlin-language-server'));
       serve({ ok: false, status: 502, body: null }, delivers());
@@ -497,7 +497,7 @@ describe.skipIf(process.platform === 'win32')('LspProvisioner installs', () => {
       expect(provisioner.isProvisioned('gopls', GOPLS_VERSION)).toBe(true);
     });
 
-    it.fails('aFailedBuild_isNull_leavesNoMarker_andIsNotRemembered', async () => {
+    it('aFailedBuild_isNull_leavesNoMarker_andIsNotRemembered', async () => {
       const go: string = path.join(bin, 'go');
       tool('go', 'echo "build failed" >&2\nexit 1');
 

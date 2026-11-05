@@ -348,11 +348,18 @@ export class LspProvisioner {
   /**
    * Ensures the Eclipse JDT Language Server is installed under the user-data directory, downloading
    * and extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the installation, or null when it could not be provisioned.
    */
   public ensureJdtls(): Promise<JdtlsInstall | null> {
-    this.jdtlsProvision ??= this.provisionJdtls();
+    this.jdtlsProvision ??= this.provisionJdtls().then(
+      (install: JdtlsInstall | null): JdtlsInstall | null => {
+        if (install === null) {
+          this.jdtlsProvision = null;
+        }
+        return install;
+      },
+    );
     return this.jdtlsProvision;
   }
 
@@ -438,11 +445,18 @@ export class LspProvisioner {
   /**
    * Ensures the Kotlin language server is installed under the user-data directory, downloading and
    * extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the absolute path of the launcher script, or null when it could not be provisioned.
    */
   public ensureKotlin(): Promise<string | null> {
-    this.kotlinProvision ??= this.provisionKotlin();
+    this.kotlinProvision ??= this.provisionKotlin().then(
+      (launcher: string | null): string | null => {
+        if (launcher === null) {
+          this.kotlinProvision = null;
+        }
+        return launcher;
+      },
+    );
     return this.kotlinProvision;
   }
 
@@ -461,12 +475,17 @@ export class LspProvisioner {
   /**
    * Ensures the Go language server (gopls) is built under the user-data directory, running `go install`
    * into a controlled GOBIN on first use and reusing the cached binary thereafter. The work is shared
-   * across concurrent callers.
+   * across concurrent callers; a failure is not remembered, so a retry builds again.
    * @param go The Go executable used to build gopls.
    * @returns Returns the absolute path of the gopls binary, or null when it could not be built.
    */
   public ensureGopls(go: string): Promise<string | null> {
-    this.goplsProvision ??= this.provisionGopls(go);
+    this.goplsProvision ??= this.provisionGopls(go).then((binary: string | null): string | null => {
+      if (binary === null) {
+        this.goplsProvision = null;
+      }
+      return binary;
+    });
     return this.goplsProvision;
   }
 
