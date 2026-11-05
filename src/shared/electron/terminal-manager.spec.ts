@@ -473,6 +473,30 @@ describe('TerminalManager', () => {
       expect((await invoke<TerminalReplay>(TerminalChannel.Replay, 't1')).data).toBe('late');
     });
 
+    it('output_arrivingAfterDispose_goesNowhere', async () => {
+      const pty: FakePty = await create();
+      await invoke(TerminalChannel.Dispose, 't1');
+      fakes.sent = [];
+
+      pty.emitData('ghost');
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(fakes.sent).toEqual([]);
+      expect((await invoke<TerminalReplay>(TerminalChannel.Replay, 't1')).data).toBe('');
+    });
+
+    it('output_ofADisposedSession_neverReachesItsReplacement', async () => {
+      const old: FakePty = await create();
+      await invoke(TerminalChannel.Dispose, 't1');
+      await create();
+
+      old.emitData('from the dead');
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(output()).toEqual([]);
+      expect((await invoke<TerminalReplay>(TerminalChannel.Replay, 't1')).data).toBe('');
+    });
+
     it('exit_ofADisposedSession_neverReachesItsReplacement', async () => {
       const old: FakePty = await create();
       await invoke(TerminalChannel.Dispose, 't1');
