@@ -1,6 +1,6 @@
 import { app, ipcMain, IpcMainInvokeEvent } from 'electron';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { readFileSync, rmSync } from 'node:fs';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AgentConversationChannel,
@@ -62,6 +62,19 @@ export class AgentConversationStore {
    * Holds the background write in progress, or null when the queue is empty.
    */
   private draining: Promise<void> | null = null;
+
+  /**
+   * Holds how many times each conversation has been saved. A read compares it from before and after,
+   * since the queue alone cannot show a save that came and was written while the read was under way.
+   */
+  private readonly revisions: Map<string, number> = new Map<string, number>();
+
+  /**
+   * Holds the conversations deleted and not saved since, so a metadata change that was already
+   * reading one when it went cannot save it back into existence.
+   */
+  private readonly removed: Set<string> = new Set<string>();
+
   /**
    * Registers the conversation IPC handlers.
    */
@@ -77,7 +90,8 @@ export class AgentConversationStore {
     );
     ipcMain.handle(
       AgentConversationChannel.Load,
-      (_event: IpcMainInvokeEvent, id: unknown): StoredAgentConversation | null => this.load(id),
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<StoredAgentConversation | null> =>
+        this.load(id),
     );
     ipcMain.handle(
       AgentConversationChannel.Save,
@@ -86,12 +100,13 @@ export class AgentConversationStore {
     );
     ipcMain.handle(
       AgentConversationChannel.UpdateMeta,
-      (_event: IpcMainInvokeEvent, patch: unknown): AgentConversationSummary | null =>
+      (_event: IpcMainInvokeEvent, patch: unknown): Promise<AgentConversationSummary | null> =>
         this.updateMeta(patch),
     );
     ipcMain.handle(
       AgentConversationChannel.ClearCategory,
-      (_event: IpcMainInvokeEvent, categoryId: unknown): void => this.clearCategory(categoryId),
+      (_event: IpcMainInvokeEvent, categoryId: unknown): Promise<void> =>
+        this.clearCategory(categoryId),
     );
     ipcMain.handle(
       AgentConversationChannel.Delete,
@@ -145,21 +160,51 @@ export class AgentConversationStore {
    * @param id The conversation id.
    * @returns Returns the conversation, or null when it does not exist or is malformed.
    */
-  private load(id: unknown): StoredAgentConversation | null {
+  private async load(id: unknown): Promise<StoredAgentConversation | null> {
     const safeId: string | null = this.safeId(id);
     if (safeId === null) {
       return null;
     }
-    const queued: StoredAgentConversation | undefined = this.unwritten.get(safeId);
-    if (queued !== undefined) {
-      return queued;
-    }
-    try {
-      const file: string = join(this.dir(), `${safeId}.json`);
-      if (!existsSync(file)) {
-        return null;
+    for (;;) {
+      const queued: StoredAgentConversation | undefined = this.unwritten.get(safeId);
+      if (queued !== undefined) {
+        return queued;
       }
-      const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+      const revision: number | undefined = this.revisions.get(safeId);
+      const text: string | null = await this.readBody(safeId);
+      // Saved during the read: those bytes may be the old file, and a metadata change built on them
+      // would write the old transcript back over the new one. So round again.
+      if (this.revisions.get(safeId) === revision) {
+        return text === null ? null : this.parseBody(safeId, text);
+      }
+    }
+  }
+
+  /**
+   * Reads a conversation's file.
+   * @param safeId The conversation's validated id.
+   * @returns Returns the file's text, or null when it is absent or cannot be read.
+   */
+  private async readBody(safeId: string): Promise<string | null> {
+    try {
+      return await readFile(join(this.dir(), `${safeId}.json`), 'utf8');
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.error('AgentConversationStore.load', `Failed to load conversation ${safeId}`, error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Parses a conversation's file.
+   * @param safeId The conversation's validated id.
+   * @param text The file's text.
+   * @returns Returns the conversation, or null when it is malformed.
+   */
+  private parseBody(safeId: string, text: string): StoredAgentConversation | null {
+    try {
+      const parsed: unknown = JSON.parse(text);
       return this.isConversation(parsed) ? parsed : null;
     } catch (error: unknown) {
       logger.error('AgentConversationStore.load', `Failed to load conversation ${safeId}`, error);
@@ -182,6 +227,8 @@ export class AgentConversationStore {
       return null;
     }
     const summary: AgentConversationSummary = this.summaryOf(value);
+    this.revisions.set(safeId, (this.revisions.get(safeId) ?? 0) + 1);
+    this.removed.delete(safeId);
     this.unwritten.set(safeId, value);
     this.setIndex([
       summary,
@@ -198,13 +245,13 @@ export class AgentConversationStore {
    * @param patch The metadata patch.
    * @returns Returns the updated summary, or null when the conversation is absent or the patch failed.
    */
-  private updateMeta(patch: unknown): AgentConversationSummary | null {
+  private async updateMeta(patch: unknown): Promise<AgentConversationSummary | null> {
     if (typeof patch !== 'object' || patch === null) {
       return null;
     }
     const { id, title, categoryId } = patch as Partial<AgentConversationMetaPatch>;
-    const record: StoredAgentConversation | null = this.load(id);
-    if (record === null) {
+    const record: StoredAgentConversation | null = await this.load(id);
+    if (record === null || this.removed.has(record.id)) {
       return null;
     }
     const next: StoredAgentConversation = {
@@ -221,13 +268,13 @@ export class AgentConversationStore {
    * the index. Never deletes a conversation.
    * @param categoryId The category id to clear.
    */
-  private clearCategory(categoryId: unknown): void {
+  private async clearCategory(categoryId: unknown): Promise<void> {
     if (typeof categoryId !== 'string' || categoryId.length === 0) {
       return;
     }
     for (const summary of this.summaries()) {
       if (summary.categoryId === categoryId) {
-        this.updateMeta({ id: summary.id, categoryId: null });
+        await this.updateMeta({ id: summary.id, categoryId: null });
       }
     }
   }
@@ -272,6 +319,9 @@ export class AgentConversationStore {
       return;
     }
     logger.info('AgentConversationStore.delete', `Deleting ${safeIds.length} conversation(s)`);
+    for (const id of safeIds) {
+      this.removed.add(id);
+    }
     await this.flush();
     const remove: Set<string> = new Set<string>(safeIds);
     for (const id of safeIds) {

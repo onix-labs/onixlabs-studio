@@ -1,10 +1,13 @@
+import { tmpdir } from 'node:os';
+
 /**
  * Stands in for `electron` in a benchmark bundle: main-process modules import it for types and the
  * odd lookup, and a benchmark runs in plain node, never touching real user data.
  */
 export const app: Record<string, unknown> = {
   isPackaged: false,
-  getPath: (): string => process.env['TMPDIR'] ?? '/tmp',
+  // A bench that writes user data points this at its own mkdtemp; there is no way to reach a real one.
+  getPath: (): string => process.env['STUDIO_BENCH_USER_DATA'] ?? tmpdir(),
 };
 
 /**
