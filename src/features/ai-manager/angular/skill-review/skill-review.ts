@@ -17,7 +17,6 @@ import {
   MultiSelect,
   MultiSelectItem,
 } from '@shared/angular/components/forms/multi-select/multi-select';
-import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TabList, TabListTab } from '@shared/angular/components/forms/tab-list/tab-list';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
@@ -49,7 +48,7 @@ const CONTEXT_LINES: number = 3;
  */
 @Component({
   selector: 'app-skill-review',
-  imports: [MarkdownField, MultiSelect, PromptScopeEditor, SettingRow, TabList, TextField],
+  imports: [MarkdownField, MultiSelect, PromptScopeEditor, TabList, TextField],
   templateUrl: './skill-review.html',
   styleUrl: './skill-review.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

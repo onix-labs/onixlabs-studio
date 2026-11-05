@@ -1,6 +1,12 @@
 <!-- The per-file questions (#1263). Not dismissable: closing the window would leave the run waiting,
      so the one way out is Cancel Import, which every question offers. -->
-<app-modal [open]="questionOpen()" [dismissable]="false" [width]="40" ariaLabel="Import skills">
+<app-modal
+  [open]="questionOpen()"
+  [dismissable]="false"
+  [width]="40"
+  [frameless]="true"
+  ariaLabel="Import skills"
+>
   <ng-template appModalContent>
     @if (prompt(); as prompt) {
       @switch (prompt.kind) {
@@ -26,13 +32,13 @@
               [disabled]="aiLabel() === null"
               (click)="answerImprove('improve')"
             />
-            <app-button label="Import as Is" (click)="answerImprove('as-is')" />
-            <app-button label="Skip" (click)="answerImprove('skip')" />
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button variant="ghost" label="Import as Is" (click)="answerImprove('as-is')" />
+            <app-button variant="none" label="Skip" (click)="answerImprove('skip')" />
+            <app-button variant="none" label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         }
         @case ('repair') {
-          <h2 class="import__title">{{ prompt.entry.source }} can't be imported as it is</h2>
+          <h2 class="import__title">{{ prompt.entry.source }} Can't Be Imported as It Is</h2>
           <p class="import__message">
             {{ prompt.entry.reason }} An AI can turn it into a skill; you'll review the result.
           </p>
@@ -47,8 +53,8 @@
               [disabled]="aiLabel() === null"
               (click)="session.answer('ai')"
             />
-            <app-button label="Ignore" (click)="session.answer('ignore')" />
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button variant="ghost" label="Ignore" (click)="session.answer('ignore')" />
+            <app-button variant="none" label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         }
         @case ('working') {
@@ -64,15 +70,17 @@
           <div class="import__footer">
             <app-icon class="import__spinner" [icon]="spinner" />
             <app-button-row>
-              <app-button label="Cancel Import" (click)="cancel()" />
+              <app-button variant="none" label="Cancel Import" (click)="cancel()" />
             </app-button-row>
           </div>
         }
         @case ('ai-failed') {
           <h2 class="import__title">
-            {{ prompt.notASkill ? 'The AI says this isn’t a skill' : 'The AI couldn’t do it' }}
+            {{ prompt.notASkill ? 'The AI Says This Isn’t a Skill' : 'The AI Couldn’t Do It' }}
           </h2>
-          <p class="import__message">{{ prompt.reason }}</p>
+          <app-alert class="import__alert" [tone]="prompt.notASkill ? 'info' : 'danger'">
+            {{ prompt.reason }}
+          </app-alert>
           <p class="import__progress import__progress--foot">
             File {{ session.position() }} of {{ total() }} ·
             <span class="import__source">{{ prompt.entry.source }}</span>
@@ -91,28 +99,29 @@
                 (click)="session.answer({ action: 'ignore' })"
               />
             }
-            <app-button label="Try Again" (click)="session.answer('retry')" />
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button variant="ghost" label="Try Again" (click)="session.answer('retry')" />
+            <app-button variant="none" label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         }
         @case ('clash') {
           <h2 class="import__title">
-            {{ prompt.subject === 'skill' ? 'A skill' : 'A prompt profile' }} named
+            {{ prompt.subject === 'skill' ? 'A Skill' : 'A Prompt Profile' }} Named
             {{ prompt.name }}
-            {{ prompt.withLibrary ? 'is already in your library' : 'is already being imported' }}
+            {{ prompt.withLibrary ? 'Is Already in Your Library' : 'Is Already Being Imported' }}
           </h2>
           <p class="import__message">
             Replace it, keep both by importing this one under another name, or skip it.
           </p>
           <div class="import__rename">
             <app-text-field
+              variant="floating"
+              label="New Name"
               [value]="rename()"
-              ariaLabel="New name"
               (valueChange)="rename.set($event)"
             />
           </div>
           @if (prompt.error; as error) {
-            <p class="import__error" role="alert">{{ error }}</p>
+            <app-alert class="import__alert" tone="danger">{{ error }}</app-alert>
           }
           <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
           <label class="import__check">
@@ -127,9 +136,14 @@
           }
           <app-button-row class="import__buttons">
             <app-button variant="solid" label="Keep Both" (click)="resolveClash('rename')" />
-            <app-button label="Replace" (click)="resolveClash('replace')" />
-            <app-button label="Skip" (click)="resolveClash('skip')" />
-            <app-button label="Cancel" (click)="cancel()" />
+            <app-button
+              variant="ghost"
+              tone="warning"
+              label="Replace"
+              (click)="resolveClash('replace')"
+            />
+            <app-button variant="none" label="Skip" (click)="resolveClash('skip')" />
+            <app-button variant="none" label="Cancel" (click)="cancel()" />
           </app-button-row>
         }
         @case ('committing') {
@@ -146,6 +160,7 @@
   [open]="largeOpen()"
   [dismissable]="false"
   [expandable]="true"
+  [frameless]="true"
   [width]="60"
   [height]="45"
   ariaLabel="Import skills"
@@ -157,11 +172,11 @@
           <h2 class="import__title import__title--above-progress">
             {{
               prompt.purpose === 'improve'
-                ? 'Review the AI’s improvements'
-                : 'Review the AI’s conversion'
+                ? 'Review the AI’s Improvements'
+                : 'Review the AI’s Conversion'
             }}
           </h2>
-          <p class="import__progress">
+          <p class="import__progress import__progress--standard">
             File {{ session.position() }} of {{ total() }} ·
             <span class="import__source">{{ prompt.entry.source }}</span>
           </p>
@@ -173,7 +188,7 @@
             />
           }
           @if (reviewProblem(); as problem) {
-            <p class="import__error" role="alert">{{ problem }}</p>
+            <app-alert class="import__alert" tone="danger">{{ problem }}</app-alert>
           }
           <app-button-row class="import__buttons">
             <app-button
@@ -183,16 +198,24 @@
               (click)="accept()"
             />
             @if (prompt.purpose === 'improve') {
-              <app-button label="Import as Drafted" (click)="session.answer({ action: 'draft' })" />
+              <app-button
+                variant="ghost"
+                label="Import as Drafted"
+                (click)="session.answer({ action: 'draft' })"
+              />
             } @else {
-              <app-button label="Ignore" (click)="session.answer({ action: 'ignore' })" />
+              <app-button
+                variant="ghost"
+                label="Ignore"
+                (click)="session.answer({ action: 'ignore' })"
+              />
             }
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button variant="none" label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         </div>
       } @else if (prompt.kind === 'summary') {
         <div class="import__large">
-          <h2 class="import__title">Ready to import</h2>
+          <h2 class="import__title">Ready to Import</h2>
           <p class="import__message">
             {{ selectionLine() }} Nothing has been written yet. Untick anything you'd rather leave
             out.
@@ -287,7 +310,7 @@
             </app-table>
           </div>
           @if (session.error(); as error) {
-            <p class="import__error" role="alert">{{ error }}</p>
+            <app-alert class="import__alert" tone="danger">{{ error }}</app-alert>
           }
           <app-button-row class="import__buttons">
             <app-button
@@ -296,7 +319,7 @@
               [disabled]="included() === 0 && includedProfiles() === 0"
               (click)="session.answer('import')"
             />
-            <app-button label="Cancel Import" (click)="cancel()" />
+            <app-button variant="none" label="Cancel Import" (click)="cancel()" />
           </app-button-row>
         </div>
       }

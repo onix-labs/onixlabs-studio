@@ -8,34 +8,29 @@
 
 @if (tab() === 'version') {
   <div class="review__version">
-    <app-setting-row label="Name" description="Lower-case letters, digits and hyphens.">
-      <app-text-field
-        [value]="draft().name"
-        ariaLabel="Skill name"
-        (valueChange)="edit({ name: $event })"
-      />
-    </app-setting-row>
+    <app-text-field
+      variant="floating"
+      label="Name"
+      placeholder="Lower-case letters, digits and hyphens"
+      [value]="draft().name"
+      (valueChange)="edit({ name: $event })"
+    />
     <app-prompt-scope-editor
+      [floating]="true"
       [scope]="draft().scope"
       [showLanguages]="false"
       (scopeChange)="edit({ scope: $event })"
     />
-    <app-setting-row
-      label="Languages & technologies"
-      description="In the editor, offered only for these languages. Leave empty for any."
-    >
-      <app-multi-select
-        class="review__tags"
-        [fullWidth]="true"
-        [searchable]="true"
-        searchPlaceholder="Search languages and technologies…"
-        [options]="tagOptions"
-        [value]="tags()"
-        placeholder="Any"
-        ariaLabel="Languages and technologies"
-        (valueChange)="setTags($event)"
-      />
-    </app-setting-row>
+    <app-multi-select
+      label="Languages & Technologies"
+      [fullWidth]="true"
+      [searchable]="true"
+      searchPlaceholder="Search languages and technologies…"
+      [options]="tagOptions"
+      [value]="tags()"
+      placeholder="Any"
+      (valueChange)="setTags($event)"
+    />
     <div class="review__field">
       <span class="review__label">Description</span>
       <app-markdown-field

@@ -13,9 +13,6 @@
 }
 
 .review__version {
-  // The same control width the skill editor uses, so the scope editor lines up with the fields.
-  --library-control-width: 18rem;
-
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -26,11 +23,6 @@
 
   > * {
     flex: none;
-  }
-
-  app-text-field,
-  .review__tags {
-    inline-size: var(--library-control-width);
   }
 }
 

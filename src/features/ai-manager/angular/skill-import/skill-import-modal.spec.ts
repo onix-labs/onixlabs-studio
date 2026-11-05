@@ -213,7 +213,7 @@ describe('SkillImportModal (#1263)', () => {
     });
 
     expect(host.querySelector<HTMLInputElement>('app-text-field input')?.value).toBe('Not Valid');
-    expect(host.querySelector('.import__error')?.textContent).toContain('lower-case');
+    expect(host.querySelector('app-alert')?.textContent).toContain('lower-case');
     expect(host.querySelector('h2')?.textContent).not.toMatch(/[“”"]/);
     tick(host);
     button(host, 'Replace').click();
@@ -230,7 +230,7 @@ describe('SkillImportModal (#1263)', () => {
     });
 
     expect(button(host, 'Accept').disabled).toBe(true);
-    expect(host.querySelector('.import__error')?.textContent).toContain('description');
+    expect(host.querySelector('app-alert')?.textContent).toContain('description');
     expect(host.textContent).toContain('File 2 of 3');
   });
 

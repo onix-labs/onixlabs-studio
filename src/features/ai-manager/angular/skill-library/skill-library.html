@@ -185,6 +185,7 @@
 <app-modal
   [open]="deleteTarget() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Delete skill"
   (dismiss)="cancelDelete()"
 >
@@ -202,7 +203,7 @@
     }
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-      <app-button label="Cancel" (click)="cancelDelete()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -214,6 +215,7 @@
 <app-modal
   [open]="improvement() !== null"
   [expandable]="true"
+  [frameless]="true"
   [width]="60"
   [height]="45"
   ariaLabel="Review the AI's improvements"
@@ -223,7 +225,7 @@
     @if (improvement(); as review) {
       <div class="library__review">
         <h2 class="library__dialog-title">
-          Review the AI's improvements to {{ review.original.name }}
+          Review the AI's Improvements to {{ review.original.name }}
         </h2>
         <app-skill-review
           [original]="review.original"
@@ -231,7 +233,7 @@
           (draftChange)="reviseImprovement($event)"
         />
         @if (improvementProblem(); as problem) {
-          <p class="library__error" role="alert">{{ problem }}</p>
+          <app-alert class="library__alert" tone="danger">{{ problem }}</app-alert>
         }
         <app-button-row>
           <app-button
@@ -240,7 +242,7 @@
             [disabled]="improvementProblem() !== null"
             (click)="acceptImprovement()"
           />
-          <app-button label="Discard" (click)="discardImprovement()" />
+          <app-button variant="ghost" label="Discard" (click)="discardImprovement()" />
         </app-button-row>
       </div>
     }

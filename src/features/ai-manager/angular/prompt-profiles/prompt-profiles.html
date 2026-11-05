@@ -76,6 +76,7 @@
 <app-modal
   [open]="deleteTarget() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Delete prompt profile"
   (dismiss)="cancelDelete()"
 >
@@ -86,7 +87,7 @@
     </p>
     <app-button-row>
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-      <app-button label="Cancel" (click)="cancelDelete()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>

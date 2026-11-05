@@ -10,6 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { skillProblem } from '@shared/api/skill-file';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -69,6 +70,7 @@ const LEFT_OUT_LABELS: Readonly<Record<ImportLeftOut['kind'], string>> = {
 @Component({
   selector: 'app-skill-import-modal',
   imports: [
+    Alert,
     AppIcon,
     Button,
     ButtonRow,
