@@ -134,6 +134,7 @@ describe('PanelPopout', () => {
   let state: DockState;
   let popped: PopoutPanels;
   let drops: ExternalDropHandler[];
+  let liveDrops: Set<ExternalDropHandler>;
 
   /**
    * Lets the windows' membership watchers run.
@@ -165,6 +166,7 @@ describe('PanelPopout', () => {
   beforeEach((): void => {
     windows = new FakeWindows();
     drops = [];
+    liveDrops = new Set<ExternalDropHandler>();
     const original: DockDrag['registerExternalDrop'] =
       // eslint-disable-next-line @typescript-eslint/unbound-method
       DockDrag.prototype.registerExternalDrop;
@@ -173,7 +175,12 @@ describe('PanelPopout', () => {
       handler: ExternalDropHandler,
     ): () => void {
       drops.push(handler);
-      return original.call(this, handler);
+      liveDrops.add(handler);
+      const release: () => void = original.call(this, handler);
+      return (): void => {
+        liveDrops.delete(handler);
+        release();
+      };
     });
     const left: StackNode = mkStack('tool', ['files', 'search', 'errors']);
     const right: StackNode = mkStack('tool', ['agent']);
@@ -220,6 +227,40 @@ describe('PanelPopout', () => {
       opening.contentHost.remove();
       opening.titlebar.remove();
     }
+  });
+
+  describe('window teardown', () => {
+    it('windowClosed_releasesItsDropHandler_soClosedWindowsDoNotBuildUp', async () => {
+      for (let round: number = 0; round < 3; round += 1) {
+        popout.popOut('search');
+        await flush();
+        opened(round).close();
+        await flush();
+      }
+
+      // Only the main dock's own handler is left.
+      expect(liveDrops.size).toBe(1);
+      expect(drops).toHaveLength(4);
+    });
+
+    it('returnAll_releasesEveryWindowsDropHandler', async () => {
+      popout.popOut('search');
+      popout.popOut('errors');
+      await flush();
+
+      popout.returnAll();
+
+      expect(liveDrops.size).toBe(1);
+    });
+
+    it('viewDestroyed_releasesTheMainAndWindowDropHandlers', async () => {
+      popout.popOut('search');
+      await flush();
+
+      popout.ngOnDestroy();
+
+      expect(liveDrops.size).toBe(0);
+    });
   });
 
   describe('popping out', () => {
