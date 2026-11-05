@@ -3078,6 +3078,68 @@ describe('Agent', () => {
       expect(runCalls[runCalls.length - 1].prompt).toContain('the gist');
     });
 
+    describe('when a peer types during it', () => {
+      let sessionId: string | null;
+
+      beforeEach(() => {
+        sessionId = runCalls[0].agentSessionId ?? null;
+        agent.compact();
+        fireEvent({ requestId: 'run-1', kind: 'text', delta: 'half a sum' });
+        fireEvent({
+          requestId: 'remote-turn',
+          kind: 'remote-message',
+          agentSessionId: sessionId,
+          text: 'from another device',
+        });
+      });
+
+      it('compact_whenAPeerTypes_givesWayAndShowsThePeersTurn', () => {
+        fireEvent({ requestId: 'remote-turn', kind: 'text', delta: 'the answer' });
+        fireEvent({ requestId: 'remote-turn', kind: 'status', state: 'completed', detail: '' });
+
+        expect(abortCalls).toEqual(['run-1']);
+        expect(transcript()).toEqual([
+          'hi',
+          'hello',
+          'Compaction stopped',
+          'from another device',
+          'the answer',
+        ]);
+        expect(agent.isRunning()).toBe(false);
+      });
+
+      it('compact_whenAPeerTypes_ignoresTheLateEndOfTheAbortedSummary', () => {
+        fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+        expect(agent.isRunning()).toBe(true);
+      });
+
+      it('compact_afterAPeerInterruptedIt_canRunAgain', () => {
+        fireEvent({ requestId: 'remote-turn', kind: 'status', state: 'completed', detail: '' });
+
+        agent.compact();
+        fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the gist' });
+        completeTurn();
+
+        expect(transcript()).toEqual(['**Conversation summary**\n\nthe gist']);
+      });
+    });
+
+    it('compact_whenAnotherSessionsPeerTypes_carriesOn', () => {
+      agent.compact();
+      fireEvent({
+        requestId: 'remote-turn',
+        kind: 'remote-message',
+        agentSessionId: 'some-other-session',
+        text: 'not for this conversation',
+      });
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the gist' });
+      completeTurn();
+
+      expect(abortCalls).toEqual([]);
+      expect(transcript()).toEqual(['**Conversation summary**\n\nthe gist']);
+    });
+
     it('compact_summarisesOnlyWhatWasSaid', () => {
       fireEvent({ requestId: 'stale', kind: 'text', delta: 'ignored' });
       agent.note('A note from Studio');

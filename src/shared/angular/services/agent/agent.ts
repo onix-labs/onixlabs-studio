@@ -2164,6 +2164,12 @@ export class Agent {
     if (event.kind === 'remote-message') {
       if (event.agentSessionId === this.agentSessionId) {
         this.flushStream();
+        // A compaction would take this turn's text for its summary and end on this turn's status, and
+        // its reset would close the session the peer is working in. The peer's turn is the live one.
+        if (this.compacting) {
+          this.abandonCompaction();
+          this.push({ kind: 'notice', text: 'Compaction stopped' });
+        }
         this.push({ kind: 'user', text: event.text });
         this.activeRequestId = event.requestId;
         this.sessionRequestId = event.requestId;
