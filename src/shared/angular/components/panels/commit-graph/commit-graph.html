@@ -51,7 +51,7 @@
         <span class="commit-graph__path-lead">History of</span>
         <span class="commit-graph__path-name">{{ path }}</span>
       </span>
-      <app-button variant="outline" label="Show All History" (click)="clearHistoryPath()" />
+      <app-button variant="ghost" label="Show All History" (click)="clearHistoryPath()" />
     </div>
   </div>
 }
@@ -74,7 +74,7 @@
       <app-button-row>
         <app-button variant="solid" label="Filter" (click)="applyFilter()" />
         <app-button
-          variant="outline"
+          variant="none"
           label="Clear"
           [disabled]="!textFiltered()"
           (click)="clearFilter()"
@@ -162,7 +162,7 @@
       <div class="commit-graph__more">
         <span>{{ loadedNote() }}</span>
         <app-button
-          variant="outline"
+          variant="ghost"
           label="Load More"
           [disabled]="repository.loadingMoreHistory()"
           (click)="loadMore()"
