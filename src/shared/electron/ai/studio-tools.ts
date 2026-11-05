@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import {
   ASK_USER,
   PROPOSE_WORKSPACE,
@@ -1619,14 +1620,17 @@ export async function readSourceControlStatus(context: AgentRunContext): Promise
  * paths win. A boundary rather than a prompt — the same rule a harness applies to its own file tools,
  * so a workspace tool cannot be a way around it.
  * @param context The agent run context.
- * @param target The absolute or workspace-relative path.
+ * @param requested The absolute or workspace-relative path.
  * @returns Returns null when the write may proceed, or the refusal to report to the model.
  */
-function refuseOutsideConfinement(context: AgentRunContext, target: string): string | null {
+function refuseOutsideConfinement(context: AgentRunContext, requested: string): string | null {
   const base: string | null = context.workspaceRoot;
   if (base === null) {
     return 'No workspace is open, so there is nothing to act on.';
   }
+  // The renderer trims the path before it acts on it, so that is the path to judge: ` /etc/hosts`
+  // reads here as a name inside the workspace, and there as `/etc/hosts`.
+  const target: string = requested.trim();
   const roots: readonly string[] = [base, ...context.allowedWritePaths];
   if (!isWriteWithinRoots(target, roots)) {
     return (
@@ -1727,7 +1731,10 @@ export async function renamePath(
   name: string,
 ): Promise<string> {
   logger.trace('StudioTools', `Tool invoked: rename_path (${path} -> ${name})`);
-  const refusal: string | null = refuseOutsideConfinement(context, path);
+  // The new name is written to as much as the old one is: `notes.txt` must not become a denied `.env`.
+  const refusal: string | null =
+    refuseOutsideConfinement(context, path) ??
+    refuseOutsideConfinement(context, join(dirname(path.trim()), name.trim()));
   if (refusal !== null) {
     return refusal;
   }
