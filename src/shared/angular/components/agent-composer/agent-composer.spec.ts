@@ -1370,4 +1370,44 @@ describe('AgentComposer', () => {
       expect(component.draft()).toBe('a draft');
     });
   });
+
+  it('images_twoReadsRacingForTheLastPlace_stillHoldTheCap', async () => {
+    TestBed.inject(Settings).set('ai.maxImagesPerMessage', 4);
+    await component.addImageFiles([png('1.png'), png('2.png'), png('3.png')]);
+
+    await Promise.all([
+      component.addImageFiles([png('4.png')]),
+      component.addImageFiles([png('5.png')]),
+    ]);
+
+    expect(attachedImages()).toEqual(['1.png', '2.png', '3.png', '4.png']);
+    expect(hostElement().querySelector('.agent__image-hint')?.textContent).toContain(
+      'At most 4 images',
+    );
+  });
+
+  it('images_whenAFileCannotBeRead_saysSo', async () => {
+    /**
+     * A reader whose read fails, as one does when the file went away.
+     */
+    class FailingReader {
+      public onerror: (() => void) | null = null;
+
+      public readAsDataURL(): void {
+        queueMicrotask((): void => this.onerror?.());
+      }
+    }
+    vi.stubGlobal('FileReader', FailingReader);
+
+    try {
+      await component.addImageFiles([png('gone.png')]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(attachedImages()).toEqual([]);
+    expect(hostElement().querySelector('.agent__image-hint')?.textContent).toContain(
+      'could not be read',
+    );
+  });
 });
