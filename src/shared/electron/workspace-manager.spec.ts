@@ -723,6 +723,25 @@ describe('WorkspaceManager', () => {
       expect(fs.readFileSync(file, 'utf8')).toBe('XbcdeY');
     });
 
+    it.each([
+      ['past the end', { offset: 5, bytes: [1, 2] }],
+      ['at a negative offset', { offset: -1, bytes: [1] }],
+      ['at a fractional offset', { offset: 0.5, bytes: [1] }],
+      ['with a string offset', { offset: '0', bytes: [1] }],
+      ['without an array of bytes', { offset: 0, bytes: 'abc' }],
+      ['that is null', null],
+    ])('writeBytes_withAPatch %s_changesNothingAtAll', async (_label: string, bad: unknown) => {
+      const file: string = inWorkspace('a.bin', 'abcdef');
+
+      const written: boolean = await invoke(WorkspaceChannel.WriteBytes, file, [
+        { offset: 0, bytes: [0x58] },
+        bad,
+      ]);
+
+      expect(written).toBe(false);
+      expect(fs.readFileSync(file, 'utf8')).toBe('abcdef');
+    });
+
     it.each([[undefined], [null], ['patches'], [{ length: 1 }]])(
       'writeBytes_withoutAPatchList_isRefused %#',
       async (patches: unknown) => {

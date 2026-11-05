@@ -708,16 +708,20 @@ export class WorkspaceManager {
     try {
       handle = await fs.open(resolved, 'r+');
       const size: number = (await handle.stat()).size;
+      // Every patch is judged before any is written: a save the caller is told failed must not have
+      // changed the file, so one bad run cannot leave the runs before it on disk.
+      const valid: boolean = runs.every(
+        (run: BinaryPatch): boolean =>
+          typeof run?.offset === 'number' &&
+          Number.isInteger(run.offset) &&
+          run.offset >= 0 &&
+          Array.isArray(run.bytes) &&
+          run.offset + run.bytes.length <= size,
+      );
+      if (!valid) {
+        return false;
+      }
       for (const run of runs) {
-        if (
-          typeof run.offset !== 'number' ||
-          !Number.isInteger(run.offset) ||
-          run.offset < 0 ||
-          !Array.isArray(run.bytes) ||
-          run.offset + run.bytes.length > size
-        ) {
-          return false;
-        }
         if (run.bytes.length > 0) {
           await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
         }
