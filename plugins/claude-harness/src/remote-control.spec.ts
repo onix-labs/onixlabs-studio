@@ -157,8 +157,6 @@ function control(
 }
 
 type RemoteControl = typeof import('./remote-control');
-// The SDK's alpha bridge types do not resolve under the lint program, which reads this as `any`.
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const remoteControl: RemoteControl = await import('./remote-control');
 const Bridge: RemoteControl['RemoteControlBridge'] = remoteControl.RemoteControlBridge;
 const inboundText: RemoteControl['inboundText'] = remoteControl.inboundText;
