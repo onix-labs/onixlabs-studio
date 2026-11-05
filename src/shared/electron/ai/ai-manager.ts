@@ -769,7 +769,7 @@ export class AiManager {
     this.runs.clear();
     for (const entry of this.liveSessions.values()) {
       this.clearReap(entry);
-      void entry.session.close();
+      this.closeQuietly(entry.session);
     }
     this.liveSessions.clear();
     for (const requestId of [...this.clocks.keys()]) {
@@ -1627,12 +1627,23 @@ export class AiManager {
     if (this.liveSessions.get(key) === entry) {
       this.liveSessions.delete(key);
     }
-    void entry.session.close();
+    this.closeQuietly(entry.session);
     this.emit({
       requestId: entry.lastRequestId,
       kind: 'session-ended',
       agentSessionId: key,
       reason,
+    });
+  }
+
+  /**
+   * Closes a session nothing is left waiting on, so a harness failing to close is a line in the log and
+   * not an unhandled rejection: the session is already gone from Studio's point of view.
+   * @param session The session.
+   */
+  private closeQuietly(session: AgentSession): void {
+    void session.close().catch((error: unknown): void => {
+      logger.warn('AiManager', 'A live session failed to close', error);
     });
   }
 
@@ -1654,7 +1665,7 @@ export class AiManager {
       if (entry?.session === session) {
         this.endSession(key, entry, 'evicted');
       } else {
-        void session.close();
+        this.closeQuietly(session);
       }
       throw error;
     });

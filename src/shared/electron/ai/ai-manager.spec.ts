@@ -1689,6 +1689,26 @@ describe('AiManager', () => {
       });
     });
 
+    it('close_thatRejects_isContained', async () => {
+      const rejections: unknown[] = [];
+      const onRejection: (reason: unknown) => void = (reason: unknown): void =>
+        void rejections.push(reason);
+      process.on('unhandledRejection', onRejection);
+      provider.onOpen = (): FakeSession => {
+        const session: FakeSession = new FakeSession();
+        session.closeResult = (): Promise<void> => Promise.reject(new Error('close failed'));
+        return session;
+      };
+
+      await turn();
+      await invoke(AiChannel.CloseSession, 'chat');
+      await settled();
+      await settled();
+      process.off('unhandledRejection', onRejection);
+
+      expect(rejections).toEqual([]);
+    });
+
     it('session_endingOnItsOwn_tellsTheRenderer_andNextTurnReopens', async () => {
       await turn();
 
