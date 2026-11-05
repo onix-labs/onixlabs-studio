@@ -1,4 +1,5 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { StudioChannel } from '@shared/api/studio-channels';
@@ -145,7 +146,8 @@ export class StudioStore {
       await this.seedGitignore(root);
     }
     const target: string = path.join(directory, file);
-    const temporary: string = `${target}.${process.pid}.tmp`;
+    // Unique per write: two saves in flight sharing a name rename it from under each other.
+    const temporary: string = `${target}.${randomUUID()}.tmp`;
     logger.trace('StudioStore.write', `Atomically writing ${target} via ${temporary}`);
     await fs.writeFile(temporary, contents, 'utf8');
     await fs.rename(temporary, target);

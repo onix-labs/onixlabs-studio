@@ -142,6 +142,15 @@ describe('StudioStore', () => {
     expect(fs.readdirSync(path.join(root, STUDIO_DIR))).toEqual([STUDIO_WORKSPACE_FILE]);
   });
 
+  it('save_concurrently_allSucceed_andLeaveNoTemporary', async () => {
+    const results: readonly boolean[] = await Promise.all(
+      [1, 2, 3, 4, 5, 6].map((): Promise<boolean> => invoke(StudioChannel.SaveWorkspace, root, {})),
+    );
+
+    expect(results).toEqual([true, true, true, true, true, true]);
+    expect(fs.readdirSync(path.join(root, STUDIO_DIR))).toEqual([STUDIO_WORKSPACE_FILE]);
+  });
+
   it('gitignore_isCreatedWithThePattern', async () => {
     await invoke(StudioChannel.SaveUser, root, {});
 
