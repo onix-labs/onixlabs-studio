@@ -9,5 +9,11 @@ export function markdownDestination(target: string): string {
   if (!/[\s()<>]/.test(target)) {
     return target;
   }
-  return `<${target.replace(/[<>]/g, '\\$&')}>`;
+  // A backslash left alone would cancel the escape of a bracket after it and close the destination
+  // early, and a line break cannot sit between the brackets at all.
+  const escaped: string = target
+    .replace(/[\\<>]/g, '\\$&')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+  return `<${escaped}>`;
 }

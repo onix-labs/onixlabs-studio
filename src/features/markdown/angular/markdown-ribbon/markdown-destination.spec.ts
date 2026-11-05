@@ -13,6 +13,18 @@ describe('markdownDestination', () => {
     expect(markdownDestination('a(1).png')).toBe('<a(1).png>');
   });
 
+  it('markdownDestination_escapesABackslash_soItCannotCancelABracketsEscape', () => {
+    expect(markdownDestination('a\\> b')).toBe('<a\\\\\\> b>');
+  });
+
+  it('markdownDestination_keepsAWindowsPathWhole', () => {
+    expect(markdownDestination('C:\\my photos\\a.png')).toBe('<C:\\\\my photos\\\\a.png>');
+  });
+
+  it('markdownDestination_encodesALineBreak_whichTheBracketsCannotHold', () => {
+    expect(markdownDestination('a\r\nb')).toBe('<a%0D%0Ab>');
+  });
+
   it('markdownDestination_escapesTheBracketsThatWouldEndTheWrapper', () => {
     expect(markdownDestination('a>b c')).toBe('<a\\>b c>');
   });
