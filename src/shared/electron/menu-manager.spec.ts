@@ -219,4 +219,16 @@ describe('MenuManager', () => {
 
     expect((): void => electron.installed?.[0]?.submenu?.[0]?.click?.()).not.toThrow();
   });
+
+  it.each([
+    ['a section without items', [{ label: 'File' }]],
+    ['a null section', [null]],
+    ['a null item', [{ label: 'File', items: [null] }]],
+    ['items that are not a list', [{ label: 'File', items: 'x' }]],
+    ['children that are not a list', [{ label: 'F', items: [{ kind: 'item', items: 7 }] }]],
+  ])('setMenu_with %s_doesNotThrowInTheMainProcess', (_label: string, sections: unknown) => {
+    expect((): void => publish(sections)).not.toThrow();
+
+    expect(electron.installed).toBeUndefined();
+  });
 });
