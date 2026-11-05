@@ -32,3 +32,8 @@ export const dialog: Record<string, unknown> = {};
  * Stands in for the BrowserWindow class.
  */
 export class BrowserWindow {}
+
+/**
+ * Stands in for the custom-protocol registry.
+ */
+export const protocol: Record<string, unknown> = {};
