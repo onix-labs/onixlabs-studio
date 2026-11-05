@@ -2754,4 +2754,38 @@ describe('Agent', () => {
 
     expect(transcript()).toEqual(['old', 'more', 'answer']);
   });
+
+  it('send_whenSteeringRejects_queuesTheMessageRatherThanLosingIt', async () => {
+    vi.spyOn(TestBed.inject(AiRuntime), 'steer').mockRejectedValue(new Error('bridge gone'));
+    agent.send('first');
+
+    agent.send('second');
+    await settleStream();
+    expect(agent.queued().map((entry: { text: string }): string => entry.text)).toEqual(['second']);
+
+    completeTurn();
+
+    expect(runCalls.map((call: { prompt: string }): string => call.prompt)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
+  it('send_whenTheConversationIsClearedWhileSteering_doesNotLandInTheNewOne', async () => {
+    let answer: (accepted: boolean) => void = (): void => undefined;
+    vi.spyOn(TestBed.inject(AiRuntime), 'steer').mockReturnValue(
+      new Promise<boolean>((resolve: (accepted: boolean) => void): void => {
+        answer = resolve;
+      }),
+    );
+    agent.send('first');
+    agent.send('for the old conversation');
+
+    agent.clear();
+    answer(false);
+    await settleStream();
+
+    expect(agent.items()).toEqual([]);
+    expect(runCalls).toHaveLength(1);
+  });
 });

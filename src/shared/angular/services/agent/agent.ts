@@ -930,6 +930,12 @@ export class Agent {
   private compacting: boolean = false;
 
   /**
+   * Counts the times the conversation has been replaced (a clear or a restore), so work that outlived
+   * one can tell the conversation it began in has gone.
+   */
+  private conversationEpoch: number = 0;
+
+  /**
    * Accumulates the summary text streamed by a compaction run.
    */
   private compactionText: string = '';
@@ -1346,12 +1352,18 @@ export class Agent {
     images: readonly AiImageRef[] = [],
   ): Promise<void> {
     const requestId: string | null = this.activeRequestId;
-    if (
+    const epoch: number = this.conversationEpoch;
+    const steered: boolean =
       !this.compacting &&
       images.length === 0 &&
       requestId !== null &&
-      (await this.runtime.steer(requestId, text))
-    ) {
+      (await this.trySteer(requestId, text));
+    // The message belongs to the conversation it was typed in. Queuing it now would send it into
+    // whatever replaced that conversation, where nobody asked for it.
+    if (epoch !== this.conversationEpoch) {
+      return;
+    }
+    if (steered) {
       this.push({ kind: 'user', text });
       this.lastPrompt = text;
       return;
@@ -1370,6 +1382,22 @@ export class Agent {
     // The run may have ended while the steer attempt was in flight; drain immediately if now idle.
     if (!this.busy()) {
       this.dispatchQueue();
+    }
+  }
+
+  /**
+   * Offers a message to the run in flight. A bridge that fails counts as a refusal, so the message is
+   * queued: nothing awaits a send, and a rejection here would lose what the user typed.
+   * @param requestId The run to steer.
+   * @param text The message.
+   * @returns Returns a promise resolving to whether the run took the message.
+   */
+  private async trySteer(requestId: string, text: string): Promise<boolean> {
+    try {
+      return await this.runtime.steer(requestId, text);
+    } catch (error: unknown) {
+      this.logger.warn('Agent', 'Could not steer the run; queuing the message', error);
+      return false;
     }
   }
 
@@ -1844,6 +1872,7 @@ export class Agent {
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.conversationEpoch += 1;
     this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
@@ -1885,6 +1914,7 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.conversationEpoch += 1;
     this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
