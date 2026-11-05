@@ -210,3 +210,129 @@ describe('DapProtocol', () => {
     await expect(pending).rejects.toThrow('closed');
   });
 });
+
+describe('DapMessageDecoder on a misbehaving stream', () => {
+  /**
+   * Frames a message.
+   * @param seq The sequence number that identifies it.
+   * @returns Returns the framed text.
+   */
+  function frame(seq: number): string {
+    return encodeMessage({ seq, type: 'event' });
+  }
+
+  /**
+   * Decodes text, as one chunk.
+   * @param text The text.
+   * @param decoder The decoder, when a spec carries on with one.
+   * @returns Returns the sequence numbers decoded.
+   */
+  function decode(text: string, decoder: DapMessageDecoder = new DapMessageDecoder()): number[] {
+    return decoder
+      .append(new TextEncoder().encode(text))
+      .map((message: { seq: number }): number => message.seq);
+  }
+
+  it('reassemblesAHeaderSplitInsideTheTerminator', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const text: string = frame(1);
+    const middle: number = text.indexOf('\r\n\r\n') + 2;
+
+    expect(decode(text.slice(0, middle), decoder)).toEqual([]);
+    expect(decode(text.slice(middle), decoder)).toEqual([1]);
+  });
+
+  it('survivesAFeedOfOneByteAtATime', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    const seen: number[] = [...`${frame(1)}${frame(2)}`].flatMap((character: string): number[] =>
+      decode(character, decoder),
+    );
+
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it('readsAnEmptyBodyAsADroppedFrame_andCarriesOn', () => {
+    expect(decode(`Content-Length: 0\r\n\r\n${frame(2)}`)).toEqual([2]);
+  });
+
+  it.each<[string, string]>([
+    ['aWordForALength', 'Content-Length: many'],
+    ['aNegativeLength', 'Content-Length: -4'],
+    ['aFractionalLength', 'Content-Length: 1.5'],
+    ['noLengthAtAll', 'X-Other: 1'],
+  ])('dropsAHeaderWith_%s_andDeliversTheFrameBehindIt', (_name: string, header: string) => {
+    expect(decode(`${header}\r\n\r\n${frame(2)}${frame(3)}`)).toEqual([2, 3]);
+  });
+
+  it('dropsABodyThatIsNotJson_andDeliversTheFrameBehindIt_inTheSameChunk', () => {
+    expect(decode(`Content-Length: 4\r\n\r\nnope${frame(2)}`)).toEqual([2]);
+  });
+
+  it.each<[string, string]>([
+    ['null', 'null'],
+    ['aNumber', '7'],
+    ['aString', '"x"'],
+  ])('dropsABodyThatIs_%s_ratherThanHandingItToTheProtocol', (_name: string, body: string) => {
+    expect(decode(`Content-Length: ${body.length}\r\n\r\n${body}${frame(2)}`)).toEqual([2]);
+  });
+
+  it('keepsItsPlace_whenAnAdapterPrintsALogLineBeforeAFrame', () => {
+    // Stdout is the protocol stream, and adapters and the runtimes under them do write to it.
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    expect(decode(`warning: no symbols\n${frame(1)}`, decoder)).toEqual([1]);
+    expect(decode(frame(2), decoder)).toEqual([2]);
+  });
+
+  it('recoversTheNextFrame_whenAFrameHadNoUsableLength', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+    const body: string = JSON.stringify({ seq: 1, type: 'event' });
+
+    expect(decode(`Content-Length: bad\r\n\r\n${body}${frame(2)}${frame(3)}`, decoder)).toEqual([
+      2, 3,
+    ]);
+    expect(decode(frame(4), decoder)).toEqual([4]);
+  });
+
+  it('holdsOffOnALengthLongerThanWhatHasArrived', () => {
+    const decoder: DapMessageDecoder = new DapMessageDecoder();
+
+    expect(decode('Content-Length: 99999999999\r\n\r\n{}', decoder)).toEqual([]);
+  });
+
+  it('doesNotTakeALookalikeHeaderForContentLength', () => {
+    expect(decode(`X-Content-Length: 2\r\n\r\n${frame(1)}`)).toEqual([1]);
+  });
+});
+
+describe('DapProtocol failures', () => {
+  it('namesTheCommand_whenAFailedResponseCarriesNoMessage', async () => {
+    const protocol: DapProtocol = new DapProtocol((): void => undefined);
+    const outcome: Promise<unknown> = protocol.sendRequest('launch');
+
+    protocol.handleMessage({
+      seq: 9,
+      type: 'response',
+      request_seq: 1,
+      success: false,
+      command: 'launch',
+    } as DebugProtocol.Response);
+
+    await expect(outcome).rejects.toThrow('launch failed');
+  });
+
+  it('rejectsARequestWhoseSinkThrows_ratherThanLeavingItPending', async () => {
+    const protocol: DapProtocol = new DapProtocol((): void => {
+      throw new Error('stream closed');
+    });
+
+    await expect(protocol.sendRequest('threads')).rejects.toThrow('stream closed');
+  });
+
+  it('ignoresAMessageOfAnUnknownType', () => {
+    const protocol: DapProtocol = new DapProtocol((): void => undefined);
+
+    expect((): void => protocol.handleMessage({ seq: 1, type: 'other' })).not.toThrow();
+  });
+});
