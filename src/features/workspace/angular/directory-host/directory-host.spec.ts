@@ -596,6 +596,187 @@ describe('DirectoryHost', () => {
     });
   });
 
+  describe('mid-flight', () => {
+    it('destroy_whileAnOpenedFolderResolves_closesTheFolderNoViewTookOver', async () => {
+      const kind: Deferred<WorkspaceKind | null> = new Deferred<WorkspaceKind | null>();
+      client.kind = (): Promise<WorkspaceKind | null> => kind.promise;
+      const mounted: ComponentFixture<DirectoryHost> = await mount(listing('/plain'));
+
+      mounted.destroy();
+      kind.resolve(null);
+      await settle();
+
+      expect(bridge.closed).toEqual(['/plain']);
+    });
+
+    it('destroy_whileAContainerIsDescribed_closesItsRootOnce', async () => {
+      const description: Deferred<WorktreeDescriptor | null> =
+        new Deferred<WorktreeDescriptor | null>();
+      client.kind = (): Promise<WorkspaceKind> => Promise.resolve('worktree');
+      client.description = (): Promise<WorktreeDescriptor | null> => description.promise;
+      const mounted: ComponentFixture<DirectoryHost> = await mount(listing('/container'));
+
+      mounted.destroy();
+      description.resolve({ root: '/container', origin: null, checkouts: [checkout('a')] });
+      await settle();
+
+      expect(bridge.closed).toEqual(['/container']);
+      expect(client.statusReads).toBe(0);
+    });
+
+    it('destroy_whileACheckoutOpens_closesTheRootItOpened', async () => {
+      client.kind = (): Promise<WorkspaceKind> => Promise.resolve('worktree');
+      const opening: Deferred<WorktreeOutcome<string>> = new Deferred<WorktreeOutcome<string>>();
+      client.opening = (): Promise<WorktreeOutcome<string>> => opening.promise;
+      const mounted: ComponentFixture<DirectoryHost> = await mount(listing('/container'));
+
+      mounted.destroy();
+      opening.resolve({ ok: true, value: '/container/a' });
+      await settle();
+
+      expect(bridge.closed).toEqual(['/container', '/container/a']);
+    });
+
+    it('destroy_whileAFolderOpenedInTheViewResolves_doesNotClaimIt', async () => {
+      const mounted: ComponentFixture<DirectoryHost> = await mount();
+      const hosted: WorktreeSession = session();
+      const kind: Deferred<WorkspaceKind | null> = new Deferred<WorkspaceKind | null>();
+      client.kind = (): Promise<WorkspaceKind | null> => kind.promise;
+      views()[0]?.rootChanged.emit('/container');
+
+      mounted.destroy();
+      kind.resolve('worktree');
+      await settle();
+
+      expect(hosted.isContainer()).toBe(false);
+      expect(hosted.isClaimed('/container')).toBe(false);
+    });
+
+    it('rootChanged_aSecondFolderOvertakesTheFirst_adoptsNeither', async () => {
+      await mount();
+      const first: Deferred<WorkspaceKind | null> = new Deferred<WorkspaceKind | null>();
+      client.kind = (): Promise<WorkspaceKind | null> => first.promise;
+      views()[0]?.rootChanged.emit('/container');
+      client.kind = (): Promise<WorkspaceKind | null> => Promise.resolve(null);
+      views()[0]?.rootChanged.emit('/plain');
+      await settle();
+
+      first.resolve('worktree');
+      await settle();
+      await settle();
+
+      expect(session().isContainer()).toBe(false);
+      expect(views()[0]?.checkoutId()).toBeNull();
+    });
+
+    it('open_resolveRejected_isAnOrdinaryFolder', async () => {
+      client.kind = (): Promise<never> => Promise.reject(new Error('ipc closed'));
+
+      await mount(listing('/plain'));
+
+      expect(views()[0]?.listing()?.path).toBe('/plain');
+    });
+
+    it('open_describeRejected_isAnOrdinaryFolder', async () => {
+      client.kind = (): Promise<WorkspaceKind> => Promise.resolve('worktree');
+      client.description = (): Promise<never> => Promise.reject(new Error('corrupt manifest'));
+
+      await mount(listing('/container'));
+
+      expect(views()[0]?.listing()?.path).toBe('/container');
+    });
+
+    it('rootChanged_resolveRejected_staysAsItIs', async () => {
+      await mount();
+      client.kind = (): Promise<never> => Promise.reject(new Error('ipc closed'));
+
+      views()[0]?.rootChanged.emit('/plain');
+      await settle();
+
+      expect(views()[0]?.checkoutId()).toBeNull();
+    });
+
+    it('load_openRejected_logsAndCanBeRetried', async () => {
+      client.kind = (): Promise<WorkspaceKind> => Promise.resolve('worktree');
+      await mount(listing('/container'));
+      const error: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Log), 'error');
+      client.opening = (): Promise<never> => Promise.reject(new Error('ipc closed'));
+
+      session().activate('b');
+      await settle();
+
+      expect(error).toHaveBeenCalled();
+      expect(views()).toHaveLength(1);
+    });
+
+    it('promote_clickedTwice_promotesOnce', async () => {
+      await mount();
+      views()[0]?.rootChanged.emit('/repo');
+      await settle();
+      const promotion: Deferred<WorktreeOutcome<WorktreeDescriptor>> = new Deferred<
+        WorktreeOutcome<WorktreeDescriptor>
+      >();
+      let asked: number = 0;
+      client.promotion = (): Promise<WorktreeOutcome<WorktreeDescriptor>> => {
+        asked += 1;
+        return promotion.promise;
+      };
+      const promote: ((id: string | null) => void) | null | undefined =
+        views()[0]?.promoteHandler();
+
+      promote?.(null);
+      promote?.(null);
+      promotion.resolve({ ok: false, error: 'finished' });
+      await settle();
+
+      expect(asked).toBe(1);
+    });
+
+    it('promote_rejected_logsAndCanBeTriedAgain', async () => {
+      await mount();
+      views()[0]?.rootChanged.emit('/repo');
+      await settle();
+      const error: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Log), 'error');
+      let asked: number = 0;
+      client.promotion = (): Promise<never> => {
+        asked += 1;
+        return Promise.reject(new Error('ipc closed'));
+      };
+      const promote: ((id: string | null) => void) | null | undefined =
+        views()[0]?.promoteHandler();
+
+      promote?.(null);
+      await settle();
+      promote?.(null);
+      await settle();
+
+      expect(error).toHaveBeenCalledTimes(2);
+      expect(asked).toBe(2);
+      expect(views()[0]?.checkoutId()).toBeNull();
+    });
+
+    it('promote_destroyedOnTheWay_buildsNothing', async () => {
+      const mounted: ComponentFixture<DirectoryHost> = await mount();
+      const hosted: WorktreeSession = session();
+      views()[0]?.rootChanged.emit('/repo');
+      await settle();
+      const promotion: Deferred<WorktreeOutcome<WorktreeDescriptor>> = new Deferred<
+        WorktreeOutcome<WorktreeDescriptor>
+      >();
+      client.promotion = (): Promise<WorktreeOutcome<WorktreeDescriptor>> => promotion.promise;
+      views()[0]?.promoteHandler()?.(null);
+
+      mounted.destroy();
+      promotion.resolve({
+        ok: true,
+        value: { root: '/repo', origin: null, checkouts: [checkout('a')] },
+      });
+      await settle();
+
+      expect(hosted.isContainer()).toBe(false);
+    });
+  });
+
   describe('tearing down', () => {
     it('destroy_container_closesEveryRootItClaimed', async () => {
       client.kind = (): Promise<WorkspaceKind> => Promise.resolve('worktree');
