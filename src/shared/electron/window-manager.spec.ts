@@ -743,6 +743,18 @@ describe('WindowManager', () => {
 
       expect(manager.targetWindow({} as WebContents, CHILD_NAME)).toBeNull();
     });
+
+    it('target_ofANameReused_survivesTheOldWindowClosingLate', () => {
+      electron.ownerOf = new FakeWindow();
+      const old: FakeWindow = new FakeWindow();
+      const successor: FakeWindow = new FakeWindow();
+      manager.adoptModalWindow(real(old), CHILD_NAME);
+      manager.adoptModalWindow(real(successor), CHILD_NAME);
+
+      old.emit('closed');
+
+      expect(manager.targetWindow({} as WebContents, CHILD_NAME)).toBe(successor);
+    });
   });
 
   describe('layout minimum', () => {
