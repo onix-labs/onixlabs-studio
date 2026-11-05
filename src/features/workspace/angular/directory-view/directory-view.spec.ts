@@ -1,7 +1,13 @@
 import { Component, input, InputSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Mock } from 'vitest';
+import { Mock, MockInstance } from 'vitest';
 import { Icon } from '@shared/angular/icons/icon';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -810,4 +816,92 @@ describe('DirectoryView', () => {
       expect(scoped).not.toBe(TestBed.inject(token as never));
     });
   }
+
+  describe('language servers of a hidden view', () => {
+    let client: LspClient;
+    let suspend: MockInstance<LspClient['suspend']>;
+    let resume: MockInstance<LspClient['resume']>;
+
+    beforeEach(async () => {
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      client = fixture.debugElement.injector.get(LspClient);
+      suspend = vi.spyOn(client, 'suspend').mockReturnValue(undefined);
+      resume = vi.spyOn(client, 'resume').mockReturnValue(undefined);
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('hidden_pastTheIdleWait_stopsThem', () => {
+      fixture.componentRef.setInput('isActive', false);
+      TestBed.tick();
+
+      vi.advanceTimersByTime(10 * 60_000 - 1);
+      expect(suspend).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(suspend).toHaveBeenCalledTimes(1);
+    });
+
+    it('shownAgainInTime_keepsThem_andResumes', () => {
+      fixture.componentRef.setInput('isActive', false);
+      TestBed.tick();
+      vi.advanceTimersByTime(60_000);
+      resume.mockClear();
+
+      fixture.componentRef.setInput('isActive', true);
+      TestBed.tick();
+      vi.advanceTimersByTime(60 * 60_000);
+
+      expect(suspend).not.toHaveBeenCalled();
+      expect(resume).toHaveBeenCalledTimes(1);
+    });
+
+    it('withStopSetToNever_keepsThem', () => {
+      TestBed.inject(Settings).set('lsp.idleStopMinutes', 0);
+      fixture.componentRef.setInput('isActive', false);
+      TestBed.tick();
+
+      vi.advanceTimersByTime(24 * 60 * 60_000);
+
+      expect(suspend).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('promoting to worktrees', () => {
+    let promoted: Mock<(conversationId: string | null) => void>;
+
+    beforeEach(async () => {
+      promoted = vi.fn<(conversationId: string | null) => void>();
+      fixture.componentRef.setInput('promoteHandler', promoted);
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+    });
+
+    it('promote_whileTheAgentWorks_isRefusedWithTheReason', async () => {
+      fixture.debugElement.injector.get(Agent).send('working');
+
+      TestBed.inject(SourceControlCommands).promoteToWorktree();
+      await fixture.whenStable();
+
+      expect(promoted).not.toHaveBeenCalled();
+      expect(TestBed.inject(Notifications).toasts()[0].title).toBe(
+        'Could not convert to worktrees',
+      );
+    });
+
+    it('promote_whenIdle_handsTheConversationToTheHost', async () => {
+      vi.spyOn(fixture.debugElement.injector.get(AgentConversation), 'flush').mockResolvedValue(
+        'conversation-1',
+      );
+
+      TestBed.inject(SourceControlCommands).promoteToWorktree();
+      await fixture.whenStable();
+
+      expect(promoted).toHaveBeenCalledWith('conversation-1');
+    });
+  });
 });
