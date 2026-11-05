@@ -2841,6 +2841,31 @@ describe('LspClient', () => {
 
     expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
   });
+
+  it('restart_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    await client.restart('/root::typescript');
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
+
+  it('resume_withNoLiveModel_reopensWithTheLastTextTheServerHad', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    client.suspend();
+
+    client.resume();
+    await flush();
+
+    const reopened: { params: unknown } | undefined = lsp.notificationsTo('didOpen').at(-1);
+    expect(reopened?.params).toMatchObject({ textDocument: { text: 'const a = 1;' } });
+  });
 });
 
 describe('idleStopMs', () => {

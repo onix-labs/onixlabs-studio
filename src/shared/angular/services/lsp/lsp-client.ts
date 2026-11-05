@@ -2134,7 +2134,7 @@ export class LspClient implements OnDestroy {
 
   /**
    * Re-opens a document against a freshly restarted server, using the latest text from its live editor
-   * model (the client does not retain content, so it reads it back from Monaco).
+   * model when it has one.
    * @param tracked The document to re-open.
    * @returns Returns a promise that resolves once the open notification has been sent.
    */
@@ -2148,24 +2148,24 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Reads a tracked document's current text from its live Monaco model, or an empty string when Monaco
-   * is unavailable or the document has no live model.
+   * Reads a tracked document's current text from its live Monaco model. Without one, the text last
+   * sent stands: a server told the document is empty answers for nothing and reports nothing in it.
    * @param tracked The document whose text is read.
-   * @returns Returns the current text, or an empty string.
+   * @returns Returns the current text.
    */
   private currentContent(tracked: TrackedDocument): string {
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (monaco === undefined) {
-      return '';
+      return tracked.text;
     }
     const modelUri: string | undefined = this.editors.modelUriForPath(uriToPath(tracked.uri));
     if (modelUri === undefined) {
-      return '';
+      return tracked.text;
     }
     const model: MonacoApi.editor.ITextModel | null = monaco.editor.getModel(
       monaco.Uri.parse(modelUri),
     );
-    return model?.getValue() ?? '';
+    return model?.getValue() ?? tracked.text;
   }
 
   /**
