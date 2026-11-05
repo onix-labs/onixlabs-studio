@@ -26,6 +26,8 @@ import type {
   AiSignInRequest,
   AiSlashCommand,
 } from '@shared/api/ai-types';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPrompt, AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
@@ -191,6 +193,8 @@ interface ContextChip {
     AgentComposerShortcuts,
     AgentQuickResponses,
     AgentTasksMenu,
+    Textarea,
+    TextField,
   ],
   templateUrl: './agent-composer.html',
   styleUrl: './agent-composer.scss',

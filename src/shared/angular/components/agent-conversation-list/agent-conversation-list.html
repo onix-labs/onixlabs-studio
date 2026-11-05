@@ -262,18 +262,19 @@
   [open]="categoryEditor() !== null"
   [dismissable]="true"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Category"
   (dismiss)="onCancelCategory()"
 >
   <ng-template appModalContent>
     @if (categoryEditor(); as editor) {
       <h2 class="history__modal-title">
-        {{ editor.id === null ? 'New category' : 'Rename category' }}
+        {{ editor.id === null ? 'New Category' : 'Rename Category' }}
       </h2>
       <app-text-field
         class="history__modal-input"
-        placeholder="Category name"
-        ariaLabel="Category name"
+        variant="floating"
+        label="Category Name"
         [value]="editor.name"
         (valueChange)="onCategoryNameValue($event)"
         (enter)="onSaveCategory()"
@@ -285,7 +286,7 @@
           [disabled]="editor.name.trim().length === 0"
           (click)="onSaveCategory()"
         />
-        <app-button label="Cancel" (click)="onCancelCategory()" />
+        <app-button variant="none" label="Cancel" (click)="onCancelCategory()" />
       </app-button-row>
     }
   </ng-template>
@@ -296,11 +297,12 @@
   [open]="manageOpen()"
   [dismissable]="true"
   [width]="30"
+  [frameless]="true"
   ariaLabel="Manage categories"
   (dismiss)="onCloseManage()"
 >
   <ng-template appModalContent>
-    <h2 class="history__modal-title">Manage categories</h2>
+    <h2 class="history__modal-title">Manage Categories</h2>
     <div class="history__manage-list">
       @for (category of categories(); track category.id) {
         <div class="history__manage-row">
@@ -326,7 +328,7 @@
     </div>
     <app-button-row>
       <app-button variant="solid" label="Done" (click)="onCloseManage()" />
-      <app-button label="New category" (click)="onNewCategory()" />
+      <app-button variant="ghost" label="New Category" (click)="onNewCategory()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -336,18 +338,19 @@
   [open]="confirmOpen()"
   [dismissable]="true"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Delete conversations"
   (dismiss)="onCancelDelete()"
 >
   <ng-template appModalContent>
-    <h2 class="history__modal-title">Delete conversations?</h2>
+    <h2 class="history__modal-title">Delete Conversations?</h2>
     <p class="history__modal-body">
       {{ checkedCount() }} conversation{{ checkedCount() === 1 ? '' : 's' }} will be permanently
       deleted. This cannot be undone.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Delete" (click)="onConfirmDelete()" />
-      <app-button label="Cancel" (click)="onCancelDelete()" />
+      <app-button variant="solid" tone="danger" label="Delete" (click)="onConfirmDelete()" />
+      <app-button variant="none" label="Cancel" (click)="onCancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>

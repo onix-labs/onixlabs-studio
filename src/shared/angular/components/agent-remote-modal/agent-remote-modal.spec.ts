@@ -41,16 +41,16 @@ describe('AgentRemoteModal', () => {
   });
 
   it('title_forOneAgent_asksAboutThatAgent', () => {
-    expect(internals.title()).toBe('Enable remote control for this agent?');
+    expect(internals.title()).toBe('Enable Remote Control for This Agent?');
 
     fixture.componentRef.setInput('enabling', false);
-    expect(internals.title()).toBe('Disable remote control for this agent?');
+    expect(internals.title()).toBe('Disable Remote Control for This Agent?');
   });
 
   it('title_forSeveralAgents_saysHowMany', () => {
     fixture.componentRef.setInput('count', 4);
 
-    expect(internals.title()).toBe('Enable remote control for all 4 agents?');
+    expect(internals.title()).toBe('Enable Remote Control for All 4 Agents?');
   });
 
   it('body_underFullControl_saysAPeerCanDriveTheSession', () => {
