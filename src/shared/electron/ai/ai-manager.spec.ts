@@ -436,6 +436,33 @@ describe('AiManager', () => {
       expect(result.added).toBe(1);
     });
 
+    it('discover_forAConnectionNeverListed_usesItsOwnStoredKey', async () => {
+      await invoke(AiChannel.SetConnectionKey, {
+        connectionId: 'unlisted',
+        authKind: 'api-key',
+        key: 'stored-key',
+      });
+
+      await invoke(AiChannel.DiscoverModels, { connection: connection('unlisted') });
+
+      expect(provider.reportedAuth[0]?.apiKey).toBe('stored-key');
+    });
+
+    it('discover_withTheAuthKindJustEdited_resolvesUnderThatKind', async () => {
+      await invoke(AiChannel.ListProviders, [connection('edited', { auth: 'none' })]);
+      await invoke(AiChannel.SetConnectionKey, {
+        connectionId: 'edited',
+        authKind: 'api-key',
+        key: 'stored-key',
+      });
+
+      await invoke(AiChannel.DiscoverModels, {
+        connection: connection('edited', { auth: 'api-key' }),
+      });
+
+      expect(provider.reportedAuth[0]?.apiKey).toBe('stored-key');
+    });
+
     it('discover_withNoHarness_namesThePluginManager_andKeepsTheModels', async () => {
       const unserved: AiConnection = connection('plain', { harnessId: null });
 
