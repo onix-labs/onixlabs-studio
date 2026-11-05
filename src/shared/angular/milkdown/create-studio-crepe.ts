@@ -212,7 +212,10 @@ function placeImages(
 ): void {
   for (const file of files) {
     void store(file).then((source: string): void => {
-      insertImage(view, source, file.name, position);
+      // Storing can outlast the editor: the tab may close while the image is being written.
+      if (!view.isDestroyed) {
+        insertImage(view, source, file.name, position);
+      }
     });
   }
 }

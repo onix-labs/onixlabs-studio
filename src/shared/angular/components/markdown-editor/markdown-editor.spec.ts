@@ -3,7 +3,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { Mock } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
-import type { EditorView } from '@milkdown/kit/prose/view';
+import { Slice } from '@milkdown/kit/prose/model';
+import type { DirectEditorProps, EditorView } from '@milkdown/kit/prose/view';
+import type { FileWriteResult } from '@shared/api/file-channels';
 
 import { FileSystem } from '../../services/file-system/file-system';
 import { Settings } from '../../services/settings/settings';
@@ -180,6 +182,84 @@ describe('MarkdownEditor', () => {
       });
       expect(fixture.componentInstance.getMarkdown()).not.toContain('data:image');
       fixture.destroy();
+    });
+
+    it('drop_whenTheDocumentShrinksDuringTheWrite_stillPlacesTheImage', async () => {
+      storeInFolder();
+      let finishWrite: (result: FileWriteResult) => void = (): void => undefined;
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockReturnValue(
+          new Promise<FileWriteResult>((resolve: (result: FileWriteResult) => void): void => {
+            finishWrite = resolve;
+          }),
+        );
+      const { fixture } = await bootEditor('a long first paragraph\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+      const file: File = new File([new Uint8Array([1])], 'late.png', { type: 'image/png' });
+      const end: number = view.state.doc.content.size;
+      view.posAtCoords = (): { pos: number; inside: number } => ({ pos: end, inside: -1 });
+      view.someProp('handleDrop', (handle: NonNullable<DirectEditorProps['handleDrop']>): boolean =>
+        Boolean(
+          handle.call(
+            view,
+            view,
+            Object.assign(new Event('drop', { cancelable: true }), {
+              dataTransfer: { files: [file] },
+              clientX: 0,
+              clientY: 0,
+            }) as unknown as DragEvent,
+            Slice.empty,
+            false,
+          ),
+        ),
+      );
+      await vi.waitFor((): void => {
+        expect(write).toHaveBeenCalled();
+      });
+
+      view.dispatch(view.state.tr.delete(1, end - 1));
+      finishWrite({ success: true });
+
+      await vi.waitFor((): void => {
+        expect(fixture.componentInstance.getMarkdown()).toContain('late');
+      });
+      fixture.destroy();
+    });
+
+    it('paste_whenTheEditorIsDestroyedDuringTheWrite_doesNotThrow', async () => {
+      storeInFolder();
+      let finishWrite: (result: FileWriteResult) => void = (): void => undefined;
+      const write: Mock<FileSystem['writeBytes']> = vi
+        .spyOn(TestBed.inject(FileSystem), 'writeBytes')
+        .mockReturnValue(
+          new Promise<FileWriteResult>((resolve: (result: FileWriteResult) => void): void => {
+            finishWrite = resolve;
+          }),
+        );
+      const { fixture } = await bootEditor('text\n', '/fixture/docs');
+      const view: EditorView | null = fixture.componentInstance.getEditorView();
+      if (view === null) {
+        throw new Error('The editor has no view');
+      }
+      pasteImage(view);
+      await vi.waitFor((): void => {
+        expect(write).toHaveBeenCalled();
+      });
+
+      fixture.destroy();
+      await vi.waitFor((): void => {
+        expect(view.isDestroyed).toBe(true);
+      });
+      finishWrite({ success: true });
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, 20);
+      });
+
+      expect(fixture.componentInstance.getEditorView()).toBeNull();
     });
   });
 
