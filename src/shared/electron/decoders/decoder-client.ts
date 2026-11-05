@@ -7,6 +7,7 @@ import {
   isCompatibleProtocol,
 } from '@shared/api/decoder-protocol';
 import { logger } from '../logger';
+import { LineSplitter, MAX_LINE_LENGTH } from '../line-splitter';
 import { pluginEnvironment } from '../plugin-environment';
 import { pidJournal } from '../pid-journal';
 import { DecoderSpec } from './decoder-descriptor';
@@ -73,9 +74,9 @@ export class DecoderClient {
   private readonly pending: Map<number, Pending> = new Map<number, Pending>();
 
   /**
-   * Holds the incomplete trailing line of stdout, since a chunk may split a message in half.
+   * Holds the longest stdout line the client will buffer before refusing it.
    */
-  private buffer: string = '';
+  private readonly maxLineLength: number;
 
   /**
    * Holds the next correlation identifier.
@@ -96,10 +97,12 @@ export class DecoderClient {
    * Initializes the client. The process is not started until {@link start} is called.
    * @param id The decoder identifier, for logging.
    * @param spec How to spawn the decoder.
+   * @param maxLineLength The longest stdout line to buffer; defaults to {@link MAX_LINE_LENGTH}.
    */
-  public constructor(id: string, spec: DecoderSpec) {
+  public constructor(id: string, spec: DecoderSpec, maxLineLength: number = MAX_LINE_LENGTH) {
     this.id = id;
     this.spec = spec;
+    this.maxLineLength = maxLineLength;
   }
 
   /**
@@ -131,7 +134,15 @@ export class DecoderClient {
     pidJournal()?.register(this.process.pid, 'decoder', this.spec.command);
 
     this.process.stdout?.setEncoding('utf8');
-    this.process.stdout?.on('data', (chunk: string): void => this.onData(chunk));
+    // One per process, so what a dead one left half-written, or still has in the pipe, can never
+    // be read as the start of its successor's first line.
+    const lines: LineSplitter = new LineSplitter({
+      trim: true,
+      maxLineLength: this.maxLineLength,
+      onLine: (line: string): void => this.dispatch(line),
+      onOversized: (): void => this.refuseOversizedLine(),
+    });
+    this.process.stdout?.on('data', (chunk: string): void => lines.push(chunk));
     this.process.stderr?.setEncoding('utf8');
     this.process.stderr?.on('data', (chunk: string): void => {
       logger.debug('DecoderClient', `[${this.id}] ${chunk.trimEnd()}`);
@@ -297,23 +308,16 @@ export class DecoderClient {
   }
 
   /**
-   * Consumes stdout, dispatching each complete line as a response.
-   *
-   * Buffered rather than parsed per chunk: a chunk boundary falls wherever the pipe decides, so a
-   * message routinely arrives in two pieces and parsing per chunk would drop every message that did.
-   * @param chunk The received text.
+   * Refuses a stdout line that has outgrown {@link maxLineLength} without ending. Which request the
+   * line answered cannot be read without parsing it whole, so every request in flight is failed
+   * rather than left to wait out its timeout for an answer that is gone.
    */
-  private onData(chunk: string): void {
-    this.buffer += chunk;
-    let newline: number = this.buffer.indexOf('\n');
-    while (newline !== -1) {
-      const line: string = this.buffer.slice(0, newline).trim();
-      this.buffer = this.buffer.slice(newline + 1);
-      if (line.length > 0) {
-        this.dispatch(line);
-      }
-      newline = this.buffer.indexOf('\n');
-    }
+  private refuseOversizedLine(): void {
+    logger.error(
+      'DecoderClient',
+      `Decoder '${this.id}' wrote a message over ${this.maxLineLength} characters; it was dropped`,
+    );
+    this.failPending('the decoder sent an answer too large to read');
   }
 
   /**
@@ -348,10 +352,18 @@ export class DecoderClient {
     }
     this.process = null;
     this.description = null;
+    this.failPending('the decoder exited');
+  }
+
+  /**
+   * Fails every request still in flight.
+   * @param error Why.
+   */
+  private failPending(error: string): void {
     for (const [id, entry] of [...this.pending]) {
       clearTimeout(entry.timer);
       this.pending.delete(id);
-      entry.resolve({ id, ok: false, error: 'the decoder exited' });
+      entry.resolve({ id, ok: false, error });
     }
   }
 }

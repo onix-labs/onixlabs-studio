@@ -31,6 +31,15 @@ const WINDOWS_1252_HIGH: readonly number[] = [
 ];
 
 /**
+ * Holds the UTF-16 code unit for each of the 256 Windows 1252 bytes.
+ */
+const WINDOWS_1252_UNITS: Uint16Array = Uint16Array.from(
+  { length: 256 },
+  (_unused: unknown, byte: number): number =>
+    byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH[byte - 0x80] : byte,
+);
+
+/**
  * Holds the Windows 1252 byte for each character of {@link WINDOWS_1252_HIGH}.
  */
 const WINDOWS_1252_BYTES: ReadonlyMap<number, number> = new Map<number, number>(
@@ -129,6 +138,21 @@ function swapPairs(bytes: Uint8Array): Buffer {
 }
 
 /**
+ * Decodes Windows 1252 by mapping each byte to its UTF-16 code unit in one pass. Appending a character
+ * at a time builds a rope with a node per byte, which took over a gigabyte of heap and seconds of the
+ * main process for a file near Large File Size Limit's default.
+ * @param bytes The bytes.
+ * @returns Returns the text.
+ */
+function decodeWindows1252(bytes: Uint8Array): string {
+  const units: Uint16Array = new Uint16Array(bytes.length);
+  for (let index: number = 0; index < bytes.length; index += 1) {
+    units[index] = WINDOWS_1252_UNITS[bytes[index]];
+  }
+  return Buffer.from(units.buffer, units.byteOffset, units.byteLength).toString('utf16le');
+}
+
+/**
  * Decodes bytes in a known encoding, with no byte-order mark left on them.
  * @param bytes The bytes.
  * @param encoding The encoding.
@@ -145,15 +169,8 @@ function decodeAs(bytes: Uint8Array, encoding: TextEncoding): string {
       return swapPairs(buffer).toString('utf16le');
     case 'iso88591':
       return buffer.toString('latin1');
-    case 'windows1252': {
-      let text: string = '';
-      for (const byte of buffer) {
-        text += String.fromCharCode(
-          byte >= 0x80 && byte <= 0x9f ? WINDOWS_1252_HIGH[byte - 0x80] : byte,
-        );
-      }
-      return text;
-    }
+    case 'windows1252':
+      return decodeWindows1252(buffer);
   }
 }
 
