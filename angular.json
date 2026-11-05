@@ -129,6 +129,7 @@
             "runnerConfig": "vitest.config.mjs",
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
+            "coverageInclude": ["src/**/*.ts", "../plugins/**/*.ts"],
             "coverageThresholds": {
               "statements": 71.3,
               "branches": 67.6,
