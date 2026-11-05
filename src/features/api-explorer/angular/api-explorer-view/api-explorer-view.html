@@ -7,6 +7,7 @@
 <app-modal
   [open]="prompts.collectionOpen()"
   [width]="24"
+  [frameless]="true"
   ariaLabel="New collection"
   (dismiss)="prompts.cancelCollection()"
 >
@@ -17,8 +18,8 @@
     </p>
     <app-text-field
       class="api-explorer__dialog-field"
-      placeholder="Collection name"
-      ariaLabel="Collection name"
+      variant="floating"
+      label="Collection Name"
       [value]="prompts.collectionName()"
       (valueChange)="prompts.collectionName.set($event)"
       (enter)="prompts.confirmCollection()"
@@ -31,7 +32,7 @@
         [disabled]="prompts.collectionName().trim() === ''"
         (click)="prompts.confirmCollection()"
       />
-      <app-button label="Cancel" (click)="prompts.cancelCollection()" />
+      <app-button variant="none" label="Cancel" (click)="prompts.cancelCollection()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -41,6 +42,7 @@
 <app-modal
   [open]="prompts.environmentOpen()"
   [width]="26"
+  [frameless]="true"
   ariaLabel="New environment"
   (dismiss)="prompts.cancelEnvironment()"
 >
@@ -53,8 +55,8 @@
     </p>
     <app-text-field
       class="api-explorer__dialog-field"
-      placeholder="Environment name"
-      ariaLabel="Environment name"
+      variant="floating"
+      label="Environment Name"
       [value]="prompts.environmentName()"
       (valueChange)="prompts.environmentName.set($event)"
       (enter)="prompts.confirmEnvironment()"
@@ -62,8 +64,9 @@
     />
     <app-text-field
       class="api-explorer__dialog-field"
+      variant="floating"
+      label="Root Address"
       placeholder="https://api.example.com"
-      ariaLabel="Root address"
       [value]="prompts.environmentRootUrl()"
       (valueChange)="prompts.environmentRootUrl.set($event)"
       (enter)="prompts.confirmEnvironment()"
@@ -76,7 +79,7 @@
         [disabled]="prompts.environmentName().trim() === ''"
         (click)="prompts.confirmEnvironment()"
       />
-      <app-button label="Cancel" (click)="prompts.cancelEnvironment()" />
+      <app-button variant="none" label="Cancel" (click)="prompts.cancelEnvironment()" />
     </app-button-row>
   </ng-template>
 </app-modal>

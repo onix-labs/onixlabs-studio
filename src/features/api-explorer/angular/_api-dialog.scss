@@ -12,13 +12,13 @@
 
 .api-explorer__dialog-message {
   margin: 0 0 1.1rem;
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1.5;
-  color: var(--form-muted-foreground-color);
+  color: var(--body-foreground-color);
 
   code {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
-    font-size: 0.8rem;
+    font-size: 0.94rem;
     color: var(--accent-color);
   }
 }
