@@ -178,7 +178,7 @@ export class DebugManager {
       this.forwardEvent(parsed.sessionId, event),
     );
     client.onExit((code: number | null, signal: string | null): void =>
-      this.handleExit(parsed.sessionId, code, signal),
+      this.handleExit(parsed.sessionId, client, code, signal),
     );
     client.onRunInTerminal(
       (
@@ -288,13 +288,22 @@ export class DebugManager {
   }
 
   /**
-   * Handles an adapter process exiting: notifies the renderer and tears the session down.
+   * Handles an adapter process exiting: notifies the renderer and tears the session down. Only the
+   * adapter the session currently owns counts: an ended adapter's exit lands later, and by then a fresh
+   * one may be running under the same session id (a stop followed by an immediate start, or a renderer
+   * reloaded after a crash) — taking its exit for the new adapter's would end the new session.
    * @param id The session identifier.
+   * @param client The connection whose adapter exited.
    * @param code The process exit code, or null when terminated by a signal.
    * @param signal The terminating signal, or null when exited normally.
    */
-  private handleExit(id: string, code: number | null, signal: string | null): void {
-    if (!this.sessions.has(id)) {
+  private handleExit(
+    id: string,
+    client: DebugAdapterConnection,
+    code: number | null,
+    signal: string | null,
+  ): void {
+    if (this.sessions.get(id)?.client !== client) {
       return;
     }
     logger.info(
