@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import * as nodePath from 'node:path';
 import { ReplaceFailure, ReplaceRequest, ReplaceResponse } from '@shared/api/search-channels';
+import { MAX_EDIT_FILE_BYTES } from './apply-text-edits';
 import { logger } from './logger';
 import { ReplaceOptions, ReplaceOutcome, replaceAll, replaceAt } from './search-replace';
 import { WorkspaceContext } from './workspace-context';
@@ -91,6 +92,12 @@ export async function replaceInFiles(
       const real: string = await fs.realpath(resolved);
       if (!isInside(real, realRoot)) {
         failed.push({ path: file, reason: 'It links to somewhere outside the workspace.' });
+        continue;
+      }
+      // Before it is read: past this a file costs far more memory than it is long, and a replace is a
+      // whole-file rewrite that cannot be previewed, so such a file is reported rather than attempted.
+      if ((await fs.stat(real)).size > MAX_EDIT_FILE_BYTES) {
+        failed.push({ path: file, reason: 'It is too large to change on disk.' });
         continue;
       }
       const text: string = await fs.readFile(real, 'utf8');

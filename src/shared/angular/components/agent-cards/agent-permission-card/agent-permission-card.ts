@@ -131,6 +131,9 @@ export class AgentPermissionCard {
     if (item.permissionState === 'dismissed') {
       return 'Answered on another device';
     }
+    if (item.permissionState === 'expired') {
+      return 'Not answered before the run ended';
+    }
     if (item.permissionState !== 'allowed') {
       return 'Denied';
     }

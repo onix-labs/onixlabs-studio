@@ -209,8 +209,8 @@ export class Logger {
 
     ipcMain.handle(
       LogChannel.Query,
-      (_event: IpcMainInvokeEvent, query: unknown): readonly LogRecord[] =>
-        this.query((query as LogQuery | null) ?? {}),
+      (_event: IpcMainInvokeEvent, query: unknown): Promise<readonly LogRecord[]> =>
+        this.queryAnySession((query as LogQuery | null) ?? {}),
     );
 
     ipcMain.handle(LogChannel.Sessions, (): readonly LogSession[] => this.sessions());
@@ -436,6 +436,18 @@ export class Logger {
         ? this.store.current()
         : this.archive.readSession(query.sessionId);
     return LogStore.filter(source, query);
+  }
+
+  /**
+   * Returns records matching a query, as {@link query} does, reading a past session without blocking.
+   * @param query The filter to apply.
+   * @returns Returns the matching records, newest last.
+   */
+  private async queryAnySession(query: LogQuery): Promise<readonly LogRecord[]> {
+    if (query.sessionId === undefined || query.sessionId === this.sessionId) {
+      return this.query(query);
+    }
+    return LogStore.filter(await this.archive.readSessionFile(query.sessionId), query);
   }
 
   /**

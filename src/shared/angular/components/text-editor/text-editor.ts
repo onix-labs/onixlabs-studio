@@ -387,6 +387,11 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private indentation: ResolvedIndentation | null = null;
 
   /**
+   * Gets a value indicating whether the pane has been torn down.
+   */
+  private destroyed: boolean = false;
+
+  /**
    * Holds whether the model is being asked to read its indentation, which is no re-seed to undo.
    */
   private detectingIndentation: boolean = false;
@@ -586,6 +591,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('TextEditor', 'Destroying editor pane', this.modelUri);
+    this.destroyed = true;
     this.bracketColorizationGuard?.dispose();
     this.bracketColorizationGuard = null;
     this.foldingPlaceholders?.dispose();
@@ -958,17 +964,21 @@ export class TextEditor implements AfterViewInit, OnDestroy {
       return;
     }
     const view: MonacoApi.editor.ICodeEditorViewState | null = editor.saveViewState();
-    for (const range of ranges) {
-      editor.setSelection({
-        startLineNumber: range.first,
-        startColumn: 1,
-        endLineNumber: range.last,
-        endColumn: model.getLineMaxColumn(range.last),
-      });
-      await editor.getAction('editor.action.formatSelection')?.run();
-    }
-    if (view !== null) {
-      editor.restoreViewState(view);
+    try {
+      for (const range of ranges) {
+        editor.setSelection({
+          startLineNumber: range.first,
+          startColumn: 1,
+          endLineNumber: range.last,
+          endColumn: model.getLineMaxColumn(range.last),
+        });
+        await editor.getAction('editor.action.formatSelection')?.run();
+      }
+    } finally {
+      // A formatter that fails must not leave the user's caret as the selection it was handed.
+      if (view !== null) {
+        editor.restoreViewState(view);
+      }
     }
   }
 
@@ -1028,7 +1038,10 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    */
   private async initEditor(): Promise<void> {
     await this.monaco.ensureLoaded();
-    this.createEditor();
+    // A tab closed during the first load is gone, and nothing would ever dispose an editor made for it.
+    if (!this.destroyed) {
+      this.createEditor();
+    }
   }
 
   /**

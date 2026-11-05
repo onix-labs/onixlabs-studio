@@ -25,6 +25,10 @@ describe('TerminalBridge', () => {
     expect(await TestBed.inject(TerminalBridge).write('t1', 'ls')).toBe(false);
   });
 
+  it('acknowledge_whenBridgeAbsent_doesNothing', () => {
+    expect(() => TestBed.inject(TerminalBridge).acknowledge('t1', 10)).not.toThrow();
+  });
+
   it('onDataFor_whenBridgeAbsent_returnsANoopUnsubscribe', () => {
     const unsubscribe: () => void = TestBed.inject(TerminalBridge).onDataFor(
       't1',

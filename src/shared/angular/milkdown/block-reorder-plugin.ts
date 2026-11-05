@@ -95,6 +95,8 @@ interface ReorderState {
 
 /** Geometry snapshot captured at drag start, in document order. */
 interface Metrics {
+  /** The document measured; positions mean nothing against any other. */
+  readonly doc: ProseMirrorNode;
   /** Document position before each top-level node. */
   readonly positions: number[];
   /** DOM element for each top-level node. */
@@ -244,7 +246,7 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       }
     }
 
-    return { positions, doms, tops, heights, advances, n };
+    return { doc: view.state.doc, positions, doms, tops, heights, advances, n };
   }
 
   /**
@@ -397,6 +399,12 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
             ownerDocument.removeEventListener('drag', onDocumentDrag);
             onDocumentDrag = null;
           }
+          // A drag can outlive the editor: its dragend must not reach a view that has gone.
+          if (onDocumentDragEnd) {
+            ownerDocument.removeEventListener('dragend', onDocumentDragEnd);
+            onDocumentDragEnd = null;
+          }
+          metrics = null;
           destroyGhost();
         },
       };
@@ -406,7 +414,7 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       decorations(state: EditorState): DecorationSet {
         const ds: ReorderState | undefined = reorderKey.getState(state);
         const m: Metrics | null = metrics;
-        if (!ds || !ds.active || !m) return DecorationSet.empty;
+        if (!ds?.active || m?.doc !== state.doc) return DecorationSet.empty;
 
         // Build the post-drop block order.
         const order: number[] = [];
@@ -446,6 +454,9 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       handleDOMEvents: {
         dragover: (view: EditorView, event: DragEvent): boolean => {
           try {
+            // The document changed under the held block (an agent, the file on disk): give up rather
+            // than move it by positions that no longer mean what they did.
+            if (metrics && metrics.doc !== view.state.doc) cleanup(view, true);
             if (!ensureActive(view)) return false;
             const m: Metrics | null = metrics;
             if (!m) return false;
@@ -469,6 +480,10 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
           const ds: ReorderState | undefined = reorderKey.getState(view.state);
           const m: Metrics | null = metrics;
           if (!ds || !ds.active || !m) return false;
+          if (m.doc !== view.state.doc) {
+            cleanup(view, true);
+            return false;
+          }
 
           try {
             event.preventDefault();

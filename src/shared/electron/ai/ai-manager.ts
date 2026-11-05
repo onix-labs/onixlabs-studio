@@ -604,7 +604,16 @@ export class AiManager {
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       logger.trace('AiManager.register', 'Run invoked');
       if (this.isRunRequest(request)) {
-        void this.run(request);
+        // A run that fails before its turn is under way has nothing else to report it, and the
+        // renderer would show it Working for ever.
+        void this.run(request).catch((error: unknown): void => {
+          logger.error('AiManager', `Agent run ${request.requestId} could not start`, error);
+          this.finish(
+            request.requestId,
+            'error',
+            error instanceof Error ? error.message : String(error),
+          );
+        });
       } else {
         logger.warn('AiManager.register', 'Rejected malformed run request');
       }
@@ -760,7 +769,7 @@ export class AiManager {
     this.runs.clear();
     for (const entry of this.liveSessions.values()) {
       this.clearReap(entry);
-      void entry.session.close();
+      this.closeQuietly(entry.session);
     }
     this.liveSessions.clear();
     for (const requestId of [...this.clocks.keys()]) {
@@ -891,10 +900,23 @@ export class AiManager {
     provider: AgentProvider,
     settings: Readonly<Record<string, unknown>> = {},
   ): Promise<AiDiscoverModelsResult> {
-    const report: AgentModelReport | null = await provider.discoverModels!(
-      this.authForConnection(connection.id),
-      settings,
-    );
+    let report: AgentModelReport | null;
+    try {
+      // ⛔ The credential comes from the connection that arrived, for the reason the provider does: the
+      // cached map holds only what `listProviders` last saw, and this one may be newer than that (#697).
+      report = await provider.discoverModels!(
+        this.auth.authFor(connection.id, connection.auth),
+        settings,
+      );
+    } catch (error: unknown) {
+      logger.warn('AiManager.discoverThroughProvider', `${provider.label} failed`, error);
+      return {
+        ok: false,
+        models: connection.models,
+        added: 0,
+        detail: `${provider.label} could not list its models: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     if (report === null) {
       return {
         ok: false,
@@ -1093,6 +1115,9 @@ export class AiManager {
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
     const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
+    // Registered before the first wait, so a Stop arriving during it has something to reach.
+    const controller: AbortController = new AbortController();
+    this.runs.set(request.requestId, controller);
     const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
     if (skills.length > 0) {
       logger.debug(
@@ -1113,8 +1138,11 @@ export class AiManager {
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
     );
-    const controller: AbortController = new AbortController();
-    this.runs.set(request.requestId, controller);
+    if (controller.signal.aborted) {
+      logger.debug('AiManager.run', `Run ${request.requestId} was stopped before it started`);
+      this.finish(request.requestId, 'aborted', '');
+      return;
+    }
     // Arm the wall-clock budget when one is set; expiry aborts through the ordinary abort path and
     // finish() turns the stop into a structured timeout error.
     const runTimeoutMs: number =
@@ -1376,25 +1404,38 @@ export class AiManager {
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
     entry.activeTurns += 1;
-    return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
-      entry.activeTurns -= 1;
-      const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
-      // Its harness was updated or removed during the turn: the turn was let finish, and now the
-      // session ends, so the next turn resumes on whatever is installed now (#881).
-      if (current === entry && entry.retiring && entry.activeTurns === 0) {
-        logger.info(
-          'AiManager',
-          `Ending live session ${key} now its turn is over: harness changed`,
-        );
-        this.endSession(key, entry, 'retired');
-        return;
-      }
-      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
-      if (current !== undefined) {
-        current.lastActivity = Date.now();
-        this.armReap(key, current);
-      }
-    });
+    return this.trackLiveTurn(key, entry.session, this.startTurn(entry.session, context)).finally(
+      (): void => {
+        entry.activeTurns -= 1;
+        const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+        // Its harness was updated or removed during the turn: the turn was let finish, and now the
+        // session ends, so the next turn resumes on whatever is installed now (#881).
+        if (current === entry && entry.retiring && entry.activeTurns === 0) {
+          logger.info(
+            'AiManager',
+            `Ending live session ${key} now its turn is over: harness changed`,
+          );
+          this.endSession(key, entry, 'retired');
+          return;
+        }
+        // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+        if (current !== undefined) {
+          current.lastActivity = Date.now();
+          this.armReap(key, current);
+        }
+      },
+    );
+  }
+
+  /**
+   * Starts a turn in a session, so one that throws rather than rejects is carried the same way: the
+   * caller has already counted the turn, and only a settling promise uncounts it.
+   * @param session The session.
+   * @param context The turn's context.
+   * @returns Returns the turn promise.
+   */
+  private async startTurn(session: AgentSession, context: AgentRunContext): Promise<void> {
+    await session.turn(context);
   }
 
   /**
@@ -1586,12 +1627,23 @@ export class AiManager {
     if (this.liveSessions.get(key) === entry) {
       this.liveSessions.delete(key);
     }
-    void entry.session.close();
+    this.closeQuietly(entry.session);
     this.emit({
       requestId: entry.lastRequestId,
       kind: 'session-ended',
       agentSessionId: key,
       reason,
+    });
+  }
+
+  /**
+   * Closes a session nothing is left waiting on, so a harness failing to close is a line in the log and
+   * not an unhandled rejection: the session is already gone from Studio's point of view.
+   * @param session The session.
+   */
+  private closeQuietly(session: AgentSession): void {
+    void session.close().catch((error: unknown): void => {
+      logger.warn('AiManager', 'A live session failed to close', error);
     });
   }
 
@@ -1613,7 +1665,7 @@ export class AiManager {
       if (entry?.session === session) {
         this.endSession(key, entry, 'evicted');
       } else {
-        void session.close();
+        this.closeQuietly(session);
       }
       throw error;
     });
@@ -2196,6 +2248,14 @@ export class AiManager {
    * @param reply The renderer's reply.
    */
   private resolveEditDecision(reply: AiEditDecisionReply): void {
+    // ⛔ Only an answer to a decision actually open counts: a stale or forged reply must not be able to
+    // switch off every later edit prompt.
+    const settle: ((choice: EditDecisionOutcome) => void) | undefined = this.editDecisions.get(
+      reply.decisionId,
+    );
+    if (settle === undefined) {
+      return;
+    }
     if (reply.choice === 'yes-auto') {
       logger.debug(
         'AiManager.resolveEditDecision',
@@ -2203,7 +2263,7 @@ export class AiManager {
       );
       this.autoAcceptEdits = true;
     }
-    this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');
+    settle(reply.choice === 'no' ? 'no' : 'yes');
   }
 
   /**

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { MarkdownStatusStrip } from './markdown-status-strip';
-import { computeMarkdownStats, MarkdownStatus } from './markdown-status';
+import { computeMarkdownStats, MarkdownContext, MarkdownStatus } from './markdown-status';
 
 /**
  * Reads the rendered segment texts from the strip's trailing group.
@@ -67,10 +67,37 @@ describe('computeMarkdownStats', () => {
   });
 });
 
+describe('MarkdownStatus', () => {
+  it('publish_ofTheSameDocumentAndSelection_keepsTheContext_soNothingRecounts', () => {
+    TestBed.configureTestingModule({ providers: [MarkdownStatus] });
+    const status: MarkdownStatus = TestBed.inject(MarkdownStatus);
+    const context: MarkdownContext = { path: '/a.md', text: 'words', selectedText: null };
+
+    status.publish(context);
+    status.publish({ ...context });
+
+    expect(status.context()).toBe(context);
+  });
+
+  it('publish_ofANewSelection_replacesTheContext', () => {
+    TestBed.configureTestingModule({ providers: [MarkdownStatus] });
+    const status: MarkdownStatus = TestBed.inject(MarkdownStatus);
+
+    status.publish({ path: '/a.md', text: 'two words', selectedText: null });
+    status.publish({ path: '/a.md', text: 'two words', selectedText: 'two' });
+
+    expect(status.context()?.selectedText).toBe('two');
+  });
+});
+
 describe('computeMarkdownStats characters (#882)', () => {
   it('countsWhatAReaderSees_spacesIncluded_lineBreaksNot', () => {
     expect(computeMarkdownStats('ab c').characters).toBe(4);
     expect(computeMarkdownStats('ab\nc').characters).toBe(3);
+  });
+
+  it('countsTheGraphemesOfTextMixingAsciiWithOtherScripts', () => {
+    expect(computeMarkdownStats('ab 👍🏽\ne\u0301').characters).toBe(5);
   });
 
   it('countsAnEmojiOrAccentedLetterAsOneCharacter', () => {

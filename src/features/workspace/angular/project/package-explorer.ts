@@ -169,9 +169,25 @@ export class PackageExplorer {
     if (this.bridge === undefined || root === null) {
       return;
     }
-    const sources: readonly PackageSourceInfo[] = await this.bridge.invoke<
-      readonly PackageSourceInfo[]
-    >(PackageChannel.Sources, root);
+    const generation: number = this.generation;
+    let sources: readonly PackageSourceInfo[];
+    try {
+      sources = await this.bridge.invoke<readonly PackageSourceInfo[]>(
+        PackageChannel.Sources,
+        root,
+      );
+    } catch (error: unknown) {
+      this.log.warn('workspace.packages', 'Could not list package sources', error);
+      // Left unloaded, so reopening the explorer tries again.
+      if (generation === this.generation) {
+        this.sourcesLoaded = false;
+      }
+      return;
+    }
+    // The workspace may have changed while the sources were on their way.
+    if (generation !== this.generation) {
+      return;
+    }
     this.sourcesSignal.set(sources);
     if (sources.length > 0) {
       this.selectedSourceSignal.set(sources[0].name);
@@ -251,13 +267,23 @@ export class PackageExplorer {
       return;
     }
     this.loadingSignal.set(true);
-    const result: PackageSearchResult = await this.bridge.invoke<PackageSearchResult>(
-      PackageChannel.Search,
-      root,
-      source,
-      this.querySignal().trim(),
-      { skip, take: PAGE_SIZE, prerelease: this.prereleaseSignal() },
-    );
+    let result: PackageSearchResult;
+    try {
+      result = await this.bridge.invoke<PackageSearchResult>(
+        PackageChannel.Search,
+        root,
+        source,
+        this.querySignal().trim(),
+        { skip, take: PAGE_SIZE, prerelease: this.prereleaseSignal() },
+      );
+    } catch (error: unknown) {
+      this.log.warn('workspace.packages', 'Package search failed', error);
+      // A spinner left on would also block Load More for good.
+      if (generation === this.generation) {
+        this.loadingSignal.set(false);
+      }
+      return;
+    }
     if (generation !== this.generation) {
       return;
     }
