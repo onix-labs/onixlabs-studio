@@ -3048,6 +3048,23 @@ describe('LspClient', () => {
 
     expect(diagnostics.emitted).toHaveLength(1);
   });
+
+  it('restart_whenTheBridgeFails_saysSoRatherThanStartingForever', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client);
+    await flush();
+    vi.spyOn(lsp, 'invoke').mockRejectedValueOnce(new Error('main process stalled'));
+
+    await client.restart('/root::typescript');
+
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(
+      status
+        .servers()
+        .find((server: LspServer): boolean => server.sessionId === '/root::typescript')?.detail,
+    ).toBe('main process stalled');
+  });
 });
 
 describe('idleStopMs', () => {

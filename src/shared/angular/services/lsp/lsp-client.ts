@@ -1803,10 +1803,13 @@ export class LspClient implements OnDestroy {
           ? await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId)
           : await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId, braceStyle);
     } catch (error: unknown) {
-      result = {
-        success: false,
-        error: error instanceof Error ? error.message : 'The language server failed to restart.',
-      };
+      // The bridge failed, so no exit will ever come to end the "starting" this has just set.
+      this.status.setState(
+        sessionId,
+        'unavailable',
+        error instanceof Error ? error.message : 'The language server failed to restart.',
+      );
+      return;
     }
     if (result.success || result.error !== 'No such session') {
       // The main process restarted (or failed to restart) a running session; its `restarted` exit
