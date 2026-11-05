@@ -3016,6 +3016,38 @@ describe('LspClient', () => {
 
     expect(diagnostics.emitted).toEqual([]);
   });
+
+  it.each<[string, unknown]>([
+    ['NoParams', null],
+    ['NoUri', { diagnostics: [] }],
+    ['NoDiagnostics', { uri: 'file:///root/a.ts' }],
+    ['AnUndecodableUri', { uri: 'file:///root/%zz.ts', diagnostics: [] }],
+  ])('publishDiagnostics_with%s_isIgnored', async (_name: string, params: unknown) => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+
+    lsp.notify('/root::typescript', 'textDocument/publishDiagnostics', params);
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
+
+  it('workspaceDiagnostics_skipsAReportItCannotRead_andKeepsTheRest', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+
+    lsp.notify('/root::typescript', WORKSPACE_DIAGNOSTICS_METHOD, {
+      reports: [
+        null,
+        { uri: 'file:///root/%zz.ts', kind: 'full', items: [problem] },
+        { uri: 'file:///root/b.ts', kind: 'full', items: [problem] },
+      ],
+    });
+
+    expect(diagnostics.emitted).toHaveLength(1);
+  });
 });
 
 describe('idleStopMs', () => {

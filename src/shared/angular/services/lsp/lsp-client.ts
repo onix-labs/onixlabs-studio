@@ -151,6 +151,23 @@ function workspaceSymbolsOffered(capabilities: unknown): boolean {
 }
 
 /**
+ * Works out the key a document a server named is tracked under. Servers are untrusted: the name may
+ * not be a string, and a stray `%` makes it impossible to decode.
+ * @param uri The document's URI, as the server gave it.
+ * @returns Returns the key, or null when the URI cannot be read.
+ */
+function documentKeyOf(uri: unknown): string | null {
+  if (typeof uri !== 'string') {
+    return null;
+  }
+  try {
+    return normalise(uriToPath(uri));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reads a `workspace/symbol` answer — `SymbolInformation` or `WorkspaceSymbol`, whose location may
  * name only the file — dropping what names no file.
  * @param result The answer, untrusted.
@@ -2600,8 +2617,12 @@ export class LspClient implements OnDestroy {
     if (message.method !== 'textDocument/publishDiagnostics') {
       return;
     }
-    const params: PublishDiagnosticsParams = message.params as PublishDiagnosticsParams;
-    const key: string = normalise(uriToPath(params.uri));
+    const params: PublishDiagnosticsParams | null =
+      message.params as PublishDiagnosticsParams | null;
+    const key: string | null = documentKeyOf(params?.uri);
+    if (key === null || params === null || !Array.isArray(params.diagnostics)) {
+      return;
+    }
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
@@ -3333,16 +3354,16 @@ export class LspClient implements OnDestroy {
     if (batch?.reset === true) {
       files.clear();
     }
-    for (const report of reports as readonly {
+    for (const report of reports as readonly ({
       uri?: unknown;
       kind?: unknown;
       items?: unknown;
-    }[]) {
-      if (typeof report.uri !== 'string' || report.kind !== 'full') {
+    } | null)[]) {
+      const key: string | null = documentKeyOf(report?.uri);
+      if (key === null || typeof report?.uri !== 'string' || report.kind !== 'full') {
         continue;
       }
       const uri: string = report.uri;
-      const key: string = normalise(uriToPath(uri));
       const items: readonly LspDiagnostic[] = Array.isArray(report.items)
         ? (report.items as readonly LspDiagnostic[])
         : [];
