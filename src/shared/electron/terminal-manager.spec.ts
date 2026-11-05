@@ -541,6 +541,13 @@ describe('TerminalManager', () => {
       expect(pty.written).toEqual([]);
     });
 
+    it('write_toAProcessDyingUnderIt_answersFalseInsteadOfThrowing', async () => {
+      const pty: FakePty = await create();
+      pty.writeError = new Error('EIO: i/o error, write');
+
+      await expect(invoke(TerminalChannel.Write, 't1', 'x')).resolves.toBe(false);
+    });
+
     it('write_toATaskSession_passesOnlyCtrlC', async () => {
       const pty: FakePty = await create({ kind: 'task', command: 'npm' });
 

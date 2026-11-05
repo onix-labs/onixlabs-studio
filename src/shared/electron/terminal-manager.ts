@@ -410,8 +410,14 @@ export class TerminalManager {
     if (!allowsInput(this.kinds.get(id) ?? 'shell', data)) {
       return false;
     }
-    terminal.write(data);
-    return true;
+    try {
+      terminal.write(data);
+      return true;
+    } catch (error: unknown) {
+      // The process can die between the lookup and the write; the exit event reports that.
+      logger.debug('TerminalManager.write', `Write to ${id} failed`, error);
+      return false;
+    }
   }
 
   /**
