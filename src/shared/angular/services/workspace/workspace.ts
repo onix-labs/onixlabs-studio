@@ -1186,21 +1186,20 @@ export class Workspace {
         children = node.children;
       } else {
         await acquire();
+        let listing: DirectoryListing | null;
         try {
-          const listing: DirectoryListing | null =
-            await (this.bridge?.invoke<DirectoryListing | null>(
-              WorkspaceChannel.ReadDirectory,
-              node.path,
-            ) ?? Promise.resolve(null));
-          children =
-            listing === null
-              ? []
-              : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
-                  this.toNode(entry),
-                );
+          listing = await this.readListingOrNull(node.path);
         } finally {
           release();
         }
+        // One folder that cannot be read must not cost the rest of the walk, and stays unloaded so the
+        // next expand tries again rather than showing it as empty.
+        if (listing === null) {
+          return node;
+        }
+        children = listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
+          this.toNode(entry),
+        );
       }
       const expanded: readonly WorkspaceTreeNode[] = await Promise.all(children.map(expandNode));
       return { ...node, expanded: true, loading: false, children: expanded };

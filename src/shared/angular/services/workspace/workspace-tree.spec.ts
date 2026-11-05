@@ -7,6 +7,7 @@ import {
 } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Workspace } from './workspace';
 
 /**
@@ -44,6 +45,8 @@ class FakeDisk {
 
   public failing: boolean = false;
   public unreadable: boolean = false;
+  public readonly rejecting: Set<string> = new Set<string>();
+  public readonly refusing: Set<string> = new Set<string>();
   public reads: string[] = [];
   public operation: FileOperationResult | Error = { success: true, path: '/ws/new.md' };
   public closed: string[] = [];
@@ -58,11 +61,13 @@ class FakeDisk {
         return Promise.resolve(this.listings.get('/ws') ?? null);
       case WorkspaceChannel.ReadDirectory as string:
         this.reads.push(String(args[0]));
-        if (this.failing) {
+        if (this.failing || this.rejecting.has(String(args[0]))) {
           throw new Error('the bridge has gone');
         }
         return Promise.resolve(
-          this.unreadable ? null : (this.listings.get(String(args[0])) ?? null),
+          this.unreadable || this.refusing.has(String(args[0]))
+            ? null
+            : (this.listings.get(String(args[0])) ?? null),
         );
       case WorkspaceChannel.CloseFolder as string:
         this.closed.push(String(args[0]));
@@ -172,6 +177,75 @@ describe('Workspace tree resilience', () => {
       await service.toggleDirectory('/ws/src');
 
       expect(shown()).toContain('/ws/src/main.ts');
+    });
+
+    describe('everything', () => {
+      beforeEach(() => {
+        TestBed.inject(Settings).set('workspaces.fileExplorerExpandAll', 'entire-tree');
+      });
+
+      it('expandAll_withAFolderWhoseReadRejects_stillExpandsTheRest', async () => {
+        disk.rejecting.add('/ws/lib');
+
+        await service.expandAll();
+
+        expect(shown()).toContain('/ws/src/main.ts');
+        expect(row('/ws/lib')).toEqual({ loading: false, expanded: false });
+      });
+
+      it('expandAll_ofAnUnreadableFolder_isRetriedRatherThanShownEmpty', async () => {
+        disk.refusing.add('/ws/src');
+        await service.expandAll();
+        expect(row('/ws/src')).toEqual({ loading: false, expanded: false });
+
+        disk.refusing.clear();
+        await service.toggleDirectory('/ws/src');
+
+        expect(shown()).toContain('/ws/src/main.ts');
+      });
+
+      it('expandAll_neverDescendsIntoADependencyCache', async () => {
+        disk.listings.set('/ws/lib', {
+          path: '/ws/lib',
+          name: 'lib',
+          entries: [{ name: 'node_modules', path: '/ws/lib/node_modules', type: 'directory' }],
+        });
+
+        await service.expandAll();
+
+        expect(disk.reads).not.toContain('/ws/lib/node_modules');
+        expect(shown()).toContain('/ws/lib/node_modules');
+      });
+
+      it('expandAll_whenTheFolderCloses_doesNotResurrectTheTree', async () => {
+        const expanding: Promise<void> = service.expandAll();
+        service.releaseFolder();
+
+        await expanding;
+
+        expect(shown()).toEqual([]);
+      });
+    });
+
+    it('expandAll_ofLoadedFolders_readsNothing_andCollapseAllFoldsThemAgain', async () => {
+      await service.toggleDirectory('/ws/src');
+      service.collapseAll();
+      expect(row('/ws/src')).toEqual({ loading: false, expanded: false });
+      const reads: number = disk.reads.length;
+
+      await service.expandAll();
+
+      expect(row('/ws/src')).toEqual({ loading: false, expanded: true });
+      expect(row('/ws/lib')).toEqual({ loading: false, expanded: false });
+      expect(disk.reads).toHaveLength(reads);
+    });
+
+    it('filter_keepsAMatchsParents_andDropsTheRest', async () => {
+      await service.toggleDirectory('/ws/src');
+
+      service.setQuery('MAIN');
+
+      expect(shown()).toEqual(['/ws/src', '/ws/src/main.ts']);
     });
 
     it('expand_ofAFile_orSomethingUnknown_doesNothing', async () => {
