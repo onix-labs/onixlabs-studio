@@ -532,6 +532,17 @@ describe('AiManager', () => {
       });
     });
 
+    it('discover_whenTheHarnessThrows_answersRatherThanRejecting', async () => {
+      provider.report = (): Promise<never> => Promise.reject(new Error('harness fell over'));
+
+      const result: AiDiscoverModelsResult = await invoke(AiChannel.DiscoverModels, {
+        connection: connection(),
+      });
+
+      expect(result).toMatchObject({ ok: false, models: connection().models, added: 0 });
+      expect(result.detail).toContain('harness fell over');
+    });
+
     it('discover_carriesASanitisedExecutableChoiceToTheHarness', async () => {
       await invoke(AiChannel.DiscoverModels, {
         connection: connection(),

@@ -891,12 +891,23 @@ export class AiManager {
     provider: AgentProvider,
     settings: Readonly<Record<string, unknown>> = {},
   ): Promise<AiDiscoverModelsResult> {
-    // ⛔ The credential comes from the connection that arrived, for the reason the provider does: the
-    // cached map holds only what `listProviders` last saw, and this one may be newer than that (#697).
-    const report: AgentModelReport | null = await provider.discoverModels!(
-      this.auth.authFor(connection.id, connection.auth),
-      settings,
-    );
+    let report: AgentModelReport | null;
+    try {
+      // ⛔ The credential comes from the connection that arrived, for the reason the provider does: the
+      // cached map holds only what `listProviders` last saw, and this one may be newer than that (#697).
+      report = await provider.discoverModels!(
+        this.auth.authFor(connection.id, connection.auth),
+        settings,
+      );
+    } catch (error: unknown) {
+      logger.warn('AiManager.discoverThroughProvider', `${provider.label} failed`, error);
+      return {
+        ok: false,
+        models: connection.models,
+        added: 0,
+        detail: `${provider.label} could not list its models: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     if (report === null) {
       return {
         ok: false,
