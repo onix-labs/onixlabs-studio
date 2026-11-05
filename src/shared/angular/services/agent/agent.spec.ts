@@ -138,11 +138,13 @@ describe('Agent', () => {
       | 'respondInput'
       | 'respondEditDecision'
       | 'checkSignIn'
+      | 'signOut'
     > = {
       // A failed run consults the authoritative sign-in status before offering to sign in. These tests
       // exercise error handling, not the login prompt, so the user is reported as signed in.
       checkSignIn: (): Promise<AiSignInStatus> =>
         Promise.resolve({ supported: true, signedIn: true }),
+      signOut: (): Promise<void> => Promise.resolve(),
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
@@ -2813,5 +2815,91 @@ describe('Agent', () => {
 
     expect(agent.tasks()).toEqual([]);
     expect(transcript()).toEqual(['Background tasks untracked', 'go again']);
+  });
+
+  const CONNECTION: AiConnection = {
+    id: 'claude',
+    kind: 'claude',
+    label: 'Claude',
+    auth: 'sign-in',
+    models: [],
+    defaultModelId: 'claude-opus-4-8',
+  };
+
+  /**
+   * Makes the provider one Studio can sign the user in to.
+   * @returns Returns a promise that resolves once the providers have reloaded.
+   */
+  async function offerSignIn(): Promise<void> {
+    providers = PROVIDERS.map((info: AiProviderInfo): AiProviderInfo => ({
+      ...info,
+      supportsSignIn: true,
+    }));
+    await TestBed.inject(AgentEngine).loadProviders();
+  }
+
+  it('clear_forgetsTheTurnThatWasWaitingOnSignIn', async () => {
+    await offerSignIn();
+    agent.send('secret plan');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    agent.clear();
+    agent.onLoginSucceeded();
+
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('restore_forgetsTheTurnThatWasWaitingOnSignIn', async () => {
+    await offerSignIn();
+    agent.send('secret plan');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'old' }]);
+    agent.onLoginSucceeded();
+
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('error_whoseSignInCheckAnswersAfterAClear_promptsNothing', async () => {
+    await offerSignIn();
+    vi.spyOn(TestBed.inject(AgentEngine), 'connection').mockReturnValue(CONNECTION);
+    let answer: (status: AiSignInStatus) => void = (): void => undefined;
+    vi.spyOn(TestBed.inject(AiRuntime), 'checkSignIn').mockReturnValue(
+      new Promise<AiSignInStatus>((resolve: (status: AiSignInStatus) => void): void => {
+        answer = resolve;
+      }),
+    );
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'mystery failure' });
+
+    agent.clear();
+    answer({ supported: true, signedIn: false });
+    await settleStream();
+
+    expect(agent.needsLogin()).toBe(false);
+  });
+
+  it('logout_whenSigningOutFails_saysSoAndKeepsTheSession', async () => {
+    vi.spyOn(TestBed.inject(AgentEngine), 'connection').mockReturnValue(CONNECTION);
+    vi.spyOn(TestBed.inject(AiRuntime), 'signOut').mockRejectedValue(new Error('keychain locked'));
+    closeSessionCalls = [];
+
+    await agent.logout();
+
+    const toast: Notification = TestBed.inject(Notifications).toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.title).toContain('Could not sign out');
+    expect(toast.detail).toBe('keychain locked');
+    expect(closeSessionCalls).toEqual([]);
   });
 });

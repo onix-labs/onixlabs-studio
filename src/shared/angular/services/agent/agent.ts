@@ -1880,6 +1880,8 @@ export class Agent {
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
     this.conversationEpoch += 1;
+    // The turn that needed signing in went with the conversation; a sign-in must not re-send it.
+    this.retryAfterLogin = false;
     this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
@@ -1922,6 +1924,7 @@ export class Agent {
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
     this.conversationEpoch += 1;
+    this.retryAfterLogin = false;
     this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
@@ -2397,10 +2400,11 @@ export class Agent {
     if (request === null) {
       return;
     }
+    const epoch: number = this.conversationEpoch;
     void this.runtime
       .checkSignIn(request)
       .then((status: AiSignInStatus): void => {
-        if (status.supported && !status.signedIn) {
+        if (epoch === this.conversationEpoch && status.supported && !status.signedIn) {
           this.logger.warn('Agent', 'Sign-in expired or absent; prompting sign-in');
           this.retryAfterLogin = true;
           this.needsLoginState.set(true);
@@ -2409,6 +2413,9 @@ export class Agent {
       .catch((): void => {
         // A failed status check (for example the login IPC being unavailable) must not swallow the
         // prompt: the run already failed, so err towards offering sign-in.
+        if (epoch !== this.conversationEpoch) {
+          return;
+        }
         this.retryAfterLogin = true;
         this.needsLoginState.set(true);
       });
@@ -2461,7 +2468,22 @@ export class Agent {
     this.logger.info('Agent', `Signing out of ${name}`);
     const request: AiSignInRequest | null = this.signInRequest();
     if (request !== null) {
-      await this.runtime.signOut(request);
+      try {
+        await this.runtime.signOut(request);
+      } catch (error: unknown) {
+        // Still signed in, so the session stays: its caller does not await this, and saying nothing
+        // would leave the user believing the sign-out worked.
+        this.logger.warn('Agent', `Could not sign out of ${name}`, error);
+        this.notifications.notify({
+          severity: 'error',
+          title: `Could not sign out of ${name}`,
+          detail: error instanceof Error ? error.message : String(error),
+          actions: [],
+          key: 'agent:logout',
+          route: 'default',
+        });
+        return;
+      }
     }
     this.resetAgentSession();
     this.notifications.notify({
