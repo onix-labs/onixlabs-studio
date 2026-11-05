@@ -22,6 +22,13 @@ import {
 import { JsDebugSession } from './js-debug-session';
 
 /**
+ * Specifies how long, in milliseconds, to wait for an adapter to answer `disconnect` when a session is
+ * stopped. The adapter is killed regardless, so this only bounds how long a wedged one can hold up the
+ * stop; the kill that follows escalates to SIGKILL on its own grace period.
+ */
+const DISCONNECT_TIMEOUT_MS: number = 3000;
+
+/**
  * Holds a running debug session: its adapter connection and the workspace root it is rooted at.
  */
 interface DebugSession {
@@ -246,12 +253,38 @@ export class DebugManager {
     }
     logger.trace('DebugManager', `Stopping debug session ${id}`);
     try {
-      await session.client.sendRequest('disconnect', { terminateDebuggee: true });
+      await this.disconnect(session.client);
     } catch (error: unknown) {
       // The adapter is being killed regardless; ignore a failed graceful disconnect.
       logger.debug('DebugManager', `Graceful disconnect failed for session ${id}`, error);
     }
-    this.tearDown(id);
+    if (this.sessions.get(id) === session) {
+      this.tearDown(id);
+    }
+  }
+
+  /**
+   * Asks an adapter to disconnect, terminating its debuggee, without waiting on it for long.
+   * @param client The adapter connection.
+   * @returns Returns a promise that settles when the adapter answers, or rejects when it does not in
+   * time.
+   */
+  private disconnect(client: DebugAdapterConnection): Promise<void> {
+    return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
+      const timer: NodeJS.Timeout = setTimeout((): void => {
+        reject(new Error('The debug adapter did not answer disconnect in time.'));
+      }, DISCONNECT_TIMEOUT_MS);
+      client.sendRequest('disconnect', { terminateDebuggee: true }).then(
+        (): void => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (reason: unknown): void => {
+          clearTimeout(timer);
+          reject(reason instanceof Error ? reason : new Error('Disconnect failed'));
+        },
+      );
+    });
   }
 
   /**
