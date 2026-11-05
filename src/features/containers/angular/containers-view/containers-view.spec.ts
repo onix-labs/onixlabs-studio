@@ -357,23 +357,6 @@ describe('ContainersView', () => {
     expect(text).toContain('nginx:latest');
   });
 
-  it('startInvokesTheStartChannelForTheContainer', async () => {
-    stubBridge({ available: true });
-    const fixture: ComponentFixture<ContainersView> = await createView();
-
-    (fixture.componentInstance as unknown as { start(id: string): void }).start('abc123');
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, 0);
-    });
-
-    expect(
-      calls.some(
-        (call: RecordedCall): boolean =>
-          (call.channel as ContainerChannel) === ContainerChannel.Start,
-      ),
-    ).toBe(true);
-  });
-
   it('remove_asksFirst_andRemovesNothingWhenTheUserSaysNo', async () => {
     // #969: a removed container cannot be got back.
     stubBridge({ available: true });
@@ -402,7 +385,7 @@ describe('ContainersView', () => {
     expect(removals()).toBe(1);
   });
 
-  it('bulk_actsOnEveryTickedContainer_andTheRowMenuOffersPauseAndRestart', async () => {
+  it('bulk_actsOnEveryTickedContainer_andTheRowMenuOffersPauseButNotRestart', async () => {
     // #974.
     stubBridge({ available: true });
     const fixture: ComponentFixture<ContainersView> = await createView();
@@ -433,8 +416,9 @@ describe('ContainersView', () => {
 
     view.menuTarget.set(CONTAINER);
     expect(view.rowMenuItems().map((item: MenuItem): string => item.id)).toEqual(
-      expect.arrayContaining(['restart', 'pause']),
+      expect.arrayContaining(['pause']),
     );
+    expect(view.rowMenuItems().map((item: MenuItem): string => item.id)).not.toContain('restart');
   });
 
   it('viewLogs_opensADockerLogsTerminalSession', async () => {
@@ -535,9 +519,9 @@ describe('ContainersView', () => {
       stubBridge({ available: true });
       const fixture: ComponentFixture<ContainersView> = await createView();
 
-      (fixture.nativeElement as HTMLElement)
-        .querySelector<HTMLInputElement>('.containers__running-only input')
-        ?.click();
+      const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+      ribbon.setShown('paused', false);
+      ribbon.setShown('stopped', false);
       fixture.detectChanges();
 
       expect(names(fixture)).toEqual(['web']);
@@ -648,8 +632,7 @@ describe('ContainersView', () => {
       readonly engineStartCommand: Signal<string | null>;
       setChecked(id: string, on: boolean): void;
       clearChecked(): void;
-      toggleAllChecked(): void;
-      allChecked(): boolean;
+      checked(): ReadonlySet<string>;
       bulk(action: 'start' | 'stop' | 'restart' | 'remove'): Promise<void>;
       onRowMenu(id: string): void;
       removeImage(entry: { image: ImageSummary; usedBy: number }): Promise<void>;
@@ -712,15 +695,12 @@ describe('ContainersView', () => {
 
         ribbon.stop();
         await settled();
-        ribbon.start();
-        await settled();
         ribbon.restart();
         await settled();
 
         expect(ribbon.hasSelection()).toBe(true);
         expect(ribbon.selectionRunning()).toBe(true);
         expect(calledWith(ContainerChannel.Stop)).toEqual(['abc123']);
-        expect(calledWith(ContainerChannel.Start)).toEqual(['abc123']);
         expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
       });
 
@@ -733,7 +713,8 @@ describe('ContainersView', () => {
         ribbon.stop();
         ribbon.remove();
         ribbon.restart();
-        ribbon.togglePause();
+        ribbon.pause();
+        ribbon.resume();
         ribbon.viewLogs();
         ribbon.shell();
         await settled();
@@ -749,11 +730,14 @@ describe('ContainersView', () => {
         const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
 
         drive(fixture).selectedId.set('paused1');
-        expect(ribbon.selectionPaused()).toBe(true);
-        ribbon.togglePause();
+        expect(ribbon.canResume()).toBe(true);
+        expect(ribbon.canPause()).toBe(false);
+        ribbon.resume();
         await settled();
         drive(fixture).selectedId.set('abc123');
-        ribbon.togglePause();
+        expect(ribbon.canResume()).toBe(false);
+        expect(ribbon.canPause()).toBe(true);
+        ribbon.pause();
         await settled();
 
         expect(calledWith(ContainerChannel.Unpause)).toEqual(['paused1']);
@@ -803,13 +787,10 @@ describe('ContainersView', () => {
         const view: View = drive(fixture);
         view.menuTarget.set(CONTAINER);
 
-        view.onRowMenu('restart');
-        await settled();
         view.onRowMenu('pause');
         await settled();
         view.onRowMenu('shell');
 
-        expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
         expect(calledWith(ContainerChannel.Pause)).toEqual(['abc123']);
         expect(fixture.debugElement.injector.get(ContainerTerminals).sessions()).toHaveLength(1);
       });
@@ -818,7 +799,7 @@ describe('ContainersView', () => {
         const fixture: ComponentFixture<ContainersView> = await createView();
         calls = [];
 
-        drive(fixture).onRowMenu('restart');
+        drive(fixture).onRowMenu('pause');
         await settled();
 
         expect(calls).toEqual([]);
@@ -826,17 +807,6 @@ describe('ContainersView', () => {
     });
 
     describe('ticking', () => {
-      it('toggleAll_ticksWhatIsShown_thenUnticks', async () => {
-        const fixture: ComponentFixture<ContainersView> = await createView();
-        const view: View = drive(fixture);
-
-        view.toggleAllChecked();
-        expect(view.allChecked()).toBe(true);
-
-        view.toggleAllChecked();
-        expect(view.allChecked()).toBe(false);
-      });
-
       it('untickingAndClearing_leavesNothingToActOn', async () => {
         const fixture: ComponentFixture<ContainersView> = await createView();
         const view: View = drive(fixture);
@@ -849,18 +819,120 @@ describe('ContainersView', () => {
 
         expect(calledWith(ContainerChannel.Stop)).toEqual([]);
       });
-
-      it('allChecked_ofAnEmptyList_isFalse', async () => {
-        listed = [];
-        const fixture: ComponentFixture<ContainersView> = await createView();
-
-        drive(fixture).toggleAllChecked();
-
-        expect(drive(fixture).allChecked()).toBe(false);
-      });
     });
 
     describe('bulk', () => {
+      it('theRibbon_actsOnTheTickedContainers', async () => {
+        const fixture: ComponentFixture<ContainersView> = await createView();
+        const view: View = drive(fixture);
+        const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+        view.setChecked('abc123', true);
+
+        expect(ribbon.hasTargets()).toBe(true);
+        expect(ribbon.canStop()).toBe(true);
+        expect(ribbon.canPause()).toBe(true);
+
+        ribbon.restart();
+        await settled();
+
+        expect(calledWith(ContainerChannel.Restart)).toEqual(['abc123']);
+      });
+
+      describe('which ticked containers each ribbon button reaches', () => {
+        const STOPPED: ContainerSummary = { ...CONTAINER, id: 'stopped1', state: 'exited' };
+
+        /**
+         * Lists and ticks one running, one paused and one stopped container.
+         * @returns Returns the ribbon.
+         */
+        async function tickOneOfEach(): Promise<ContainersCommands> {
+          listed = [CONTAINER, PAUSED, STOPPED];
+          const view: View = drive(await createView());
+          view.setChecked('abc123', true);
+          view.setChecked('paused1', true);
+          view.setChecked('stopped1', true);
+          return TestBed.inject(ContainersCommands);
+        }
+
+        it('start_startsTheStopped_resumesThePaused_andSkipsTheRunning', async () => {
+          const ribbon: ContainersCommands = await tickOneOfEach();
+
+          ribbon.start();
+          await settled();
+
+          expect(calledWith(ContainerChannel.Start)).toEqual(['stopped1']);
+          expect(calledWith(ContainerChannel.Unpause)).toEqual(['paused1']);
+        });
+
+        it('stop_stopsTheRunningAndThePaused_andSkipsTheStopped', async () => {
+          const ribbon: ContainersCommands = await tickOneOfEach();
+
+          ribbon.stop();
+          await settled();
+
+          expect(calledWith(ContainerChannel.Stop)).toEqual(['abc123', 'paused1']);
+        });
+
+        it('pause_reachesOnlyTheRunning', async () => {
+          const ribbon: ContainersCommands = await tickOneOfEach();
+
+          ribbon.pause();
+          await settled();
+
+          expect(calledWith(ContainerChannel.Pause)).toEqual(['abc123']);
+        });
+
+        it('resume_reachesOnlyThePaused', async () => {
+          const ribbon: ContainersCommands = await tickOneOfEach();
+
+          ribbon.resume();
+          await settled();
+
+          expect(calledWith(ContainerChannel.Unpause)).toEqual(['paused1']);
+        });
+
+        it('theSelectSwitches_addAndRemoveAKind_andShowItChecked', async () => {
+          listed = [CONTAINER, PAUSED, STOPPED];
+          const view: View = drive(await createView());
+          const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+
+          ribbon.setSelected('running', true);
+          ribbon.setSelected('paused', true);
+          expect([...view.checked()]).toEqual(['abc123', 'paused1']);
+          expect(ribbon.selectedGroups().has('running')).toBe(true);
+          expect(ribbon.selectedGroups().has('stopped')).toBe(false);
+
+          ribbon.setSelected('running', false);
+          expect([...view.checked()]).toEqual(['paused1']);
+        });
+
+        it('hidingAKind_unticksIt_soTheRibbonCannotActOnWhatIsOutOfSight', async () => {
+          listed = [CONTAINER, PAUSED, STOPPED];
+          const view: View = drive(await createView());
+          const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+          view.setChecked('stopped1', true);
+
+          ribbon.setShown('stopped', false);
+
+          expect(view.checked().size).toBe(0);
+          ribbon.showAll();
+          expect(ribbon.shownGroups().size).toBe(3);
+        });
+
+        it('aPausedAndAStoppedContainer_offerStartStopAndResume_butNotPause', async () => {
+          listed = [PAUSED, STOPPED];
+          const view: View = drive(await createView());
+          const ribbon: ContainersCommands = TestBed.inject(ContainersCommands);
+          view.setChecked('paused1', true);
+          view.setChecked('stopped1', true);
+
+          expect(ribbon.canStart()).toBe(true);
+          expect(ribbon.canStop()).toBe(true);
+          expect(ribbon.canResume()).toBe(true);
+          expect(ribbon.canPause()).toBe(false);
+        });
+      });
+
       it('remove_whenTheUserSaysNo_removesNothing', async () => {
         const fixture: ComponentFixture<ContainersView> = await createView();
         const view: View = drive(fixture);
@@ -870,7 +942,7 @@ describe('ContainersView', () => {
         await view.bulk('remove');
 
         expect(calledWith(ContainerChannel.Remove)).toEqual([]);
-        expect(view.allChecked()).toBe(true);
+        expect(view.checked().size).toBe(1);
       });
 
       it('remove_clearsTheTicks', async () => {
@@ -881,11 +953,12 @@ describe('ContainersView', () => {
         await view.bulk('remove');
 
         expect(calledWith(ContainerChannel.Remove)).toEqual(['abc123']);
-        expect(view.allChecked()).toBe(false);
+        expect(view.checked().size).toBe(0);
       });
 
       it('reportsHowManyFailed', async () => {
         refused = new Set<ContainerChannel>([ContainerChannel.Stop]);
+        listed = [CONTAINER, { ...CONTAINER, id: 'other' }];
         const fixture: ComponentFixture<ContainersView> = await createView();
         const view: View = drive(fixture);
         view.setChecked('abc123', true);

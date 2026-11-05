@@ -6,7 +6,7 @@ import { ContainersSummary, ContainersView } from '../containers-view/containers
 /**
  * The Containers tab's status-strip readout (#882). On the left, which engine the tab is showing — and
  * that it is not running, when it does not answer, since an empty list says nothing about why. At the
- * end, how many containers and images it holds. How many are running is left to the app-wide segment
+ * end, how many containers are ticked, and how many containers and images it holds and the disk the images take. How many are running is left to the app-wide segment
  * the strip already shows on every tab.
  *
  * Mounted by the status strip through the Containers view's own injector, from which it reads the view
@@ -57,6 +57,9 @@ export class ContainersStatusStrip {
         return [];
       }
       return [
+        ...(summary.selected === 0
+          ? []
+          : [{ id: 'containers-selected', text: `${summary.selected} selected` }]),
         {
           id: 'containers-count',
           text: summary.containers === 1 ? '1 container' : `${summary.containers} containers`,
@@ -65,6 +68,7 @@ export class ContainersStatusStrip {
           id: 'containers-images',
           text: summary.images === 1 ? '1 image' : `${summary.images} images`,
         },
+        { id: 'containers-disk', text: `${summary.imagesSize} on disk` },
       ];
     },
   );

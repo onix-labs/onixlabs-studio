@@ -41,7 +41,8 @@
   z-index: 1;
   // Generous, so the header reads as the table's own band rather than as a squeezed first row.
   padding: 0.75rem 0.625rem;
-  background: var(--dock-title-background-color);
+  // A consumer sets `--table-header-background-color` to set its header apart from what sits above.
+  background: var(--table-header-background-color, var(--dock-title-background-color));
   color: var(--dock-tab-foreground-color);
   font-weight: 600;
   white-space: nowrap;
