@@ -268,6 +268,65 @@ export function seedFakeHarness(userDataDir: string): void {
 }
 
 /**
+ * Holds the fake language server's plugin identifier.
+ */
+export const FAKE_LANGUAGE_SERVER_ID: string = 'e2e.language-server';
+
+/**
+ * Seeds the fake language server (`fake-language-server.mjs`) as an installed plugin serving Python.
+ * Its record and payload are written the way {@link seedFakeHarness} writes the harness's.
+ * @param userDataDir The isolated userData directory.
+ */
+export function seedFakeLanguageServer(userDataDir: string): void {
+  const manifestDir: string = path.join(userDataDir, 'plugins', FAKE_LANGUAGE_SERVER_ID);
+  fs.mkdirSync(manifestDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(manifestDir, 'plugin.json'),
+    JSON.stringify({
+      id: FAKE_LANGUAGE_SERVER_ID,
+      name: 'E2E Language Server',
+      description: 'A language server to kill, for end-to-end tests.',
+      version: '1.0.0',
+      apiVersion: '1.17.0',
+      provision: {
+        kind: 'npm',
+        lockfileUrl: 'https://example.invalid/never-published.lock.json',
+        sha256: '0'.repeat(64),
+        executablePath: 'server.mjs',
+      },
+      contributes: {
+        languageServers: [
+          {
+            id: FAKE_LANGUAGE_SERVER_ID,
+            displayName: 'E2E Language Server',
+            languages: ['python'],
+            priority: 1000,
+            command: { kind: 'node' },
+            entryPoint: 'server.mjs',
+          },
+        ],
+      },
+      requires: [],
+    }),
+  );
+  const installDir: string = path.join(
+    userDataDir,
+    'lsp-servers',
+    FAKE_LANGUAGE_SERVER_ID,
+    '1.0.0',
+    `${process.platform}-${process.arch}`,
+  );
+  const entryPoint: string = path.join(installDir, 'server.mjs');
+  fs.mkdirSync(installDir, { recursive: true });
+  fs.copyFileSync(path.join(__dirname, 'fake-language-server.mjs'), entryPoint);
+  fs.writeFileSync(path.join(installDir, '.studio-install-complete'), new Date(0).toISOString());
+  fs.writeFileSync(
+    path.join(userDataDir, 'plugins.json'),
+    JSON.stringify([{ id: FAKE_LANGUAGE_SERVER_ID, version: '1.0.0', installedPath: entryPoint }]),
+  );
+}
+
+/**
  * Holds a credential-free connection pointed at the fake harness, as the user's settings store it.
  */
 export const FAKE_HARNESS_CONNECTION: Readonly<Record<string, unknown>> = {
