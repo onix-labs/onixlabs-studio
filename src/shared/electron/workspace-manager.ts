@@ -968,6 +968,10 @@ export class WorkspaceManager {
     }
     const destination: string = path.join(path.dirname(resolved), newName as string);
     try {
+      if (await this.isDifferentEntry(resolved, destination)) {
+        logger.warn('WorkspaceManager.rename', `Rejected rename over ${destination}`);
+        return { success: false, error: `${newName as string} already exists` };
+      }
       await fs.rename(resolved, destination);
       logger.info('WorkspaceManager', `Renamed ${resolved} to ${destination}`);
       return { success: true, path: destination };
@@ -975,6 +979,25 @@ export class WorkspaceManager {
       logger.error('WorkspaceManager', `Failed to rename ${resolved}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Determines whether a rename's destination is an existing entry other than its source. `fs.rename`
+   * replaces what it lands on without a word, which would lose that file. The comparison is by identity
+   * rather than by name because on a case-insensitive volume `readme` → `README` lands on itself.
+   * @param source The entry being renamed.
+   * @param destination The path it would take.
+   * @returns Returns true when the rename would replace a different entry.
+   */
+  private async isDifferentEntry(source: string, destination: string): Promise<boolean> {
+    const existing: Stats | undefined = await fs
+      .lstat(destination)
+      .catch((): undefined => undefined);
+    if (existing === undefined) {
+      return false;
+    }
+    const entry: Stats = await fs.lstat(source);
+    return entry.ino !== existing.ino || entry.dev !== existing.dev;
   }
 
   /**

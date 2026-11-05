@@ -1067,6 +1067,17 @@ describe('WorkspaceManager', () => {
       expect(result.success).toBe(false);
     });
 
+    it('rename_ontoAnExistingFile_failsAndKeepsThatFile', async () => {
+      const file: string = inWorkspace('a.txt', 'mine');
+      const existing: string = inWorkspace('b.txt', 'precious');
+
+      const result: FileOperationResult = await invoke(WorkspaceChannel.Rename, file, 'b.txt');
+
+      expect(result.success).toBe(false);
+      expect(fs.readFileSync(existing, 'utf8')).toBe('precious');
+      expect(fs.readFileSync(file, 'utf8')).toBe('mine');
+    });
+
     it('rename_changingOnlyCase_succeedsOnACaseInsensitiveVolume', async () => {
       const file: string = inWorkspace('readme.txt', 'text');
 
