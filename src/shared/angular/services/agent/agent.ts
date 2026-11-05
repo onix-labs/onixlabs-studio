@@ -3156,17 +3156,25 @@ export class Agent {
         .map((task: AgentTask): string => `${task.taskId}:${task.toolId ?? 'none'}`)
         .join(', ')}]`,
     );
-    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map((item: AgentItem): AgentItem =>
-        item.kind === 'tool' && item.toolId === toolId
-          ? {
-              ...item,
-              toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
-              ...(output === undefined ? {} : { toolOutput: output }),
-            }
-          : item,
-      ),
-    );
+    // ⚠️ Searched from the tail, because this runs for every tool call and the call ending is nearly
+    // always among the latest: a `map` over the log made a long transcript quadratic. A tool id names one
+    // call, so the search stops at the match, and a tool id nothing holds leaves the log as it was.
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => {
+      let index: number = items.length - 1;
+      while (index >= 0 && !(items[index].kind === 'tool' && items[index].toolId === toolId)) {
+        index -= 1;
+      }
+      if (index < 0) {
+        return items;
+      }
+      const next: AgentItem[] = [...items];
+      next[index] = {
+        ...items[index],
+        toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
+        ...(output === undefined ? {} : { toolOutput: output }),
+      };
+      return next;
+    });
   }
 
   /**
