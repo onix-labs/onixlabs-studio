@@ -766,8 +766,13 @@ describe('AgentChat', () => {
     fixture.detectChanges();
 
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    const lane: HTMLElement | null = host.querySelector('.agent__lane');
+    const lane: HTMLDetailsElement | null = host.querySelector('details.agent__lane');
     expect(lane).not.toBeNull();
+    // Closed, the lane has its summary and none of the activity behind it.
+    expect(lane!.querySelector('.agent__lane-rail')).toBeNull();
+    lane!.open = true;
+    lane!.dispatchEvent(new Event('toggle'));
+    fixture.detectChanges();
     expect(
       lane!.querySelector('.agent__lane-summary .agent__action-label')?.textContent?.trim(),
     ).toBe('Explore');

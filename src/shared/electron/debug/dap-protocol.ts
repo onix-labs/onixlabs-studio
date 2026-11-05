@@ -19,9 +19,28 @@ import { logger } from '../logger';
 const HEADER_TERMINATOR: readonly number[] = [13, 10, 13, 10];
 
 /**
- * The header naming the byte length of the JSON body that follows, matched case-insensitively.
+ * The largest DAP message body held in memory. An adapter's replies are small; a variable dump or a
+ * source request is the most that is ever seen, and this is far past either. Anything claiming more
+ * is a corrupted stream, and waiting for that many bytes would take the main process's heap with it.
  */
-const CONTENT_LENGTH_HEADER: string = 'content-length';
+export const MAX_DAP_BODY_BYTES: number = 256 * 1024 * 1024;
+
+/**
+ * How much of a stream with no header in it is held on to while looking for one. A stdio adapter's
+ * standard output is the protocol stream, so what precedes a header can be anything, of any length.
+ */
+export const MAX_DAP_HEADER_BYTES: number = 64 * 1024;
+
+/**
+ * How much of discarded output is kept, comfortably more than a header cut off part way through.
+ */
+const HEADER_TAIL_BYTES: number = 128;
+
+/**
+ * Matches the header naming the byte length of the JSON body that follows, case-insensitively, capturing
+ * its value. The character before it may be anything but part of a longer header's name.
+ */
+const CONTENT_LENGTH_LINE: RegExp = /(?:^|[^\w-])content-length[ \t]*:[ \t]*(\S*)[ \t]*$/im;
 
 /**
  * Encodes a DAP message for the wire: a `Content-Length` header (counting the body's UTF-8 **bytes**,
@@ -53,6 +72,13 @@ export class DapMessageDecoder {
   private readonly decoder: InstanceType<typeof TextDecoder> = new TextDecoder('utf-8');
 
   /**
+   * Gets how many received bytes are held waiting to complete a message.
+   */
+  public get bufferedBytes(): number {
+    return this.buffer.length;
+  }
+
+  /**
    * Appends a received chunk and returns every complete message it now makes available, in order. A
    * chunk that completes no message returns an empty array; a chunk that completes several returns them
    * all.
@@ -62,22 +88,24 @@ export class DapMessageDecoder {
   public append(chunk: Uint8Array): DebugProtocol.ProtocolMessage[] {
     this.buffer = concat(this.buffer, chunk);
     const messages: DebugProtocol.ProtocolMessage[] = [];
-    for (let message: DebugProtocol.ProtocolMessage | null = this.take(); message !== null;) {
-      messages.push(message);
-      message = this.take();
+    while (this.take(messages)) {
+      // Every frame in the buffer is taken: a dropped one must not strand those behind it.
     }
     return messages;
   }
 
   /**
-   * Takes the next complete message from the buffer, consuming its bytes, or returns null when the
-   * buffer does not yet hold a whole message (its header, or its declared body, is still incoming).
-   * @returns Returns the next message, or null when none is complete.
+   * Consumes the next frame from the buffer, adding its message to the given list unless the frame is
+   * malformed.
+   * @param messages Receives the message.
+   * @returns Returns true when a frame was consumed, or false when the buffer does not yet hold a whole
+   * one (its header, or its declared body, is still incoming).
    */
-  private take(): DebugProtocol.ProtocolMessage | null {
+  private take(messages: DebugProtocol.ProtocolMessage[]): boolean {
     const headerEnd: number = indexOf(this.buffer, HEADER_TERMINATOR);
     if (headerEnd === -1) {
-      return null;
+      this.discardUnframedOutput();
+      return false;
     }
     const header: string = this.decoder.decode(this.buffer.subarray(0, headerEnd));
     const length: number | null = contentLength(header);
@@ -87,20 +115,46 @@ export class DapMessageDecoder {
       // malformed frame cannot wedge the stream, and resume from the byte after it.
       logger.warn('DapProtocol', 'Dropped a DAP frame with no usable Content-Length header');
       this.buffer = this.buffer.subarray(bodyStart);
-      return null;
+      return true;
+    }
+    if (length > MAX_DAP_BODY_BYTES) {
+      // Only a corrupted stream declares this, so its "body" is not worth waiting for: what follows
+      // the header is treated as noise ahead of the next one, which is how the stream recovers.
+      logger.warn('DapProtocol', `Dropped a DAP frame declaring ${length} bytes`);
+      this.buffer = this.buffer.subarray(bodyStart);
+      return true;
     }
     if (this.buffer.length - bodyStart < length) {
-      return null;
+      return false;
     }
     const body: string = this.decoder.decode(this.buffer.subarray(bodyStart, bodyStart + length));
     this.buffer = this.buffer.subarray(bodyStart + length);
     try {
-      return JSON.parse(body) as DebugProtocol.ProtocolMessage;
+      const message: unknown = JSON.parse(body);
+      if (typeof message === 'object' && message !== null) {
+        messages.push(message as DebugProtocol.ProtocolMessage);
+      } else {
+        logger.error('DapProtocol', 'Dropped a DAP frame whose body is not a message');
+      }
     } catch (error: unknown) {
       // A frame whose body is not valid JSON is dropped; its bytes are already consumed, so decoding
       // continues cleanly with the next frame.
       logger.error('DapProtocol', 'Dropped a DAP frame with an unparseable JSON body', error);
-      return null;
+    }
+    return true;
+  }
+
+  /**
+   * Lets go of output that has grown past any header without one turning up, keeping only the tail,
+   * which may be the start of the next header.
+   */
+  private discardUnframedOutput(): void {
+    if (this.buffer.length > MAX_DAP_HEADER_BYTES) {
+      logger.warn(
+        'DapProtocol',
+        `Discarded ${this.buffer.length} bytes with no DAP header in them`,
+      );
+      this.buffer = this.buffer.slice(-HEADER_TAIL_BYTES);
     }
   }
 }
@@ -295,25 +349,21 @@ interface PendingRequest {
 /**
  * Parses the `Content-Length` value from a DAP header block, tolerating the header's letter case and
  * surrounding whitespace, and returns null when it is absent or not a non-negative integer.
+ *
+ * The header is looked for anywhere in the block, not only at the start of a line. A stdio adapter's
+ * standard output is the protocol stream, so whatever else writes there (a runtime's warning, the tail
+ * of a frame that had to be dropped) lands in front of the next header; requiring a clean line would
+ * lose that frame, whose body would then sit in front of the next header, and so on for good.
  * @param header The decoded header block (without the terminating blank line).
  * @returns Returns the declared body length in bytes, or null when unusable.
  */
 function contentLength(header: string): number | null {
-  for (const line of header.split(/\r\n/)) {
-    const separator: number = line.indexOf(':');
-    if (separator === -1) {
-      continue;
-    }
-    if (line.slice(0, separator).trim().toLowerCase() !== CONTENT_LENGTH_HEADER) {
-      continue;
-    }
-    const value: string = line.slice(separator + 1).trim();
-    if (!/^\d+$/.test(value)) {
-      return null;
-    }
-    return Number.parseInt(value, 10);
+  const match: RegExpExecArray | null = CONTENT_LENGTH_LINE.exec(header);
+  if (match === null) {
+    return null;
   }
-  return null;
+  const value: string = match[1];
+  return /^\d+$/.test(value) ? Number.parseInt(value, 10) : null;
 }
 
 /**

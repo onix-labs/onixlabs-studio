@@ -533,14 +533,16 @@ class MonacoCodeBlockView implements NodeView {
     const options: MonacoApi.editor.IStandaloneEditorConstructionOptions =
       this.deps.monaco.getEditorOptions(this.resolvedLanguageId());
 
-    let model: MonacoApi.editor.ITextModel;
+    let model: MonacoApi.editor.ITextModel | undefined;
     let editor: MonacoApi.editor.IStandaloneCodeEditor;
     try {
       model = monaco.editor.createModel(this.node.textContent, this.resolvedLanguageId());
       editor = this.createEditor(monaco, host, model, options);
     } catch {
       // The placeholder was already cleared for the mount; a create failure (which a fence hosted in
-      // another window can hit) must put it back rather than leave the fence permanently blank.
+      // another window can hit) must put it back rather than leave the fence permanently blank, and
+      // must not strand the model, which nothing else holds and every retry would add to.
+      model?.dispose();
       this.renderPlaceholder();
       return;
     }
@@ -862,6 +864,10 @@ class MonacoCodeBlockView implements NodeView {
    */
   private setLanguage(language: string): void {
     const pos: number | undefined = this.getPos();
+    if (!this.view.editable) {
+      this.languageInput.value = this.languageAttr();
+      return;
+    }
     if (pos === undefined || language === this.languageAttr()) {
       return;
     }

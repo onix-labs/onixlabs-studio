@@ -96,7 +96,7 @@ export function parseCargoWorkspaceMembers(toml: string | null): readonly string
   if (toml === null) {
     return [];
   }
-  const block: RegExpExecArray | null = /members\s*=\s*\[([\s\S]*?)\]/.exec(toml);
+  const block: RegExpExecArray | null = /^\s*members\s*=\s*\[([\s\S]*?)\]/m.exec(toml);
   if (block === null) {
     return [];
   }

@@ -44,6 +44,7 @@ import { LinkInsert, MarkdownLinkModal } from './insert-modals/markdown-link-mod
 import { MarkdownMathModal, MathInsert } from './insert-modals/markdown-math-modal';
 import { MarkdownTableModal, TableInsert } from './insert-modals/markdown-table-modal';
 import { styleImagePath } from '@shared/angular/milkdown/markdown-image-path';
+import { markdownDestination } from './markdown-destination';
 
 /**
  * Maps each style-field label back to its block type.
@@ -694,7 +695,7 @@ export class MarkdownRibbon {
       path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'), 0)),
       this.settings.get('markdownEditor.insertedImagePaths'),
     );
-    this.commands.insertMarkdown(`![${image.alt}](${source})`);
+    this.commands.insertMarkdown(`![${image.alt}](${markdownDestination(source)})`);
   }
 
   /**
@@ -711,7 +712,7 @@ export class MarkdownRibbon {
   protected onLinkSubmit(link: LinkInsert): void {
     this.log.info('markdown.ribbon', 'Insert link confirmed', { url: link.url });
     const text: string = link.text.length > 0 ? link.text : link.url;
-    this.commands.insertInlineMarkdown(`[${text}](${link.url})`);
+    this.commands.insertInlineMarkdown(`[${text}](${markdownDestination(link.url)})`);
   }
 
   /**

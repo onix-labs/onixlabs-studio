@@ -44,6 +44,9 @@ jobs:
         run: npm run format:check
 
       - name: Lint
+        env:
+          # Type-aware linting holds the whole program in memory, past Node's default heap.
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run lint
 
       - name: Build renderer (Angular)

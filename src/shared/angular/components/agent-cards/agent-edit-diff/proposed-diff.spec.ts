@@ -7,6 +7,29 @@ import {
 } from './proposed-diff';
 
 describe('proposedDiff', () => {
+  it('rewriteOfALargeFile_reportsTheWholeChange_withoutWalkingTheFullDiff', () => {
+    const before: string = Array.from({ length: 19000 }, (_, i) => `before ${i}`).join('\n');
+    const after: string = Array.from({ length: 19000 }, (_, i) => `after ${i}`).join('\n');
+
+    const diff: ProposedDiff = proposedDiff('a.ts', before, after);
+
+    expect(diff.additions).toBe(19000);
+    expect(diff.deletions).toBe(19000);
+    expect(diff.truncated).toBe(true);
+    expect(diff.hunks[0].lines[0]).toMatchObject({ kind: 'remove', oldLine: 1 });
+  }, 5000);
+
+  it('changeTooLargeToDiff_leavesTheUnchangedStartAndEndOutOfIt', () => {
+    const lines: string[] = Array.from({ length: 6000 }, (_, i) => `line ${i}`);
+    const after: string[] = lines.map((line, i) => (i >= 1000 && i < 5000 ? `new ${i}` : line));
+
+    const diff: ProposedDiff = proposedDiff('a.ts', lines.join('\n'), after.join('\n'));
+
+    expect(diff.additions).toBe(4000);
+    expect(diff.deletions).toBe(4000);
+    expect(diff.hunks[0].lines[0]).toMatchObject({ kind: 'remove', oldLine: 1001 });
+  });
+
   it('countsAndNumbersTheLines_beforeAndAfter', () => {
     const diff: ProposedDiff = proposedDiff('a.ts', 'one\ntwo\nthree\n', 'one\n2\nthree\n');
 

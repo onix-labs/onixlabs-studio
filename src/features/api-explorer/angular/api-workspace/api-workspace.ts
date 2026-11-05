@@ -438,7 +438,14 @@ export class ApiWorkspace {
    */
   private async write(path: string): Promise<boolean> {
     const content: string = `${JSON.stringify(this.toDocument(), null, await this.indentation(path))}\n`;
-    const result: FileWriteResult = await this.fileSystem.write(path, content);
+    let result: FileWriteResult;
+    try {
+      result = await this.fileSystem.write(path, content);
+    } catch (error: unknown) {
+      // A bridge that fails outright is a failed save: the ribbon's save awaits nothing.
+      this.log.warn('api-explorer.workspace', 'Save failed', { path, error });
+      return false;
+    }
     if (!result.success) {
       this.log.warn('api-explorer.workspace', 'Save failed', { path });
       return false;
@@ -855,7 +862,7 @@ export class ApiWorkspace {
       (ids: ReadonlySet<string>): ReadonlySet<string> => new Set<string>([...ids, id]),
     );
     try {
-      const outcome: HttpOutcome = await this.http.send(resolved);
+      const outcome: HttpOutcome = await this.attempt(resolved, at);
       this.outcomesSignal.update(
         (outcomes: ReadonlyMap<string, HttpOutcome>): ReadonlyMap<string, HttpOutcome> =>
           new Map<string, HttpOutcome>([...outcomes, [id, outcome]]),
@@ -876,6 +883,28 @@ export class ApiWorkspace {
         next.delete(id);
         return next;
       });
+    }
+  }
+
+  /**
+   * Sends a resolved request, a bridge that fails outright being an outcome like any other: the user
+   * sees why it failed, and the ribbon's send, which awaits nothing, has nothing to go unhandled.
+   * @param resolved The request.
+   * @param at When the send began, in epoch milliseconds.
+   * @returns Returns a promise resolving to the outcome.
+   */
+  private async attempt(resolved: ResolvedHttpRequest, at: number): Promise<HttpOutcome> {
+    try {
+      return await this.http.send(resolved);
+    } catch (error: unknown) {
+      this.log.warn('api-explorer.workspace', 'Send failed', { id: resolved.id, error });
+      return {
+        kind: 'failure',
+        id: resolved.id,
+        message: error instanceof Error ? error.message : 'The request could not be sent.',
+        cancelled: false,
+        durationMs: Date.now() - at,
+      };
     }
   }
 

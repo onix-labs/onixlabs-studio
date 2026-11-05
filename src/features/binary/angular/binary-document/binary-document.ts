@@ -87,6 +87,13 @@ const BLOCK_SIZE: number = 64 * 1024;
 const MAX_RESIDENT_BLOCKS: number = 64;
 
 /**
+ * Specifies how many bytes a long read loads before copying them out. Well inside the resident cap:
+ * asked for more than the cache holds at once, its first blocks would be evicted by its last before
+ * any of them had been read.
+ */
+const READ_STEP_BYTES: number = (MAX_RESIDENT_BLOCKS / 2) * BLOCK_SIZE;
+
+/**
  * Specifies how long (in milliseconds) viewport-driven disassembly requests are debounced, so a
  * request is issued only once scrolling settles rather than on every intermediate frame.
  */
@@ -142,6 +149,18 @@ export class BinaryDocumentEntry {
    * await a block's arrival (see {@link readBytes}).
    */
   private readonly blockFetches: Map<number, Promise<void>> = new Map<number, Promise<void>>();
+
+  /**
+   * Holds a counter bumped whenever the cached bytes stop describing the file, so a read begun before
+   * a rewrite or a reload cannot put the old file's bytes back into the cache.
+   */
+  private cacheGeneration: number = 0;
+
+  /**
+   * Holds the save being written, or null when none is. Edits wait for it: the save resets the edit
+   * model to the file it wrote, which would silently discard anything made in the meantime.
+   */
+  private saveInFlight: Promise<boolean> | null = null;
 
   /**
    * Holds the logical size in bytes: the original file size adjusted by any inserts and deletes.
@@ -389,7 +408,7 @@ export class BinaryDocumentEntry {
    * @param value The new byte value (0–255).
    */
   public overwrite(offset: number, value: number): void {
-    if (!this.initialized || offset < 0 || offset >= this.size()) {
+    if (!this.canEdit() || offset < 0 || offset >= this.size()) {
       return;
     }
     this.applyEdit((): void => this.table.replace(offset, 1, [value & 0xff]));
@@ -401,7 +420,7 @@ export class BinaryDocumentEntry {
    * @param value The byte value (0–255) to insert.
    */
   public insertByte(offset: number, value: number): void {
-    if (!this.initialized || offset < 0 || offset > this.size()) {
+    if (!this.canEdit() || offset < 0 || offset > this.size()) {
       return;
     }
     this.applyEdit((): void => this.table.replace(offset, 0, [value & 0xff]));
@@ -413,7 +432,7 @@ export class BinaryDocumentEntry {
    * @param count The number of bytes to delete.
    */
   public deleteBytes(offset: number, count: number): void {
-    if (!this.initialized || offset < 0 || offset >= this.size() || count <= 0) {
+    if (!this.canEdit() || offset < 0 || offset >= this.size() || count <= 0) {
       return;
     }
     this.applyEdit((): void => this.table.replace(offset, count, []));
@@ -423,7 +442,7 @@ export class BinaryDocumentEntry {
    * Undoes the most recent edit, if any.
    */
   public undo(): void {
-    if (this.undoStack.length === 0) {
+    if (this.saveInFlight !== null || this.undoStack.length === 0) {
       return;
     }
     this.redoStack.push(this.table.snapshot());
@@ -435,12 +454,21 @@ export class BinaryDocumentEntry {
    * Reapplies the most recently undone edit, if any.
    */
   public redo(): void {
-    if (this.redoStack.length === 0) {
+    if (this.saveInFlight !== null || this.redoStack.length === 0) {
       return;
     }
     this.undoStack.push(this.table.snapshot());
     this.table.restore(this.redoStack.pop()!);
     this.afterMutation();
+  }
+
+  /**
+   * Determines whether the document can take a typed edit: its size must be known, and no save may be
+   * writing, as that save would discard the edit.
+   * @returns Returns true when an edit can be applied.
+   */
+  private canEdit(): boolean {
+    return this.initialized && this.saveInFlight === null;
   }
 
   /**
@@ -477,9 +505,24 @@ export class BinaryDocumentEntry {
     if (!this.dirty()) {
       return true;
     }
-    const written: boolean = this.table.isStructural()
-      ? await this.saveByRewrite()
-      : await this.saveInPlace();
+    // A second save while one writes joins it: the pending patches are the same ones.
+    this.saveInFlight ??= this.writeEdits();
+    return this.saveInFlight;
+  }
+
+  /**
+   * Writes the pending edits and, once they are on disk, resets the document to the saved file.
+   * @returns Returns true when the file was written. A bridge that fails outright is a failed write,
+   * which keeps the edits, like any other.
+   */
+  private async writeEdits(): Promise<boolean> {
+    let written: boolean;
+    try {
+      written = this.table.isStructural() ? await this.saveByRewrite() : await this.saveInPlace();
+    } catch {
+      written = false;
+    }
+    this.saveInFlight = null;
     if (!written) {
       return false;
     }
@@ -534,11 +577,11 @@ export class BinaryDocumentEntry {
    * @returns Returns a promise that resolves once the reload has been applied.
    */
   public async reloadFromDisk(): Promise<void> {
-    const chunk: BinaryChunk | null = await this.workspace.readBytes(this.path, 0, BLOCK_SIZE);
+    const chunk: BinaryChunk | null = await this.readChunk(this.path, 0, BLOCK_SIZE);
     if (chunk === null) {
       return;
     }
-    this.blocks.clear();
+    this.dropCache();
     this.blocks.set(0, chunk.bytes);
     this.originalSize = chunk.size;
     this.table.reset(chunk.size);
@@ -570,7 +613,7 @@ export class BinaryDocumentEntry {
       return false;
     }
     this.originalSize = this.table.length();
-    this.blocks.clear();
+    this.dropCache();
     this.table.reset(this.originalSize);
     this.loadedVersion.update((version: number): number => version + 1);
     void this.ensureBlock(0);
@@ -578,6 +621,35 @@ export class BinaryDocumentEntry {
       this.ensureRange(this.lastRange.offset, this.lastRange.length);
     }
     return true;
+  }
+
+  /**
+   * Drops the cached bytes, along with the reads that would have refilled them with the old file's.
+   */
+  private dropCache(): void {
+    this.cacheGeneration += 1;
+    this.blocks.clear();
+    this.blockFetches.clear();
+  }
+
+  /**
+   * Reads a window of a file. A bridge that fails outright is a failed read, which everything here
+   * already answers by leaving the bytes unloaded.
+   * @param path The file.
+   * @param offset The first byte.
+   * @param length The number of bytes.
+   * @returns Returns the bytes, or null when they could not be read.
+   */
+  private async readChunk(
+    path: string,
+    offset: number,
+    length: number,
+  ): Promise<BinaryChunk | null> {
+    try {
+      return await this.workspace.readBytes(path, offset, length);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -688,11 +760,7 @@ export class BinaryDocumentEntry {
     if (pdbPath === this.path || !this.options.loadSymbolFiles()) {
       return undefined;
     }
-    const chunk: BinaryChunk | null = await this.workspace.readBytes(
-      pdbPath,
-      0,
-      MAX_COMPANION_BYTES,
-    );
+    const chunk: BinaryChunk | null = await this.readChunk(pdbPath, 0, MAX_COMPANION_BYTES);
     if (chunk === null || chunk.bytes.length === 0) {
       return undefined;
     }
@@ -822,14 +890,17 @@ export class BinaryDocumentEntry {
     if (end <= start) {
       return [];
     }
-    await this.loadRange(start, end - start);
     const bytes: number[] = [];
-    for (let position: number = start; position < end; position += 1) {
-      const value: number | null = this.byteAt(position);
-      if (value === null) {
-        break;
+    for (let step: number = start; step < end; step += READ_STEP_BYTES) {
+      const stop: number = Math.min(step + READ_STEP_BYTES, end);
+      await this.loadRange(step, stop - step);
+      for (let position: number = step; position < stop; position += 1) {
+        const value: number | null = this.byteAt(position);
+        if (value === null) {
+          return bytes;
+        }
+        bytes.push(value);
       }
-      bytes.push(value);
     }
     return bytes;
   }
@@ -921,6 +992,7 @@ export class BinaryDocumentEntry {
    */
   public async patch(offset: number, values: readonly number[]): Promise<boolean> {
     await this.ensureBlock(0);
+    await this.saveInFlight;
     if (
       !this.initialized ||
       values.length === 0 ||
@@ -945,6 +1017,7 @@ export class BinaryDocumentEntry {
    */
   public async insertBytes(offset: number, values: readonly number[]): Promise<boolean> {
     await this.ensureBlock(0);
+    await this.saveInFlight;
     if (!this.initialized || values.length === 0 || offset < 0 || offset > this.size()) {
       return false;
     }
@@ -963,6 +1036,7 @@ export class BinaryDocumentEntry {
    */
   public async removeBytes(offset: number, count: number): Promise<boolean> {
     await this.ensureBlock(0);
+    await this.saveInFlight;
     if (!this.initialized || count <= 0 || offset < 0 || offset + count > this.size()) {
       return false;
     }
@@ -1055,10 +1129,10 @@ export class BinaryDocumentEntry {
     if (existing !== undefined) {
       return existing;
     }
-    const fetch: Promise<void> = this.workspace
-      .readBytes(this.path, block * BLOCK_SIZE, BLOCK_SIZE)
+    const generation: number = this.cacheGeneration;
+    const fetch: Promise<void> = this.readChunk(this.path, block * BLOCK_SIZE, BLOCK_SIZE)
       .then((chunk: BinaryChunk | null): void => {
-        if (chunk === null) {
+        if (chunk === null || generation !== this.cacheGeneration) {
           return;
         }
         this.blocks.set(block, chunk.bytes);
@@ -1084,7 +1158,9 @@ export class BinaryDocumentEntry {
         this.loadedVersion.update((version: number): number => version + 1);
       })
       .finally((): void => {
-        this.blockFetches.delete(block);
+        if (generation === this.cacheGeneration) {
+          this.blockFetches.delete(block);
+        }
       });
     this.blockFetches.set(block, fetch);
     return fetch;

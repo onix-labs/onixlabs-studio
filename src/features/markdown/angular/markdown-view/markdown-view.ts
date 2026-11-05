@@ -293,6 +293,11 @@ export class MarkdownView implements OnInit, OnDestroy {
   private commandHandler: MarkdownCommandHandler | null = null;
 
   /**
+   * Holds the text last read out of a document node for the status strip, or null before any was.
+   */
+  private statusText: { readonly doc: ProseMirrorNode; readonly text: string } | null = null;
+
+  /**
    * Initialises the view, wiring the effect that registers or releases the ribbon command handler and
    * review/read sessions as the view's active state changes.
    */
@@ -441,9 +446,14 @@ export class MarkdownView implements OnInit, OnDestroy {
       return;
     }
     const doc: ProseMirrorNode = current.$from.doc;
+    // A document node is immutable, so its text only needs reading once: without this, every caret
+    // move walked the whole document.
+    if (this.statusText?.doc !== doc) {
+      this.statusText = { doc, text: doc.textBetween(0, doc.content.size, '\n', ' ') };
+    }
     this.markdownStatus.publish({
       path,
-      text: doc.textBetween(0, doc.content.size, '\n', ' '),
+      text: this.statusText.text,
       selectedText: current.empty ? null : doc.textBetween(current.from, current.to, '\n', ' '),
     });
   }

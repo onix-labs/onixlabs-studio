@@ -190,9 +190,9 @@ interface EditTarget {
  */
 interface PendingPreview {
   /**
-   * Applies the staged outcome to its document.
+   * Applies the staged outcome to its document, if that is still what it was staged against.
    */
-  readonly apply: () => boolean;
+  readonly apply: () => EditResult;
 }
 
 /**
@@ -564,8 +564,9 @@ export class AgentEditorCapabilities {
     // No diff opens: none of the surfaces that stage an edit has a document well to show one in, so
     // the decision card carries the summary alone (#882; a real preview is followed up separately).
     const diffShown: boolean = false;
+    const tabId: string | null = this.targetTabId(input, scope);
     this.pendingPreviews.set(previewId, {
-      apply: (): boolean => target.apply(outcome),
+      apply: (): EditResult => this.applyStaged(tabId, target, outcome),
     });
     this.log.info('agent.editor-capabilities', 'Staged edit preview', {
       previewId,
@@ -592,9 +593,36 @@ export class AgentEditorCapabilities {
       this.log.warn('agent.editor-capabilities', 'Commit preview: staged edit no longer available');
       return { ok: false, detail: 'The staged edit is no longer available.' };
     }
-    const applied: boolean = pending.apply();
-    this.log.info('agent.editor-capabilities', 'Committed staged edit preview', { applied });
-    return applied
+    const result: EditResult = pending.apply();
+    this.log.info('agent.editor-capabilities', 'Committed staged edit preview', {
+      applied: result.ok,
+    });
+    return result;
+  }
+
+  /**
+   * Applies a staged edit, if what it was staged against is still what the editor holds. The user
+   * may have typed, or moved to another document, while the decision card waited: the edit is a
+   * whole-document text or a range worked out from the old source, so applying it anyway would undo
+   * their typing or write one document's text into another.
+   * @param tabId The tab the edit was staged for, or null for whichever document is active.
+   * @param target The target as it was staged.
+   * @param outcome The staged edit.
+   * @returns Returns whether the edit was applied, and why not.
+   */
+  private applyStaged(tabId: string | null, target: EditTarget, outcome: EditOutcome): EditResult {
+    const current: EditTarget | null = this.resolveTarget(tabId);
+    if (current === null) {
+      return { ok: false, detail: 'The editor is no longer available.' };
+    }
+    if (current.source !== target.source) {
+      return {
+        ok: false,
+        detail:
+          'The document changed after this edit was staged. Read it and stage the edit again.',
+      };
+    }
+    return current.apply(outcome)
       ? { ok: true, detail: 'The edit was applied.' }
       : { ok: false, detail: 'The editor is no longer available.' };
   }

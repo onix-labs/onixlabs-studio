@@ -142,7 +142,8 @@ export function insertImage(
   view.dispatch(
     (position === undefined
       ? view.state.tr.replaceSelectionWith(node)
-      : view.state.tr.insert(position, node)
+      : // The document may have shrunk while the image was being stored.
+        view.state.tr.insert(Math.min(position, view.state.doc.content.size), node)
     ).scrollIntoView(),
   );
 }

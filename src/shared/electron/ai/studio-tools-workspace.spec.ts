@@ -166,6 +166,16 @@ describe('workspace studio tools', () => {
       expect(calls).toEqual([]);
     });
 
+    it('writeTerminalInput_refusesABlockedCommandThatCarriesItsOwnEnter', async () => {
+      // `submit: false` only leaves off the newline this tool would add: text holding one still runs.
+      const { context, calls } = contextWith({ ok: true, output: 'ran' });
+      const blocked: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+      expect(await writeTerminalInput(blocked, 'gh auth token\n', false, 't')).toContain('blocked');
+      expect(await writeTerminalInput(blocked, 'gh auth token\r', false, 't')).toContain('blocked');
+      expect(calls).toEqual([]);
+    });
+
     it('writeTerminalInput_letsTextThatIsNotSubmittedThrough', async () => {
       // Typing without pressing Enter runs nothing.
       const { context, calls } = contextWith({ ok: true, output: 'typed' });
@@ -243,6 +253,37 @@ describe('workspace studio tools', () => {
 
       expect(await renamePath(context, 'a.ts', 'b.ts')).toContain('/ws/b.ts');
       expect(calls[0]).toEqual({ capability: RENAME_PATH, input: { path: 'a.ts', name: 'b.ts' } });
+    });
+
+    it('renamePath_refusesANewNameOnTheDenyList', async () => {
+      // The check on the source alone would let `notes.txt` become the very `.env` the user denied.
+      const { context, calls } = confined({ ok: true }, { deniedWritePaths: ['.env'] });
+
+      expect(await renamePath(context, 'src/notes.txt', '.env')).toContain('denied');
+      expect(calls).toEqual([]);
+    });
+
+    it('renamePath_refusesAPathInAnAllowedRootBecomingADeniedAbsolutePath', async () => {
+      const { context, calls } = confined(
+        { ok: true },
+        { allowedWritePaths: ['/elsewhere'], deniedWritePaths: ['/elsewhere/locked'] },
+      );
+
+      expect(await renamePath(context, '/elsewhere/open', 'locked')).toContain('denied');
+      expect(calls).toEqual([]);
+    });
+
+    it('treeTools_judgeThePathTheRendererWillActOn_notItsUntrimmedSpelling', async () => {
+      // The renderer trims the path before acting on it, so ` /etc/hosts` is `/etc/hosts` there,
+      // though untrimmed it reads as a relative name inside the workspace.
+      const { context, calls } = confined({ ok: true }, { deniedWritePaths: ['.git'] });
+
+      expect(await createFile(context, ' /etc/hosts')).toContain('Blocked');
+      expect(await createFolder(context, '\t../sibling')).toContain('Blocked');
+      expect(await deletePath(context, ' ../sibling ')).toContain('Blocked');
+      expect(await renamePath(context, ' /etc/hosts', 'x')).toContain('Blocked');
+      expect(await createFile(context, ' /ws/.git/config')).toContain('denied');
+      expect(calls).toEqual([]);
     });
 
     it('deletePath_saysWhetherTheEntryWentToTheTrash', async () => {

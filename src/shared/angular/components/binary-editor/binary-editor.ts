@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -12,6 +13,7 @@ import {
   OutputEmitterRef,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -175,6 +177,11 @@ export class BinaryEditor {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the component's destroy hook, which releases the viewport observer.
+   */
+  private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
    * Gets the total number of bytes in the file.
@@ -488,6 +495,7 @@ export class BinaryEditor {
         this.viewportHeight.set(element.clientHeight);
       });
       observer.observe(element);
+      this.destroyRef.onDestroy((): void => observer.disconnect());
     });
 
     // Report the visible byte window whenever it moves, so the host loads exactly those bytes.
@@ -509,6 +517,11 @@ export class BinaryEditor {
     effect((): void => {
       const selection: BinaryRange | null = this.selection();
       if (selection !== null) {
+        // A half-typed byte belongs to where it was started: the next digit there must not land on
+        // whatever the selection moved to.
+        if (selection.start !== untracked(this.caret)) {
+          this.nibbleLow = false;
+        }
         this.caret.set(selection.start);
       }
     });
@@ -521,8 +534,11 @@ export class BinaryEditor {
       if (target === null || element === undefined) {
         return;
       }
-      const targetRow: number = Math.floor(target / this.bytesPerRow());
-      this.scrollToRow(targetRow - element.clientHeight / this.rowHeight() / 2, element);
+      // Untracked: a reveal happens when asked for, not again each time the viewport or file resizes.
+      untracked((): void => {
+        const targetRow: number = Math.floor(target / this.bytesPerRow());
+        this.scrollToRow(targetRow - element.clientHeight / this.rowHeight() / 2, element);
+      });
     });
   }
 
@@ -655,7 +671,7 @@ export class BinaryEditor {
         column === 'hex' ? 'ascii' : 'hex',
       );
       this.nibbleLow = false;
-    } else if (this.readOnly()) {
+    } else if (this.readOnly() || isChord(event)) {
       handled = false;
     } else if (this.activeColumn() === 'hex' && /^[0-9a-fA-F]$/.test(key)) {
       this.applyHexDigit(parseInt(key, 16), maxCaret, insertMode);
@@ -794,6 +810,16 @@ export function formatAddress(
   }
   const hex: string = formatHex(offset, hexCase, HEX_ADDRESS_WIDTH);
   return format === 'hex' ? hex : `${hex.slice(0, -4)}:${hex.slice(-4)}`;
+}
+
+/**
+ * Determines whether a key press is a shortcut rather than a typed character: ⌘C is a copy, not the
+ * hex digit C. AltGr reports itself as Ctrl+Alt, and does type.
+ * @param event The key press.
+ * @returns Returns true for a chord.
+ */
+function isChord(event: KeyboardEvent): boolean {
+  return event.metaKey || ((event.ctrlKey || event.altKey) && !event.getModifierState('AltGraph'));
 }
 
 /**
