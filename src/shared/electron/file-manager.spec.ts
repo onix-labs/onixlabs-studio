@@ -350,6 +350,22 @@ describe('FileManager', () => {
 
       expect(fs.statSync(file).mode & 0o777).toBe(0o755);
     });
+
+    it('write_concurrently_endsWithOneWholeSave_neverABlend', async () => {
+      const file: string = fixture('a.txt');
+      const saves: readonly string[] = [6, 1, 5, 2, 4, 3].map((megabytes: number): string =>
+        String(megabytes).repeat(megabytes * 1024 * 1024),
+      );
+
+      const results: readonly FileWriteResult[] = await Promise.all(
+        saves.map((content: string): Promise<FileWriteResult> =>
+          invoke(FileChannel.Write, file, content),
+        ),
+      );
+
+      expect(results.every((result: FileWriteResult): boolean => result.success)).toBe(true);
+      expect(saves.includes(fs.readFileSync(file, 'utf8'))).toBe(true);
+    });
   });
 
   describe('writeBytes', () => {
