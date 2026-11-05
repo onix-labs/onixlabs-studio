@@ -11,6 +11,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Log } from '@shared/angular/services/log/log';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
@@ -298,6 +299,7 @@ interface SettingsTreeData {
 @Component({
   selector: 'app-settings-view',
   imports: [
+    Alert,
     Button,
     ButtonRow,
     ContainerEngine,

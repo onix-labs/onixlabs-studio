@@ -150,16 +150,16 @@ describe('SkillImportModal (#1263)', () => {
     TestBed.inject(ApplicationRef).tick();
   }
 
-  it('improve_offersImproveImportAsIsOrSkip_forOneOrForAllRemaining', () => {
+  it('improve_offersImproveImportOrSkip_forOneOrForAllRemaining', () => {
     let host: HTMLElement = show({ kind: 'improve', entry: entry() });
     expect(host.textContent).toContain('File 2 of 3');
     button(host, 'Improve').click();
-    button(host, 'Import as Is').click();
+    button(host, 'Import').click();
     button(host, 'Skip').click();
     tick(host);
     button(host, 'Skip').click();
     host = show({ kind: 'improve', entry: entry() });
-    button(host, 'Cancel Import').click();
+    button(host, 'Cancel').click();
 
     expect(session.answers).toEqual([
       { choice: 'improve', all: false },
@@ -170,14 +170,15 @@ describe('SkillImportModal (#1263)', () => {
     expect(session.cancelled).toBe(1);
   });
 
-  it('repair_offersAiOrIgnore_inOneSentence', () => {
+  it('repair_offersToConvertOrSkip_andExplainsEach', () => {
     const host: HTMLElement = show({ kind: 'repair', entry: entry('needs-ai') });
 
-    expect(host.querySelector('.import__message')?.textContent?.trim()).toBe(
-      "It is too short. An AI can turn it into a skill; you'll review the result.",
+    expect(host.querySelector('.import__message')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'It is too short. Convert has an AI turn it into a skill, then you review the result. ' +
+        'Skip leaves it out. Cancel stops the import.',
     );
-    button(host, 'Import with AI').click();
-    button(host, 'Ignore').click();
+    button(host, 'Convert').click();
+    button(host, 'Skip').click();
     expect(session.answers).toEqual(['ai', 'ignore']);
   });
 
@@ -191,12 +192,13 @@ describe('SkillImportModal (#1263)', () => {
     });
 
     expect([...host.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual([
-      'Import as Drafted',
+      'Import',
       'Try Again',
-      'Cancel Import',
+      'Cancel',
     ]);
+    expect(host.querySelector('.import__message')?.textContent).toContain('as it was drafted');
     button(host, 'Try Again').click();
-    button(host, 'Import as Drafted').click();
+    button(host, 'Import').click();
     expect(session.answers).toEqual(['retry', { action: 'draft' }]);
   });
 
@@ -213,7 +215,7 @@ describe('SkillImportModal (#1263)', () => {
     });
 
     expect(host.querySelector<HTMLInputElement>('app-text-field input')?.value).toBe('Not Valid');
-    expect(host.querySelector('.import__error')?.textContent).toContain('lower-case');
+    expect(host.querySelector('app-alert')?.textContent).toContain('lower-case');
     expect(host.querySelector('h2')?.textContent).not.toMatch(/[“”"]/);
     tick(host);
     button(host, 'Replace').click();
@@ -230,7 +232,7 @@ describe('SkillImportModal (#1263)', () => {
     });
 
     expect(button(host, 'Accept').disabled).toBe(true);
-    expect(host.querySelector('.import__error')?.textContent).toContain('description');
+    expect(host.querySelector('app-alert')?.textContent).toContain('description');
     expect(host.textContent).toContain('File 2 of 3');
   });
 
@@ -267,9 +269,9 @@ describe('SkillImportModal (#1263)', () => {
     expect(rows[0].textContent).toContain('Improved with AI');
     expect(rows[0].textContent).toContain('Replaces existing');
     expect(rows[1].textContent).toContain('AI improvement failed');
-    expect(rows[1].textContent).toContain('Import as draft');
+    expect(rows[1].textContent).toContain('Original kept');
     expect(rows[2].textContent).toContain('Not a skill');
-    expect(rows[2].querySelector<HTMLInputElement>('input[type=checkbox]')?.disabled).toBe(true);
+    expect(rows[2].querySelector('input[type=checkbox]')).toBeNull();
     expect(button(host, 'Import 2 Skills')).toBeDefined();
     button(host, 'Import 2 Skills').click();
     expect(session.answers).toEqual(['import']);

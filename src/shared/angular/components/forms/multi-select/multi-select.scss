@@ -243,3 +243,29 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+// The floating variant, drawn to the dropdown's recipe so the two sit side by side.
+:host(.multi-select--floating) {
+  position: relative;
+}
+
+:host(.multi-select--floating) .multi-select {
+  block-size: 2.75rem;
+  padding: 1.1rem 0.6rem 0.3rem;
+}
+
+// The padding sits the line of text 0.4rem below the box's centre; the caret lifts by that much and
+// centres on the whole box.
+:host(.multi-select--floating) .multi-select__caret {
+  translate: 0 -0.4rem;
+}
+
+.multi-select__floating-label {
+  position: absolute;
+  inset-block-start: 0.4rem;
+  inset-inline-start: calc(0.6rem + 0.0625rem);
+  font-size: 0.64rem;
+  line-height: 1;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+}

@@ -9,43 +9,40 @@
   font-size: 1.05rem;
 }
 
-// The reading: where the pressed keys appear, large enough to read at a glance.
+// The reading: where the pressed keys appear, large enough to read at a glance, with no box of its
+// own. It holds focus so it can read key presses, and nothing needs to show that. Its key caps sit a
+// shade above the dialog rather than the app's usual key colour.
 .chord-modal__reading {
   --chord-keys-font-size: 1rem;
   --chord-keys-height: 2.25rem;
+  // At least 4:3, and each key as wide as its own label needs, so Ctrl outgrows a letter beside it.
+  --chord-keys-min-width: 3rem;
+  --chord-keys-padding: 0.9rem;
+  --chord-keys-columns: auto;
+  --key-cap-background-color: color-mix(in srgb, var(--modal-panel-background-color) 90%, white);
 
   display: flex;
   align-items: center;
   justify-content: center;
-  min-block-size: 4rem;
-  padding: 0.75rem;
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier, 1));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--form-control-background-color);
-
-  &:focus-visible,
-  &:focus {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    outline-offset: 1px;
-  }
-
-  &--invalid {
-    border-color: var(--error-foreground-color, #e5484d);
-  }
+  padding-block: 0.5rem;
+  outline: none;
 }
 
 .chord-modal__empty,
-.chord-modal__hint,
-.chord-modal__context {
+.chord-modal__hint {
   color: var(--form-muted-foreground-color);
 }
 
 .chord-modal__hint,
-.chord-modal__error,
-.chord-modal__context {
+.chord-modal__error {
   margin: 0;
   font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.chord-modal__context {
+  margin: 0;
+  font-size: 1rem;
   line-height: 1.5;
 }
 

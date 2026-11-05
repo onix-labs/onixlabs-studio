@@ -23,10 +23,16 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Alert, AlertTone } from '@shared/angular/components/alert/alert';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import {
+  AutoConfigureOutcome,
+  RunConfigurationAgent,
+} from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
 import { runConfigurationKindLabel } from './run-configuration-kinds';
 
 /**
@@ -96,6 +102,8 @@ const CONFIGURATION_PREFIX: string = 'config:';
 @Component({
   selector: 'app-configure-dialog',
   imports: [
+    Alert,
+    AppIcon,
     Textarea,
     Button,
     ButtonRow,
@@ -161,6 +169,24 @@ export class ConfigureDialogPanel {
    * so it parents to this window and dims it, rather than reaching past it to the main window.
    */
   protected readonly autoConfigureOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the agent that Auto-Configure starts.
+   */
+  private readonly autoConfigureAgent: RunConfigurationAgent = inject(RunConfigurationAgent);
+
+  /**
+   * Gets whether Auto-Configure's agent is at work.
+   */
+  protected readonly autoConfiguring: Signal<boolean> = this.autoConfigureAgent.running;
+
+  /**
+   * Holds what Auto-Configure has to report instead of closing, or null when it has nothing.
+   */
+  protected readonly autoConfigureProblem: WritableSignal<{
+    readonly tone: AlertTone;
+    readonly message: string;
+  } | null> = signal<{ readonly tone: AlertTone; readonly message: string } | null>(null);
 
   /**
    * Holds the provider kinds whose groups are collapsed. Collapsed rather than expanded is tracked so
@@ -397,7 +423,7 @@ export class ConfigureDialogPanel {
     // configuration the user is reading does not jump under them as new ones land.
     effect((): void => {
       if (!this.dialog.isOpen()) {
-        this.autoConfigureOpen.set(false);
+        untracked((): void => this.onAutoConfigureClose());
         return;
       }
       const configurations: RunConfiguration[] = this.studio
@@ -419,13 +445,37 @@ export class ConfigureDialogPanel {
    */
   protected onAutoConfigure(): void {
     this.log.info('workspace.run', 'Auto-configure modal opened');
+    this.autoConfigureProblem.set(null);
     this.autoConfigureOpen.set(true);
   }
 
   /**
-   * Closes the Auto-configure modal.
+   * Starts Auto-Configure's agent. Its configurations land in the list as it writes them, so the
+   * modal closes once it is done, unless there is something to say.
+   */
+  protected async onStartAutoConfigure(): Promise<void> {
+    this.autoConfigureProblem.set(null);
+    const outcome: AutoConfigureOutcome = await this.autoConfigureAgent.configure();
+    if (!this.autoConfigureOpen()) {
+      return;
+    }
+    if (outcome.status === 'failed') {
+      this.autoConfigureProblem.set({ tone: 'danger', message: outcome.message });
+    } else if (outcome.status === 'completed' && this.studio.runConfigurations().length === 0) {
+      this.autoConfigureProblem.set({
+        tone: 'info',
+        message: 'The agent found nothing to run in this workspace.',
+      });
+    } else {
+      this.autoConfigureOpen.set(false);
+    }
+  }
+
+  /**
+   * Closes the Auto-Configure modal, stopping its agent if it is still at work.
    */
   protected onAutoConfigureClose(): void {
+    this.autoConfigureAgent.cancel();
     this.autoConfigureOpen.set(false);
   }
 

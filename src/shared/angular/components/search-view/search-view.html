@@ -186,6 +186,7 @@
 <app-modal
   [open]="pendingReplace() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Replace All"
   (dismiss)="pendingReplace.set(null)"
 >
@@ -199,10 +200,16 @@
         @if (pending.skipped.length > 0) {
           Files with unsaved edits are left alone.
         }
+        This cannot be undone.
       </p>
       <app-button-row>
-        <app-button variant="solid" label="Replace All" (click)="confirmReplaceEvery()" />
-        <app-button label="Cancel" (click)="pendingReplace.set(null)" />
+        <app-button
+          variant="solid"
+          tone="warning"
+          label="Replace All"
+          (click)="confirmReplaceEvery()"
+        />
+        <app-button variant="none" label="Cancel" (click)="pendingReplace.set(null)" />
       </app-button-row>
     }
   </ng-template>

@@ -6,7 +6,6 @@ describe('TerminalConfirmation', () => {
     title: 'Paste 3 Lines?',
     body: 'Each line may run as soon as it arrives.',
     confirmLabel: 'Paste',
-    setting: 'Warn Before Multi-Line Paste',
   };
 
   it('opensTheQuestion_andResolvesWithTheAnswer', async () => {

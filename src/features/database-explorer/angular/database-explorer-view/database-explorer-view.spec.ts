@@ -879,8 +879,11 @@ describe('DatabaseExplorerView connection dialog', () => {
    * @returns Returns the labels.
    */
   function rowLabels(content: HTMLElement): readonly string[] {
-    return Array.from(content.querySelectorAll('.setting-row__label')).map(
-      (label: Element): string => label.textContent.trim(),
+    const labels: string =
+      '.setting-row__label, .dropdown__floating-label, .text-field__floating-label, ' +
+      '.password-field__floating-label';
+    return Array.from(content.querySelectorAll(labels)).map((label: Element): string =>
+      label.textContent.trim(),
     );
   }
 
@@ -955,9 +958,7 @@ describe('DatabaseExplorerView connection dialog', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(content.querySelector('.connection__test--failed')?.textContent).toContain(
-      'ECONNREFUSED',
-    );
+    expect(content.querySelector('app-alert')?.textContent).toContain('ECONNREFUSED');
   });
 
   it('aFailedTestWithNoReason_saysSo', async () => {
@@ -966,7 +967,7 @@ describe('DatabaseExplorerView connection dialog', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(content.querySelector('.connection__test--failed')?.textContent).toContain(
+    expect(content.querySelector('app-alert')?.textContent).toContain(
       'The connection failed, and the engine gave no reason.',
     );
   });

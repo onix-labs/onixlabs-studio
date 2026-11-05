@@ -47,6 +47,7 @@
 <app-modal
   [open]="renameTarget() !== null"
   [width]="24"
+  [frameless]="true"
   ariaLabel="Rename"
   (dismiss)="cancelRename()"
 >
@@ -54,8 +55,8 @@
     <h2 class="api-explorer__dialog-title">Rename {{ renameTarget()?.label }}</h2>
     <app-text-field
       class="api-explorer__dialog-input"
-      placeholder="Name"
-      ariaLabel="Name"
+      variant="floating"
+      label="Name"
       [value]="renameName()"
       (valueChange)="renameName.set($event)"
       (enter)="confirmRename()"
@@ -68,7 +69,7 @@
         [disabled]="!canRename()"
         (click)="confirmRename()"
       />
-      <app-button label="Cancel" (click)="cancelRename()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRename()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -78,15 +79,18 @@
 <app-modal
   [open]="deleteTarget() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Delete"
   (dismiss)="cancelDelete()"
 >
   <ng-template appModalContent>
     <h2 class="api-explorer__dialog-title">Delete {{ deleteTarget()?.label }}?</h2>
-    <p class="api-explorer__dialog-message">{{ deleteConsequence() }}</p>
+    <p class="api-explorer__dialog-message">
+      {{ deleteConsequence() }}
+    </p>
     <app-button-row class="api-explorer__dialog-actions">
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-      <app-button label="Cancel" (click)="cancelDelete()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDelete()" />
     </app-button-row>
   </ng-template>
 </app-modal>

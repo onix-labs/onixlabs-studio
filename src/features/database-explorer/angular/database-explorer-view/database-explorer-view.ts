@@ -17,6 +17,7 @@ import {
   TransactionAction,
   TransactionOutcome,
 } from '@shared/api/database-engine-protocol';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { DatabaseConnection, DatabaseQuery } from '@shared/api/database-document';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -115,6 +116,7 @@ import { DatabaseSelection, DatabaseWorkspace } from '../database-workspace/data
 @Component({
   selector: 'app-database-explorer-view',
   imports: [
+    Alert,
     AppIcon,
     Button,
     ButtonRow,

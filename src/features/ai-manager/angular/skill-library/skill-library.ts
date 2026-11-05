@@ -8,6 +8,7 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { GLOBAL_SCOPE, PromptScope } from '@shared/api/ai-types';
 import { Skill, SkillDraft, SkillSaveResult } from '@shared/api/skill-channels';
 import { skillProblem } from '@shared/api/skill-file';
@@ -97,6 +98,7 @@ export interface SkillRow {
 @Component({
   selector: 'app-skill-library',
   imports: [
+    Alert,
     AppIcon,
     Button,
     ButtonRow,

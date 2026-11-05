@@ -95,6 +95,13 @@ describe('DocumentConflictModal', () => {
     expect(windows.requests[0]?.closable).toBe(false);
   });
 
+  it('render_asksForAFramelessWindow', async () => {
+    activeConflict.set(conflict);
+    await present();
+
+    expect(windows.requests[0]?.frameless).toBe(true);
+  });
+
   it('keepButton_resolvesTheConflictKeepingTheEditorVersion', async () => {
     activeConflict.set(conflict);
     const host: HTMLElement | null = await present();

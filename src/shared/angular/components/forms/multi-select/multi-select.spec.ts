@@ -42,6 +42,29 @@ describe('MultiSelect', () => {
     return Array.from(document.querySelectorAll<HTMLButtonElement>('.multi-select__option'));
   }
 
+  /**
+   * Puts the control in a label, as a setting row does, with a caption to press.
+   * @returns Returns the caption.
+   */
+  function labelled(): HTMLElement {
+    const label: HTMLLabelElement = document.createElement('label');
+    const caption: HTMLElement = document.createElement('span');
+    host.replaceWith(label);
+    label.append(caption, host);
+    return caption;
+  }
+
+  /**
+   * Presses and releases on an element, as a mouse does.
+   * @param element The element.
+   */
+  function press(element: HTMLElement): void {
+    element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    element.click();
+    TestBed.tick();
+  }
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [MultiSelect] }).compileComponents();
 
@@ -184,5 +207,47 @@ describe('MultiSelect', () => {
     TestBed.tick();
     expect(rows()).toHaveLength(0);
     expect(document.querySelector('.multi-select__empty')?.textContent).toContain('Nothing');
+  });
+
+  it('label_opensTheClosedPanel_likeTheFace', () => {
+    const caption: HTMLElement = labelled();
+
+    press(caption);
+
+    expect(rows().length).toBeGreaterThan(0);
+  });
+
+  it('label_closesTheOpenPanel_ratherThanReopeningIt', () => {
+    const caption: HTMLElement = labelled();
+    press(caption);
+
+    press(caption);
+
+    expect(rows()).toEqual([]);
+  });
+
+  it('label_opensItAgain_onTheThirdPress', async () => {
+    const caption: HTMLElement = labelled();
+    press(caption);
+    press(caption);
+    await new Promise<void>((resolve: () => void): void => void setTimeout(resolve));
+
+    press(caption);
+
+    expect(rows().length).toBeGreaterThan(0);
+  });
+
+  it('floating_namesTheControl_besideItsChoice', async () => {
+    fixture.componentRef.setInput('label', 'Applies In');
+    await fixture.whenStable();
+
+    expect(host.classList.contains('multi-select--floating')).toBe(true);
+    expect(host.querySelector('.multi-select__floating-label')?.textContent).toBe('Applies In');
+    expect(face().getAttribute('aria-label')).toBe('Applies In');
+  });
+
+  it('plain_hasNoFloatingLabel', () => {
+    expect(host.classList.contains('multi-select--floating')).toBe(false);
+    expect(host.querySelector('.multi-select__floating-label')).toBeNull();
   });
 });

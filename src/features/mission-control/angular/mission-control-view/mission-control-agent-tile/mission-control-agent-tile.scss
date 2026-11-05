@@ -175,14 +175,12 @@ button.tile__name {
   block-size: min(80vh, 46rem);
 }
 
-// The name/status strip above the focused panel. Cleared on the trailing edge so it never runs
-// under the modal's floating expand/close controls.
+// The name/status strip above the focused panel.
 .tile__focus-header {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
   flex: none;
-  padding-inline-end: 5rem;
 }
 
 .tile__focus-name {
@@ -201,6 +199,9 @@ button.tile__name {
   flex-direction: column;
   flex: 1 1 auto;
   min-block-size: 0;
+  // Out into the modal's padding, so the agent has most of the window it was made large for.
+  margin-inline: -0.75rem;
+  margin-block-end: -0.75rem;
 
   app-agent-tool-strip {
     flex: none;

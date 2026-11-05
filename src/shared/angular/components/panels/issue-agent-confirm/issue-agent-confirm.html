@@ -3,20 +3,20 @@
 <app-modal
   [open]="issueAgent.pending() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Open issue in agent"
   (dismiss)="issueAgent.dismiss()"
 >
   <ng-template appModalContent>
-    <h2 class="confirm__title">Start a new conversation?</h2>
+    <h2 class="confirm__title">Start a New Conversation?</h2>
     <p class="confirm__message">
-      Your current conversation ends, and a new one starts about “#{{
-        issueAgent.pending()?.number
-      }}
-      {{ issueAgent.pending()?.title }}”.
+      Your current conversation ends, and a new one starts about
+      <strong>#{{ issueAgent.pending()?.number }} {{ issueAgent.pending()?.title }}</strong
+      >.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Yes" (click)="issueAgent.confirm()" />
-      <app-button label="No" (click)="issueAgent.dismiss()" />
+      <app-button variant="solid" label="Start New" (click)="issueAgent.confirm()" />
+      <app-button variant="none" label="Cancel" (click)="issueAgent.dismiss()" />
     </app-button-row>
   </ng-template>
 </app-modal>

@@ -10,8 +10,7 @@ import {
 
 /**
  * Represents the dialog a terminal asks its questions in: pasting several lines, closing while a
- * program runs. It shows the open {@link TerminalConfirmation} question, names the setting that asks
- * it, and answers it.
+ * program runs. It shows the open {@link TerminalConfirmation} question and answers it.
  */
 @Component({
   selector: 'app-terminal-confirm-modal',

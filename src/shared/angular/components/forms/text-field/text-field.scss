@@ -110,3 +110,67 @@
 .text-field::-webkit-search-cancel-button {
   display: none;
 }
+
+// The floating variant: a taller box whose label rests where the text will go, and rises to the top
+// edge once the field has focus or a value. The placeholder, if there is one, shows only with focus,
+// so it never sits on top of the resting label.
+:host(.text-field--floating) {
+  display: flex;
+  inline-size: 100%;
+}
+
+:host(.text-field--floating) .text-field {
+  block-size: 2.75rem;
+  padding: 1.1rem 0.6rem 0.3rem;
+
+  &::placeholder {
+    color: transparent;
+  }
+
+  &:focus::placeholder {
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.text-field__floating-label {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: calc(0.6rem + 0.0625rem);
+  display: flex;
+  align-items: center;
+  block-size: 100%;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+  pointer-events: none;
+  transform-origin: 0 50%;
+  transition: transform 120ms ease-out;
+}
+
+.text-field:focus ~ .text-field__floating-label,
+.text-field:not(:placeholder-shown) ~ .text-field__floating-label {
+  transform: translateY(-0.7rem) scale(0.8);
+}
+
+// A floating search field: the glyph keeps the leading edge, and both the text and the label start
+// past it.
+:host(.text-field--search.text-field--floating) .text-field {
+  padding-inline-start: 1.85rem;
+}
+
+:host(.text-field--search.text-field--floating) .text-field__glyph {
+  inset-inline-start: 0.65rem;
+  transition: inset-block-start 120ms ease-out;
+}
+
+// Once the label rises the text sits on the lower line, and the glyph drops to stay level with it.
+:host(.text-field--search.text-field--floating):has(
+    .text-field:focus,
+    .text-field:not(:placeholder-shown)
+  )
+  .text-field__glyph {
+  inset-block-start: 1.775rem;
+}
+
+:host(.text-field--search.text-field--floating) .text-field__floating-label {
+  inset-inline-start: calc(1.85rem + 0.0625rem);
+}

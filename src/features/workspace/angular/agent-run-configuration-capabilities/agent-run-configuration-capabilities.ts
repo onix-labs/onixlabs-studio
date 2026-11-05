@@ -176,7 +176,15 @@ export class AgentRunConfigurationCapabilities {
       incoming.push(parsed);
     }
 
-    const merged: RunConfiguration[] = [...(await this.studio.loadRunConfigurations(root))];
+    // A workspace has one default: naming a new one replaces whichever held it.
+    const named: boolean = incoming.some(
+      (configuration: RunConfiguration): boolean => configuration.default === true,
+    );
+    const stored: readonly RunConfiguration[] = await this.studio.loadRunConfigurations(root);
+    const merged: RunConfiguration[] = stored.map(
+      (configuration: RunConfiguration): RunConfiguration =>
+        named ? { ...configuration, default: undefined } : configuration,
+    );
     for (const configuration of incoming) {
       const existing: number = merged.findIndex(
         (candidate: RunConfiguration): boolean => candidate.id === configuration.id,

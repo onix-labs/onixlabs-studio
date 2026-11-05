@@ -73,15 +73,9 @@
   font-size: 1.05rem;
 }
 
-.settings-import__body,
-.settings-import__note {
+.settings-import__body {
   margin: 0;
   line-height: 1.5;
-}
-
-.settings-import__note {
-  font-size: 0.85rem;
-  color: var(--settings-muted-foreground-color);
 }
 
 .settings-import__actions {

@@ -30,15 +30,25 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
   imports: [Modal, ModalContent, Button, ButtonRow],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-modal [open]="open()" [width]="30" [ariaLabel]="title()" (dismiss)="dismissed.emit()">
+    <app-modal
+      [open]="open()"
+      [width]="30"
+      [frameless]="true"
+      [ariaLabel]="title()"
+      (dismiss)="dismissed.emit()"
+    >
       <ng-template appModalContent>
         <div class="remote-modal">
           <h2 class="remote-modal__title">{{ title() }}</h2>
           <p class="remote-modal__body">{{ body() }}</p>
           <p class="remote-modal__hint">{{ hint() }}</p>
           <app-button-row class="remote-modal__actions">
-            <app-button variant="solid" label="Yes" (click)="confirmed.emit()" />
-            <app-button label="No" (click)="dismissed.emit()" />
+            <app-button
+              variant="solid"
+              [label]="enabling() ? 'Enable' : 'Disable'"
+              (click)="confirmed.emit()"
+            />
+            <app-button variant="none" label="Cancel" (click)="dismissed.emit()" />
           </app-button-row>
         </div>
       </ng-template>
@@ -64,8 +74,8 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
       .remote-modal__hint {
         margin: 0;
-        font-size: 0.85rem;
-        color: var(--muted-foreground-color, var(--body-foreground-color));
+        font-size: 1rem;
+        color: var(--form-muted-foreground-color);
       }
 
       .remote-modal__actions {
@@ -99,12 +109,12 @@ export class AgentRemoteModal {
   public readonly count: InputSignal<number> = input<number>(1);
 
   /**
-   * Emits when the user answers Yes. The host performs the toggle and closes the dialog.
+   * Emits when the user confirms. The host performs the toggle and closes the dialog.
    */
   public readonly confirmed: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Emits when the user answers No, or dismisses the dialog. The host closes it, leaving the toggle
+   * Emits when the user cancels or dismisses the dialog. The host closes it, leaving the toggle
    * where it was.
    */
   public readonly dismissed: OutputEmitterRef<void> = output<void>();
@@ -125,14 +135,14 @@ export class AgentRemoteModal {
    * Gets the dialog's question, which doubles as its accessible name.
    */
   protected readonly title: Signal<string> = computed((): string => {
-    const subject: string = this.count() === 1 ? 'this agent' : `all ${this.count()} agents`;
+    const subject: string = this.count() === 1 ? 'This Agent' : `All ${this.count()} Agents`;
     return this.enabling()
-      ? `Enable remote control for ${subject}?`
-      : `Disable remote control for ${subject}?`;
+      ? `Enable Remote Control for ${subject}?`
+      : `Disable Remote Control for ${subject}?`;
   });
 
   /**
-   * Gets the sentence describing what answering Yes does.
+   * Gets the sentence describing what confirming does.
    */
   protected readonly body: Signal<string> = computed((): string => {
     const subject: string = this.count() === 1 ? 'This agent’s session' : 'Every agent’s session';

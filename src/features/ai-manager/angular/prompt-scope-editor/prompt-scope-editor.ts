@@ -72,6 +72,11 @@ export class PromptScopeEditor {
   public readonly showLanguages: InputSignal<boolean> = input<boolean>(true);
 
   /**
+   * Gets whether the scope is drawn as a floating field rather than a settings row.
+   */
+  public readonly floating: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Sets the surfaces. The picker reports values in option order, which is {@link AGENT_SURFACES}
    * order, so the scope's surfaces stay canonically ordered without a re-sort here.
    * @param surfaces The selected surfaces.

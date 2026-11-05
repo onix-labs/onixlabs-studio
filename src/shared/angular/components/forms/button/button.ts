@@ -22,12 +22,15 @@ const LOADING_ICON: Icon = Icon.SPINNER;
  *
  * - `solid` — filled with the accent. The affirmative action of a pair, and never more than one in a
  *   group.
+ * - `ghost` — a tinted fill and border at rest, stronger on hover. A secondary action that needs to
+ *   stand out beside a solid one (Push Only beside Set Upstream), as opposed to one that steps back
+ *   (Cancel, which is `none`).
  * - `outline` — bordered, transparent until hovered. The standard button, and the counterpart to a
  *   solid one (Cancel beside Clear).
  * - `none` — neither border nor fill until hovered. Tool strips, ribbon strips and panel toolbars,
  *   where a row of buttons would otherwise read as a wall of boxes.
  */
-export type ButtonVariant = 'solid' | 'outline' | 'none';
+export type ButtonVariant = 'solid' | 'ghost' | 'outline' | 'none';
 
 /**
  * Names the MEANING a button carries, the axis {@link ButtonVariant} deliberately leaves out. Tone
@@ -72,6 +75,7 @@ export type ButtonSize = 'medium' | 'small' | 'large';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.button--solid]': "variant() === 'solid'",
+    '[class.button--ghost]': "variant() === 'ghost'",
     '[class.button--outline]': "variant() === 'outline'",
     '[class.button--none]': "variant() === 'none'",
     '[class.button--tone-success]': "tone() === 'success'",

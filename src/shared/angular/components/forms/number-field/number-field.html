@@ -1,13 +1,18 @@
 <input
   type="number"
   class="number-field"
+  [id]="controlId"
   [value]="zeroIsEmpty() && value() === 0 ? '' : value()"
-  [attr.placeholder]="placeholder()"
+  [attr.placeholder]="shownPlaceholder()"
   [attr.aria-label]="ariaLabel()"
   [min]="min()"
   [max]="max()"
   [step]="step()"
   [disabled]="disabled()"
+  (beforeinput)="onBeforeInput($event)"
   (input)="onInput($event)"
   (change)="onChange($event)"
 />
+@if (variant() === 'floating') {
+  <label class="number-field__floating-label" [for]="controlId">{{ label() }}</label>
+}

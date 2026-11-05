@@ -25,11 +25,6 @@ export interface TerminalQuestion {
    * Gets the label of the button that goes ahead.
    */
   readonly confirmLabel: string;
-
-  /**
-   * Gets the setting that asks this, named for the user, so they know where to turn it off.
-   */
-  readonly setting: string;
 }
 
 /**

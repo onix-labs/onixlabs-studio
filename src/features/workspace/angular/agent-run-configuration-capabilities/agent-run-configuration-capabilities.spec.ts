@@ -142,6 +142,28 @@ describe('AgentRunConfigurationCapabilities', () => {
     expect(saved[0][1].name).toBe('B renamed');
   });
 
+  it('save_ofANewDefault_replacesTheLast_soAWorkspaceHasOne', async () => {
+    configurations.set([{ ...config('a', 'A'), default: true }, config('b', 'B')]);
+
+    await call<WriteResult>(SAVE_RUN_CONFIGURATIONS, {
+      configurations: [{ id: 'c', name: 'C', providerKind: 'node', default: true }],
+    });
+
+    expect(
+      saved[0].filter((c: RunConfiguration): boolean => c.default === true).map((c) => c.id),
+    ).toEqual(['c']);
+  });
+
+  it('save_withoutADefault_leavesTheCurrentOneAlone', async () => {
+    configurations.set([{ ...config('a', 'A'), default: true }]);
+
+    await call<WriteResult>(SAVE_RUN_CONFIGURATIONS, {
+      configurations: [{ id: 'b', name: 'B', providerKind: 'node' }],
+    });
+
+    expect(saved[0][0].default).toBe(true);
+  });
+
   it('save_acceptsACompound_andNormalisesItsProviderKind', async () => {
     configurations.set([config('api', 'API'), config('web', 'Web')]);
 

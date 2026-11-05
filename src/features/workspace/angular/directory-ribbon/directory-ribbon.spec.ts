@@ -1319,7 +1319,7 @@ describe('DirectoryRibbon', () => {
       expect(windows.openWindows).toBe(1);
       expect(
         windows.contentHost?.querySelector('.directory-ribbon__confirm-title')?.textContent,
-      ).toContain('Save layout');
+      ).toContain('Save Layout');
 
       internals().cancelSaveAs();
       internals().onManageLayouts();
@@ -1327,8 +1327,8 @@ describe('DirectoryRibbon', () => {
       appRef.tick();
       expect(windows.openWindows).toBe(1);
       const manage: string = windows.contentHost?.textContent ?? '';
-      expect(manage).toContain('Manage layouts');
-      expect(manage).toContain('Pick from a template');
+      expect(manage).toContain('Manage Layouts');
+      expect(manage).toContain('Add from Template');
       expect(manage).toContain('Default');
 
       internals().closeManage();

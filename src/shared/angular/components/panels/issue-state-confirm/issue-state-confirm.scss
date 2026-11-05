@@ -9,15 +9,8 @@
 // The issue's title, under the question naming it by number.
 .confirm__issue {
   margin: 0 0 1.1rem;
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.5;
-  color: var(--form-muted-foreground-color);
-}
-
-.confirm__question {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-  color: var(--body-foreground-color);
 }
 
 // The reason, and beneath it for a duplicate the original's number, both the dialog's full width.

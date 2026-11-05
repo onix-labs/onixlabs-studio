@@ -71,11 +71,7 @@ export class TerminalCloseGuard {
           ? `Close ${name}?`
           : `${running.join(', ')} ${running.length === 1 ? 'is' : 'are'} still running in ${name}. ` +
             'Closing the terminal stops it.',
-      confirmLabel: 'Close Terminal',
-      setting:
-        mode === 'always'
-          ? 'Confirm Before Closing a Running Terminal: Always'
-          : 'Confirm Before Closing a Running Terminal: When Running',
+      confirmLabel: 'Close',
     });
     this.log.info('TerminalCloseGuard', confirmed ? 'Close confirmed' : 'Close cancelled', name);
     return confirmed;

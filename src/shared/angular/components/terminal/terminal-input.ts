@@ -50,7 +50,6 @@ export function multiLinePasteQuestion(text: string): TerminalQuestion {
         : 'The shell may run each line as soon as it arrives, before you can look it over.',
     detail: more > 0 ? `${shown}\n… and ${more} more` : shown,
     confirmLabel: 'Paste',
-    setting: 'Warn Before Multi-Line Paste: On',
   };
 }
 

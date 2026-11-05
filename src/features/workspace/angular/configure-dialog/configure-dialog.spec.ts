@@ -10,6 +10,10 @@ import { ProjectCapabilities } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import {
+  AutoConfigureOutcome,
+  RunConfigurationAgent,
+} from '@features/workspace/angular/run-configuration-agent/run-configuration-agent';
 import { ConfigurationRow, ConfigureDialogPanel } from './configure-dialog';
 
 /**
@@ -38,6 +42,9 @@ interface DialogInternals {
   onRowClick(row: TreeRow): void;
   autoConfigureOpen(): boolean;
   onAutoConfigure(): void;
+  onStartAutoConfigure(): Promise<void>;
+  autoConfiguring(): boolean;
+  autoConfigureProblem(): { readonly tone: string; readonly message: string } | null;
   onAutoConfigureClose(): void;
   onNew(): void;
   onDuplicate(): void;
@@ -122,7 +129,38 @@ function dotnetCapabilities(): ProjectCapabilities {
   };
 }
 
+/**
+ * Stands in for Auto-Configure's agent, finishing when a test says so.
+ */
+class FakeAgent {
+  public readonly running: WritableSignal<boolean> = signal<boolean>(false);
+  public cancels: number = 0;
+  private settle: (outcome: AutoConfigureOutcome) => void = (): void => undefined;
+
+  public configure(): Promise<AutoConfigureOutcome> {
+    this.running.set(true);
+    return new Promise<AutoConfigureOutcome>((resolve): void => {
+      this.settle = (outcome: AutoConfigureOutcome): void => {
+        this.running.set(false);
+        resolve(outcome);
+      };
+    });
+  }
+
+  public cancel(): void {
+    this.cancels += 1;
+    if (this.running()) {
+      this.settle({ status: 'cancelled' });
+    }
+  }
+
+  public finish(outcome: AutoConfigureOutcome): void {
+    this.settle(outcome);
+  }
+}
+
 describe('ConfigureDialogPanel', () => {
+  let agent: FakeAgent;
   let component: ConfigureDialogPanel;
   let fixture: ComponentFixture<ConfigureDialogPanel>;
   let dialog: FakeDialog;
@@ -150,11 +188,13 @@ describe('ConfigureDialogPanel', () => {
     studio = new FakeStudio();
     capabilities = new FakeCapabilities();
     windows = new FakeModalWindows();
+    agent = new FakeAgent();
     await TestBed.configureTestingModule({
       imports: [ConfigureDialogPanel],
       providers: [
         { provide: ConfigureDialog, useValue: dialog },
         { provide: StudioConfig, useValue: studio },
+        { provide: RunConfigurationAgent, useValue: agent },
         { provide: WorkspaceCapabilities, useValue: capabilities },
         { provide: ModalWindows, useValue: windows },
       ],
@@ -369,6 +409,93 @@ describe('ConfigureDialogPanel', () => {
     internals().onAutoConfigure();
     dialog.close();
     tick();
+    expect(internals().autoConfigureOpen()).toBe(false);
+  });
+
+  it('autoConfigure_startsNothing_untilConfigureIsPressed', () => {
+    dialog.open();
+    tick();
+
+    internals().onAutoConfigure();
+
+    expect(internals().autoConfigureOpen()).toBe(true);
+    expect(internals().autoConfiguring()).toBe(false);
+  });
+
+  it('autoConfigure_closesOnceTheAgentHasSetThingsUp', async () => {
+    studio.runConfigurations.set([config({})]);
+    dialog.open();
+    tick();
+    internals().onAutoConfigure();
+
+    const pending: Promise<void> = internals().onStartAutoConfigure();
+    expect(internals().autoConfiguring()).toBe(true);
+    expect(internals().autoConfigureOpen()).toBe(true);
+
+    agent.finish({ status: 'completed' });
+    await pending;
+
+    expect(internals().autoConfigureOpen()).toBe(false);
+  });
+
+  it('autoConfigure_saysSo_whenTheAgentFindsNothingToRun', async () => {
+    dialog.open();
+    tick();
+    internals().onAutoConfigure();
+
+    const pending: Promise<void> = internals().onStartAutoConfigure();
+    agent.finish({ status: 'completed' });
+    await pending;
+
+    expect(internals().autoConfigureOpen()).toBe(true);
+    expect(internals().autoConfigureProblem()?.tone).toBe('info');
+  });
+
+  it('autoConfigure_reportsAFailure_andCanBeTriedAgain', async () => {
+    dialog.open();
+    tick();
+    internals().onAutoConfigure();
+
+    let pending: Promise<void> = internals().onStartAutoConfigure();
+    agent.finish({ status: 'failed', message: 'It went wrong.' });
+    await pending;
+    expect(internals().autoConfigureProblem()).toEqual({
+      tone: 'danger',
+      message: 'It went wrong.',
+    });
+
+    pending = internals().onStartAutoConfigure();
+    expect(internals().autoConfigureProblem()).toBeNull();
+    agent.finish({ status: 'cancelled' });
+    await pending;
+  });
+
+  it('autoConfigure_cancelled_stopsTheAgent_andClosesTheModal', async () => {
+    dialog.open();
+    tick();
+    internals().onAutoConfigure();
+    const pending: Promise<void> = internals().onStartAutoConfigure();
+    const before: number = agent.cancels;
+
+    internals().onAutoConfigureClose();
+    await pending;
+
+    expect(agent.cancels).toBe(before + 1);
+    expect(agent.running()).toBe(false);
+    expect(internals().autoConfigureOpen()).toBe(false);
+  });
+
+  it('autoConfigure_stopsWithTheDialog', async () => {
+    dialog.open();
+    tick();
+    internals().onAutoConfigure();
+    const pending: Promise<void> = internals().onStartAutoConfigure();
+
+    dialog.close();
+    tick();
+    await pending;
+
+    expect(agent.running()).toBe(false);
     expect(internals().autoConfigureOpen()).toBe(false);
   });
 

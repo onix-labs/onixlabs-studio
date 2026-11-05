@@ -11,6 +11,8 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { FormModal } from './form-modal';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { Log } from '@shared/angular/services/log/log';
@@ -36,7 +38,7 @@ export interface ImageInsert {
  */
 @Component({
   selector: 'app-markdown-image-modal',
-  imports: [FormModal],
+  imports: [Button, FormModal, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './insert-modal.scss',
   template: `
@@ -50,30 +52,22 @@ export interface ImageInsert {
     >
       <div class="insert-modal__row">
         <div class="insert-modal__field">
-          <label class="insert-modal__label" for="image-url">URL or file</label>
-          <input
-            #urlInput
-            id="image-url"
-            class="insert-modal__input"
-            type="text"
+          <app-text-field
+            variant="floating"
+            label="URL or file"
             placeholder="https://example.com/image.png"
-            [value]="url()"
-            (input)="url.set(urlInput.value)"
+            [(value)]="url"
           />
         </div>
-        <button type="button" class="insert-modal__button" (click)="browse()">Browse…</button>
+        <app-button class="insert-modal__row-button" label="Browse…" (click)="browse()" />
       </div>
 
       <div class="insert-modal__field">
-        <label class="insert-modal__label" for="image-alt">Alt text</label>
-        <input
-          #altInput
-          id="image-alt"
-          class="insert-modal__input"
-          type="text"
+        <app-text-field
+          variant="floating"
+          label="Alt text"
           placeholder="Describe the image"
-          [value]="alt()"
-          (input)="alt.set(altInput.value)"
+          [(value)]="alt"
         />
       </div>
     </app-form-modal>

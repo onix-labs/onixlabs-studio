@@ -1,12 +1,14 @@
 <textarea
   #control
   class="textarea"
+  [id]="controlId"
   [class.textarea--seamless]="variant() === 'seamless'"
   [class.textarea--fixed]="fixedHeight()"
+  [class.textarea--monospace]="monospace()"
   [style.block-size]="fixedHeight() ? rows() + 'lh' : null"
   [rows]="rows()"
   [value]="value()"
-  [placeholder]="placeholder()"
+  [placeholder]="shownPlaceholder()"
   [disabled]="disabled()"
   [attr.aria-label]="ariaLabel()"
   (input)="onInput($event)"
@@ -14,3 +16,6 @@
   (paste)="pasted.emit($event)"
   (blur)="blurred.emit()"
 ></textarea>
+@if (variant() === 'floating') {
+  <label class="textarea__floating-label" [for]="controlId">{{ label() }}</label>
+}

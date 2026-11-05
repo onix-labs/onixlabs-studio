@@ -100,6 +100,7 @@
 <app-modal
   [open]="deleteTarget() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Delete"
   (dismiss)="deleteTarget.set(null)"
 >
@@ -115,7 +116,7 @@
     </p>
     <app-button-row class="database-dialog__actions">
       <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
-      <app-button label="Cancel" (click)="deleteTarget.set(null)" />
+      <app-button variant="none" label="Cancel" (click)="deleteTarget.set(null)" />
     </app-button-row>
   </ng-template>
 </app-modal>

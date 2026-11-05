@@ -1098,10 +1098,10 @@ describe('AgentComposer', () => {
       TestBed.inject(ApplicationRef).tick();
       const content: HTMLElement | null = windows.contentHost;
       const name: HTMLInputElement | null | undefined = content?.querySelector<HTMLInputElement>(
-        'input.agent__prompts-field',
+        '.agent__prompts app-text-field input',
       );
       const text: HTMLTextAreaElement | null | undefined =
-        content?.querySelector<HTMLTextAreaElement>('textarea.agent__prompts-field');
+        content?.querySelector<HTMLTextAreaElement>('.agent__prompts app-textarea textarea');
       if (name === null || name === undefined || text === null || text === undefined) {
         throw new Error('The library did not open');
       }

@@ -66,12 +66,25 @@ describe('MarkdownImageModal', () => {
   }
 
   /**
+   * Finds a field's control by the label of the atom holding it.
+   * @param label The field's trimmed label text.
+   * @returns Returns the matching control.
+   */
+  function fieldWithLabel(label: string): HTMLInputElement {
+    const labels: HTMLLabelElement[] = Array.from(host.querySelectorAll<HTMLLabelElement>('label'));
+    const match: HTMLLabelElement = labels.find(
+      (candidate: HTMLLabelElement): boolean => candidate.textContent?.trim() === label,
+    )!;
+    return match.parentElement!.querySelector<HTMLInputElement>('input, textarea')!;
+  }
+
+  /**
    * Sets a field's value and dispatches its input event so the component signal updates.
-   * @param selector The CSS selector locating the field.
+   * @param label The label of the field.
    * @param value The value to type into the field.
    */
-  function setField(selector: string, value: string): void {
-    const field: HTMLInputElement = host.querySelector<HTMLInputElement>(selector)!;
+  function setField(label: string, value: string): void {
+    const field: HTMLInputElement = fieldWithLabel(label);
     field.value = value;
     field.dispatchEvent(new Event('input'));
     flush();
@@ -84,7 +97,7 @@ describe('MarkdownImageModal', () => {
    */
   function buttonWithLabel(label: string): HTMLButtonElement {
     const buttons: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.insert-modal__button'),
+      host.querySelectorAll<HTMLButtonElement>('app-button button'),
     );
     return buttons.find(
       (button: HTMLButtonElement): boolean => button.textContent?.trim() === label,
@@ -92,18 +105,16 @@ describe('MarkdownImageModal', () => {
   }
 
   it('insert_whenUrlEmpty_isDisabled', () => {
-    const insert: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
-      '.insert-modal__button--primary',
-    )!;
+    const insert: HTMLButtonElement = buttonWithLabel('Insert');
 
     expect(insert.disabled).toBe(true);
   });
 
   it('insert_whenSubmitted_emitsTrimmedUrlAndAlt', () => {
-    setField('#image-url', '  https://example.com/image.png  ');
-    setField('#image-alt', '  A diagram  ');
+    setField('URL or file', '  https://example.com/image.png  ');
+    setField('Alt text', '  A diagram  ');
 
-    host.querySelector<HTMLButtonElement>('.insert-modal__button--primary')!.click();
+    buttonWithLabel('Insert').click();
 
     expect(component.submitted).toEqual({ url: 'https://example.com/image.png', alt: 'A diagram' });
     expect(component.open()).toBe(false);
@@ -116,26 +127,22 @@ describe('MarkdownImageModal', () => {
     await fixture.whenStable();
     flush();
 
-    expect(host.querySelector<HTMLInputElement>('#image-url')!.value).toBe(
-      '/Users/test/picture.png',
-    );
+    expect(fieldWithLabel('URL or file').value).toBe('/Users/test/picture.png');
   });
 
   it('browse_whenCancelled_leavesTheUrlFieldUnchanged', async () => {
-    setField('#image-url', 'https://example.com/original.png');
+    setField('URL or file', 'https://example.com/original.png');
     pickedImage = null;
 
     buttonWithLabel('Browse…').click();
     await fixture.whenStable();
     flush();
 
-    expect(host.querySelector<HTMLInputElement>('#image-url')!.value).toBe(
-      'https://example.com/original.png',
-    );
+    expect(fieldWithLabel('URL or file').value).toBe('https://example.com/original.png');
   });
 
   it('cancel_whenClicked_closesWithoutEmittingAndResetsFields', () => {
-    setField('#image-url', 'https://example.com/image.png');
+    setField('URL or file', 'https://example.com/image.png');
 
     buttonWithLabel('Cancel').click();
     flush();
@@ -146,6 +153,6 @@ describe('MarkdownImageModal', () => {
     component.open.set(true);
     flush();
 
-    expect(host.querySelector<HTMLInputElement>('#image-url')!.value).toBe('');
+    expect(fieldWithLabel('URL or file').value).toBe('');
   });
 });

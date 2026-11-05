@@ -6,9 +6,10 @@
 <input
   #control
   class="text-field"
+  [id]="controlId"
   [type]="kind() === 'search' ? 'search' : 'text'"
   [value]="value()"
-  [placeholder]="placeholder()"
+  [placeholder]="shownPlaceholder()"
   [disabled]="disabled()"
   [attr.aria-label]="ariaLabel()"
   (input)="onInput($event)"
@@ -16,3 +17,6 @@
   (keydown.escape)="escape.emit()"
   (blur)="blurred.emit()"
 />
+@if (variant() === 'floating') {
+  <label class="text-field__floating-label" [for]="controlId">{{ label() }}</label>
+}

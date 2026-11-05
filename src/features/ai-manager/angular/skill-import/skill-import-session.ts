@@ -473,7 +473,7 @@ export class SkillImportSession {
           continue;
         }
         if (fileAll === 'improve' && model !== null) {
-          this.showWorking(entry, 'Improving with AI…');
+          this.showWorking(entry, 'Improving with AI');
           const result: SkillAssistResult = await (this.prefetched.get(entry.source) ??
             this.assist.improve(entry.draft, model, this.abort.signal));
           this.prefetched.delete(entry.source);
@@ -609,7 +609,7 @@ export class SkillImportSession {
     model: SkillAssistModel,
   ): Promise<{ draft: SkillImportDraft; origin: ImportOrigin; failure: string | null }> {
     for (;;) {
-      this.showWorking(entry, 'Improving with AI…');
+      this.showWorking(entry, 'Improving with AI');
       const result: SkillAssistResult = await this.assist.improve(
         entry.draft,
         model,
@@ -656,7 +656,7 @@ export class SkillImportSession {
     model: SkillAssistModel,
   ): Promise<SkillImportDraft | Omit<ImportLeftOut, 'label'>> {
     for (;;) {
-      this.showWorking(entry, 'Converting with AI…');
+      this.showWorking(entry, 'Converting with AI');
       const result: SkillAssistResult = await this.assist.repair(
         entry.source,
         entry.draft,

@@ -907,6 +907,12 @@ export async function createRunConfigurationTools(context: AgentRunContext): Pro
       .describe(
         'For a compound: the ids of the configurations to start in parallel. Every id must exist.',
       ),
+    default: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether a single press of Run starts this one. A workspace has at most one default, so saving one replaces the last.',
+      ),
   });
   return {
     // Listing is a read, so it runs without prompting — the agent can see what exists before deciding

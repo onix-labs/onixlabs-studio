@@ -10,6 +10,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Alert } from '@shared/angular/components/alert/alert';
 import { skillProblem } from '@shared/api/skill-file';
 import type { SkillImportDraft } from '@shared/api/skill-import-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -18,7 +19,9 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Chip } from '@shared/angular/components/chip/chip';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
@@ -69,10 +72,13 @@ const LEFT_OUT_LABELS: Readonly<Record<ImportLeftOut['kind'], string>> = {
 @Component({
   selector: 'app-skill-import-modal',
   imports: [
+    Alert,
     AppIcon,
     Button,
     ButtonRow,
     Checkbox,
+    SettingRow,
+    Toggle,
     Chip,
     Modal,
     ModalContent,

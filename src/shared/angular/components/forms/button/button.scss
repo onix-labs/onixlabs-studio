@@ -159,6 +159,27 @@
   }
 }
 
+// A disabled solid button fades like any other, but its label takes a very light shade of its tone
+// rather than fading to grey.
+:host(.button--solid:not(.button--loading)) .button:disabled {
+  color: color-mix(in srgb, var(--btn-tone-color) 25%, white);
+}
+
+// Ghost: a secondary action that needs to stand out. At rest it is already stronger than any button's
+// hover, so a borderless button lit up beside it still reads as the quieter of the two; pointing at it
+// goes further again.
+:host(.button--ghost) .button {
+  color: var(--btn-tone-surface-foreground);
+  background: color-mix(in srgb, var(--btn-tone-color) 32%, transparent);
+  border-color: var(--btn-tone-color);
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    color: var(--gray-100);
+    background: color-mix(in srgb, var(--btn-tone-color) 55%, transparent);
+  }
+}
+
 // Outline: neutral until pointed at, then the tone surface — the counterpart to a solid button. A
 // toned outline carries the tone's border at rest too.
 :host(.button--outline) .button {

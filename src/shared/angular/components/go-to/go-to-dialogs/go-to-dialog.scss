@@ -29,6 +29,7 @@
 // host's height, which a fixed height gives it.
 .go-to-dialog__list {
   block-size: 18rem;
+  background: var(--form-control-background-color);
   border: 0.0625rem solid var(--form-control-border-color);
   border-radius: calc(0.4rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
@@ -64,9 +65,8 @@
 
 // Rename Symbol's confirmation (#1015): the line under the title, and each file's count of changes,
 // set at the row's end.
-.go-to-dialog__summary {
+.go-to-dialog__message {
   margin: 0;
-  font-size: 0.85rem;
   line-height: 1.5;
 }
 

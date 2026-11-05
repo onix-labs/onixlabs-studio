@@ -30,7 +30,13 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (conflict(); as current) {
-      <app-modal [open]="true" [dismissable]="false" [width]="28" ariaLabel="File changed on disk">
+      <app-modal
+        [open]="true"
+        [dismissable]="false"
+        [frameless]="true"
+        [width]="28"
+        ariaLabel="File changed on disk"
+      >
         <ng-template appModalContent>
           <div class="conflict">
             <h2 class="conflict__title">File Changed on Disk</h2>
@@ -42,7 +48,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
               </p>
               <app-button-row class="conflict__actions">
                 <app-button variant="solid" label="Reload from disk" (click)="reload(current)" />
-                <app-button label="Keep the open copy" (click)="keep(current)" />
+                <app-button variant="none" label="Keep the open copy" (click)="keep(current)" />
               </app-button-row>
             } @else {
               <p class="conflict__body">
@@ -57,7 +63,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
                   label="Reload from disk"
                   (click)="reload(current)"
                 />
-                <app-button label="Keep my version" (click)="keep(current)" />
+                <app-button variant="none" label="Keep my version" (click)="keep(current)" />
               </app-button-row>
             }
           </div>

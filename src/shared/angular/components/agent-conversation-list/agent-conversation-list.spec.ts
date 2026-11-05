@@ -278,7 +278,7 @@ describe('AgentConversationList', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('Work');
     expect(content.querySelector('.history__modal-title')?.textContent).toContain(
-      'Manage categories',
+      'Manage Categories',
     );
   });
 
@@ -289,7 +289,7 @@ describe('AgentConversationList', () => {
 
     expect(windows.openWindows).toBe(1);
     const content: HTMLElement = windows.contentHost!;
-    expect(content.querySelector('.history__modal-title')?.textContent).toContain('New category');
+    expect(content.querySelector('.history__modal-title')?.textContent).toContain('New Category');
     expect(content.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
   });
 
@@ -320,7 +320,7 @@ describe('AgentConversationList', () => {
     expect(windows.openWindows).toBe(1);
     const content: HTMLElement = windows.contentHost!;
     expect(content.querySelector('.history__modal-title')?.textContent).toContain(
-      'Delete conversations?',
+      'Delete Conversations?',
     );
     expect(content.querySelector('.history__modal-body')?.textContent).toContain('1 conversation');
   });

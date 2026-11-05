@@ -27,7 +27,6 @@ describe('TerminalConfirmModal', () => {
       body: 'Each line may run as soon as it arrives.',
       detail: 'rm -rf build\nnpm ci',
       confirmLabel: 'Paste',
-      setting: 'Warn Before Multi-Line Paste: On',
     });
     await fixture.whenStable();
 
@@ -45,7 +44,6 @@ describe('TerminalConfirmModal', () => {
       title: 'Close Terminal?',
       body: 'A program is still running.',
       confirmLabel: 'Close',
-      setting: 'Confirm Before Closing a Running Terminal: When Running',
     });
     await fixture.whenStable();
     windows.contentHost
