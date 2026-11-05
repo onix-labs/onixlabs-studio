@@ -2788,4 +2788,30 @@ describe('Agent', () => {
     expect(agent.items()).toEqual([]);
     expect(runCalls).toHaveLength(1);
   });
+
+  it('clear_whileATaskRuns_stopsListingATaskNothingCanSettle', () => {
+    agent.send('go');
+    startTask(runCalls[0].agentSessionId, 'task-1');
+    completeTurn();
+    expect(agent.tasks()).toHaveLength(1);
+
+    agent.clear();
+
+    expect(agent.tasks()).toEqual([]);
+    expect(agent.items()).toEqual([]);
+  });
+
+  it('rewind_whileATaskRuns_saysTheTaskIsNoLongerTracked', () => {
+    agent.send('go');
+    const first: AgentItem | undefined = agent.items()[0];
+    startTask(runCalls[0].agentSessionId, 'task-1');
+    completeTurn();
+
+    if (first !== undefined) {
+      agent.rewind(first, 'go again');
+    }
+
+    expect(agent.tasks()).toEqual([]);
+    expect(transcript()).toEqual(['Background tasks untracked', 'go again']);
+  });
 });

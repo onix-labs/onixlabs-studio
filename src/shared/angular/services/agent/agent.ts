@@ -1844,6 +1844,13 @@ export class Agent {
    * turn opens a new session. Called when the conversation identity changes: New chat, restore, fork.
    */
   private resetAgentSession(): void {
+    // The `session-ended` that closing raises arrives under the old id, which this conversation stops
+    // answering to below, so its tasks would be listed as running for good with a Stop reaching nothing.
+    this.untrackTasks(
+      this.tasks().map((task: AgentTask): string => task.taskId),
+      'its agent session was closed',
+      'Background tasks untracked',
+    );
     this.runtime.closeSession(this.agentSessionId);
     this.agentSessionId = crypto.randomUUID();
     this.sessionRequestId = null;
