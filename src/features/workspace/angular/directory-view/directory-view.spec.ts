@@ -1,6 +1,6 @@
 import { Component, input, InputSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Mock, MockInstance } from 'vitest';
+import { Mock, MockInstance, vi } from 'vitest';
 import { Icon } from '@shared/angular/icons/icon';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -10,9 +10,12 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { DockNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { Layouts, LayoutSession } from '@shared/angular/services/layouts/layouts';
+import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import {
   collectPanelIds,
+  findDocumentWell,
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
@@ -902,6 +905,170 @@ describe('DirectoryView', () => {
       await fixture.whenStable();
 
       expect(promoted).toHaveBeenCalledWith('conversation-1');
+    });
+  });
+
+  describe('a debug session starting', () => {
+    let dock: DockState;
+
+    /**
+     * Moves the tab's debug session to a state, as the debugger would.
+     * @param state The state.
+     * @returns Returns a promise that resolves once the view has reacted.
+     */
+    async function sessionIs(state: string): Promise<void> {
+      (
+        fixture.debugElement.injector.get(DebugSession) as unknown as {
+          stateSignal: WritableSignal<string>;
+        }
+      ).stateSignal.set(state);
+      await fixture.whenStable();
+    }
+
+    /**
+     * Counts a panel's places in the dock.
+     * @param id The panel.
+     * @returns Returns how many.
+     */
+    function placesOf(id: string): number {
+      return collectPanelIds(dock.layout()).filter((panel: string): boolean => panel === id).length;
+    }
+
+    beforeEach(() => {
+      dock = fixture.debugElement.injector.get(DockState);
+    });
+
+    afterEach(() => {
+      localStorage.removeItem('settings');
+    });
+
+    it('addsTheDebugPanelBesideTheErrorList_once', async () => {
+      await sessionIs('running');
+      await sessionIs('idle');
+      await sessionIs('running');
+
+      expect(placesOf('debug')).toBe(1);
+      expect(findStackOfPanel(dock.layout(), 'debug')?.id).toBe(
+        findStackOfPanel(dock.layout(), 'errors')?.id,
+      );
+    });
+
+    it('leavesTheLayoutAlone_whenShowingPanelsOnStartIsOff', async () => {
+      TestBed.inject(Settings).set('workspaces.showDebugPanelsOnStart', false);
+
+      await sessionIs('running');
+
+      expect(placesOf('debug')).toBe(0);
+    });
+
+    it('bringsLogsIn_withoutStealingTheTab_whenRevealingOutputIsOff', async () => {
+      TestBed.inject(Settings).set('workspaces.revealDebugOutputOnStart', false);
+
+      await sessionIs('running');
+
+      expect(placesOf('output')).toBe(1);
+      expect(findStackOfPanel(dock.layout(), 'output')?.active).toBe('debug');
+    });
+
+    it('bringsLogsForward_whenRevealingOutputIsOn', async () => {
+      TestBed.inject(Settings).set('workspaces.revealDebugOutputOnStart', true);
+
+      await sessionIs('running');
+
+      expect(findStackOfPanel(dock.layout(), 'output')?.active).toBe('output');
+    });
+  });
+
+  describe('switching layouts', () => {
+    let session: LayoutSession;
+    let dock: DockState;
+
+    /**
+     * A layout with no document well.
+     */
+    const NO_WELL: DockNode = {
+      kind: 'stack',
+      id: 'tools',
+      role: 'tool',
+      panels: ['files'],
+      active: 'files',
+    } as unknown as DockNode;
+
+    /**
+     * Opens a document panel in the tab.
+     * @param confirm What it answers when asked to let go.
+     * @returns Returns the panel's id.
+     */
+    function openDocument(confirm: boolean): string {
+      const id: string = 'doc-under-test';
+      fixture.debugElement.injector.get(DockPanelRegistry).register({
+        id,
+        title: 'Notes',
+        icon: Icon.FILE,
+        role: 'document',
+        component: DirectoryView,
+        confirmClose: (): Promise<boolean> => Promise.resolve(confirm),
+      });
+      const well: StackNode | null = findDocumentWell(dock.layout());
+      if (well !== null) {
+        dock.tabInto(well.id, id);
+      }
+      return id;
+    }
+
+    beforeEach(async () => {
+      const register: MockInstance = vi.spyOn(TestBed.inject(Layouts), 'register');
+      fixture.componentRef.setInput('isActive', true);
+      await fixture.whenStable();
+      const registered: LayoutSession | undefined = register.mock.lastCall?.[0] as
+        LayoutSession | undefined;
+      if (registered === undefined) {
+        throw new Error('The tab registered no layout session');
+      }
+      session = registered;
+      dock = fixture.debugElement.injector.get(DockState);
+    });
+
+    it('capture_isTheLiveLayout', () => {
+      expect(session.capture()).toBe(dock.layout());
+    });
+
+    it('confirmApply_ofALayoutWithAWell_asksNothing', async () => {
+      const confirm: boolean = (await session.confirmApply?.(dock.layout())) ?? false;
+
+      expect(confirm).toBe(true);
+    });
+
+    it('confirmApply_ofNoLayout_asksNothing', async () => {
+      expect(await session.confirmApply?.(null)).toBe(true);
+    });
+
+    it('confirmApply_ofALayoutWithNoWell_stopsWhenADocumentRefuses', async () => {
+      const id: string = openDocument(false);
+      const released: MockInstance = vi.spyOn(dock, 'markReleased');
+
+      expect(await session.confirmApply?.(NO_WELL)).toBe(false);
+
+      expect(released).not.toHaveBeenCalled();
+      expect(collectPanelIds(dock.layout())).toContain(id);
+    });
+
+    it('confirmApply_ofALayoutWithNoWell_releasesDocumentsThatAgree', async () => {
+      const id: string = openDocument(true);
+      const released: MockInstance = vi.spyOn(dock, 'markReleased');
+
+      expect(await session.confirmApply?.(NO_WELL)).toBe(true);
+
+      expect(released).toHaveBeenCalledWith([id]);
+    });
+
+    it('apply_carriesOpenDocumentsAcross', () => {
+      const id: string = openDocument(true);
+      const reset: MockInstance = vi.spyOn(dock, 'reset');
+
+      session.apply();
+
+      expect(reset.mock.calls[0]?.[0]).toEqual([id]);
     });
   });
 });
