@@ -2251,8 +2251,10 @@ export class LspClient implements OnDestroy {
     if (!tracked.opened || this.bridge === undefined) {
       return;
     }
-    const sessionId: string | null = await this.ensureSession(tracked);
-    if (sessionId === null) {
+    // Not through ensureSession: a closing document is not joining the session, and joining withdraws
+    // the documentless reap closeDocument has just armed, so a standalone server would never stop.
+    const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    if ((await this.sessions.get(sessionId)) !== true) {
       return;
     }
     this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didClose', {

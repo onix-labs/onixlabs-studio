@@ -2906,6 +2906,60 @@ describe('LspClient', () => {
       vi.useRealTimers();
     }
   });
+
+  it('standaloneReap_stopsAServerWhoseLastDocumentClosed', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual(['/tmp/scratch::typescript']);
+    expect(status.stateOf('/tmp/scratch::typescript')).toBeNull();
+    expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('standaloneReap_whenADocumentReturnedInTime_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(300_000);
+      openDocument(client, '/tmp/scratch/a.ts');
+      await vi.advanceTimersByTimeAsync(601_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
+
+  it('standaloneReap_withStopSetToNever_keepsTheServer', async () => {
+    root.set(null);
+    const client: LspClient = build();
+    TestBed.inject(Settings).set('lsp.idleStopMinutes', 0);
+    openDocument(client, '/tmp/scratch/a.ts');
+    await flush();
+    vi.useFakeTimers();
+    try {
+      client.closeDocument('doc-1');
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(lsp.stops).toEqual([]);
+  });
 });
 
 describe('idleStopMs', () => {
