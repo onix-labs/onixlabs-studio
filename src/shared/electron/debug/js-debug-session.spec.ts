@@ -46,8 +46,16 @@ class Peer {
   private readonly decoder: DapMessageDecoder = new DapMessageDecoder();
   private seq: number = 1000;
 
+  /**
+   * Gets whether the session has hung up on this connection.
+   */
+  public closed: boolean = false;
+
   public constructor(private readonly socket: Socket) {
     socket.on('error', (): void => undefined);
+    socket.on('close', (): void => {
+      this.closed = true;
+    });
     socket.on('data', (chunk: Buffer): void => {
       for (const message of this.decoder.append(chunk)) {
         if (message.type === 'response') {
@@ -328,7 +336,7 @@ describe.skipIf(process.platform === 'win32')('JsDebugSession', () => {
     const second: Peer = await target(parent, 't2');
 
     first.event('terminated');
-    await new Promise<void>((resolve: () => void): void => void setTimeout(resolve, 30));
+    await until((): boolean => first.closed, 'the first target to go');
     await session.sendRequest('threads');
     expect(second.commands()).toContain('threads');
     expect(surfaced()).not.toContain('terminated');
