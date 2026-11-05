@@ -100,7 +100,7 @@ export class StudioStore {
    * parser first. Confined to open roots.
    * @param root The candidate workspace root.
    * @param payload The candidate shared configuration, never trusted.
-   * @returns Returns true when written, false when the root is not open.
+   * @returns Returns true when written, false when the root is not open or the write failed.
    */
   private async saveWorkspace(root: unknown, payload: unknown): Promise<boolean> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
@@ -108,9 +108,7 @@ export class StudioStore {
       return false;
     }
     const workspace: StudioWorkspace = parseWorkspace(payload);
-    await this.write(root, STUDIO_WORKSPACE_FILE, serializeWorkspace(workspace));
-    logger.info('StudioStore.saveWorkspace', `Saved workspace.json for ${root}`);
-    return true;
+    return this.tryWrite(root, STUDIO_WORKSPACE_FILE, serializeWorkspace(workspace));
   }
 
   /**
@@ -118,7 +116,7 @@ export class StudioStore {
    * Confined to open roots.
    * @param root The candidate workspace root.
    * @param payload The candidate user configuration, never trusted.
-   * @returns Returns true when written, false when the root is not open.
+   * @returns Returns true when written, false when the root is not open or the write failed.
    */
   private async saveUser(root: unknown, payload: unknown): Promise<boolean> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
@@ -126,9 +124,26 @@ export class StudioStore {
       return false;
     }
     const user: StudioUser = parseUser(payload);
-    await this.write(root, STUDIO_USER_FILE, serializeUser(user));
-    logger.info('StudioStore.saveUser', `Saved workspace.user.json for ${root}`);
-    return true;
+    return this.tryWrite(root, STUDIO_USER_FILE, serializeUser(user));
+  }
+
+  /**
+   * Writes a studio file, reporting a failure rather than rejecting: a read-only or full volume is an
+   * outcome of saving, not an error for the renderer to trip over.
+   * @param root The workspace root.
+   * @param file The studio file name.
+   * @param contents The file contents.
+   * @returns Returns true when written.
+   */
+  private async tryWrite(root: string, file: string, contents: string): Promise<boolean> {
+    try {
+      await this.write(root, file, contents);
+      logger.info('StudioStore', `Saved ${file} for ${root}`);
+      return true;
+    } catch (error: unknown) {
+      logger.error('StudioStore', `Could not save ${file} for ${root}`, error);
+      return false;
+    }
   }
 
   /**

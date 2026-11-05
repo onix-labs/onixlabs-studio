@@ -151,6 +151,12 @@ describe('StudioStore', () => {
     expect(fs.readdirSync(path.join(root, STUDIO_DIR))).toEqual([STUDIO_WORKSPACE_FILE]);
   });
 
+  it('save_whenTheStudioFolderCannotBeMade_answersFalse', async () => {
+    fs.writeFileSync(path.join(root, STUDIO_DIR), 'a file in the way');
+
+    await expect(invoke(StudioChannel.SaveWorkspace, root, {})).resolves.toBe(false);
+  });
+
   it('gitignore_isCreatedWithThePattern', async () => {
     await invoke(StudioChannel.SaveUser, root, {});
 
