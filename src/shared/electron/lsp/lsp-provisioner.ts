@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
@@ -47,12 +47,20 @@ const JDTLS_URL: string =
  * Holds the expected SHA-256 of the pinned distribution. The download is verified against this before
  * it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const JDTLS_SHA256: string = '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
+export const JDTLS_SHA256: string =
+  '2a5bbe55ec91b4325392050dc422cead3220a2459b3766be35e1fff45b4a50d9';
 
 /**
  * Holds the lowest Java major version the downloaded language server can run on.
  */
 const MINIMUM_JAVA_VERSION: number = 21;
+
+/**
+ * How long a server download may go without a byte before it is given up on. Measured from the last
+ * byte rather than the start: these archives run to hundreds of megabytes, and a slow link that keeps
+ * moving must be left to finish, while a connection that has gone quiet never will.
+ */
+export const DOWNLOAD_STALL_MS: number = 60_000;
 
 /**
  * Holds the pinned version of the Roslyn C# language server (`Microsoft.CodeAnalysis.LanguageServer`,
@@ -82,7 +90,7 @@ const ROSLYN_FEED: string = 'https://api.nuget.org/v3-flatcontainer';
  * A download is verified against this before it is extracted, so a corrupted or substituted package of
  * executable code is never run.
  */
-const ROSLYN_SHA512: Readonly<Record<string, string>> = {
+export const ROSLYN_SHA512: Readonly<Record<string, string>> = {
   'osx-x64':
     'KtsZpvvq7t8KU0l+yFZaDhXx3MEnACjTan7I4e/QxC4HI165spiAVP3TO1dB/Eb7rfYTPQ89rbDnOiO08TAyyA==',
   'osx-arm64':
@@ -198,7 +206,8 @@ const KOTLIN_LS_URL: string =
  * Holds the expected SHA-256 of the pinned Kotlin server distribution. The download is verified against
  * this before it is extracted, so a corrupted or tampered archive of executable code is never run.
  */
-const KOTLIN_LS_SHA256: string = '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
+export const KOTLIN_LS_SHA256: string =
+  '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b89098b0a24eb2d9b6d2';
 
 /**
  * Holds the pinned version of the Go language server (gopls). gopls publishes no prebuilt binaries, so
@@ -346,11 +355,18 @@ export class LspProvisioner {
   /**
    * Ensures the Eclipse JDT Language Server is installed under the user-data directory, downloading
    * and extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the installation, or null when it could not be provisioned.
    */
   public ensureJdtls(): Promise<JdtlsInstall | null> {
-    this.jdtlsProvision ??= this.provisionJdtls();
+    this.jdtlsProvision ??= this.provisionJdtls().then(
+      (install: JdtlsInstall | null): JdtlsInstall | null => {
+        if (install === null) {
+          this.jdtlsProvision = null;
+        }
+        return install;
+      },
+    );
     return this.jdtlsProvision;
   }
 
@@ -436,11 +452,18 @@ export class LspProvisioner {
   /**
    * Ensures the Kotlin language server is installed under the user-data directory, downloading and
    * extracting it on first use and reusing the cached copy thereafter. The work is shared across
-   * concurrent callers.
+   * concurrent callers; a failure is not remembered, so a retry after a network blip downloads again.
    * @returns Returns the absolute path of the launcher script, or null when it could not be provisioned.
    */
   public ensureKotlin(): Promise<string | null> {
-    this.kotlinProvision ??= this.provisionKotlin();
+    this.kotlinProvision ??= this.provisionKotlin().then(
+      (launcher: string | null): string | null => {
+        if (launcher === null) {
+          this.kotlinProvision = null;
+        }
+        return launcher;
+      },
+    );
     return this.kotlinProvision;
   }
 
@@ -459,12 +482,17 @@ export class LspProvisioner {
   /**
    * Ensures the Go language server (gopls) is built under the user-data directory, running `go install`
    * into a controlled GOBIN on first use and reusing the cached binary thereafter. The work is shared
-   * across concurrent callers.
+   * across concurrent callers; a failure is not remembered, so a retry builds again.
    * @param go The Go executable used to build gopls.
    * @returns Returns the absolute path of the gopls binary, or null when it could not be built.
    */
   public ensureGopls(go: string): Promise<string | null> {
-    this.goplsProvision ??= this.provisionGopls(go);
+    this.goplsProvision ??= this.provisionGopls(go).then((binary: string | null): string | null => {
+      if (binary === null) {
+        this.goplsProvision = null;
+      }
+      return binary;
+    });
     return this.goplsProvision;
   }
 
@@ -869,7 +897,9 @@ export class LspProvisioner {
       versionDir,
       roslynBinaryCandidates(rid, process.platform === 'win32')[0],
     );
+    const archive: string = path.join(installDir, 'server.nupkg');
     try {
+      await this.clearInterruptedInstall(archive, versionDir);
       if (existsSync(binary)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -881,7 +911,6 @@ export class LspProvisioner {
       await fs.mkdir(installDir, { recursive: true });
       const id: string = `roslyn-language-server.${rid}`;
       const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
-      const archive: string = path.join(installDir, 'server.nupkg');
       await this.download(url, archive);
       const digest: string = await this.fileDigest(archive, 'sha512', 'base64');
       if (digest !== expected) {
@@ -952,7 +981,9 @@ export class LspProvisioner {
    */
   private async provisionJdtls(): Promise<JdtlsInstall | null> {
     const installDir: string = path.join(this.serversRoot(), 'jdtls', JDTLS_VERSION);
+    const archive: string = path.join(installDir, 'jdtls.tar.gz');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
         // Mark an install that predates the completion marker, so an existing, working server is not
@@ -963,7 +994,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading JDT.LS ${JDTLS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'jdtls.tar.gz');
       await this.download(JDTLS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== JDTLS_SHA256) {
@@ -976,9 +1006,14 @@ export class LspProvisioner {
       }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
+      const installed: JdtlsInstall | null = await this.readInstall(installDir);
+      if (installed === null) {
+        logger.warn('LspProvisioner', 'Extracted JDT.LS but its launcher or config is missing');
+        return null;
+      }
       await markComplete(installDir);
       logger.info('LspProvisioner', `Installed JDT.LS into ${installDir}`);
-      return await this.readInstall(installDir);
+      return installed;
     } catch (error: unknown) {
       logger.error(
         'LspProvisioner',
@@ -1004,7 +1039,9 @@ export class LspProvisioner {
       'bin',
       process.platform === 'win32' ? 'kotlin-language-server.bat' : 'kotlin-language-server',
     );
+    const archive: string = path.join(installDir, 'server.zip');
     try {
+      await this.clearInterruptedInstall(archive, installDir);
       if (existsSync(launcher)) {
         // Mark an install that predates the completion marker, so an existing, working server is not
         // reported as missing forever.
@@ -1014,7 +1051,6 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Downloading Kotlin server ${KOTLIN_LS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, 'server.zip');
       await this.download(KOTLIN_LS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== KOTLIN_LS_SHA256) {
@@ -1163,6 +1199,21 @@ export class LspProvisioner {
   }
 
   /**
+   * Clears what an install that died part way left behind. The archive is removed only once extraction
+   * has finished, so one still there means the files beside it cannot be trusted, however complete
+   * they look: a launcher found among them would otherwise be marked complete, and reused for good.
+   * @param archive The archive the install downloads.
+   * @param installRoot The directory the install owns.
+   * @returns Returns a promise that resolves once any remains are gone.
+   */
+  private async clearInterruptedInstall(archive: string, installRoot: string): Promise<void> {
+    if (existsSync(archive)) {
+      logger.warn('LspProvisioner', `Clearing an interrupted install at ${installRoot}`);
+      await fs.rm(installRoot, { recursive: true, force: true });
+    }
+  }
+
+  /**
    * Resolves an installation from an extracted directory, when it contains a launcher and a
    * configuration directory for the current platform.
    * @param installDir The directory the server was extracted into.
@@ -1186,24 +1237,65 @@ export class LspProvisioner {
   }
 
   /**
-   * Downloads a URL to a file, streaming the response to disk.
+   * Downloads a URL to a file, streaming the response to disk, and gives up on one that stops moving.
    * @param url The URL to download.
    * @param destination The file to write.
    * @returns Returns a promise that resolves once the download completes.
    */
   private async download(url: string, destination: string): Promise<void> {
-    const response: Response = await fetch(url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`Download failed: ${response.status}`);
+    const controller: AbortController = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | undefined;
+    const arm: () => void = (): void => {
+      clearTimeout(stall);
+      stall = setTimeout((): void => {
+        controller.abort(new Error(`Download stalled: nothing for ${DOWNLOAD_STALL_MS} ms`));
+      }, DOWNLOAD_STALL_MS);
+    };
+    arm();
+    try {
+      const response: Response = await fetch(url, { signal: controller.signal });
+      if (!response.ok || response.body === null) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      arm();
+      await this.writeBody(response.body, destination, arm, controller.signal);
+    } finally {
+      clearTimeout(stall);
     }
+  }
+
+  /**
+   * Streams a response's body to a file, reporting each chunk as it passes.
+   * @param source The response's body.
+   * @param destination The file to write.
+   * @param onChunk Called for each chunk.
+   * @param signal Aborts the write.
+   * @returns Returns a promise that resolves once the body is on disk.
+   */
+  private async writeBody(
+    source: NonNullable<Response['body']>,
+    destination: string,
+    onChunk: () => void,
+    signal: AbortSignal,
+  ): Promise<void> {
     // The two compilations disagree about this type: under the main process's Node libs the cast is
     // redundant, while under the renderer's DOM libs `ReadableStream` is the DOM one and the call will
     // not typecheck without it. It is what lets anything importing this module be tested at all.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    const body: Parameters<typeof Readable.fromWeb>[0] = response.body as Parameters<
+    const body: Parameters<typeof Readable.fromWeb>[0] = source as Parameters<
       typeof Readable.fromWeb
     >[0];
-    await pipeline(Readable.fromWeb(body), createWriteStream(destination));
+    const watched: Transform = new Transform({
+      transform: (
+        chunk: Buffer,
+        _encoding: BufferEncoding,
+        done: (error: null, data: Buffer) => void,
+      ): void => {
+        onChunk();
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(body), watched, createWriteStream(destination), { signal });
   }
 
   /**

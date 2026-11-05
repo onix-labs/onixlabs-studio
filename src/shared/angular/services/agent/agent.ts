@@ -203,7 +203,7 @@ export interface AgentTask {
 /**
  * Identifies the state of a permission request item.
  */
-export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed';
+export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed' | 'expired';
 
 /**
  * Identifies the state of an input-request (agent question) item: awaiting the user's answer,
@@ -930,6 +930,12 @@ export class Agent {
   private compacting: boolean = false;
 
   /**
+   * Counts the times the conversation has been replaced (a clear or a restore), so work that outlived
+   * one can tell the conversation it began in has gone.
+   */
+  private conversationEpoch: number = 0;
+
+  /**
    * Accumulates the summary text streamed by a compaction run.
    */
   private compactionText: string = '';
@@ -1346,12 +1352,18 @@ export class Agent {
     images: readonly AiImageRef[] = [],
   ): Promise<void> {
     const requestId: string | null = this.activeRequestId;
-    if (
+    const epoch: number = this.conversationEpoch;
+    const steered: boolean =
       !this.compacting &&
       images.length === 0 &&
       requestId !== null &&
-      (await this.runtime.steer(requestId, text))
-    ) {
+      (await this.trySteer(requestId, text));
+    // The message belongs to the conversation it was typed in. Queuing it now would send it into
+    // whatever replaced that conversation, where nobody asked for it.
+    if (epoch !== this.conversationEpoch) {
+      return;
+    }
+    if (steered) {
       this.push({ kind: 'user', text });
       this.lastPrompt = text;
       return;
@@ -1370,6 +1382,22 @@ export class Agent {
     // The run may have ended while the steer attempt was in flight; drain immediately if now idle.
     if (!this.busy()) {
       this.dispatchQueue();
+    }
+  }
+
+  /**
+   * Offers a message to the run in flight. A bridge that fails counts as a refusal, so the message is
+   * queued: nothing awaits a send, and a rejection here would lose what the user typed.
+   * @param requestId The run to steer.
+   * @param text The message.
+   * @returns Returns a promise resolving to whether the run took the message.
+   */
+  private async trySteer(requestId: string, text: string): Promise<boolean> {
+    try {
+      return await this.runtime.steer(requestId, text);
+    } catch (error: unknown) {
+      this.logger.warn('Agent', 'Could not steer the run; queuing the message', error);
+      return false;
     }
   }
 
@@ -1772,7 +1800,13 @@ export class Agent {
         'Stop deadline passed with no terminal status; landing it locally',
         requestId,
       );
-      this.onStatus('aborted', '');
+      // A compaction ends through its own path, or `compacting` outlives it and the next turn is taken
+      // for the summary: its text swallowed, and the transcript replaced with whatever it said.
+      if (this.compacting) {
+        this.onCompactionStatus('aborted', '');
+      } else {
+        this.onStatus('aborted', '');
+      }
     }, STOP_SETTLE_DEADLINE_MS);
   }
 
@@ -1810,6 +1844,13 @@ export class Agent {
    * turn opens a new session. Called when the conversation identity changes: New chat, restore, fork.
    */
   private resetAgentSession(): void {
+    // The `session-ended` that closing raises arrives under the old id, which this conversation stops
+    // answering to below, so its tasks would be listed as running for good with a Stop reaching nothing.
+    this.untrackTasks(
+      this.tasks().map((task: AgentTask): string => task.taskId),
+      'its agent session was closed',
+      'Background tasks untracked',
+    );
     this.runtime.closeSession(this.agentSessionId);
     this.agentSessionId = crypto.randomUUID();
     this.sessionRequestId = null;
@@ -1819,10 +1860,29 @@ export class Agent {
   }
 
   /**
+   * Gives up on a compaction in flight, for a transcript that is being replaced. It has no session for
+   * {@link resetAgentSession} to end, so it is aborted by name or it runs on, unseen, spending tokens.
+   */
+  private abandonCompaction(): void {
+    if (!this.compacting) {
+      return;
+    }
+    this.compacting = false;
+    this.compactionText = '';
+    if (this.activeRequestId !== null) {
+      this.runtime.abort(this.activeRequestId);
+    }
+  }
+
+  /**
    * Clears the transcript.
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.conversationEpoch += 1;
+    // The turn that needed signing in went with the conversation; a sign-in must not re-send it.
+    this.retryAfterLogin = false;
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.discardStream();
@@ -1863,6 +1923,9 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.conversationEpoch += 1;
+    this.retryAfterLogin = false;
+    this.abandonCompaction();
     this.briefText = null;
     this.resetAgentSession();
     this.activeRequestId = null;
@@ -1893,6 +1956,9 @@ export class Agent {
       items.map((item: AgentItem): AgentItem => {
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
+        }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
         }
         if (item.kind !== 'input-request') {
           return item;
@@ -2098,6 +2164,12 @@ export class Agent {
     if (event.kind === 'remote-message') {
       if (event.agentSessionId === this.agentSessionId) {
         this.flushStream();
+        // A compaction would take this turn's text for its summary and end on this turn's status, and
+        // its reset would close the session the peer is working in. The peer's turn is the live one.
+        if (this.compacting) {
+          this.abandonCompaction();
+          this.push({ kind: 'notice', text: 'Compaction stopped' });
+        }
         this.push({ kind: 'user', text: event.text });
         this.activeRequestId = event.requestId;
         this.sessionRequestId = event.requestId;
@@ -2337,10 +2409,11 @@ export class Agent {
     if (request === null) {
       return;
     }
+    const epoch: number = this.conversationEpoch;
     void this.runtime
       .checkSignIn(request)
       .then((status: AiSignInStatus): void => {
-        if (status.supported && !status.signedIn) {
+        if (epoch === this.conversationEpoch && status.supported && !status.signedIn) {
           this.logger.warn('Agent', 'Sign-in expired or absent; prompting sign-in');
           this.retryAfterLogin = true;
           this.needsLoginState.set(true);
@@ -2349,6 +2422,9 @@ export class Agent {
       .catch((): void => {
         // A failed status check (for example the login IPC being unavailable) must not swallow the
         // prompt: the run already failed, so err towards offering sign-in.
+        if (epoch !== this.conversationEpoch) {
+          return;
+        }
         this.retryAfterLogin = true;
         this.needsLoginState.set(true);
       });
@@ -2401,7 +2477,22 @@ export class Agent {
     this.logger.info('Agent', `Signing out of ${name}`);
     const request: AiSignInRequest | null = this.signInRequest();
     if (request !== null) {
-      await this.runtime.signOut(request);
+      try {
+        await this.runtime.signOut(request);
+      } catch (error: unknown) {
+        // Still signed in, so the session stays: its caller does not await this, and saying nothing
+        // would leave the user believing the sign-out worked.
+        this.logger.warn('Agent', `Could not sign out of ${name}`, error);
+        this.notifications.notify({
+          severity: 'error',
+          title: `Could not sign out of ${name}`,
+          detail: error instanceof Error ? error.message : String(error),
+          actions: [],
+          key: 'agent:logout',
+          route: 'default',
+        });
+        return;
+      }
     }
     this.resetAgentSession();
     this.notifications.notify({
@@ -2684,6 +2775,8 @@ export class Agent {
         );
         this.activeRequestId = null;
         this.busy.set(false);
+        // Nothing failed here, and no status will come along to carry on with what was queued.
+        this.dispatchQueue();
       }, ADOPTION_DEADLINE_MS),
     };
   }
@@ -3118,8 +3211,9 @@ export class Agent {
   }
 
   /**
-   * Marks every still-pending input request and edit decision dismissed (the run ended before the
-   * user answered).
+   * Settles every prompt still pending when the run ended before the user answered. A permission
+   * expires rather than dismisses, which reads as answered on another device; left pending it would
+   * keep every later turn "waiting" on a run that has gone.
    */
   private dismissPendingInputs(): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
@@ -3129,6 +3223,9 @@ export class Agent {
         }
         if (item.kind === 'edit-decision' && item.decisionState === 'pending') {
           return { ...item, decisionState: 'dismissed' };
+        }
+        if (item.kind === 'permission' && item.permissionState === 'pending') {
+          return { ...item, permissionState: 'expired' };
         }
         return item;
       }),
@@ -3185,13 +3282,19 @@ export class Agent {
    * @param change The change it proposes.
    */
   private attachProposedDiff(permissionId: string, change: AiProposedChange): void {
-    void this.proposedChanges.diffOf(change).then((diff: ProposedDiff): void => {
-      this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-        items.map((item: AgentItem): AgentItem =>
-          item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
-        ),
-      );
-    });
+    void this.proposedChanges
+      .diffOf(change)
+      .then((diff: ProposedDiff): void => {
+        this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+          items.map((item: AgentItem): AgentItem =>
+            item.permissionId === permissionId ? { ...item, permissionDiff: diff } : item,
+          ),
+        );
+      })
+      .catch((error: unknown): void => {
+        // The prompt still stands without its diff; the user can answer from its name and detail.
+        this.logger.warn('Agent', 'Could not work out the proposed change', error);
+      });
   }
 
   /**

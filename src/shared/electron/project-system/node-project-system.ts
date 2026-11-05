@@ -381,7 +381,8 @@ export class NodeProjectSystem implements ProjectSystem {
   private async readManifest(manifestPath: string): Promise<Record<string, unknown> | null> {
     try {
       const content: string = await fs.readFile(manifestPath, 'utf8');
-      const parsed: unknown = JSON.parse(content);
+      // JSON has no byte order mark, but editors on Windows write one and npm reads past it.
+      const parsed: unknown = JSON.parse(content.replace(/^\uFEFF/, ''));
       return typeof parsed === 'object' && parsed !== null
         ? (parsed as Record<string, unknown>)
         : null;

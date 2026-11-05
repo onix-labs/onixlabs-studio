@@ -59,6 +59,11 @@ export class FileManager {
   private readonly trusted: TrustedPaths;
 
   /**
+   * Holds the last write queued for each path, settled whether it succeeded or not.
+   */
+  private readonly writes: Map<string, Promise<void>> = new Map<string, Promise<void>>();
+
+  /**
    * Initializes a new instance of the {@link FileManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
@@ -186,7 +191,7 @@ export class FileManager {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
     try {
-      await fs.writeFile(filePath, bytes);
+      await this.inTurn(filePath, (): Promise<void> => fs.writeFile(filePath, bytes));
       logger.info('FileManager', `Saved ${filePath}`);
       return { success: true, path: filePath };
     } catch (error: unknown) {
@@ -213,7 +218,7 @@ export class FileManager {
     }
     try {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, bytes);
+      await this.inTurn(filePath, (): Promise<void> => fs.writeFile(filePath, bytes));
       logger.info('FileManager', `Wrote ${bytes.byteLength} bytes to ${filePath}`);
       return { success: true, path: filePath };
     } catch (error: unknown) {
@@ -396,6 +401,33 @@ export class FileManager {
   }
 
   /**
+   * Runs a write once every earlier write to the same path has finished. `fs.writeFile` truncates and
+   * then writes, so two saves of one file overlapping would otherwise leave the tail of the longer one
+   * after the whole of the shorter: a file neither save wrote.
+   * @param filePath The path being written.
+   * @param write The write to run.
+   * @returns Returns a promise settling as the write does.
+   */
+  private async inTurn(filePath: string, write: () => Promise<void>): Promise<void> {
+    const key: string = path.resolve(filePath);
+    const previous: Promise<void> = this.writes.get(key) ?? Promise.resolve();
+    const run: () => Promise<void> = async (): Promise<void> => {
+      await previous;
+      await write();
+    };
+    const current: Promise<void> = run();
+    const settled: Promise<void> = current.catch((): void => undefined);
+    this.writes.set(key, settled);
+    try {
+      await current;
+    } finally {
+      if (this.writes.get(key) === settled) {
+        this.writes.delete(key);
+      }
+    }
+  }
+
+  /**
    * Reads a file and builds its {@link FileInfo}.
    * @param filePath The path to read.
    * @param decode How to decode its bytes; the default tells the encoding from them.
@@ -404,6 +436,11 @@ export class FileManager {
   private async readFileInfo(filePath: string, decode: TextDecodeOptions = {}): Promise<FileInfo> {
     // The byte-order mark is stripped from the content but recorded, so it is written back and the
     // editor never shows it as an invisible character.
+    // Reading a FIFO blocks until a writer appears, pinning a thread-pool thread and leaving the
+    // caller waiting forever; a device reads without end. Only a regular file is a document.
+    if (!(await fs.stat(filePath)).isFile()) {
+      throw new Error(`Not a regular file: ${filePath}`);
+    }
     const decoded: DecodedText = decodeText(await fs.readFile(filePath), decode);
     logger.debug(
       'FileManager.readFileInfo',

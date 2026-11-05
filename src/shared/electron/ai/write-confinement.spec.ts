@@ -131,6 +131,55 @@ describe('write-confinement', () => {
       expect(isWriteDenied(path.join(root, 'src', 'a.ts'), ['secrets'], root)).toBe(false);
     });
 
+    it('isWriteWithinRoots_whenADanglingLinkPointsOutside_isFalse', () => {
+      // The link's target does not exist yet, and writing through the link would create it there.
+      const target: string = path.join(outside, 'not-yet.txt');
+      fs.symlinkSync(target, path.join(root, 'dangling'));
+
+      expect(isWriteWithinRoots(path.join(root, 'dangling'), [root])).toBe(false);
+      expect(isWriteWithinRoots('dangling', [root])).toBe(false);
+
+      fs.writeFileSync(path.join(root, 'dangling'), 'escaped');
+      expect(fs.readFileSync(target, 'utf8')).toBe('escaped');
+    });
+
+    it('isWriteWithinRoots_whenADanglingLinkIsAFolderOnTheWay_isFalse', () => {
+      fs.symlinkSync(path.join(outside, 'gone'), path.join(root, 'gone'));
+
+      expect(isWriteWithinRoots(path.join(root, 'gone', 'nested', 'a.txt'), [root])).toBe(false);
+    });
+
+    it('isWriteWithinRoots_whenADanglingLinkStaysInside_isTrue', () => {
+      fs.symlinkSync('src/later.ts', path.join(root, 'later'));
+
+      expect(isWriteWithinRoots(path.join(root, 'later'), [root])).toBe(true);
+    });
+
+    it('isWriteWithinRoots_whenAChainOfDanglingLinksEndsOutside_isFalse', () => {
+      fs.symlinkSync(path.join(outside, 'end'), path.join(root, 'second'));
+      fs.symlinkSync('second', path.join(root, 'first'));
+
+      expect(isWriteWithinRoots(path.join(root, 'first'), [root])).toBe(false);
+    });
+
+    it('isWriteDenied_whenADanglingLinkNamesADeniedPlace_isTrue', () => {
+      fs.symlinkSync(path.join(root, 'secrets', 'key.pem'), path.join(root, 'harmless-link'));
+
+      expect(isWriteDenied(path.join(root, 'harmless-link'), ['secrets'], root)).toBe(true);
+    });
+
+    it('realPathOf_whenLinksFormACycle_terminates', () => {
+      fs.symlinkSync(path.join(root, 'loop-b'), path.join(root, 'loop-a'));
+      fs.symlinkSync(path.join(root, 'loop-a'), path.join(root, 'loop-b'));
+
+      expect(realPathOf(path.join(root, 'loop-a', 'x'))).toBe(path.join(root, 'loop-a', 'x'));
+    });
+
+    it('isWriteWithinRoots_whenAFolderNameOnlyStartsWithTwoDots_isTrue', () => {
+      expect(isWriteWithinRoots(path.join(root, '..cache', 'a.txt'), [root])).toBe(true);
+      expect(isWriteWithinRoots('..cache/a.txt', [root])).toBe(true);
+    });
+
     it('realPathOf_resolvesTheLongestExistingPrefix_andLeavesTheRest', () => {
       expect(realPathOf(path.join(root, 'out', 'new', 'file.txt'))).toBe(
         path.join(fs.realpathSync.native(outside), 'new', 'file.txt'),

@@ -64,7 +64,7 @@ export class DebugAdapterLocator {
   private readonly overrides: ReadonlyMap<string, string>;
 
   /**
-   * Caches each binary's location lookup, so detection runs once per session per binary.
+   * Caches each binary's found location, so a found adapter is searched for once per session.
    */
   private readonly probes: Map<string, Promise<string | null>> = new Map<
     string,
@@ -80,8 +80,9 @@ export class DebugAdapterLocator {
   }
 
   /**
-   * Locates an adapter's executable, returning its absolute path or null when it cannot be found. The
-   * result is cached for the session.
+   * Locates an adapter's executable, returning its absolute path or null when it cannot be found. A
+   * find is cached for the session; a miss is not, so an adapter installed after a failed attempt is
+   * seen by the next one.
    * @param binary The executable name to locate.
    * @param rootPath The absolute workspace root, searched for a project-local adapter.
    * @returns Returns the executable path, or null when none is found.
@@ -90,8 +91,11 @@ export class DebugAdapterLocator {
     const key: string = `${rootPath} ${binary}`;
     let probe: Promise<string | null> | undefined = this.probes.get(key);
     if (probe === undefined) {
-      probe = Promise.resolve(this.probe(binary, rootPath));
-      this.probes.set(key, probe);
+      const found: string | null = this.probe(binary, rootPath);
+      probe = Promise.resolve(found);
+      if (found !== null) {
+        this.probes.set(key, probe);
+      }
     }
     return probe;
   }

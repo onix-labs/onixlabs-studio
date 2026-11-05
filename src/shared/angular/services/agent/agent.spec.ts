@@ -1,6 +1,7 @@
 import { AiConnection, AiProposedChange } from '@shared/api/ai-types';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 
 import type {
   AgentContextRef,
@@ -138,11 +139,13 @@ describe('Agent', () => {
       | 'respondInput'
       | 'respondEditDecision'
       | 'checkSignIn'
+      | 'signOut'
     > = {
       // A failed run consults the authoritative sign-in status before offering to sign in. These tests
       // exercise error handling, not the login prompt, so the user is reported as signed in.
       checkSignIn: (): Promise<AiSignInStatus> =>
         Promise.resolve({ supported: true, signedIn: true }),
+      signOut: (): Promise<void> => Promise.resolve(),
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
@@ -2709,5 +2712,997 @@ describe('Agent', () => {
     const last: (typeof runCalls)[number] = runCalls[runCalls.length - 1];
     expect(last.prompt).toBe('second after compaction');
     expect(last.prompt).not.toContain('The gist.');
+  });
+
+  /**
+   * Ends the turn in flight the way a provider does.
+   */
+  function completeTurn(): void {
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+  }
+
+  /**
+   * Lists the transcript's text, which is what the user reads.
+   * @returns Returns each item's text.
+   */
+  function transcript(): string[] {
+    return agent.items().map((item: AgentItem): string => item.text);
+  }
+
+  it('stop_ofACompactionNobodyAnswers_leavesTheNextTurnInTheTranscript', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('hi');
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'hello' });
+      completeTurn();
+      agent.compact();
+      agent.stop();
+      vi.advanceTimersByTime(8_100);
+      expect(lastItem()?.text).toBe('Compaction stopped');
+
+      agent.send('next');
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the answer' });
+      completeTurn();
+
+      expect(transcript()).toEqual(['hi', 'hello', 'Compaction stopped', 'next', 'the answer']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clear_duringACompaction_abortsItAndTheNextTurnRunsNormally', () => {
+    agent.send('hi');
+    completeTurn();
+    agent.compact();
+    abortCalls = [];
+
+    agent.clear();
+    expect(abortCalls).toEqual(['run-1']);
+
+    agent.send('fresh');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'answer' });
+    completeTurn();
+
+    expect(transcript()).toEqual(['fresh', 'answer']);
+  });
+
+  it('restore_duringACompaction_abortsItAndTheNextTurnRunsNormally', () => {
+    agent.send('hi');
+    completeTurn();
+    agent.compact();
+    abortCalls = [];
+
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'old' }]);
+    expect(abortCalls).toEqual(['run-1']);
+
+    agent.send('more');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'answer' });
+    completeTurn();
+
+    expect(transcript()).toEqual(['old', 'more', 'answer']);
+  });
+
+  it('send_whenSteeringRejects_queuesTheMessageRatherThanLosingIt', async () => {
+    vi.spyOn(TestBed.inject(AiRuntime), 'steer').mockRejectedValue(new Error('bridge gone'));
+    agent.send('first');
+
+    agent.send('second');
+    await settleStream();
+    expect(agent.queued().map((entry: { text: string }): string => entry.text)).toEqual(['second']);
+
+    completeTurn();
+
+    expect(runCalls.map((call: { prompt: string }): string => call.prompt)).toEqual([
+      'first',
+      'second',
+    ]);
+  });
+
+  it('send_whenTheConversationIsClearedWhileSteering_doesNotLandInTheNewOne', async () => {
+    let answer: (accepted: boolean) => void = (): void => undefined;
+    vi.spyOn(TestBed.inject(AiRuntime), 'steer').mockReturnValue(
+      new Promise<boolean>((resolve: (accepted: boolean) => void): void => {
+        answer = resolve;
+      }),
+    );
+    agent.send('first');
+    agent.send('for the old conversation');
+
+    agent.clear();
+    answer(false);
+    await settleStream();
+
+    expect(agent.items()).toEqual([]);
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('clear_whileATaskRuns_stopsListingATaskNothingCanSettle', () => {
+    agent.send('go');
+    startTask(runCalls[0].agentSessionId, 'task-1');
+    completeTurn();
+    expect(agent.tasks()).toHaveLength(1);
+
+    agent.clear();
+
+    expect(agent.tasks()).toEqual([]);
+    expect(agent.items()).toEqual([]);
+  });
+
+  it('rewind_whileATaskRuns_saysTheTaskIsNoLongerTracked', () => {
+    agent.send('go');
+    const first: AgentItem | undefined = agent.items()[0];
+    startTask(runCalls[0].agentSessionId, 'task-1');
+    completeTurn();
+
+    if (first !== undefined) {
+      agent.rewind(first, 'go again');
+    }
+
+    expect(agent.tasks()).toEqual([]);
+    expect(transcript()).toEqual(['Background tasks untracked', 'go again']);
+  });
+
+  const CONNECTION: AiConnection = {
+    id: 'claude',
+    kind: 'claude',
+    label: 'Claude',
+    auth: 'sign-in',
+    models: [],
+    defaultModelId: 'claude-opus-4-8',
+  };
+
+  /**
+   * Makes the provider one Studio can sign the user in to.
+   * @returns Returns a promise that resolves once the providers have reloaded.
+   */
+  async function offerSignIn(): Promise<void> {
+    providers = PROVIDERS.map((info: AiProviderInfo): AiProviderInfo => ({
+      ...info,
+      supportsSignIn: true,
+    }));
+    await TestBed.inject(AgentEngine).loadProviders();
+  }
+
+  it('clear_forgetsTheTurnThatWasWaitingOnSignIn', async () => {
+    await offerSignIn();
+    agent.send('secret plan');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    agent.clear();
+    agent.onLoginSucceeded();
+
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('restore_forgetsTheTurnThatWasWaitingOnSignIn', async () => {
+    await offerSignIn();
+    agent.send('secret plan');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'status',
+      state: 'error',
+      detail: 'Not logged in · Please run /login',
+    });
+
+    agent.restore([{ id: 'item-1', kind: 'user', text: 'old' }]);
+    agent.onLoginSucceeded();
+
+    expect(runCalls).toHaveLength(1);
+  });
+
+  it('error_whoseSignInCheckAnswersAfterAClear_promptsNothing', async () => {
+    await offerSignIn();
+    vi.spyOn(TestBed.inject(AgentEngine), 'connection').mockReturnValue(CONNECTION);
+    let answer: (status: AiSignInStatus) => void = (): void => undefined;
+    vi.spyOn(TestBed.inject(AiRuntime), 'checkSignIn').mockReturnValue(
+      new Promise<AiSignInStatus>((resolve: (status: AiSignInStatus) => void): void => {
+        answer = resolve;
+      }),
+    );
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'mystery failure' });
+
+    agent.clear();
+    answer({ supported: true, signedIn: false });
+    await settleStream();
+
+    expect(agent.needsLogin()).toBe(false);
+  });
+
+  it('logout_whenSigningOutFails_saysSoAndKeepsTheSession', async () => {
+    vi.spyOn(TestBed.inject(AgentEngine), 'connection').mockReturnValue(CONNECTION);
+    vi.spyOn(TestBed.inject(AiRuntime), 'signOut').mockRejectedValue(new Error('keychain locked'));
+    closeSessionCalls = [];
+
+    await agent.logout();
+
+    const toast: Notification = TestBed.inject(Notifications).toasts()[0];
+    expect(toast.severity).toBe('error');
+    expect(toast.title).toContain('Could not sign out');
+    expect(toast.detail).toBe('keychain locked');
+    expect(closeSessionCalls).toEqual([]);
+  });
+
+  /**
+   * Raises a permission prompt in the turn in flight.
+   */
+  function raisePermission(): void {
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Write',
+      detail: 'x',
+      hasWorkspace: true,
+    });
+  }
+
+  it('status_whenRunEndsWithAPendingPermission_expiresItAndTheNextTurnIsNotWaiting', () => {
+    agent.send('hi');
+    raisePermission();
+    const prompt: AgentItem | undefined = lastItem();
+
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(prompt === undefined ? undefined : itemById(prompt.id)?.permissionState).toBe('expired');
+
+    agent.send('next');
+
+    expect(agent.phase()).toBe('working');
+  });
+
+  it('respondPermission_onAnExpiredPrompt_repliesToNothing', () => {
+    agent.send('hi');
+    raisePermission();
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+    const expired: AgentItem | undefined = agent
+      .items()
+      .find((item: AgentItem): boolean => item.kind === 'permission');
+
+    if (expired !== undefined) {
+      agent.respondPermission(expired, true);
+    }
+
+    expect(permissionReplies).toEqual([]);
+  });
+
+  it('restore_whenAPermissionWasPersistedPending_expiresIt', () => {
+    agent.restore([
+      {
+        id: 'item-1',
+        kind: 'permission',
+        text: '',
+        permissionId: 'p1',
+        permissionState: 'pending',
+      },
+    ]);
+
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(lastItem()?.permissionState).toBe('expired');
+  });
+
+  /**
+   * Finds a transcript item as it stands now.
+   * @param id The item's identifier.
+   * @returns Returns the item, or undefined when it has gone.
+   */
+  function itemById(id: string): AgentItem | undefined {
+    return agent.items().find((item: AgentItem): boolean => item.id === id);
+  }
+
+  it('permission_whoseDiffCannotBeWorkedOut_stillAsks', async () => {
+    vi.spyOn(TestBed.inject(ProposedChanges), 'diffOf').mockRejectedValue(new Error('too big'));
+    agent.send('hi');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Edit',
+      detail: '/ws/a.ts',
+      hasWorkspace: true,
+      change: { path: '/ws/a.ts', content: 'x' },
+    });
+    await settleStream();
+
+    expect(lastItem()?.permissionState).toBe('pending');
+    expect(lastItem()?.permissionDiff).toBeUndefined();
+  });
+
+  it('backgroundTask_whenTheAdoptedTurnIsReleased_sendsWhatWasQueuedMeanwhile', async () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      completeTurn();
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      agent.send('while it was adopted');
+      await vi.advanceTimersByTimeAsync(0);
+
+      await vi.advanceTimersByTimeAsync(ADOPTION_DEADLINE_MS + 100);
+
+      expect(runCalls[runCalls.length - 1].prompt).toBe('while it was adopted');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('compaction outcomes', () => {
+    beforeEach(() => {
+      agent.send('hi');
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'hello' });
+      completeTurn();
+    });
+
+    it('compact_whenItFails_keepsTheTranscriptAndSaysWhy', () => {
+      agent.compact();
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'overloaded' });
+
+      expect(transcript()).toEqual(['hi', 'hello', 'Compaction failed']);
+      expect(lastItem()?.detail).toBe('overloaded');
+      expect(agent.isRunning()).toBe(false);
+    });
+
+    it('compact_whenItFailsWithNoReason_saysSo', () => {
+      agent.compact();
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: '  ' });
+
+      expect(lastItem()?.detail).toBe('unknown error');
+    });
+
+    it('compact_whenStopped_keepsTheTranscript', () => {
+      agent.compact();
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'half a sum' });
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+      expect(transcript()).toEqual(['hi', 'hello', 'Compaction stopped']);
+    });
+
+    it('compact_whenTheSummaryIsBlank_keepsTheTranscript', () => {
+      agent.compact();
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: '   ' });
+      completeTurn();
+
+      expect(transcript()).toEqual(['hi', 'hello', 'Compaction produced no summary']);
+    });
+
+    it('compact_whileAlreadyBusy_startsNothing', () => {
+      agent.send('more');
+      const runs: number = runCalls.length;
+
+      agent.compact();
+
+      expect(runCalls).toHaveLength(runs);
+    });
+
+    it('compact_sendsAMessageTypedDuringIt_straightToAQueue_neverASteer', async () => {
+      agent.compact();
+
+      agent.send('after the summary');
+      await settleStream();
+      expect(steerCalls).toEqual([]);
+
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the gist' });
+      completeTurn();
+
+      expect(runCalls[runCalls.length - 1].prompt).toContain('after the summary');
+      expect(runCalls[runCalls.length - 1].prompt).toContain('the gist');
+    });
+
+    describe('when a peer types during it', () => {
+      let sessionId: string | null;
+
+      beforeEach(() => {
+        sessionId = runCalls[0].agentSessionId ?? null;
+        agent.compact();
+        fireEvent({ requestId: 'run-1', kind: 'text', delta: 'half a sum' });
+        fireEvent({
+          requestId: 'remote-turn',
+          kind: 'remote-message',
+          agentSessionId: sessionId,
+          text: 'from another device',
+        });
+      });
+
+      it('compact_whenAPeerTypes_givesWayAndShowsThePeersTurn', () => {
+        fireEvent({ requestId: 'remote-turn', kind: 'text', delta: 'the answer' });
+        fireEvent({ requestId: 'remote-turn', kind: 'status', state: 'completed', detail: '' });
+
+        expect(abortCalls).toEqual(['run-1']);
+        expect(transcript()).toEqual([
+          'hi',
+          'hello',
+          'Compaction stopped',
+          'from another device',
+          'the answer',
+        ]);
+        expect(agent.isRunning()).toBe(false);
+      });
+
+      it('compact_whenAPeerTypes_ignoresTheLateEndOfTheAbortedSummary', () => {
+        fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+
+        expect(agent.isRunning()).toBe(true);
+      });
+
+      it('compact_afterAPeerInterruptedIt_canRunAgain', () => {
+        fireEvent({ requestId: 'remote-turn', kind: 'status', state: 'completed', detail: '' });
+
+        agent.compact();
+        fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the gist' });
+        completeTurn();
+
+        expect(transcript()).toEqual(['**Conversation summary**\n\nthe gist']);
+      });
+    });
+
+    it('compact_whenAnotherSessionsPeerTypes_carriesOn', () => {
+      agent.compact();
+      fireEvent({
+        requestId: 'remote-turn',
+        kind: 'remote-message',
+        agentSessionId: 'some-other-session',
+        text: 'not for this conversation',
+      });
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'the gist' });
+      completeTurn();
+
+      expect(abortCalls).toEqual([]);
+      expect(transcript()).toEqual(['**Conversation summary**\n\nthe gist']);
+    });
+
+    it('compact_summarisesOnlyWhatWasSaid', () => {
+      fireEvent({ requestId: 'stale', kind: 'text', delta: 'ignored' });
+      agent.note('A note from Studio');
+
+      agent.compact();
+
+      const prompt: string = runCalls[runCalls.length - 1].prompt;
+      expect(prompt).toContain('User: hi');
+      expect(prompt).toContain('Assistant: hello');
+      expect(prompt).not.toContain('A note from Studio');
+    });
+  });
+
+  it('compact_ofAnEmptyTranscript_startsNothing', () => {
+    agent.compact();
+
+    expect(runCalls).toEqual([]);
+  });
+
+  describe('sign-in', () => {
+    beforeEach(async () => {
+      await offerSignIn();
+      vi.spyOn(TestBed.inject(AgentEngine), 'connection').mockReturnValue(CONNECTION);
+    });
+
+    it('error_thatLooksLikeAnyOtherFailure_asksTheProviderBeforePrompting', async () => {
+      vi.spyOn(TestBed.inject(AiRuntime), 'checkSignIn').mockResolvedValue({
+        supported: true,
+        signedIn: false,
+      });
+      agent.send('go');
+
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'mystery failure' });
+      await settleStream();
+
+      expect(agent.needsLogin()).toBe(true);
+    });
+
+    it('error_whenTheProviderSaysSignedIn_doesNotPrompt', async () => {
+      agent.send('go');
+
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'mystery failure' });
+      await settleStream();
+
+      expect(agent.needsLogin()).toBe(false);
+    });
+
+    it('error_whenTheStatusCheckFails_errsTowardsOfferingSignIn', async () => {
+      vi.spyOn(TestBed.inject(AiRuntime), 'checkSignIn').mockRejectedValue(new Error('no ipc'));
+      agent.send('go');
+
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'mystery failure' });
+      await settleStream();
+
+      expect(agent.needsLogin()).toBe(true);
+    });
+
+    it('completed_withASignInMessage_dropsTheReplyAndPrompts', () => {
+      agent.send('go');
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'text',
+        delta: 'Not logged in · Please run /login',
+      });
+      completeTurn();
+
+      expect(transcript()).toEqual(['go']);
+      expect(agent.needsLogin()).toBe(true);
+    });
+
+    it('onLoginSucceeded_reRunsTheTurnOnAFreshSession_withoutRepeatingTheMessage', () => {
+      agent.attachContext({ kind: 'file', path: '/ws/a.ts' });
+      agent.send('go');
+      const firstSession: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'status',
+        state: 'error',
+        detail: 'Not logged in · Please run /login',
+      });
+      const before: number = agent.items().length;
+
+      agent.onLoginSucceeded();
+
+      expect(agent.needsLogin()).toBe(false);
+      expect(closeSessionCalls).toContain(firstSession);
+      expect(runCalls).toHaveLength(2);
+      expect(runCalls[1].prompt).toBe('go');
+      expect(runCalls[1].agentSessionId).not.toBe(firstSession);
+      expect(runCalls[1].contextPaths).toEqual([{ kind: 'file', path: '/ws/a.ts' }]);
+      expect(agent.items()).toHaveLength(before);
+    });
+
+    it('promptLogin_theUsersOwnSignIn_reRunsNothing', () => {
+      agent.send('go');
+      completeTurn();
+      agent.promptLogin();
+      expect(agent.needsLogin()).toBe(true);
+
+      agent.onLoginSucceeded();
+
+      expect(runCalls).toHaveLength(1);
+    });
+
+    it('dismissLoginPrompt_closesThePrompt', () => {
+      agent.promptLogin();
+
+      agent.dismissLoginPrompt();
+
+      expect(agent.needsLogin()).toBe(false);
+    });
+
+    it('logout_closesTheSessionAndSaysSo', async () => {
+      const signOut: MockInstance<AiRuntime['signOut']> = vi.spyOn(
+        TestBed.inject(AiRuntime),
+        'signOut',
+      );
+      agent.send('go');
+      const session: string | undefined = runCalls[0].agentSessionId;
+      completeTurn();
+
+      await agent.logout();
+
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(closeSessionCalls).toContain(session);
+      expect(
+        TestBed.inject(Notifications)
+          .toasts()
+          .map((toast: Notification): string => toast.title),
+      ).toContain('Signed out of Claude');
+      expect(agent.signInName()).toBe('Claude');
+    });
+
+    it('signInRequest_carriesTheCliTheTurnsRunWith', () => {
+      expect(agent.signInRequest()?.connection).toBe(CONNECTION);
+    });
+  });
+
+  it('signInRequest_withNoConnection_isNull_andTheNameFallsBack', () => {
+    expect(agent.signInRequest()).toBeNull();
+    expect(agent.signInName()).toBe('this provider');
+  });
+
+  it('logout_withNoConnection_stillStartsAFreshSession', async () => {
+    agent.send('go');
+    const session: string | undefined = runCalls[0].agentSessionId;
+
+    await agent.logout();
+
+    expect(closeSessionCalls).toContain(session);
+  });
+
+  it('completed_withASignInMessage_isAnOrdinaryReply_whereStudioCannotSignIn', () => {
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'Not logged in · Please run /login' });
+    completeTurn();
+
+    expect(transcript()).toEqual(['go', 'Not logged in · Please run /login']);
+    expect(agent.needsLogin()).toBe(false);
+  });
+
+  describe('the provider a conversation runs through', () => {
+    beforeEach(async () => {
+      providers = [
+        ...PROVIDERS,
+        {
+          id: 'other',
+          label: 'Other',
+          available: true,
+          detail: 'ok',
+          models: [
+            { id: 'other-small', label: 'Small' },
+            { id: 'other-large', label: 'Large' },
+          ],
+          defaultModelId: 'other-large',
+        },
+      ];
+      await TestBed.inject(AgentEngine).loadProviders();
+    });
+
+    it('setProvider_runsThroughItsDefaultModel', () => {
+      agent.setProvider('other');
+      agent.send('go');
+
+      expect(runCalls[0].providerId).toBe('other');
+      expect(runCalls[0].model).toBe('other-large');
+      expect(agent.providerLabel()).toBe('Other');
+    });
+
+    it('setProvider_backToTheGlobalOne_followsItAgain', () => {
+      agent.setProvider('other');
+
+      agent.setProvider('claude');
+      agent.send('go');
+
+      expect(runCalls[0].providerId).toBe('claude');
+      expect(runCalls[0].model).toBe(TestBed.inject(AgentEngine).model());
+    });
+
+    it('error_namesTheProviderTheRunWentThrough', () => {
+      agent.setProvider('other');
+      agent.send('go');
+
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+
+      expect(lastItem()?.errorProvider).toBe('Other · other-large');
+    });
+  });
+
+  describe('context', () => {
+    it('attachContext_ignoresAPathAlreadyAttached', () => {
+      agent.attachContext({ kind: 'file', path: '/ws/a.ts' });
+      agent.attachContext({ kind: 'file', path: '/ws/a.ts' });
+
+      expect(agent.contextPaths()).toHaveLength(1);
+    });
+
+    it('removeContext_andClearContext_detach', () => {
+      agent.attachContext({ kind: 'file', path: '/ws/a.ts' });
+      agent.attachContext({ kind: 'folder', path: '/ws/b' });
+
+      agent.removeContext('/ws/a.ts');
+      expect(agent.contextPaths().map((ref: AgentContextRef): string => ref.path)).toEqual([
+        '/ws/b',
+      ]);
+
+      agent.clearContext();
+      expect(agent.contextPaths()).toEqual([]);
+    });
+
+    it('pendingContextTokens_countsOnlyInlinedSelections', () => {
+      agent.attachContext({ kind: 'file', path: '/ws/a.ts' });
+      agent.attachContext({ kind: 'selection', path: '/ws/b.ts', content: 'x'.repeat(9) });
+
+      expect(agent.pendingContextTokens()).toBe(3);
+    });
+  });
+
+  describe('messages sent around a run', () => {
+    it('send_whenTheRunEndsWhileSteering_sendsTheMessageAtOnce', async () => {
+      let answer: (accepted: boolean) => void = (): void => undefined;
+      vi.spyOn(TestBed.inject(AiRuntime), 'steer').mockReturnValue(
+        new Promise<boolean>((resolve: (accepted: boolean) => void): void => {
+          answer = resolve;
+        }),
+      );
+      agent.send('first');
+      agent.send('second');
+
+      completeTurn();
+      answer(false);
+      await settleStream();
+
+      expect(runCalls.map((call: { prompt: string }): string => call.prompt)).toEqual([
+        'first',
+        'second',
+      ]);
+      expect(agent.queued()).toEqual([]);
+    });
+
+    it('takeQueued_forAnEntryThatHasGone_isNull', () => {
+      expect(agent.takeQueued('queued-99')).toBeNull();
+    });
+
+    it('rewind_isRefused_forAnythingButAKnownUserMessageWhileIdle', () => {
+      agent.send('hi');
+      const user: AgentItem | undefined = agent.items()[0];
+      completeTurn();
+      const before: readonly AgentItem[] = agent.items();
+
+      if (user !== undefined) {
+        agent.rewind({ ...user, kind: 'assistant' }, 'x');
+        agent.rewind(user, '   ');
+        agent.rewind({ ...user, id: 'item-404' }, 'x');
+        agent.send('busy now');
+        agent.rewind(user, 'x');
+      }
+
+      expect(runCalls).toHaveLength(2);
+      expect(agent.items().slice(0, before.length)).toEqual(before);
+    });
+
+    it('retry_isRefused_whileARunIsInFlight', () => {
+      agent.send('hi');
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'error', detail: 'boom' });
+      const failed: AgentItem | undefined = lastItem();
+      agent.send('another');
+
+      if (failed !== undefined) {
+        agent.retry(failed);
+      }
+
+      expect(runCalls).toHaveLength(2);
+    });
+  });
+
+  describe('prompts answered late or twice', () => {
+    it('respondEditDecision_onASettledDecision_repliesOnce', () => {
+      agent.send('hi');
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'edit-decision',
+        decisionId: 'd1',
+        name: 'Edit',
+        detail: 'a.ts',
+        hasDiff: false,
+      });
+      const decision: AgentItem | undefined = lastItem();
+
+      if (decision !== undefined) {
+        agent.respondEditDecision(decision, 'yes-auto');
+        agent.respondEditDecision(lastItem() ?? decision, 'no');
+      }
+
+      expect(editDecisions).toEqual([{ decisionId: 'd1', choice: 'yes-auto' }]);
+      expect(lastItem()?.decisionAuto).toBe(true);
+    });
+
+    it('respondPermission_twice_repliesOnce', () => {
+      agent.send('hi');
+      raisePermission();
+      const prompt: AgentItem | undefined = lastItem();
+
+      if (prompt !== undefined) {
+        agent.respondPermission(prompt, true);
+        agent.respondPermission(lastItem() ?? prompt, false);
+      }
+
+      expect(permissionReplies).toEqual([{ permissionId: 'p1', granted: true }]);
+    });
+
+    it('inputDismissed_forAQuestionNobodyAsked_changesNothing', () => {
+      agent.send('hi');
+      const before: readonly AgentItem[] = agent.items();
+
+      fireEvent({ requestId: 'run-1', kind: 'input-dismissed', inputId: 'nope' });
+
+      expect(agent.items()).toBe(before);
+    });
+
+    it('restore_whenADecisionWasPersistedPending_dismissesIt', () => {
+      agent.restore([
+        {
+          id: 'item-1',
+          kind: 'edit-decision',
+          text: '',
+          decisionId: 'd1',
+          decisionState: 'pending',
+        },
+      ]);
+
+      expect(agent.awaitingDecision()).toBe(false);
+      expect(lastItem()?.decisionState).toBe('dismissed');
+    });
+  });
+
+  describe('turns the agent begins itself', () => {
+    it('turnStarted_whileAnotherTurnRuns_leavesThatTurnAlone', () => {
+      agent.send('go');
+
+      fireEvent({
+        requestId: 'run-9',
+        kind: 'turn-started',
+        agentSessionId: runCalls[0].agentSessionId ?? null,
+        reason: 'report-back',
+      });
+      fireEvent({ requestId: 'run-1', kind: 'text', delta: 'still mine' });
+      completeTurn();
+
+      expect(transcript()).toEqual(['go', 'still mine']);
+    });
+
+    it('turnStarted_withReportingOff_staysIdle', () => {
+      TestBed.inject(Settings).set('ai.reportBackgroundTasks', false);
+      agent.send('go');
+      completeTurn();
+
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'turn-started',
+        agentSessionId: runCalls[0].agentSessionId ?? null,
+        reason: 'report-back',
+      });
+
+      expect(agent.isRunning()).toBe(false);
+    });
+
+    it('adoptionDeadline_forATurnThatHasSinceEnded_leavesTheNextOneAlone', () => {
+      vi.useFakeTimers();
+      try {
+        agent.send('go');
+        const sessionId: string | null = runCalls[0].agentSessionId ?? null;
+        completeTurn();
+        fireEvent({
+          requestId: 'run-1',
+          kind: 'background-task',
+          agentSessionId: sessionId,
+          taskId: 'task-1',
+          status: 'completed',
+          summary: 'done',
+          outputFile: '/tmp/task-1.out',
+        });
+        agent.clear();
+
+        vi.advanceTimersByTime(ADOPTION_DEADLINE_MS + 100);
+
+        expect(agent.isRunning()).toBe(false);
+        expect(runCalls).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('background tasks', () => {
+    it('taskProgress_forATaskNeverSeenToStart_opensNothing', () => {
+      agent.send('go');
+
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'task-progress',
+        agentSessionId: runCalls[0].agentSessionId ?? null,
+        taskId: 'ghost',
+        description: 'x',
+        tokens: 1,
+        toolUses: 1,
+        durationMs: 1,
+      });
+
+      expect(agent.tasks()).toEqual([]);
+    });
+
+    it('stopTask_pressedTwice_holdsOneDeadline', () => {
+      vi.useFakeTimers();
+      try {
+        agent.send('go');
+        startTask(runCalls[0].agentSessionId, 'task-1', { description: 'Long job' });
+
+        agent.stopTask('task-1');
+        agent.stopTask('task-1');
+        vi.advanceTimersByTime(60_000);
+
+        expect(stopTaskCalls).toHaveLength(2);
+        expect(agent.tasks()).toEqual([]);
+        const notes: readonly AgentItem[] = agent
+          .items()
+          .filter((item: AgentItem): boolean => item.kind === 'notice');
+        expect(notes).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sessionEnded_whileAStopWasPending_settlesTheStopToo', () => {
+      vi.useFakeTimers();
+      try {
+        agent.send('go');
+        const sessionId: string = runCalls[0].agentSessionId ?? '';
+        startTask(sessionId, 'task-1');
+        agent.stopTask('task-1');
+
+        fireEvent({
+          requestId: 'run-1',
+          kind: 'session-ended',
+          agentSessionId: sessionId,
+          reason: 'closed',
+        });
+        const notes: number = agent.items().length;
+        vi.advanceTimersByTime(60_000);
+
+        expect(agent.items()).toHaveLength(notes);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sessionEnded_forAnAmbientTask_leavesQuietly', () => {
+      agent.send('go');
+      const sessionId: string = runCalls[0].agentSessionId ?? '';
+      startTask(sessionId, 'task-1', { skipTranscript: true });
+      const before: number = agent.items().length;
+
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'session-ended',
+        agentSessionId: sessionId,
+        reason: 'closed',
+      });
+
+      expect(agent.tasks()).toEqual([]);
+      expect(agent.items()).toHaveLength(before);
+    });
+
+    it('backgroundTask_offScreen_offersToShowItsTab', () => {
+      const tabs: Tabs = TestBed.inject(Tabs);
+      const owning: Tab = tabs.open('terminal');
+      tabs.open('settings');
+      agent.send('go', owning.id);
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: runCalls[0].agentSessionId ?? null,
+        taskId: 'task-1',
+        status: 'failed',
+        summary: 'it broke',
+        outputFile: '/tmp/task-1.out',
+      });
+
+      const toast: Notification = TestBed.inject(Notifications).toasts()[0];
+      expect(toast.severity).toBe('warning');
+      expect(toast.title).toContain('Background task failed');
+      toast.actions[0].run();
+
+      expect(tabs.activeTab()?.id).toBe(owning.id);
+    });
+  });
+
+  it('remoteControl_setToWhatItAlreadyIs_doesNotTouchTheSession', () => {
+    agent.setRemoteControlEnabled(false);
+
+    expect(remoteControlCalls).toEqual([]);
+  });
+
+  it('destroy_closesTheLiveSession_andStandsDownAPendingStop', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const session: string | undefined = runCalls[0].agentSessionId;
+      startTask(session, 'task-1');
+      agent.stopTask('task-1');
+      const before: number = agent.items().length;
+
+      TestBed.resetTestingModule();
+      vi.advanceTimersByTime(60_000);
+
+      expect(closeSessionCalls).toContain(session);
+      expect(agent.items()).toHaveLength(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

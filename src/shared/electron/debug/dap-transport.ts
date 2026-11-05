@@ -132,15 +132,25 @@ export class StdioTransport implements DapTransport {
         reject(error instanceof Error ? error : new Error('Failed to spawn adapter'));
         return;
       }
+      child.on('error', (error: Error): void => reject(error));
+      // A program that cannot be run does not throw: `spawn` gives back a child with no pid and emits
+      // `error` on the next tick, so resolving here would report a session that never existed.
+      if (child.pid === undefined) {
+        return;
+      }
       pidJournal()?.register(child.pid, 'debug', this.command);
       logger.info(
         'dap-transport',
         `Spawned stdio debug adapter ${this.command} (pid ${child.pid})`,
       );
+      // An adapter that stops reading fails the write with EPIPE, on a stream nothing else listens to;
+      // the exit handling below is what ends the session.
+      child.stdin.on('error', (error: Error): void => {
+        logger.debug('dap-transport', 'Could not write to the stdio debug adapter', error);
+      });
       // Drain stderr so a chatty adapter cannot stall on a full pipe; its contents are diagnostic only.
       child.stderr.resume();
       child.stdout.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
-      child.on('error', (error: Error): void => reject(error));
       child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
         pidJournal()?.unregister(child.pid);
         logger.info('dap-transport', `Stdio debug adapter exited (code=${code}, signal=${signal})`);
@@ -339,6 +349,10 @@ export class TcpServerTransport implements DapTransport {
       });
       child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
         logger.info('dap-transport', `Debug server exited (code=${code}, signal=${signal})`);
+        clearTimeout(timer);
+        if (!announced) {
+          reject(new Error(`The debug server exited before listening (code ${code}).`));
+        }
         this.closeListener?.(code, signal ?? null);
       });
     });
@@ -396,7 +410,15 @@ export class TcpServerTransport implements DapTransport {
       'dap-transport',
       `Connecting to debug server ${this.listenHost}:${this.listenPort}`,
     );
-    const socket: Socket = connect(this.listenPort, this.listenHost, (): void => resolve());
+    let socket: Socket;
+    try {
+      socket = connect(this.listenPort, this.listenHost, (): void => resolve());
+    } catch (error: unknown) {
+      // An impossible port throws, here on a stream callback where nothing would catch it.
+      logger.error('dap-transport', 'Could not connect to the debug server', error);
+      reject(error instanceof Error ? error : new Error('Could not connect to the debug server'));
+      return;
+    }
     socket.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
     socket.on('error', (error: Error): void => {
       logger.error('dap-transport', 'Debug server socket error', error);

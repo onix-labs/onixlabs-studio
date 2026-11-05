@@ -57,6 +57,39 @@ describe('write confinement', () => {
       expect(isWriteDenied(path.join(root, 'harmless', 'key.pem'), [secrets], root)).toBe(true);
     });
 
+    it('aDanglingLinkThatPointsOutside_isOutside', () => {
+      // `existsSync` calls such a link absent, yet `Write ws/dangling` creates `elsewhere/not-yet`.
+      const target: string = path.join(outside, 'not-yet');
+      fs.symlinkSync(target, path.join(root, 'dangling'));
+      fs.symlinkSync(path.join(outside, 'gone'), path.join(root, 'gone'));
+
+      expect(isWriteWithinRoots(path.join(root, 'dangling'), [root])).toBe(false);
+      expect(isWriteWithinRoots('gone/nested/a.txt', [root])).toBe(false);
+    });
+
+    it('aDanglingLinkThatStaysInside_isInside', () => {
+      fs.symlinkSync('src/later.ts', path.join(root, 'later'));
+
+      expect(isWriteWithinRoots(path.join(root, 'later'), [root])).toBe(true);
+    });
+
+    it('aDanglingLinkToADeniedPlace_isDenied', () => {
+      fs.symlinkSync(path.join(root, 'secrets', 'key.pem'), path.join(root, 'harmless-link'));
+
+      expect(isWriteDenied(path.join(root, 'harmless-link'), ['secrets'], root)).toBe(true);
+    });
+
+    it('realPathOf_whenLinksFormACycle_terminates', () => {
+      fs.symlinkSync(path.join(root, 'loop-b'), path.join(root, 'loop-a'));
+      fs.symlinkSync(path.join(root, 'loop-a'), path.join(root, 'loop-b'));
+
+      expect(realPathOf(path.join(root, 'loop-a', 'x'))).toBe(path.join(root, 'loop-a', 'x'));
+    });
+
+    it('aFolderNameThatOnlyStartsWithTwoDots_isInside', () => {
+      expect(isWriteWithinRoots(path.join(root, '..cache', 'a.txt'), [root])).toBe(true);
+    });
+
     it('realPathOf_resolvesWhatExists_andKeepsTheRest', () => {
       expect(realPathOf(path.join(root, 'out', 'new', 'file.txt'))).toBe(
         path.join(fs.realpathSync.native(outside), 'new', 'file.txt'),
