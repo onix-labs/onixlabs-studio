@@ -1940,9 +1940,14 @@ export class LspClient implements OnDestroy {
     for (const [key, tracked] of [...this.tracked.entries()]) {
       if (!installed.has(tracked.serverId)) {
         this.tracked.delete(key);
+        // Nothing can clear them later: a close finds no tracked document, and no server is coming.
+        this.diagnosticsByDocument.delete(tracked.documentId);
+        this.serverDiagnostics.delete(tracked.documentId);
+        this.setMarkers(tracked, []);
         orphaned.add(tracked.languageId);
       }
     }
+    this.publish();
     // The documents just left unserved would otherwise sit silent until their next edit; offer the
     // support back right away, the way a fresh open would.
     for (const language of orphaned) {

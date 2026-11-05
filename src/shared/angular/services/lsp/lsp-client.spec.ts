@@ -3000,6 +3000,22 @@ describe('LspClient', () => {
 
     expect(lsp.stops).toEqual([]);
   });
+
+  it('uninstallingAServer_dropsTheProblemsOfTheDocumentsItServed', async () => {
+    const client: LspClient = build();
+    openDocument(client);
+    await flush();
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [problem]);
+    expect(diagnostics.emitted).toHaveLength(1);
+
+    installedServers.set(
+      CATALOGUE.filter((server: LspServerSummary): boolean => server.id !== 'typescript'),
+    );
+    TestBed.tick();
+    await flush();
+
+    expect(diagnostics.emitted).toEqual([]);
+  });
 });
 
 describe('idleStopMs', () => {
