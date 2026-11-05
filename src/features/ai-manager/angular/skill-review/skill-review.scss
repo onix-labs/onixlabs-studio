@@ -3,7 +3,7 @@
 :host {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
   min-block-size: 0;
   flex: 1 1 auto;
 }
@@ -15,7 +15,7 @@
 .review__version {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex: 1 1 auto;
   min-block-size: 0;
   // Nothing here scrolls: the instructions take what height is left and scroll inside their editor.
