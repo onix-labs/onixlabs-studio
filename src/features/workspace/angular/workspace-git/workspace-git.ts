@@ -340,10 +340,21 @@ export class WorkspaceGit {
     for (const path of status.ignored ?? []) {
       record(path, 'ignored', false);
     }
-    this.pathState.set(states);
-    this.wholeDirs.set(whole);
-    this.changedDirs.set(dirs);
-    this.revertable.set(revertableKeys(root, status, states));
+    // A build rewrites files without changing what status reports; leaving these alone keeps every
+    // tree row reading them from rebuilding on each refresh.
+    if (!sameEntries(this.pathState(), states)) {
+      this.pathState.set(states);
+    }
+    if (!sameEntries(this.wholeDirs(), whole)) {
+      this.wholeDirs.set(whole);
+    }
+    if (!sameMembers(this.changedDirs(), dirs)) {
+      this.changedDirs.set(dirs);
+    }
+    const revertable: ReadonlySet<string> = revertableKeys(root, status, states);
+    if (!sameMembers(this.revertable(), revertable)) {
+      this.revertable.set(revertable);
+    }
     this.branchSignal.set(status.branch);
     this.statusReadSignal.set(true);
   }
@@ -848,6 +859,42 @@ function scmStateOf(change: GitFileChange): ExplorerScmState {
     return 'untracked';
   }
   return change.status === 'conflicted' ? 'conflicted' : 'modified';
+}
+
+/**
+ * Compares two maps.
+ * @param left The first map.
+ * @param right The second map.
+ * @returns Returns true when both hold the same keys with the same values.
+ */
+function sameEntries<V>(left: ReadonlyMap<string, V>, right: ReadonlyMap<string, V>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Compares two sets.
+ * @param left The first set.
+ * @param right The second set.
+ * @returns Returns true when both hold the same members.
+ */
+function sameMembers(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const member of left) {
+    if (!right.has(member)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

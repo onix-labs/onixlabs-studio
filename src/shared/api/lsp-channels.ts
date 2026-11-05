@@ -198,6 +198,11 @@ export interface LspSemanticTokensLegend {
 }
 
 /**
+ * The notification a server pushes one document's diagnostics in.
+ */
+export const PUBLISH_DIAGNOSTICS_METHOD: string = 'textDocument/publishDiagnostics';
+
+/**
  * Names the notification the main process sends the renderer with a batch of a server's diagnostics
  * for the whole workspace (#1144): `{ reports }`, each report `{ uri, kind, items?, resultId? }` as
  * `workspace/diagnostic` answers it, files that are not open included — or, with `reset: true`, word

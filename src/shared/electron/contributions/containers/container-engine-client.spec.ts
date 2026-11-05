@@ -50,6 +50,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return answer(request.params.request.image === 'missing' ? { error: 'Pull it first.' } : { id: 'new' });
     case 'crash':
       return process.exit(1);
+    case 'oversized':
+      process.stdout.write('{"id":' + request.id + ',"result":"' + 'x'.repeat(3000));
+      return setTimeout(() => process.stdout.write('x'.repeat(3000) + '"}\\n'), 30);
     default:
       return write({ id: request.id, ok: false, error: 'unknown' });
   }
@@ -76,10 +79,12 @@ describe('ContainerEngineClient', () => {
   /**
    * Builds a client over a fake plugin.
    * @param capabilities The capabilities the plugin declares.
+   * @param maxLineLength The longest stdout line the client buffers, or undefined for the default.
    * @returns Returns the client.
    */
   function clientFor(
     capabilities: readonly string[] = ['containers', 'images', 'lifecycle', 'logs', 'events'],
+    maxLineLength?: number,
   ): InstanceType<typeof ContainerEngineClient> {
     const script: string = join(directory, `plugin-${clients.length}.js`);
     writeFileSync(script, fakePlugin(capabilities), 'utf8');
@@ -87,6 +92,7 @@ describe('ContainerEngineClient', () => {
       'fake',
       { command: process.execPath, args: [script] },
       '/run/fake.sock',
+      maxLineLength,
     );
     clients.push(client);
     return client;
@@ -99,6 +105,21 @@ describe('ContainerEngineClient', () => {
     expect((await client.listContainers())[0].names).toEqual(['/run/fake.sock']);
     expect(await client.start('c1')).toBe(true);
     expect(await client.logs('c1', 10)).toEqual({ lines: ['one', 'two'], truncated: false });
+  });
+
+  it('send_whenTheAnswerOutgrowsTheLineCap_failsCleanly_andTheNextAnswerStillArrives', async () => {
+    const client: InstanceType<typeof ContainerEngineClient> = clientFor(undefined, 1024);
+    await client.status();
+
+    const refused: unknown = await (
+      client as unknown as { send(op: string, params: unknown, ms: number): Promise<unknown> }
+    ).send('oversized', {}, 2_000);
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 100);
+    });
+
+    expect(refused).toEqual({ ok: false, error: 'fake sent an answer too large to read.' });
+    expect((await client.status()).available).toBe(true);
   });
 
   it('asksOnlyForWhatThePluginSaidItCanDo', async () => {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -84,6 +84,96 @@ describe('AgentConversationStore', () => {
   afterEach(async () => {
     await store.flush();
     rmSync(electron.userData, { recursive: true, force: true });
+  });
+
+  it('load_whenASaveLandsDuringTheRead_answersTheSavedConversation', async () => {
+    await call(AgentConversationChannel.Save, conversation('c1', 1));
+    await store.flush();
+
+    const loading: Promise<StoredAgentConversation | null> = call(
+      AgentConversationChannel.Load,
+      'c1',
+    );
+    await call(AgentConversationChannel.Save, conversation('c1', 7));
+
+    expect((await loading)?.messageCount).toBe(7);
+  });
+
+  it('updateMeta_whenASaveIsWrittenDuringItsRead_keepsTheNewerTranscript', async () => {
+    // The worst of the races: an old file, read while a new transcript went all the way to disk,
+    // must not come back with only the title changed. Conversations are user data.
+    await call(AgentConversationChannel.Save, conversation('c1', 1));
+    await store.flush();
+
+    const renaming: Promise<unknown> = call(AgentConversationChannel.UpdateMeta, {
+      id: 'c1',
+      title: 'Renamed',
+    });
+    await call(AgentConversationChannel.Save, conversation('c1', 7));
+    await store.flush();
+    await renaming;
+    await store.flush();
+
+    const reopened: AgentConversationStore = new AgentConversationStore();
+    electron.handlers.clear();
+    reopened.register();
+    const loaded: StoredAgentConversation | null = await call(AgentConversationChannel.Load, 'c1');
+    expect(loaded?.title).toBe('Renamed');
+    expect(loaded?.messageCount).toBe(7);
+    expect(loaded?.items).toHaveLength(7);
+  });
+
+  it('updateMeta_whenTheConversationIsDeletedDuringItsRead_doesNotBringItBack', async () => {
+    await call(AgentConversationChannel.Save, conversation('c1', 1));
+    await store.flush();
+
+    const renaming: Promise<unknown> = call(AgentConversationChannel.UpdateMeta, {
+      id: 'c1',
+      title: 'Renamed',
+    });
+    await call(AgentConversationChannel.Delete, ['c1']);
+
+    expect(await renaming).toBeNull();
+    await store.flush();
+    expect(await call(AgentConversationChannel.ListAll)).toEqual([]);
+    expect(await call(AgentConversationChannel.Load, 'c1')).toBeNull();
+  });
+
+  it('save_afterADelete_canStillBeRenamed', async () => {
+    await call(AgentConversationChannel.Save, conversation('c1', 1));
+    await call(AgentConversationChannel.Delete, ['c1']);
+    await call(AgentConversationChannel.Save, conversation('c1', 2));
+
+    expect(
+      await call(AgentConversationChannel.UpdateMeta, { id: 'c1', title: 'Again' }),
+    ).toMatchObject({ title: 'Again' });
+  });
+
+  it('clearCategory_acrossSeveralConversations_clearsEach_andKeepsTheirTranscripts', async () => {
+    await call(AgentConversationChannel.Save, { ...conversation('a', 2), categoryId: 'work' });
+    await call(AgentConversationChannel.Save, { ...conversation('b', 3), categoryId: 'work' });
+    await call(AgentConversationChannel.Save, { ...conversation('c', 1), categoryId: 'home' });
+    await store.flush();
+
+    await call(AgentConversationChannel.ClearCategory, 'work');
+
+    const a: StoredAgentConversation | null = await call(AgentConversationChannel.Load, 'a');
+    const c: StoredAgentConversation | null = await call(AgentConversationChannel.Load, 'c');
+    expect(a?.categoryId).toBeNull();
+    expect(a?.items).toHaveLength(2);
+    expect(c?.categoryId).toBe('home');
+  });
+
+  it('load_withAFileThatIsNotJson_answersNull', async () => {
+    await call(AgentConversationChannel.Save, conversation('c1', 1));
+    await store.flush();
+    writeFileSync(join(electron.userData, 'agent-conversations', 'c1.json'), '{ not json');
+
+    expect(await call(AgentConversationChannel.Load, 'c1')).toBeNull();
+  });
+
+  it('load_withNoSuchConversation_answersNull', async () => {
+    expect(await call(AgentConversationChannel.Load, 'absent')).toBeNull();
   });
 
   it('save_answersWithTheSummaryAtOnce_andWritesInTheBackground', async () => {

@@ -6,6 +6,7 @@ import { answerConfiguration } from './lsp-server-settings';
 import { LspAttachDebuggerForwarder } from './lsp-attach-debugger';
 import { LspShowMessageForwarder } from './lsp-show-message';
 import { LspOpenDocuments } from './lsp-open-documents';
+import { LspDiagnosticsCoalescer } from './lsp-diagnostics-coalescer';
 import { WorkspaceDiagnosticsPull, WorkspaceDocumentReport } from './lsp-workspace-diagnostics';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,6 +26,7 @@ import {
   LspServerSummary,
   LspStartRequest,
   LspStartResult,
+  PUBLISH_DIAGNOSTICS_METHOD,
   REFRESH_WORKSPACE_DIAGNOSTICS_METHOD,
   WORKSPACE_DIAGNOSTICS_METHOD,
 } from '@shared/api/lsp-channels';
@@ -197,6 +199,14 @@ export class LspManager {
   private readonly sessions: Map<string, LspSession> = new Map<string, LspSession>();
 
   /**
+   * Holds the diagnostics on their way to the renderer, limiting how fast they cross.
+   */
+  private readonly diagnostics: LspDiagnosticsCoalescer = new LspDiagnosticsCoalescer(
+    (sessionId: string, method: string, params: unknown): void =>
+      this.notifyRenderer(sessionId, method, params),
+  );
+
+  /**
    * Counts the times every session has been disposed, so a launch that was still resolving its server
    * when that happened can tell, and spawn nothing. A count rather than a flag: the renderer crashing
    * disposes everything too, and the renderer that replaces it starts its servers again.
@@ -322,16 +332,7 @@ export class LspManager {
         if (complete === true && session.loaded) {
           session.analysed = true;
         }
-        const message: LspMessage = {
-          sessionId,
-          method: WORKSPACE_DIAGNOSTICS_METHOD,
-          params: {
-            reports,
-            ...(reset === true ? { reset: true } : {}),
-            ...(complete === true ? { complete: true } : {}),
-          },
-        };
-        this.send(sessionId, LspChannel.Notification, message);
+        this.diagnostics.report(sessionId, reports, reset, complete);
       },
       sessionId,
     );
@@ -927,6 +928,8 @@ export class LspManager {
       signal: signal ?? null,
       ...(reason === null ? {} : { reason }),
     };
+    // Ahead of the exit: the renderer forgets the session on hearing it.
+    this.diagnostics.flush(id);
     this.send(id, LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
@@ -941,6 +944,8 @@ export class LspManager {
       return;
     }
     logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
+    // While the session still knows its windows, which is who these are for.
+    this.diagnostics.flush(id);
     this.sessions.delete(id);
     session.watcher.close();
     session.workspaceDiagnostics?.stop();
@@ -1154,6 +1159,20 @@ export class LspManager {
         session.loaded = true;
       }
     }
+    if (method === PUBLISH_DIAGNOSTICS_METHOD) {
+      this.diagnostics.publish(sessionId, params);
+      return;
+    }
+    this.notifyRenderer(sessionId, method, params);
+  }
+
+  /**
+   * Sends a notification to the session's renderers.
+   * @param sessionId The session the notification belongs to.
+   * @param method The LSP method name.
+   * @param params The method parameters.
+   */
+  private notifyRenderer(sessionId: string, method: string, params: unknown): void {
     const message: LspMessage = { sessionId, method, params };
     this.send(sessionId, LspChannel.Notification, message);
   }

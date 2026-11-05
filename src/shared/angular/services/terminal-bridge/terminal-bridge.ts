@@ -64,6 +64,15 @@ export class TerminalBridge {
   }
 
   /**
+   * Tells main that output has been parsed, so a session flooding the terminal can be paced.
+   * @param id The terminal identifier.
+   * @param length The characters parsed.
+   */
+  public acknowledge(id: string, length: number): void {
+    void this.bridge?.invoke<void>(TerminalChannel.Acknowledge, id, length);
+  }
+
+  /**
    * Resizes a session.
    * @param id The terminal identifier.
    * @param cols The new column count.

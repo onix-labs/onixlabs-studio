@@ -294,6 +294,19 @@ describe('HarnessAgentProvider', () => {
     });
   });
 
+  it('run_stoppedWhileTheHarnessStarts_neverSendsTheTurn', async () => {
+    const controller: AbortController = new AbortController();
+    const run: Promise<void> = provider.run(contextFor({ signal: controller.signal }).context);
+    controller.abort();
+
+    await run;
+
+    expect(
+      harness.sent.map((message: Record<string, unknown>): unknown => message['type']),
+    ).toEqual(expect.not.arrayContaining(['turn.start']));
+    expect(harness.closed).toBe(true);
+  });
+
   it('run_handshakesThenSendsTheTurn', async () => {
     const { context } = contextFor();
 
@@ -952,6 +965,22 @@ describe('HarnessAgentSession', () => {
 
     await expect(session.turn(contextFor().context)).rejects.toThrow('in its manifest');
     expect(session.alive).toBe(false);
+  });
+
+  it('turn_stoppedWhileTheHarnessStarts_neverReachesTheHarness', async () => {
+    // 🐛 Stop pressed during the handshake found no turn in flight to abort, so the turn was dispatched
+    // anyway: a harness ran what the user had stopped until the panic stop's grace period killed it.
+    const controller: AbortController = new AbortController();
+    const session: AgentSession = provider.openSession(contextFor().context);
+    const turn: Promise<void> = session.turn(contextFor({ signal: controller.signal }).context);
+    controller.abort();
+
+    await turn;
+
+    expect(
+      harness.sent.map((message: Record<string, unknown>): unknown => message['type']),
+    ).toEqual(['initialize']);
+    expect(session.alive).toBe(true);
   });
 
   it('interruptStopsTheTurnAndLeavesTheSessionOpen', async () => {

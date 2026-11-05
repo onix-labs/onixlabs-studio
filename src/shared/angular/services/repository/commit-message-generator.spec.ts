@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { AiEvent, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime, AiRunOptions } from '@shared/angular/services/ai-runtime/ai-runtime';
@@ -195,6 +196,22 @@ describe('CommitMessageGenerator', () => {
     expect(await generator.generate([])).toBeNull();
     expect(runtime.runs).toHaveLength(0);
   });
+
+  it('generate_describesAFileTooChangedToDiff_ratherThanStallingOnIt', async () => {
+    const lines: string[] = Array.from({ length: 19000 }, (_, i) => `before ${i}`);
+    vi.spyOn(TestBed.inject(Repository), 'loadDiff').mockResolvedValue({
+      original: lines.join('\n'),
+      modified: lines.map((line: string): string => `${line} after`).join('\n'),
+    });
+
+    const pending: Promise<string | null> = generator.generate([makeFile('big.ts', false)]);
+    await flush();
+
+    expect(runtime.runs[0].prompt).toContain('big.ts: most of this file changed');
+
+    runtime.emit({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    await pending;
+  }, 5000);
 
   it('generate_labelsUntrackedFilesInThePrompt', async () => {
     const pending: Promise<string | null> = generator.generate([makeFile('new.ts', true)]);

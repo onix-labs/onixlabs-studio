@@ -16,6 +16,7 @@ import {
   TerminalKind,
   TerminalReplay,
 } from '@shared/api/terminal-channels';
+import { TerminalFlowControl } from './terminal-flow-control';
 import { TerminalScrollback } from './terminal-scrollback';
 import {
   allowsInput,
@@ -109,6 +110,11 @@ export class TerminalManager {
     new Map<string, { data: string; timer: NodeJS.Timeout | null }>();
 
   /**
+   * Holds the backpressure on each session's output.
+   */
+  private readonly flow: TerminalFlowControl = new TerminalFlowControl();
+
+  /**
    * Initializes a new instance of the {@link TerminalManager} class.
    * @param windowGetter A function that returns the window terminal output is sent to.
    */
@@ -129,6 +135,14 @@ export class TerminalManager {
       TerminalChannel.Write,
       (_event: IpcMainInvokeEvent, id: unknown, data: unknown): boolean =>
         typeof id === 'string' && typeof data === 'string' ? this.write(id, data) : false,
+    );
+    ipcMain.handle(
+      TerminalChannel.Acknowledge,
+      (_event: IpcMainInvokeEvent, id: unknown, length: unknown): void => {
+        if (typeof id === 'string' && typeof length === 'number' && Number.isFinite(length)) {
+          this.flow.acknowledge(id, Math.max(0, length));
+        }
+      },
     );
     ipcMain.handle(
       TerminalChannel.Resize,
@@ -314,6 +328,7 @@ export class TerminalManager {
         this.sendToWindow(TerminalChannel.Data, id, header, headerSeq);
       }
 
+      this.flow.track(id, terminal);
       terminal.onData((data: string): void => {
         // A disposed session was removed (and possibly replaced under the same id): its last output
         // must not land in the successor's scrollback, nor bring a dead session's record back. An
@@ -350,6 +365,7 @@ export class TerminalManager {
         this.scrollback.markExited(id, event.exitCode, endedBy);
         this.sendToWindow(TerminalChannel.Exit, id, event.exitCode, endedBy);
         this.terminals.delete(id);
+        this.flow.forget(id);
         logger.info(
           'TerminalManager',
           `Terminal ${id} exited (code ${event.exitCode}${endedBy !== null ? `, signal ${endedBy}` : ''})`,
@@ -511,6 +527,7 @@ export class TerminalManager {
     pidJournal()?.unregister(terminal.pid);
     killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
     this.terminals.delete(id);
+    this.flow.forget(id);
     logger.info('TerminalManager', `Disposed terminal ${id} (pid ${terminal.pid})`);
     return true;
   }
@@ -718,6 +735,7 @@ export class TerminalManager {
       // Leading edge: send now, open the window.
       const seq: number = this.scrollback.append(id, data);
       this.sendToWindow(TerminalChannel.Data, id, data, seq);
+      this.flow.sent(id, data.length);
       const entry: { data: string; timer: NodeJS.Timeout | null } = pending ?? {
         data: '',
         timer: null,
@@ -751,6 +769,7 @@ export class TerminalManager {
       pending.data = '';
       const seq: number = this.scrollback.append(id, chunk);
       this.sendToWindow(TerminalChannel.Data, id, chunk, seq);
+      this.flow.sent(id, chunk.length);
     }
   }
 

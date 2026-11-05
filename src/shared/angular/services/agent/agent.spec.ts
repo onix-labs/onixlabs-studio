@@ -1461,6 +1461,30 @@ describe('Agent', () => {
     expect(lastItem()?.toolState).toBe('ok');
   });
 
+  it('onTool_whenAnEarlierCallEnds_marksThatCallAndNotTheLatest', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'a' });
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 't2', name: 'Read', detail: 'b' });
+
+    fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 't1', ok: false, detail: 'failed' });
+
+    const states: readonly (string | undefined)[] = agent
+      .items()
+      .filter((item: AgentItem): boolean => item.kind === 'tool')
+      .map((item: AgentItem): string | undefined => item.toolState);
+    expect(states).toEqual(['error', 'running']);
+  });
+
+  it('onTool_whenAnUnknownCallEnds_leavesTheTranscriptAlone', () => {
+    agent.send('hi');
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'a' });
+    const before: readonly AgentItem[] = agent.items();
+
+    fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'nope', ok: true, detail: '' });
+
+    expect(agent.items()).toBe(before);
+  });
+
   it('onTool_whenPayloadsAreCarried_storesTheRawInputAndOutput', () => {
     agent.send('hi');
 
