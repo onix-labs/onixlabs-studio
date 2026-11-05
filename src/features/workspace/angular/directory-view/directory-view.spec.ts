@@ -486,6 +486,23 @@ describe('DirectoryView', () => {
       expect(revealed).toHaveBeenCalledWith('/ws/src/a.ts');
     });
 
+    it.each(['/ws-secret/a.ts', '/wsfile', '/ws/../etc/passwd', '/ws/src/../../etc/passwd'])(
+      'reveal_%s_isOutsideTheWorkspace',
+      async (path: string) => {
+        expect(await well().reveal(path)).toBe(false);
+
+        expect(revealed).not.toHaveBeenCalled();
+      },
+    );
+
+    it('createFile_atTheFilesystemRoot_keepsTheRootAsItsParent', async () => {
+      const made: Mock = vi.spyOn(workspace, 'createFile').mockResolvedValue({ success: false });
+
+      await well().createFile('/a.ts', null);
+
+      expect(made).toHaveBeenCalledWith('/', 'a.ts');
+    });
+
     it('reveal_theRootItself_isRefused', async () => {
       expect(await well().reveal('/ws')).toBe(false);
     });

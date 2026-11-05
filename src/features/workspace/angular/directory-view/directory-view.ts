@@ -112,6 +112,7 @@ import {
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { isWithin } from '@shared/angular/services/lsp/lsp-paths';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { idleStopMs, LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -2068,12 +2069,28 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private async revealForAgent(path: string): Promise<boolean> {
     const root: string | undefined = this.workspace.root()?.path;
-    if (root === undefined || !path.startsWith(root) || path.length <= root.length) {
+    if (root === undefined || !this.liesInside(path, root)) {
       return false;
     }
     await this.workspace.revealPath(path);
     this.dockReveal.reveal('files');
     return true;
+  }
+
+  /**
+   * Determines whether a path an agent gave lies strictly below a root. Checked on whole segments, so
+   * a sibling sharing the root's prefix (`/ws-other` beside `/ws`) is outside it, and a `..` anywhere
+   * is taken as outside rather than resolved, since the path has come from an agent.
+   * @param path The absolute path.
+   * @param root The root directory.
+   * @returns Returns true when the path is below the root.
+   */
+  private liesInside(path: string, root: string): boolean {
+    return (
+      isWithin(path, root) &&
+      path.length > root.length &&
+      !path.split(/[\\/]/).some((segment: string): boolean => segment === '..')
+    );
   }
 
   /**
@@ -2083,7 +2100,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private parentOf(path: string): string {
     const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-    return cut <= 0 ? path : path.slice(0, cut);
+    return cut < 0 ? path : path.slice(0, Math.max(cut, 1));
   }
 
   /**
