@@ -1,6 +1,7 @@
 import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { StudioChannel } from '@shared/api/studio-channels';
@@ -25,6 +26,7 @@ interface RecordedSave {
 class FakeBridge implements Bridge {
   public snapshot: StudioSnapshot | null = null;
   public readonly saves: RecordedSave[] = [];
+  public saveSucceeds: boolean = true;
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     if (channel === (StudioChannel.Load as string)) {
@@ -35,7 +37,7 @@ class FakeBridge implements Bridge {
       channel === (StudioChannel.SaveUser as string)
     ) {
       this.saves.push({ channel, root: args[0] as string, payload: args[1] });
-      return Promise.resolve(true as T);
+      return Promise.resolve(this.saveSucceeds as T);
     }
     return Promise.resolve(null as T);
   }
@@ -208,6 +210,23 @@ describe('StudioConfig', () => {
 
     expect(bridge.saves[0].channel).toBe(StudioChannel.SaveUser);
     expect(studio.selectedRunConfiguration()?.id).toBe('a');
+  });
+
+  it('saveThatFails_isLogged_ratherThanLost', async () => {
+    bridge.snapshot = sampleSnapshot();
+    bridge.saveSucceeds = false;
+    const studio: StudioConfig = build();
+    const log: Log = TestBed.inject(Log);
+    const errors: string[] = [];
+    vi.spyOn(log, 'error').mockImplementation((_source: string, message: string): void => {
+      errors.push(message);
+    });
+    rootPath.set('/root');
+    await settle();
+
+    await studio.setSelectedRunConfiguration('a');
+
+    expect(errors).toEqual(["Could not save the configuration in '/root'"]);
   });
 
   it('reloadsWhenTheStudioFolderChangesExternally', async () => {
