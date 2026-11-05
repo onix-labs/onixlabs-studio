@@ -1175,6 +1175,208 @@ describe('Terminal', () => {
       });
     });
 
+    describe('mid-flight', () => {
+      it('destroy_duringTheReplay_spawnsNothing', async () => {
+        const reply: Deferred<TerminalReplay> = new Deferred<TerminalReplay>();
+        bridge.handlers.set(TerminalChannel.Replay, (): Promise<TerminalReplay> => reply.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+
+        mounted.fixture.destroy();
+        reply.resolve({ data: 'history', seq: 1, exitCode: null, signal: null });
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(bridge.callsTo(TerminalChannel.Create)).toEqual([]);
+        expect(latest().written).toEqual([]);
+        expect(mounted.ready).toEqual([]);
+      });
+
+      it('destroy_duringTheSpawn_leavesNothingBehind', async () => {
+        const spawned: Deferred<unknown> = new Deferred<unknown>();
+        bridge.handlers.set(TerminalChannel.Create, (): Promise<unknown> => spawned.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        mounted.fixture.destroy();
+        spawned.resolve({ success: true, pid: 1, shell: '/bin/zsh' });
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(TestBed.inject(Terminals).readText('tab-1')).toBeNull();
+        expect(FakeResizeObserver.live.size).toBe(0);
+        expect(mounted.ready).toEqual([]);
+        expect(mounted.shells).toEqual([]);
+      });
+
+      it('destroy_duringARefusedSpawn_writesNothingToTheDisposedXterm', async () => {
+        const spawned: Deferred<unknown> = new Deferred<unknown>();
+        bridge.handlers.set(TerminalChannel.Create, (): Promise<unknown> => spawned.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        mounted.fixture.destroy();
+        spawned.resolve({ success: false, error: 'late' });
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(latest().written).toEqual([]);
+      });
+
+      it('destroy_duringARestart_startsNoNewTerminal', async () => {
+        const { terminal, fixture }: Mounted = await mount();
+        const disposed: Deferred<boolean> = new Deferred<boolean>();
+        bridge.handlers.set(TerminalChannel.Dispose, (): Promise<boolean> => disposed.promise);
+        bridge.calls.length = 0;
+
+        const restarted: Promise<void> = terminal.restart();
+        fixture.destroy();
+        disposed.resolve(true);
+        await restarted;
+
+        expect(xterms).toHaveLength(1);
+        expect(bridge.callsTo(TerminalChannel.Create)).toEqual([]);
+      });
+
+      it('destroy_justAfterGoingLive_doesNotFocusTheDisposedXterm', async () => {
+        const mounted: Mounted = create();
+        mounted.terminal.ready.subscribe((): void => {
+          mounted.fixture.destroy();
+        });
+        await mounted.fixture.whenStable();
+        await settle();
+        const focused: number = latest().focusCount;
+
+        await settle();
+
+        expect(latest().focusCount).toBe(focused);
+        expect(latest().disposed).toBe(true);
+        expect(focused).toBe(0);
+      });
+
+      it('destroy_beforeTheFirstRender_doesNotThrow', () => {
+        const { fixture }: Mounted = create();
+
+        expect((): void => fixture.destroy()).not.toThrow();
+      });
+
+      it('restart_twiceAtOnce_leavesOneLiveTerminal', async () => {
+        const { terminal }: Mounted = await mount();
+
+        await Promise.all([terminal.restart(), terminal.restart()]);
+        await settle();
+        bridge.emit(TerminalChannel.Data, 'tab-1', 'once', 1);
+
+        const live: readonly FakeXterm[] = xterms.filter((xterm: FakeXterm) => !xterm.disposed);
+        expect(live).toHaveLength(1);
+        expect(live[0]?.written).toEqual(['once']);
+        expect(bridge.listenerCount(TerminalChannel.Exit)).toBe(1);
+        expect(FakeResizeObserver.live.size).toBe(1);
+      });
+
+      it('restart_whileStillStarting_leavesOneLiveTerminal', async () => {
+        const reply: Deferred<TerminalReplay> = new Deferred<TerminalReplay>();
+        bridge.handlers.set(TerminalChannel.Replay, (): Promise<TerminalReplay> => reply.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+
+        const restarted: Promise<void> = mounted.terminal.restart();
+        reply.resolve({ data: '', seq: 0, exitCode: null, signal: null });
+        await restarted;
+        await settle();
+
+        expect(xterms.filter((xterm: FakeXterm) => !xterm.disposed)).toHaveLength(1);
+        expect(mounted.ready).toHaveLength(1);
+        expect(FakeResizeObserver.live.size).toBe(1);
+      });
+
+      it('start_replayRefused_saysSoAndKeepsShowingOutput', async () => {
+        bridge.handlers.set(TerminalChannel.Replay, (): Promise<never> =>
+          Promise.reject(new Error('no handler for terminal:replay')),
+        );
+
+        const mounted: Mounted = await mount();
+        bridge.emit(TerminalChannel.Data, 'tab-1', 'still here', 1);
+
+        expect(latest().written.join('')).toContain(
+          'Failed to start terminal: no handler for terminal:replay',
+        );
+        expect(latest().written).toContain('still here');
+        expect(mounted.ready).toEqual([]);
+      });
+
+      it('start_spawnRejected_saysSoAndKeepsShowingOutput', async () => {
+        bridge.handlers.set(TerminalChannel.Create, (): Promise<never> =>
+          Promise.reject(new Error('ipc closed')),
+        );
+
+        const mounted: Mounted = await mount();
+        bridge.emit(TerminalChannel.Data, 'tab-1', 'still here', 1);
+
+        expect(latest().written.join('')).toContain('Failed to start terminal: ipc closed');
+        expect(latest().written).toContain('still here');
+        expect(mounted.ready).toEqual([]);
+      });
+
+      it('destroy_thenReplayRejected_staysQuiet', async () => {
+        const reply: Deferred<TerminalReplay> = new Deferred<TerminalReplay>();
+        bridge.handlers.set(TerminalChannel.Replay, (): Promise<TerminalReplay> => reply.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+
+        mounted.fixture.destroy();
+        reply.reject(new Error('window closing'));
+        await new Promise<void>((resolve: () => void): void => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(latest().written).toEqual([]);
+      });
+
+      it('exit_duringTheReplay_landsAfterTheHistoryAndOnlyOnce', async () => {
+        const reply: Deferred<TerminalReplay> = new Deferred<TerminalReplay>();
+        bridge.handlers.set(TerminalChannel.Replay, (): Promise<TerminalReplay> => reply.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+
+        bridge.emit(TerminalChannel.Exit, 'tab-1', 4, null);
+        reply.resolve({ data: 'history', seq: 2, exitCode: 4, signal: null });
+        await settle();
+
+        const banners: readonly string[] = latest().written.filter((chunk: string) =>
+          chunk.includes('Process exited'),
+        );
+        expect(banners).toHaveLength(1);
+        expect(latest().written[0]).toBe('history');
+        expect(mounted.exits).toEqual([{ code: 4, signal: null }]);
+      });
+
+      it('exit_duringTheSpawn_landsAfterTheOutputItEnded', async () => {
+        const spawned: Deferred<unknown> = new Deferred<unknown>();
+        bridge.handlers.set(TerminalChannel.Create, (): Promise<unknown> => spawned.promise);
+        const mounted: Mounted = create();
+        await mounted.fixture.whenStable();
+        await settle();
+
+        bridge.emit(TerminalChannel.Data, 'tab-1', 'last words', 1);
+        bridge.emit(TerminalChannel.Exit, 'tab-1', 1, null);
+        spawned.resolve({ success: true, pid: 1 });
+        await settle();
+
+        expect(latest().written[0]).toBe('last words');
+        expect(latest().written[1]).toContain('Process exited with code 1');
+      });
+    });
+
     describe('resizing', () => {
       it('resize_plausibleHost_fitsAndShipsTheGrid', async () => {
         const { terminal }: Mounted = await mount();
