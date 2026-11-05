@@ -901,6 +901,58 @@ describe('WorkspaceManager', () => {
       expect(written).toBe(false);
       expect(workspaceFiles()).toEqual(['folder']);
     });
+
+    it('writePieces_leavesASiblingWithTheTemporarysNameAlone', async () => {
+      const file: string = inWorkspace('a.bin', 'abc');
+      const sibling: string = inWorkspace('a.bin.onix-save', 'mine');
+
+      await invoke(
+        WorkspaceChannel.WritePieces,
+        file,
+        [{ source: 'added', start: 0, length: 1 }],
+        new Uint8Array([0x58]),
+      );
+
+      expect(fs.readFileSync(sibling, 'utf8')).toBe('mine');
+    });
+
+    it('writePieces_doesNotWriteThroughALinkAtTheTemporarysName', async () => {
+      const file: string = inWorkspace('a.bin', 'abc');
+      fs.symlinkSync(secret, `${file}.onix-save`);
+
+      await invoke(
+        WorkspaceChannel.WritePieces,
+        file,
+        [{ source: 'added', start: 0, length: 1 }],
+        new Uint8Array([0x58]),
+      );
+
+      expect(fs.readFileSync(secret, 'utf8')).toBe(SECRET);
+    });
+
+    it('writePieces_concurrently_everySaveSucceeds_andOneWholePayloadWins', async () => {
+      const file: string = inWorkspace('a.bin', 'abc');
+      const payloads: readonly Uint8Array[] = [0x41, 0x42, 0x43, 0x44, 0x45, 0x46].map(
+        (byte: number): Uint8Array => new Uint8Array(2 * ONE_MEGABYTE).fill(byte),
+      );
+
+      const results: readonly boolean[] = await Promise.all(
+        payloads.map((added: Uint8Array): Promise<boolean> =>
+          invoke(
+            WorkspaceChannel.WritePieces,
+            file,
+            [{ source: 'added', start: 0, length: added.length }],
+            added,
+          ),
+        ),
+      );
+
+      expect(results).toEqual(payloads.map((): boolean => true));
+      const saved: Buffer = fs.readFileSync(file);
+      expect(saved.length).toBe(2 * ONE_MEGABYTE);
+      expect(new Set<number>(saved).size).toBe(1);
+      expect(workspaceFiles()).toEqual(['a.bin']);
+    });
   });
 
   describe('directory listing', () => {

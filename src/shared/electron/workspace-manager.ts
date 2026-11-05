@@ -8,6 +8,7 @@ import {
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
 import { logger } from './logger';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
@@ -766,14 +767,16 @@ export class WorkspaceManager {
     const runs: BinarySpan[] = spans as BinarySpan[];
     const addedBuffer: Buffer = Buffer.from(added);
     const resolved: string = path.resolve(filePath);
-    const tempPath: string = `${resolved}.onix-save`;
+    // Unique per save, so two saves of one file never share a temporary, and nothing already sitting
+    // beside the file can be overwritten or written through.
+    const tempPath: string = `${resolved}.${randomUUID()}.onix-save`;
     let source: FileHandle | undefined;
     let temp: FileHandle | undefined;
     try {
       if (runs.some((run: BinarySpan): boolean => run.source === 'original')) {
         source = await fs.open(resolved, 'r');
       }
-      temp = await fs.open(tempPath, 'w');
+      temp = await fs.open(tempPath, 'wx');
       const chunk: Buffer = Buffer.alloc(64 * 1024);
       for (const run of runs) {
         if (
