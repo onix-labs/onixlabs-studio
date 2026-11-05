@@ -1437,6 +1437,13 @@ export class SourceControlSidebar implements OnDestroy {
   protected readonly pendingDrop: WritableSignal<GitStash | null> = signal<GitStash | null>(null);
 
   /**
+   * Gets the name of the stash waiting to be dropped, without the branch Git prefixes it with.
+   */
+  protected readonly pendingDropName: Signal<string> = computed((): string =>
+    (this.pendingDrop()?.message ?? '').replace(/^(?:WIP on|On) [^:]+: /, ''),
+  );
+
+  /**
    * Opens the drop confirmation for a stash.
    * @param stash The stash to drop.
    */

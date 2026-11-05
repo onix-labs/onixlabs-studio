@@ -504,17 +504,18 @@
 <app-modal
   [open]="pendingDrop() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Drop stash"
   (dismiss)="cancelDropStash()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Drop this stash?</h2>
+    <h2 class="rail__dialog-title">Drop This Stash?</h2>
     <p class="rail__dialog-message">
-      “{{ pendingDrop()?.message }}” is deleted without being restored. This cannot be undone.
+      “{{ pendingDropName() }}” is deleted without being restored. This cannot be undone.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
-      <app-button label="Cancel" (click)="cancelDropStash()" />
+      <app-button variant="solid" tone="danger" label="Drop" (click)="confirmDropStash()" />
+      <app-button variant="none" label="Cancel" (click)="cancelDropStash()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -523,18 +524,19 @@
 <app-modal
   [open]="pendingRerun() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Re-run workflow"
   (dismiss)="cancelRerun()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Re-run this workflow?</h2>
+    <h2 class="rail__dialog-title">Re-run This Workflow?</h2>
     <p class="rail__dialog-message">
       “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
       rather than replacing the old one.
     </p>
     <app-button-row>
       <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
-      <app-button label="Cancel" (click)="cancelRerun()" />
+      <app-button variant="none" label="Cancel" (click)="cancelRerun()" />
     </app-button-row>
   </ng-template>
 </app-modal>
@@ -543,18 +545,19 @@
 <app-modal
   [open]="pendingCancel() !== null"
   [width]="26"
+  [frameless]="true"
   ariaLabel="Cancel workflow run"
   (dismiss)="dismissCancelRun()"
 >
   <ng-template appModalContent>
-    <h2 class="rail__dialog-title">Cancel this run?</h2>
+    <h2 class="rail__dialog-title">Cancel This Run?</h2>
     <p class="rail__dialog-message">
       “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
       finished is abandoned.
     </p>
     <app-button-row>
-      <app-button variant="solid" label="Cancel run" (click)="confirmCancelRun()" />
-      <app-button label="Keep running" (click)="dismissCancelRun()" />
+      <app-button variant="solid" tone="danger" label="Cancel Run" (click)="confirmCancelRun()" />
+      <app-button variant="none" label="Keep Running" (click)="dismissCancelRun()" />
     </app-button-row>
   </ng-template>
 </app-modal>
