@@ -902,6 +902,20 @@ describe('WorkspaceManager', () => {
       expect(workspaceFiles()).toEqual(['folder']);
     });
 
+    it('writePieces_keepsTheFilesPermissions', async () => {
+      const file: string = inWorkspace('run.sh', '#!/bin/sh\n');
+      fs.chmodSync(file, 0o755);
+
+      await invoke(
+        WorkspaceChannel.WritePieces,
+        file,
+        [{ source: 'original', start: 0, length: 10 }],
+        new Uint8Array(0),
+      );
+
+      expect(fs.statSync(file).mode & 0o777).toBe(0o755);
+    });
+
     it('writePieces_leavesASiblingWithTheTemporarysNameAlone', async () => {
       const file: string = inWorkspace('a.bin', 'abc');
       const sibling: string = inWorkspace('a.bin.onix-save', 'mine');

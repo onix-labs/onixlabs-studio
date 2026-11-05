@@ -78,6 +78,11 @@ const NUL_BYTE: number = 0;
 const MAX_READ_BYTES: number = 1024 * 1024;
 
 /**
+ * Specifies the bits of a file's mode that hold its permissions.
+ */
+const PERMISSION_BITS: number = 0o7777;
+
+/**
  * Handles workspace (open folder) and directory IPC on behalf of the renderer: opening a folder as
  * the workspace, reading directory listings, and creating, renaming, and deleting entries. Every
  * path-taking operation is confined to the open workspace root through the shared
@@ -817,6 +822,12 @@ export class WorkspaceManager {
             remaining -= bytesRead;
           }
         }
+      }
+      // The rename swaps in a new inode, so the rewritten file takes the old one's permissions by hand
+      // or a script edited in the hex editor stops being executable.
+      const existing: Stats | undefined = await fs.stat(resolved).catch((): undefined => undefined);
+      if (existing !== undefined) {
+        await temp.chmod(existing.mode & PERMISSION_BITS);
       }
       await temp.close();
       temp = undefined;
