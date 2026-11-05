@@ -189,4 +189,12 @@ describe('StudioStore', () => {
 
     expect(fs.existsSync(path.join(root, '.gitignore'))).toBe(false);
   });
+
+  it('gitignore_thatCannotBeWritten_doesNotCostTheSave', async () => {
+    fs.mkdirSync(path.join(root, '.gitignore'));
+
+    expect(await invoke(StudioChannel.SaveWorkspace, root, {})).toBe(true);
+
+    expect(fs.existsSync(studioFile(STUDIO_WORKSPACE_FILE))).toBe(true);
+  });
 });

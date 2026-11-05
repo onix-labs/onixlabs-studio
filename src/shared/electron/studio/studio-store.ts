@@ -143,7 +143,10 @@ export class StudioStore {
     const directory: string = path.join(root, STUDIO_DIR);
     await fs.mkdir(directory, { recursive: true });
     if (this.addsUserFileToGitignore()) {
-      await this.seedGitignore(root);
+      // A courtesy to the repository, and not worth the user's configuration when it cannot be paid.
+      await this.seedGitignore(root).catch((error: unknown): void => {
+        logger.warn('StudioStore.write', `Could not update ${root}/.gitignore`, error);
+      });
     }
     const target: string = path.join(directory, file);
     // Unique per write: two saves in flight sharing a name rename it from under each other.
