@@ -1,6 +1,10 @@
+import { undo } from '@milkdown/kit/prose/history';
+import type { EditorView } from '@milkdown/kit/prose/view';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Review } from '@features/markdown/angular/markdown-review/markdown-review';
+import { applyReviewEdits } from '@features/markdown/angular/markdown-review/review-edits';
 import {
+  ReviewEdit,
   ReviewIssue,
   ReviewSession,
 } from '@features/markdown/angular/markdown-review/review-types';
@@ -23,11 +27,6 @@ const MIN_SOURCE_LENGTH: number = 1;
 const REVIEW_HIGHLIGHT_NAME: string = 'markdown-review-flag';
 
 /**
- * Duration in milliseconds the review reveal highlight stays before it is cleared.
- */
-const REVIEW_FLASH_DURATION: number = 1600;
-
-/**
  * Holds a rendered text-node segment with the offset it starts at in the concatenated rendered text.
  */
 interface RenderedSegment {
@@ -45,7 +44,7 @@ interface RenderedSegment {
 /**
  * Drives the review session for one markdown editor: exposes the live source and an undoable
  * apply-suggestion seam to the {@link Review} service, and reveals a flagged issue by scrolling its
- * rendered text into view and briefly flashing it through the CSS Custom Highlight API. Holds no cached
+ * rendered text into view and highlighting it through the CSS Custom Highlight API. Holds no cached
  * pane or DOM — it reads the live editor through the supplied accessors, so its reveal always resolves
  * against the current rendered document even after a content-load recreate.
  */
@@ -69,11 +68,6 @@ export class ReviewReveal {
    * Holds the review session registered with the {@link Review} service while active, or null.
    */
   private reviewSession: ReviewSession | null = null;
-
-  /**
-   * Holds the pending timer that clears the review reveal highlight, or null when none is scheduled.
-   */
-  private reviewFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Initialises the reveal over the given pane, scroller, and review service.
@@ -101,48 +95,64 @@ export class ReviewReveal {
     }
     this.reviewSession = {
       getSource: (): string => this.paneOf()?.getMarkdown() ?? '',
-      applyEdit: (start: number, end: number, replacement: string): void =>
-        this.applyReviewEdit(start, end, replacement),
-      reveal: (issue: ReviewIssue): void => this.revealReviewIssue(issue),
+      applyEdits: (edits: readonly ReviewEdit[]): void => this.applyEdits(edits),
+      undo: (): void => this.undo(),
+      reveal: (issue: ReviewIssue): void => this.paintReviewIssue(issue, true),
+      highlight: (issue: ReviewIssue): void => this.paintReviewIssue(issue, false),
+      clearHighlight: (): void => this.clearReviewHighlight(),
     };
     this.review.registerSession(this.reviewSession);
   }
 
   /**
-   * Unregisters this editor's review session and clears any active reveal highlight (and its timer).
+   * Unregisters this editor's review session and clears any active reveal highlight.
    */
   public unregister(): void {
     if (this.reviewSession !== null) {
       this.review.unregisterSession(this.reviewSession);
       this.reviewSession = null;
     }
-    this.clearReviewFlash();
+    this.clearReviewHighlight();
   }
 
   /**
-   * Applies a review suggestion by replacing the source range with the given text. The replacement is
-   * computed against the serialised markdown (the same source the issue offsets were derived from),
-   * then the whole document is re-parsed and swapped in a single, undoable transaction.
-   * @param start The start offset of the range to replace.
-   * @param end The end offset (exclusive) of the range to replace.
-   * @param replacement The replacement text.
+   * Applies review edits. They are computed against the serialised markdown (the same source the issue
+   * offsets were derived from), then the whole document is re-parsed and swapped in a single, undoable
+   * transaction. That transaction leaves the selection at the end of the document and scrolls to it, so
+   * the scroll position is put back for the reveal of the next issue to start from here.
+   * @param edits The edits to apply.
    */
-  private applyReviewEdit(start: number, end: number, replacement: string): void {
+  private applyEdits(edits: readonly ReviewEdit[]): void {
     const pane: MarkdownEditor | undefined = this.paneOf();
     if (pane === undefined) {
       return;
     }
-    const source: string = pane.getMarkdown();
-    pane.replaceAll(source.slice(0, start) + replacement + source.slice(end));
+    const scroller: HTMLElement | null = this.scrollerOf();
+    const scrollTop: number = scroller?.scrollTop ?? 0;
+    pane.replaceAll(applyReviewEdits(pane.getMarkdown(), edits));
+    if (scroller !== null) {
+      scroller.scrollTop = scrollTop;
+    }
   }
 
   /**
-   * Scrolls the flagged text of a review issue into view and briefly highlights it. The flagged word
+   * Undoes the last step in the editor's history.
+   */
+  private undo(): void {
+    const view: EditorView | null = this.paneOf()?.getEditorView() ?? null;
+    if (view !== null) {
+      undo(view.state, view.dispatch);
+    }
+  }
+
+  /**
+   * Highlights the flagged text of a review issue, optionally scrolling it into view. The flagged word
    * is located in the rendered text at the occurrence closest to the issue's proportional position in
    * the source (the rendered text differs from the markdown source, so this is an approximate match).
-   * @param issue The issue to reveal.
+   * @param issue The issue to highlight.
+   * @param scroll Whether to scroll the text into view.
    */
-  private revealReviewIssue(issue: ReviewIssue): void {
+  private paintReviewIssue(issue: ReviewIssue, scroll: boolean): void {
     const root: HTMLElement | null = this.paneOf()?.getEditorView()?.dom ?? null;
     if (root === null || issue.word.length === 0) {
       return;
@@ -173,15 +183,19 @@ export class ReviewReveal {
       found = rendered.indexOf(issue.word, found + WORD_STEP);
     }
     if (best === NOT_FOUND) {
+      this.clearReviewHighlight();
       return;
     }
 
     const range: Range | null = this.rangeFromRendered(segments, best, best + issue.word.length);
     if (range === null) {
+      this.clearReviewHighlight();
       return;
     }
-    this.scrollRangeIntoView(range);
-    this.flashReviewRange(range);
+    if (scroll) {
+      this.scrollRangeIntoView(range);
+    }
+    this.highlightReviewRange(range);
   }
 
   /**
@@ -257,30 +271,21 @@ export class ReviewReveal {
   }
 
   /**
-   * Briefly highlights a range using the CSS Custom Highlight API, which paints over the rendered text
-   * without mutating the editor's DOM or document. Clears any prior flash first. No-ops where the API
-   * is unavailable (such as under unit tests).
-   * @param range The range to flash.
+   * Highlights a range using the CSS Custom Highlight API, which paints over the rendered text without
+   * mutating the editor's DOM or document, replacing any prior highlight. No-ops where the API is
+   * unavailable (such as under unit tests).
+   * @param range The range to highlight.
    */
-  private flashReviewRange(range: Range): void {
-    if (!supportsHighlight()) {
-      return;
+  private highlightReviewRange(range: Range): void {
+    if (supportsHighlight()) {
+      CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
     }
-    this.clearReviewFlash();
-    CSS.highlights.set(REVIEW_HIGHLIGHT_NAME, new Highlight(range));
-    this.reviewFlashTimer = setTimeout((): void => {
-      this.clearReviewFlash();
-    }, REVIEW_FLASH_DURATION);
   }
 
   /**
-   * Clears the review reveal highlight and its pending timer, if any.
+   * Clears the review reveal highlight, if any.
    */
-  private clearReviewFlash(): void {
-    if (this.reviewFlashTimer !== null) {
-      clearTimeout(this.reviewFlashTimer);
-      this.reviewFlashTimer = null;
-    }
+  private clearReviewHighlight(): void {
     if (supportsHighlight()) {
       CSS.highlights.delete(REVIEW_HIGHLIGHT_NAME);
     }
