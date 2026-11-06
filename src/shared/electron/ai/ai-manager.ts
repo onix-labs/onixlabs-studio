@@ -296,6 +296,15 @@ interface RunClock {
 }
 
 /**
+ * What the transcript says about why a command was let out of the sandbox.
+ */
+const UNSANDBOXED_REASONS: Readonly<Record<AuditGrantSource, string>> = {
+  policy: 'Ran outside the sandbox: its permission is set to Allowed.',
+  posture: 'Ran outside the sandbox: Allow All is on.',
+  'gated-or-auto': 'Ran outside the sandbox: you allowed it.',
+};
+
+/**
  * Coordinates the agent subsystem in the main process: authentication (delegated to
  * {@link AiAuthManager}), a registry of {@link AgentProvider}s behind one seam, and the run/abort
  * lifecycle that streams provider-agnostic events to the renderer. Mirrors the other IPC managers
@@ -1254,7 +1263,13 @@ export class AiManager {
         detail: string,
         source: AuditGrantSource,
         sandboxed?: boolean,
-      ): void => this.recordAudit(name, detail, request.workspaceRoot, source, sandboxed),
+        toolId?: string,
+      ): void => {
+        this.recordAudit(name, detail, request.workspaceRoot, source, sandboxed);
+        if (sandboxed === false) {
+          this.reportUnsandboxed(request.requestId, detail, source, toolId);
+        }
+      },
       requestInput: (
         question: string,
         choices: readonly AiInputChoice[],
@@ -2106,6 +2121,31 @@ export class AiManager {
       source,
       ...(sandboxed === undefined ? {} : { sandboxed }),
     });
+  }
+
+  /**
+   * Reports a command that ran outside the sandbox (#1160): a line in `studio.log` for whoever reads it
+   * later, and the transcript's mark on the call, each saying why it was allowed.
+   * @param requestId The run that ran it.
+   * @param detail The command's summary.
+   * @param source The coarse reason it was allowed.
+   * @param toolId The tool use, when the harness says.
+   */
+  private reportUnsandboxed(
+    requestId: string,
+    detail: string,
+    source: AuditGrantSource,
+    toolId?: string,
+  ): void {
+    logger.info('AiManager', `Ran outside the sandbox (${source}): ${detail}`);
+    if (toolId !== undefined) {
+      this.emit({
+        requestId,
+        kind: 'tool-unsandboxed',
+        toolId,
+        reason: UNSANDBOXED_REASONS[source],
+      });
+    }
   }
 
   /**

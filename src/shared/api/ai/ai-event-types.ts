@@ -100,6 +100,27 @@ export interface AiToolStartEvent extends AiEventBase {
 }
 
 /**
+ * Signals that a shell command ran outside the OS sandbox (#1160). Sent when it has run rather than
+ * read from the call, because a call asking to leave the sandbox may have been run inside it.
+ */
+export interface AiToolUnsandboxedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'tool-unsandboxed';
+
+  /**
+   * Gets the identifier of the tool use that ran.
+   */
+  readonly toolId: string;
+
+  /**
+   * Gets why it was allowed, in words.
+   */
+  readonly reason: string;
+}
+
+/**
  * Signals that a tool use completed.
  */
 export interface AiToolEndEvent extends AiEventBase {
@@ -773,6 +794,7 @@ export type AiEvent =
   | AiTextEvent
   | AiThinkingEvent
   | AiToolStartEvent
+  | AiToolUnsandboxedEvent
   | AiToolEndEvent
   | AiPermissionEvent
   | AiPermissionDismissedEvent

@@ -1313,6 +1313,28 @@ describe('AiManager', () => {
       expect(auditedLines().at(-1)).toMatchObject({ tool: 'Bash', sandboxed: false });
     });
 
+    it('audit_ofACommandOutsideTheSandbox_marksTheCall_andSaysWhyItWasAllowed', () => {
+      context.recordAudit('Bash', 'ls', 'posture', false, 'toolu_1');
+
+      expect(eventsOf('tool-unsandboxed').at(-1)).toMatchObject({
+        toolId: 'toolu_1',
+        reason: 'Ran outside the sandbox: Allow All is on.',
+      });
+    });
+
+    it('audit_ofACommandInsideTheSandbox_marksNothing', () => {
+      context.recordAudit('Bash', 'ls', 'posture', true, 'toolu_1');
+
+      expect(eventsOf('tool-unsandboxed')).toEqual([]);
+    });
+
+    it('audit_withNoToolId_stillAuditsWithoutMarkingAnything', () => {
+      context.recordAudit('Bash', 'ls', 'posture', false);
+
+      expect(eventsOf('tool-unsandboxed')).toEqual([]);
+      expect(auditedLines().at(-1)).toMatchObject({ sandboxed: false });
+    });
+
     it('audit_ofAnythingElse_saysNothingAboutTheSandbox', () => {
       context.recordAudit('Write', '/a', 'gated-or-auto');
 

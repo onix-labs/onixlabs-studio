@@ -354,6 +354,7 @@ export class HarnessAgentProvider implements AgentProvider {
         detail: string,
         source: string,
         sandboxed?: boolean,
+        toolId?: string,
       ): void => {
         // ⚠️ A record naming a turn other than this one is refused rather than relabelled. One process
         // runs one turn today, so the only way to see a foreign id is a harness that invented it, and
@@ -365,7 +366,7 @@ export class HarnessAgentProvider implements AgentProvider {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never, sandboxed);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     const abort: () => void = (): void => host.abort(context.requestId);
@@ -732,6 +733,7 @@ export class HarnessAgentSession implements AgentSession {
         detail: string,
         source: string,
         sandboxed?: boolean,
+        toolId?: string,
       ): void => {
         const context: AgentRunContext | undefined =
           this.contexts.get(requestId) ??
@@ -743,7 +745,7 @@ export class HarnessAgentSession implements AgentSession {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never, sandboxed);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     this.host = host;

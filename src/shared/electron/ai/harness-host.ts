@@ -203,6 +203,7 @@ export class HarnessHost {
     detail: string,
     source: string,
     sandboxed?: boolean,
+    toolId?: string,
   ) => void;
 
   /**
@@ -218,6 +219,7 @@ export class HarnessHost {
       detail: string,
       source: string,
       sandboxed?: boolean,
+      toolId?: string,
     ) => void,
   ) {
     this.transport = transport;
@@ -549,6 +551,7 @@ export class HarnessHost {
           message.source,
           // A harness is not trusted to send a boolean; anything else says nothing.
           typeof message.sandboxed === 'boolean' ? message.sandboxed : undefined,
+          typeof message.toolId === 'string' ? message.toolId : undefined,
         );
         break;
       case 'turn.completed':

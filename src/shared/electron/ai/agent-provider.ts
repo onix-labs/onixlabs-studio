@@ -356,8 +356,15 @@ export interface AgentRunContext {
    * @param detail A one-line summary of what the action targets.
    * @param source The coarse reason the action was allowed.
    * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
+   * @param toolId The tool use the record is for, when the harness says.
    */
-  recordAudit(name: string, detail: string, source: AuditGrantSource, sandboxed?: boolean): void;
+  recordAudit(
+    name: string,
+    detail: string,
+    source: AuditGrantSource,
+    sandboxed?: boolean,
+    toolId?: string,
+  ): void;
 
   /**
    * Asks the user a question on the agent's behalf, resolving once they answer (or null when they
