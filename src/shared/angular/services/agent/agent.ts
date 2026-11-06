@@ -274,6 +274,11 @@ export interface AgentItem {
   readonly toolDetail?: string;
 
   /**
+   * Gets why the command ran outside the OS sandbox, or undefined when it did not (#1160).
+   */
+  readonly toolUnsandboxed?: string;
+
+  /**
    * Gets the tool's lifecycle state.
    */
   readonly toolState?: AgentToolState;
@@ -992,6 +997,14 @@ export class Agent {
    * value is stable across a run once the first item lands.
    */
   public readonly hasMessages: Signal<boolean> = computed((): boolean => this.log().length > 0);
+
+  /**
+   * Gets how many commands in this conversation ran outside the OS sandbox (#1160).
+   */
+  public readonly unsandboxedRuns: Signal<number> = computed(
+    (): number =>
+      this.log().filter((item: AgentItem): boolean => item.toolUnsandboxed !== undefined).length,
+  );
 
   /**
    * Gets the messages waiting to dispatch once the running turn completes.
@@ -2232,6 +2245,9 @@ export class Agent {
           ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
         });
         break;
+      case 'tool-unsandboxed':
+        this.markUnsandboxed(event.toolId, event.reason);
+        break;
       case 'tool-end':
         this.endTool(event.toolId, event.ok, event.output);
         break;
@@ -3230,6 +3246,25 @@ export class Agent {
         return item;
       }),
     );
+  }
+
+  /**
+   * Marks a command as having run outside the sandbox, and why.
+   * @param toolId The tool use.
+   * @param reason Why it was allowed.
+   */
+  private markUnsandboxed(toolId: string, reason: string): void {
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] => {
+      // From the tail, as `endTool` searches: the command that just ran is nearly always among the latest.
+      for (let index: number = items.length - 1; index >= 0; index -= 1) {
+        if (items[index].toolId === toolId) {
+          const next: AgentItem[] = [...items];
+          next[index] = { ...items[index], toolUnsandboxed: reason };
+          return next;
+        }
+      }
+      return items;
+    });
   }
 
   /**

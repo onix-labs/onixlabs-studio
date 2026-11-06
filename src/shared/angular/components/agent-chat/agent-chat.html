@@ -352,6 +352,11 @@
                   @if (row.item!.toolState === 'backgrounded') {
                     <span class="agent__lane-status">In background…</span>
                   }
+                  <!-- Which commands left the sandbox has to read at a glance, without opening each
+                       row; why it was allowed is on the badge (#1160). -->
+                  @if (row.item!.toolUnsandboxed; as reason) {
+                    <span class="agent__action-unsandboxed" [attr.title]="reason">Unsandboxed</span>
+                  }
                   <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN_BOLD" />
                 </summary>
                 <div class="agent__action-detail">

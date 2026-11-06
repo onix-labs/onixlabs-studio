@@ -751,6 +751,7 @@ export class Session {
         detail: string,
         source: string,
         sandboxed?: boolean,
+        toolId?: string,
       ): void =>
         this.host.send({
           type: 'audit',
@@ -759,6 +760,7 @@ export class Session {
           detail,
           source,
           ...(sandboxed === undefined ? {} : { sandboxed }),
+          ...(toolId === undefined ? {} : { toolId }),
         }),
     };
     const apiKey: string | null = await this.credential(turn);

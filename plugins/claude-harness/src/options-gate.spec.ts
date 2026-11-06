@@ -21,6 +21,7 @@ interface Recorded {
   readonly inputs: string[];
   readonly audits: string[][];
   readonly sandboxed: (boolean | undefined)[];
+  readonly toolIds: (string | undefined)[];
   withdrawals: number;
   granted: boolean;
   answer: string | null;
@@ -105,9 +106,11 @@ describe('the permission gate', () => {
         detail: string,
         source: string,
         sandboxed?: boolean,
+        toolId?: string,
       ): void => {
         recorded.audits.push([name, detail, source]);
         recorded.sandboxed.push(sandboxed);
+        recorded.toolIds.push(toolId);
       },
     };
   }
@@ -129,6 +132,7 @@ describe('the permission gate', () => {
       inputs: [],
       audits: [],
       sandboxed: [],
+      toolIds: [],
       withdrawals: 0,
       granted: true,
       answer: 'yes',
@@ -586,6 +590,26 @@ describe('the permission gate', () => {
 
       expect(recorded.sandboxed).toEqual([false]);
       expect(recorded.audits[0][2]).toBe('posture');
+    });
+
+    it('auditsTheToolUse_soTheTranscriptCanMarkTheRightCall', async () => {
+      recorded.turn = turn();
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', {
+        tool_name: 'Bash',
+        tool_use_id: 'toolu_9',
+        tool_input: { command: 'ls' },
+      });
+
+      expect(recorded.toolIds).toEqual(['toolu_9']);
     });
 
     it('auditsAShellCommand_asSandboxed_whereThereIsASandbox', async () => {

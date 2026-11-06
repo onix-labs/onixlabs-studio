@@ -20,7 +20,8 @@ const PHASE_LABELS: Partial<Record<AgentPhase, string>> = {
  * the model. On the right, what is going on, most telling first so a narrow strip keeps it longest:
  * whether a turn is running or waiting on the user, the mode, how much of the context window the
  * conversation fills, what it has cost (on a connection billed by the token — a subscription's flat fee
- * has no per-turn cost, whatever the provider reports), and any background tasks.
+ * has no per-turn cost, whatever the provider reports), any background tasks, and how many commands
+ * have left the sandbox.
  * Read-only, like every segment of the window strip; the ribbon is where these are chosen.
  *
  * Mounted by the status strip through the active agent view's injector, so it reads that tab's own
@@ -72,7 +73,8 @@ export class AgentStatusStrip {
 
   /**
    * Gets the end-aligned segments: the phase while not idle, the mode, the context in use, the cost
-   * when reported, and the background tasks while there are any.
+   * when reported, the background tasks while there are any, and the commands run outside the sandbox
+   * once there are some.
    */
   protected readonly trailing: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
@@ -109,6 +111,14 @@ export class AgentStatusStrip {
         segments.push({
           id: 'agent-tasks',
           text: tasks === 1 ? '1 task running' : `${tasks} tasks running`,
+        });
+      }
+      const unsandboxed: number = this.agent.unsandboxedRuns();
+      if (unsandboxed > 0) {
+        segments.push({
+          id: 'agent-unsandboxed',
+          text: unsandboxed === 1 ? '1 run unsandboxed' : `${unsandboxed} runs unsandboxed`,
+          title: 'Commands in this conversation that ran outside the OS sandbox',
         });
       }
       return segments;

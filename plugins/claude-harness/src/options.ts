@@ -150,6 +150,7 @@ export interface GateContext {
    * @param detail What it targeted.
    * @param source Why it was allowed.
    * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
+   * @param toolId The tool use that ran.
    */
   readonly audit: (
     requestId: string,
@@ -157,6 +158,7 @@ export interface GateContext {
     detail: string,
     source: string,
     sandboxed?: boolean,
+    toolId?: string,
   ) => void;
 }
 
@@ -800,6 +802,7 @@ export function buildOptions(
                   summarizeToolInput(post.tool_input),
                   coarseGrantSource(policy, turn.permissionPosture, EDIT_TOOLS.includes(raw)),
                   raw === SHELL_TOOL ? sandboxAvailable && !left : undefined,
+                  post.tool_use_id,
                 );
               } catch {
                 // Auditing is best-effort; it must never disturb the run.
