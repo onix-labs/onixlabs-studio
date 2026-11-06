@@ -49,6 +49,7 @@ class FakeSolutionModel {
   public readonly selectedKey: WritableSignal<string | null> = signal<string | null>(null);
   public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
   public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly collapsesEmptyFolders: WritableSignal<boolean> = signal<boolean>(false);
   public readonly toggled: SolutionRow[] = [];
   public readonly queries: string[] = [];
   public expandAllCount: number = 0;
@@ -67,6 +68,10 @@ class FakeSolutionModel {
 
   public toggleGitStatus(): void {
     this.showsGitStatus.update((value: boolean): boolean => !value);
+  }
+
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
   }
 
   public readonly filter: ExplorerFilter = freshFilter('test.solution');
@@ -1083,6 +1088,7 @@ describe('SolutionPanel', () => {
       expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'collapse-empty-folders',
       ]);
     });
 
@@ -1091,6 +1097,7 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': true,
         'git-status': true,
+        'collapse-empty-folders': false,
       });
 
       solution.followsActiveDocument.set(false);
@@ -1098,6 +1105,7 @@ describe('SolutionPanel', () => {
       expect(checkedById()).toEqual({
         'follow-active': false,
         'git-status': true,
+        'collapse-empty-folders': false,
       });
     });
 

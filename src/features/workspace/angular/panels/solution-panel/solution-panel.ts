@@ -80,6 +80,7 @@ const ACTION_REVEAL: string = 'reveal';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_RENAME_FOLDER: string = 'rename-folder';
@@ -318,6 +319,11 @@ export class SolutionPanel {
           id: ACTION_GIT_STATUS,
           label: 'Show Git Status',
           checked: this.solution.showsGitStatus(),
+        },
+        {
+          id: ACTION_COLLAPSE_EMPTY_FOLDERS,
+          label: 'Collapse Empty Folders',
+          checked: this.solution.collapsesEmptyFolders(),
         },
       ],
     },
@@ -910,6 +916,9 @@ export class SolutionPanel {
         return;
       case ACTION_GIT_STATUS:
         this.solution.toggleGitStatus();
+        return;
+      case ACTION_COLLAPSE_EMPTY_FOLDERS:
+        this.solution.toggleCollapseEmptyFolders();
         return;
       case ACTION_OPEN_ROOT: {
         const root: string | undefined = this.model()?.root;

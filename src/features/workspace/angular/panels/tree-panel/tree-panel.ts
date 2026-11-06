@@ -81,6 +81,7 @@ const ACTION_DELETE: string = 'delete';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_COLLAPSE_EMPTY_FOLDERS: string = 'collapse-empty-folders';
 const ACTION_OPEN_ROOT: string = 'open-root';
 const ACTION_COPY_ROOT: string = 'copy-workspace-path';
 const ACTION_REFRESH: string = 'refresh';
@@ -332,6 +333,27 @@ export class TreePanel {
   });
 
   /**
+   * Gets the names Collapse Empty Folders gave rows, by path.
+   */
+  private readonly chainLabels: Signal<ReadonlyMap<string, string>> = computed(
+    (): ReadonlyMap<string, string> =>
+      new Map<string, string>(
+        this.shownRows().flatMap((row: WorkspaceTreeRow): [string, string][] =>
+          row.label === undefined ? [] : [[row.node.path, row.label]],
+        ),
+      ),
+  );
+
+  /**
+   * Gets the name a node's row shows.
+   * @param node The node.
+   * @returns Returns its chain of folders when collapsed into one row, or else its own name.
+   */
+  protected labelOf(node: WorkspaceTreeNode): string {
+    return this.chainLabels().get(node.path) ?? node.name;
+  }
+
+  /**
    * Gets the workspace's rows the tree shows: all of them, or — narrowed — the files matching any kind
    * ticked and the folders on the way to them.
    */
@@ -472,6 +494,11 @@ export class TreePanel {
           label: 'Show Git Status',
           checked: this.workspace.showsGitStatus(),
         },
+        {
+          id: ACTION_COLLAPSE_EMPTY_FOLDERS,
+          label: 'Collapse Empty Folders',
+          checked: this.workspace.collapsesEmptyFolders(),
+        },
       ],
     },
     { id: 'tree-more.sep-create', label: '', separator: true },
@@ -495,6 +522,9 @@ export class TreePanel {
         return;
       case ACTION_GIT_STATUS:
         this.workspace.toggleGitStatus();
+        return;
+      case ACTION_COLLAPSE_EMPTY_FOLDERS:
+        this.workspace.toggleCollapseEmptyFolders();
         return;
       case ACTION_NEW_FILE:
       case ACTION_NEW_FOLDER:

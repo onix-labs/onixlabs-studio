@@ -133,6 +133,12 @@ export interface WorkspaceTreeRow {
    * descendant matched, so the match shows.
    */
   readonly expanded: boolean;
+
+  /**
+   * Gets the row's name when Collapse Empty Folders has run a chain of folders into it (`com/org/foo`),
+   * or undefined when the row shows its node's own name. The row stands for the last of the chain.
+   */
+  readonly label?: string;
 }
 
 /**
@@ -271,6 +277,14 @@ export class Workspace {
   );
 
   /**
+   * Holds whether a chain of folders holding only one another shows as a single row.
+   */
+  private readonly collapsingEmptyFolders: RememberedSwitch = new RememberedSwitch(
+    'workspace.files.collapseEmptyFolders',
+    false,
+  );
+
+  /**
    * Gets whether the tree follows the active document, revealing it as the editor's tab changes.
    */
   public readonly followsActiveDocument: Signal<boolean> = this.followingActive.on;
@@ -279,6 +293,18 @@ export class Workspace {
    * Gets whether rows are coloured by how version control sees them.
    */
   public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.on;
+
+  /**
+   * Gets whether a chain of folders holding only one another shows as a single row.
+   */
+  public readonly collapsesEmptyFolders: Signal<boolean> = this.collapsingEmptyFolders.on;
+
+  /**
+   * Toggles whether a chain of folders holding only one another shows as a single row.
+   */
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsingEmptyFolders.toggle();
+  }
 
   /**
    * Toggles whether the tree follows the active document.
@@ -649,6 +675,7 @@ export class Workspace {
         ...current,
         expanded: true,
       }));
+      await this.expandLoneFolder(path);
       return;
     }
     this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
@@ -674,6 +701,7 @@ export class Workspace {
       expanded: true,
       children,
     }));
+    await this.expandLoneFolder(path);
   }
 
   /**
@@ -1060,6 +1088,62 @@ export class Workspace {
   }
 
   /**
+   * Walks down from a node through folders that hold nothing but one other folder, for Collapse Empty
+   * Folders. Only loaded folders can be walked: expanding opens the next one along, so a chain grows
+   * into a single row as it is opened.
+   * @param node The node to start from.
+   * @returns Returns the node alone, or the chain ending at the last folder.
+   */
+  private emptyFolderChain(node: WorkspaceTreeNode): readonly WorkspaceTreeNode[] {
+    const chain: WorkspaceTreeNode[] = [node];
+    if (!this.collapsesEmptyFolders()) {
+      return chain;
+    }
+    let current: WorkspaceTreeNode = node;
+    while (
+      current.type === 'directory' &&
+      current.expanded &&
+      current.children?.length === 1 &&
+      current.children[0].type === 'directory'
+    ) {
+      current = current.children[0];
+      chain.push(current);
+    }
+    return chain;
+  }
+
+  /**
+   * Names a chain of folders as one row.
+   * @param chain The chain.
+   * @returns Returns the names, joined by Collapsed Folder Separator.
+   */
+  private chainLabel(chain: readonly WorkspaceTreeNode[]): string {
+    return chain
+      .map((node: WorkspaceTreeNode): string => node.name)
+      .join(this.settings.value('workspaces.collapsedFolderSeparator')());
+  }
+
+  /**
+   * Opens a folder's only child when that child is a folder too, so a chain of empty folders opens in
+   * one press when Collapse Empty Folders is on.
+   * @param path The folder just expanded.
+   * @returns Returns a promise that resolves once the chain is open.
+   */
+  private async expandLoneFolder(path: string): Promise<void> {
+    if (!this.collapsesEmptyFolders()) {
+      return;
+    }
+    const children: readonly WorkspaceTreeNode[] | null | undefined = this.find(
+      this.treeNodes(),
+      path,
+    )?.children;
+    const only: WorkspaceTreeNode | undefined = children?.length === 1 ? children[0] : undefined;
+    if (only?.type === 'directory' && !only.expanded) {
+      await this.toggleDirectory(only.path);
+    }
+  }
+
+  /**
    * Flattens the visible tree into rows, in Sort Order.
    * @param nodes The nodes to flatten.
    * @param depth The depth of these nodes beneath the root.
@@ -1068,10 +1152,17 @@ export class Workspace {
   private flatten(nodes: readonly WorkspaceTreeNode[], depth: number): readonly WorkspaceTreeRow[] {
     const rows: WorkspaceTreeRow[] = [];
     for (const node of this.sorted(nodes)) {
-      const expanded: boolean = node.type === 'directory' && node.expanded;
-      rows.push({ node, depth, expanded });
-      if (expanded && node.children !== null) {
-        rows.push(...this.flatten(node.children, depth + 1));
+      const chain: readonly WorkspaceTreeNode[] = this.emptyFolderChain(node);
+      const last: WorkspaceTreeNode = chain[chain.length - 1];
+      const expanded: boolean = last.type === 'directory' && last.expanded;
+      rows.push({
+        node: last,
+        depth,
+        expanded,
+        ...(chain.length > 1 ? { label: this.chainLabel(chain) } : {}),
+      });
+      if (expanded && last.children !== null) {
+        rows.push(...this.flatten(last.children, depth + 1));
       }
     }
     return rows;
