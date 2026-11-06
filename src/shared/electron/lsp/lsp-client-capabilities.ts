@@ -10,12 +10,19 @@ export function clientCapabilities(): ClientCapabilities {
   return {
     textDocument: {
       synchronization: { dynamicRegistration: true, didSave: true },
-      publishDiagnostics: { relatedInformation: true },
+      // Studio fades code a diagnostic marks unnecessary (1) and strikes through what it marks
+      // deprecated (2). A server asked for neither drops or under-reports those hints, so the tags are
+      // advertised on both routes a diagnostic can arrive by.
+      publishDiagnostics: { relatedInformation: true, tagSupport: { valueSet: [1, 2] } },
       // Advertise pull diagnostics so a pull-based server (notably the Roslyn C# server, which does
       // not push `publishDiagnostics`) advertises its `diagnosticProvider` back and answers
       // `textDocument/diagnostic`; without this the server treats the client as push-only and the
       // Error List never receives its errors.
-      diagnostic: { dynamicRegistration: false, relatedDocumentSupport: false },
+      diagnostic: {
+        dynamicRegistration: false,
+        relatedDocumentSupport: false,
+        tagSupport: { valueSet: [1, 2] },
+      },
       // Studio's completion list (#1021) inserts snippets with tab stops, honours the characters
       // that accept a completion, shows a completion's documentation as markdown (struck through when
       // deprecated, preselected when the server says), offers insert-or-replace, shows a label's
