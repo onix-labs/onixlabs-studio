@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock, MockInstance } from 'vitest';
 import { PackageChannel } from '@shared/api/package-channels';
+import type { PackageManagerModel, PackageSearchResult } from '@shared/api/package-management';
 import { ProjectChannel } from '@shared/api/project-channels';
 import type { ProjectOperationResult } from '@shared/api/project-system';
 import type {
@@ -15,6 +16,7 @@ import type {
 } from '@shared/api/workspace-channels';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import type { BrowserWindow } from 'electron';
+import type { PackagePluginRoute } from './package-managers/package-plugin-route';
 
 /**
  * Describes an IPC handler as the fake `ipcMain` captures it.
@@ -1232,6 +1234,81 @@ describe('WorkspaceManager', () => {
       await invoke(PackageChannel.Search, workspaceRoot, 'nuget', 'x', options);
 
       expect(search.mock.calls[0]?.[3]).toEqual(expected);
+    });
+
+    describe('with a package-manager plugin route', () => {
+      const empty: PackageSearchResult = { items: [], total: 0, hasMore: false };
+      const model: PackageManagerModel = { ecosystem: 'npm', root: '/ws', projects: [] };
+
+      /**
+       * Registers a manager whose plugin route answers as given.
+       * @param route The route's answers.
+       */
+      function registerWith(route: Partial<PackagePluginRoute>): void {
+        electron.handlers.clear();
+        new WorkspaceManager(
+          (): BrowserWindow | null => null,
+          workspace,
+          trusted,
+          route as PackagePluginRoute,
+        ).register();
+      }
+
+      it('packages_comeFromThePlugin_andCoreIsNotAsked', async () => {
+        const match: MockInstance = vi.spyOn(packageManagers, 'match');
+        registerWith({
+          load: () => Promise.resolve(model),
+          sources: () => Promise.resolve([{ name: 'npm' }]),
+          search: () => Promise.resolve({ ...empty, total: 3 }),
+        });
+
+        expect(await invoke(PackageChannel.ModelLoad, workspaceRoot)).toEqual(model);
+        expect(await invoke(PackageChannel.Sources, workspaceRoot)).toEqual([{ name: 'npm' }]);
+        expect(await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x')).toEqual({
+          ...empty,
+          total: 3,
+        });
+        expect(match).not.toHaveBeenCalled();
+      });
+
+      it('packages_fallToCore_whenThePluginDeclines', async () => {
+        const match: MockInstance = vi.spyOn(packageManagers, 'match').mockResolvedValue(null);
+        registerWith({
+          load: () => Promise.resolve(null),
+          sources: () => Promise.resolve(null),
+          search: () => Promise.resolve(null),
+        });
+
+        await invoke(PackageChannel.ModelLoad, workspaceRoot);
+        await invoke(PackageChannel.Sources, workspaceRoot);
+        await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x');
+
+        expect(match).toHaveBeenCalledTimes(3);
+      });
+
+      it('thePlugin_isNotAskedAboutAFolderThatIsNotOpen', async () => {
+        const load: Mock = vi.fn();
+        registerWith({ load, sources: load, search: load });
+
+        await invoke(PackageChannel.ModelLoad, outside);
+        await invoke(PackageChannel.Sources, outside);
+        await invoke(PackageChannel.Search, outside, 'npm', 'x');
+
+        expect(load).not.toHaveBeenCalled();
+      });
+
+      it('search_clampsTheOptionsBeforeThePluginSeesThem', async () => {
+        const search: Mock = vi.fn().mockResolvedValue(empty);
+        registerWith({ search });
+
+        await invoke(PackageChannel.Search, workspaceRoot, 'npm', 'x', { skip: -5, take: 1e9 });
+
+        expect(search).toHaveBeenCalledWith(workspaceRoot, 'npm', 'x', {
+          skip: 0,
+          take: 100,
+          prerelease: false,
+        });
+      });
     });
 
     it('renameSolutionFolder_refusesAClosedRootAndNonStringArguments', async () => {

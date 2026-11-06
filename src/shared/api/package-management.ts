@@ -138,7 +138,8 @@ export interface PackageSearchItem {
   readonly description: string;
 
   /**
-   * Gets the total download count, or null when the source does not report it.
+   * Gets the download count the source reports, or null when it reports none. What it counts is the
+   * source's: all time on NuGet, the last month on npm.
    */
   readonly downloads: number | null;
 
