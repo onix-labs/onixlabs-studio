@@ -2,6 +2,13 @@ import type { ClientCapabilities } from 'vscode-languageserver-protocol';
 import { clientCapabilities } from './lsp-client-capabilities';
 
 describe('clientCapabilities', () => {
+  it('diagnostics_advertiseUnnecessaryAndDeprecatedTags_pushedAndPulled', () => {
+    const capabilities: ClientCapabilities = clientCapabilities();
+
+    expect(capabilities.textDocument?.publishDiagnostics?.tagSupport).toEqual({ valueSet: [1, 2] });
+    expect(capabilities.textDocument?.diagnostic?.tagSupport).toEqual({ valueSet: [1, 2] });
+  });
+
   it('completion_advertisesWhatStudiosCompletionListHonours (#1021)', () => {
     const capabilities: ClientCapabilities = clientCapabilities();
 
