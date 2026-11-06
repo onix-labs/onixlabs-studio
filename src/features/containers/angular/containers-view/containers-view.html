@@ -49,7 +49,7 @@
                 (click)="installEngine()"
               />
               <app-button
-                variant="outline"
+                variant="ghost"
                 [icon]="Icon.REFRESH"
                 label="Refresh"
                 (click)="refresh()"
@@ -75,93 +75,13 @@
             </p>
           }
           <app-button-row align="start">
-            <app-button
-              variant="outline"
-              [icon]="Icon.REFRESH"
-              label="Refresh"
-              (click)="refresh()"
-            />
+            <app-button variant="ghost" [icon]="Icon.REFRESH" label="Refresh" (click)="refresh()" />
           </app-button-row>
         </div>
       }
     } @else {
-      <header class="containers__header">
-        <div class="containers__heading">
-          <h2 class="containers__title section-label">{{ heading() }}</h2>
-          <p class="containers__subtitle">{{ subtitle() }}</p>
-        </div>
-        @if (kind() === 'containers') {
-          <div class="containers__running-only">
-            <span>Only show running containers</span>
-            <app-toggle
-              ariaLabel="Only show running containers"
-              [checked]="runningOnly()"
-              (checkedChange)="runningOnly.set($event)"
-            />
-          </div>
-        } @else if (kind() === 'images') {
-          <app-button-row align="start" size="small">
-            <app-button
-              variant="solid"
-              size="small"
-              [icon]="Icon.DOWNLOAD"
-              label="Pull Image…"
-              (click)="pullOpen.set(true)"
-            />
-            <app-button size="small" [icon]="Icon.PLAY" label="Run…" (click)="openRun()" />
-          </app-button-row>
-        }
-      </header>
-
       @if (notice(); as message) {
         <p class="containers__notice" role="status">{{ message }}</p>
-      }
-
-      <!-- What to do with the ticked containers (#974), while any are ticked. -->
-      @if (kind() === 'containers' && checked().size > 0) {
-        <div class="containers__bulk" role="toolbar" aria-label="Ticked containers">
-          <span class="containers__bulk-count">{{ checked().size }} selected</span>
-          <app-button-row align="start" size="small">
-            <app-button
-              size="small"
-              [icon]="Icon.PLAY"
-              label="Start"
-              [disabled]="busy()"
-              (click)="bulk('start')"
-            />
-            <app-button
-              size="small"
-              [icon]="Icon.STOP"
-              label="Stop"
-              [disabled]="busy()"
-              (click)="bulk('stop')"
-            />
-            <app-button
-              size="small"
-              [icon]="Icon.RESTART"
-              label="Restart"
-              [disabled]="busy()"
-              (click)="bulk('restart')"
-            />
-            <app-button
-              size="small"
-              tone="danger"
-              [icon]="Icon.TRASH_DUOTONE"
-              label="Remove"
-              [disabled]="busy()"
-              (click)="bulk('remove')"
-            />
-            @if (!allChecked()) {
-              <app-button
-                size="small"
-                variant="none"
-                label="Select All"
-                (click)="toggleAllChecked()"
-              />
-            }
-            <app-button size="small" variant="none" label="Clear" (click)="clearChecked()" />
-          </app-button-row>
-        </div>
       }
 
       <!-- One list at a time, chosen in the side panel, filling the rest of the view. -->
@@ -174,9 +94,7 @@
           rowSize="comfortable"
           [selectedIds]="selectedContainerIds()"
           [emptyText]="
-            runningOnly() || query().trim()
-              ? 'No containers match these filters.'
-              : 'No containers.'
+            filtered() || query().trim() ? 'No containers match these filters.' : 'No containers.'
           "
           (rowClick)="select($event.id)"
         >
@@ -231,36 +149,6 @@
                 (click)="$event.stopPropagation()"
                 (keydown)="$event.stopPropagation()"
               >
-                @if (isRunning(container)) {
-                  <app-button
-                    variant="none"
-                    tone="warning"
-                    [icon]="Icon.STOP"
-                    [ariaLabel]="'Stop ' + displayName(container)"
-                    tooltip="Stop"
-                    [disabled]="busy()"
-                    (click)="stop(container.id)"
-                  />
-                } @else {
-                  <app-button
-                    variant="none"
-                    tone="success"
-                    [icon]="Icon.PLAY"
-                    [ariaLabel]="'Start ' + displayName(container)"
-                    tooltip="Start"
-                    [disabled]="busy()"
-                    (click)="start(container.id)"
-                  />
-                }
-                <app-button
-                  variant="none"
-                  tone="danger"
-                  [icon]="Icon.TRASH_DUOTONE"
-                  [ariaLabel]="'Remove ' + displayName(container)"
-                  tooltip="Remove"
-                  [disabled]="busy()"
-                  (click)="remove(container.id)"
-                />
                 <app-button
                   variant="none"
                   [icon]="Icon.DOTS_THREE_BOLD"

@@ -182,6 +182,11 @@ export type TerminalOnShellExit = 'keep' | 'close' | 'close-if-clean';
 export const TERMINAL_FONT_SAME_AS_CODE: string = 'same-as-code';
 
 /**
+ * Identifies what separates the folder names on an explorer row that Collapse Empty Folders has merged.
+ */
+export type CollapsedFolderSeparator = '/' | '.';
+
+/**
  * Identifies how an explorer orders the entries of a folder.
  */
 export type ExplorerSortOrder = 'folders-first' | 'files-first' | 'mixed';
@@ -562,6 +567,7 @@ export interface SettingsValues {
   readonly 'workspaces.addStudioUserFileToGitignore': boolean;
   readonly 'workspaces.showErrorSquiggles': boolean;
   readonly 'workspaces.sortOrder': ExplorerSortOrder;
+  readonly 'workspaces.collapsedFolderSeparator': CollapsedFolderSeparator;
   readonly 'workspaces.openFilesWith': ExplorerOpenFilesWith;
   readonly 'workspaces.confirmBeforeDeleting': boolean;
   readonly 'workspaces.moveToTrash': boolean;
@@ -1520,6 +1526,19 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'folders-first',
+      },
+      {
+        key: 'workspaces.collapsedFolderSeparator',
+        title: 'Collapsed Folder Separator',
+        description: 'What separates the folder names when Collapse Empty Folders is on.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: '/', label: 'Slash (com/org/foo)' },
+            { value: '.', label: 'Dot (com.org.foo)' },
+          ],
+        },
+        default: '/',
       },
       {
         key: 'workspaces.openFilesWith',
@@ -5222,7 +5241,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        // Drawn by its own row, which ticks severities: a choice of several the renderer cannot model.
+        // Drawn by its own row, a dropdown of severities: a choice of several the renderer cannot model.
         key: 'systemMonitor.defaultSeverities',
         title: 'Severities Shown by Default',
         description:

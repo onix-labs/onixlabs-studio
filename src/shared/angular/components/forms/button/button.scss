@@ -27,7 +27,7 @@
   // Height is stated, not left to the label's line box, so a button matches the field or dropdown
   // beside it. Only the inline padding is the button's own.
   block-size: var(--control-height);
-  padding: 0 0.5rem;
+  padding: 0 var(--btn-padding-inline, 0.5rem);
   font: inherit;
   color: var(--body-foreground-color);
   background: transparent;

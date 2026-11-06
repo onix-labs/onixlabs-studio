@@ -93,6 +93,7 @@ class FakeWorkspace {
 
   public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
   public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly collapsesEmptyFolders: WritableSignal<boolean> = signal<boolean>(false);
   public refreshes: number = 0;
 
   public toggleFollowActiveDocument(): void {
@@ -101,6 +102,10 @@ class FakeWorkspace {
 
   public toggleGitStatus(): void {
     this.showsGitStatus.update((value: boolean): boolean => !value);
+  }
+
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsesEmptyFolders.update((value: boolean): boolean => !value);
   }
 
   public readonly filter: ExplorerFilter = freshFilter('test.files');
@@ -755,6 +760,7 @@ describe('TreePanel row context menu', () => {
       expect(moreItems()[0].children?.map((item: MenuItem): string => item.id)).toEqual([
         'follow-active',
         'git-status',
+        'collapse-empty-folders',
       ]);
     });
 
@@ -782,12 +788,14 @@ describe('TreePanel row context menu', () => {
     it('theOptions_toggleFollowingAndGitStatus_andShowWhichAreOn', () => {
       choose('follow-active');
       choose('git-status');
+      choose('collapse-empty-folders');
 
       expect(workspace.followsActiveDocument()).toBe(false);
       expect(workspace.showsGitStatus()).toBe(false);
+      expect(workspace.collapsesEmptyFolders()).toBe(true);
       expect(
         moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
-      ).toEqual([false, false]);
+      ).toEqual([false, false, true]);
     });
 
     it('showGitStatus_off_dropsTheRowColours', async () => {

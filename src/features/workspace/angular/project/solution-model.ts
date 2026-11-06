@@ -51,6 +51,11 @@ const RELOAD_DEBOUNCE_MS: number = 300;
 const QUERY_DEBOUNCE_MS: number = 150;
 
 /**
+ * Describes a project item that is a folder.
+ */
+type ProjectItemFolder = Extract<ProjectItemNode, { readonly type: 'folder' }>;
+
+/**
  * A flattened Solution Explorer row: one visible line of the tree, with its depth, expansion, and
  * loading state already resolved so the view renders it directly.
  */
@@ -267,6 +272,14 @@ export class SolutionModel {
    * Holds the key of the selected row, or null when nothing is selected.
    */
   private readonly selectedKeySignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether a chain of folders holding only one another shows as a single row.
+   */
+  private readonly collapsingEmptyFolders: RememberedSwitch = new RememberedSwitch(
+    'workspace.solution.collapseEmptyFolders',
+    false,
+  );
 
   /**
    * Holds whether the tree follows the active document, expanding to and selecting it as the editor
@@ -605,6 +618,18 @@ export class SolutionModel {
    * Gets whether rows carry their git change badge.
    */
   public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.on;
+
+  /**
+   * Gets whether a chain of folders holding only one another shows as a single row.
+   */
+  public readonly collapsesEmptyFolders: Signal<boolean> = this.collapsingEmptyFolders.on;
+
+  /**
+   * Toggles whether a chain of folders holding only one another shows as a single row.
+   */
+  public toggleCollapseEmptyFolders(): void {
+    this.collapsingEmptyFolders.toggle();
+  }
 
   /**
    * Toggles whether the tree follows the active document.
@@ -1171,6 +1196,17 @@ export class SolutionModel {
   }
 
   /**
+   * Gets a folder's only child when that child is a folder too and Collapse Empty Folders is on.
+   * @param folder The folder.
+   * @returns Returns the child, or null when the row stops at this folder.
+   */
+  private loneFolder(folder: ProjectItemFolder): ProjectItemFolder | null {
+    const only: ProjectItemNode | undefined =
+      this.collapsesEmptyFolders() && folder.children.length === 1 ? folder.children[0] : undefined;
+    return only?.type === 'folder' ? only : null;
+  }
+
+  /**
    * Appends the rows for a run of project-item nodes (folders and files), recursing into the expanded
    * folders.
    * @param nodes The item nodes to append.
@@ -1186,13 +1222,25 @@ export class SolutionModel {
   ): void {
     for (const node of this.orderedItems(nodes)) {
       if (node.type === 'folder') {
-        const key: string = `${parentKey}/${node.name}`;
+        let last: ProjectItemFolder = node;
+        const names: string[] = [node.name];
+        let key: string = `${parentKey}/${node.name}`;
+        let next: ProjectItemFolder | null = this.loneFolder(last);
+        while (next !== null) {
+          last = next;
+          names.push(last.name);
+          key = `${key}/${last.name}`;
+          next = this.loneFolder(last);
+        }
+        const label: string = names.join(
+          this.settings.value('workspaces.collapsedFolderSeparator')(),
+        );
         const expanded: boolean = this.expandedKeys().has(key);
         rows.push(
-          this.row(key, depth, node.name, 'item-folder', true, expanded, false, false, node.path),
+          this.row(key, depth, label, 'item-folder', true, expanded, false, false, last.path),
         );
         if (expanded) {
-          this.appendItems(node.children, depth + 1, key, rows);
+          this.appendItems(last.children, depth + 1, key, rows);
         }
       } else {
         rows.push(

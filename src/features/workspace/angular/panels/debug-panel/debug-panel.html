@@ -72,7 +72,12 @@
         </ng-template>
       </app-tree-view>
       @if (hasMoreFrames()) {
-        <app-button label="Load More Frames" size="small" (click)="onLoadMoreFrames()" />
+        <app-button
+          variant="ghost"
+          label="Load More Frames"
+          size="small"
+          (click)="onLoadMoreFrames()"
+        />
       }
     } @else {
       <p class="debug-empty">Not paused.</p>

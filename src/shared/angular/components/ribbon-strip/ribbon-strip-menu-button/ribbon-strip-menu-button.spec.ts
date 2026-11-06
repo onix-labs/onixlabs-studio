@@ -44,6 +44,19 @@ describe('RibbonStripMenuButton', () => {
     expect(actions).toBe(1);
   });
 
+  it('menuDisabled_whenFalse_leavesTheChevronOnWhileThePrimaryActionIsOff', () => {
+    fixture.componentRef.setInput('disabled', true);
+    fixture.componentRef.setInput('menuDisabled', false);
+    fixture.detectChanges();
+
+    expect(host.querySelector<HTMLButtonElement>('.ribbon-menu-button__action')?.disabled).toBe(
+      true,
+    );
+    expect(host.querySelector<HTMLButtonElement>('.ribbon-menu-button__menu')?.disabled).toBe(
+      false,
+    );
+  });
+
   it('disabled_whenTrue_disablesBothThePrimaryActionAndTheChevron', () => {
     fixture.componentRef.setInput('disabled', true);
     fixture.detectChanges();

@@ -41,6 +41,12 @@ export interface RibbonMenuItem {
   readonly active?: boolean;
 
   /**
+   * Gets the state of an item that is an on/off switch, shown with a checkbox. Leave undefined for an
+   * ordinary command.
+   */
+  readonly checked?: boolean;
+
+  /**
    * Gets a value indicating whether the item is inert (shown muted and not selectable).
    */
   readonly disabled?: boolean;
@@ -112,6 +118,21 @@ export class RibbonStripMenuButton {
    * Gets a value indicating whether the menu button is disabled.
    */
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets a value indicating whether the chevron alone is disabled, for a dropdown that can offer
+   * something while the primary action cannot. Left unset, it follows {@link disabled}.
+   */
+  public readonly menuDisabled: InputSignal<boolean | undefined> = input<boolean | undefined>(
+    undefined,
+  );
+
+  /**
+   * Gets a value indicating whether the chevron is disabled.
+   */
+  protected readonly chevronDisabled: Signal<boolean> = computed(
+    (): boolean => this.menuDisabled() ?? this.disabled(),
+  );
 
   /**
    * Gets the meaning the button carries, which colours it. Defaults to the accent, matching every other

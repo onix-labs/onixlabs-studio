@@ -22,11 +22,11 @@ const LOADING_ICON: Icon = Icon.SPINNER;
  *
  * - `solid` — filled with the accent. The affirmative action of a pair, and never more than one in a
  *   group.
- * - `ghost` — a tinted fill and border at rest, stronger on hover. A secondary action that needs to
- *   stand out beside a solid one (Push Only beside Set Upstream), as opposed to one that steps back
- *   (Cancel, which is `none`).
- * - `outline` — bordered, transparent until hovered. The standard button, and the counterpart to a
- *   solid one (Cancel beside Clear).
+ * - `ghost` — a tinted fill and border at rest, stronger on hover. The standard button: a secondary
+ *   action that needs to stand out beside a solid one (Push Only beside Set Upstream), as opposed to
+ *   one that steps back (Cancel, which is `none`).
+ * - `outline` — bordered, transparent until hovered. Kept only for the Review panel, until it is
+ *   redesigned (#1322).
  * - `none` — neither border nor fill until hovered. Tool strips, ribbon strips and panel toolbars,
  *   where a row of buttons would otherwise read as a wall of boxes.
  */
@@ -93,10 +93,10 @@ export type ButtonSize = 'medium' | 'small' | 'large';
 })
 export class Button {
   /**
-   * Gets how the button is drawn. The standard button is bordered; a caller states otherwise for the
+   * Gets how the button is drawn. The standard button is a ghost; a caller states otherwise for the
    * affirmative action of a pair, or for a button living in a strip.
    */
-  public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('outline');
+  public readonly variant: InputSignal<ButtonVariant> = input<ButtonVariant>('ghost');
 
   /**
    * Gets the meaning the button carries, which colours it. Defaults to the accent, so an ordinary

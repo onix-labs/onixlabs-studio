@@ -9,7 +9,7 @@ import { ButtonRow } from './button-row';
 @Component({
   imports: [Button, ButtonRow],
   template: `
-    <app-button-row [align]="align()">
+    <app-button-row [align]="align()" [fit]="fit()">
       <app-button variant="solid" label="Delete branch" />
       <app-button label="Cancel" />
     </app-button-row>
@@ -19,6 +19,7 @@ class HostComponent {
   public readonly align: WritableSignal<'end' | 'start' | 'fill'> = signal<
     'end' | 'start' | 'fill'
   >('end');
+  public readonly fit: WritableSignal<boolean> = signal<boolean>(false);
 }
 
 describe('ButtonRow', () => {
@@ -53,5 +54,14 @@ describe('ButtonRow', () => {
     fixture.componentInstance.align.set('fill');
     fixture.detectChanges();
     expect(row.classList.contains('button-row--fill')).toBe(true);
+  });
+
+  it('fit_isOptIn', () => {
+    expect(row.classList.contains('button-row--fit')).toBe(false);
+
+    fixture.componentInstance.fit.set(true);
+    fixture.detectChanges();
+
+    expect(row.classList.contains('button-row--fit')).toBe(true);
   });
 });

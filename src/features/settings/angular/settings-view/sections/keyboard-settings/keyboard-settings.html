@@ -23,6 +23,7 @@
             }
           </span>
           <app-button
+            variant="ghost"
             label="Set Chord"
             [icon]="Icon.KEYBOARD_SHORTCUTS"
             [ariaLabel]="'Set the shortcut for ' + binding.description"
@@ -47,13 +48,5 @@
     }
   </section>
 }
-
-<p class="settings-section__hint">
-  Choose Set Chord, then press the new key combination. Reset restores a shortcut's default. The
-  menu shows whichever shortcut is in effect.
-  @if (view() === null) {
-    Each capability's own shortcuts are on its Keyboard page, for example Code › Keyboard.
-  }
-</p>
 
 <app-chord-modal [binding]="picking()" (closed)="picking.set(undefined)" />

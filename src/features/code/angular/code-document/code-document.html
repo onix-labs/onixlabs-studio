@@ -39,8 +39,8 @@
     </div>
     <app-button-row class="breakpoint-editor__actions">
       <app-button variant="solid" label="Save" (click)="saveBreakpointEdit()" />
-      <app-button label="Remove" (click)="removeBreakpointEdit()" />
-      <app-button label="Cancel" (click)="closeBreakpointEdit()" />
+      <app-button variant="ghost" tone="danger" label="Remove" (click)="removeBreakpointEdit()" />
+      <app-button variant="none" label="Cancel" (click)="closeBreakpointEdit()" />
     </app-button-row>
   </div>
 }

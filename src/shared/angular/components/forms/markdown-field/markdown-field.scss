@@ -1,4 +1,4 @@
-// The field: the framed inline editor with its Edit button beneath, stacked.
+// The field: the framed inline editor, stacked.
 :host {
   display: flex;
   flex-direction: column;
@@ -60,40 +60,5 @@
   app-markdown-editor {
     flex: 1 1 auto;
     min-block-size: 0;
-  }
-}
-
-// The editing window: a heading over the editor frame and a trailing action row. It fills the modal
-// panel so that when the panel is expanded to the window, the editor grows to fill it — the same
-// shape as the agent composer's markdown modal.
-.markdown-field__modal {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 1rem;
-  min-block-size: 0;
-}
-
-.markdown-field__modal-title {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-// The window's editor frame: given a definite height via its flex basis and growing to fill the
-// extra room when the modal is expanded. Wears the field frame's own chrome.
-.markdown-field__modal-editor {
-  display: flex;
-  flex: 1 1 28rem;
-  min-block-size: 0;
-  overflow: hidden;
-  background: var(--form-control-background-color);
-  border: 0.0625rem solid var(--form-control-border-color);
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  transition: border-color 150ms ease-in-out;
-
-  &:focus-within {
-    border-color: var(--accent-color);
   }
 }

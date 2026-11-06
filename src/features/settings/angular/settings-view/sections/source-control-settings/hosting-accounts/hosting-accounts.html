@@ -27,9 +27,22 @@
             [disabled]="!canSave(row)"
             (click)="onSave(row)"
           />
-          <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
         }
-        <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+        <app-button
+          variant="ghost"
+          label="Recheck"
+          [disabled]="busy() !== null"
+          (click)="refresh()"
+        />
+        @if (offersToken(row)) {
+          <app-button
+            variant="ghost"
+            tone="danger"
+            label="Clear"
+            [disabled]="!canClear(row)"
+            (click)="onClear(row)"
+          />
+        }
         @if (row.account.custom === true) {
           <app-button
             variant="none"
@@ -58,7 +71,7 @@
     description="Add a self-hosted server, such as GitHub Enterprise, to sign in to and work with like any other host."
   >
     @if (addingHost() === null) {
-      <app-button label="Add Host" data-testid="add-host" (click)="openAddHost()" />
+      <app-button variant="ghost" label="Add Host" data-testid="add-host" (click)="openAddHost()" />
     } @else {
       <span class="hosting-accounts__controls">
         <app-text-field

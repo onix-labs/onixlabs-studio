@@ -112,6 +112,9 @@
 }
 
 .issue__compose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   margin-block-start: 1rem;
 }
 

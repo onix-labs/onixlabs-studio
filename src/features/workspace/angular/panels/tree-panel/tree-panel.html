@@ -48,7 +48,7 @@
         />
         @if (!editing) {
           <span class="tree-name">
-            <app-highlighted-text [text]="node.name" [query]="query()" />
+            <app-highlighted-text [text]="labelOf(node)" [query]="query()" />
           </span>
 
           @if (node.loading) {
@@ -78,7 +78,12 @@
 } @else {
   <div class="tree-empty">
     <p>You haven't opened a folder yet.</p>
-    <app-button [icon]="Icon.FOLDER_OPEN" label="Open Folder…" (click)="workspace.openFolder()" />
+    <app-button
+      variant="ghost"
+      [icon]="Icon.FOLDER_OPEN"
+      label="Open Folder…"
+      (click)="workspace.openFolder()"
+    />
   </div>
 }
 

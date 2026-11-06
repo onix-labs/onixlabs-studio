@@ -19,7 +19,6 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
-import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -52,6 +51,7 @@ import { PluginSummary } from '@shared/api/plugin-channels';
 import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import {
+  ContainerGroup,
   ContainersCommandHandler,
   ContainersCommands,
 } from '../containers-commands/containers-commands';
@@ -98,6 +98,16 @@ export interface ContainersSummary {
    * Gets how many images the engine holds.
    */
   readonly images: number;
+
+  /**
+   * Gets how many containers are ticked.
+   */
+  readonly selected: number;
+
+  /**
+   * Gets the disk the images take, as read in the status strip.
+   */
+  readonly imagesSize: string;
 }
 
 /**
@@ -141,7 +151,7 @@ export interface VolumeEntry {
  * row's actions.
  */
 const CONTAINER_COLUMNS: readonly TableColumn[] = [
-  { id: 'select', header: '', width: '2.25rem' },
+  { id: 'select', header: '', width: '2.75rem' },
   { id: 'state', header: '', width: '2.25rem' },
   { id: 'name', header: 'Name' },
   { id: 'image', header: 'Image' },
@@ -149,7 +159,7 @@ const CONTAINER_COLUMNS: readonly TableColumn[] = [
   { id: 'cpu', header: 'CPU', width: '5rem', align: 'end' },
   { id: 'memory', header: 'Memory', width: '6.5rem', align: 'end' },
   { id: 'status', header: 'Status', width: '12rem' },
-  { id: 'actions', header: '', width: '9rem', align: 'end' },
+  { id: 'actions', header: '', width: '3.5rem', align: 'end' },
 ];
 
 /**
@@ -182,11 +192,29 @@ const VOLUME_COLUMNS: readonly TableColumn[] = [
 const EVENT_RELOAD_DELAY_MS: number = 300;
 
 /**
+ * Lists the kinds of container the ribbon filters and selects by.
+ */
+const ALL_GROUPS: readonly ContainerGroup[] = ['running', 'paused', 'stopped'];
+
+/**
+ * Gets the kind a container counts as: anything neither running nor paused is stopped.
+ * @param state The container's state.
+ * @returns Returns the kind.
+ */
+function groupOf(state: string): ContainerGroup {
+  return state === 'running' || state === 'paused' ? state : 'stopped';
+}
+
+/**
+ * Names what can be done to every ticked container at once (#974).
+ */
+type BulkAction = 'start' | 'stop' | 'restart' | 'pause' | 'unpause' | 'remove';
+
+/**
  * The row menu's actions.
  */
 const MENU_LOGS: string = 'logs';
 const MENU_SHELL: string = 'shell';
-const MENU_RESTART: string = 'restart';
 const MENU_PAUSE: string = 'pause';
 const MENU_RESUME: string = 'resume';
 
@@ -215,7 +243,6 @@ const MENU_RESUME: string = 'resume';
     Table,
     TableRowDef,
     Terminal,
-    Toggle,
     ToolPanel,
     TooltipTrigger,
     ContainerLogsPane,
@@ -397,10 +424,19 @@ export class ContainersView implements OnInit, OnDestroy {
   protected readonly query: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds whether only running containers are listed.
+   * Holds which kinds of container are listed.
    */
-  protected readonly runningOnly: WritableSignal<boolean> = signal<boolean>(
-    this.settings.get('containers.runningOnly'),
+  protected readonly shownGroups: WritableSignal<ReadonlySet<ContainerGroup>> = signal<
+    ReadonlySet<ContainerGroup>
+  >(
+    new Set<ContainerGroup>(this.settings.get('containers.runningOnly') ? ['running'] : ALL_GROUPS),
+  );
+
+  /**
+   * Gets whether any kind of container is hidden.
+   */
+  protected readonly filtered: Signal<boolean> = computed(
+    (): boolean => this.shownGroups().size < ALL_GROUPS.length,
   );
 
   /**
@@ -498,7 +534,7 @@ export class ContainersView implements OnInit, OnDestroy {
   });
 
   /**
-   * Gets the Containers table's rows: the containers the running-only switch and the search leave.
+   * Gets the Containers table's rows: the containers the Show filter and the search leave.
    */
   protected readonly containerRows: Signal<readonly TableRow[]> = computed(
     (): readonly TableRow[] => {
@@ -506,7 +542,7 @@ export class ContainersView implements OnInit, OnDestroy {
       return this.containers()
         .filter(
           (container: ContainerSummary): boolean =>
-            (!this.runningOnly() || this.isRunning(container)) &&
+            this.shownGroups().has(groupOf(container.state)) &&
             (text.length === 0 ||
               this.displayName(container).toLowerCase().includes(text) ||
               container.image.toLowerCase().includes(text)),
@@ -537,44 +573,6 @@ export class ContainersView implements OnInit, OnDestroy {
   });
 
   /**
-   * Gets the heading, which names the list shown.
-   */
-  protected readonly heading: Signal<string> = computed((): string => {
-    switch (this.kind()) {
-      case 'containers':
-        return 'Containers';
-      case 'images':
-        return 'Images';
-      default:
-        return 'Volumes';
-    }
-  });
-
-  /**
-   * Gets the sentence under the heading: how many containers there are and how many run, or how many
-   * images there are and the disk they take.
-   */
-  protected readonly subtitle: Signal<string> = computed((): string => {
-    if (this.kind() === 'containers') {
-      const total: number = this.containers().length;
-      const running: number = this.containers().filter((container: ContainerSummary): boolean =>
-        this.isRunning(container),
-      ).length;
-      return `${total} ${total === 1 ? 'container' : 'containers'}, ${running} running.`;
-    }
-    if (this.kind() === 'volumes') {
-      const total: number = this.volumes().length;
-      return `${total} ${total === 1 ? 'volume' : 'volumes'}.`;
-    }
-    const total: number = this.images().length;
-    const bytes: number = this.images().reduce(
-      (sum: number, image: ImageSummary): number => sum + image.size,
-      0,
-    );
-    return `${total} ${total === 1 ? 'image' : 'images'}, ${this.formatSize(bytes)} on disk.`;
-  });
-
-  /**
    * Gets the selected container's row id, as the table takes it.
    */
   protected readonly selectedContainerIds: Signal<ReadonlySet<string>> = computed(
@@ -602,7 +600,6 @@ export class ContainersView implements OnInit, OnDestroy {
       const target: ContainerSummary | null = this.menuTarget();
       const paused: boolean = target?.state === 'paused';
       return [
-        { id: MENU_RESTART, label: 'Restart', icon: Icon.RESTART },
         paused
           ? { id: MENU_RESUME, label: 'Resume', icon: Icon.PLAY }
           : {
@@ -652,6 +649,10 @@ export class ContainersView implements OnInit, OnDestroy {
     available: this.available(),
     containers: this.containers().length,
     images: this.images().length,
+    selected: this.checked().size,
+    imagesSize: this.formatSize(
+      this.images().reduce((sum: number, image: ImageSummary): number => sum + image.size, 0),
+    ),
   }));
 
   /**
@@ -724,31 +725,63 @@ export class ContainersView implements OnInit, OnDestroy {
    * Holds the handler the ribbon drives the active view through.
    */
   /**
-   * Gets whether the selected container is paused (#974).
+   * Gets the containers the ribbon's Start, Stop, Restart and Remove act on: the ticked ones, or else
+   * the selected one.
    */
-  private readonly selectionPaused: Signal<boolean> = computed(
-    (): boolean => this.selectedContainer()?.state === 'paused',
+  private readonly targets: Signal<readonly ContainerSummary[]> = computed(
+    (): readonly ContainerSummary[] => {
+      const checked: ReadonlySet<string> = this.checked();
+      const selected: ContainerSummary | undefined = this.selectedContainer();
+      if (checked.size > 0) {
+        return this.containers().filter((container: ContainerSummary): boolean =>
+          checked.has(container.id),
+        );
+      }
+      return selected === undefined ? [] : [selected];
+    },
   );
 
   private readonly commandHandler: ContainersCommandHandler = {
     hasSelection: this.hasSelection,
     selectionRunning: this.selectionRunning,
-    selectionPaused: this.selectionPaused,
-    restart: (): void => {
-      const id: string | null = this.selectedId();
-      if (id !== null) {
-        this.restart(id);
-      }
-    },
-    togglePause: (): void => {
-      const container: ContainerSummary | undefined = this.selectedContainer();
-      if (container !== undefined) {
-        this.togglePause(container);
-      }
-    },
-    start: (): void => this.startSelected(),
-    stop: (): void => this.stopSelected(),
-    remove: (): void => this.removeSelected(),
+    hasTargets: computed((): boolean => this.targets().length > 0),
+    canStart: computed((): boolean => this.anyTargetFor('start')),
+    canStop: computed((): boolean => this.anyTargetFor('stop')),
+    canPause: computed((): boolean => this.anyTargetFor('pause')),
+    canResume: computed((): boolean => this.anyTargetFor('unpause')),
+    showingContainers: computed((): boolean => this.kind() === 'containers'),
+    engineReady: computed((): boolean => this.available() === true),
+    pullImage: (): void => this.pullOpen.set(true),
+    runImage: (): void => this.openRun(),
+    shownGroups: this.shownGroups,
+    listedGroups: computed(
+      (): ReadonlySet<ContainerGroup> =>
+        new Set<ContainerGroup>(
+          ALL_GROUPS.filter((group: ContainerGroup): boolean => this.listedIn(group).length > 0),
+        ),
+    ),
+    selectedGroups: computed(
+      (): ReadonlySet<ContainerGroup> =>
+        new Set<ContainerGroup>(
+          ALL_GROUPS.filter((group: ContainerGroup): boolean => {
+            const listed: readonly string[] = this.listedIn(group);
+            return (
+              listed.length > 0 && listed.every((id: string): boolean => this.checked().has(id))
+            );
+          }),
+        ),
+    ),
+    canClear: computed((): boolean => this.checked().size > 0),
+    showAll: (): void => this.shownGroups.set(new Set<ContainerGroup>(ALL_GROUPS)),
+    setShown: (group: ContainerGroup, on: boolean): void => this.setShown(group, on),
+    setSelected: (group: ContainerGroup, on: boolean): void => this.setSelected(group, on),
+    clear: (): void => this.clearChecked(),
+    restart: (): void => this.actOnTargets('restart', (id: string): void => this.restart(id)),
+    pause: (): void => void this.bulk('pause'),
+    resume: (): void => void this.bulk('unpause'),
+    start: (): void => void this.bulk('start'),
+    stop: (): void => void this.bulk('stop'),
+    remove: (): void => this.actOnTargets('remove', (id: string): void => void this.remove(id)),
     viewLogs: (): void => this.logsSelected(),
     shell: (): void => this.shellSelected(),
     refresh: (): void => void this.load(),
@@ -786,7 +819,8 @@ export class ContainersView implements OnInit, OnDestroy {
     // sampling takes the engine a moment per container (#974).
     // Only Show Running is remembered from one tab to the next.
     effect((): void => {
-      const running: boolean = this.runningOnly();
+      const shown: ReadonlySet<ContainerGroup> = this.shownGroups();
+      const running: boolean = shown.size === 1 && shown.has('running');
       if (running !== untracked((): boolean => this.settings.get('containers.runningOnly'))) {
         this.settings.set('containers.runningOnly', running);
       }
@@ -945,8 +979,6 @@ export class ContainersView implements OnInit, OnDestroy {
       this.viewLogs(target);
     } else if (id === MENU_SHELL) {
       this.openShell(target);
-    } else if (id === MENU_RESTART) {
-      this.restart(target.id);
     } else if (id === MENU_PAUSE || id === MENU_RESUME) {
       this.togglePause(target);
     }
@@ -959,22 +991,6 @@ export class ContainersView implements OnInit, OnDestroy {
   protected select(id: string): void {
     this.log.debug('containers.view', 'Selected container', id);
     this.selectedId.set(id);
-  }
-
-  /**
-   * Starts a container.
-   * @param id The container id.
-   */
-  protected start(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.client.start(target));
-  }
-
-  /**
-   * Stops a container.
-   * @param id The container id.
-   */
-  protected stop(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.client.stop(target));
   }
 
   /**
@@ -1067,13 +1083,50 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
-   * Ticks every container the list shows, or unticks them all when they already are (#974).
+   * Lists a kind of container, or stops listing it and unticks those it hides, so nothing out of sight
+   * stays ticked for the ribbon to act on.
+   * @param group The kind of container.
+   * @param on Whether to list it.
    */
-  protected toggleAllChecked(): void {
-    const shown: readonly string[] = this.containerRows().map((row: TableRow): string => row.id);
-    const all: boolean =
-      shown.length > 0 && shown.every((id: string): boolean => this.checked().has(id));
-    this.checked.set(new Set<string>(all ? [] : shown));
+  private setShown(group: ContainerGroup, on: boolean): void {
+    if (!on) {
+      this.setSelected(group, false);
+    }
+    this.shownGroups.update((shown: ReadonlySet<ContainerGroup>): ReadonlySet<ContainerGroup> => {
+      const next: Set<ContainerGroup> = new Set<ContainerGroup>(shown);
+      if (on) {
+        next.add(group);
+      } else {
+        next.delete(group);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Ticks or unticks every listed container of a kind.
+   * @param group The kind of container.
+   * @param on Whether to tick them.
+   */
+  private setSelected(group: ContainerGroup, on: boolean): void {
+    for (const id of this.listedIn(group)) {
+      this.setChecked(id, on);
+    }
+  }
+
+  /**
+   * Gets the listed containers of a kind, on the Containers page only.
+   * @param group The kind of container.
+   * @returns Returns the containers' ids.
+   */
+  private listedIn(group: ContainerGroup): readonly string[] {
+    if (this.kind() !== 'containers') {
+      return [];
+    }
+    return this.containerRows()
+      .map((row: TableRow): ContainerSummary => this.containerOf(row))
+      .filter((container: ContainerSummary): boolean => groupOf(container.state) === group)
+      .map((container: ContainerSummary): string => container.id);
   }
 
   /**
@@ -1081,8 +1134,8 @@ export class ContainersView implements OnInit, OnDestroy {
    * @param action What to do.
    * @returns Resolves once every container has answered.
    */
-  protected async bulk(action: 'start' | 'stop' | 'restart' | 'remove'): Promise<void> {
-    const ids: readonly string[] = [...this.checked()];
+  protected async bulk(action: BulkAction): Promise<void> {
+    const ids: readonly string[] = this.bulkIds(action);
     if (ids.length === 0 || this.busy()) {
       return;
     }
@@ -1101,12 +1154,17 @@ export class ContainersView implements OnInit, OnDestroy {
     try {
       const results: readonly boolean[] = await Promise.all(
         ids.map((id: string): Promise<boolean> =>
-          action === 'remove' ? this.removeContainer(id) : this.client[action](id),
+          action === 'remove'
+            ? this.removeContainer(id)
+            : action === 'start' && this.stateOf(id) === 'paused'
+              ? this.client.unpause(id)
+              : this.client[action](id),
         ),
       );
       const failed: number = results.filter((ok: boolean): boolean => !ok).length;
+      const verb: string = action === 'unpause' ? 'resume' : action;
       this.notice.set(
-        failed === 0 ? null : `${failed} of ${ids.length} containers did not ${action}.`,
+        failed === 0 ? null : `${failed} of ${ids.length} containers did not ${verb}.`,
       );
       if (action === 'remove') {
         this.checked.set(new Set<string>());
@@ -1115,6 +1173,52 @@ export class ContainersView implements OnInit, OnDestroy {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /**
+   * Gets the containers an action reaches: the ticked ones, or else the selected one, without any
+   * it has nothing to do to.
+   * @param action What to do.
+   * @returns Returns the containers' ids.
+   */
+  private bulkIds(action: BulkAction): readonly string[] {
+    const selected: string | null = this.selectedId();
+    const candidates: readonly string[] =
+      this.checked().size > 0 ? [...this.checked()] : selected === null ? [] : [selected];
+    return candidates.filter((id: string): boolean => {
+      const state: string | undefined = this.stateOf(id);
+      switch (action) {
+        case 'start':
+          return state !== 'running';
+        case 'stop':
+          return state === 'running' || state === 'paused';
+        case 'pause':
+          return state === 'running';
+        case 'unpause':
+          return state === 'paused';
+        default:
+          return true;
+      }
+    });
+  }
+
+  /**
+   * Determines whether an action has any container to reach.
+   * @param action What to do.
+   * @returns Returns true when it has.
+   */
+  private anyTargetFor(action: BulkAction): boolean {
+    return this.bulkIds(action).some((id: string): boolean => this.stateOf(id) !== undefined);
+  }
+
+  /**
+   * Gets a container's state.
+   * @param id The container's id.
+   * @returns Returns the state, or undefined when the container is not listed.
+   */
+  private stateOf(id: string): string | undefined {
+    return this.containers().find((container: ContainerSummary): boolean => container.id === id)
+      ?.state;
   }
 
   /**
@@ -1260,15 +1364,6 @@ export class ContainersView implements OnInit, OnDestroy {
    */
   protected volumeOf(row: TableRow): VolumeEntry {
     return row.data as VolumeEntry;
-  }
-
-  /**
-   * Gets whether every container the list shows is ticked.
-   * @returns Returns true when they all are.
-   */
-  protected allChecked(): boolean {
-    const shown: readonly TableRow[] = this.containerRows();
-    return shown.length > 0 && shown.every((row: TableRow): boolean => this.checked().has(row.id));
   }
 
   /**
@@ -1445,32 +1540,21 @@ export class ContainersView implements OnInit, OnDestroy {
   }
 
   /**
-   * Starts the selected container (ribbon action).
+   * Runs a ribbon action on the ticked containers, or else on the selected one.
+   * @param action The bulk form of the action.
+   * @param onSelected Runs it on the selected container.
    */
-  private startSelected(): void {
-    const id: string | null = this.selectedId();
-    if (id !== null) {
-      this.start(id);
+  private actOnTargets(
+    action: 'start' | 'stop' | 'restart' | 'remove',
+    onSelected: (id: string) => void,
+  ): void {
+    if (this.checked().size > 0) {
+      void this.bulk(action);
+      return;
     }
-  }
-
-  /**
-   * Stops the selected container (ribbon action).
-   */
-  private stopSelected(): void {
     const id: string | null = this.selectedId();
     if (id !== null) {
-      this.stop(id);
-    }
-  }
-
-  /**
-   * Removes the selected container (ribbon action).
-   */
-  private removeSelected(): void {
-    const id: string | null = this.selectedId();
-    if (id !== null) {
-      void this.remove(id);
+      onSelected(id);
     }
   }
 

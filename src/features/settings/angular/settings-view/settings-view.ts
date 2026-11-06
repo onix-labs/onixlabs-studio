@@ -167,6 +167,16 @@ type SettingsSectionId =
   | `keyboard-${string}`;
 
 /**
+ * The More Actions menu's Expand item.
+ */
+const MENU_EXPAND: string = 'settings.expand';
+
+/**
+ * The More Actions menu's Collapse item.
+ */
+const MENU_COLLAPSE: string = 'settings.collapse';
+
+/**
  * The More Actions menu's Import item.
  */
 const MENU_IMPORT: string = 'settings.import';
@@ -1175,6 +1185,9 @@ export class SettingsView {
    * Gets the More Actions menu beside the search box: what acts on the settings as a whole.
    */
   protected readonly menuItems: readonly MenuItem[] = [
+    { id: MENU_EXPAND, label: 'Expand', icon: Icon.PLUS_SQUARE },
+    { id: MENU_COLLAPSE, label: 'Collapse', icon: Icon.MINUS_SQUARE },
+    { id: 'settings.tree-separator', label: '', separator: true },
     { id: MENU_IMPORT, label: 'Import Settings', icon: Icon.DOWNLOAD },
     { id: MENU_EXPORT, label: 'Export Settings', icon: Icon.EXPORT },
   ];
@@ -1184,7 +1197,11 @@ export class SettingsView {
    * @param id The chosen item's identifier.
    */
   protected onMenu(id: string): void {
-    if (id === MENU_IMPORT) {
+    if (id === MENU_EXPAND) {
+      this.expandedNodes.set(this.branchIds(this.sections()));
+    } else if (id === MENU_COLLAPSE) {
+      this.expandedNodes.set(new Set<string>());
+    } else if (id === MENU_IMPORT) {
       void this.importSettings();
     } else if (id === MENU_EXPORT) {
       void this.exportSettings();

@@ -59,7 +59,12 @@ export interface ImageInsert {
             [(value)]="url"
           />
         </div>
-        <app-button class="insert-modal__row-button" label="Browse…" (click)="browse()" />
+        <app-button
+          class="insert-modal__row-button"
+          variant="ghost"
+          label="Browse…"
+          (click)="browse()"
+        />
       </div>
 
       <div class="insert-modal__field">

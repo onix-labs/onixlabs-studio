@@ -25,6 +25,7 @@ const MENU_COPY_LINK: string = 'issue.copyLink';
 import { ForgeIssue, ForgeIssueComment } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { ButtonRow } from '@shared/angular/components/forms/button-row/button-row';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
@@ -54,6 +55,7 @@ import { Chip } from '@shared/angular/components/chip/chip';
   imports: [
     Chip,
     Button,
+    ButtonRow,
     CdkMenuTrigger,
     IssueAgentConfirm,
     IssueStateConfirm,

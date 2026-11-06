@@ -73,4 +73,15 @@ describe('ButtonGroup', () => {
 
     expect(emitted).toBe('right');
   });
+
+  it('fullWidth_isOptIn', () => {
+    const group: () => Element | null = (): Element | null =>
+      (fixture.nativeElement as HTMLElement).querySelector('.segmented');
+    expect(group()?.classList.contains('segmented--full')).toBe(false);
+
+    fixture.componentRef.setInput('fullWidth', true);
+    fixture.detectChanges();
+
+    expect(group()?.classList.contains('segmented--full')).toBe(true);
+  });
 });

@@ -14,44 +14,15 @@
   min-block-size: 0;
 }
 
-// The heading over the list: what it is, and one sentence about it, as the other tools have.
-.containers__header {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem 0.5rem;
-}
-
-.containers__heading {
-  min-inline-size: 0;
-}
-
-.containers__title {
-  // The shared `.section-label` sets the type; only the spacing is ours.
-  margin: 0;
-}
-
-.containers__subtitle {
-  margin: 0.25rem 0 0;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.8125rem;
-}
-
 .containers__table {
   flex: 1 1 auto;
   min-block-size: 0;
-}
-
-// The running-only switch, at the heading's end, centred against the title and its sentence.
-.containers__running-only {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--form-muted-foreground-color);
+  // A shade darker than the ribbon directly above it, which is what separates the two.
+  --table-header-background-color: color-mix(
+    in srgb,
+    var(--dock-title-background-color) 85%,
+    black
+  );
 }
 
 // The docked logs/shell terminals: a tab strip over the active pane.
@@ -191,20 +162,6 @@
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-// What to do with the ticked containers (#974): how many, then the actions.
-.containers__bulk {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 0.75rem;
-  margin-block-end: 0.5rem;
-}
-
-.containers__bulk-count {
-  font-size: 0.8rem;
-  font-weight: 500;
 }
 
 // What the last action that failed said.

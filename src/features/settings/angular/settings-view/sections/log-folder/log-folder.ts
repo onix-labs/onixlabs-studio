@@ -17,6 +17,7 @@ import { Log } from '@shared/angular/services/log/log';
       description="Where studio.log and each session's log are kept, in Studio's user data."
     >
       <app-button
+        variant="ghost"
         label="Open Log Folder"
         [icon]="Icon.FOLDER_OPEN"
         data-testid="log-folder-open"

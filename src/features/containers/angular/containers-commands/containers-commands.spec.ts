@@ -14,7 +14,8 @@ interface FakeHandler {
   readonly shell: Mock;
   readonly refresh: Mock;
   readonly restart: Mock;
-  readonly togglePause: Mock;
+  readonly pause: Mock;
+  readonly resume: Mock;
 }
 
 /**
@@ -30,13 +31,31 @@ function fakeHandler(running: boolean): FakeHandler {
   const shell: Mock = vi.fn();
   const refresh: Mock = vi.fn();
   const restart: Mock = vi.fn();
-  const togglePause: Mock = vi.fn();
+  const pause: Mock = vi.fn();
+  const resume: Mock = vi.fn();
   const handler: ContainersCommandHandler = {
     hasSelection: computed((): boolean => true),
     selectionRunning: signal(running),
-    selectionPaused: signal(false),
+    hasTargets: signal(true),
+    canStart: signal(!running),
+    canStop: signal(running),
+    canPause: signal(running),
+    canResume: signal(false),
+    showingContainers: signal(true),
+    engineReady: signal(true),
+    pullImage: vi.fn(),
+    runImage: vi.fn(),
+    shownGroups: signal(new Set()),
+    listedGroups: signal(new Set()),
+    selectedGroups: signal(new Set()),
+    canClear: signal(false),
+    showAll: vi.fn(),
+    setShown: vi.fn(),
+    setSelected: vi.fn(),
+    clear: vi.fn(),
     restart,
-    togglePause,
+    pause,
+    resume,
     start,
     stop,
     remove,
@@ -44,7 +63,7 @@ function fakeHandler(running: boolean): FakeHandler {
     shell,
     refresh,
   };
-  return { handler, start, stop, remove, viewLogs, shell, refresh, restart, togglePause };
+  return { handler, start, stop, remove, viewLogs, shell, refresh, restart, pause, resume };
 }
 
 describe('ContainersCommands', () => {
@@ -99,10 +118,12 @@ describe('ContainersCommands', () => {
     commands.register(fake.handler);
 
     commands.restart();
-    commands.togglePause();
+    commands.pause();
+    commands.resume();
 
     expect(fake.restart).toHaveBeenCalledOnce();
-    expect(fake.togglePause).toHaveBeenCalledOnce();
-    expect(commands.selectionPaused()).toBe(false);
+    expect(fake.pause).toHaveBeenCalledOnce();
+    expect(fake.resume).toHaveBeenCalledOnce();
+    expect(commands.canResume()).toBe(false);
   });
 });

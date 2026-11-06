@@ -164,7 +164,12 @@
                 [placeholder]="field.placeholder ?? ''"
                 (valueChange)="prompts.setValue(field.id, $event)"
               />
-              <app-button class="connection__browse" label="Browse" (click)="browse(field)" />
+              <app-button
+                class="connection__browse"
+                variant="ghost"
+                label="Browse"
+                (click)="browse(field)"
+              />
             </div>
           }
           @default {

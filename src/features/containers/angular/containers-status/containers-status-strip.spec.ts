@@ -27,6 +27,8 @@ describe('ContainersStatusStrip (#882)', () => {
       available: true,
       containers: 5,
       images: 12,
+      selected: 0,
+      imagesSize: '1.5 GB',
     });
     TestBed.configureTestingModule({
       providers: [{ provide: ContainersView, useValue: { summary } }],
@@ -34,15 +36,43 @@ describe('ContainersStatusStrip (#882)', () => {
     fixture = TestBed.createComponent(ContainersStatusStrip);
   });
 
+  it('saysHowManyAreTicked_whileAnyAre', () => {
+    fixture.detectChanges();
+    expect(segmentsOf(fixture, 1)).toEqual(['5 containers', '12 images', '1.5 GB on disk']);
+
+    summary.set({
+      engine: 'Docker',
+      available: true,
+      containers: 5,
+      images: 12,
+      selected: 2,
+      imagesSize: '1.5 GB',
+    });
+    fixture.detectChanges();
+    expect(segmentsOf(fixture, 1)).toEqual([
+      '2 selected',
+      '5 containers',
+      '12 images',
+      '1.5 GB on disk',
+    ]);
+  });
+
   it('namesTheEngine_thenCountsContainersAndImages', () => {
     fixture.detectChanges();
 
     expect(segmentsOf(fixture, 0)).toEqual(['Docker']);
-    expect(segmentsOf(fixture, 1)).toEqual(['5 containers', '12 images']);
+    expect(segmentsOf(fixture, 1)).toEqual(['5 containers', '12 images', '1.5 GB on disk']);
   });
 
   it('saysTheEngineIsNotRunning_andCountsNothing_whenItDoesNotAnswer', () => {
-    summary.set({ engine: 'Podman', available: false, containers: 0, images: 0 });
+    summary.set({
+      engine: 'Podman',
+      available: false,
+      containers: 0,
+      images: 0,
+      selected: 0,
+      imagesSize: '0 B',
+    });
     fixture.detectChanges();
 
     expect(segmentsOf(fixture, 0)).toEqual(['Podman (not running)']);
@@ -50,7 +80,14 @@ describe('ContainersStatusStrip (#882)', () => {
   });
 
   it('saysNoEngineIsInstalled_whenThereIsNone', () => {
-    summary.set({ engine: null, available: false, containers: 0, images: 0 });
+    summary.set({
+      engine: null,
+      available: false,
+      containers: 0,
+      images: 0,
+      selected: 0,
+      imagesSize: '0 B',
+    });
     fixture.detectChanges();
 
     expect(segmentsOf(fixture, 0)).toEqual(['No engine installed']);

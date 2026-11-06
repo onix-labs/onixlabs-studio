@@ -42,7 +42,7 @@
           @for (severity of severities; track severity) {
             <app-button
               class="system-monitor__severity"
-              variant="outline"
+              variant="none"
               size="small"
               [label]="severityLabel(severity)"
               [pressed]="isEnabled(severity)"
@@ -63,7 +63,7 @@
         @if (selectedCount() > 0) {
           <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
           <app-button-row class="system-monitor__selection-actions" align="start" size="small">
-            <app-button variant="outline" size="small" label="Copy" (click)="copy()" />
+            <app-button variant="ghost" size="small" label="Copy" (click)="copy()" />
             <app-button variant="none" size="small" label="Clear" (click)="clearSelection()" />
           </app-button-row>
         }
