@@ -2773,6 +2773,20 @@ describe('LspFeatures', () => {
     ]);
   });
 
+  it('semanticTokens_coloursTheTypeScriptMemberAsAMethod_andDropsItsLocalModifier (#1207)', async () => {
+    // typescript-language-server's legend: `member` is a method, and `local` is a modifier the fixed
+    // legend has no use for.
+    semanticLegend = { tokenTypes: ['member'], tokenModifiers: ['static', 'local'] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 3] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // Fixed legend: method=13, static=3 (bit value 8).
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
+  });
+
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
     semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
     await build();

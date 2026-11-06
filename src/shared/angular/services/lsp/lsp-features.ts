@@ -699,7 +699,8 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  *
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
- * the plain text colour instead of as a type (#1137). Names with no sensible standard equivalent —
+ * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
+ * method by the older name (#1207). Names with no sensible standard equivalent —
  * punctuation, XML doc-comment parts, JSON-in-string parts — are deliberately absent, so the grammar's
  * own colour stands.
  */
@@ -709,6 +710,7 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   // A constant takes the theme's constant colour (the one enum members use), not a local's.
   constant: 'enumMember',
   label: 'variable',
+  member: 'method',
   extensionMethod: 'method',
   operatorOverloaded: 'method',
   // Types: records are classes and structs; a delegate is a type; a VB module is a class.
