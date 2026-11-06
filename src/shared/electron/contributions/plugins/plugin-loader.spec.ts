@@ -33,6 +33,7 @@ import {
   toProvision,
   toVersionControlDescriptors,
   toHostingDescriptors,
+  toPackageManagerDescriptors,
   validManifests,
 } from './plugin-loader';
 import {
@@ -40,6 +41,7 @@ import {
   VersionControlResolution,
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
+import { PackageManagerDescriptor } from '../../package-managers/package-manager-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
 import { DatabaseEngineDescriptor } from '../database/database-engine-descriptor';
 import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
@@ -1061,6 +1063,74 @@ describe('a sideloaded plugin carrying its own payload', () => {
     expect(descriptors[0].resolve()).toEqual({
       available: false,
       reason: 'Local Git is not installed — install it in Plugins.',
+    });
+  });
+
+  /**
+   * A sideloaded manifest contributing a package manager (#908).
+   * @returns Returns the manifest.
+   */
+  function packageManagerManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.npm',
+      contributes: {
+        packageManagers: [
+          {
+            id: 'local.npm',
+            displayName: 'Local npm',
+            ecosystem: 'npm',
+            priority: 100,
+            markers: ['package.json'],
+            capabilities: ['sources', 'search'],
+            command: { kind: 'node', env: { NPM_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toPackageManagerDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly PackageManagerDescriptor[] = toPackageManagerDescriptors(
+      packageManagerManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.npm',
+      ecosystem: 'npm',
+      markers: ['package.json'],
+      capabilities: ['sources', 'search'],
+    });
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', NPM_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toPackageManagerDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly PackageManagerDescriptor[] = toPackageManagerDescriptors(
+      packageManagerManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local npm is not installed — install it in Plugins.',
     });
   });
 

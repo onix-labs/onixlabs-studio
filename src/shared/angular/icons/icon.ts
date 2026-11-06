@@ -2200,6 +2200,11 @@ export class Icon {
   public static readonly SETUP_DATABASE_ENGINES: Icon = new Icon('ph ph-database');
 
   /**
+   * Gets the setup step for package-manager plugins.
+   */
+  public static readonly SETUP_PACKAGE_MANAGERS: Icon = new Icon('ph ph-package');
+
+  /**
    * Gets the icon of the setup wizard's AI providers step.
    */
   public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');

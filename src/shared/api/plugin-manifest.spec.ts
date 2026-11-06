@@ -805,6 +805,100 @@ describe('parsePluginManifest', () => {
     });
   });
 
+  describe('package-manager contributions', () => {
+    /**
+     * Builds a well-formed package-manager contribution, which tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function packageManager(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'nuget',
+        displayName: 'NuGet',
+        ecosystem: 'nuget',
+        markers: ['*.sln', '*.csproj', 'packages.config'],
+        capabilities: ['sources', 'search', 'prerelease', 'restore'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a package manager contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.packageManagers?.[0]).toMatchObject({
+        id: 'nuget',
+        ecosystem: 'nuget',
+        priority: 100,
+        markers: ['*.sln', '*.csproj', 'packages.config'],
+        capabilities: ['sources', 'search', 'prerelease', 'restore'],
+      });
+    });
+
+    it('treats absent capabilities as none, since reading a folder needs none', () => {
+      const entry: Record<string, unknown> = packageManager();
+      delete entry['capabilities'];
+
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [entry] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.packageManagers?.[0].capabilities).toEqual([]);
+    });
+
+    it.each<[string, unknown]>([
+      ['nothing', undefined],
+      ['an empty list', []],
+      ['a path', ['src/package.json']],
+      ['a parent directory', ['..']],
+      ['a bare wildcard', ['*']],
+      ['wildcards alone', ['**']],
+    ])('refuses markers that are %s', (_name: string, markers: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager({ markers })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].markers');
+    });
+
+    it.each<[string, unknown]>([
+      ['absent', undefined],
+      ['capitalised', 'NuGet'],
+      ['not a word', 'nu get'],
+      ['not text', 7],
+    ])('refuses an ecosystem that is %s', (_name: string, ecosystem: unknown) => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { packageManagers: [packageManager({ ecosystem })] } }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].ecosystem');
+    });
+
+    it('refuses a capability outside the closed list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: { packageManagers: [packageManager({ capabilities: ['publish'] })] },
+        }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].capabilities');
+    });
+
+    it('refuses capabilities that are not a list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: { packageManagers: [packageManager({ capabilities: 'search' })] },
+        }),
+      );
+
+      expect(paths(result)).toContain('contributes.packageManagers[0].capabilities');
+    });
+  });
+
   describe('version-control contributions', () => {
     /**
      * Builds a well-formed version-control contribution, modelled on the Git plugin (#817), which
