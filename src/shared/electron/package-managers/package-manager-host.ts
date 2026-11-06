@@ -270,6 +270,13 @@ export class PackageManagerHost {
    * @returns Returns the plugins, highest priority first.
    */
   public async pluginsFor(root: unknown): Promise<readonly PackageManagerDescriptor[]> {
+    // Nothing installed is the usual case for now, and needs no walk of the folder to answer.
+    const installed: boolean = this.options
+      .descriptors()
+      .some((descriptor: PackageManagerDescriptor): boolean => descriptor.resolve().available);
+    if (!installed) {
+      return [];
+    }
     return (await this.detect(root)).filter(
       (descriptor: PackageManagerDescriptor): boolean => descriptor.resolve().available,
     );

@@ -102,6 +102,8 @@ import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
+import { PackageManagerHost } from '@shared/electron/package-managers/package-manager-host';
+import { PackagePluginRoute } from '@shared/electron/package-managers/package-plugin-route';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -109,6 +111,7 @@ import type { VersionControlExecutableChoice } from '@shared/api/version-control
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
+  contributedPackageManagers,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import {
@@ -457,6 +460,19 @@ class Program {
   });
 
   /**
+   * Hosts the package-manager plugins (#908): finds which apply to a folder, confines every request to
+   * an open, trusted workspace, and refuses what a plugin does not support.
+   */
+  private readonly packageManagerHost: PackageManagerHost = new PackageManagerHost({
+    descriptors: () => contributedPackageManagers(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+    // Nothing saves a registry token yet: that is Settings' to add (#911), and a plugin reads the
+    // tool's own configuration meanwhile.
+    credential: () => Promise.resolve(null),
+  });
+
+  /**
    * Holds which tool each version-control plugin runs, as chosen in Settings.
    */
   private readonly versionControlSettings: VersionControlSettings = new VersionControlSettings(
@@ -587,6 +603,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
+    new PackagePluginRoute(this.packageManagerHost),
   );
 
   /**
@@ -1231,6 +1248,8 @@ class Program {
         this.hostingHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'version-control') {
         this.versionControlHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'package-manager') {
+        this.packageManagerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1597,6 +1616,7 @@ class Program {
     this.codeRunner.dispose();
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
+    this.packageManagerHost.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();

@@ -257,6 +257,23 @@ describe('PackageManagerHost', () => {
       expect(listed).toBe(false);
     });
 
+    it('pluginsFor_walksNothingWhenNothingIsInstalled', async () => {
+      let listed: boolean = false;
+      const host: PackageManagerHost = hostFor(
+        fakeClient([]),
+        {
+          listDirectory: () => {
+            listed = true;
+            return Promise.resolve([]);
+          },
+        },
+        [descriptor({ resolve: () => ({ available: false, reason: 'not installed' }) })],
+      );
+
+      await expect(host.pluginsFor(ROOT)).resolves.toEqual([]);
+      expect(listed).toBe(false);
+    });
+
     it('detect_listsAnUninstalledPlugin_butPluginsForDoesNot', async () => {
       const uninstalled: PackageManagerDescriptor = descriptor({
         resolve: () => ({ available: false, reason: 'npm is not installed.' }),
