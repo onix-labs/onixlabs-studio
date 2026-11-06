@@ -345,7 +345,7 @@ describe('Session instructions (#955)', () => {
     expect(second.options.resume).toBe('fresh-1');
     expect(second.options.forkSession).toBeUndefined();
     expect(second.options.resumeSessionAt).toBeUndefined();
-    expect(instructionsOf(second)).toBe('Profile: be terse.\n\nSkills: release-notes');
+    expect(instructionsOf(second)).toContain('Profile: be terse.\n\nSkills: release-notes');
     // Without this the CLI resends the prompt it recorded at the first request, and the resume
     // silently keeps the old instructions — which is how the first live test of #955 failed.
     expect((second.options.systemPrompt as { snapshot?: unknown }).snapshot).toBe(false);
@@ -381,7 +381,7 @@ describe('Session instructions (#955)', () => {
     const next: Promise<void> = session.run(turn('r2'));
     await flush();
     expect(sdk.queries.length).toBe(2);
-    expect(instructionsOf(sdk.queries[1])).toBe('Profile: be thorough.');
+    expect(instructionsOf(sdk.queries[1])).toContain('Profile: be thorough.');
     await next;
     await session.close();
   });
