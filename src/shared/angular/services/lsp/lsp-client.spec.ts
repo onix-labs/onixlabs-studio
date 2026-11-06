@@ -1086,6 +1086,31 @@ describe('LspClient', () => {
       await flush();
     }
 
+    it('aFileThatIsNotOpen_keepsItsTaggedHintsOutOfTheList', async () => {
+      const client: LspClient = build();
+      await openCsharp(client);
+
+      lsp.notify('/root::csharp', 'studio/workspaceDiagnostics', {
+        reports: [
+          {
+            uri: 'file:///root/src/Unused.cs',
+            kind: 'full',
+            items: [
+              {
+                range: { start: { line: 2, character: 8 }, end: { line: 2, character: 9 } },
+                severity: 4,
+                message: 'Remove unnecessary usings',
+                source: 'csharp',
+                tags: [1],
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
     it('aFileThatIsNotOpen_listsItsErrors_locatedByPath', async () => {
       const client: LspClient = build();
       await openCsharp(client);
@@ -1667,6 +1692,23 @@ describe('LspClient', () => {
       ]);
     });
 
+    it('documentRefs_keepATaggedHint_soItsFixIsStillOffered', async () => {
+      const features: FakeFeatures = new FakeFeatures();
+      const client: LspClient = build(features);
+      await open(client);
+      const unused: unknown = {
+        range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+        severity: 4,
+        message: 'Unused',
+        tags: [1],
+      };
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/src/a.ts', [unused]);
+      await flush();
+
+      expect(features.resolver?.('/root/src/a.ts')?.diagnostics).toEqual([unused]);
+    });
+
     it('documentRefs_carryTheSessionsCodeActions_itsCommands_andTheDiagnosticsWithTheirCodeAndData (#1016)', async () => {
       lsp.startResult = {
         success: true,
@@ -2039,6 +2081,36 @@ describe('LspClient', () => {
         documentId: 'doc-1',
         path: '/root/a.ts',
       },
+    ]);
+  });
+
+  it('publishDiagnostics_aTaggedHint_staysOutOfTheErrorList', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+    const unused: object = {
+      range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } },
+      severity: 4,
+      message: "'x' is declared but its value is never read.",
+      source: 'typescript',
+      tags: [1],
+    };
+    const broken: object = {
+      range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } },
+      severity: 1,
+      message: 'broken',
+      source: 'typescript',
+    };
+
+    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [unused, broken]);
+
+    expect(diagnostics.emitted.map((entry: Diagnostic): string => entry.message)).toEqual([
+      'broken',
     ]);
   });
 

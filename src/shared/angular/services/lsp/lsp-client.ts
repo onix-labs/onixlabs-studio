@@ -54,7 +54,7 @@ import {
   pathToUri,
   uriToPath,
 } from './lsp-paths';
-import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import { isErrorListDiagnostic, toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
@@ -433,6 +433,11 @@ export interface LspDiagnostic {
    * back with a code-action request (#1016): servers find their fixes by it.
    */
   readonly code?: number | string;
+
+  /**
+   * Gets what the server says about the code itself (1 unnecessary, 2 deprecated), or undefined.
+   */
+  readonly tags?: readonly number[];
 
   /**
    * Gets whatever the server attached to the diagnostic for itself, or undefined. Never read here, but
@@ -1485,9 +1490,11 @@ export class LspClient implements OnDestroy {
     );
     this.diagnosticsByDocument.set(
       tracked.documentId,
-      diagnostics.map((diagnostic: LspDiagnostic): Diagnostic =>
-        toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
-      ),
+      diagnostics
+        .filter(isErrorListDiagnostic)
+        .map((diagnostic: LspDiagnostic): Diagnostic =>
+          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
+        ),
     );
     this.serverDiagnostics.set(tracked.documentId, diagnostics);
     this.setMarkers(tracked, diagnostics);
@@ -3457,7 +3464,7 @@ export class LspClient implements OnDestroy {
       }
       const uri: string = report.uri;
       const items: readonly LspDiagnostic[] = Array.isArray(report.items)
-        ? (report.items as readonly LspDiagnostic[])
+        ? (report.items as readonly LspDiagnostic[]).filter(isErrorListDiagnostic)
         : [];
       if (items.length === 0) {
         changed = files.delete(key) || changed;

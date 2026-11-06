@@ -951,6 +951,29 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * Organises the document's imports and waits for them to land, so formatting can follow: through
+   * the language server that serves it, or Monaco's own action where none does. Monaco's action never
+   * reaches a language server, and resolves before anything it does is applied.
+   * @returns Returns a promise that resolves once the imports are organised.
+   */
+  public async organizeImports(): Promise<void> {
+    this.editor?.focus();
+    await this.organizeImportsForSave();
+  }
+
+  /**
+   * Organises the document's imports for a save, leaving the focus where it is.
+   * @returns Returns a promise that resolves once the imports are organised.
+   */
+  public async organizeImportsForSave(): Promise<void> {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
+    if (editor === null || (await this.quickFixes.organizeImports(editor))) {
+      return;
+    }
+    await editor.getAction('editor.action.organizeImports')?.run();
+  }
+
+  /**
    * Formats lines for a save, with the formatter for a selection: one that cannot format part of a
    * file offers no such action, and the lines stay as they are. The caret and scroll position stay
    * too, as the selection is only how the action is told what to format.

@@ -1246,12 +1246,105 @@ describe('AiManager', () => {
       expect(eventsOf('permission')).toEqual([]);
     });
 
-    it('permission_carriesTheProposedChangeToThePrompt', () => {
-      const change: never = { before: 'a', after: 'b' } as never;
+    it('permission_toRunOutsideTheSandbox_isRememberedForTheExactCommandOnly', async () => {
+      const name: string = 'Run outside the sandbox';
+      void context.requestPermission(name, 'npm test');
+      const permissionId: unknown = eventsOf('permission').at(-1)?.['permissionId'];
+
+      reply(AiChannel.PermissionReply, { permissionId, granted: true, remember: 'session' });
+
+      expect(eventsOf('permission').at(-1)?.['remembers']).toBe('session-command');
+      expect(await context.requestPermission(name, 'npm test')).toBe(true);
+      const before: number = eventsOf('permission').length;
+      void context.requestPermission(name, 'rm -rf /');
+      expect(eventsOf('permission')).toHaveLength(before + 1);
+    });
+
+    it('permission_toRunOutsideTheSandbox_ignoresAGrantLongerThanTheSession', async () => {
+      const name: string = 'Run outside the sandbox';
+      void context.requestPermission(name, 'npm test');
+      const permissionId: unknown = eventsOf('permission').at(-1)?.['permissionId'];
+
+      reply(AiChannel.PermissionReply, { permissionId, granted: true, remember: 'always' });
+      await Promise.resolve();
+      const before: number = eventsOf('permission').length;
+      void context.requestPermission(name, 'npm test');
+
+      expect(eventsOf('permission')).toHaveLength(before + 1);
+    });
+
+    it('permission_grantedForTheShell_neverCoversARunOutsideTheSandbox', async () => {
+      void context.requestPermission('Bash', 'npm test');
+      const permissionId: unknown = eventsOf('permission').at(-1)?.['permissionId'];
+      reply(AiChannel.PermissionReply, { permissionId, granted: true, remember: 'session' });
+      expect(await context.requestPermission('Bash', 'npm test')).toBe(true);
+      const before: number = eventsOf('permission').length;
+
+      void context.requestPermission('Run outside the sandbox', 'npm test');
+
+      expect(eventsOf('permission')).toHaveLength(before + 1);
+    });
+
+    it('permission_carriesTheProposedChangeToThePrompt_withTheFileAsItIs', async () => {
+      const change: never = { path: '/definitely/not/here', content: 'b' } as never;
 
       void context.requestPermission('Write', '/a', undefined, change);
 
-      expect(eventsOf('permission').at(-1)?.['change']).toBe(change);
+      await vi.waitFor(() => expect(eventsOf('permission')).not.toEqual([]));
+
+      expect(eventsOf('permission').at(-1)?.['change']).toEqual({
+        path: '/definitely/not/here',
+        content: 'b',
+        original: null,
+      });
+    });
+
+    /**
+     * Reads what has reached the audit log.
+     * @returns Returns the entries, oldest first.
+     */
+    function auditedLines(): readonly Record<string, unknown>[] {
+      return fs
+        .readFileSync(path.join(userData, 'agent-audit-log.jsonl'), 'utf8')
+        .trim()
+        .split('\n')
+        .map(
+          (line: string): Record<string, unknown> => JSON.parse(line) as Record<string, unknown>,
+        );
+    }
+
+    it('audit_recordsWhetherAShellCommandRanSandboxed', () => {
+      context.recordAudit('Bash', 'ls', 'gated-or-auto', false);
+
+      expect(auditedLines().at(-1)).toMatchObject({ tool: 'Bash', sandboxed: false });
+    });
+
+    it('audit_ofACommandOutsideTheSandbox_marksTheCall_andSaysWhyItWasAllowed', () => {
+      context.recordAudit('Bash', 'ls', 'posture', false, 'toolu_1');
+
+      expect(eventsOf('tool-unsandboxed').at(-1)).toMatchObject({
+        toolId: 'toolu_1',
+        reason: 'Ran outside the sandbox: Allow All is on.',
+      });
+    });
+
+    it('audit_ofACommandInsideTheSandbox_marksNothing', () => {
+      context.recordAudit('Bash', 'ls', 'posture', true, 'toolu_1');
+
+      expect(eventsOf('tool-unsandboxed')).toEqual([]);
+    });
+
+    it('audit_withNoToolId_stillAuditsWithoutMarkingAnything', () => {
+      context.recordAudit('Bash', 'ls', 'posture', false);
+
+      expect(eventsOf('tool-unsandboxed')).toEqual([]);
+      expect(auditedLines().at(-1)).toMatchObject({ sandboxed: false });
+    });
+
+    it('audit_ofAnythingElse_saysNothingAboutTheSandbox', () => {
+      context.recordAudit('Write', '/a', 'gated-or-auto');
+
+      expect(auditedLines().at(-1)).not.toHaveProperty('sandboxed');
     });
 
     it('audit_recordsToTheLogInUserData', () => {

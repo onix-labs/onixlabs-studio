@@ -43,6 +43,7 @@ import { projectSystems } from './project-system/default-project-systems';
 import { ProjectSystem } from './project-system/project-system';
 import { packageManagers } from './package-management/default-package-managers';
 import { HttpFetch, PackageManager } from './package-management/package-manager';
+import { PackagePluginRoute } from './package-managers/package-plugin-route';
 import { metadataAsSourcePath } from './lsp/metadata-as-source';
 import { TrustedPaths } from './trusted-paths';
 import { trashOrRemove } from './trash-or-remove';
@@ -106,6 +107,12 @@ export class WorkspaceManager {
   private readonly trusted: TrustedPaths;
 
   /**
+   * Holds the route to an installed package-manager plugin, or null when there is none to ask. Core's
+   * own npm and NuGet serve whatever it declines, until #911 removes them.
+   */
+  private readonly packagePlugins: PackagePluginRoute | null;
+
+  /**
    * Holds the HTTP fetch used for package-registry queries (the main-process global fetch), referenced
    * through `globalThis` so this module carries no ambient fetch-type dependency.
    */
@@ -120,15 +127,18 @@ export class WorkspaceManager {
    * requesting window is gone.
    * @param workspace The shared workspace context to update when a folder is opened or closed.
    * @param trusted The store recording paths the user has opened, gating path-based re-opens.
+   * @param packagePlugins The route to an installed package-manager plugin, or null for none.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
+    packagePlugins: PackagePluginRoute | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.workspace = workspace;
     this.trusted = trusted;
+    this.packagePlugins = packagePlugins;
   }
 
   /**
@@ -354,6 +364,10 @@ export class WorkspaceManager {
       logger.warn('WorkspaceManager.loadPackageModel', 'Rejected non-open root');
       return null;
     }
+    const served: PackageManagerModel | null | undefined = await this.packagePlugins?.load(root);
+    if (served !== null && served !== undefined) {
+      return served;
+    }
     const manager: PackageManager | null = await packageManagers.match(root);
     if (manager === null) {
       logger.debug('WorkspaceManager.loadPackageModel', `No package manager for ${root}`);
@@ -371,6 +385,11 @@ export class WorkspaceManager {
   private async loadPackageSources(root: unknown): Promise<readonly PackageSourceInfo[]> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
       return [];
+    }
+    const served: readonly PackageSourceInfo[] | null | undefined =
+      await this.packagePlugins?.sources(root);
+    if (served !== null && served !== undefined) {
+      return served;
     }
     const manager: PackageManager | null = await packageManagers.match(root);
     return (await manager?.listSources?.(root)) ?? [];
@@ -399,6 +418,15 @@ export class WorkspaceManager {
       typeof query !== 'string'
     ) {
       return empty;
+    }
+    const served: PackageSearchResult | null | undefined = await this.packagePlugins?.search(
+      root,
+      sourceName,
+      query,
+      this.searchOptions(options),
+    );
+    if (served !== null && served !== undefined) {
+      return served;
     }
     const manager: PackageManager | null = await packageManagers.match(root);
     if (manager?.search === undefined) {
@@ -575,11 +603,11 @@ export class WorkspaceManager {
       const stats: Stats = await fs.stat(selectedPath);
       if (stats.isDirectory()) {
         this.workspace.addRoot(selectedPath);
-        this.trusted.remember(selectedPath);
+        this.trusted.rememberChosen(selectedPath);
         logger.info('WorkspaceManager.open', `Opened directory ${selectedPath}`);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
-      this.trusted.remember(selectedPath);
+      this.trusted.rememberChosen(selectedPath);
       logger.debug('WorkspaceManager.open', `Opening file ${selectedPath}`);
       return await this.readFileSelection(selectedPath, policy);
     } catch (error: unknown) {

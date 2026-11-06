@@ -14,6 +14,7 @@ import {
   ManifestResult,
   ManifestVersionControl,
   ManifestHosting,
+  ManifestPackageManager,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -55,6 +56,10 @@ import {
   VersionControlResolution,
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor, HostingResolution } from '../../hosting/hosting-descriptor';
+import {
+  PackageManagerDescriptor,
+  PackageManagerResolution,
+} from '../../package-managers/package-manager-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -524,6 +529,14 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: host.priority,
     }),
   );
+  const packageManagers: readonly PluginContribution[] = (
+    manifest.contributes.packageManagers ?? []
+  ).map((manager: ManifestPackageManager): PluginContribution => ({
+    slot: 'package-manager',
+    id: manager.id,
+    displayName: manager.displayName,
+    priority: manager.priority,
+  }));
   return [
     ...servers,
     ...adapters,
@@ -533,6 +546,7 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     ...hosting,
     ...harnesses,
     ...databaseEngines,
+    ...packageManagers,
   ];
 }
 
@@ -903,6 +917,58 @@ export function toVersionControlDescriptors(
           system.command,
           entryPoint,
           system.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's package managers into descriptors the package-manager host can start (#908).
+ *
+ * Like a version-control system, a plugin that is not installed stays registered and resolves to
+ * unavailable, so a surface can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toPackageManagerDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly PackageManagerDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.packageManagers ?? []).map(
+    (manager: ManifestPackageManager): PackageManagerDescriptor => ({
+      id: manager.id,
+      displayName: manager.displayName,
+      ecosystem: manager.ecosystem,
+      priority: manager.priority,
+      markers: manager.markers,
+      capabilities: manager.capabilities,
+      resolve: (): PackageManagerResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), manager.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return {
+            available: false,
+            reason: `${manager.displayName} is not installed — install it in Plugins.`,
+          };
+        }
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          manager.command,
+          entryPoint,
+          manager.displayName,
           nodeRuntime,
         );
         return typeof spec === 'string'

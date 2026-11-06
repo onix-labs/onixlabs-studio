@@ -715,6 +715,38 @@ describe('AgentChat', () => {
     expect(payloads[1].textContent).toContain('no such directory');
   });
 
+  it('badgesACommandThatRanOutsideTheSandbox_andSaysWhyItWasAllowed', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolDetail: 'ls',
+        toolState: 'ok',
+        toolUnsandboxed: 'Ran outside the sandbox: you allowed it.',
+      },
+      {
+        id: 'item-2',
+        kind: 'tool',
+        text: '',
+        toolId: 't2',
+        toolName: 'Bash',
+        toolDetail: 'pwd',
+        toolState: 'ok',
+      },
+    ]);
+    fixture.detectChanges();
+
+    const badges: NodeListOf<HTMLElement> = (
+      fixture.nativeElement as HTMLElement
+    ).querySelectorAll<HTMLElement>('.agent__action-unsandboxed');
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent?.trim()).toBe('Unsandboxed');
+    expect(badges[0].title).toBe('Ran outside the sandbox: you allowed it.');
+  });
+
   it('backgroundedTool_rendersAsLive_withASpinningNode', () => {
     items.set([
       {

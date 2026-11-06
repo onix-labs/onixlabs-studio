@@ -503,6 +503,38 @@ describe('Agent', () => {
     expect(agent.tasks()[0].tokens).toBe(4200);
   });
 
+  it('marksACommandThatRanOutsideTheSandbox_andCountsIt', () => {
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 'a', name: 'Bash', detail: 'ls' });
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 'b', name: 'Bash', detail: 'pwd' });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-unsandboxed',
+      toolId: 'b',
+      reason: 'Ran outside the sandbox: you allowed it.',
+    });
+
+    expect(
+      agent.items().find((item: AgentItem): boolean => item.toolId === 'b')?.toolUnsandboxed,
+    ).toBe('Ran outside the sandbox: you allowed it.');
+    expect(
+      agent.items().find((item: AgentItem): boolean => item.toolId === 'a')?.toolUnsandboxed,
+    ).toBeUndefined();
+    expect(agent.unsandboxedRuns()).toBe(1);
+  });
+
+  it('leavesTheTranscriptAlone_whenNoCallHasTheMarkedId', () => {
+    agent.send('go');
+    fireEvent({ requestId: 'run-1', kind: 'tool-start', toolId: 'a', name: 'Bash', detail: 'ls' });
+    const before: readonly AgentItem[] = agent.items();
+
+    fireEvent({ requestId: 'run-1', kind: 'tool-unsandboxed', toolId: 'gone', reason: 'x' });
+
+    expect(agent.items()).toBe(before);
+    expect(agent.unsandboxedRuns()).toBe(0);
+  });
+
   it('backgroundedToolCard_staysLive_untilTheTaskActuallySettles', () => {
     agent.send('go');
     const sessionId: string | undefined = runCalls[0].agentSessionId;

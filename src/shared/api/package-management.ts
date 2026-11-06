@@ -8,10 +8,10 @@
  */
 
 /**
- * The package ecosystem a model belongs to. The type is a string union so further ecosystems (Cargo,
- * Gradle/Maven) slot in without a structural change.
+ * The package ecosystem a model belongs to, as the plugin serving it names it (for example `npm`). A
+ * plain string, because which ecosystems exist is the plugins' to say rather than core's (#908).
  */
-export type PackageEcosystem = 'npm' | 'nuget';
+export type PackageEcosystem = string;
 
 /**
  * The dependency scope a package is declared under. Ecosystems that lack a given scope simply never
@@ -138,7 +138,8 @@ export interface PackageSearchItem {
   readonly description: string;
 
   /**
-   * Gets the total download count, or null when the source does not report it.
+   * Gets the download count the source reports, or null when it reports none. What it counts is the
+   * source's: all time on NuGet, the last month on npm.
    */
   readonly downloads: number | null;
 

@@ -423,6 +423,15 @@ export function isQuickFixKind(kind: string): boolean {
 }
 
 /**
+ * Determines whether an action is a source action: its kind is `source`, or one below it.
+ * @param kind The action's kind.
+ * @returns Returns true when it is.
+ */
+export function isSourceKind(kind: string): boolean {
+  return kind === 'source' || kind.startsWith('source.');
+}
+
+/**
  * Sorts an action into the menu's groups by its kind.
  * @param kind The action's kind.
  * @returns Returns its group.
@@ -434,7 +443,7 @@ function groupOf(kind: string): QuickFixGroup {
   if (kind === 'refactor' || kind.startsWith('refactor.')) {
     return 'refactor';
   }
-  if (kind === 'source' || kind.startsWith('source.')) {
+  if (isSourceKind(kind)) {
     return 'source';
   }
   return 'other';

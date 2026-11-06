@@ -28,6 +28,7 @@ describe('AgentStatusStrip (#882)', () => {
   let costUsd: WritableSignal<number>;
   let tasks: WritableSignal<number>;
   let billedPerToken: WritableSignal<boolean>;
+  let unsandboxed: WritableSignal<number>;
 
   beforeEach(() => {
     providerLabel = signal<string | null>('Claude');
@@ -37,6 +38,7 @@ describe('AgentStatusStrip (#882)', () => {
     costUsd = signal<number>(0.07);
     tasks = signal<number>(0);
     billedPerToken = signal<boolean>(true);
+    unsandboxed = signal<number>(0);
     const models: readonly AiModelInfo[] = [
       { id: 'opus', label: 'Opus 5.5', contextWindow: 1_000_000 },
     ];
@@ -55,6 +57,7 @@ describe('AgentStatusStrip (#882)', () => {
             costUsd,
             billedPerToken,
             visibleTaskCount: tasks,
+            unsandboxedRuns: unsandboxed,
           },
         },
       ],
@@ -95,6 +98,19 @@ describe('AgentStatusStrip (#882)', () => {
       '26.2k / 1M tokens (3%)',
       '2 tasks running',
     ]);
+  });
+
+  it('countsTheCommandsRunOutsideTheSandbox_onceThereAreAny', () => {
+    fixture.detectChanges();
+    expect(segmentsOf(fixture, 1).join(' ')).not.toContain('unsandboxed');
+
+    unsandboxed.set(1);
+    fixture.detectChanges();
+    expect(segmentsOf(fixture, 1).at(-1)).toBe('1 run unsandboxed');
+
+    unsandboxed.set(3);
+    fixture.detectChanges();
+    expect(segmentsOf(fixture, 1).at(-1)).toBe('3 runs unsandboxed');
   });
 
   it('omitsTheCost_onASubscription_whateverTheProviderReports', () => {
