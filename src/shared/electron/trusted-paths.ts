@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { realPathOf } from './ai/write-confinement';
 import { logger } from './logger';
 
 /**
@@ -69,6 +70,21 @@ export class TrustedPaths {
     }
     this.index = new Set<string>(this.entries);
     save(this.file, this.entries);
+  }
+
+  /**
+   * Remembers a path the user chose themselves, by the operating system's dialog or by opening it from
+   * outside the app, under the name they chose and under where it really is. The second is what lets
+   * a link they picked keep working where the file channels follow links before they check (#1174).
+   * Never for a path the renderer named: {@link remember} is the one for those, because a link planted
+   * in a workspace must not turn the file it points at into a trusted one.
+   * @param target The absolute path chosen.
+   */
+  public rememberChosen(target: string): void {
+    this.remember(target);
+    if (target.length > 0) {
+      this.remember(realPathOf(path.resolve(target)));
+    }
   }
 
   /**

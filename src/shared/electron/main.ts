@@ -353,6 +353,11 @@ class Program {
   );
 
   /**
+   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
    * Handles file-system operations and dialogs on behalf of the renderer.
    */
   /**
@@ -375,6 +380,7 @@ class Program {
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
+    this.workspaceContext,
   );
 
   /**
@@ -436,11 +442,6 @@ class Program {
     new LibraryTransfer(this.skillLibrary, this.promptProfileLibrary),
     (): BrowserWindow | null => this.windows.main(),
   );
-
-  /**
-   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
-   */
-  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
    * Hosts the version-control plugins (#815–#817): picks the one serving each repository, confines
@@ -908,7 +909,7 @@ class Program {
     } catch {
       return;
     }
-    this.trustedPaths.remember(filePath);
+    this.trustedPaths.rememberChosen(filePath);
     const window: BrowserWindow | null = this.windows.main();
     if (this.openPathsReady && window !== null && !window.isDestroyed()) {
       window.webContents.send(AppChannel.OpenPath, filePath);

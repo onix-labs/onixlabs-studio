@@ -62,10 +62,12 @@ vi.mock('electron', () => ({
 
 const { FileManager } = await import('./file-manager');
 const { TrustedPaths } = await import('./trusted-paths');
+const { WorkspaceContext } = await import('./workspace-context');
 
 describe('FileManager', () => {
   let directory: string;
   let trusted: InstanceType<typeof TrustedPaths>;
+  let workspace: InstanceType<typeof WorkspaceContext>;
 
   /**
    * Invokes a captured IPC handler as the renderer would.
@@ -102,7 +104,9 @@ describe('FileManager', () => {
     electron.openOptions = undefined;
     electron.messageOptions = undefined;
     trusted = new TrustedPaths(path.join(directory, 'trusted.json'));
-    new FileManager((): BrowserWindow | null => null, trusted).register();
+    workspace = new WorkspaceContext();
+    workspace.addRoot(directory);
+    new FileManager((): BrowserWindow | null => null, trusted, workspace).register();
   });
 
   afterEach(() => {
@@ -416,6 +420,256 @@ describe('FileManager', () => {
       );
 
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('boundary', () => {
+    let outside: string;
+    let secret: string;
+    let temporary: string | undefined;
+
+    beforeEach(() => {
+      outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'file-manager-outside-')));
+      secret = path.join(outside, 'id_ed25519');
+      fs.writeFileSync(secret, 'secret');
+      temporary = process.env['TMPDIR'];
+    });
+
+    afterEach(() => {
+      if (temporary === undefined) {
+        delete process.env['TMPDIR'];
+      } else {
+        process.env['TMPDIR'] = temporary;
+      }
+      fs.rmSync(outside, { recursive: true, force: true });
+    });
+
+    it('read_outsideEverything_answersNull', async () => {
+      expect(await invoke(FileChannel.Read, secret)).toBeNull();
+    });
+
+    it('read_escapingAWorkspaceByTraversal_answersNull', async () => {
+      const escaping: string = `${directory}/../${path.basename(outside)}/id_ed25519`;
+
+      expect(await invoke(FileChannel.Read, escaping)).toBeNull();
+    });
+
+    it('write_outsideEverything_isRefusedAndLeavesTheFile', async () => {
+      const result: FileWriteResult = await invoke(FileChannel.Write, secret, 'overwritten');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Save As');
+      expect(fs.readFileSync(secret, 'utf8')).toBe('secret');
+    });
+
+    it('write_ofANewFileOutsideEverything_createsNothing', async () => {
+      const file: string = path.join(outside, 'new.txt');
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, file, 'x')).success).toBe(false);
+
+      expect(fs.existsSync(file)).toBe(false);
+    });
+
+    it('writeBytes_outsideEverything_isRefusedAndCreatesNothing', async () => {
+      const file: string = path.join(outside, 'deep', 'new.bin');
+
+      const result: FileWriteResult = await invoke(
+        FileChannel.WriteBytes,
+        file,
+        new Uint8Array([1]),
+      );
+
+      expect(result.success).toBe(false);
+      expect(fs.existsSync(path.dirname(file))).toBe(false);
+    });
+
+    it('read_throughALinkPlantedInTheWorkspace_answersNull', async () => {
+      const link: string = path.join(directory, 'planted');
+      fs.symlinkSync(secret, link);
+
+      expect(await invoke(FileChannel.Read, link)).toBeNull();
+    });
+
+    it('write_throughALinkPlantedInTheWorkspace_leavesItsTarget', async () => {
+      const link: string = path.join(directory, 'planted');
+      fs.symlinkSync(secret, link);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(false);
+
+      expect(fs.readFileSync(secret, 'utf8')).toBe('secret');
+    });
+
+    it('write_throughADanglingLinkInTheWorkspace_createsNothing', async () => {
+      const target: string = path.join(outside, 'created-by-the-link');
+      const link: string = path.join(directory, 'planted');
+      fs.symlinkSync(target, link);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(false);
+
+      expect(fs.existsSync(target)).toBe(false);
+    });
+
+    it('write_intoAFolderLinkedOutOfTheWorkspace_isRefused', async () => {
+      const link: string = path.join(directory, 'planted');
+      fs.symlinkSync(outside, link);
+
+      const result: FileWriteResult = await invoke(
+        FileChannel.Write,
+        path.join(link, 'id_ed25519'),
+        'x',
+      );
+
+      expect(result.success).toBe(false);
+      expect(fs.readFileSync(secret, 'utf8')).toBe('secret');
+    });
+
+    it('write_toALinkTheRendererOpenedInTheWorkspace_isStillRefused', async () => {
+      // Opening a workspace file remembers its name, and the agent's shell can replace a file by a link.
+      const link: string = path.join(directory, 'planted');
+      fs.symlinkSync(secret, link);
+      trusted.remember(link);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(false);
+
+      expect(fs.readFileSync(secret, 'utf8')).toBe('secret');
+    });
+
+    it('write_toALinkBetweenTwoOpenWorkspaces_succeeds', async () => {
+      workspace.addRoot(outside);
+      const link: string = path.join(directory, 'shared');
+      fs.symlinkSync(secret, link);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(true);
+
+      expect(fs.readFileSync(secret, 'utf8')).toBe('x');
+    });
+
+    it('read_inAWorkspaceReachedThroughALink_isAllowed', async () => {
+      const linked: string = path.join(outside, 'linked-root');
+      fs.symlinkSync(directory, linked);
+      workspace.removeRoot(directory);
+      workspace.addRoot(linked);
+      fixture('inside.txt', 'hello');
+
+      expect(
+        await invoke<FileInfo>(FileChannel.Read, path.join(linked, 'inside.txt')),
+      ).toMatchObject({ content: 'hello' });
+    });
+
+    it('read_afterItsWorkspaceClosed_answersNull', async () => {
+      const file: string = fixture('inside.txt');
+      workspace.removeRoot(directory);
+
+      expect(await invoke(FileChannel.Read, file)).toBeNull();
+    });
+
+    it('recentFile_trustedFromAnEarlierSession_readsAndSaves', async () => {
+      trusted.remember(secret);
+
+      expect(await invoke<FileInfo>(FileChannel.Read, secret)).toMatchObject({ content: 'secret' });
+      expect((await invoke<FileWriteResult>(FileChannel.Write, secret, 'x')).success).toBe(true);
+    });
+
+    it('recentFile_trustedThroughALinkedFolder_stillReads', async () => {
+      // macOS's /tmp and /var are links; an entry from before links were followed names the link.
+      const linkedFolder: string = path.join(outside, 'tmp');
+      fs.symlinkSync(outside, linkedFolder);
+      const name: string = path.join(linkedFolder, 'id_ed25519');
+      trusted.remember(name);
+
+      expect(await invoke<FileInfo>(FileChannel.Read, name)).toMatchObject({ content: 'secret' });
+    });
+
+    it('openDialog_thenSaveTheDocument_writesTheChosenFile', async () => {
+      electron.chosen = [secret];
+
+      await invoke(FileChannel.OpenFileDialog);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, secret, 'x')).success).toBe(true);
+    });
+
+    it('saveDialog_thenWrite_createsTheChosenFileOutsideTheWorkspace', async () => {
+      const chosen: string = path.join(outside, 'export.json');
+      electron.savePath = chosen;
+
+      await invoke(FileChannel.SaveFileDialog);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, chosen, 'x')).success).toBe(true);
+      expect(fs.readFileSync(chosen, 'utf8')).toBe('x');
+    });
+
+    it('saveDialog_thenWriteBytes_writesTheChosenSpreadsheet', async () => {
+      const chosen: string = path.join(outside, 'export.xlsx');
+      electron.savePath = chosen;
+
+      await invoke(FileChannel.SaveFileDialog);
+
+      expect(
+        (await invoke<FileWriteResult>(FileChannel.WriteBytes, chosen, new Uint8Array([1])))
+          .success,
+      ).toBe(true);
+    });
+
+    it('saveDialog_ontoALinkInTheWorkspace_writesThroughIt', async () => {
+      // Chosen in the dialog, so it is the user's decision and not a planted link.
+      const link: string = path.join(directory, 'chosen-link');
+      fs.symlinkSync(secret, link);
+      electron.savePath = link;
+
+      await invoke(FileChannel.SaveFileDialog);
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, link, 'x')).success).toBe(true);
+    });
+
+    it('pickPath_ofAFile_thenRead_importsIt', async () => {
+      electron.chosen = [secret];
+
+      await invoke(FileChannel.PickPath, 'file', false);
+
+      expect(await invoke<FileInfo>(FileChannel.Read, secret)).toMatchObject({ content: 'secret' });
+    });
+
+    it('pickPath_ofAFolder_grantsNothingInsideIt', async () => {
+      electron.chosen = [outside];
+
+      await invoke(FileChannel.PickPath, 'folder', false);
+
+      expect(await invoke(FileChannel.Read, secret)).toBeNull();
+    });
+
+    it('read_ofADecompiledSource_opensForGoToDefinition', async () => {
+      process.env['TMPDIR'] = outside;
+      const folder: string = path.join(outside, 'MetadataAsSource', 'abc');
+      fs.mkdirSync(folder, { recursive: true });
+      const file: string = path.join(folder, 'IList.cs');
+      fs.writeFileSync(file, 'interface IList {}');
+
+      expect(await invoke<FileInfo>(FileChannel.Read, file)).toMatchObject({
+        name: 'IList.cs',
+        content: 'interface IList {}',
+      });
+    });
+
+    it('write_ofADecompiledSource_isRefused', async () => {
+      process.env['TMPDIR'] = outside;
+      const folder: string = path.join(outside, 'MetadataAsSource', 'abc');
+      fs.mkdirSync(folder, { recursive: true });
+      const file: string = path.join(folder, 'IList.cs');
+      fs.writeFileSync(file, 'interface IList {}');
+
+      expect((await invoke<FileWriteResult>(FileChannel.Write, file, 'x')).success).toBe(false);
+
+      expect(fs.readFileSync(file, 'utf8')).toBe('interface IList {}');
+    });
+
+    it('read_ofALinkPlantedInTheDecompiledFolder_answersNull', async () => {
+      process.env['TMPDIR'] = outside;
+      const folder: string = path.join(outside, 'MetadataAsSource');
+      fs.mkdirSync(folder, { recursive: true });
+      const link: string = path.join(folder, 'planted.cs');
+      fs.symlinkSync(secret, link);
+
+      expect(await invoke(FileChannel.Read, link)).toBeNull();
     });
   });
 
