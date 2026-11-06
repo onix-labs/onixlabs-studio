@@ -11,6 +11,7 @@ import {
   type VersionControlCapability,
   type VersionControlExecutableMode,
 } from './version-control-protocol';
+import { isPackageManagerCapability, PackageManagerCapability } from './package-manager-protocol';
 
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
@@ -160,8 +161,13 @@ import {
  * `1.24.0` moves the container-engine protocol to 1.2 (#1250), with the manifest's shape unchanged:
  * `remove` may take anonymous volumes with the container, and `run` says when the image is missing.
  * The plugin itself reaches `tcp://` and `ssh://` engine addresses. Adds only.
+ *
+ * `1.25.0` adds the `packageManagers` contribution point (#908), the slot package management moves
+ * behind: npm, NuGet and every other ecosystem become plugins, because core runs no tool of its own
+ * (#907). Keyed by the **marker** files a project carries (`package.json`, `*.csproj`), and unlike
+ * version control not a choice of one: every plugin whose marker a folder holds applies. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.24.0';
+export const PLUGIN_API_VERSION: string = '1.25.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -483,6 +489,60 @@ export interface ManifestVersionControl {
    * empty when there is no choice to make.
    */
   readonly executableModes: readonly VersionControlExecutableMode[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a package manager a plugin contributes (#908): npm, NuGet, Cargo and the rest.
+ *
+ * Keyed by the **marker** files a project carries rather than chosen once for the application, and
+ * unlike version control several can apply to one folder: a repository can hold a .NET solution and an
+ * npm package side by side, and each is served by its own plugin.
+ */
+export interface ManifestPackageManager {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `npm`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the ecosystem the plugin serves, lowercase, such as `npm` or `nuget`. Studio shows it and
+   * groups by it, and attaches no other meaning to it.
+   */
+  readonly ecosystem: string;
+
+  /**
+   * Gets the order plugins applying to one folder are listed in, higher first. Nothing is chosen by it.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the file names that mark a project this plugin serves, such as `package.json` or `*.csproj`.
+   * A `*` matches within a name. A folder holding one, or a directory shallowly under it, applies.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically because the panel draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms.
+   */
+  readonly capabilities: readonly PackageManagerCapability[];
 
   /**
    * Gets how to start the plugin.
@@ -1121,6 +1181,11 @@ export interface ManifestContributions {
    * Gets the database engines contributed (1.20.0).
    */
   readonly databaseEngines?: readonly ManifestDatabaseEngine[];
+
+  /**
+   * Gets the package managers contributed (1.25.0).
+   */
+  readonly packageManagers?: readonly ManifestPackageManager[];
 }
 
 /**
@@ -1784,6 +1849,33 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const packageManagers: ManifestPackageManager[] = [];
+  readContributionList(
+    source['packageManagers'],
+    'contributes.packageManagers',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      packageManagers.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        ecosystem: readEcosystem(entry['ecosystem'], `${path}.ecosystem`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readMarkers(entry['markers'], `${path}.markers`, errors),
+        capabilities: readPackageManagerCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
@@ -1792,11 +1884,12 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     agentHarnesses.length === 0 &&
     versionControl.length === 0 &&
     hosting.length === 0 &&
-    databaseEngines.length === 0
+    databaseEngines.length === 0 &&
+    packageManagers.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host or database engine',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system, code host, database engine or package manager',
     );
   }
   return {
@@ -1808,6 +1901,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     versionControl,
     hosting,
     databaseEngines,
+    packageManagers,
   };
 }
 
@@ -2142,6 +2236,72 @@ function readHosts(value: unknown, path: string, errors: Errors): readonly strin
     return [];
   }
   return value as readonly string[];
+}
+
+/**
+ * Matches an ecosystem name: a lowercase word, so two plugins for one ecosystem cannot differ by case.
+ */
+const ECOSYSTEM_PATTERN: RegExp = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Validates the ecosystem a package manager serves.
+ * @param value The candidate.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the ecosystem, or an empty string when invalid.
+ */
+function readEcosystem(value: unknown, path: string, errors: Errors): string {
+  if (typeof value !== 'string' || !ECOSYSTEM_PATTERN.test(value)) {
+    errors.add(path, 'must be a lowercase word, such as "npm"');
+    return '';
+  }
+  return value;
+}
+
+/**
+ * Validates the markers of a package manager: single file names, each of which may hold `*`. A marker
+ * needs something besides the wildcard, since one that matches every file marks nothing.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the markers, or an empty array when invalid.
+ */
+function readMarkers(value: unknown, path: string, errors: Errors): readonly string[] {
+  const names: readonly string[] = readEntryNames(value, path, true, errors);
+  if (names.some((name: string): boolean => name.replaceAll('*', '').length === 0)) {
+    errors.add(path, 'must name something besides a wildcard');
+    return [];
+  }
+  return names;
+}
+
+/**
+ * Validates a package manager's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readPackageManagerCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly PackageManagerCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isPackageManagerCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly PackageManagerCapability[];
 }
 
 /**
