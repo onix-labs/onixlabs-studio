@@ -39,7 +39,7 @@ import { resolveExecutable, runEnvironment, type SessionTemporary } from './envi
 import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format';
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
-import { osSandboxAvailable, shellRule, ShellRuleOutcome } from './sandbox-rules';
+import { osSandboxAvailable, sandboxGuidance, shellRule, ShellRuleOutcome } from './sandbox-rules';
 import { STUDIO_TOOL_PREFIX } from './tools';
 import type { Choice, ProposedChange, Selection, TurnRequest } from './protocol';
 
@@ -597,6 +597,21 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
 }
 
 /**
+ * Adds the sandbox guidance to Studio's instructions, for an agent that holds the shell. One that
+ * cannot run a command has nothing to be told, and telling it would invite it to try.
+ * @param systemPrompt Studio's instructions.
+ * @param open The turn the session opens with, which fixes the sandbox.
+ * @returns Returns the instructions the session runs under.
+ */
+export function withSandboxGuidance(systemPrompt: string, open: TurnRequest): string {
+  if (open.mode === 'chat' || withholdsBuiltInTools(open)) {
+    return systemPrompt;
+  }
+  const guidance: string = sandboxGuidance(open, osSandboxAvailable());
+  return systemPrompt.length === 0 ? guidance : `${systemPrompt}\n\n${guidance}`;
+}
+
+/**
  * Builds the SDK options for a session.
  * @param gate What the permission gate can reach.
  * @param open The turn the session opens with, which fixes the structural options.
@@ -737,7 +752,12 @@ export function buildOptions(
     // first request and resends that record on every resume, ignoring a different `append`. Studio's
     // instructions carry the user's prompt profiles and skills, which can change mid-conversation, and
     // the session reopens to apply them — which only works if the prompt is rendered fresh.
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt, snapshot: false },
+    systemPrompt: {
+      type: 'preset',
+      preset: 'claude_code',
+      append: withSandboxGuidance(systemPrompt, open),
+      snapshot: false,
+    },
     mcpServers: { studio },
     // Read-only project exploration is auto-allowed when there is something to read; everything else
     // reaches the gate. Studio's own tools are not listed here — the gate allows them by prefix,
