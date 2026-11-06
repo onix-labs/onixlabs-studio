@@ -35,7 +35,7 @@ import {
   isWriteWithinRoots,
   writeTargetPath,
 } from './confinement';
-import { resolveExecutable, runEnvironment } from './environment';
+import { resolveExecutable, runEnvironment, type SessionTemporary } from './environment';
 import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format';
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
@@ -204,11 +204,15 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
  * network locations, which have no gate equivalent at all.
  *
  * Every list is omitted when empty, so a user who configured nothing gets precisely the sandbox Studio
- * has always applied.
+ * has always applied, plus the session's temporary folder when it has one.
  * @param turn The opening turn.
+ * @param temporary The session's temporary folder, or null when it has none.
  * @returns Returns the sandbox settings.
  */
-export function sandboxFor(turn: TurnRequest): SandboxSettings {
+export function sandboxFor(
+  turn: TurnRequest,
+  temporary: SessionTemporary | null = null,
+): SandboxSettings {
   const sandbox: SandboxSettings = {
     enabled: true,
     // Sandboxed Bash is still gated: the sandbox is defence in depth on top of the prompt, not a
@@ -217,9 +221,13 @@ export function sandboxFor(turn: TurnRequest): SandboxSettings {
     // Degrade gracefully where the platform sandbox is missing: run unsandboxed rather than fail.
     failIfUnavailable: false,
   };
-  if (turn.allowedWritePaths.length > 0 || turn.deniedWritePaths.length > 0) {
+  const allowWrite: readonly string[] = [
+    ...turn.allowedWritePaths,
+    ...(temporary === null ? [] : [temporary.directory]),
+  ];
+  if (allowWrite.length > 0 || turn.deniedWritePaths.length > 0) {
     sandbox.filesystem = {
-      ...(turn.allowedWritePaths.length > 0 ? { allowWrite: [...turn.allowedWritePaths] } : {}),
+      ...(allowWrite.length > 0 ? { allowWrite: [...allowWrite] } : {}),
       ...(absolutePathsOf(turn.deniedWritePaths).length > 0
         ? { denyWrite: absolutePathsOf(turn.deniedWritePaths) }
         : {}),
@@ -596,6 +604,7 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
  * @param systemPrompt Studio's instructions for the surface and mode, as the `tools` answer gave them.
  * @param apiKey The API key to authenticate with, or null to use the local Claude login.
  * @param controller The abort controller wired to the SDK query.
+ * @param temporary The session's temporary folder, or null when it has none.
  * @returns Returns the options.
  */
 export function buildOptions(
@@ -605,6 +614,7 @@ export function buildOptions(
   systemPrompt: string,
   apiKey: string | null,
   controller: AbortController,
+  temporary: SessionTemporary | null = null,
 ): Options {
   const readOnly: boolean = open.mode === 'chat';
   const hasReadableContext: boolean = open.workspaceRoot !== null || open.contextPaths.length > 0;
@@ -619,7 +629,7 @@ export function buildOptions(
   const disallowedTools: readonly string[] = Object.entries(open.toolPolicies)
     .filter(([, value]: [string, string]): boolean => value === 'deny')
     .map(([tool]: [string, string]): string => tool);
-  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey);
+  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey, temporary);
   const executable: string | undefined = resolveExecutable(
     open.providerSettings['claudeExecutable'],
     env ?? process.env,
@@ -722,7 +732,7 @@ export function buildOptions(
         },
       ],
     },
-    sandbox: sandboxFor(open),
+    sandbox: sandboxFor(open, temporary),
     // ⛔ `snapshot: false` (#955): by default the CLI records a conversation's system prompt on its
     // first request and resends that record on every resume, ignoring a different `append`. Studio's
     // instructions carry the user's prompt profiles and skills, which can change mid-conversation, and
