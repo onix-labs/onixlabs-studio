@@ -5,7 +5,7 @@ import { Editors } from '@shared/angular/services/editors/editors';
 import { LspDefinition, LspFeatures } from '@shared/angular/services/lsp/lsp-features';
 import { captureEditorCapabilities } from '@shared/angular/services/monaco/monaco-editor-capabilities';
 import { EditorNavigation } from './editor-navigation';
-import { ReferenceItem, ReferenceList } from './reference-list';
+import { CodeLocation, ReferenceItem, ReferenceList } from './reference-list';
 import { ReferencesRouter } from './references-router';
 import { HierarchyRouter, HierarchySource } from '@shared/angular/services/hierarchy/hierarchy';
 
@@ -361,6 +361,45 @@ describe('EditorNavigation (#1014)', () => {
 
       expect(shown).toEqual([]);
       expect(fake.calls).not.toContain('focus');
+    });
+
+    describe('listPlaces (#1207)', () => {
+      /**
+       * A place in the document the editor shows.
+       */
+      const PLACE: CodeLocation = { path: '/root/app.ts', range: span(1, 7, 14) };
+
+      it('listsThem_evenOne_asClickingACountListsWhatItCounts', async () => {
+        const navigation: EditorNavigation = build();
+
+        await navigation.listPlaces(fake.editor, 'implementations', [PLACE]);
+
+        expect(shown).toHaveLength(1);
+        expect(shown[0]).toMatchObject({ kind: 'implementations', status: 'done' });
+        expect(shown[0].items).toHaveLength(1);
+      });
+
+      it('goesToTheFirst_whereNoPanelAnswers', async () => {
+        const navigation: EditorNavigation = build(false);
+        TestBed.inject(Editors).register(MODEL_URI, {
+          documentId: 'doc-1',
+          path: '/root/app.ts',
+          name: 'app.ts',
+        });
+
+        await navigation.listPlaces(fake.editor, 'references', [PLACE]);
+
+        expect(shown).toEqual([]);
+        expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+      });
+
+      it('doesNothing_withNoPlaces', async () => {
+        const navigation: EditorNavigation = build();
+
+        await navigation.listPlaces(fake.editor, 'references', []);
+
+        expect(shown).toEqual([]);
+      });
     });
 
     it('oneTypeDefinition_goesStraightThere_listingNothing', async () => {

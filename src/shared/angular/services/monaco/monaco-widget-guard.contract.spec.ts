@@ -476,7 +476,7 @@ function removedByStudio(isMac: boolean): Set<string> {
   const ignore: () => void = (): void => undefined;
   installFindCommands(monaco, isMac, ignore);
   installGoToCommands(monaco, isMac, ignore);
-  installNavigationCommands(monaco, isMac, ignore);
+  installNavigationCommands(monaco, isMac, ignore, ignore);
   installRenameCommands(monaco, ignore);
   installQuickFixCommands(monaco, ignore);
   installHoverCommands(monaco, { showHover: ignore, goToProblem: ignore, showProblem: ignore });

@@ -383,6 +383,36 @@ export class EditorNavigation {
   }
 
   /**
+   * Lists places already found, for a lens that brings its own (#1207): in the References panel, even
+   * for one, as clicking a count lists what it counts — or goes to the first, where no panel answers.
+   * @param editor The editor, placed at the symbol the list is about.
+   * @param kind What the list lists.
+   * @param places The places.
+   * @returns Returns a promise that resolves once they are shown.
+   */
+  public async listPlaces(
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    places: readonly CodeLocation[],
+  ): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    const position: MonacoApi.Position | null = editor.getPosition();
+    const first: CodeLocation | undefined = places[0];
+    if (model === null || position === null || first === undefined) {
+      return;
+    }
+    if (!this.router.answers(editor)) {
+      await this.goTo(editor, first);
+      return;
+    }
+    const items: readonly ReferenceItem[] = await this.linePreviews.fill(
+      places,
+      instanceOf(editor),
+    );
+    this.router.show({ kind, symbol: symbolAt(model, position), status: 'done', items }, editor);
+  }
+
+  /**
    * Goes to a place: in the editor itself when it shows that document, otherwise by opening the file
    * in the workspace and revealing the place in its editor once that has registered. The place is
    * centred and the editor focused, with the caret at its start — or, for a listed place on one line,
