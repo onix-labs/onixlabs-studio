@@ -1,4 +1,7 @@
-import { STUDIO_REFERENCES_LENS_COMMAND } from '@shared/angular/services/monaco/monaco-navigation-commands';
+import {
+  STUDIO_LOCATIONS_LENS_COMMAND,
+  STUDIO_REFERENCES_LENS_COMMAND,
+} from '@shared/angular/services/monaco/monaco-navigation-commands';
 import {
   applyAutoInsert,
   isDocCommentTyping,
@@ -408,6 +411,13 @@ export interface LspCodeLensSupport {
  * position, and the client is to list the symbol's references (#1149).
  */
 const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
+
+/**
+ * The client command typescript-language-server gives a reference or implementation lens, named after
+ * VS Code's (#1207): its arguments are the document's URI, the symbol's position, and the places the
+ * lens counted, which Studio has to list itself.
+ */
+const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
 
 /**
  * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
@@ -1367,10 +1377,28 @@ export class LspFeatures {
   }
 
   /**
+   * Reads the places a lens brought with it.
+   * @param raw The lens's list of locations, untrusted.
+   * @returns Returns the places by path, leaving out any it cannot read.
+   */
+  private lensPlaces(raw: unknown): readonly LspDefinition[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    const places: LspDefinition[] = [];
+    for (const entry of raw as readonly (Partial<LspLocation> | null)[]) {
+      if (typeof entry?.uri === 'string' && entry.range !== undefined) {
+        places.push({ path: this.uriToPath(entry.uri), range: this.toRange(entry.range) });
+      }
+    }
+    return places;
+  }
+
+  /**
    * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
-   * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}); a command the server runs
-   * itself is run there; a Run Test or Debug Test lens runs its tests on the session (#1150); any
-   * other shows its title alone.
+   * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}), or the places it brought
+   * (through {@link STUDIO_LOCATIONS_LENS_COMMAND}); a command the server runs itself is run there; a
+   * Run Test or Debug Test lens runs its tests on the session (#1150); any other shows its title alone.
    * @param model The model the lens is in.
    * @param ref The document's session.
    * @param lens The server's lens, untrusted.
@@ -1408,6 +1436,23 @@ export class LspFeatures {
           id: STUDIO_REFERENCES_LENS_COMMAND,
           title: command.title,
           arguments: [model.uri.toString(), position],
+        },
+      };
+    }
+    if (command.command === SHOW_REFERENCES_COMMAND) {
+      const position: unknown =
+        command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
+      return {
+        command: {
+          id: STUDIO_LOCATIONS_LENS_COMMAND,
+          title: command.title,
+          // Both kinds of lens send this one command: only the count's wording tells them apart.
+          arguments: [
+            model.uri.toString(),
+            position,
+            /implementation/i.test(command.title) ? 'implementations' : 'references',
+            this.lensPlaces(command.arguments?.[2]),
+          ],
         },
       };
     }

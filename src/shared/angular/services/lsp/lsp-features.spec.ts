@@ -1185,6 +1185,65 @@ describe('LspFeatures', () => {
       expect(emitter?.fired).toBe(2);
     });
 
+    it.each<[string, string]>([
+      ['2 references', 'references'],
+      ['1 implementation', 'implementations'],
+    ])('resolved_%s_listsThePlacesItBrought_as %s (#1207)', async (title: string, kind: string) => {
+      codeLensSupport = { resolve: true };
+      const place: unknown = {
+        uri: 'file:///root/other.ts',
+        range: { start: { line: 4, character: 2 }, end: { line: 4, character: 7 } },
+      };
+      responses['textDocument/codeLens'] = [LENS];
+      responses['codeLens/resolve'] = {
+        ...(LENS as object),
+        command: {
+          title,
+          command: 'editor.action.showReferences',
+          arguments: ['file:///root/app.ts', { line: 8, character: 11 }, [place, null, { uri: 7 }]],
+        },
+      };
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('csharp');
+      const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+      const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+      expect((resolved as { command: unknown }).command).toEqual({
+        id: 'studio.lsp.codeLensLocations',
+        title,
+        arguments: [
+          expect.any(String),
+          { line: 8, character: 11 },
+          kind,
+          [
+            {
+              path: '/root/other.ts',
+              range: { startLineNumber: 5, startColumn: 3, endLineNumber: 5, endColumn: 8 },
+            },
+          ],
+        ],
+      });
+    });
+
+    it('resolved_withNoCommandName_showsItsCountAlone (#1207)', async () => {
+      codeLensSupport = { resolve: true };
+      responses['textDocument/codeLens'] = [LENS];
+      responses['codeLens/resolve'] = {
+        ...(LENS as object),
+        command: { title: '0 references', command: '', arguments: [] },
+      };
+      const features: LspFeatures = await build();
+      features.enableCodeLens('csharp');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('csharp');
+      const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+      const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+      expect((resolved as { command: unknown }).command).toEqual({ id: '', title: '0 references' });
+    });
+
     it('areAskedFor_andFilledInAsShown_aReferencesLensListingItsSymbolsReferences', async () => {
       codeLensSupport = { resolve: true };
       responses['textDocument/codeLens'] = [LENS, { data: 'no range' }];

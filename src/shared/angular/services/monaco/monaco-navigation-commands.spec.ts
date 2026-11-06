@@ -12,6 +12,7 @@ import {
   STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
   STUDIO_CALL_HIERARCHY_COMMAND,
   STUDIO_TYPE_HIERARCHY_COMMAND,
+  STUDIO_LOCATIONS_LENS_COMMAND,
   STUDIO_REFERENCES_LENS_COMMAND,
 } from './monaco-navigation-commands';
 
@@ -47,6 +48,11 @@ interface Installed {
   readonly rules: MonacoApi.editor.IKeybindingRule[];
   readonly commands: Map<string, () => void>;
   readonly navigated: { editor: MonacoApi.editor.ICodeEditor; mode: NavigationMode }[];
+  readonly listed: {
+    editor: MonacoApi.editor.ICodeEditor;
+    kind: string;
+    places: readonly unknown[];
+  }[];
   create(editor: MonacoApi.editor.ICodeEditor): void;
 }
 
@@ -85,6 +91,7 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     rules: [],
     commands: new Map(),
     navigated: [],
+    listed: [],
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
@@ -106,6 +113,8 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     isMac,
     (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode): void =>
       void installed.navigated.push({ editor, mode }),
+    (editor: MonacoApi.editor.ICodeEditor, kind: string, places: readonly unknown[]): void =>
+      void installed.listed.push({ editor, kind, places }),
   );
   return installed;
 }
@@ -319,6 +328,26 @@ describe('installNavigationCommands (#1014)', () => {
 
     expect(placed).toEqual([{ lineNumber: 9, column: 12 }]);
     expect(installed.navigated).toEqual([{ editor: lensEditor, mode: 'references' }]);
+  });
+
+  it('aLensWithItsOwnPlaces_placesItsDocumentsEditorAtTheSymbol_andListsThem (#1207)', () => {
+    const placed: unknown[] = [];
+    const lensEditor: MonacoApi.editor.ICodeEditor = {
+      getModel: (): unknown => ({ uri: { toString: (): string => 'inmemory://model/3' } }),
+      setPosition: (position: unknown): void => void placed.push(position),
+    } as unknown as MonacoApi.editor.ICodeEditor;
+    const installed: Installed = install(true, [lensEditor]);
+    const run: (...args: unknown[]) => void = installed.commands.get(
+      STUDIO_LOCATIONS_LENS_COMMAND,
+    ) as unknown as (...args: unknown[]) => void;
+    const places: readonly unknown[] = [{ path: '/root/a.ts', range: {} }];
+
+    run(undefined, 'inmemory://model/3', { line: 2, character: 4 }, 'implementations', places);
+    run(undefined, 'inmemory://model/404', { line: 2, character: 4 }, 'references', places);
+    run(undefined, 'inmemory://model/3', 'not a position', 'references', places);
+
+    expect(placed).toEqual([{ lineNumber: 3, column: 5 }]);
+    expect(installed.listed).toEqual([{ editor: lensEditor, kind: 'implementations', places }]);
   });
 
   it('everyEditorCreated_neverPeeks_soSeveralAnswersGoToTheFirst', () => {

@@ -1,4 +1,8 @@
 import type * as MonacoApi from 'monaco-editor';
+import type {
+  CodeLocation,
+  ReferenceListKind,
+} from '@shared/angular/services/references/reference-list';
 import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-commands';
 
 /**
@@ -44,6 +48,14 @@ export const STUDIO_GO_TO_DEFINITION_COMMAND: string = 'studio.goToDefinition';
  * References panel. Its arguments are the model's URI and the symbol's protocol position.
  */
 export const STUDIO_REFERENCES_LENS_COMMAND: string = 'studio.lsp.codeLensReferences';
+
+/**
+ * The Monaco command a lens that brings its own places runs (#1207): typescript-language-server's
+ * reference and implementation lenses hand over what they found, so nothing is asked again and the
+ * list says what the count on the lens says. Its arguments are the model's URI, the symbol's protocol
+ * position, what the list lists, and the places.
+ */
+export const STUDIO_LOCATIONS_LENS_COMMAND: string = 'studio.lsp.codeLensLocations';
 
 /**
  * Names Studio's Find All References command, bound to ⇧F12 (Shift+F12) in every editor.
@@ -129,11 +141,17 @@ interface DefinitionLinkContribution extends MonacoApi.editor.IEditorContributio
  * @param monaco The Monaco instance.
  * @param isMac Whether the host is macOS, which decides the ⌘-click modifier (⌘ there, Ctrl elsewhere).
  * @param onNavigate Receives the editor and the mode when F12, ⇧F12 or a ⌘-click runs.
+ * @param onPlaces Receives the editor, what the list lists and the places when a lens brings its own.
  */
 export function installNavigationCommands(
   monaco: typeof MonacoApi,
   isMac: boolean,
   onNavigate: (editor: MonacoApi.editor.ICodeEditor, mode: NavigationMode) => void,
+  onPlaces: (
+    editor: MonacoApi.editor.ICodeEditor,
+    kind: ReferenceListKind,
+    places: readonly CodeLocation[],
+  ) => void,
 ): void {
   const run: (mode: NavigationMode) => () => void =
     (mode: NavigationMode): (() => void) =>
@@ -149,29 +167,54 @@ export function installNavigationCommands(
   monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
   monaco.editor.registerCommand(STUDIO_CALL_HIERARCHY_COMMAND, run('callHierarchy'));
   monaco.editor.registerCommand(STUDIO_TYPE_HIERARCHY_COMMAND, run('typeHierarchy'));
-  // A references lens (#1149) lists its symbol's references: the editor showing the lens's document is
-  // placed at the symbol, then searched from as Find All References searches.
+  // A lens's symbol is in the document the lens is in: the editor showing it is placed at the symbol.
+  const atSymbol: (
+    modelUri: unknown,
+    position: unknown,
+  ) => MonacoApi.editor.ICodeEditor | undefined = (
+    modelUri: unknown,
+    position: unknown,
+  ): MonacoApi.editor.ICodeEditor | undefined => {
+    const at: { line?: unknown; character?: unknown } | null =
+      (position as { line?: unknown; character?: unknown } | null) ?? null;
+    if (
+      typeof modelUri !== 'string' ||
+      typeof at?.line !== 'number' ||
+      typeof at.character !== 'number'
+    ) {
+      return undefined;
+    }
+    const editor: MonacoApi.editor.ICodeEditor | undefined = monaco.editor
+      .getEditors()
+      .find(
+        (candidate: MonacoApi.editor.ICodeEditor): boolean =>
+          candidate.getModel()?.uri.toString() === modelUri,
+      );
+    editor?.setPosition({ lineNumber: at.line + 1, column: at.character + 1 });
+    return editor;
+  };
+  // A references lens (#1149) lists its symbol's references, searched for as Find All References does.
   monaco.editor.registerCommand(
     STUDIO_REFERENCES_LENS_COMMAND,
     (_accessor: unknown, modelUri: unknown, position: unknown): void => {
-      const at: { line?: unknown; character?: unknown } | null =
-        (position as { line?: unknown; character?: unknown } | null) ?? null;
-      if (
-        typeof modelUri !== 'string' ||
-        typeof at?.line !== 'number' ||
-        typeof at.character !== 'number'
-      ) {
-        return;
-      }
-      const editor: MonacoApi.editor.ICodeEditor | undefined = monaco.editor
-        .getEditors()
-        .find(
-          (candidate: MonacoApi.editor.ICodeEditor): boolean =>
-            candidate.getModel()?.uri.toString() === modelUri,
-        );
+      const editor: MonacoApi.editor.ICodeEditor | undefined = atSymbol(modelUri, position);
       if (editor !== undefined) {
-        editor.setPosition({ lineNumber: at.line + 1, column: at.character + 1 });
         onNavigate(editor, 'references');
+      }
+    },
+  );
+  monaco.editor.registerCommand(
+    STUDIO_LOCATIONS_LENS_COMMAND,
+    (
+      _accessor: unknown,
+      modelUri: unknown,
+      position: unknown,
+      kind: ReferenceListKind,
+      places: readonly CodeLocation[],
+    ): void => {
+      const editor: MonacoApi.editor.ICodeEditor | undefined = atSymbol(modelUri, position);
+      if (editor !== undefined) {
+        onPlaces(editor, kind, places);
       }
     },
   );

@@ -65,6 +65,10 @@ import { FindRouter } from '@shared/angular/services/find-router/find-router';
 import { GoToRouter } from '@shared/angular/services/go-to/go-to-router';
 import type { GoToMode } from '@shared/angular/services/go-to/go-to-model';
 import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
+import type {
+  CodeLocation,
+  ReferenceListKind,
+} from '@shared/angular/services/references/reference-list';
 import { RenameSymbol } from '@shared/angular/services/rename/rename-symbol';
 import { QuickFixes } from '@shared/angular/services/quick-fix/quick-fixes';
 import { HoverCards } from '@shared/angular/services/hover/hover-cards';
@@ -809,6 +813,14 @@ export class Monaco {
             void navigation.showHierarchy(editor, 'types');
             return;
         }
+      },
+      (
+        editor: MonacoApi.editor.ICodeEditor,
+        kind: ReferenceListKind,
+        places: readonly CodeLocation[],
+      ): void => {
+        this.log.info('Monaco', 'A lens lists its places', kind);
+        void this.injector.get(EditorNavigation).listPlaces(editor, kind, places);
       },
     );
   }
