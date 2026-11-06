@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { realPathOf } from './ai/write-confinement';
 import { logger } from './logger';
 
 /**
@@ -60,6 +61,23 @@ export class WorkspaceContext {
     const resolved: string = path.resolve(target);
     for (const root of this.roots) {
       if (resolved === root || resolved.startsWith(root + path.sep)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Determines whether a real path lies inside any open workspace root, each root taken at its own real
+   * path. {@link isWithin} compares names; this is the answer for a path that has had its links
+   * followed, which a root reached through a link (macOS's `/tmp` is one) would otherwise never match.
+   * @param real The real path to test, from {@link realPathOf}.
+   * @returns Returns true when it is an open workspace root or inside one.
+   */
+  public holdsRealPath(real: string): boolean {
+    for (const root of this.roots) {
+      const realRoot: string = realPathOf(root);
+      if (real === realRoot || real.startsWith(realRoot + path.sep)) {
         return true;
       }
     }

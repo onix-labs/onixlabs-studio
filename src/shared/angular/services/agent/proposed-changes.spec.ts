@@ -1,28 +1,21 @@
 import { TestBed } from '@angular/core/testing';
-import type { FileInfo } from '@shared/api/file-channels';
-import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import type { AiProposedChange } from '@shared/api/ai-types';
 import type { ProposedDiff } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
 import { ProposedChanges } from './proposed-changes';
 
 describe('ProposedChanges', () => {
   /**
-   * Builds the service over a file system holding one file, or none.
+   * Builds the service over a file as the main process read it, or none.
    * @param content The file's content, or null when it does not exist.
-   * @returns Returns the service.
+   * @returns Returns something diffing a change against that file.
    */
-  function over(content: string | null): ProposedChanges {
-    TestBed.configureTestingModule({
-      providers: [
-        {
-          provide: FileSystem,
-          useValue: {
-            read: (): Promise<FileInfo | null> =>
-              Promise.resolve(content === null ? null : ({ content } as FileInfo)),
-          },
-        },
-      ],
-    });
-    return TestBed.inject(ProposedChanges);
+  function over(content: string | null): {
+    diffOf: (change: AiProposedChange) => Promise<ProposedDiff>;
+  } {
+    return {
+      diffOf: (change: AiProposedChange): Promise<ProposedDiff> =>
+        TestBed.inject(ProposedChanges).diffOf({ ...change, original: content }),
+    };
   }
 
   it('diffsAWriteAgainstTheFileAsItIs', async () => {

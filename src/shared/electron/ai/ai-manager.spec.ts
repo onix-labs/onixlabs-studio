@@ -1285,12 +1285,18 @@ describe('AiManager', () => {
       expect(eventsOf('permission')).toHaveLength(before + 1);
     });
 
-    it('permission_carriesTheProposedChangeToThePrompt', () => {
-      const change: never = { before: 'a', after: 'b' } as never;
+    it('permission_carriesTheProposedChangeToThePrompt_withTheFileAsItIs', async () => {
+      const change: never = { path: '/definitely/not/here', content: 'b' } as never;
 
       void context.requestPermission('Write', '/a', undefined, change);
 
-      expect(eventsOf('permission').at(-1)?.['change']).toBe(change);
+      await vi.waitFor(() => expect(eventsOf('permission')).not.toEqual([]));
+
+      expect(eventsOf('permission').at(-1)?.['change']).toEqual({
+        path: '/definitely/not/here',
+        content: 'b',
+        original: null,
+      });
     });
 
     /**

@@ -35,7 +35,7 @@ import {
   isWriteWithinRoots,
   writeTargetPath,
 } from './confinement';
-import { resolveExecutable, runEnvironment } from './environment';
+import { resolveExecutable, runEnvironment, type SessionTemporary } from './environment';
 import { coarseGrantSource, prettyToolName, summarizeToolInput } from './format';
 import { note } from './log';
 import type { RemoteControlBridge } from './remote-control';
@@ -43,6 +43,7 @@ import {
   leavesSandbox,
   osSandboxAvailable,
   RUN_UNSANDBOXED,
+  sandboxGuidance,
   SHELL_TOOL,
   shellRule,
   ShellRuleOutcome,
@@ -223,11 +224,15 @@ export function parseQuestions(input: Record<string, unknown>): readonly ParsedQ
  * network locations, which have no gate equivalent at all.
  *
  * Every list is omitted when empty, so a user who configured nothing gets precisely the sandbox Studio
- * has always applied.
+ * has always applied, plus the session's temporary folder when it has one.
  * @param turn The opening turn.
+ * @param temporary The session's temporary folder, or null when it has none.
  * @returns Returns the sandbox settings.
  */
-export function sandboxFor(turn: TurnRequest): SandboxSettings {
+export function sandboxFor(
+  turn: TurnRequest,
+  temporary: SessionTemporary | null = null,
+): SandboxSettings {
   const sandbox: SandboxSettings = {
     enabled: true,
     // Sandboxed Bash is still gated: the sandbox is defence in depth on top of the prompt, not a
@@ -236,9 +241,13 @@ export function sandboxFor(turn: TurnRequest): SandboxSettings {
     // Degrade gracefully where the platform sandbox is missing: run unsandboxed rather than fail.
     failIfUnavailable: false,
   };
-  if (turn.allowedWritePaths.length > 0 || turn.deniedWritePaths.length > 0) {
+  const allowWrite: readonly string[] = [
+    ...turn.allowedWritePaths,
+    ...(temporary === null ? [] : [temporary.directory]),
+  ];
+  if (allowWrite.length > 0 || turn.deniedWritePaths.length > 0) {
     sandbox.filesystem = {
-      ...(turn.allowedWritePaths.length > 0 ? { allowWrite: [...turn.allowedWritePaths] } : {}),
+      ...(allowWrite.length > 0 ? { allowWrite: [...allowWrite] } : {}),
       ...(absolutePathsOf(turn.deniedWritePaths).length > 0
         ? { denyWrite: absolutePathsOf(turn.deniedWritePaths) }
         : {}),
@@ -636,6 +645,21 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
 }
 
 /**
+ * Adds the sandbox guidance to Studio's instructions, for an agent that holds the shell. One that
+ * cannot run a command has nothing to be told, and telling it would invite it to try.
+ * @param systemPrompt Studio's instructions.
+ * @param open The turn the session opens with, which fixes the sandbox.
+ * @returns Returns the instructions the session runs under.
+ */
+export function withSandboxGuidance(systemPrompt: string, open: TurnRequest): string {
+  if (open.mode === 'chat' || withholdsBuiltInTools(open)) {
+    return systemPrompt;
+  }
+  const guidance: string = sandboxGuidance(open, osSandboxAvailable());
+  return systemPrompt.length === 0 ? guidance : `${systemPrompt}\n\n${guidance}`;
+}
+
+/**
  * Builds the SDK options for a session.
  * @param gate What the permission gate can reach.
  * @param open The turn the session opens with, which fixes the structural options.
@@ -643,6 +667,7 @@ export function withholdsBuiltInTools(open: TurnRequest): boolean {
  * @param systemPrompt Studio's instructions for the surface and mode, as the `tools` answer gave them.
  * @param apiKey The API key to authenticate with, or null to use the local Claude login.
  * @param controller The abort controller wired to the SDK query.
+ * @param temporary The session's temporary folder, or null when it has none.
  * @returns Returns the options.
  */
 export function buildOptions(
@@ -652,6 +677,7 @@ export function buildOptions(
   systemPrompt: string,
   apiKey: string | null,
   controller: AbortController,
+  temporary: SessionTemporary | null = null,
 ): Options {
   const readOnly: boolean = open.mode === 'chat';
   const hasReadableContext: boolean = open.workspaceRoot !== null || open.contextPaths.length > 0;
@@ -671,7 +697,7 @@ export function buildOptions(
     .map(([tool]: [string, string]): string => tool);
   // Read once per session, as the gate does.
   const sandboxAvailable: boolean = osSandboxAvailable();
-  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey);
+  const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey, temporary);
   const executable: string | undefined = resolveExecutable(
     open.providerSettings['claudeExecutable'],
     env ?? process.env,
@@ -787,12 +813,17 @@ export function buildOptions(
         },
       ],
     },
-    sandbox: sandboxFor(open),
+    sandbox: sandboxFor(open, temporary),
     // ⛔ `snapshot: false` (#955): by default the CLI records a conversation's system prompt on its
     // first request and resends that record on every resume, ignoring a different `append`. Studio's
     // instructions carry the user's prompt profiles and skills, which can change mid-conversation, and
     // the session reopens to apply them — which only works if the prompt is rendered fresh.
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPrompt, snapshot: false },
+    systemPrompt: {
+      type: 'preset',
+      preset: 'claude_code',
+      append: withSandboxGuidance(systemPrompt, open),
+      snapshot: false,
+    },
     mcpServers: { studio },
     // Read-only project exploration is auto-allowed when there is something to read; everything else
     // reaches the gate. Studio's own tools are not listed here — the gate allows them by prefix,

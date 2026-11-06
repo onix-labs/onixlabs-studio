@@ -1,13 +1,11 @@
-import { inject, Service } from '@angular/core';
+import { Service } from '@angular/core';
 import type { AiProposedChange } from '@shared/api/ai-types';
-import type { FileInfo } from '@shared/api/file-channels';
 import {
   applyReplacements,
   fragmentDiff,
   ProposedDiff,
   proposedDiff,
 } from '@shared/angular/components/agent-cards/agent-edit-diff/proposed-diff';
-import { FileSystem } from '@shared/angular/services/file-system/file-system';
 
 /**
  * Works out the diff a permission prompt shows for a change an agent proposes to a file (#891): the
@@ -16,22 +14,30 @@ import { FileSystem } from '@shared/angular/services/file-system/file-system';
  * A write is diffed against the file, or against nothing when it does not exist yet. An edit is applied
  * to the file as the agent's own tool would apply it; when its text is no longer in the file, the
  * replaced text alone is shown, since where it would land cannot be said.
+ *
+ * The file as it is now comes with the change: the main process read it, because a path a model chose
+ * is not one the renderer may read (#1174).
  */
 @Service()
 export class ProposedChanges {
-  /**
-   * Holds the file-system client the file is read through.
-   */
-  private readonly files: FileSystem = inject(FileSystem);
-
   /**
    * Works out the diff for a proposed change.
    * @param change The change.
    * @returns Returns the diff.
    */
-  public async diffOf(change: AiProposedChange): Promise<ProposedDiff> {
-    const read: FileInfo | null = await this.files.read(change.path).catch((): null => null);
-    const original: string | null = read?.content ?? null;
+  public diffOf(change: AiProposedChange): Promise<ProposedDiff> {
+    return new Promise<ProposedDiff>((resolve: (diff: ProposedDiff) => void): void =>
+      resolve(this.work(change)),
+    );
+  }
+
+  /**
+   * Works out the diff, which a change too large to compare fails.
+   * @param change The change.
+   * @returns Returns the diff.
+   */
+  private work(change: AiProposedChange): ProposedDiff {
+    const original: string | null = change.original ?? null;
     if (change.content !== undefined) {
       return proposedDiff(change.path, original, change.content);
     }

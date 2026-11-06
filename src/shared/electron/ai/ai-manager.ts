@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
 import { liveSessionBusyReason, trackTaskEvent } from './live-session-activity';
+import { proposedOriginal } from './proposed-original';
 import type {
   AiProposedChange,
   AgentContextRef,
@@ -2082,15 +2083,26 @@ export class AiManager {
         );
       }
       signal.addEventListener('abort', (): void => settle(false), { once: true });
-      this.emit({
-        requestId,
-        kind: 'permission',
-        permissionId,
-        name,
-        detail,
-        hasWorkspace: workspaceRoot !== null,
-        remembers: permissionRuleScope(name, detail),
-        ...(change === undefined ? {} : { change }),
+      const prompt: (proposed?: AiProposedChange) => void = (proposed?: AiProposedChange): void =>
+        this.emit({
+          requestId,
+          kind: 'permission',
+          permissionId,
+          name,
+          detail,
+          hasWorkspace: workspaceRoot !== null,
+          remembers: permissionRuleScope(name, detail),
+          ...(proposed === undefined ? {} : { change: proposed }),
+        });
+      if (change === undefined) {
+        prompt();
+        return;
+      }
+      void proposedOriginal(change.path, workspaceRoot).then((original: string | null): void => {
+        // The prompt may have been answered from elsewhere or aborted while the file was read.
+        if (this.permissions.has(permissionId)) {
+          prompt({ ...change, original });
+        }
       });
     });
   }

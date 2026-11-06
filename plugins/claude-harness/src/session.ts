@@ -59,7 +59,12 @@ import {
   type StreamState,
   type UsageState,
 } from './events';
-import { hasLocalLogin } from './environment';
+import {
+  closeSessionTemporary,
+  hasLocalLogin,
+  openSessionTemporary,
+  type SessionTemporary,
+} from './environment';
 import { note } from './log';
 import { buildOptions, type GateContext } from './options';
 import type {
@@ -315,6 +320,11 @@ export class Session {
    * reopen can carry it into the conversation (#955).
    */
   private openedInstructions: string | null = null;
+
+  /**
+   * Holds the temporary folder this session's commands share (#1165), or null until it first opens.
+   */
+  private temporary: SessionTemporary | null = null;
 
   /**
    * Counts the queries this session has opened, so a retired query's prompt stream and pump can tell
@@ -585,6 +595,8 @@ export class Session {
     this.controller?.abort();
     this.wake?.();
     await this.pumpDone?.catch((): undefined => undefined);
+    closeSessionTemporary(this.temporary);
+    this.temporary = null;
   }
 
   /**
@@ -757,6 +769,8 @@ export class Session {
       throw new Error('The Claude session has ended.');
     }
     this.controller = controller;
+    // Kept across a reopen between turns: the conversation goes on, so what it left there must too.
+    this.temporary ??= openSessionTemporary();
     this.options = buildOptions(
       gate,
       turn,
@@ -764,6 +778,7 @@ export class Session {
       offer.systemPrompt,
       apiKey,
       controller,
+      this.temporary,
     );
     this.openedInstructions = offer.systemPrompt;
     const generation: number = this.generation;
