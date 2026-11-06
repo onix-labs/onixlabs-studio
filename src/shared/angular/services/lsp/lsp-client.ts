@@ -42,6 +42,7 @@ import {
   fromLspWorkspaceEdit,
   SkippedEdit,
   WorkspaceEditOutcome,
+  WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
@@ -57,6 +58,7 @@ import { isErrorListDiagnostic, toDiagnostic, toMarkerData } from './lsp-diagnos
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
+  fileRenameFiltersOf,
   executeCommandsOf,
   formattingSupportOf,
   inlayHintSupportOf,
@@ -108,6 +110,12 @@ const UNRESTORED_GATHER_MS: number = 1_500;
  * worth.
  */
 const MAX_WORKSPACE_SYMBOLS: number = 200;
+
+/**
+ * How long a rename waits for a language server to say what else it changes (#1207). A rename the user
+ * asked for must happen: a server that takes longer simply has nothing followed.
+ */
+const FILE_RENAME_TIMEOUT_MS: number = 5_000;
 
 /**
  * A symbol found by name across the workspace (#1146).
@@ -963,6 +971,15 @@ export class LspClient implements OnDestroy {
   private readonly workspaceSymbolSessions: Set<string> = new Set<string>();
 
   /**
+   * Holds, by session, the patterns of the paths its server wants to be asked about before a rename
+   * (#1207); a session whose server wants none has no entry.
+   */
+  private readonly fileRenameFilters: Map<string, readonly RegExp[]> = new Map<
+    string,
+    readonly RegExp[]
+  >();
+
+  /**
    * Holds which of the compiler's views of a document's structure each session's server gives
    * (#1147), keyed by session id.
    */
@@ -1781,6 +1798,73 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Asks every running session whose server wants to know what else has to change for a file or
+   * folder to be renamed (#1207): the imports of it, for TypeScript. Nothing is applied here. A server
+   * that does not answer in time gives nothing, as a rename must not wait on it.
+   * @param oldPath The entry's absolute path.
+   * @param newPath The absolute path it is about to have.
+   * @returns Returns the edits, keyed by the paths as they stand before the rename.
+   */
+  public async fileRenameEdits(oldPath: string, newPath: string): Promise<WorkspaceTextEdits> {
+    const asked: string = normalise(oldPath);
+    const sessions: string[] = [...this.fileRenameFilters.entries()]
+      .filter(([sessionId, filters]: [string, readonly RegExp[]]): boolean => {
+        const info: LspSessionInfo | undefined = this.sessionInfo.get(sessionId);
+        return (
+          info !== undefined &&
+          isWithin(oldPath, info.rootPath) &&
+          filters.some((filter: RegExp): boolean => filter.test(asked))
+        );
+      })
+      .map(([sessionId]: [string, readonly RegExp[]]): string => sessionId);
+    const answers: readonly WorkspaceTextEdits[] = await Promise.all(
+      sessions.map((sessionId: string): Promise<WorkspaceTextEdits> =>
+        this.askFileRename(sessionId, pathToUri(oldPath), pathToUri(newPath)),
+      ),
+    );
+    return {
+      files: answers.flatMap(
+        (answer: WorkspaceTextEdits): WorkspaceTextEdits['files'] => answer.files,
+      ),
+      refused: answers.flatMap(
+        (answer: WorkspaceTextEdits): WorkspaceTextEdits['refused'] => answer.refused,
+      ),
+    };
+  }
+
+  /**
+   * Asks one session what a rename changes, for as long as a rename can wait.
+   * @param sessionId The session.
+   * @param oldUri The entry's URI.
+   * @param newUri The URI it is about to have.
+   * @returns Returns the edits, empty when it gave none in time.
+   */
+  private async askFileRename(
+    sessionId: string,
+    oldUri: string,
+    newUri: string,
+  ): Promise<WorkspaceTextEdits> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late: Promise<null> = new Promise<null>((resolve: (value: null) => void): void => {
+      timer = setTimeout((): void => resolve(null), FILE_RENAME_TIMEOUT_MS);
+    });
+    try {
+      const result: unknown = await Promise.race([
+        this.bridge?.invoke(LspChannel.Request, sessionId, 'workspace/willRenameFiles', {
+          files: [{ oldUri, newUri }],
+        }),
+        late,
+      ]);
+      return fromLspWorkspaceEdit(result, uriToPath);
+    } catch (error: unknown) {
+      this.log.debug('LspClient', 'Asking what a rename changes failed', error);
+      return { files: [], refused: [] };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Restarts a server. The main process owns the restart: it tears the server down whatever its
    * reference count, respawns it under the same session id, and tells every client holding it — this
    * one included — through an exit flagged `restarted`, on which {@link onExit} re-opens the client's
@@ -2101,6 +2185,7 @@ export class LspClient implements OnDestroy {
     this.formattingSupport.clear();
     this.inlayHintSupport.clear();
     this.workspaceSymbolSessions.clear();
+    this.fileRenameFilters.clear();
     this.structureSupport.clear();
     this.autoInsertTriggers.clear();
     this.codeLensSupport.clear();
@@ -2436,6 +2521,10 @@ export class LspClient implements OnDestroy {
           }
           if (workspaceSymbolsOffered(result.capabilities)) {
             this.workspaceSymbolSessions.add(sessionId);
+          }
+          const renames: readonly RegExp[] = fileRenameFiltersOf(result.capabilities);
+          if (renames.length > 0) {
+            this.fileRenameFilters.set(sessionId, renames);
           }
           const inlayHints: LspInlayHintSupport | undefined = inlayHintSupportOf(
             result.capabilities,

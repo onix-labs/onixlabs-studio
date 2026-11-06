@@ -31,6 +31,7 @@ import {
 import { LspDocumentRef, LspFeatures, LspSessionSupport } from './lsp-features';
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import type {
+  FileTextEdits,
   WorkspaceEditOutcome,
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
@@ -85,6 +86,9 @@ class FakeLsp implements Bridge {
   /** The requests the client sent its servers, and the answers given for chosen methods (#1143). */
   public readonly requests: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly requestAnswers: Record<string, unknown> = {};
+  /** The requests that fail, and those never answered (#1207). */
+  public readonly failingRequests: Set<string> = new Set<string>();
+  public readonly unansweredRequests: Set<string> = new Set<string>();
   private notificationListener: ((...args: unknown[]) => void) | null = null;
   private exitListener: ((...args: unknown[]) => void) | null = null;
   private applyEditListener: ((...args: unknown[]) => void) | null = null;
@@ -130,6 +134,12 @@ class FakeLsp implements Bridge {
           method: args[1] as string,
           params: args[2],
         });
+        if (this.failingRequests.has(args[1] as string)) {
+          return Promise.reject(new Error('The server failed'));
+        }
+        if (this.unansweredRequests.has(args[1] as string)) {
+          return new Promise<T>((): void => undefined);
+        }
         if (typeof args[1] === 'string' && args[1] in this.requestAnswers) {
           return Promise.resolve(this.requestAnswers[args[1]] as T);
         }
@@ -3071,6 +3081,113 @@ describe('LspClient', () => {
     }
 
     expect(lsp.stops).toEqual([]);
+  });
+
+  describe('fileRenameEdits (#1207)', () => {
+    /**
+     * The file operations typescript-language-server offers.
+     */
+    const OFFERED: unknown = {
+      workspace: {
+        fileOperations: {
+          willRename: { filters: [{ scheme: 'file', pattern: { glob: '**/*.ts' } }] },
+        },
+      },
+    };
+
+    /**
+     * What it answers for a file imported once.
+     */
+    const ANSWER: unknown = {
+      changes: {
+        'file:///root/app.ts': [
+          {
+            range: { start: { line: 0, character: 8 }, end: { line: 0, character: 11 } },
+            newText: 'b',
+          },
+        ],
+      },
+    };
+
+    /**
+     * Gets the rename requests made so far.
+     * @returns Returns their parameters.
+     */
+    function asked(): unknown[] {
+      return lsp.requests
+        .filter(
+          (request: { method: string }): boolean => request.method === 'workspace/willRenameFiles',
+        )
+        .map((request: { params: unknown }): unknown => request.params);
+    }
+
+    it('asksTheServerWhoseFiltersMatch_andReadsItsEdits', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.requestAnswers['workspace/willRenameFiles'] = ANSWER;
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      const edits: WorkspaceTextEdits = await client.fileRenameEdits('/root/a.ts', '/root/b.ts');
+
+      expect(asked()).toEqual([
+        { files: [{ oldUri: 'file:///root/a.ts', newUri: 'file:///root/b.ts' }] },
+      ]);
+      expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual(['/root/app.ts']);
+    });
+
+    it('asksNobody_forAPathTheFiltersDoNotMatch_orOutsideTheSession', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await client.fileRenameEdits('/root/image.png', '/root/photo.png');
+      await client.fileRenameEdits('/elsewhere/a.ts', '/elsewhere/b.ts');
+
+      expect(asked()).toEqual([]);
+    });
+
+    it('asksNobody_whenTheServerOffersNone', async () => {
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await client.fileRenameEdits('/root/a.ts', '/root/b.ts');
+
+      expect(asked()).toEqual([]);
+    });
+
+    it('givesNothing_whenTheServerFails', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.failingRequests.add('workspace/willRenameFiles');
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+
+      await expect(client.fileRenameEdits('/root/a.ts', '/root/b.ts')).resolves.toEqual({
+        files: [],
+        refused: [],
+      });
+    });
+
+    it('givesNothing_whenTheServerTakesTooLong', async () => {
+      lsp.startResult = { success: true, capabilities: OFFERED };
+      lsp.unansweredRequests.add('workspace/willRenameFiles');
+      const client: LspClient = build();
+      openDocument(client);
+      await flush();
+      vi.useFakeTimers();
+
+      const pending: Promise<WorkspaceTextEdits> = client.fileRenameEdits(
+        '/root/a.ts',
+        '/root/b.ts',
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      vi.useRealTimers();
+
+      await expect(pending).resolves.toEqual({ files: [], refused: [] });
+    });
   });
 
   it('uninstallingAServer_dropsTheProblemsOfTheDocumentsItServed', async () => {

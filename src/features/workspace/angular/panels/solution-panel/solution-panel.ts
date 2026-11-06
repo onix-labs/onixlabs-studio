@@ -31,6 +31,7 @@ import {
   ExplorerVcsTarget,
 } from '@features/workspace/angular/workspace-git/explorer-vcs-menu';
 import { Log } from '@shared/angular/services/log/log';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
 import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
@@ -245,6 +246,11 @@ export class SolutionPanel {
   private readonly workspace: Workspace = inject(Workspace);
 
   /**
+   * Holds the rename a file or folder on disk commits through, which brings what refers to it along.
+   */
+  private readonly entryRename: EntryRename = inject(EntryRename);
+
+  /**
    * Holds the rows awaiting the delete confirmation, or null when it is closed.
    */
   public readonly deleteTargets: WritableSignal<readonly SolutionRow[] | null> = signal<
@@ -444,7 +450,7 @@ export class SolutionPanel {
       }
       // On disk, as the File Explorer renames it — open documents follow — and the solution's own
       // watch re-reads the project, keeping what is expanded.
-      const renamed: FileOperationResult = await this.workspace.rename(path, commit.value);
+      const renamed: FileOperationResult = await this.entryRename.rename(path, commit.value);
       if (!renamed.success) {
         this.reportRenameFailure(renamed.error);
       }

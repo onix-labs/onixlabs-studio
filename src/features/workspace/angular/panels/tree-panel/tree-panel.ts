@@ -31,6 +31,7 @@ import {
 import { Log } from '@shared/angular/services/log/log';
 import { ExplorerFilterKind } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { WorkspaceProblems } from '@features/workspace/angular/workspace-problems/workspace-problems';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
@@ -173,6 +174,11 @@ export class TreePanel {
    * Gets the workspace service backing the tree.
    */
   public readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the rename an edited row commits through, which brings what refers to the entry along.
+   */
+  private readonly entryRename: EntryRename = inject(EntryRename);
 
   /**
    * Holds the workspace git status the rows are decorated from.
@@ -916,7 +922,7 @@ export class TreePanel {
     const name: string = commit.value;
     const result: FileOperationResult =
       edit.kind === 'rename'
-        ? await this.workspace.rename(edit.target, name)
+        ? await this.entryRename.rename(edit.target, name)
         : edit.kind === 'new-folder'
           ? await this.workspace.createFolder(edit.target, name)
           : await this.workspace.createFile(edit.target, name);

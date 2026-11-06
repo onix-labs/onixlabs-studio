@@ -1,4 +1,5 @@
 import { signal, WritableSignal } from '@angular/core';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -262,6 +263,13 @@ describe('TreePanel row context menu', () => {
       imports: [TreePanel],
       providers: [
         { provide: Workspace, useValue: workspace },
+        {
+          provide: EntryRename,
+          useValue: {
+            rename: (path: string, name: string): Promise<FileOperationResult> =>
+              workspace.rename(path, name),
+          },
+        },
         { provide: Shell, useValue: shell },
         { provide: FileOpener, useValue: opener },
         { provide: Notifications, useValue: notifications },

@@ -1,4 +1,10 @@
-import { FILE_OPERATION_REFUSED, fromLspWorkspaceEdit, WorkspaceTextEdits } from './workspace-edit';
+import {
+  FILE_OPERATION_REFUSED,
+  FileTextEdits,
+  fromLspWorkspaceEdit,
+  movedEdits,
+  WorkspaceTextEdits,
+} from './workspace-edit';
 
 /**
  * Maps a `file:` URI to a path, as the language-server features do.
@@ -111,5 +117,44 @@ describe('fromLspWorkspaceEdit (#1015)', () => {
 
     expect(edits).toEqual({ files: [], refused: [] });
     expect(fromLspWorkspaceEdit(null, toPath)).toEqual({ files: [], refused: [] });
+  });
+});
+
+describe('movedEdits (#1207)', () => {
+  /**
+   * Builds the edits of the given files, each with no edit in it.
+   * @param paths The files.
+   * @returns Returns the edits.
+   */
+  function editsOf(...paths: readonly string[]): WorkspaceTextEdits {
+    return {
+      files: paths.map((path: string): FileTextEdits => ({ path, edits: [] })),
+      refused: [],
+    };
+  }
+
+  it('reKeysTheEntryAndWhatIsInside_andNothingElse', () => {
+    const moved: WorkspaceTextEdits = movedEdits(
+      editsOf('/root/src', '/root/src/a.ts', '/root/source/b.ts', '/root/c.ts'),
+      '/root/src',
+      '/root/lib',
+    );
+
+    expect(moved.files.map((file: FileTextEdits): string => file.path)).toEqual([
+      '/root/lib',
+      '/root/lib/a.ts',
+      '/root/source/b.ts',
+      '/root/c.ts',
+    ]);
+  });
+
+  it('readsAWindowsPath', () => {
+    const moved: WorkspaceTextEdits = movedEdits(
+      editsOf('C:\\root\\src\\a.ts'),
+      'C:\\root\\src',
+      'C:\\root\\lib',
+    );
+
+    expect(moved.files[0].path).toBe('C:\\root\\lib\\a.ts');
   });
 });

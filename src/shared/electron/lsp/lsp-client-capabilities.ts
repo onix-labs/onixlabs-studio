@@ -186,6 +186,9 @@ export function clientCapabilities(): ClientCapabilities {
       // sends anyway are refused and named rather than half-applied.
       applyEdit: true,
       workspaceEdit: { documentChanges: true, resourceOperations: [] },
+      // A file or folder renamed in an explorer asks the server what else has to change: the imports
+      // of it, for one (#1207). The edit is applied once the rename has worked.
+      fileOperations: { dynamicRegistration: false, willRename: true },
       // A chosen code action's command runs on the server (#1016), when the server lists it among
       // the commands it runs; whatever it changes comes back as a `workspace/applyEdit`.
       executeCommand: { dynamicRegistration: false },

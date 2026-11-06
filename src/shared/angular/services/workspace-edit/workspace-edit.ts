@@ -128,6 +128,29 @@ interface LspRange {
 }
 
 /**
+ * Re-keys edits worked out before a file or folder was renamed by the paths they have now (#1207).
+ * @param edits The edits.
+ * @param from The entry's path before the rename.
+ * @param to Its path after it.
+ * @returns Returns the edits, with every file in the entry following it.
+ */
+export function movedEdits(
+  edits: WorkspaceTextEdits,
+  from: string,
+  to: string,
+): WorkspaceTextEdits {
+  return {
+    ...edits,
+    files: edits.files.map((file: FileTextEdits): FileTextEdits => {
+      const inside: boolean = file.path.startsWith(`${from}/`) || file.path.startsWith(`${from}\\`);
+      return file.path === from || inside
+        ? { ...file, path: `${to}${file.path.slice(from.length)}` }
+        : file;
+    }),
+  };
+}
+
+/**
  * Reads an LSP `WorkspaceEdit` into edits by document (#1015): its versioned `documentChanges` when it
  * has them — each a `TextDocumentEdit`, or a file operation, which is refused and named — and its
  * per-file `changes` otherwise, as the protocol has a client prefer. Versions are not checked: a
