@@ -278,7 +278,7 @@
         [value]="repository.commitMessage()"
         (valueChange)="onMessageValue($event)"
       />
-      <app-button-row>
+      <app-button-row [fit]="true">
         <app-button
           variant="solid"
           [icon]="Icon.GIT_COMMIT"

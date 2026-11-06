@@ -25,6 +25,7 @@ export type ButtonRowAlign = 'end' | 'start' | 'fill';
     '[class.button-row--start]': "align() === 'start'",
     '[class.button-row--fill]': "align() === 'fill'",
     '[class.button-row--small]': "size() === 'small'",
+    '[class.button-row--fit]': 'fit()',
   },
 })
 export class ButtonRow {
@@ -38,4 +39,10 @@ export class ButtonRow {
    * minimum width a dialog's buttons are given.
    */
   public readonly size: InputSignal<'medium' | 'small'> = input<'medium' | 'small'>('medium');
+
+  /**
+   * Gets a value indicating whether each button is only as wide as its own label, wrapping when the
+   * row runs out of room: for a row in a narrow panel, where equal widths push it out of its container.
+   */
+  public readonly fit: InputSignal<boolean> = input<boolean>(false);
 }

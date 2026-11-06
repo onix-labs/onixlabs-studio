@@ -45,10 +45,10 @@ describe('Button', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('variant_whenUnstated_isOutline_theStandardButton', () => {
+  it('variant_whenUnstated_isGhost_theStandardButton', () => {
     render();
 
-    expect(host.classList.contains('button--outline')).toBe(true);
+    expect(host.classList.contains('button--ghost')).toBe(true);
   });
 
   it('variant_whenStated_marksTheHost_soTheStylesheetDrawsIt', () => {

@@ -34,7 +34,7 @@
       />
       <app-button-row class="agent__permission-buttons">
         <app-button variant="solid" label="Allow" (click)="answer(true)" />
-        <app-button label="Deny" tone="danger" (click)="answer(false)" />
+        <app-button variant="ghost" tone="danger" label="Deny" (click)="answer(false)" />
       </app-button-row>
     </div>
   } @else {

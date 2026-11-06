@@ -47,21 +47,36 @@
   padding-block-start: 0.375rem;
 }
 
-// The path reads as a path, in the face the hashes use, in the panel's own text colour; only the
-// lead-in before it is muted.
+// The lead-in takes the panel's own text colour; the path reads as a path, muted, in the face the
+// hashes use.
 .commit-graph__path .commit-graph__summary {
   color: inherit;
 }
 
 .commit-graph__path-lead {
-  color: var(--form-muted-foreground-color);
+  margin-inline-end: 0.25rem;
 }
 
 .commit-graph__path-name {
   font-family: 'JetBrains Mono', monospace;
+  color: var(--form-muted-foreground-color);
+}
+
+// The field takes what the buttons beside it leave.
+.commit-graph__filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.commit-graph__filter-buttons {
+  --btn-padding-inline: 1rem;
+
+  flex: none;
 }
 
 .commit-graph__field {
+  flex: 1 1 auto;
   min-inline-size: 0;
 }
 

@@ -32,7 +32,7 @@
         [disabled]="selected().length === 0"
         (click)="confirm()"
       />
-      <app-button label="Skip" (click)="answer.emit(null)" />
+      <app-button variant="ghost" label="Skip" (click)="answer.emit(null)" />
     </app-button-row>
   } @else if (item().inputState === 'answered') {
     <span class="agent__ask-answer">{{ item().inputAnswer }}</span>

@@ -8,6 +8,16 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+// Fills its container, the options sharing the width.
+.segmented--full {
+  display: flex;
+
+  .segmented__option {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}
+
 .segmented__option {
   display: inline-flex;
   align-items: center;

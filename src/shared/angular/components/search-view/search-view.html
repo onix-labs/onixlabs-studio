@@ -154,18 +154,14 @@
           (click)="replaceEvery()"
         />
         <app-button
-          variant="outline"
+          variant="ghost"
           label="Replace"
           [disabled]="!canReplace()"
           tooltip="Replace the selected match, then move to the next"
           (click)="replaceSelected()"
         />
       }
-      <app-button
-        [variant]="mode() === 'find' ? 'solid' : 'outline'"
-        label="Find"
-        (click)="find()"
-      />
+      <app-button [variant]="mode() === 'find' ? 'solid' : 'ghost'" label="Find" (click)="find()" />
     </app-button-row>
   </div>
 </div>

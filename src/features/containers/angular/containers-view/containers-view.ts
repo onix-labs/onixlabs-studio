@@ -19,7 +19,6 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { CategoryItem, CategoryList } from '@shared/angular/components/category-list/category-list';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
-import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -244,7 +243,6 @@ const MENU_RESUME: string = 'resume';
     Table,
     TableRowDef,
     Terminal,
-    Toggle,
     ToolPanel,
     TooltipTrigger,
     ContainerLogsPane,

@@ -30,7 +30,12 @@
               [title]="destination.location() ?? ''"
               ><bdi>{{ destination.location() ?? 'Not chosen' }}</bdi></span
             >
-            <app-button label="Browse…" size="small" (click)="destination.browse()" />
+            <app-button
+              variant="ghost"
+              label="Browse…"
+              size="small"
+              (click)="destination.browse()"
+            />
           </div>
         }
         <span class="agent__workspace-label">Repository</span>
@@ -100,7 +105,7 @@
           [disabled]="!ready()"
           (click)="create()"
         />
-        <app-button label="Not Now" [disabled]="creating()" (click)="dismiss()" />
+        <app-button variant="ghost" label="Not Now" [disabled]="creating()" (click)="dismiss()" />
       </app-button-row>
     }
     @case ('created') {
