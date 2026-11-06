@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import type { MockInstance } from 'vitest';
+import { EntryRename } from '@shared/angular/services/rename/entry-rename';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { ExplorerFilter } from '@shared/angular/services/explorer-filter/explorer-filter';
 import { Diagnostic, Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
@@ -252,6 +253,7 @@ describe('SolutionPanel', () => {
         { provide: Shell, useValue: shell },
         { provide: BuildRunner, useValue: builds },
         { provide: Notifications, useValue: notifications },
+        { provide: EntryRename, useValue: { rename: (): void => undefined } },
       ],
     }).compileComponents();
 
@@ -405,7 +407,7 @@ describe('SolutionPanel', () => {
 
     it('rename_aFileOrAFolderOnDisk_renamesItThroughTheWorkspace_theFilesStemSelected', async () => {
       const rename: ReturnType<typeof vi.spyOn> = vi
-        .spyOn(TestBed.inject(Workspace), 'rename')
+        .spyOn(TestBed.inject(EntryRename), 'rename')
         .mockResolvedValue({ success: true, path: '/root/A/Renamed.cs' });
       const file: SolutionRow = makeRow({
         key: 'g',

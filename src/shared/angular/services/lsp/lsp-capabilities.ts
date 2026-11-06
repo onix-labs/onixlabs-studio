@@ -1,4 +1,5 @@
 import { LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import { globToRegExp } from '@shared/api/lsp-glob';
 import type {
   LspCodeActionSupport,
   LspFormattingSupport,
@@ -100,6 +101,33 @@ export function codeActionSupportOf(capabilities: unknown): LspCodeActionSupport
   return (provider as { resolveProvider?: unknown }).resolveProvider === true
     ? 'resolve'
     : 'actions';
+}
+
+/**
+ * Reads which renamed paths a server wants to be asked about (#1207) from its
+ * `workspace.fileOperations.willRename` filters. A filter's `matches` (file or folder) is not read: a
+ * server asked about one it did not want answers with nothing.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns the compiled patterns, over a forward-slashed absolute path; empty when it wants none.
+ */
+export function fileRenameFiltersOf(capabilities: unknown): readonly RegExp[] {
+  const filters: unknown = (
+    capabilities as
+      { workspace?: { fileOperations?: { willRename?: { filters?: unknown } } } } | undefined
+  )?.workspace?.fileOperations?.willRename?.filters;
+  if (!Array.isArray(filters)) {
+    return [];
+  }
+  const patterns: RegExp[] = [];
+  for (const filter of filters as readonly {
+    scheme?: unknown;
+    pattern?: { glob?: unknown };
+  }[]) {
+    if ((filter?.scheme ?? 'file') === 'file' && typeof filter?.pattern?.glob === 'string') {
+      patterns.push(globToRegExp(filter.pattern.glob));
+    }
+  }
+  return patterns;
 }
 
 /**

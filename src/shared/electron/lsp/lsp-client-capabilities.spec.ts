@@ -2,6 +2,13 @@ import type { ClientCapabilities } from 'vscode-languageserver-protocol';
 import { clientCapabilities } from './lsp-client-capabilities';
 
 describe('clientCapabilities', () => {
+  it('workspace_asksServersWhatARenamedFileChanges (#1207)', () => {
+    expect(clientCapabilities().workspace?.fileOperations).toEqual({
+      dynamicRegistration: false,
+      willRename: true,
+    });
+  });
+
   it('completion_advertisesWhatStudiosCompletionListHonours (#1021)', () => {
     const capabilities: ClientCapabilities = clientCapabilities();
 

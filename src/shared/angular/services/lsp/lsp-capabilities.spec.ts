@@ -9,6 +9,7 @@ import {
   navigationSupportOf,
   renameSupportOf,
   semanticLegendOf,
+  fileRenameFiltersOf,
 } from './lsp-capabilities';
 
 describe('formattingSupportOf (#1141)', () => {
@@ -207,5 +208,40 @@ describe('executeCommandsOf (#1016)', () => {
     ).toEqual(['server.format', 'x']);
     expect(executeCommandsOf({ executeCommandProvider: {} })).toEqual([]);
     expect(executeCommandsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('fileRenameFiltersOf (#1207)', () => {
+  it('compilesTheServersFilters_overFilesOnly', () => {
+    const filters: readonly RegExp[] = fileRenameFiltersOf({
+      workspace: {
+        fileOperations: {
+          willRename: {
+            filters: [
+              { scheme: 'file', pattern: { glob: '**/*.{ts,tsx}', matches: 'file' } },
+              { scheme: 'untitled', pattern: { glob: '**' } },
+              { pattern: { glob: '**/*.razor' } },
+              { scheme: 'file', pattern: {} },
+              null,
+            ],
+          },
+        },
+      },
+    });
+
+    expect(filters.map((filter: RegExp): boolean => filter.test('/root/src/a.ts'))).toEqual([
+      true,
+      false,
+    ]);
+    expect(filters[1].test('/root/Pages/Index.razor')).toBe(true);
+  });
+
+  it.each<[string, unknown]>([
+    ['NoCapabilities', undefined],
+    ['NoFileOperations', { workspace: {} }],
+    ['NoWillRename', { workspace: { fileOperations: { didRename: {} } } }],
+    ['MalformedFilters', { workspace: { fileOperations: { willRename: { filters: 'x' } } } }],
+  ])('answersNone_with%s', (_name: string, capabilities: unknown) => {
+    expect(fileRenameFiltersOf(capabilities)).toEqual([]);
   });
 });
