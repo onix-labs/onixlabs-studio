@@ -200,6 +200,12 @@ export interface AiProposedChange {
     readonly newText: string;
     readonly replaceAll?: boolean;
   }[];
+
+  /**
+   * Gets the file's text as it is now, or null when it does not exist yet. The main process reads it,
+   * because the renderer is not allowed to read a path a model chose (#1174).
+   */
+  readonly original?: string | null;
 }
 
 /**
