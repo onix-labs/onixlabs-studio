@@ -66,6 +66,10 @@ class FakePane {
     this.ran.push(action);
   }
 
+  public async organizeImports(): Promise<void> {
+    await this.runAction('editor.action.organizeImports');
+  }
+
   public getValue(): string {
     return this.text;
   }

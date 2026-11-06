@@ -73,6 +73,10 @@ class StubTextEditor {
     return Promise.resolve();
   }
 
+  public async organizeImportsForSave(): Promise<void> {
+    await this.runActionForSave('editor.action.organizeImports');
+  }
+
   public async formatLinesForSave(ranges: unknown): Promise<void> {
     this.formatted.push(ranges);
     return Promise.resolve();

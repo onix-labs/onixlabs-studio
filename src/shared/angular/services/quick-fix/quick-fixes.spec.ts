@@ -38,6 +38,16 @@ const READ_ONLY_OPTION: number = 104;
 const MODEL_URI: string = 'inmemory://model/1';
 
 /**
+ * The whole of the stand-in editor's document.
+ */
+const FULL_RANGE: MonacoApi.IRange = {
+  startLineNumber: 1,
+  startColumn: 1,
+  endLineNumber: 9,
+  endColumn: 1,
+};
+
+/**
  * Builds a one-line edit to a file.
  * @param path The file.
  * @param text The text it puts in.
@@ -84,6 +94,7 @@ function fakeEditor(readOnly: boolean = false): {
   const model: unknown = {
     uri: { toString: (): string => MODEL_URI },
     getLanguageId: (): string => 'typescript',
+    getFullModelRange: (): MonacoApi.IRange => FULL_RANGE,
   };
   const container: HTMLElement = document.createElement('div');
   const editor: unknown = {
@@ -328,6 +339,121 @@ describe('QuickFixes (#1016)', () => {
       undefined,
       false,
     );
+  });
+
+  it('open_asksForSourceActionsByKind_whenTheServerHeldThemBack (#1207)', async () => {
+    const fixes: QuickFixes = build();
+    lsp.codeActions.mockImplementation(
+      (
+        _model: unknown,
+        _range: unknown,
+        only?: readonly string[],
+      ): Promise<readonly LspCodeAction[]> =>
+        Promise.resolve(
+          only === undefined
+            ? [served('Extract to function', { kind: 'refactor.extract' })]
+            : [served('Organize Imports', { kind: 'source.organizeImports.ts' })],
+        ),
+    );
+
+    const rows: readonly MenuItem[] = await choose(fixes, fakeEditor().editor, 'nothing');
+
+    expect(lsp.codeActions.mock.calls.map((call: unknown[]): unknown => call[2])).toEqual([
+      undefined,
+      ['source'],
+    ]);
+    expect(rows.map((item: MenuItem): string | undefined => item.label)).toContain(
+      'Organize Imports',
+    );
+  });
+
+  it('open_doesNotAskAgain_whenTheServerGaveItsSourceActions (#1207)', async () => {
+    const fixes: QuickFixes = build();
+    lsp.codeActions.mockResolvedValue([
+      served('Organize imports', { kind: 'source.organizeImports' }),
+    ]);
+
+    await fixes.open(fakeEditor().editor);
+
+    expect(lsp.codeActions).toHaveBeenCalledTimes(1);
+  });
+
+  it('hasFixes_neverAsksForSourceActions (#1207)', async () => {
+    const fixes: QuickFixes = build();
+
+    await fixes.hasFixes(fakeEditor().editor);
+
+    expect(lsp.codeActions).toHaveBeenCalledTimes(1);
+  });
+
+  describe('organizeImports (#1207)', () => {
+    /**
+     * An edit the server's action makes.
+     */
+    const edit: WorkspaceTextEdits = {
+      files: [fileEdit('/root/app.ts', 'import a;')],
+      refused: [],
+    };
+
+    it('asksAboutTheWholeDocument_andAppliesTheEdit_leavingTheFocus', async () => {
+      const fixes: QuickFixes = build();
+      const { editor, calls } = fakeEditor();
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', { kind: 'source.organizeImports.ts', edit }),
+      ]);
+
+      await expect(fixes.organizeImports(editor)).resolves.toBe(true);
+
+      expect(lsp.codeActions.mock.calls[0][1]).toEqual(FULL_RANGE);
+      expect(lsp.codeActions.mock.calls[0][2]).toEqual(['source.organizeImports']);
+      expect(applied).toEqual([edit]);
+      expect(calls).toEqual([]);
+    });
+
+    it('fillsInAnActionThatCameWithoutItsEdit', async () => {
+      const fixes: QuickFixes = build();
+      const bare: LspCodeAction = served('Organize Imports', { kind: 'source.organizeImports' });
+      lsp.codeActions.mockResolvedValue([bare]);
+      lsp.resolveCodeAction.mockResolvedValue({ ...bare, edit });
+
+      await fixes.organizeImports(fakeEditor().editor);
+
+      expect(applied).toEqual([edit]);
+    });
+
+    it('runsTheCommandOfAnActionThatHasOne', async () => {
+      const fixes: QuickFixes = build();
+      const command: LspCommand = { title: 'Organize', command: 'server.organize' };
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', { kind: 'source.organizeImports', command }),
+      ]);
+
+      await fixes.organizeImports(fakeEditor().editor);
+
+      expect(lsp.executeCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('skipsADisabledAction', async () => {
+      const fixes: QuickFixes = build();
+      lsp.codeActions.mockResolvedValue([
+        served('Organize Imports', {
+          kind: 'source.organizeImports',
+          disabledReason: 'Not here',
+          edit,
+        }),
+      ]);
+
+      await expect(fixes.organizeImports(fakeEditor().editor)).resolves.toBe(true);
+
+      expect(applied).toEqual([]);
+    });
+
+    it('answersFalse_whenNoServerServesTheDocument', async () => {
+      const fixes: QuickFixes = build();
+      lsp.codeActions.mockResolvedValue(null);
+
+      await expect(fixes.organizeImports(fakeEditor().editor)).resolves.toBe(false);
+    });
   });
 
   it('open_withNothingToOffer_saysSo', async () => {
