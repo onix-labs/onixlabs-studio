@@ -110,14 +110,19 @@ function ready(overrides: Record<string, unknown> = {}): unknown {
 describe('HarnessHost', () => {
   let transport: FakeTransport;
   let audits: string[];
+  let sandboxed: (boolean | undefined)[];
   let host: HarnessHostType;
 
   beforeEach(() => {
     transport = new FakeTransport();
     audits = [];
+    sandboxed = [];
     host = new HarnessHost(
       transport,
-      (requestId: string, name: string): void => void audits.push(`${requestId}:${name}`),
+      (requestId: string, name: string, _detail: string, _source: string, ran?: boolean): void => {
+        audits.push(`${requestId}:${name}`);
+        sandboxed.push(ran);
+      },
     );
   });
 
@@ -762,6 +767,24 @@ describe('HarnessHost', () => {
     // host-level, because crediting an unattributed action to whichever run was first in a map would
     // have made the log actively misleading rather than merely incomplete.
     expect(audits).toEqual(['r1:Bash']);
+  });
+
+  it.each<[string, unknown, boolean | undefined]>([
+    ['aTrueFlag', true, true],
+    ['aFalseFlag', false, false],
+    ['nothing', undefined, undefined],
+    ['aStringInstead', 'false', undefined],
+  ])('audit_carrying_%s_saysOnlyWhatABooleanSays', (_name, flag, expected) => {
+    transport.emit({
+      type: 'audit',
+      requestId: 'r1',
+      name: 'Bash',
+      detail: 'ls',
+      source: 'posture',
+      ...(flag === undefined ? {} : { sandboxed: flag }),
+    });
+
+    expect(sandboxed).toEqual([expected]);
   });
 
   it('audit_withoutARunIsRefusedByTheValidatorRatherThanRecorded', () => {

@@ -11,6 +11,24 @@ import { delimiter, join } from 'node:path';
 export const SHELL_TOOL: string = 'Bash';
 
 /**
+ * Names the permission to run a command outside the sandbox (#1159), as Studio's policy map and prompt
+ * know it. Its own name is the point: nothing granted to `Bash` reaches it.
+ */
+export const RUN_UNSANDBOXED: string = 'Run outside the sandbox';
+
+/**
+ * Names the input that asks the SDK's shell to leave the sandbox.
+ */
+const SANDBOX_FLAG: string = 'dangerouslyDisableSandbox';
+
+/**
+ * Teaches rather than only refuses, when the user says no to a run outside the sandbox.
+ */
+export const UNSANDBOXED_DECLINED: string =
+  'The user declined to run this command outside the sandbox. Run it in the sandbox instead. If the ' +
+  'sandbox refuses it, tell the user what was refused rather than asking to leave the sandbox again.';
+
+/**
  * Describes what a shell rule decided: refuse with a reason, allow without asking, or leave the
  * command to the rest of the gate.
  */
@@ -127,6 +145,46 @@ export function sandboxGuidance(scope: SandboxScope, sandboxAvailable: boolean):
     'Intelligence > Security & Permissions. Set the flag only when they ask you to, or when the refusal',
     'shows the command cannot work in the sandbox, and say why you are doing it.',
   ].join('\n');
+}
+
+/**
+ * Determines whether a tool call asks to run outside the sandbox.
+ * @param toolName The tool being called.
+ * @param input The call's input.
+ * @returns Returns true for a shell command carrying the flag.
+ */
+export function leavesSandbox(toolName: string, input: Readonly<Record<string, unknown>>): boolean {
+  return toolName === SHELL_TOOL && input[SANDBOX_FLAG] === true;
+}
+
+/**
+ * Removes the request to leave the sandbox, for a user who has denied that: the command runs sandboxed
+ * rather than being refused, because the model's reason is usually wrong (99% of them came before any
+ * refusal, #1157). The rest of the gate then decides it as the ordinary shell command it now is.
+ * @param input The call's input.
+ * @returns Returns the input without the flag.
+ */
+export function withoutSandboxFlag(
+  input: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const stripped: Record<string, unknown> = { ...input };
+  delete stripped[SANDBOX_FLAG];
+  return stripped;
+}
+
+/**
+ * Determines whether a run outside the sandbox goes ahead without asking. Prompt All always asks, even
+ * for a permission set to Allowed (D4, #1158); Allow All always grants it, as it always has; between
+ * the two the permission's own level decides. Allow Edits is an edit grant and does not reach it.
+ * @param policy The permission's level.
+ * @param posture The run's posture.
+ * @returns Returns true when it needs no prompt.
+ */
+export function unsandboxedAllowed(
+  policy: 'allow' | 'ask' | 'deny',
+  posture: 'prompt' | 'auto-edits' | 'auto-all',
+): boolean {
+  return posture === 'auto-all' || (posture !== 'prompt' && policy === 'allow');
 }
 
 /**

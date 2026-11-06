@@ -27,6 +27,15 @@
   opacity: 0.7;
 }
 
+// The one prompt that takes a safety net away, set apart by a rule beside it, not by colour.
+.agent__permission-warning {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 0.6rem;
+  border-inline-start: 2px solid var(--agent-card-title-color);
+  color: var(--body-foreground-color);
+  font-size: 0.85rem;
+}
+
 .agent__permission-diff {
   margin-block-start: 0.6rem;
 }

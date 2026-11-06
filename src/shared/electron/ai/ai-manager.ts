@@ -85,6 +85,7 @@ import {
   PermissionRuleStore,
   permissionRuleKey,
   permissionRuleScope,
+  permissionSessionKey,
 } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
@@ -117,6 +118,11 @@ interface PendingPermission {
    * remembered for the session (#979).
    */
   readonly ruleKey: string | null;
+
+  /**
+   * Gets the key a session grant for this prompt is held under.
+   */
+  readonly sessionKey: string;
 }
 
 /**
@@ -1244,8 +1250,12 @@ export class AiManager {
           cancel,
           change,
         ),
-      recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
-        this.recordAudit(name, detail, request.workspaceRoot, source),
+      recordAudit: (
+        name: string,
+        detail: string,
+        source: AuditGrantSource,
+        sandboxed?: boolean,
+      ): void => this.recordAudit(name, detail, request.workspaceRoot, source, sandboxed),
       requestInput: (
         question: string,
         choices: readonly AiInputChoice[],
@@ -2016,8 +2026,9 @@ export class AiManager {
   ): Promise<boolean> {
     // A command tool's rule names its exact command (#979); a session grant still covers the tool.
     const ruleKey: string | null = permissionRuleKey(name, detail);
+    const sessionKey: string = permissionSessionKey(name, detail);
     if (
-      this.sessionAllowed.has(name) ||
+      this.sessionAllowed.has(sessionKey) ||
       (ruleKey !== null && this.rules.isAllowed(ruleKey, workspaceRoot))
     ) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -2034,7 +2045,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey });
+      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey, sessionKey });
       if (signal.aborted) {
         settle(false);
         return;
@@ -2088,12 +2099,14 @@ export class AiManager {
    * @param detail The one-line target summary.
    * @param workspaceRoot The run's workspace root, or null for none.
    * @param source The coarse reason the action was allowed.
+   * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
    */
   private recordAudit(
     name: string,
     detail: string,
     workspaceRoot: string | null,
     source: AuditGrantSource,
+    sandboxed?: boolean,
   ): void {
     logger.trace('AiManager.recordAudit', `Auditing executed action "${name}"`);
     this.auditLog ??= new AgentAuditLog(app.getPath('userData'));
@@ -2103,6 +2116,7 @@ export class AiManager {
       target: detail,
       workspaceRoot,
       source,
+      ...(sandboxed === undefined ? {} : { sandboxed }),
     });
   }
 
@@ -2122,7 +2136,7 @@ export class AiManager {
         `Remembering grant for "${pending.name}" (scope ${reply.remember})`,
       );
       if (reply.remember === 'session') {
-        this.sessionAllowed.add(pending.name);
+        this.sessionAllowed.add(pending.sessionKey);
       } else if (pending.ruleKey === null) {
         // The prompt only offered the session; a longer scope cannot name the whole command.
         logger.warn(

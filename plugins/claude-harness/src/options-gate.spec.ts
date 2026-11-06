@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildGate, buildOptions, parseQuestions, proposedChange, sandboxFor } from './options';
 import type { GateContext } from './options';
 import type { TurnRequest } from './protocol';
+import { osSandboxAvailable, RUN_UNSANDBOXED, UNSANDBOXED_DECLINED } from './sandbox-rules';
 
 /**
  * The part of the SDK's permission callback the gate reads.
@@ -19,6 +20,7 @@ interface Recorded {
   readonly permissions: string[];
   readonly inputs: string[];
   readonly audits: string[][];
+  readonly sandboxed: (boolean | undefined)[];
   withdrawals: number;
   granted: boolean;
   answer: string | null;
@@ -97,8 +99,15 @@ describe('the permission gate', () => {
           },
         };
       },
-      audit: (_id: string, name: string, detail: string, source: string): void => {
+      audit: (
+        _id: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+      ): void => {
         recorded.audits.push([name, detail, source]);
+        recorded.sandboxed.push(sandboxed);
       },
     };
   }
@@ -119,6 +128,7 @@ describe('the permission gate', () => {
       permissions: [],
       inputs: [],
       audits: [],
+      sandboxed: [],
       withdrawals: 0,
       granted: true,
       answer: 'yes',
@@ -558,6 +568,77 @@ describe('the permission gate', () => {
       expect(recorded.audits[0][0]).toBe('Bash');
     });
 
+    it('auditsAShellCommand_asRunOutsideTheSandbox_whenItCarriedTheFlag', async () => {
+      recorded.turn = turn({ permissionPosture: 'auto-all' });
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls', dangerouslyDisableSandbox: true },
+      });
+
+      expect(recorded.sandboxed).toEqual([false]);
+      expect(recorded.audits[0][2]).toBe('posture');
+    });
+
+    it('auditsAShellCommand_asSandboxed_whereThereIsASandbox', async () => {
+      recorded.turn = turn();
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } });
+
+      expect(recorded.sandboxed).toEqual([osSandboxAvailable()]);
+    });
+
+    it('auditsNothingAboutTheSandbox_forAnyOtherTool', async () => {
+      recorded.turn = turn();
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', { tool_name: 'Write', tool_input: { file_path: '/a' } });
+
+      expect(recorded.sandboxed).toEqual([undefined]);
+    });
+
+    it('auditsAPromptedRunOutsideTheSandbox_asGated_evenWhenItsLevelIsAllowed', async () => {
+      recorded.turn = turn({ toolPolicies: { [RUN_UNSANDBOXED]: 'allow' } });
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      await hook(built, 'PostToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command: 'ls', dangerouslyDisableSandbox: true },
+      });
+
+      expect(recorded.audits[0][2]).toBe('gated-or-auto');
+    });
+
     it('anAuditThatFails_neverDisturbsTheRun', async () => {
       const failing: GateContext = {
         ...context(),
@@ -578,6 +659,130 @@ describe('the permission gate', () => {
       expect(await hook(built, 'PostToolUse', { tool_name: 'Bash', tool_input: {} })).toEqual({
         continue: true,
       });
+    });
+  });
+
+  describe('running outside the sandbox', () => {
+    const outside: Record<string, unknown> = {
+      command: 'rm -rf build',
+      dangerouslyDisableSandbox: true,
+    };
+
+    /**
+     * Decides a command asking to leave the sandbox, the user answering as given.
+     * @param overrides What differs from the default turn.
+     * @param answer What the user answers.
+     * @returns Returns the decision.
+     */
+    async function decide(
+      overrides: Partial<TurnRequest>,
+      answer: boolean = true,
+    ): Promise<PermissionResult> {
+      recorded.granted = answer;
+      return gate(overrides)('Bash', outside);
+    }
+
+    it.each<[string, 'prompt' | 'auto-edits' | 'auto-all', 'allow' | 'ask' | 'deny', boolean]>([
+      ['promptAll asks though it is Ask', 'prompt', 'ask', true],
+      ['promptAll asks though it is Allowed', 'prompt', 'allow', true],
+      ['allowEdits does not reach it', 'auto-edits', 'ask', true],
+      ['allowEdits with Allowed runs it', 'auto-edits', 'allow', false],
+      ['allowAll runs it', 'auto-all', 'ask', false],
+      ['allowAll with Allowed runs it', 'auto-all', 'allow', false],
+    ])(
+      'decides_%s',
+      async (
+        _name: string,
+        permissionPosture: 'prompt' | 'auto-edits' | 'auto-all',
+        level: 'allow' | 'ask' | 'deny',
+        prompts: boolean,
+      ) => {
+        const decision: PermissionResult = await decide({
+          permissionPosture,
+          toolPolicies: { [RUN_UNSANDBOXED]: level },
+        });
+
+        expect(decision).toMatchObject({ behavior: 'allow', updatedInput: outside });
+        expect(recorded.permissions.length).toBe(prompts ? 1 : 0);
+      },
+    );
+
+    it.each<['prompt' | 'auto-edits' | 'auto-all']>([['prompt'], ['auto-edits'], ['auto-all']])(
+      'deniedUnder_%s_runsTheCommandSandboxed_ratherThanRefusingIt',
+      async (permissionPosture: 'prompt' | 'auto-edits' | 'auto-all') => {
+        const decision: PermissionResult = await decide({
+          permissionPosture,
+          toolPolicies: { [RUN_UNSANDBOXED]: 'deny', Bash: 'allow' },
+        });
+
+        expect(decision).toMatchObject({
+          behavior: 'allow',
+          updatedInput: { command: 'rm -rf build' },
+        });
+        expect(
+          (decision as { updatedInput: Record<string, unknown> }).updatedInput,
+        ).not.toHaveProperty('dangerouslyDisableSandbox');
+      },
+    );
+
+    it('deniedWithTheShellOnAsk_stillAsksForTheShellCommandItBecomes', async () => {
+      await decide({ toolPolicies: { [RUN_UNSANDBOXED]: 'deny' } });
+
+      expect(recorded.permissions).toEqual(['Bash: rm -rf build']);
+    });
+
+    it('aBashToolAllow_doesNotCoverIt', async () => {
+      await decide({ toolPolicies: { Bash: 'allow' } });
+
+      expect(recorded.permissions).toEqual([`${RUN_UNSANDBOXED}: rm -rf build`]);
+    });
+
+    it('autoAllowSandboxedShell_doesNotCoverIt', async () => {
+      await decide({ autoAllowSandboxedShell: true });
+
+      expect(recorded.permissions).toEqual([`${RUN_UNSANDBOXED}: rm -rf build`]);
+    });
+
+    it('theShellOnDeny_blocksItToo', async () => {
+      const decision: PermissionResult = await decide({ toolPolicies: { Bash: 'deny' } });
+
+      expect(decision).toMatchObject({ behavior: 'deny' });
+      expect(recorded.permissions).toEqual([]);
+    });
+
+    it('asksWithTheWholeCommand_notItsSummary', async () => {
+      const command: string = `echo ${'x'.repeat(300)}`;
+
+      await gate()('Bash', { command, dangerouslyDisableSandbox: true });
+
+      expect(recorded.permissions).toEqual([`${RUN_UNSANDBOXED}: ${command}`]);
+    });
+
+    it('whenTheUserDeclines_saysWhatToDoInstead', async () => {
+      const decision: PermissionResult = await decide({}, false);
+
+      expect(decision).toEqual({ behavior: 'deny', message: UNSANDBOXED_DECLINED });
+    });
+
+    it('anOrdinaryShellCommand_isStillDecidedAsTheShell', async () => {
+      await gate()('Bash', { command: 'ls' });
+
+      expect(recorded.permissions).toEqual(['Bash: ls']);
+    });
+
+    it('isNotWithheldFromTheModel_whenDenied', () => {
+      recorded.turn = turn({ toolPolicies: { [RUN_UNSANDBOXED]: 'deny', WebFetch: 'deny' } });
+
+      const built: Options = buildOptions(
+        context(),
+        recorded.turn,
+        {} as never,
+        '',
+        null,
+        new AbortController(),
+      );
+
+      expect(built.disallowedTools).toEqual(['WebFetch']);
     });
   });
 

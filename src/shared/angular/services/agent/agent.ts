@@ -320,7 +320,7 @@ export interface AgentItem {
    * Gets how a grant can be remembered (#979): for any use of the tool, for the exact command shown,
    * or for the session only. Undefined means any use of the tool.
    */
-  readonly permissionRemembers?: 'tool' | 'command' | 'session';
+  readonly permissionRemembers?: 'tool' | 'command' | 'session' | 'session-command';
 
   /**
    * Gets how long the broker remembers the grant (granted permission items only; undefined for a

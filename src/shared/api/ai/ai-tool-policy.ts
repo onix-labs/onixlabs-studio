@@ -24,6 +24,14 @@ export interface GateableTool {
 }
 
 /**
+ * The permission to run a shell command outside the OS sandbox (#1159). Not a tool of its own: a
+ * shell call that asks to leave the sandbox is decided under this name rather than `Bash`, so nothing
+ * that covers the shell covers it. The harness that gates it keeps its own copy of the name, because
+ * a harness shares no code with the application.
+ */
+export const RUN_UNSANDBOXED: string = 'Run outside the sandbox';
+
+/**
  * The mutating/exec tools that flow through the permission gate and can therefore carry a default
  * policy. Read-only tools (Read/Glob/Grep) are always allowed and never gated, so they are excluded —
  * a policy on them would not be enforced. Keyed by display name to match `prettyToolName`, the
@@ -43,6 +51,12 @@ export const GATEABLE_TOOLS: readonly GateableTool[] = [
     description: 'Modify a Jupyter notebook cell.',
   },
   { name: 'Bash', label: 'Run Shell Command', description: 'Execute a shell command.' },
+  {
+    name: RUN_UNSANDBOXED,
+    label: 'Run Outside the Sandbox',
+    description:
+      'Run a shell command without the OS sandbox, so it can reach any file and any host. Deny runs it sandboxed instead, and Prompt All always asks.',
+  },
   { name: 'WebFetch', label: 'Fetch a URL', description: 'Retrieve the contents of a web page.' },
   { name: 'WebSearch', label: 'Web Search', description: 'Search the web.' },
 ];
