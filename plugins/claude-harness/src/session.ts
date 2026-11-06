@@ -733,8 +733,21 @@ export class Session {
           withdraw: asked.withdraw,
         };
       },
-      audit: (requestId: string, name: string, detail: string, source: string): void =>
-        this.host.send({ type: 'audit', requestId, name, detail, source }),
+      audit: (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+      ): void =>
+        this.host.send({
+          type: 'audit',
+          requestId,
+          name,
+          detail,
+          source,
+          ...(sandboxed === undefined ? {} : { sandboxed }),
+        }),
     };
     const apiKey: string | null = await this.credential(turn);
     if (this.closed) {

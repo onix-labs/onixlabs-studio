@@ -242,8 +242,12 @@ import { AiEvent } from './ai/ai-event-types';
  * a background task's report-back, instead of leaving Studio to infer one from silence. A harness sends
  * it only to a Studio whose `initialize` declared 1.17.0 or later, so an older build never sees a kind it
  * does not know.
+ *
+ * `1.18.0` adds an `audit` record's optional `sandboxed` (#1159), which says whether a shell command ran
+ * inside the OS sandbox, and the `Run outside the sandbox` permission a harness asks under for one that
+ * would not. Optional, so every published harness is unaffected: a record without it is audited as before.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.17.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.18.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -694,6 +698,7 @@ export type HarnessMessage =
       readonly name: string;
       readonly detail: string;
       readonly source: string;
+      readonly sandboxed?: boolean;
     }
   | {
       readonly type: 'turn.completed';

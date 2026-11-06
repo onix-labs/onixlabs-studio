@@ -223,6 +223,55 @@ describe('AgentPermissionCard', () => {
     expect(session).not.toContain('Always');
   });
 
+  it('offersARunOutsideTheSandbox_onlyOnceOrForTheSession_forTheExactCommand', () => {
+    const element: HTMLElement = render(AgentPermissionCard, {
+      ...permission,
+      permissionName: 'Run outside the sandbox',
+      permissionDetail: 'rm -rf build',
+      permissionRemembers: 'session-command',
+    }).nativeElement as HTMLElement;
+
+    const options: string = element.querySelector('app-dropdown')?.textContent ?? '';
+    expect(options).toContain('Allow this command for this session');
+    expect(options).not.toContain('every');
+    expect(options).not.toContain('workspace');
+    expect(options).not.toContain('Always');
+  });
+
+  it('saysPlainlyThatACommandWillRunWithoutTheSandbox', () => {
+    const element: HTMLElement = render(AgentPermissionCard, {
+      ...permission,
+      permissionName: 'Run outside the sandbox',
+      permissionDetail: 'rm -rf build',
+      permissionRemembers: 'session-command',
+    }).nativeElement as HTMLElement;
+
+    expect(element.textContent).toContain('rm -rf build');
+    expect(element.querySelector('.agent__permission-warning')?.textContent).toContain(
+      'without the sandbox',
+    );
+  });
+
+  it('putsNoWarningOnAnOrdinaryPrompt', () => {
+    const element: HTMLElement = render(AgentPermissionCard, permission)
+      .nativeElement as HTMLElement;
+
+    expect(element.querySelector('.agent__permission-warning')).toBeNull();
+  });
+
+  it('saysARunOutsideTheSandboxWasAllowedForThatCommand', () => {
+    expect(
+      text(
+        render(AgentPermissionCard, {
+          ...permission,
+          permissionState: 'allowed',
+          permissionRemember: 'session',
+          permissionRemembers: 'session-command',
+        }),
+      ),
+    ).toContain('This command allowed for this session');
+  });
+
   it('saysHowItWasSettled', () => {
     const settled: (patch: Partial<AgentItem>) => string = (patch: Partial<AgentItem>): string =>
       text(render(AgentPermissionCard, { ...permission, ...patch })).replace('Allow Bash? ', '');

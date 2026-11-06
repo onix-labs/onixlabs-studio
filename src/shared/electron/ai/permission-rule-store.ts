@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { RUN_UNSANDBOXED } from '@shared/api/ai/ai-tool-policy';
 import { logger } from '@shared/electron/logger';
 
 /**
@@ -37,10 +38,12 @@ const COMMAND_SEPARATOR: string = '\u0000';
 
 /**
  * How long a grant for a tool can be remembered: `tool` for any use of it, `command` for the exact
- * command it was asked to run, or `session` when only the session can remember it — a command tool
- * whose summary is empty or clamped, so the prompt cannot name the whole command.
+ * command it was asked to run, `session` when only the session can remember it — a command tool
+ * whose summary is empty or clamped, so the prompt cannot name the whole command — or `session-command`
+ * for the exact command and only the session, which is all a run outside the sandbox can be: the one
+ * permanent grant is excluding the command in the workspace's settings (D2, #1158).
  */
-export type PermissionRuleScope = 'tool' | 'command' | 'session';
+export type PermissionRuleScope = 'tool' | 'command' | 'session' | 'session-command';
 
 /**
  * Determines how a grant for a tool's use can be remembered (#979).
@@ -49,6 +52,9 @@ export type PermissionRuleScope = 'tool' | 'command' | 'session';
  * @returns Returns the scope a remembered grant takes.
  */
 export function permissionRuleScope(tool: string, detail: string): PermissionRuleScope {
+  if (tool === RUN_UNSANDBOXED) {
+    return 'session-command';
+  }
   if (!COMMAND_TOOLS.has(tool)) {
     return 'tool';
   }
@@ -72,6 +78,19 @@ export function permissionRuleKey(tool: string, detail: string): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * Gets the key a session grant is held under: the tool's name, which covers every use of it for the
+ * session, or the exact command for a grant that must not.
+ * @param tool The tool's display name.
+ * @param detail The summary the prompt showed.
+ * @returns Returns the key.
+ */
+export function permissionSessionKey(tool: string, detail: string): string {
+  return permissionRuleScope(tool, detail) === 'session-command'
+    ? `${tool}${COMMAND_SEPARATOR}${detail}`
+    : tool;
 }
 
 /**

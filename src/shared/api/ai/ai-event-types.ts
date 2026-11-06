@@ -164,10 +164,11 @@ export interface AiPermissionEvent extends AiEventBase {
 
   /**
    * Gets how a grant can be remembered (#979): `tool` for any use of the tool, `command` for the exact
-   * command shown, or `session` when only the session can remember it. Absent from an older event,
-   * which means `tool`.
+   * command shown, `session` when only the session can remember it, or `session-command` for the exact
+   * command and only for the session, which is all a run outside the sandbox can be (#1159). Absent from
+   * an older event, which means `tool`.
    */
-  readonly remembers?: 'tool' | 'command' | 'session';
+  readonly remembers?: 'tool' | 'command' | 'session' | 'session-command';
 
   /**
    * Gets the change to a file the tool would make, when it is one that writes a file and the harness
