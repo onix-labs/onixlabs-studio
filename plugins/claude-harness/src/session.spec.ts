@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Answer, HarnessMessage, Request, TurnRequest } from './protocol';
@@ -316,6 +317,24 @@ describe('Session instructions (#955)', () => {
     sdk.autoComplete = true;
     sdk.resumeAs = null;
     sdk.sequence = 0;
+  });
+
+  it('keepsItsTemporaryFolderAcrossAReopen_andRemovesItWhenItEnds', async () => {
+    const studio: FakeStudio = fakeStudio();
+    const session: Session = new Session(studio.host, turn('r1'));
+    await session.run(turn('r1'));
+    const first: Options = sdk.queries[0].options;
+
+    studio.instructions = 'Profile: reopen for this.';
+    await session.run(turn('r2'));
+    const folder: string | undefined = first.env?.['TMPDIR'];
+
+    expect(sdk.queries[1].options.env?.['TMPDIR']).toBe(folder);
+    expect(existsSync(folder ?? '')).toBe(true);
+
+    await session.close();
+
+    expect(existsSync(folder ?? '')).toBe(false);
   });
 
   it('keepsTheQueryOpen_whenTheInstructionsAreUnchanged', async () => {
