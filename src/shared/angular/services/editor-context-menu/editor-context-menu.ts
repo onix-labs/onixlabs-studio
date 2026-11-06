@@ -22,6 +22,7 @@ const COMMAND_SOURCE: string = 'app-editor-context-menu';
 export type EditorContextMenuCommand =
   | 'definition'
   | 'typeDefinition'
+  | 'sourceDefinition'
   | 'implementation'
   | 'references'
   | 'callHierarchy'
@@ -88,6 +89,7 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   definition: { mac: 'F12', windows: 'F12' },
   // No chord: neither Visual Studio nor VS Code gives Go to Type Definition one (#1142).
   typeDefinition: { mac: '', windows: '' },
+  sourceDefinition: { mac: '', windows: '' },
   implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
@@ -301,6 +303,9 @@ export class EditorContextMenu {
     if (this.navigation.offersTypeDefinitions(editor)) {
       navigation.push(this.item('typeDefinition', 'Go to Type Definition'));
     }
+    if (this.navigation.offersSourceDefinitions(editor)) {
+      navigation.push(this.item('sourceDefinition', 'Go to Source Definition'));
+    }
     if (this.navigation.offersImplementations(editor)) {
       navigation.push(this.item('implementation', 'Go to Implementation'));
     }
@@ -369,6 +374,9 @@ export class EditorContextMenu {
         return;
       case 'typeDefinition':
         void this.navigation.goToTypeDefinition(editor);
+        return;
+      case 'sourceDefinition':
+        void this.navigation.goToSourceDefinition(editor);
         return;
       case 'implementation':
         void this.navigation.goToImplementation(editor);

@@ -248,6 +248,8 @@ describe('EditorContextMenu (#1012)', () => {
     servesNavigation: Mock<LspFeatures['servesNavigation']>;
     implementations: Mock<LspFeatures['implementations']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
+    servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -286,6 +288,10 @@ describe('EditorContextMenu (#1012)', () => {
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
     };
@@ -386,6 +392,28 @@ describe('EditorContextMenu (#1012)', () => {
       expect(rowOf(items, 'typeDefinition')).toEqual({
         id: 'typeDefinition',
         label: 'Go to Type Definition',
+      });
+    });
+
+    it('sourceDefinition_shownWhereTheServerRunsIt_afterGoToTypeDefinition (#1207)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'typescript' });
+      lsp.servesDocument.mockReturnValue(true);
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'sourceDefinition')).toBeUndefined();
+
+      lsp.servesSourceDefinition.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(idsOf(items).slice(0, 3)).toEqual([
+        'definition',
+        'typeDefinition',
+        'sourceDefinition',
+      ]);
+      expect(rowOf(items, 'sourceDefinition')).toEqual({
+        id: 'sourceDefinition',
+        label: 'Go to Source Definition',
       });
     });
 
