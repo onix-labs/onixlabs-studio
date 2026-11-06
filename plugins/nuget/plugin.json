@@ -1,0 +1,38 @@
+{
+  "id": "onixlabs.nuget",
+  "name": "NuGet",
+  "description": "NuGet packages: the .NET projects in a folder, what each references, what is restored, what is newer, and search across its feeds.",
+  "version": "0.1.0",
+  "apiVersion": "1.25.0",
+  "detail": "Reads your project files, restore output and nuget.config. Adding and updating run through the dotnet on your machine, in a terminal you can see.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.nuget.lock.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "executablePath": "node_modules/@onixlabs/nuget/main.js"
+  },
+  "contributes": {
+    "packageManagers": [
+      {
+        "id": "onixlabs.nuget",
+        "displayName": "NuGet",
+        "ecosystem": "nuget",
+        "priority": 200,
+        "markers": ["*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj"],
+        "capabilities": [
+          "sources",
+          "search",
+          "prerelease",
+          "install",
+          "update",
+          "remove",
+          "restore"
+        ],
+        "command": {
+          "kind": "node"
+        },
+        "entryPoint": "node_modules/@onixlabs/nuget/main.js"
+      }
+    ]
+  }
+}
