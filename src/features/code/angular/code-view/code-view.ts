@@ -734,7 +734,7 @@ export class CodeView implements OnInit, OnDestroy, FindHost, ReferencesHost {
       codeCleanup: async (): Promise<void> => {
         // Sequenced, not fired together: organising imports rewrites the very lines the formatter
         // would otherwise lay out, so formatting has to see the tidied text.
-        await pane.runAction('editor.action.organizeImports');
+        await pane.organizeImports();
         await pane.runAction('editor.action.formatDocument');
       },
       save: (): void => void this.documents.saveActive(),

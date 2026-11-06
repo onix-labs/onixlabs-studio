@@ -3082,6 +3082,8 @@ export class LspFeatures {
     if (ref === null || (ref.codeActions ?? 'none') === 'none') {
       return null;
     }
+    // Edits are computed against what the server holds, and a stale text would land them wrongly.
+    await ref.sync?.(model.getValue());
     const diagnostics: readonly LspDiagnostic[] = (ref.diagnostics ?? []).filter(
       (diagnostic: LspDiagnostic): boolean => touches(diagnostic.range, range),
     );

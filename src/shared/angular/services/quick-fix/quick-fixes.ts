@@ -36,6 +36,7 @@ import { QuickFixIndicator } from './quick-fix-indicator';
 import {
   buildQuickFixMenu,
   isQuickFixKind,
+  isSourceKind,
   QuickFixAction,
   QuickFixChoice,
   quickFixChoiceOf,
@@ -45,6 +46,16 @@ import {
  * Holds the key every quick-fix notification is raised under, so a newer one replaces an older one.
  */
 const NOTIFICATION_KEY: string = 'quick-fix';
+
+/**
+ * The code action kind every source action sits under.
+ */
+const SOURCE_KIND: string = 'source';
+
+/**
+ * The code action kind that organises a file's imports.
+ */
+const ORGANIZE_IMPORTS_KIND: string = 'source.organizeImports';
 
 /**
  * The code actions at an editor's caret, and how to release what their providers hold for them.
@@ -183,6 +194,53 @@ export class QuickFixes {
       this.indicators.delete(indicator);
       indicator.dispose();
     };
+  }
+
+  /**
+   * Organises a document's imports through the language server that serves it, for Code Cleanup and
+   * Organise Imports on Save: the whole document is asked about, and what comes back is applied
+   * without opening anything or moving the focus, as a save may be for an editor the user has left.
+   * @param editor The editor.
+   * @returns Returns a promise resolving to true when a server answered for the document, even with
+   * nothing to do; false when none does, and Monaco's own action is all there is.
+   */
+  public async organizeImports(editor: MonacoApi.editor.ICodeEditor): Promise<boolean> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    if (model === null) {
+      return false;
+    }
+    const features: LspFeatures = this.injector.get(LspFeatures);
+    const served: readonly LspCodeAction[] | null = await features.codeActions(
+      model,
+      model.getFullModelRange(),
+      [ORGANIZE_IMPORTS_KIND],
+    );
+    if (served === null) {
+      return false;
+    }
+    const first: LspCodeAction | undefined = served.find(
+      (action: LspCodeAction): boolean => action.disabledReason === null,
+    );
+    if (first === undefined) {
+      this.log.debug('quickFix', 'The server has no imports to organise');
+      return true;
+    }
+    const unresolved: QuickFixAction = this.fromServer(model, first, features);
+    const action: QuickFixAction =
+      unresolved.edit === null && unresolved.resolve !== null
+        ? await unresolved.resolve()
+        : unresolved;
+    let changed: boolean = false;
+    if (action.edit !== null) {
+      const outcome: WorkspaceEditOutcome = await this.applier.apply(
+        action.edit,
+        instanceOf(editor),
+      );
+      changed = outcome.applied.length > 0;
+      this.reportSkipped(action.title, action.edit.files.length, outcome);
+    }
+    await this.runCommand(model, action, changed);
+    return true;
   }
 
   /**
@@ -386,8 +444,18 @@ export class QuickFixes {
       automatic,
     );
     if (served !== null) {
+      // Some servers keep source actions back unless they are asked for by kind: tsserver's organise
+      // imports answers for any line, so it is only offered on request (#1207). Asked for only as the
+      // menu opens, never for the fix icon.
+      const asked: boolean = only === undefined && !automatic;
+      const isSource: (action: LspCodeAction) => boolean = (action: LspCodeAction): boolean =>
+        isSourceKind(action.kind);
+      const sources: readonly LspCodeAction[] =
+        asked && !served.some(isSource)
+          ? ((await features.codeActions(model, range, [SOURCE_KIND])) ?? []).filter(isSource)
+          : [];
       return {
-        actions: served.map((action: LspCodeAction): QuickFixAction =>
+        actions: [...served, ...sources].map((action: LspCodeAction): QuickFixAction =>
           this.fromServer(model, action, features),
         ),
         dispose: (): void => undefined,

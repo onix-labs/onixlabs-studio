@@ -2400,6 +2400,25 @@ describe('LspFeatures', () => {
       message: 'Unused',
     };
 
+    it('bringTheServerUpToDate_first_soTheirEditsLandOnTheTextShown (#1207)', async () => {
+      codeActionSupport = 'resolve';
+      const order: string[] = [];
+      syncHook = (): Promise<void> => {
+        order.push('sync');
+        return Promise.resolve();
+      };
+      responses['textDocument/codeAction'] = [];
+      const features: LspFeatures = await build();
+      const live: MonacoApi.editor.ITextModel = {
+        ...(model as object),
+        getValue: (): string => 'text',
+      } as MonacoApi.editor.ITextModel;
+
+      await features.codeActions(live, caret);
+
+      expect(order).toEqual(['sync']);
+    });
+
     it('askTheServer_sendingBackTheDiagnosticsAtTheSpan_withTheirCodeAndData', async () => {
       codeActionSupport = 'resolve';
       serverDiagnostics = [underCaret, elsewhere];
