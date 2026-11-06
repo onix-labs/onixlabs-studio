@@ -575,11 +575,11 @@ export class WorkspaceManager {
       const stats: Stats = await fs.stat(selectedPath);
       if (stats.isDirectory()) {
         this.workspace.addRoot(selectedPath);
-        this.trusted.remember(selectedPath);
+        this.trusted.rememberChosen(selectedPath);
         logger.info('WorkspaceManager.open', `Opened directory ${selectedPath}`);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
-      this.trusted.remember(selectedPath);
+      this.trusted.rememberChosen(selectedPath);
       logger.debug('WorkspaceManager.open', `Opening file ${selectedPath}`);
       return await this.readFileSelection(selectedPath, policy);
     } catch (error: unknown) {

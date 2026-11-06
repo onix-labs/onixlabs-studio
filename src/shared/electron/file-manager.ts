@@ -24,8 +24,11 @@ import {
   type TextDecodeOptions,
   type TextEncoding,
 } from '@shared/api/text-encodings';
+import { realPathOf } from '@shared/electron/ai/write-confinement';
+import { metadataAsSourcePath } from '@shared/electron/lsp/metadata-as-source';
 import { TrustedPaths } from '@shared/electron/trusted-paths';
 import { decodeText, encodeText, type DecodedText } from '@shared/electron/text-encoding';
+import { WorkspaceContext } from '@shared/electron/workspace-context';
 
 /**
  * Specifies the index of the "Save" button in the confirm-save dialog.
@@ -43,8 +46,18 @@ const DONT_SAVE_BUTTON_INDEX: number = 1;
 const CANCEL_BUTTON_INDEX: number = 2;
 
 /**
+ * Specifies the reason a write outside everything the user opened is refused, shown as the failed save.
+ */
+const OUTSIDE_THE_BOUNDARY: string =
+  'Studio can only save files in an open workspace or files you chose yourself. Use Save As to choose where it goes.';
+
+/**
  * Handles file-system operations on behalf of the renderer: reads and writes files, and shows the
  * open, save, and unsaved-changes dialogs. All paths are validated here before any disk access.
+ *
+ * The renderer is treated as hostile, so a path it names is honoured only inside an open workspace or
+ * when the user chose it themselves (#1174), with links followed first: a link planted in a workspace
+ * cannot carry a read or a write out of it.
  */
 export class FileManager {
   /**
@@ -64,14 +77,25 @@ export class FileManager {
   private readonly writes: Map<string, Promise<void>> = new Map<string, Promise<void>>();
 
   /**
+   * Holds the open workspace roots a path may lie within.
+   */
+  private readonly workspace: WorkspaceContext;
+
+  /**
    * Initializes a new instance of the {@link FileManager} class.
    * @param windowGetter A function that returns the window dialogs are parented to when the
    * requesting window is gone.
-   * @param trusted The store used to remember files chosen through the save dialog.
+   * @param trusted The store used to remember files chosen through a dialog.
+   * @param workspace The open workspace roots.
    */
-  public constructor(windowGetter: () => BrowserWindow | null, trusted: TrustedPaths) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    trusted: TrustedPaths,
+    workspace: WorkspaceContext,
+  ) {
     this.windowGetter = windowGetter;
     this.trusted = trusted;
+    this.workspace = workspace;
   }
 
   /**
@@ -148,6 +172,10 @@ export class FileManager {
       logger.warn('FileManager.read', 'Rejected read for invalid path');
       return null;
     }
+    if (!this.mayWrite(filePath) && (await metadataAsSourcePath(filePath)) === null) {
+      logger.warn('FileManager.read', `Refused read outside the boundary: ${filePath}`);
+      return null;
+    }
     try {
       const info: FileInfo = await this.readFileInfo(filePath, decode);
       logger.trace('FileManager.read', `Read ${filePath} (${info.content.length} chars)`);
@@ -181,6 +209,10 @@ export class FileManager {
       logger.warn('FileManager.write', `Rejected write for ${filePath}: invalid content`);
       return { success: false, error: 'Invalid file content' };
     }
+    if (!this.mayWrite(filePath)) {
+      logger.warn('FileManager.write', `Refused write outside the boundary: ${filePath}`);
+      return { success: false, error: OUTSIDE_THE_BOUNDARY };
+    }
     let bytes: Buffer;
     try {
       // Re-add the byte-order mark the file was read with, so a BOM is preserved across edits.
@@ -201,8 +233,7 @@ export class FileManager {
   }
 
   /**
-   * Writes bytes to a file, as {@link write} writes text: to the path the renderer names, which is one
-   * the user chose in a save dialog.
+   * Writes bytes to a file, as {@link write} writes text and within the same boundary.
    * @param filePath The path to write.
    * @param bytes The bytes.
    * @returns Returns a promise resolving whether it was written, and why not.
@@ -215,6 +246,10 @@ export class FileManager {
     if (!(bytes instanceof Uint8Array)) {
       logger.warn('FileManager.writeBytes', `Rejected write for ${filePath}: invalid content`);
       return { success: false, error: 'Invalid file content' };
+    }
+    if (!this.mayWrite(filePath)) {
+      logger.warn('FileManager.writeBytes', `Refused write outside the boundary: ${filePath}`);
+      return { success: false, error: OUTSIDE_THE_BOUNDARY };
     }
     try {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -251,6 +286,8 @@ export class FileManager {
     logger.debug('FileManager.openDialog', `Chosen ${result.filePaths.length} file(s)`);
     const opened: FileInfo[] = [];
     for (const filePath of result.filePaths) {
+      // Remembered because the document it opens saves back through the write channel.
+      this.trusted.rememberChosen(filePath);
       try {
         opened.push(await this.readFileInfo(filePath, decode));
       } catch (error: unknown) {
@@ -312,6 +349,10 @@ export class FileManager {
       return [];
     }
     logger.debug('FileManager.pickPaths', `Chosen ${result.filePaths.length} ${kind}(s)`);
+    if (kind === 'file') {
+      // Remembered because a picked file is then read by its path: an imported settings file is one.
+      result.filePaths.forEach((filePath: string): void => this.trusted.rememberChosen(filePath));
+    }
     return result.filePaths;
   }
 
@@ -336,7 +377,7 @@ export class FileManager {
     }
     // Remember the chosen path so the saved file can be re-opened from the welcome screen later.
     logger.debug('FileManager.saveDialog', `Chosen save path ${result.filePath}`);
-    this.trusted.remember(result.filePath);
+    this.trusted.rememberChosen(result.filePath);
     return result.filePath;
   }
 
@@ -398,6 +439,27 @@ export class FileManager {
       detail: candidate.detail,
     });
     return result.response === 0;
+  }
+
+  /**
+   * Determines whether a path the renderer named is one Studio may read and write. A language server's
+   * decompiled source may be read as well, which {@link read} adds: nothing else differs by direction.
+   *
+   * The path is judged where it really is. A trusted name is honoured as it stands only outside the
+   * open workspaces, for entries recorded before links were followed, reached through a link such as
+   * macOS's `/tmp`; inside one it is what a planted link would pass for, because a file opened in a
+   * workspace is remembered under its name.
+   * @param filePath The path, untrusted.
+   * @returns Returns true when it lies within an open workspace or the user chose it.
+   */
+  private mayWrite(filePath: string): boolean {
+    const resolved: string = path.resolve(filePath);
+    const real: string = realPathOf(resolved);
+    return (
+      this.workspace.holdsRealPath(real) ||
+      this.trusted.has(real) ||
+      (this.trusted.has(resolved) && !this.workspace.isWithin(resolved))
+    );
   }
 
   /**
