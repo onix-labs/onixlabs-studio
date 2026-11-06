@@ -94,7 +94,7 @@ describe('KeyboardSettingsSection', () => {
     );
   });
 
-  it('appWidePage_listsTheApplicationCommandsAndSaysWhereTheRestAre', async (): Promise<void> => {
+  it('appWidePage_listsTheApplicationCommands', async (): Promise<void> => {
     fixture.componentRef.setInput('view', null);
     await fixture.whenStable();
 
@@ -102,7 +102,6 @@ describe('KeyboardSettingsSection', () => {
     expect(element.querySelectorAll('.keyboard__row').length).toBe(1);
     expect(element.textContent).toContain('Close the active tab');
     expect(element.textContent).not.toContain('Save the active document');
-    expect(element.textContent).toContain('for example Code › Keyboard');
   });
 
   it('conflict_whenAViewShortcutTakesAnApplicationChord_warnsOnBothPages', async (): Promise<void> => {

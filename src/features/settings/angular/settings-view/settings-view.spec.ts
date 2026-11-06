@@ -75,6 +75,25 @@ describe('SettingsView', () => {
     expect(ids).not.toContain('ai-skills-leaf');
   });
 
+  it('moreMenu_expandOpensEveryBranch_andCollapseClosesThemAll', () => {
+    const view: {
+      onMenu(id: string): void;
+      rows: () => readonly TreeRow[];
+    } = component as unknown as {
+      onMenu(id: string): void;
+      rows: () => readonly TreeRow[];
+    };
+    const branches: () => readonly TreeRow[] = (): readonly TreeRow[] =>
+      view.rows().filter((row: TreeRow): boolean => row.expandable);
+
+    view.onMenu('settings.expand');
+    expect(branches().length).toBeGreaterThan(0);
+    expect(branches().every((row: TreeRow): boolean => row.expanded)).toBe(true);
+
+    view.onMenu('settings.collapse');
+    expect(branches().some((row: TreeRow): boolean => row.expanded)).toBe(false);
+  });
+
   it('render_whenServersAreInstalled_nestsALanguagesBranchUnderCode', async () => {
     // A leaf per language an installed server serves, under Code — the same install-driven
     // rule as AI › Providers. Each leaf shows both the server rows and the editor overrides.
@@ -197,6 +216,9 @@ describe('SettingsView', () => {
       .mockResolvedValue(null);
 
     expect(view.menuItems.map((item: { label: string }): string => item.label)).toEqual([
+      'Expand',
+      'Collapse',
+      '',
       'Import Settings',
       'Export Settings',
     ]);

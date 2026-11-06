@@ -39,6 +39,13 @@
 
   // The chord in effect, as key caps, right-aligned against its Set Chord button.
   &__chord {
+    // A shade above the page, and quieter than the key's own border.
+    --key-cap-background-color: color-mix(
+      in srgb,
+      var(--form-control-border-color) 35%,
+      transparent
+    );
+
     display: inline-flex;
     justify-content: flex-end;
     min-inline-size: 128px;
