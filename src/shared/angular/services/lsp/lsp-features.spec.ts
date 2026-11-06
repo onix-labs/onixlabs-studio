@@ -1877,6 +1877,46 @@ describe('LspFeatures', () => {
       expect(requests.at(-1)?.method).toBe('textDocument/typeDefinition');
     });
 
+    it('sourceDefinitions_runTheServersCommand_andAnswerByPath (#1207)', async () => {
+      serverCommands = ['_typescript.goToSourceDefinition'];
+      responses['workspace/executeCommand'] = [
+        {
+          uri: 'file:///root/node_modules/pkg/index.js',
+          range: { start: { line: 4, character: 9 }, end: { line: 4, character: 12 } },
+        },
+      ];
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['sourceDefinitions']>[0] = owned as Parameters<
+        LspFeatures['sourceDefinitions']
+      >[0];
+
+      expect(features.servesSourceDefinition(model)).toBe(true);
+      expect(await features.sourceDefinitions(model, at)).toEqual([
+        {
+          path: '/root/node_modules/pkg/index.js',
+          range: { startLineNumber: 5, startColumn: 10, endLineNumber: 5, endColumn: 13 },
+        },
+      ]);
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'workspace/executeCommand',
+        params: {
+          command: '_typescript.goToSourceDefinition',
+          arguments: ['file:///root/app.ts', { line: 2, character: 6 }],
+        },
+      });
+    });
+
+    it('sourceDefinitions_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['sourceDefinitions']>[0] = owned as Parameters<
+        LspFeatures['sourceDefinitions']
+      >[0];
+
+      expect(features.servesSourceDefinition(model)).toBe(false);
+      expect(await features.sourceDefinitions(model, at)).toBeNull();
+    });
+
     it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
       navigationSupport = {
         implementation: false,

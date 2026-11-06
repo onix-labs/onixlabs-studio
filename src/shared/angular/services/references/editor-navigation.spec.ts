@@ -129,6 +129,8 @@ describe('EditorNavigation (#1014)', () => {
     servesNavigation: Mock<LspFeatures['servesNavigation']>;
     implementations: Mock<LspFeatures['implementations']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
+    servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
+    sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
     hierarchy: Mock<LspFeatures['hierarchy']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
@@ -168,6 +170,10 @@ describe('EditorNavigation (#1014)', () => {
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
+      sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       hierarchy: vi.fn<LspFeatures['hierarchy']>((): Promise<HierarchySource | null> =>
@@ -321,6 +327,40 @@ describe('EditorNavigation (#1014)', () => {
           ],
         },
       ]);
+    });
+
+    it('offersSourceDefinitions_asksTheLanguageFeatures (#1207)', () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesSourceDefinition.mockReturnValue(true);
+
+      expect(navigation.offersSourceDefinitions(fake.editor)).toBe(true);
+      expect(lsp.servesSourceDefinition).toHaveBeenCalledWith(fake.model);
+    });
+
+    it('oneSourceDefinition_goesStraightThere_listingNothing (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.sourceDefinitions.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToSourceDefinition(fake.editor);
+
+      expect(lsp.sourceDefinitions).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(shown).toEqual([]);
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('noSourceDefinitionAnswer_goesNowhere (#1207)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.sourceDefinitions.mockResolvedValue(null);
+
+      await navigation.goToSourceDefinition(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).not.toContain('focus');
     });
 
     it('oneTypeDefinition_goesStraightThere_listingNothing', async () => {

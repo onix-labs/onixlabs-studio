@@ -416,6 +416,13 @@ const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
 const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
 
 /**
+ * The command typescript-language-server runs for Go to Source Definition (#1207): from an import to
+ * the JavaScript or TypeScript source behind a package's `.d.ts`. No request does this, so it is offered
+ * wherever a server lists this command. Its arguments are the document's URI and the position.
+ */
+const SOURCE_DEFINITION_COMMAND: string = '_typescript.goToSourceDefinition';
+
+/**
  * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
  * serves the lens's document, which runs the tests. Its arguments are the model's URI and the lens's
  * argument.
@@ -2719,6 +2726,39 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether the language server that serves a document answers Go to Source Definition: it
+   * lists the command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesSourceDefinition(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(SOURCE_DEFINITION_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document for the source behind the symbol at a position,
+   * for Go to Source Definition (#1207). Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async sourceDefinitions(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesSourceDefinition(model)) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: SOURCE_DEFINITION_COMMAND,
+      arguments: [ref.uri, { line: position.lineNumber - 1, character: position.column - 1 }],
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
    * Asks the language server that serves a document where the type of the symbol at a position is
    * declared — from a variable or parameter to its type — for Go to Type Definition (#1142).
    * @param model The editor model.
@@ -2854,7 +2894,15 @@ export class LspFeatures {
     if (this.resolve(model) === null) {
       return null;
     }
-    const result: unknown = await this.request(model, method, position as MonacoApi.Position);
+    return this.toPlaces(await this.request(model, method, position as MonacoApi.Position));
+  }
+
+  /**
+   * Reads a server's answer of one or several locations or location links as places by path.
+   * @param result The server's answer.
+   * @returns Returns the places, empty for no answer.
+   */
+  private toPlaces(result: unknown): readonly LspDefinition[] {
     if (result === null || result === undefined) {
       return [];
     }
