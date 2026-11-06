@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { logger } from '@shared/electron/logger';
 import { liveSessionBusyReason, trackTaskEvent } from './live-session-activity';
+import { proposedOriginal } from './proposed-original';
 import type {
   AiProposedChange,
   AgentContextRef,
@@ -84,6 +85,7 @@ import {
   PermissionRuleStore,
   permissionRuleKey,
   permissionRuleScope,
+  permissionSessionKey,
 } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
@@ -116,6 +118,11 @@ interface PendingPermission {
    * remembered for the session (#979).
    */
   readonly ruleKey: string | null;
+
+  /**
+   * Gets the key a session grant for this prompt is held under.
+   */
+  readonly sessionKey: string;
 }
 
 /**
@@ -288,6 +295,15 @@ interface RunClock {
    */
   pauseDepth: number;
 }
+
+/**
+ * What the transcript says about why a command was let out of the sandbox.
+ */
+const UNSANDBOXED_REASONS: Readonly<Record<AuditGrantSource, string>> = {
+  policy: 'Ran outside the sandbox: its permission is set to Allowed.',
+  posture: 'Ran outside the sandbox: Allow All is on.',
+  'gated-or-auto': 'Ran outside the sandbox: you allowed it.',
+};
 
 /**
  * Coordinates the agent subsystem in the main process: authentication (delegated to
@@ -1243,8 +1259,18 @@ export class AiManager {
           cancel,
           change,
         ),
-      recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
-        this.recordAudit(name, detail, request.workspaceRoot, source),
+      recordAudit: (
+        name: string,
+        detail: string,
+        source: AuditGrantSource,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
+        this.recordAudit(name, detail, request.workspaceRoot, source, sandboxed);
+        if (sandboxed === false) {
+          this.reportUnsandboxed(request.requestId, detail, source, toolId);
+        }
+      },
       requestInput: (
         question: string,
         choices: readonly AiInputChoice[],
@@ -2015,8 +2041,9 @@ export class AiManager {
   ): Promise<boolean> {
     // A command tool's rule names its exact command (#979); a session grant still covers the tool.
     const ruleKey: string | null = permissionRuleKey(name, detail);
+    const sessionKey: string = permissionSessionKey(name, detail);
     if (
-      this.sessionAllowed.has(name) ||
+      this.sessionAllowed.has(sessionKey) ||
       (ruleKey !== null && this.rules.isAllowed(ruleKey, workspaceRoot))
     ) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -2033,7 +2060,7 @@ export class AiManager {
           resolve(granted);
         }
       };
-      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey });
+      this.permissions.set(permissionId, { settle, name, workspaceRoot, ruleKey, sessionKey });
       if (signal.aborted) {
         settle(false);
         return;
@@ -2056,15 +2083,26 @@ export class AiManager {
         );
       }
       signal.addEventListener('abort', (): void => settle(false), { once: true });
-      this.emit({
-        requestId,
-        kind: 'permission',
-        permissionId,
-        name,
-        detail,
-        hasWorkspace: workspaceRoot !== null,
-        remembers: permissionRuleScope(name, detail),
-        ...(change === undefined ? {} : { change }),
+      const prompt: (proposed?: AiProposedChange) => void = (proposed?: AiProposedChange): void =>
+        this.emit({
+          requestId,
+          kind: 'permission',
+          permissionId,
+          name,
+          detail,
+          hasWorkspace: workspaceRoot !== null,
+          remembers: permissionRuleScope(name, detail),
+          ...(proposed === undefined ? {} : { change: proposed }),
+        });
+      if (change === undefined) {
+        prompt();
+        return;
+      }
+      void proposedOriginal(change.path, workspaceRoot).then((original: string | null): void => {
+        // The prompt may have been answered from elsewhere or aborted while the file was read.
+        if (this.permissions.has(permissionId)) {
+          prompt({ ...change, original });
+        }
       });
     });
   }
@@ -2076,12 +2114,14 @@ export class AiManager {
    * @param detail The one-line target summary.
    * @param workspaceRoot The run's workspace root, or null for none.
    * @param source The coarse reason the action was allowed.
+   * @param sandboxed Whether a shell command ran inside the OS sandbox, when it was one.
    */
   private recordAudit(
     name: string,
     detail: string,
     workspaceRoot: string | null,
     source: AuditGrantSource,
+    sandboxed?: boolean,
   ): void {
     logger.trace('AiManager.recordAudit', `Auditing executed action "${name}"`);
     this.auditLog ??= new AgentAuditLog(app.getPath('userData'));
@@ -2091,7 +2131,33 @@ export class AiManager {
       target: detail,
       workspaceRoot,
       source,
+      ...(sandboxed === undefined ? {} : { sandboxed }),
     });
+  }
+
+  /**
+   * Reports a command that ran outside the sandbox (#1160): a line in `studio.log` for whoever reads it
+   * later, and the transcript's mark on the call, each saying why it was allowed.
+   * @param requestId The run that ran it.
+   * @param detail The command's summary.
+   * @param source The coarse reason it was allowed.
+   * @param toolId The tool use, when the harness says.
+   */
+  private reportUnsandboxed(
+    requestId: string,
+    detail: string,
+    source: AuditGrantSource,
+    toolId?: string,
+  ): void {
+    logger.info('AiManager', `Ran outside the sandbox (${source}): ${detail}`);
+    if (toolId !== undefined) {
+      this.emit({
+        requestId,
+        kind: 'tool-unsandboxed',
+        toolId,
+        reason: UNSANDBOXED_REASONS[source],
+      });
+    }
   }
 
   /**
@@ -2110,7 +2176,7 @@ export class AiManager {
         `Remembering grant for "${pending.name}" (scope ${reply.remember})`,
       );
       if (reply.remember === 'session') {
-        this.sessionAllowed.add(pending.name);
+        this.sessionAllowed.add(pending.sessionKey);
       } else if (pending.ruleKey === null) {
         // The prompt only offered the session; a longer scope cannot name the whole command.
         logger.warn(

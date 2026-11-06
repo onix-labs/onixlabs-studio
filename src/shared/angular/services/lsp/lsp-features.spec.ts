@@ -1936,6 +1936,46 @@ describe('LspFeatures', () => {
       expect(requests.at(-1)?.method).toBe('textDocument/typeDefinition');
     });
 
+    it('sourceDefinitions_runTheServersCommand_andAnswerByPath (#1207)', async () => {
+      serverCommands = ['_typescript.goToSourceDefinition'];
+      responses['workspace/executeCommand'] = [
+        {
+          uri: 'file:///root/node_modules/pkg/index.js',
+          range: { start: { line: 4, character: 9 }, end: { line: 4, character: 12 } },
+        },
+      ];
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['sourceDefinitions']>[0] = owned as Parameters<
+        LspFeatures['sourceDefinitions']
+      >[0];
+
+      expect(features.servesSourceDefinition(model)).toBe(true);
+      expect(await features.sourceDefinitions(model, at)).toEqual([
+        {
+          path: '/root/node_modules/pkg/index.js',
+          range: { startLineNumber: 5, startColumn: 10, endLineNumber: 5, endColumn: 13 },
+        },
+      ]);
+      expect(requests.at(-1)).toEqual({
+        sessionId: '/root::typescript',
+        method: 'workspace/executeCommand',
+        params: {
+          command: '_typescript.goToSourceDefinition',
+          arguments: ['file:///root/app.ts', { line: 2, character: 6 }],
+        },
+      });
+    });
+
+    it('sourceDefinitions_areNull_andNeverAsked_whereTheServerDoesNotRunTheCommand (#1207)', async () => {
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['sourceDefinitions']>[0] = owned as Parameters<
+        LspFeatures['sourceDefinitions']
+      >[0];
+
+      expect(features.servesSourceDefinition(model)).toBe(false);
+      expect(await features.sourceDefinitions(model, at)).toBeNull();
+    });
+
     it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
       navigationSupport = {
         implementation: false,
@@ -2419,6 +2459,25 @@ describe('LspFeatures', () => {
       message: 'Unused',
     };
 
+    it('bringTheServerUpToDate_first_soTheirEditsLandOnTheTextShown (#1207)', async () => {
+      codeActionSupport = 'resolve';
+      const order: string[] = [];
+      syncHook = (): Promise<void> => {
+        order.push('sync');
+        return Promise.resolve();
+      };
+      responses['textDocument/codeAction'] = [];
+      const features: LspFeatures = await build();
+      const live: MonacoApi.editor.ITextModel = {
+        ...(model as object),
+        getValue: (): string => 'text',
+      } as MonacoApi.editor.ITextModel;
+
+      await features.codeActions(live, caret);
+
+      expect(order).toEqual(['sync']);
+    });
+
     it('askTheServer_sendingBackTheDiagnosticsAtTheSpan_withTheirCodeAndData', async () => {
       codeActionSupport = 'resolve';
       serverDiagnostics = [underCaret, elsewhere];
@@ -2830,6 +2889,20 @@ describe('LspFeatures', () => {
     expect([...(tokens?.data ?? [])]).toEqual([
       0, 0, 6, 2, 0, 0, 7, 5, 10, 0, 1, 0, 3, 13, 0, 0, 4, 5, 5, 0,
     ]);
+  });
+
+  it('semanticTokens_coloursTheTypeScriptMemberAsAMethod_andDropsItsLocalModifier (#1207)', async () => {
+    // typescript-language-server's legend: `member` is a method, and `local` is a modifier the fixed
+    // legend has no use for.
+    semanticLegend = { tokenTypes: ['member'], tokenModifiers: ['static', 'local'] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 3] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // Fixed legend: method=13, static=3 (bit value 8).
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
   });
 
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {

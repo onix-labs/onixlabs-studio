@@ -293,6 +293,8 @@ export type HarnessMessage =
       readonly name: string;
       readonly detail: string;
       readonly source: string;
+      readonly sandboxed?: boolean;
+      readonly toolId?: string;
     }
   | {
       readonly type: 'turn.completed';

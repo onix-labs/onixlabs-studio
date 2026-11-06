@@ -1020,6 +1020,43 @@ describe('TextEditor driven through a stand-in Monaco', () => {
     });
   });
 
+  describe('organizeImports', () => {
+    it('aLanguageServerAnswers_soMonacosActionIsNotRun', async () => {
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture, calls } = await mounted({ editor: { getAction: (): unknown => ({ run }) } });
+      const organize: MockInstance = vi
+        .spyOn(TestBed.inject(QuickFixes), 'organizeImports')
+        .mockResolvedValue(true);
+      calls.length = 0;
+
+      await fixture.componentInstance.organizeImports();
+
+      expect(organize).toHaveBeenCalledTimes(1);
+      expect(run).not.toHaveBeenCalled();
+      expect(calls).toEqual(['focus']);
+    });
+
+    it('noLanguageServerAnswers_soMonacosActionRuns', async () => {
+      const run: Mock<() => Promise<void>> = vi.fn<() => Promise<void>>().mockResolvedValue();
+      const { fixture } = await mounted({ editor: { getAction: (): unknown => ({ run }) } });
+      vi.spyOn(TestBed.inject(QuickFixes), 'organizeImports').mockResolvedValue(false);
+
+      await fixture.componentInstance.organizeImports();
+
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('forSave_leavesTheFocusWhereItIs', async () => {
+      const { fixture, calls } = await mounted({ editor: { getAction: (): null => null } });
+      vi.spyOn(TestBed.inject(QuickFixes), 'organizeImports').mockResolvedValue(true);
+      calls.length = 0;
+
+      await fixture.componentInstance.organizeImportsForSave();
+
+      expect(calls).toEqual([]);
+    });
+  });
+
   describe('formatLinesForSave', () => {
     const lines: readonly { first: number; last: number }[] = [
       { first: 7, last: 9 },

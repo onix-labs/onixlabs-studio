@@ -102,6 +102,8 @@ import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { parseStartupSettings, StartupSettings } from '@shared/api/startup-settings';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
+import { PackageManagerHost } from '@shared/electron/package-managers/package-manager-host';
+import { PackagePluginRoute } from '@shared/electron/package-managers/package-plugin-route';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
 import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
@@ -109,6 +111,7 @@ import type { VersionControlExecutableChoice } from '@shared/api/version-control
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import {
   contributedHosting,
+  contributedPackageManagers,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import {
@@ -353,6 +356,11 @@ class Program {
   );
 
   /**
+   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
    * Handles file-system operations and dialogs on behalf of the renderer.
    */
   /**
@@ -375,6 +383,7 @@ class Program {
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
+    this.workspaceContext,
   );
 
   /**
@@ -438,11 +447,6 @@ class Program {
   );
 
   /**
-   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
-   */
-  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
-
-  /**
    * Hosts the version-control plugins (#815–#817): picks the one serving each repository, confines
    * every request to an open repository or workspace, and refuses what a plugin does not support.
    * Core runs no version-control tool of its own — Git is a plugin.
@@ -453,6 +457,19 @@ class Program {
     trust: this.repositoryTrust,
     executableFor: (pluginId: string): VersionControlExecutableChoice | null =>
       this.versionControlSettings.executableFor(pluginId),
+  });
+
+  /**
+   * Hosts the package-manager plugins (#908): finds which apply to a folder, confines every request to
+   * an open, trusted workspace, and refuses what a plugin does not support.
+   */
+  private readonly packageManagerHost: PackageManagerHost = new PackageManagerHost({
+    descriptors: () => contributedPackageManagers(versionControlNodeRuntime),
+    roots: this.workspaceContext,
+    trust: this.repositoryTrust,
+    // Nothing saves a registry token yet: that is Settings' to add (#911), and a plugin reads the
+    // tool's own configuration meanwhile.
+    credential: () => Promise.resolve(null),
   });
 
   /**
@@ -586,6 +603,7 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.workspaceContext,
     this.trustedPaths,
+    new PackagePluginRoute(this.packageManagerHost),
   );
 
   /**
@@ -908,7 +926,7 @@ class Program {
     } catch {
       return;
     }
-    this.trustedPaths.remember(filePath);
+    this.trustedPaths.rememberChosen(filePath);
     const window: BrowserWindow | null = this.windows.main();
     if (this.openPathsReady && window !== null && !window.isDestroyed()) {
       window.webContents.send(AppChannel.OpenPath, filePath);
@@ -1230,6 +1248,8 @@ class Program {
         this.hostingHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'version-control') {
         this.versionControlHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'package-manager') {
+        this.packageManagerHost.restartPlugin(contribution.id);
       } else if (contribution.slot === 'agent-harness') {
         this.aiManager.retireHarnessSessions(contribution.id);
       } else if (contribution.slot === 'database-engine') {
@@ -1596,6 +1616,7 @@ class Program {
     this.codeRunner.dispose();
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
+    this.packageManagerHost.dispose();
     this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();

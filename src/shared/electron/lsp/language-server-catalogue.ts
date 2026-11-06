@@ -111,10 +111,11 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   priority: DEFAULT_PRIORITY,
   // The server never asks for its settings (#1204): it reads the `typescript.*` and `javascript.*`
   // it is pushed, live, and the tsserver preferences it is given in `initializationOptions` only when
-  // it starts. The defaults are the server's own.
+  // it starts. Formatter options sit under `format` in the pushed sections, and each format request
+  // merges them in. The defaults are the server's own.
   settingsDelivery: {
     pull: false,
-    push: ['typescript', 'javascript'],
+    push: ['typescript', 'javascript', 'completions'],
     startup: { section: 'preferences', key: 'preferences' },
   },
   settings: [
@@ -169,6 +170,141 @@ const TYPESCRIPT: LanguageServerDescriptor = {
       description:
         'Show the return type the compiler infers for a function that does not name one.',
       default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayFunctionLikeReturnTypeHints',
+      label: 'Return Types in JavaScript',
+      description:
+        'Show the return type the compiler infers for a function that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayVariableTypeHints',
+      label: 'Variable Types in TypeScript',
+      description:
+        'Show the type the compiler infers for a variable that does not name one. A constant set to a literal shows nothing.',
+      default: false,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayVariableTypeHints',
+      label: 'Variable Types in JavaScript',
+      description:
+        'Show the type the compiler infers for a variable that does not name one. A constant set to a literal shows nothing.',
+      default: false,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayFunctionParameterTypeHints',
+      label: 'Parameter Types in TypeScript',
+      description:
+        'Show the type the compiler infers for a parameter that does not name one, such as in a callback.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayFunctionParameterTypeHints',
+      label: 'Parameter Types in JavaScript',
+      description:
+        'Show the type the compiler infers for a parameter that does not name one, such as in a callback.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayPropertyDeclarationTypeHints',
+      label: 'Property Types in TypeScript',
+      description: 'Show the type the compiler infers for a class property that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'javascript.inlayHints.includeInlayPropertyDeclarationTypeHints',
+      label: 'Property Types in JavaScript',
+      description: 'Show the type the compiler infers for a class property that does not name one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.inlayHints.includeInlayEnumMemberValueHints',
+      label: 'Enum Values in TypeScript',
+      description: 'Show the value of each enum member that does not state one.',
+      default: false,
+      advanced: true,
+    },
+    {
+      section: 'typescript.format.semicolons',
+      label: 'Semicolons in TypeScript',
+      description:
+        'What the formatter does with the semicolon that may end a statement: leave it as written, add it, or remove it.',
+      default: 'ignore',
+      options: [
+        { value: 'ignore', label: 'Leave as written' },
+        { value: 'insert', label: 'Add' },
+        { value: 'remove', label: 'Remove' },
+      ],
+    },
+    {
+      section: 'javascript.format.semicolons',
+      label: 'Semicolons in JavaScript',
+      description:
+        'What the formatter does with the semicolon that may end a statement: leave it as written, add it, or remove it.',
+      default: 'ignore',
+      options: [
+        { value: 'ignore', label: 'Leave as written' },
+        { value: 'insert', label: 'Add' },
+        { value: 'remove', label: 'Remove' },
+      ],
+    },
+    {
+      section: 'typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces',
+      label: 'Spaces Inside Braces in TypeScript',
+      description:
+        'Keep a space inside the braces of a non-empty object or import when formatting: { a } rather than {a}.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces',
+      label: 'Spaces Inside Braces in JavaScript',
+      description:
+        'Keep a space inside the braces of a non-empty object or import when formatting: { a } rather than {a}.',
+      default: true,
+      advanced: true,
+    },
+    {
+      section: 'completions.completeFunctionCalls',
+      label: 'Complete Function Calls',
+      description:
+        'Fill in the parentheses and parameters when a function is chosen from the completion list.',
+      default: false,
+    },
+    {
+      section: 'preferences.quotePreference',
+      label: 'Quote Style in Generated Code',
+      description:
+        'The quotes used by auto-imports and code actions: chosen from the file, single or double. The server reads this only when it starts, so changing it restarts it.',
+      default: 'auto',
+      options: [
+        { value: 'auto', label: 'Match the file' },
+        { value: 'single', label: 'Single' },
+        { value: 'double', label: 'Double' },
+      ],
+      startupOnly: true,
+      advanced: true,
+    },
+    {
+      section: 'preferences.importModuleSpecifierPreference',
+      label: 'Import Paths in Generated Code',
+      description:
+        'How auto-imports and code actions write the path of a module. The server reads this only when it starts, so changing it restarts it.',
+      default: 'shortest',
+      options: [
+        { value: 'shortest', label: 'Shortest' },
+        { value: 'relative', label: 'Relative' },
+        { value: 'non-relative', label: 'Non-relative' },
+        { value: 'project-relative', label: 'Relative within a project' },
+      ],
+      startupOnly: true,
       advanced: true,
     },
     {

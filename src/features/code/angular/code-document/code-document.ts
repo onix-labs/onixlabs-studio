@@ -386,7 +386,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
       return;
     }
     if (settings.organiseImportsOnSave) {
-      await pane.runActionForSave('editor.action.organizeImports');
+      await pane.organizeImportsForSave();
     }
     if (settings.formatOnSave === 'whole') {
       await pane.runActionForSave('editor.action.formatDocument');

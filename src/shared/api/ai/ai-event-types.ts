@@ -100,6 +100,27 @@ export interface AiToolStartEvent extends AiEventBase {
 }
 
 /**
+ * Signals that a shell command ran outside the OS sandbox (#1160). Sent when it has run rather than
+ * read from the call, because a call asking to leave the sandbox may have been run inside it.
+ */
+export interface AiToolUnsandboxedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'tool-unsandboxed';
+
+  /**
+   * Gets the identifier of the tool use that ran.
+   */
+  readonly toolId: string;
+
+  /**
+   * Gets why it was allowed, in words.
+   */
+  readonly reason: string;
+}
+
+/**
  * Signals that a tool use completed.
  */
 export interface AiToolEndEvent extends AiEventBase {
@@ -164,10 +185,11 @@ export interface AiPermissionEvent extends AiEventBase {
 
   /**
    * Gets how a grant can be remembered (#979): `tool` for any use of the tool, `command` for the exact
-   * command shown, or `session` when only the session can remember it. Absent from an older event,
-   * which means `tool`.
+   * command shown, `session` when only the session can remember it, or `session-command` for the exact
+   * command and only for the session, which is all a run outside the sandbox can be (#1159). Absent from
+   * an older event, which means `tool`.
    */
-  readonly remembers?: 'tool' | 'command' | 'session';
+  readonly remembers?: 'tool' | 'command' | 'session' | 'session-command';
 
   /**
    * Gets the change to a file the tool would make, when it is one that writes a file and the harness
@@ -199,6 +221,12 @@ export interface AiProposedChange {
     readonly newText: string;
     readonly replaceAll?: boolean;
   }[];
+
+  /**
+   * Gets the file's text as it is now, or null when it does not exist yet. The main process reads it,
+   * because the renderer is not allowed to read a path a model chose (#1174).
+   */
+  readonly original?: string | null;
 }
 
 /**
@@ -772,6 +800,7 @@ export type AiEvent =
   | AiTextEvent
   | AiThinkingEvent
   | AiToolStartEvent
+  | AiToolUnsandboxedEvent
   | AiToolEndEvent
   | AiPermissionEvent
   | AiPermissionDismissedEvent

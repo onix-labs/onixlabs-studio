@@ -182,6 +182,16 @@ export class EditorNavigation {
   }
 
   /**
+   * Determines whether Go to Source Definition can answer for a document (#1207).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersSourceDefinitions(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesSourceDefinition(model);
+  }
+
+  /**
    * Determines whether Show Call Hierarchy or Show Type Hierarchy can answer for a document (#1153):
    * the language server serving it gives that hierarchy, and a workspace is in front to show it in.
    * @param editor The editor.
@@ -290,6 +300,21 @@ export class EditorNavigation {
       'definitions',
       async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
         (await this.injector.get(LspFeatures).typeDefinitions(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Goes to the source behind the symbol at the caret (#1207) — from a package's `.d.ts` to its
+   * JavaScript or TypeScript: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the source is shown, or found not to be.
+   */
+  public goToSourceDefinition(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).sourceDefinitions(model, position)) ?? [],
     );
   }
 

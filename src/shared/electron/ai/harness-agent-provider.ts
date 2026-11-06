@@ -348,7 +348,14 @@ export class HarnessAgentProvider implements AgentProvider {
     await this.definition.beforeTurn?.();
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
-      (requestId: string, name: string, detail: string, source: string): void => {
+      (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
         // ⚠️ A record naming a turn other than this one is refused rather than relabelled. One process
         // runs one turn today, so the only way to see a foreign id is a harness that invented it, and
         // an audit log that can be written on another run's behalf is not an audit log.
@@ -359,7 +366,7 @@ export class HarnessAgentProvider implements AgentProvider {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     const abort: () => void = (): void => host.abort(context.requestId);
@@ -720,7 +727,14 @@ export class HarnessAgentSession implements AgentSession {
   private async handshake(): Promise<HarnessHost> {
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
-      (requestId: string, name: string, detail: string, source: string): void => {
+      (
+        requestId: string,
+        name: string,
+        detail: string,
+        source: string,
+        sandboxed?: boolean,
+        toolId?: string,
+      ): void => {
         const context: AgentRunContext | undefined =
           this.contexts.get(requestId) ??
           (this.idleContext?.requestId === requestId ? this.idleContext : undefined);
@@ -731,7 +745,7 @@ export class HarnessAgentSession implements AgentSession {
           );
           return;
         }
-        context.recordAudit(name, detail, source as never);
+        context.recordAudit(name, detail, source as never, sandboxed, toolId);
       },
     );
     this.host = host;

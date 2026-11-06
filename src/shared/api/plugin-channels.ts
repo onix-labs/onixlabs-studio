@@ -70,11 +70,15 @@ export type PluginSlot =
   | 'version-control'
   | 'hosting'
   | 'agent-harness'
-  | 'database-engine';
+  | 'database-engine'
+  | 'package-manager';
 
 /**
  * The slots in the order the application presents them — the Plugin Manager's categories and the
  * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
+ *
+ * `package-manager` is not listed yet: nothing is served through it until the Packages panel moves onto
+ * the seam, and listing it would put an empty step in the wizard. #911 adds it.
  */
 export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'language-server',
@@ -106,6 +110,7 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
   'database-engine': 'Database Engines',
+  'package-manager': 'Package Managers',
 };
 
 /**
@@ -154,7 +159,12 @@ export interface UnkeyedPluginContribution extends SlotEntry {
    * Gets the unkeyed slot this implementation fills.
    */
   readonly slot:
-    'container-engine' | 'version-control' | 'hosting' | 'agent-harness' | 'database-engine';
+    | 'container-engine'
+    | 'version-control'
+    | 'hosting'
+    | 'agent-harness'
+    | 'database-engine'
+    | 'package-manager';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -445,7 +455,13 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness' | 'database-engine',
+  slot:
+    | 'container-engine'
+    | 'version-control'
+    | 'hosting'
+    | 'agent-harness'
+    | 'database-engine'
+    | 'package-manager',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

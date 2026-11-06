@@ -40,6 +40,12 @@ export interface AuditEntry {
    * How the action was allowed.
    */
   readonly source: AuditGrantSource;
+
+  /**
+   * Whether a shell command ran inside the OS sandbox (#1159). Absent for anything but a shell command,
+   * and from a harness that does not say.
+   */
+  readonly sandboxed?: boolean;
 }
 
 /**

@@ -1,10 +1,56 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TrustedPaths } from './trusted-paths';
 
 describe('TrustedPaths', () => {
+  it('rememberChosen_ofALink_trustsTheNameAndWhereItReallyIs', () => {
+    const folder: string = realpathSync(mkdtempSync(join(tmpdir(), 'trusted-chosen-')));
+    const target: string = join(folder, 'target.txt');
+    const link: string = join(folder, 'link.txt');
+    writeFileSync(target, 'x');
+    symlinkSync(target, link);
+    const trusted: TrustedPaths = new TrustedPaths(join(folder, 'trusted.json'));
+
+    trusted.rememberChosen(link);
+
+    expect(trusted.has(link)).toBe(true);
+    expect(trusted.has(target)).toBe(true);
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it('rememberChosen_ofAPlainFile_remembersItOnce', () => {
+    const folder: string = realpathSync(mkdtempSync(join(tmpdir(), 'trusted-chosen-')));
+    const trusted: TrustedPaths = new TrustedPaths(join(folder, 'trusted.json'));
+
+    trusted.rememberChosen(join(folder, 'new.txt'));
+
+    expect(trusted.list()).toEqual([join(folder, 'new.txt')]);
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  it('remember_ofALink_trustsOnlyTheName', () => {
+    const folder: string = realpathSync(mkdtempSync(join(tmpdir(), 'trusted-chosen-')));
+    const target: string = join(folder, 'target.txt');
+    const link: string = join(folder, 'link.txt');
+    writeFileSync(target, 'x');
+    symlinkSync(target, link);
+    const trusted: TrustedPaths = new TrustedPaths(join(folder, 'trusted.json'));
+
+    trusted.remember(link);
+
+    expect(trusted.has(target)).toBe(false);
+    rmSync(folder, { recursive: true, force: true });
+  });
+
   let folder: string;
   let file: string;
 

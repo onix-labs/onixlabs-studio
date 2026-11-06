@@ -6,6 +6,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
+import { withSandboxGuidance } from './options';
 import type { Answer, HarnessMessage, Request, TurnRequest } from './protocol';
 import type { Host, Session } from './session';
 
@@ -506,7 +507,9 @@ describe('Session lifecycle', () => {
 
       await start(turn('r1'));
 
-      expect(queries[0].options.systemPrompt).toMatchObject({ append: '' });
+      expect(queries[0].options.systemPrompt).toMatchObject({
+        append: withSandboxGuidance('', turn('r1')),
+      });
     });
 
     it('aFailedOffer_failsTheTurn', async () => {

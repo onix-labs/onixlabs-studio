@@ -1,10 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RUN_UNSANDBOXED } from '@shared/api/ai/ai-tool-policy';
 import {
   PermissionRuleStore,
   permissionRuleKey,
   permissionRuleScope,
+  permissionSessionKey,
 } from './permission-rule-store';
 
 const electron: { userData: string } = vi.hoisted(() => ({ userData: '' }));
@@ -12,6 +14,33 @@ const electron: { userData: string } = vi.hoisted(() => ({ userData: '' }));
 vi.mock('electron', () => ({
   app: { getPath: (): string => electron.userData },
 }));
+
+describe('a run outside the sandbox', () => {
+  it('canOnlyBeRememberedForTheSession_andForTheExactCommand', () => {
+    expect(permissionRuleScope(RUN_UNSANDBOXED, 'npm test')).toBe('session-command');
+    expect(permissionRuleKey(RUN_UNSANDBOXED, 'npm test')).toBeNull();
+  });
+
+  it('isHeldApartFromTheShell_soAShellGrantNeverCoversIt', () => {
+    expect(permissionSessionKey(RUN_UNSANDBOXED, 'npm test')).not.toBe(
+      permissionSessionKey('Bash', 'npm test'),
+    );
+    expect(permissionRuleKey('Bash', 'npm test')).not.toBe(
+      permissionSessionKey(RUN_UNSANDBOXED, 'npm test'),
+    );
+  });
+
+  it('keysEachCommandApart', () => {
+    expect(permissionSessionKey(RUN_UNSANDBOXED, 'npm test')).not.toBe(
+      permissionSessionKey(RUN_UNSANDBOXED, 'rm -rf /'),
+    );
+  });
+
+  it('leavesOtherToolsKeyedByName', () => {
+    expect(permissionSessionKey('Write', '/a')).toBe('Write');
+    expect(permissionSessionKey('Bash', 'npm test')).toBe('Bash');
+  });
+});
 
 describe('permissionRuleScope', () => {
   it('remembersAnOrdinaryTool_forAnyUse', () => {

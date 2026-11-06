@@ -226,6 +226,12 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
       'The databases the Database Explorer can connect to, one engine each. Without one installed ' +
       'there is nothing to connect with.',
   },
+  'package-manager': {
+    icon: Icon.SETUP_PACKAGE_MANAGERS,
+    title: 'Package managers',
+    summary:
+      'What the Packages panel reads and searches, one plugin for each ecosystem you work in.',
+  },
 };
 
 /**
