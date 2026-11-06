@@ -121,7 +121,6 @@
         <app-markdown-field
           [value]="row.draft.description"
           [minRows]="3"
-          [expandable]="false"
           ariaLabel="Skill description"
           (valueChange)="edit(row, { description: $event })"
         />
@@ -136,7 +135,6 @@
           [value]="row.draft.body"
           [minRows]="8"
           [fill]="true"
-          [expandable]="false"
           ariaLabel="Skill instructions"
           (valueChange)="edit(row, { body: $event })"
         />
@@ -174,7 +172,7 @@
       </p>
       <app-button-row align="start">
         <app-button variant="solid" [icon]="Icon.PLUS" label="New Skill" (click)="add()" />
-        <app-button [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
+        <app-button variant="ghost" [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
       </app-button-row>
     </div>
   }

@@ -47,7 +47,6 @@
           [value]="profile.instructions"
           [minRows]="8"
           [fill]="true"
-          [expandable]="false"
           ariaLabel="Instructions"
           (valueChange)="setInstructions(profile.id, $event)"
         />
@@ -65,7 +64,7 @@
       </p>
       <app-button-row align="start">
         <app-button variant="solid" [icon]="Icon.PLUS" label="New Profile" (click)="add()" />
-        <app-button [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
+        <app-button variant="ghost" [icon]="Icon.DOWNLOAD" label="Import" (click)="import()" />
       </app-button-row>
     </div>
   }

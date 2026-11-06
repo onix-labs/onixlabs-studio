@@ -36,7 +36,6 @@
       <app-markdown-field
         [value]="draft().description"
         [minRows]="3"
-        [expandable]="false"
         ariaLabel="Skill description"
         (valueChange)="edit({ description: $event })"
       />
@@ -47,7 +46,6 @@
         [value]="draft().body"
         [minRows]="3"
         [fill]="true"
-        [expandable]="false"
         ariaLabel="Skill instructions"
         (valueChange)="edit({ body: $event })"
       />
