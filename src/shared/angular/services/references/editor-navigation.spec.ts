@@ -128,6 +128,8 @@ describe('EditorNavigation (#1014)', () => {
     references: Mock<LspFeatures['references']>;
     servesNavigation: Mock<LspFeatures['servesNavigation']>;
     implementations: Mock<LspFeatures['implementations']>;
+    declarations: Mock<LspFeatures['declarations']>;
+    sourceHeaderOf: Mock<LspFeatures['sourceHeaderOf']>;
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
     servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
@@ -170,6 +172,12 @@ describe('EditorNavigation (#1014)', () => {
       servesNavigation: vi.fn<LspFeatures['servesNavigation']>((): boolean => false),
       implementations: vi.fn<LspFeatures['implementations']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      declarations: vi.fn<LspFeatures['declarations']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      sourceHeaderOf: vi.fn<LspFeatures['sourceHeaderOf']>((): Promise<string | null> =>
+        Promise.resolve(null),
       ),
       typeDefinitions: vi.fn<LspFeatures['typeDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
@@ -307,6 +315,39 @@ describe('EditorNavigation (#1014)', () => {
       expect(navigation.offersImplementations(fake.editor)).toBe(true);
       expect(navigation.offersTypeDefinitions(fake.editor)).toBe(false);
       expect(lsp.servesNavigation).toHaveBeenCalledWith(fake.model, 'typeDefinition');
+    });
+
+    it('declaration_goesThroughTheLanguageFeatures (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.servesNavigation.mockReturnValue(true);
+
+      expect(navigation.offersDeclarations(fake.editor)).toBe(true);
+      expect(lsp.servesNavigation).toHaveBeenCalledWith(fake.model, 'declaration');
+
+      await navigation.goToDeclaration(fake.editor);
+
+      expect(lsp.declarations).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+    });
+
+    it('switchSourceHeader_opensTheCounterpart_atTheTop (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+      (monaco.editor as unknown as { getEditors: () => unknown[] }).getEditors = (): unknown[] => [
+        fake.editor,
+      ];
+      lsp.sourceHeaderOf.mockResolvedValue('/root/shapes.hpp');
+
+      await navigation.switchSourceHeader(fake.editor);
+
+      expect(lsp.sourceHeaderOf).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/shapes.hpp');
+    });
+
+    it('switchSourceHeader_doesNothing_whenTheFileHasNoCounterpart (#1213)', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.switchSourceHeader(fake.editor);
+
+      expect(opener).not.toHaveBeenCalled();
     });
 
     it('severalImplementations_areListedAsImplementations_inThePanel', async () => {

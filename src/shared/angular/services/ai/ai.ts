@@ -12,9 +12,11 @@ import type {
   AiEditDecisionReply,
   AiEvent,
   AiInputReply,
+  AiPermissionGrant,
   AiPermissionReply,
   AiProviderInfo,
   AiRemoteControlMode,
+  AiRevokePermissionGrant,
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
@@ -80,6 +82,12 @@ function createClient(bridge: Bridge): AiClient {
     respondPermission: (reply: AiPermissionReply): void => {
       bridge.send(AiChannel.PermissionReply, reply);
     },
+    listPermissionGrants: (): Promise<readonly AiPermissionGrant[]> =>
+      bridge.invoke(AiChannel.ListPermissionGrants),
+    revokePermissionGrant: (request: AiRevokePermissionGrant): Promise<boolean> =>
+      bridge.invoke(AiChannel.RevokePermissionGrant, request),
+    takeNarrowedGrants: (): Promise<readonly string[]> =>
+      bridge.invoke(AiChannel.TakeNarrowedGrants),
     respondInput: (reply: AiInputReply): void => {
       bridge.send(AiChannel.InputReply, reply);
     },

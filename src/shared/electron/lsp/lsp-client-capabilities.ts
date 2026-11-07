@@ -2,11 +2,19 @@ import type { ClientCapabilities, SymbolKind } from 'vscode-languageserver-proto
 import { SEMANTIC_TOKEN_MODIFIERS, SEMANTIC_TOKEN_TYPES } from '@shared/api/lsp-channels';
 
 /**
- * Builds the client capabilities advertised to every server. They cover diagnostics, document
+ * The servers told an edit may create a file (#1210). Told so, a server answers differently, and sends
+ * what it would otherwise have left out, so each joins once its edits have been tried: rust-analyzer's
+ * Create Module and Extract Module to File have.
+ */
+const FILE_CREATING_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
+
+/**
+ * Builds the client capabilities advertised to a server. They cover diagnostics, document
  * synchronisation, and the core language features the renderer client surfaces.
+ * @param serverId The server, or undefined for what every server is told.
  * @returns Returns the client capabilities.
  */
-export function clientCapabilities(): ClientCapabilities {
+export function clientCapabilities(serverId?: string): ClientCapabilities {
   return {
     textDocument: {
       synchronization: { dynamicRegistration: true, didSave: true },
@@ -93,6 +101,9 @@ export function clientCapabilities(): ClientCapabilities {
       rangeFormatting: { dynamicRegistration: false },
       onTypeFormatting: { dynamicRegistration: false },
       definition: { linkSupport: false },
+      // Go to Declaration (#1213), where a language tells the two apart: a C++ function declared in a
+      // header and defined in a source file.
+      declaration: { linkSupport: false },
       // Go to Implementation and Go to Type Definition (#1142), answered by path like a definition.
       implementation: { linkSupport: false },
       typeDefinition: { linkSupport: false },
@@ -181,11 +192,14 @@ export function clientCapabilities(): ClientCapabilities {
       // narrows that to its own globs through a dynamic registration.
       didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
       // A server's `workspace/applyEdit` is applied by the renderer (#1015), and a rename's answer may
-      // come either as per-file `changes` or as versioned `documentChanges`. Creating, renaming and
-      // deleting files is not supported yet: no resource operations are advertised, and any a server
-      // sends anyway are refused and named rather than half-applied.
+      // come either as per-file `changes` or as versioned `documentChanges`. Renaming and deleting
+      // files is not supported yet, and any a server sends anyway are refused and named rather than
+      // half-applied.
       applyEdit: true,
-      workspaceEdit: { documentChanges: true, resourceOperations: [] },
+      workspaceEdit: {
+        documentChanges: true,
+        resourceOperations: FILE_CREATING_SERVERS.has(serverId ?? '') ? ['create'] : [],
+      },
       // A file or folder renamed in an explorer asks the server what else has to change: the imports
       // of it, for one (#1207). The edit is applied once the rename has worked.
       fileOperations: { dynamicRegistration: false, willRename: true },
@@ -199,5 +213,9 @@ export function clientCapabilities(): ClientCapabilities {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
     },
+    // Not in the protocol, and ignored by any server that does not know them. A server may say when it
+    // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
+    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210).
+    experimental: { serverStatusNotification: true },
   };
 }

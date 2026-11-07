@@ -475,6 +475,18 @@ describe('QuickFixes (#1016)', () => {
     expect(menu.openAtCaret).not.toHaveBeenCalled();
   });
 
+  it('choosing_anEditThatOnlyCreatesAFile_appliesIt (#1210)', async () => {
+    // rust-analyzer's Create Module: a file to create is the whole of the edit.
+    const edit: WorkspaceTextEdits = { files: [], refused: [], creates: ['/root/missing.rs'] };
+    lsp.codeActions.mockResolvedValue([served('Create module', { edit })]);
+    const fixes: QuickFixes = build();
+    const { editor } = fakeEditor();
+
+    await choose(fixes, editor, 'Create module');
+
+    expect(applied).toEqual([edit]);
+  });
+
   it('choosing_appliesTheEditThroughTheApplier_thenRunsTheCommandOnTheServer', async () => {
     const command: LspCommand = { title: 'Restore', command: 'server.restore', arguments: [1] };
     const edit: WorkspaceTextEdits = {

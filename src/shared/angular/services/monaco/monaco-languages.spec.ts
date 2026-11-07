@@ -12,6 +12,29 @@ describe('monaco-languages', () => {
     expect(languageForExtension('.TS')).toBe('typescript');
   });
 
+  it('languageForExtension_knowsEveryCxxSourceAndHeaderExtension', () => {
+    // Plaintext has no colouring and never asks for a language server (#1213).
+    for (const extension of [
+      '.cpp',
+      '.cc',
+      '.cxx',
+      '.c++',
+      '.h',
+      '.hpp',
+      '.hh',
+      '.hxx',
+      '.h++',
+      '.inl',
+      '.ipp',
+      '.tpp',
+      '.cppm',
+      '.ixx',
+    ]) {
+      expect(languageForExtension(extension)).toBe('cpp');
+    }
+    expect(languageForExtension('.c')).toBe('c');
+  });
+
   it('languageForExtension_fallsBackToPlaintextForUnknownExtensions', () => {
     expect(languageForExtension('.nope')).toBe('plaintext');
   });
@@ -19,6 +42,7 @@ describe('monaco-languages', () => {
   it('extensionForLanguage_returnsTheFirstRegisteredExtensionOrEmpty', () => {
     expect(extensionForLanguage('typescript')).toBe('.ts');
     expect(extensionForLanguage('plaintext')).toBe('.txt');
+    expect(extensionForLanguage('cpp')).toBe('.cpp');
     expect(extensionForLanguage('nonexistent')).toBe('');
   });
 

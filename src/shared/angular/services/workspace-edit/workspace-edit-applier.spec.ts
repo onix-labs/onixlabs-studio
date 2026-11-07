@@ -170,18 +170,95 @@ describe('WorkspaceEditApplier (#1015)', () => {
         { path: 'inmemory://model/gone', edits: [edit(1, 1, 2, 'x')] },
         { path: '/elsewhere/b.ts', edits: [edit(1, 1, 2, 'x')] },
       ],
-      refused: [
-        { path: '/ws/old.ts', reason: "Creating, renaming or deleting files isn't supported yet." },
-      ],
+      refused: [{ path: '/ws/old.ts', reason: "Renaming or deleting files isn't supported yet." }],
     });
 
     expect(outcome.applied).toEqual([]);
     expect(outcome.skipped).toEqual([
-      { path: '/ws/old.ts', reason: "Creating, renaming or deleting files isn't supported yet." },
+      { path: '/ws/old.ts', reason: "Renaming or deleting files isn't supported yet." },
       { path: '/ws/a.ts', reason: 'Its edits overlap.' },
       { path: 'inmemory://model/gone', reason: "It isn't open, and has no file on disk." },
       { path: '/elsewhere/b.ts', reason: 'It is outside the workspace.' },
     ]);
     expect(open.calls).toEqual([]);
+  });
+
+  describe('creating files (#1210)', () => {
+    const INSERT: TextEditEntry = edit(1, 1, 1, 'pub struct Inner;');
+
+    /**
+     * Builds the applier under test.
+     * @returns Returns the applier.
+     */
+    function applier(): WorkspaceEditApplier {
+      return TestBed.inject(WorkspaceEditApplier);
+    }
+
+    it('createsTheFilesBeforeAnythingElse_andCountsThem', async () => {
+      response = (request: TextEditsRequest): TextEditsResponse => ({
+        written: [
+          ...(request.creates ?? []).map((path: string) => ({ path, edits: 0 })),
+          ...request.files.map((file: TextEditsRequest['files'][number]) => ({
+            path: file.path,
+            edits: file.edits.length,
+          })),
+        ],
+        failed: [],
+      });
+
+      const outcome: WorkspaceEditOutcome = await applier().apply({
+        files: [{ path: '/w/nested.rs', edits: [INSERT] }],
+        refused: [],
+        creates: ['/w/nested.rs'],
+      });
+
+      expect(requests.map((request: TextEditsRequest): unknown => request.creates)).toEqual([
+        ['/w/nested.rs'],
+        undefined,
+      ]);
+      expect(outcome.skipped).toEqual([]);
+      expect(outcome.applied).toEqual([
+        { path: '/w/nested.rs', edits: 0, where: 'disk' },
+        { path: '/w/nested.rs', edits: 1, where: 'disk' },
+      ]);
+    });
+
+    it('appliesNothingElse_whenAFileCouldNotBeCreated_soCodeMovedIntoItIsNotLost', async () => {
+      const fake: FakeModel = fakeModel('file:///w/lib.rs');
+      models = [fake.model];
+      response = (): TextEditsResponse => ({
+        written: [],
+        failed: [{ path: '/w/nested.rs', reason: 'It already exists.' }],
+      });
+
+      const outcome: WorkspaceEditOutcome = await applier().apply({
+        files: [
+          { path: 'file:///w/lib.rs', edits: [INSERT] },
+          { path: '/w/other.rs', edits: [INSERT] },
+        ],
+        refused: [],
+        creates: ['/w/nested.rs'],
+      });
+
+      expect(requests).toHaveLength(1);
+      expect(fake.calls).toEqual([]);
+      expect(outcome.applied).toEqual([]);
+      expect(outcome.skipped).toEqual([{ path: '/w/nested.rs', reason: 'It already exists.' }]);
+    });
+
+    it('createsAFileThatIsTheWholeOfTheEdit', async () => {
+      response = (): TextEditsResponse => ({
+        written: [{ path: '/w/missing.rs', edits: 0 }],
+        failed: [],
+      });
+
+      const outcome: WorkspaceEditOutcome = await applier().apply({
+        files: [],
+        refused: [],
+        creates: ['/w/missing.rs'],
+      });
+
+      expect(outcome.applied).toEqual([{ path: '/w/missing.rs', edits: 0, where: 'disk' }]);
+    });
   });
 });

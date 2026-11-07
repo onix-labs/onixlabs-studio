@@ -44,9 +44,12 @@ export function isTextEditsRequest(request: unknown): request is TextEditsReques
   if (typeof request !== 'object' || request === null) {
     return false;
   }
-  const files: unknown = (request as { files?: unknown }).files;
+  const { files, creates }: { files?: unknown; creates?: unknown } = request;
   return (
     Array.isArray(files) &&
+    (creates === undefined ||
+      (Array.isArray(creates) &&
+        creates.every((path: unknown): boolean => typeof path === 'string' && path.length > 0))) &&
     files.every((file: unknown): boolean => {
       if (typeof file !== 'object' || file === null) {
         return false;
@@ -113,15 +116,26 @@ export async function applyTextEdits(
 ): Promise<TextEditsResponse> {
   const written: WrittenFile[] = [];
   const failed: ReplaceFailure[] = [];
-  if (request.files.length > MAX_EDIT_FILES) {
+  const creates: readonly string[] = request.creates ?? [];
+  if (request.files.length + creates.length > MAX_EDIT_FILES) {
     logger.warn('ApplyTextEdits', `Refused text edits naming ${request.files.length} files`);
     return {
       written,
-      failed: request.files.map((file: DiskFileEdits): ReplaceFailure => ({
-        path: file.path,
-        reason: 'Too many files were named at once.',
-      })),
+      failed: [...creates, ...request.files.map((file: DiskFileEdits): string => file.path)].map(
+        (path: string): ReplaceFailure => ({
+          path,
+          reason: 'Too many files were named at once.',
+        }),
+      ),
     };
+  }
+  for (const path of creates) {
+    const reason: string | null = await createEmptyFile(nodePath.resolve(path), workspace);
+    if (reason === null) {
+      written.push({ path, edits: 0 });
+    } else {
+      failed.push({ path, reason });
+    }
   }
   const seen: Set<string> = new Set<string>();
   for (const file of request.files) {
@@ -143,6 +157,49 @@ export async function applyTextEdits(
     `Wrote ${written.length} file(s) on disk${failed.length > 0 ? `; ${failed.length} refused` : ''}`,
   );
   return { written, failed };
+}
+
+/**
+ * Creates an empty file and the folders it needs (#1210), confined as an edit is: inside an open
+ * workspace root as named, and, as neither it nor perhaps its folder exists yet, as the nearest folder
+ * that does resolves, so a link in the path cannot lead it out. A file already there is left alone.
+ * @param resolved The file's absolute path, resolved.
+ * @param workspace The workspace context deciding which roots are open.
+ * @returns Returns null when the file was created, or the reason it was not.
+ */
+async function createEmptyFile(
+  resolved: string,
+  workspace: WorkspaceContext,
+): Promise<string | null> {
+  const root: string | undefined = workspace.rootContaining(resolved);
+  if (root === undefined) {
+    return 'It is outside the workspace.';
+  }
+  try {
+    const realRoot: string = await fs.realpath(root);
+    let folder: string = nodePath.dirname(resolved);
+    for (;;) {
+      try {
+        const real: string = await fs.realpath(folder);
+        if (real !== realRoot && !isInside(real, realRoot)) {
+          return 'It links to somewhere outside the workspace.';
+        }
+        break;
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+        folder = nodePath.dirname(folder);
+      }
+    }
+    await fs.mkdir(nodePath.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, '', { flag: 'wx' });
+    return null;
+  } catch (error: unknown) {
+    const code: string | undefined = (error as NodeJS.ErrnoException).code;
+    logger.warn('ApplyTextEdits', `Could not create ${resolved}`, error);
+    return code === 'EEXIST' ? 'It already exists.' : 'It could not be created.';
+  }
 }
 
 /**

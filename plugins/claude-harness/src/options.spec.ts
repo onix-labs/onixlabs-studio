@@ -17,6 +17,8 @@ describe('withSandboxGuidance', () => {
       deniedWritePaths: [],
       allowedNetworkLocations: [],
       deniedNetworkLocations: [],
+      permissionPosture: 'prompt',
+      toolPolicies: {},
       ...overrides,
     } as unknown as TurnRequest;
   }

@@ -62,6 +62,7 @@ const CATALOGUE: readonly LspServerSummary[] = [
   { id: 'csharp', displayName: 'Roslyn', languages: ['csharp'], priority: 100 },
   { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
   { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
+  { id: 'rust', displayName: 'rust-analyzer', languages: ['rust'], priority: 100 },
 ];
 
 /**
@@ -1639,10 +1640,12 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.navigation).toEqual({
+        declaration: false,
         implementation: true,
         typeDefinition: false,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       });
     });
 
@@ -1833,6 +1836,22 @@ describe('LspClient', () => {
       '/root::csharp',
     ]);
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
+    // Hover and further navigation inside `Option` work only against the session that loaded it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/home/me/.rustup/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs',
+      languageId: 'rust',
+      content: 'pub enum Option<T> { None, Some(T) }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::rust',
+    ]);
   });
 
   it('syncDocument_anOrdinaryFileOutsideTheRoot_isStillIgnored', async () => {
@@ -2049,6 +2068,143 @@ describe('LspClient', () => {
     await flush();
 
     expect(lsp.starts).toHaveLength(0);
+  });
+
+  describe('a server that both pushes and is pulled (#1210)', () => {
+    const SESSION: string = '/root::rust';
+    const URI: string = 'file:///root/src/lib.rs';
+    const RANGE: unknown = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
+    const NATIVE: unknown = { range: RANGE, severity: 1, message: 'from the server' };
+    const CHECK: unknown = { range: RANGE, severity: 1, message: 'from cargo check' };
+
+    /**
+     * Opens a Rust document against a server that takes diagnostic pulls.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [NATIVE] };
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/src/lib.rs',
+        languageId: 'rust',
+        content: 'fn a() {}',
+      });
+      await flush();
+    }
+
+    /**
+     * Gets the messages of the diagnostics the Error List holds.
+     * @returns Returns the messages.
+     */
+    function messages(): readonly string[] {
+      return diagnostics.emitted.map((diagnostic: Diagnostic): string => diagnostic.message);
+    }
+
+    it('aPush_doesNotWipeWhatWasPulled', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      expect(messages()).toEqual(['from the server', 'from cargo check']);
+    });
+
+    it('aPull_doesNotWipeWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'workspace/diagnostic/refresh', undefined);
+        await vi.advanceTimersByTimeAsync(1000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anEmptyPush_clearsOnlyWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, URI, []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('theCodeActionsOfADocument_seeBoth', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      const internals: {
+        resolveDocument(path: string): { diagnostics: readonly unknown[] } | null;
+      } = client as never;
+      expect(internals.resolveDocument('/root/src/lib.rs')?.diagnostics).toEqual([NATIVE, CHECK]);
+    });
+
+    it('whatItPushesForAFileNotOpen_reachesTheErrorList_located', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      const listed: Diagnostic | undefined = diagnostics.emitted.find(
+        (diagnostic: Diagnostic): boolean => diagnostic.path === '/root/src/other.rs',
+      );
+      expect(listed).toMatchObject({ message: 'from cargo check', scope: 'workspace' });
+    });
+
+    it('anEmptyPushForAFileNotOpen_clearsIt', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('whatItPushedForADocument_isStillListedOnceTheDocumentCloses', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      client.closeDocument('doc-1');
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anotherServersPushForAFileNotOpen_staysOut', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.exit(SESSION);
+
+      expect(messages()).not.toContain('from cargo check');
+    });
   });
 
   it('publishDiagnostics_forTrackedDocument_emitsMappedDiagnostics', async () => {
@@ -2413,6 +2569,124 @@ describe('LspClient', () => {
     ).toBe(true);
   });
 
+  describe('a server that says how it is (#1210)', () => {
+    const SESSION: string = '/root::typescript';
+
+    /**
+     * Opens a document against a server that has just started.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: 'let a = 1;',
+      });
+      await flush();
+    }
+
+    it('staysStarting_whileItSaysItIsLoading_thoughDiagnosticsArrive', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('starting');
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+
+    it('isReady_onceItSaysItHasDone_andItsOpenDocumentsArePulledAgain', async () => {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      const client: LspClient = build();
+      await open(client);
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.diagnosticReport = {
+        kind: 'full',
+        items: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+            severity: 1,
+            message: 'Only visible once the workspace has loaded',
+          },
+        ],
+      };
+
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+        await vi.advanceTimersByTimeAsync(5000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(
+        diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+          diagnostic.message.includes('Only visible once the workspace has loaded'),
+        ),
+      ).toBe(true);
+    });
+
+    it('thatCouldNotLoad_saysSoOnItsRow_inItsFirstLine_untilItCan', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', {
+        health: 'error',
+        quiescent: true,
+        message: 'cargo check failed\nerror: key with no value',
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+      expect(status.servers()[0].problem).toBe('cargo check failed');
+      expect(TestBed.inject(Output).snapshotOf('lsp:typescript')).toContain(
+        'error: key with no value',
+      );
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.servers()[0].problem).toBeUndefined();
+    });
+
+    it('isLoggedOnce_howeverManyTimesItsStatusChanges', async () => {
+      const client: LspClient = build();
+      await open(client);
+      const said: unknown = { health: 'error', quiescent: false, message: 'Failed to load' };
+
+      lsp.notify(SESSION, 'experimental/serverStatus', said);
+      lsp.notify(SESSION, 'experimental/serverStatus', { ...(said as object), quiescent: true });
+
+      expect(
+        TestBed.inject(Output)
+          .snapshotOf('lsp:typescript')
+          .match(/Failed to load/g),
+      ).toHaveLength(1);
+    });
+
+    it('thatNeverSaysAnything_isReadyOnItsFirstDiagnostics_asBefore', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+  });
+
   it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
     const realNow: () => number = Date.now;
     let now: number = realNow();
@@ -2581,6 +2855,37 @@ describe('LspClient', () => {
 
     lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    // The client does not ask which server sent it; the session this spec's stub serves will do.
+    const sessionId: string = '/root::csharp';
+    const uri: string = 'file:///root/shapes.cpp';
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri,
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    // Another file going idle says nothing about this one.
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/other.cpp',
+      state: 'idle',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', { uri, state: 'idle' });
+    expect(status.servers()[0].activity).toBeUndefined();
   });
 
   it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {

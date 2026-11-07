@@ -99,10 +99,19 @@ export class StatusStripLspMenu {
       case 'starting':
         // What the server says it is doing beats a generic label; a stall is worth saying; only then
         // the bare "Starting…".
-        return server.progress ?? server.notice ?? server.detail ?? 'Starting…';
+        return (
+          server.progress ??
+          server.activity ??
+          server.notice ??
+          server.problem ??
+          server.detail ??
+          'Starting…'
+        );
       case 'ready':
-        // What the server just told the user in passing, for a few seconds (#1154).
-        return server.notice ?? 'Ready';
+        // What the server just told the user in passing, for a few seconds (#1154), then whatever it
+        // says is still wrong (#1210), then what it still has under way: a ready server can be
+        // working, as clangd is on its index (#1213).
+        return server.notice ?? server.problem ?? server.activity ?? server.progress ?? 'Ready';
       default:
         return server.detail ?? 'Unavailable';
     }
