@@ -1,6 +1,9 @@
+import { execFile } from 'node:child_process';
 import { Dirent } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { promisify } from 'node:util';
 import {
   ProjectCapabilities,
   ProjectEntry,
@@ -9,6 +12,12 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import {
+  cargoMetadataArguments,
+  crateSourceDirectories,
+  parseCargoTargetSources,
+} from './cargo-metadata';
+import { buildItemTree, EvaluatedItem } from './item-tree';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -56,6 +65,38 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['target', 'nod
  * Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * The lock file listed beside a crate's manifest when it has one.
+ */
+const LOCK_FILE: string = 'Cargo.lock';
+
+/**
+ * Bounds how long `cargo metadata` may take, so a wedged toolchain cannot hold the Solution Explorer. It
+ * reads manifests and nothing else, so it answers in well under a second on any real workspace.
+ */
+const METADATA_TIMEOUT_MS: number = 30_000;
+
+/**
+ * The maximum bytes of `cargo metadata` output buffered, generous so a large workspace is not truncated.
+ */
+const METADATA_BUFFER: number = 64 * 1024 * 1024;
+
+/**
+ * Runs a child process and resolves with its standard output.
+ */
+const execFileAsync: (
+  file: string,
+  args: readonly string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    maxBuffer: number;
+    timeout: number;
+    killSignal: NodeJS.Signals;
+    windowsHide: boolean;
+  },
+) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
 
 /**
  * Reads a crate's name from the `name` key of a Cargo manifest's `[package]` table.
@@ -112,8 +153,9 @@ export function parseCargoWorkspaceMembers(toml: string | null): readonly string
 /**
  * Models a Rust workspace built by Cargo: the root crate, plus — when the manifest declares a
  * `[workspace]` — each member crate expanded from its `members` patterns (literal paths and single-level
- * `crates/*` wildcards). A crate's files are listed straight from its directory, skipping the `target`
- * output. Deliberately language-server-agnostic, like the other providers; the workspace view prestarts
+ * `crates/*` wildcards). A crate's contents are what `cargo metadata` says its targets are made of, or
+ * its files listed straight from its directory, skipping the `target` output, when that cannot be read.
+ * Deliberately language-server-agnostic, like the other providers; the workspace view prestarts
  * rust-analyzer for `rust` models.
  */
 export class RustProjectSystem implements ProjectSystem {
@@ -193,15 +235,124 @@ export class RustProjectSystem implements ProjectSystem {
   }
 
   /**
-   * Lists a crate's files straight from its directory, skipping the build-output folder.
+   * Loads what a crate's build is made of (#899): its manifest, its targets' source files, and the
+   * directories those sit in, so outputs, assets and other members that share the tree stay out of the
+   * Solution Explorer; the File Explorer shows everything. When Cargo is missing or cannot answer, the
+   * crate's files are listed from its directory instead, skipping the build-output folder.
    * @param projectPath The absolute path of the crate manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
-    const directory: string = path.dirname(projectPath);
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
+    const tree: readonly ProjectItemNode[] | null =
+      (await this.targetTree(projectPath)) ??
+      (await this.listDirectory(path.dirname(projectPath), { remaining: MAX_ITEMS }));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Builds a crate's contents from its targets. The targets' own source files are placed first, so the
+   * budget a large folder of fixtures spends can never push out a crate's entry points. The targets
+   * are not shown as groups, as a CMake project's are: a module under `src` belongs to whichever target
+   * declares it, which only the compiler knows, and a file listed under two groups would be two rows
+   * with one identity.
+   * @param projectPath The absolute path of the crate manifest.
+   * @returns Returns the contents, or null when Cargo has no answer or the crate no targets.
+   */
+  private async targetTree(projectPath: string): Promise<readonly ProjectItemNode[] | null> {
+    let manifestPath: string;
+    try {
+      // Cargo answers with resolved paths, so the manifest is resolved first to find it in the answer.
+      manifestPath = await fs.realpath(projectPath);
+    } catch {
+      return null;
+    }
+    const sources: readonly string[] | null = await this.targetSources(manifestPath);
+    if (sources === null || sources.length === 0) {
+      return null;
+    }
+    const crateDirectory: string = path.dirname(manifestPath);
+    const files: string[] = [manifestPath, ...sources];
+    if (await this.exists(path.join(crateDirectory, LOCK_FILE))) {
+      files.push(path.join(crateDirectory, LOCK_FILE));
+    }
+    const budget: { remaining: number } = { remaining: MAX_ITEMS };
+    for (const directory of crateSourceDirectories(crateDirectory, sources)) {
+      files.push(...this.filesOf((await this.listDirectory(directory, budget)) ?? []));
+    }
+    logger.debug(
+      'RustProjectSystem',
+      `Listed ${sources.length} Cargo target(s) for '${projectPath}' from \`cargo metadata\`.`,
+    );
+    return buildItemTree(
+      projectPath,
+      files.map((file: string): EvaluatedItem => ({
+        identity: path.relative(crateDirectory, file),
+        link: '',
+      })),
+    );
+  }
+
+  /**
+   * Asks Cargo for a crate's targets, trying each `cargo` in turn. Run from outside the workspace, with
+   * the manifest named: `cargo` is usually rustup's proxy, which would otherwise take the toolchain
+   * from a `rust-toolchain.toml` in the workspace, and that can name a folder of the workspace's own
+   * to run `cargo` from. Cargo's `.cargo/config.toml` is found the same way and is left unread too.
+   * @param manifestPath The absolute path of the crate manifest.
+   * @returns Returns the targets' source files, or null when no Cargo could answer.
+   */
+  private async targetSources(manifestPath: string): Promise<readonly string[] | null> {
+    for (const cargo of this.cargoExecutables()) {
+      try {
+        const { stdout }: { stdout: string } = await execFileAsync(
+          cargo,
+          cargoMetadataArguments(manifestPath),
+          {
+            cwd: tmpdir(),
+            // Rustup must not download a toolchain from a scan.
+            env: { ...process.env, RUSTUP_AUTO_INSTALL: '0' },
+            maxBuffer: METADATA_BUFFER,
+            timeout: METADATA_TIMEOUT_MS,
+            killSignal: 'SIGKILL',
+            windowsHide: true,
+          },
+        );
+        return parseCargoTargetSources(stdout, manifestPath);
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          continue;
+        }
+        logger.warn(
+          'RustProjectSystem',
+          `\`cargo metadata\` failed for '${manifestPath}'; listing the files instead.`,
+          error,
+        );
+        return null;
+      }
+    }
+    logger.debug('RustProjectSystem', 'No `cargo` to read the crate with; listing the files.');
+    return null;
+  }
+
+  /**
+   * Gets the `cargo` executables to try: the one on the `PATH`, then rustup's own install location,
+   * which a shell profile adds to the `PATH` and a GUI launch may not have.
+   * @returns Returns the executables, in order.
+   */
+  private cargoExecutables(): readonly string[] {
+    const home: string = process.env['CARGO_HOME'] ?? path.join(homedir(), '.cargo');
+    const exe: string = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
+    return ['cargo', path.join(home, 'bin', exe)];
+  }
+
+  /**
+   * Flattens a listing into its files.
+   * @param nodes The listing.
+   * @returns Returns the absolute paths.
+   */
+  private filesOf(nodes: readonly ProjectItemNode[]): readonly string[] {
+    return nodes.flatMap((node: ProjectItemNode): readonly string[] =>
+      node.type === 'file' ? [node.path] : this.filesOf(node.children),
+    );
   }
 
   /**
