@@ -2010,132 +2010,6 @@ describe('LspFeatures', () => {
     });
   });
 
-  describe('clangd, as it really answers (#1213)', () => {
-    const model: Parameters<LspFeatures['codeActions']>[0] = {
-      uri: { toString: (): string => MODEL_URI },
-      getValue: (): string => '',
-    } as unknown as Parameters<LspFeatures['codeActions']>[0];
-    const caret: {
-      startLineNumber: number;
-      startColumn: number;
-      endLineNumber: number;
-      endColumn: number;
-    } = { startLineNumber: 9, startColumn: 16, endLineNumber: 9, endColumn: 16 };
-    const TWEAK: unknown = {
-      command: {
-        arguments: [
-          {
-            file: 'file:///root/app.ts',
-            selection: { start: { line: 8, character: 15 }, end: { line: 8, character: 19 } },
-            tweakID: 'DefineInline',
-          },
-        ],
-        command: 'clangd.applyTweak',
-        title: 'Move function body to declaration',
-      },
-      kind: 'refactor',
-      title: 'Move function body to declaration',
-    };
-
-    it('inlayHints_readItsLabelParts', async () => {
-      inlayHintSupport = { resolve: false };
-      responses['textDocument/inlayHint'] = [
-        {
-          kind: 2,
-          label: [{ value: 'prec:' }],
-          paddingLeft: false,
-          paddingRight: true,
-          position: { character: 19, line: 22 },
-        },
-        {
-          kind: 1,
-          label: [{ value: ': Point' }],
-          paddingLeft: false,
-          paddingRight: false,
-          position: { character: 13, line: 37 },
-        },
-      ];
-      const features: LspFeatures = await build();
-      features.enableInlayHints('cpp');
-
-      const list: { hints: unknown[] } | undefined = await captured.inlayHints
-        ?.get('cpp')
-        ?.provideInlayHints(model, caret);
-
-      expect(list?.hints).toEqual([
-        {
-          label: [{ label: 'prec:' }],
-          position: { lineNumber: 23, column: 20 },
-          kind: 2,
-          paddingRight: true,
-        },
-        { label: [{ label: ': Point' }], position: { lineNumber: 38, column: 14 }, kind: 1 },
-      ]);
-    });
-
-    it('aFixIt_carriesItsEdit_asDocumentChanges_whichStudioAsksFor', async () => {
-      codeActionSupport = 'actions';
-      responses['textDocument/codeAction'] = [
-        {
-          diagnostics: [
-            {
-              code: 'expected_semi_after_stmt',
-              message: "Expected ';' after return statement (fix available)",
-              range: { start: { line: 38, character: 2 }, end: { line: 38, character: 8 } },
-              severity: 1,
-              source: 'clang',
-            },
-          ],
-          edit: {
-            documentChanges: [
-              {
-                edits: [
-                  {
-                    newText: ';',
-                    range: { start: { line: 37, character: 12 }, end: { line: 37, character: 12 } },
-                  },
-                ],
-                textDocument: { uri: 'file:///root/app.ts', version: 1 },
-              },
-            ],
-          },
-          isPreferred: true,
-          kind: 'quickfix',
-          title: "insert ';'",
-        },
-      ];
-      const features: LspFeatures = await build();
-
-      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
-
-      expect(actions?.[0]).toMatchObject({ title: "insert ';'", kind: 'quickfix' });
-      expect(actions?.[0].isPreferred).toBe(true);
-      expect(actions?.[0].edit?.files.map((file: { path: string }): string => file.path)).toEqual([
-        '/root/app.ts',
-      ]);
-    });
-
-    it('aTweak_isACommandTheServerRuns_andCarriesItsArgumentsBackUntouched', async () => {
-      codeActionSupport = 'actions';
-      serverCommands = ['clangd.applyFix', 'clangd.applyRename', 'clangd.applyTweak'];
-      responses['textDocument/codeAction'] = [TWEAK];
-      const features: LspFeatures = await build();
-
-      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
-      const tweak: LspCodeAction = actions![0];
-
-      expect(tweak).toMatchObject({ kind: 'refactor', edit: null });
-      expect(await features.executeCommand(model, tweak.command!)).toEqual({ ran: true });
-      expect(requests.at(-1)).toMatchObject({
-        method: 'workspace/executeCommand',
-        params: {
-          command: 'clangd.applyTweak',
-          arguments: (TWEAK as { command: { arguments: unknown } }).command.arguments,
-        },
-      });
-    });
-  });
-
   describe('call and type hierarchies (#1153)', () => {
     const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
     const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
@@ -2339,6 +2213,132 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('clangd, as it really answers (#1213)', () => {
+    const model: Parameters<LspFeatures['codeActions']>[0] = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    } as unknown as Parameters<LspFeatures['codeActions']>[0];
+    const caret: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } = { startLineNumber: 9, startColumn: 16, endLineNumber: 9, endColumn: 16 };
+    const TWEAK: unknown = {
+      command: {
+        arguments: [
+          {
+            file: 'file:///root/app.ts',
+            selection: { start: { line: 8, character: 15 }, end: { line: 8, character: 19 } },
+            tweakID: 'DefineInline',
+          },
+        ],
+        command: 'clangd.applyTweak',
+        title: 'Move function body to declaration',
+      },
+      kind: 'refactor',
+      title: 'Move function body to declaration',
+    };
+
+    it('inlayHints_readItsLabelParts', async () => {
+      inlayHintSupport = { resolve: false };
+      responses['textDocument/inlayHint'] = [
+        {
+          kind: 2,
+          label: [{ value: 'prec:' }],
+          paddingLeft: false,
+          paddingRight: true,
+          position: { character: 19, line: 22 },
+        },
+        {
+          kind: 1,
+          label: [{ value: ': Point' }],
+          paddingLeft: false,
+          paddingRight: false,
+          position: { character: 13, line: 37 },
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableInlayHints('cpp');
+
+      const list: { hints: unknown[] } | undefined = await captured.inlayHints
+        ?.get('cpp')
+        ?.provideInlayHints(model, caret);
+
+      expect(list?.hints).toEqual([
+        {
+          label: [{ label: 'prec:' }],
+          position: { lineNumber: 23, column: 20 },
+          kind: 2,
+          paddingRight: true,
+        },
+        { label: [{ label: ': Point' }], position: { lineNumber: 38, column: 14 }, kind: 1 },
+      ]);
+    });
+
+    it('aFixIt_carriesItsEdit_asDocumentChanges_whichStudioAsksFor', async () => {
+      codeActionSupport = 'actions';
+      responses['textDocument/codeAction'] = [
+        {
+          diagnostics: [
+            {
+              code: 'expected_semi_after_stmt',
+              message: "Expected ';' after return statement (fix available)",
+              range: { start: { line: 38, character: 2 }, end: { line: 38, character: 8 } },
+              severity: 1,
+              source: 'clang',
+            },
+          ],
+          edit: {
+            documentChanges: [
+              {
+                edits: [
+                  {
+                    newText: ';',
+                    range: { start: { line: 37, character: 12 }, end: { line: 37, character: 12 } },
+                  },
+                ],
+                textDocument: { uri: 'file:///root/app.ts', version: 1 },
+              },
+            ],
+          },
+          isPreferred: true,
+          kind: 'quickfix',
+          title: "insert ';'",
+        },
+      ];
+      const features: LspFeatures = await build();
+
+      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
+
+      expect(actions?.[0]).toMatchObject({ title: "insert ';'", kind: 'quickfix' });
+      expect(actions?.[0].isPreferred).toBe(true);
+      expect(actions?.[0].edit?.files.map((file: { path: string }): string => file.path)).toEqual([
+        '/root/app.ts',
+      ]);
+    });
+
+    it('aTweak_isACommandTheServerRuns_andCarriesItsArgumentsBackUntouched', async () => {
+      codeActionSupport = 'actions';
+      serverCommands = ['clangd.applyFix', 'clangd.applyRename', 'clangd.applyTweak'];
+      responses['textDocument/codeAction'] = [TWEAK];
+      const features: LspFeatures = await build();
+
+      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
+      const tweak: LspCodeAction = actions![0];
+
+      expect(tweak).toMatchObject({ kind: 'refactor', edit: null });
+      expect(await features.executeCommand(model, tweak.command!)).toEqual({ ran: true });
+      expect(requests.at(-1)).toMatchObject({
+        method: 'workspace/executeCommand',
+        params: {
+          command: 'clangd.applyTweak',
+          arguments: (TWEAK as { command: { arguments: unknown } }).command.arguments,
+        },
+      });
+    });
   });
 
   describe('rename (#1015)', () => {
