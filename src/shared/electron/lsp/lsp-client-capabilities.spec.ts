@@ -16,7 +16,7 @@ describe('clientCapabilities', () => {
   });
 
   it('experimental_asksAServerToSayHowItIs (#1210)', () => {
-    expect(clientCapabilities().experimental).toEqual({ serverStatusNotification: true });
+    expect(clientCapabilities().experimental).toMatchObject({ serverStatusNotification: true });
   });
 
   it('workspaceEdit_tellsOnlyAServerItHasBeenTriedWith_thatAFileMayBeCreated (#1210)', () => {
@@ -27,6 +27,12 @@ describe('clientCapabilities', () => {
       [],
     );
     expect(clientCapabilities().workspace?.workspaceEdit?.resourceOperations).toEqual([]);
+  });
+
+  it('experimental_namesTheCommandsALensMayCarry_andNoDebuggerThereIsNot (#1210)', () => {
+    expect(clientCapabilities().experimental).toMatchObject({
+      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+    });
   });
 
   it('diagnostics_advertiseUnnecessaryAndDeprecatedTags_pushedAndPulled', () => {

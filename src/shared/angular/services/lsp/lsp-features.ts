@@ -9,7 +9,9 @@ import {
 import { effect, inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
+import { Builds } from '@shared/angular/services/tasks/builds';
 import { type FoldingProvider, Settings } from '@shared/angular/services/settings/settings';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
@@ -19,6 +21,7 @@ import {
   SEMANTIC_TOKEN_TYPES,
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
+import { cargoRunConfiguration } from './lsp-cargo-runnable';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
 import { LinePreviews } from '@shared/angular/services/references/line-previews';
@@ -429,6 +432,23 @@ const ROSLYN_PEEK_REFERENCES: string = 'roslyn.client.peekReferences';
  * lens counted, which Studio has to list itself.
  */
 const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
+
+/**
+ * The client command rust-analyzer gives a reference or implementation lens (#1210), with the same
+ * arguments as {@link SHOW_REFERENCES_COMMAND}.
+ */
+const RUST_SHOW_REFERENCES_COMMAND: string = 'rust-analyzer.showReferences';
+
+/**
+ * The client command rust-analyzer gives a Run lens (#1210): its argument says what to run.
+ */
+const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
+
+/**
+ * The Monaco command a rust-analyzer Run lens runs (#1210): it hands the run configuration read from
+ * the lens to the active workspace's runner. Its argument is that configuration.
+ */
+export const STUDIO_RUN_LENS_COMMAND: string = 'studio.lsp.runLens';
 
 /**
  * The command Roslyn gives a test lens (#1150): its argument names the document, the range of the
@@ -853,6 +873,11 @@ export class LspFeatures {
    * Holds the reader of each reference's line, for Find All References (#1014).
    */
   private readonly linePreviews: LinePreviews = inject(LinePreviews);
+
+  /**
+   * Holds the active workspace's runner, which a Run lens runs through (#1210).
+   */
+  private readonly builds: Builds = inject(Builds);
 
   /**
    * Holds the structured logger.
@@ -1442,7 +1467,8 @@ export class LspFeatures {
    * Maps a lens's command to what clicking it does: a references lens lists the symbol's references
    * in the References panel (through {@link STUDIO_REFERENCES_LENS_COMMAND}), or the places it brought
    * (through {@link STUDIO_LOCATIONS_LENS_COMMAND}); a command the server runs itself is run there; a
-   * Run Test or Debug Test lens runs its tests on the session (#1150); any other shows its title alone.
+   * Run Test or Debug Test lens runs its tests on the session (#1150); a rust-analyzer Run lens runs as
+   * any run configuration does (#1210); any other shows its title alone.
    * @param model The model the lens is in.
    * @param ref The document's session.
    * @param lens The server's lens, untrusted.
@@ -1483,7 +1509,19 @@ export class LspFeatures {
         },
       };
     }
-    if (command.command === SHOW_REFERENCES_COMMAND) {
+    if (command.command === RUST_RUN_SINGLE_COMMAND) {
+      const configuration: RunConfiguration | null = cargoRunConfiguration(command.arguments?.[0]);
+      return {
+        command:
+          configuration === null
+            ? { id: '', title: command.title }
+            : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
+      };
+    }
+    if (
+      command.command === SHOW_REFERENCES_COMMAND ||
+      command.command === RUST_SHOW_REFERENCES_COMMAND
+    ) {
       const position: unknown =
         command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
       return {
@@ -2111,6 +2149,13 @@ export class LspFeatures {
           this.resolve(model)?.runTests?.(lens);
         }
       },
+    );
+    // A rust-analyzer Run lens runs in the active workspace's run terminal (#1210). Pressed again, it
+    // replaces the run it started, as a run configuration does.
+    monaco.editor.registerCommand(
+      STUDIO_RUN_LENS_COMMAND,
+      (_accessor: unknown, configuration: RunConfiguration): void =>
+        this.builds.runConfiguration(configuration, [], { restart: true }),
     );
     monaco.editor.registerCommand(
       STUDIO_LSP_COMMAND,
