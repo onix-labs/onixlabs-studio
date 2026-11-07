@@ -2,7 +2,11 @@ import type * as MonacoApi from 'monaco-editor';
 import { TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Bridge } from '@shared/api/bridge';
-import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import {
+  LspChannel,
+  LspSemanticTokensLegend,
+  SEMANTIC_TOKEN_TYPES,
+} from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -2904,6 +2908,57 @@ describe('LspFeatures', () => {
     // Fixed legend: method=13, static=3 (bit value 8).
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
   });
+
+  it.each([
+    ['builtinType', 'type'],
+    ['typeAlias', 'type'],
+    ['union', 'struct'],
+    ['lifetime', 'typeParameter'],
+    ['constParameter', 'typeParameter'],
+    ['const', 'enumMember'],
+    ['static', 'enumMember'],
+    ['attribute', 'decorator'],
+    ['builtinAttribute', 'decorator'],
+    ['derive', 'decorator'],
+    ['deriveHelper', 'decorator'],
+    ['toolModule', 'decorator'],
+    ['procMacro', 'macro'],
+    ['selfKeyword', 'keyword'],
+    ['selfTypeKeyword', 'keyword'],
+    ['boolean', 'keyword'],
+    ['character', 'string'],
+  ])('semanticTokens_coloursRustsOwn_%s_as_%s (#1210)', async (name: string, standard: string) => {
+    semanticLegend = { tokenTypes: [name], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[3]).toBe(SEMANTIC_TOKEN_TYPES.indexOf(standard));
+  });
+
+  it.each(['unresolvedReference', 'formatSpecifier', 'attributeBracket', 'escapeSequence'])(
+    'semanticTokens_dropsRusts_%s_soTheGrammarsColourStands (#1210)',
+    async (name: string) => {
+      semanticLegend = { tokenTypes: [name, 'keyword'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = {
+        data: [0, 0, 4, 0, 0, 0, 5, 2, 1, 0],
+      };
+      await build();
+      const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(model);
+
+      expect([...(tokens?.data ?? [])]).toEqual([
+        0,
+        5,
+        2,
+        SEMANTIC_TOKEN_TYPES.indexOf('keyword'),
+        0,
+      ]);
+    },
+  );
 
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
     semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
