@@ -3265,6 +3265,8 @@ describe('LspFeatures', () => {
 
     it('parentModules_asksByDocumentAndPosition_takingALocationOrALink', async () => {
       navigationSupport = {
+        declaration: false,
+        sourceHeader: false,
         implementation: false,
         typeDefinition: false,
         callHierarchy: false,
@@ -3294,6 +3296,8 @@ describe('LspFeatures', () => {
 
     it('cargoManifests_asksByDocument', async () => {
       navigationSupport = {
+        declaration: false,
+        sourceHeader: false,
         implementation: false,
         typeDefinition: false,
         callHierarchy: false,
@@ -3313,6 +3317,8 @@ describe('LspFeatures', () => {
 
     it('anotherServer_isAskedNeither', async () => {
       navigationSupport = {
+        declaration: false,
+        sourceHeader: false,
         implementation: true,
         typeDefinition: true,
         callHierarchy: true,
