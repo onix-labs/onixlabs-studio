@@ -1,0 +1,25 @@
+<app-setting-row
+  label="Remembered Permissions"
+  description="What you told a permission prompt to allow always or for a workspace. These run without asking. Revoke one and its next use asks again. A run outside the sandbox is never remembered here."
+/>
+
+<app-table
+  class="remembered-grants"
+  [columns]="columns"
+  [rows]="rows()"
+  emptyText="No remembered permissions."
+>
+  <ng-template appTableRow let-row>
+    <td class="remembered-grants__cell" [title]="describe(row.data)">{{ describe(row.data) }}</td>
+    <td class="remembered-grants__cell" [title]="scope(row.data)">{{ scope(row.data) }}</td>
+    <td>{{ granted(row.data) }}</td>
+    <td>
+      <app-button
+        size="small"
+        label="Revoke"
+        [ariaLabel]="'Revoke ' + describe(row.data)"
+        (click)="revoke(row.data)"
+      />
+    </td>
+  </ng-template>
+</app-table>
