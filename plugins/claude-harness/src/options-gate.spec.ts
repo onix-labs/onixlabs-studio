@@ -3,10 +3,23 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildGate, buildOptions, parseQuestions, proposedChange, sandboxFor } from './options';
+import {
+  buildGate,
+  buildOptions,
+  parseQuestions,
+  proposedChange,
+  sandboxFor,
+  sandboxSignature,
+} from './options';
 import type { GateContext } from './options';
 import type { TurnRequest } from './protocol';
-import { osSandboxAvailable, RUN_UNSANDBOXED, UNSANDBOXED_DECLINED } from './sandbox-rules';
+import {
+  DOCKER_SOCKET,
+  LOCAL_NETWORK,
+  osSandboxAvailable,
+  RUN_UNSANDBOXED,
+  UNSANDBOXED_DECLINED,
+} from './sandbox-rules';
 
 /**
  * The part of the SDK's permission callback the gate reads.
@@ -509,6 +522,19 @@ describe('the permission gate', () => {
       ]);
     });
 
+    it('neverWithholdsAPermissionThatIsNotATool', () => {
+      expect(
+        options({
+          toolPolicies: {
+            [LOCAL_NETWORK]: 'deny',
+            [DOCKER_SOCKET]: 'deny',
+            [RUN_UNSANDBOXED]: 'deny',
+            WebSearch: 'deny',
+          },
+        }).disallowedTools,
+      ).toEqual(['WebSearch']);
+    });
+
     it('offersAConfinedAgentOnlyTheQuestionTool', () => {
       expect(options({ surface: 'terminal' }).tools).toEqual(['AskUserQuestion']);
     });
@@ -840,6 +866,68 @@ describe('the permission gate', () => {
 
       expect(sandbox.filesystem).toBeUndefined();
       expect(sandbox.network).toBeUndefined();
+    });
+
+    it('opensLocalPortsAndTheDockerSocket_onlyWhenTheirPermissionsDo', () => {
+      const sockets: readonly string[] = ['/real/docker.sock'];
+
+      expect(
+        sandboxFor(turn(), null, { localPorts: 'allow', dockerSocket: 'allow' }, sockets).network,
+      ).toEqual({ allowLocalBinding: true, allowUnixSockets: ['/real/docker.sock'] });
+      expect(
+        sandboxFor(turn(), null, { localPorts: 'allow', dockerSocket: 'ask' }, sockets).network,
+      ).toEqual({ allowLocalBinding: true });
+      expect(
+        sandboxFor(turn(), null, { localPorts: 'ask', dockerSocket: 'allow' }, sockets).network,
+      ).toEqual({ allowUnixSockets: ['/real/docker.sock'] });
+    });
+
+    it.each<'ask' | 'deny'>(['ask', 'deny'])('opensNothing_at_%s', (level: 'ask' | 'deny') => {
+      expect(
+        sandboxFor(turn(), null, { localPorts: level, dockerSocket: level }, ['/real/docker.sock'])
+          .network,
+      ).toBeUndefined();
+    });
+
+    it('neverNamesAnEmptySocketList_whenNoEngineIsThere', () => {
+      expect(
+        sandboxFor(turn(), null, { localPorts: 'ask', dockerSocket: 'allow' }, []).network,
+      ).toBeUndefined();
+    });
+
+    it('keepsTheHostListsBesideTheOpenings', () => {
+      expect(
+        sandboxFor(
+          turn({ deniedNetworkLocations: ['bad.com'] }),
+          null,
+          { localPorts: 'allow', dockerSocket: 'ask' },
+          [],
+        ).network,
+      ).toEqual({ deniedDomains: ['bad.com'], allowLocalBinding: true });
+    });
+  });
+
+  describe('sandboxSignature', () => {
+    it('staysTheSame_forATurnThatChangesNothing', () => {
+      expect(sandboxSignature(turn())).toBe(sandboxSignature(turn()));
+      expect(sandboxSignature(turn({ prompt: 'next', requestId: 'r2' }))).toBe(
+        sandboxSignature(turn()),
+      );
+    });
+
+    it('changes_whenALevelDoes_evenIfTheSandboxWouldNot', () => {
+      expect(sandboxSignature(turn({ toolPolicies: { [DOCKER_SOCKET]: 'deny' } }))).not.toBe(
+        sandboxSignature(turn()),
+      );
+    });
+
+    it('changes_whenAWritePathOrHostListDoes', () => {
+      expect(sandboxSignature(turn({ deniedWritePaths: ['/secrets'] }))).not.toBe(
+        sandboxSignature(turn()),
+      );
+      expect(sandboxSignature(turn({ deniedNetworkLocations: ['bad.com'] }))).not.toBe(
+        sandboxSignature(turn()),
+      );
     });
   });
 

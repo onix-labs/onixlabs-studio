@@ -32,6 +32,20 @@ export interface GateableTool {
 export const RUN_UNSANDBOXED: string = 'Run outside the sandbox';
 
 /**
+ * The permission for sandboxed commands to bind and connect to ports on this machine (#1162). Not a
+ * tool of its own: the harness applies it to the OS sandbox when a session opens, and keeps its own
+ * copy of the name.
+ */
+export const LOCAL_NETWORK: string = 'Local network';
+
+/**
+ * The permission for sandboxed commands to reach the container engine's socket (#1162). Not a tool of
+ * its own: the harness applies it to the OS sandbox when a session opens, and keeps its own copy of the
+ * name.
+ */
+export const DOCKER_SOCKET: string = 'Docker socket';
+
+/**
  * The mutating/exec tools that flow through the permission gate and can therefore carry a default
  * policy. Read-only tools (Read/Glob/Grep) are always allowed and never gated, so they are excluded —
  * a policy on them would not be enforced. Keyed by display name to match `prettyToolName`, the
@@ -56,6 +70,18 @@ export const GATEABLE_TOOLS: readonly GateableTool[] = [
     label: 'Run Outside the Sandbox',
     description:
       'Run a shell command without the OS sandbox, so it can reach any file and any host. Deny runs it sandboxed instead, and Prompt All always asks.',
+  },
+  {
+    name: LOCAL_NETWORK,
+    label: 'Local Network',
+    description:
+      'Let sandboxed commands bind and connect to ports on this machine, which reaches anything listening here. Ask and Deny keep them refused, Deny also tells the agent not to try, and Prompt All refuses them even at Allow. Applies to Claude on macOS.',
+  },
+  {
+    name: DOCKER_SOCKET,
+    label: 'Docker Socket',
+    description:
+      "Let sandboxed commands reach the container engine, which can read and change whatever a container can mount. Ask and Deny keep it refused, Deny also tells the agent not to try, and Prompt All refuses it even at Allow. Finds Docker Desktop's socket and DOCKER_HOST. Applies to Claude on macOS.",
   },
   { name: 'WebFetch', label: 'Fetch a URL', description: 'Retrieve the contents of a web page.' },
   { name: 'WebSearch', label: 'Web Search', description: 'Search the web.' },
