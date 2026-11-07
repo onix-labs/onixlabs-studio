@@ -1188,6 +1188,19 @@ export class LspClient implements OnDestroy {
   private readonly settledSessions: Set<string> = new Set<string>();
 
   /**
+   * Holds the sessions whose server has said it is still loading the workspace
+   * (`experimental/serverStatus`, #1210). A server that says so is taken at its word: answering a
+   * request meanwhile, as rust-analyzer does, is not it having finished.
+   */
+  private readonly loadingSessions: Set<string> = new Set<string>();
+
+  /**
+   * Holds the whole of what each session's server last said was wrong with it (#1210), so its log has
+   * it once, not once for every change of its status.
+   */
+  private readonly serverProblemTexts: Map<string, string> = new Map<string, string>();
+
+  /**
    * Initializes a new instance of the {@link LspClient} class, registering its diagnostics provider
    * and subscribing to server notifications when the bridge is available.
    */
@@ -1266,7 +1279,7 @@ export class LspClient implements OnDestroy {
    * @param sessionId The session that has proven ready.
    */
   private markReady(sessionId: string): void {
-    if (this.status.stateOf(sessionId) === 'ready') {
+    if (this.status.stateOf(sessionId) === 'ready' || this.loadingSessions.has(sessionId)) {
       return;
     }
     this.status.setState(sessionId, 'ready');
@@ -1726,6 +1739,8 @@ export class LspClient implements OnDestroy {
         this.legends.delete(sessionId);
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
+        this.loadingSessions.delete(sessionId);
+        this.serverProblemTexts.delete(sessionId);
         this.clearPostLoadPulls(sessionId);
         this.clearRecolor(sessionId);
         this.sessions.delete(sessionId);
@@ -2044,6 +2059,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
+      this.loadingSessions.delete(sessionId);
+      this.serverProblemTexts.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
       this.clearRecolor(sessionId);
     }
@@ -2084,6 +2101,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
+      this.loadingSessions.delete(sessionId);
+      this.serverProblemTexts.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
       this.clearRecolor(sessionId);
       this.clearStandaloneReap(sessionId);
@@ -2197,6 +2216,8 @@ export class LspClient implements OnDestroy {
     this.executeCommands.clear();
     this.serverDiagnostics.clear();
     this.pullCapable.clear();
+    this.loadingSessions.clear();
+    this.serverProblemTexts.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
   }
@@ -2655,6 +2676,11 @@ export class LspClient implements OnDestroy {
       this.scheduleRecolor(message.sessionId);
       return;
     }
+    // rust-analyzer says how it is rather than sending the notification above.
+    if (message.method === 'experimental/serverStatus') {
+      this.onServerStatus(message.sessionId, message.params);
+      return;
+    }
     // The server's semantic classification improved after it last served tokens (its project or a
     // standalone file's virtual project finished loading): recompute and repaint.
     // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
@@ -2732,6 +2758,46 @@ export class LspClient implements OnDestroy {
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
     // files; refreshing on every push would fan token requests out continuously.
     this.markReady(message.sessionId);
+  }
+
+  /**
+   * Takes what a server says of how it is (`experimental/serverStatus`, #1210). A server starting up
+   * stays starting while it is loading, its progress showing; once it is done it is ready, and its open
+   * documents are pulled again. Its health is kept on its row for as long as it is not good: a server
+   * that could not load the workspace still answers what it can, so "Ready" alone would hide that it is
+   * working from nothing. The first line goes on the row; the rest, which can be Cargo's whole error,
+   * in its log.
+   * @param sessionId The session.
+   * @param params The notification parameters (`health`, `quiescent` and `message`).
+   */
+  private onServerStatus(sessionId: string, params: unknown): void {
+    const report: { health?: unknown; quiescent?: unknown; message?: unknown } | null =
+      (params as typeof report) ?? null;
+    if (report === null) {
+      return;
+    }
+    const text: string | undefined =
+      report.health !== 'ok' && typeof report.message === 'string' && report.message.length > 0
+        ? report.message
+        : undefined;
+    if (text === undefined) {
+      this.serverProblemTexts.delete(sessionId);
+    } else if (text !== this.serverProblemTexts.get(sessionId)) {
+      this.serverProblemTexts.set(sessionId, text);
+      this.appendServerLog(sessionId, { message: text });
+    }
+    this.status.setProblem(sessionId, text?.split('\n')[0]);
+    if (report.quiescent === false) {
+      this.loadingSessions.add(sessionId);
+      return;
+    }
+    // Its finishing a load, the first or a later one (a changed `Cargo.toml`), or a window attaching
+    // to a server that finished before it did.
+    const finished: boolean = this.loadingSessions.delete(sessionId);
+    if (report.quiescent === true && (finished || this.status.stateOf(sessionId) === 'starting')) {
+      this.markReady(sessionId);
+      this.pullAfterLoad(sessionId);
+    }
   }
 
   /**
@@ -2855,6 +2921,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(exit.sessionId);
       this.pullCapable.delete(exit.sessionId);
       this.settledSessions.delete(exit.sessionId);
+      this.loadingSessions.delete(exit.sessionId);
+      this.serverProblemTexts.delete(exit.sessionId);
       this.clearPostLoadPulls(exit.sessionId);
       this.clearRecolor(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
@@ -2900,6 +2968,8 @@ export class LspClient implements OnDestroy {
     }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
+    this.loadingSessions.delete(exit.sessionId);
+    this.serverProblemTexts.delete(exit.sessionId);
     this.clearPostLoadPulls(exit.sessionId);
     this.clearRecolor(exit.sessionId);
     for (const tracked of this.tracked.values()) {

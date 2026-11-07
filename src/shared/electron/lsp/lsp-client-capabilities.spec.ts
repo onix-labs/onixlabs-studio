@@ -9,6 +9,10 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('experimental_asksAServerToSayHowItIs (#1210)', () => {
+    expect(clientCapabilities().experimental).toEqual({ serverStatusNotification: true });
+  });
+
   it('diagnostics_advertiseUnnecessaryAndDeprecatedTags_pushedAndPulled', () => {
     const capabilities: ClientCapabilities = clientCapabilities();
 

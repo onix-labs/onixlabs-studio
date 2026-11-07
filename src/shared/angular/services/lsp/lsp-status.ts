@@ -72,6 +72,11 @@ interface ServerEntry {
   readonly notice?: string;
 
   /**
+   * Gets what the server says is wrong with it for as long as that lasts (#1210), or undefined.
+   */
+  readonly problem?: string;
+
+  /**
    * Gets how far the server's analysis of the whole workspace has got (#1182), for a server that
    * reports the whole workspace's problems; undefined for any other.
    */
@@ -134,6 +139,12 @@ export interface LspServer {
    * few seconds after it said it, or undefined.
    */
   readonly notice?: string;
+
+  /**
+   * Gets what the server says is wrong with it (#1210) — a workspace it could not load — for as long as
+   * that lasts, or undefined.
+   */
+  readonly problem?: string;
 
   /**
    * Gets how far the server's analysis of the whole workspace has got (#1182): pending until its
@@ -221,6 +232,7 @@ export class LspStatus {
         progress: entry.progress,
         stalled: entry.stalled,
         notice: entry.notice,
+        problem: entry.problem,
         analysis: entry.analysis,
       }))
       .sort(
@@ -287,6 +299,22 @@ export class LspStatus {
         this.updateNotice(sessionId, undefined);
       }, NOTICE_MS),
     );
+  }
+
+  /**
+   * Records what a server says is wrong with it (#1210), or clears it. It stays on the server's row
+   * until the server says otherwise, unlike a passing notice. Ignored when the session is not tracked.
+   * @param sessionId The session the server is keyed by.
+   * @param problem What is wrong, or undefined once nothing is.
+   */
+  public setProblem(sessionId: string, problem: string | undefined): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || current.problem === problem) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, problem });
+    this.entries.set(next);
   }
 
   /**
