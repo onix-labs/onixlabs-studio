@@ -39,7 +39,8 @@
 // values to answer workspace/configuration with, looked up by section, and to push in
 // didChangeConfiguration) — both to try what a server would do once Studio sends its settings (#1204).
 // --errors (print the server's logged errors), --no-experimental (advertise none of a server's experimental client capabilities), --verbose (print
-// the server's stderr and every message it sends). A fixture marks what each check lands on with
+// the server's stderr and every message it sends). clangd sends file status only when given
+// `--init-options '{"clangdFileStatus":true}'`. A fixture marks what each check lands on with
 // `@probe type=Point member=area call=area interface=Shape value=origin completion=p` in comments.
 
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
@@ -767,6 +768,7 @@ if (argv.includes('--list')) {
 /** The features, in the order the matrix and the report list them. */
 const FEATURES = [
   'definition',
+  'declaration',
   'implementation',
   'typeDefinition',
   'references',
@@ -806,6 +808,12 @@ const FEATURES = [
   'workspace/diagnostic',
   'publishDiagnostics',
   'willRenameFiles',
+  'clangd/switchSourceHeader',
+  'clangd/symbolInfo',
+  'clangd/ast',
+  'clangd/memoryUsage',
+  'clangd/fileStatus',
+  'clangd/inactiveRegions',
 ];
 
 /**
@@ -1229,6 +1237,8 @@ const capabilities = {
       codeDescriptionSupport: true,
       dataSupport: true,
     },
+    // clangd's own: it sends `textDocument/inactiveRegions` only to a client that says it takes them.
+    inactiveRegionsCapabilities: { inactiveRegions: true },
     diagnostic: { dynamicRegistration: true, relatedDocumentSupport: true },
     completion: {
       dynamicRegistration: true,
@@ -1597,6 +1607,7 @@ const advertisedBy = (method, staticCapability) =>
 
 const ADVERTISED = {
   definition: () => advertisedBy('textDocument/definition', caps.definitionProvider),
+  declaration: () => advertisedBy('textDocument/declaration', caps.declarationProvider),
   implementation: () => advertisedBy('textDocument/implementation', caps.implementationProvider),
   typeDefinition: () => advertisedBy('textDocument/typeDefinition', caps.typeDefinitionProvider),
   references: () => advertisedBy('textDocument/references', caps.referencesProvider),
@@ -1675,6 +1686,11 @@ const ADVERTISED = {
   publishDiagnostics: () => 'static',
   willRenameFiles: () =>
     advertisedBy('workspace/willRenameFiles', caps.workspace?.fileOperations?.willRename),
+  // clangd answers these without saying so, or says so in fields of its own.
+  'clangd/switchSourceHeader': () => (SERVER.id === 'clangd' ? 'static' : false),
+  'clangd/symbolInfo': () => (SERVER.id === 'clangd' ? 'static' : false),
+  'clangd/ast': () => (flag(caps.astProvider) ? 'static' : false),
+  'clangd/memoryUsage': () => (flag(caps.memoryUsageProvider) ? 'static' : false),
 };
 
 // ---- The checks --------------------------------------------------------------------------------
@@ -1765,6 +1781,7 @@ log(
 );
 
 await check('definition', 'textDocument/definition', at(call));
+await check('declaration', 'textDocument/declaration', at(member));
 await check('implementation', 'textDocument/implementation', at(iface ?? typeName));
 await check('typeDefinition', 'textDocument/typeDefinition', at(value ?? call));
 await check('references', 'textDocument/references', {
@@ -1921,6 +1938,38 @@ await check('willRenameFiles', 'workspace/willRenameFiles', {
   files: [{ oldUri: uri, newUri: uri.replace(/(\.[\w]+)?$/, '.renamed$1') }],
 });
 
+// clangd's own requests, outside the protocol: its header and source pairing, what is under the caret,
+// the syntax tree, and its memory. It is only ever asked here; any other server would refuse them.
+if (SERVER.id === 'clangd') {
+  await check('clangd/switchSourceHeader', 'textDocument/switchSourceHeader', { uri });
+  await check('clangd/symbolInfo', 'textDocument/symbolInfo', at(member));
+  await check('clangd/ast', 'textDocument/ast', {
+    ...doc,
+    range: {
+      start: { line: member.line, character: 0 },
+      end: { line: member.line + 1, character: 0 },
+    },
+  });
+  await check('clangd/memoryUsage', '$/memoryUsage', null);
+  // Two more it only sends: file status once asked for it in `initializationOptions`, and the regions
+  // the preprocessor skipped once told the client takes them.
+  for (const [name, method] of [
+    ['clangd/fileStatus', 'textDocument/clangd.fileStatus'],
+    ['clangd/inactiveRegions', 'textDocument/inactiveRegions'],
+  ]) {
+    const seen = serverMessages[method];
+    checks[name] = {
+      method,
+      advertised:
+        name === 'clangd/inactiveRegions' ? flag(caps.inactiveRegionsProvider) && 'static' : false,
+      status: seen === undefined ? 'empty' : 'live',
+      result: `${seen?.count ?? 0} notification(s)`,
+      sample: seen?.sample,
+    };
+    log(`${name.padEnd(28)} ${String(checks[name].advertised).padEnd(8)} ${checks[name].result}`);
+  }
+}
+
 // Fixes need a diagnostic: the fixture's deliberate error (pulled or pushed), or one injected for a
 // server whose probe says how (Roslyn: an unused local). The injection is made to the server's copy of
 // the document only; nothing is written to disk.
@@ -2040,9 +2089,10 @@ function writeReport() {
   }
   const STANDARD_TOKENS = new Set(client?.textDocument.semanticTokens.tokenTypes ?? []);
   const STANDARD_MODIFIERS = new Set(client?.textDocument.semanticTokens.tokenModifiers ?? []);
-  // Named by the version Studio installed (its pin), else by the version the server reports.
+  // Named by the version Studio installed (its pin), else by the version the server reports. The pin
+  // says nothing about a copy named by `--server-path`, which is the point of naming one.
   const version =
-    SERVER.spec.version ??
+    (option('server-path') === null ? SERVER.spec.version : null) ??
     /\d+(?:\.\d+)+[\w.-]*/.exec(init?.serverInfo?.version ?? '')?.[0] ??
     init?.serverInfo?.version ??
     null;
