@@ -24,6 +24,8 @@ export type EditorContextMenuCommand =
   | 'declaration'
   | 'typeDefinition'
   | 'sourceDefinition'
+  | 'parentModule'
+  | 'cargoManifest'
   | 'implementation'
   | 'references'
   | 'callHierarchy'
@@ -94,6 +96,8 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   // No chord: neither Visual Studio nor VS Code gives Go to Type Definition one (#1142).
   typeDefinition: { mac: '', windows: '' },
   sourceDefinition: { mac: '', windows: '' },
+  parentModule: { mac: '', windows: '' },
+  cargoManifest: { mac: '', windows: '' },
   implementation: { mac: '⌘F12', windows: 'Ctrl+F12' },
   references: { mac: '⇧F12', windows: 'Shift+F12' },
   // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
@@ -315,6 +319,12 @@ export class EditorContextMenu {
     if (this.navigation.offersSourceDefinitions(editor)) {
       navigation.push(this.item('sourceDefinition', 'Go to Source Definition'));
     }
+    if (this.navigation.offersParentModule(editor)) {
+      navigation.push(this.item('parentModule', 'Go to Parent Module'));
+    }
+    if (this.navigation.offersCargoManifest(editor)) {
+      navigation.push(this.item('cargoManifest', 'Open Cargo.toml'));
+    }
     if (this.navigation.offersImplementations(editor)) {
       navigation.push(this.item('implementation', 'Go to Implementation'));
     }
@@ -392,6 +402,12 @@ export class EditorContextMenu {
         return;
       case 'sourceDefinition':
         void this.navigation.goToSourceDefinition(editor);
+        return;
+      case 'parentModule':
+        void this.navigation.goToParentModule(editor);
+        return;
+      case 'cargoManifest':
+        void this.navigation.openCargoManifest(editor);
         return;
       case 'implementation':
         void this.navigation.goToImplementation(editor);
