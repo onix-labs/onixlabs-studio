@@ -26,6 +26,12 @@ const GRADLE_SCRIPT_PATTERN: RegExp = /^(build|settings)\.gradle(\.kts)?$/;
 const MAKEFILE_PATTERN: RegExp = /^(GNUmakefile|[Mm]akefile)$/;
 
 /**
+ * Configures a CMake project into `build/`, writing the `compile_commands.json` clangd reads each
+ * file's flags from (#1213). It finds the file there unprompted.
+ */
+export const CMAKE_CONFIGURE: string = 'cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON';
+
+/**
  * Determines whether the root holds a file with the given name.
  * @param root The workspace root listing.
  * @param name The file name.
@@ -476,11 +482,11 @@ function mavenAction(action: ProjectAction, mvn: string): string | null {
 function cmakeAction(action: ProjectAction): string | null {
   switch (action) {
     case 'build':
-      return 'cmake -S . -B build && cmake --build build';
+      return `${CMAKE_CONFIGURE} && cmake --build build`;
     case 'clean':
       return 'cmake --build build --target clean';
     case 'rebuild':
-      return 'cmake -S . -B build && cmake --build build --clean-first';
+      return `${CMAKE_CONFIGURE} && cmake --build build --clean-first`;
     default:
       return null;
   }
