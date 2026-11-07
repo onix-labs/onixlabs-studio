@@ -34,8 +34,7 @@ interface CargoRunnable {
  * @returns Returns the configuration, or null when it is not a Cargo runnable.
  */
 export function cargoRunConfiguration(runnable: unknown): RunConfiguration | null {
-  const candidate: CargoRunnable | null =
-    typeof runnable === 'object' ? (runnable as CargoRunnable | null) : null;
+  const candidate: CargoRunnable | null = typeof runnable === 'object' ? runnable : null;
   const details: CargoRunnable['args'] = candidate?.args;
   if (
     candidate?.kind !== 'cargo' ||
