@@ -25,12 +25,10 @@ const LOADING_ICON: Icon = Icon.SPINNER;
  * - `ghost` — a tinted fill and border at rest, stronger on hover. The standard button: a secondary
  *   action that needs to stand out beside a solid one (Push Only beside Set Upstream), as opposed to
  *   one that steps back (Cancel, which is `none`).
- * - `outline` — bordered, transparent until hovered. Kept only for the Review panel, until it is
- *   redesigned (#1322).
  * - `none` — neither border nor fill until hovered. Tool strips, ribbon strips and panel toolbars,
  *   where a row of buttons would otherwise read as a wall of boxes.
  */
-export type ButtonVariant = 'solid' | 'ghost' | 'outline' | 'none';
+export type ButtonVariant = 'solid' | 'ghost' | 'none';
 
 /**
  * Names the MEANING a button carries, the axis {@link ButtonVariant} deliberately leaves out. Tone
@@ -76,7 +74,6 @@ export type ButtonSize = 'medium' | 'small' | 'large';
   host: {
     '[class.button--solid]': "variant() === 'solid'",
     '[class.button--ghost]': "variant() === 'ghost'",
-    '[class.button--outline]': "variant() === 'outline'",
     '[class.button--none]': "variant() === 'none'",
     '[class.button--tone-success]': "tone() === 'success'",
     '[class.button--tone-warning]': "tone() === 'warning'",

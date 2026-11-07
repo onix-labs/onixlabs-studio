@@ -64,7 +64,6 @@ describe('Button', () => {
     render({ variant: 'ghost' });
 
     expect(host.classList.contains('button--ghost')).toBe(true);
-    expect(host.classList.contains('button--outline')).toBe(false);
     expect(host.classList.contains('button--solid')).toBe(false);
     expect(host.classList.contains('button--none')).toBe(false);
   });

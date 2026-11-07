@@ -8,7 +8,7 @@
 }
 
 // Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
-// radius and spacing were judged right: a solid affirmative beside an outlined counterpart.
+// radius and spacing were judged right: a solid affirmative beside a quieter counterpart.
 .button {
   // The button's colour, resolved through a local set of tone variables so shape and meaning stay
   // separate axes: every coloured surface below reads these, and a tone class (below) is the only
@@ -17,7 +17,6 @@
   --btn-tone-surface-background: var(--accent-surface-background-color);
   --btn-tone-surface-border: var(--accent-surface-border-color);
   --btn-tone-surface-foreground: var(--accent-surface-foreground-color);
-  --btn-outline-border-color: var(--dock-border-color);
 
   display: inline-flex;
   flex: 1;
@@ -102,8 +101,7 @@
 // Tone: repoints the local tone variables off the accent onto a state colour. Only the four state
 // tones carry a class (the accent tone is the default and adds none), so these never touch an
 // ordinary button. Each builds the same tinted-fill / brighter-border surface the accent does, from
-// the state colour's RGB triplet. The outline border is left neutral (--dock-border-color) so a
-// toned outline rests like any other and only takes its tone on hover.
+// the state colour's RGB triplet.
 :host(.button--tone-success) .button {
   --btn-tone-color: var(--success-color);
   --btn-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
@@ -180,12 +178,6 @@
   }
 }
 
-// Outline: neutral until pointed at, then the tone surface — the counterpart to a solid button. A
-// toned outline carries the tone's border at rest too.
-:host(.button--outline) .button {
-  border-color: var(--btn-outline-border-color);
-}
-
 // A toggle that is on wears the hover treatment permanently, so "engaged" and "pointed at" read as
 // the same state — which is what they are, one just persists.
 :host(.button--pressed) .button {
@@ -195,9 +187,7 @@
 }
 
 // None: no chrome at rest, for buttons that sit in a row (tool strips, ribbon strips, panel
-// toolbars) where borders at rest would read as a wall of boxes. Hovers exactly as an outlined one,
-// so the two are the same button with a different resting state.
-:host(.button--outline) .button,
+// toolbars) where borders at rest would read as a wall of boxes.
 :host(.button--none) .button {
   &:hover:not(:disabled),
   &:focus-visible:not(:disabled) {
