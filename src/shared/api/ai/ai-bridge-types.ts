@@ -100,6 +100,51 @@ export interface AiBridgeReply {
 export type AiPermissionRemember = 'session' | 'workspace' | 'always';
 
 /**
+ * Describes one remembered permission grant, as Settings lists it (#1164).
+ */
+export interface AiPermissionGrant {
+  /**
+   * Gets the rule key the grant is held under, which is what revoking it names.
+   */
+  readonly key: string;
+
+  /**
+   * Gets the tool's display name.
+   */
+  readonly tool: string;
+
+  /**
+   * Gets the exact command a command tool's grant covers, or null for a grant covering the whole tool.
+   */
+  readonly command: string | null;
+
+  /**
+   * Gets the workspace the grant applies to, or null for one that applies everywhere.
+   */
+  readonly workspaceRoot: string | null;
+
+  /**
+   * Gets when the grant was made, as an ISO date, or null for one older than the record.
+   */
+  readonly grantedAt: string | null;
+}
+
+/**
+ * Names the remembered grant to revoke.
+ */
+export interface AiRevokePermissionGrant {
+  /**
+   * Gets the grant's rule key.
+   */
+  readonly key: string;
+
+  /**
+   * Gets the workspace the grant applies to, or null for one that applies everywhere.
+   */
+  readonly workspaceRoot: string | null;
+}
+
+/**
  * The renderer's answer to a permission request carried by an `AiPermissionEvent`.
  */
 export interface AiPermissionReply {

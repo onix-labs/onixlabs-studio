@@ -653,6 +653,18 @@ function toSpec(
 }
 
 /**
+ * Gives a resolved server the `initializationOptions` its manifest says it always starts with.
+ * @param resolution The resolution.
+ * @param server The server's manifest entry.
+ * @returns Returns the resolution, with the options when it has any and resolved to a server.
+ */
+function withOptions(resolution: LspResolution, server: ManifestLanguageServer): LspResolution {
+  return resolution.spec === null || server.initializationOptions === undefined
+    ? resolution
+    : resolved({ ...resolution.spec, initializationOptions: server.initializationOptions });
+}
+
+/**
  * Turns a manifest's language servers into descriptors the server registry can resolve.
  * @param manifest The validated manifest.
  * @param installedVersion Looks up the version actually installed, so a server whose catalogue entry
@@ -685,7 +697,7 @@ export function toLanguageServerDescriptors(
         const override: string | undefined = context.settings.get().serverPaths[server.id];
         if (override !== undefined) {
           return existsSync(override)
-            ? toSpec(server.command, override, context)
+            ? withOptions(toSpec(server.command, override, context), server)
             : unavailable(`${server.displayName} was not found at ${override}.`);
         }
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
@@ -693,7 +705,7 @@ export function toLanguageServerDescriptors(
           : null;
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
-          : toSpec(server.command, entryPoint, context);
+          : withOptions(toSpec(server.command, entryPoint, context), server);
       },
     }),
   );

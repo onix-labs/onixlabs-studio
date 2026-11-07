@@ -1,4 +1,12 @@
-import { basename, isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
+import {
+  basename,
+  isToolchainSource,
+  isWithin,
+  normalise,
+  parentDir,
+  pathToUri,
+  uriToPath,
+} from './lsp-paths';
 
 describe('lsp-paths', () => {
   it('normalise_forwardSlashesAndLowerCasesTheDriveLetter', () => {
@@ -30,4 +38,21 @@ describe('lsp-paths', () => {
     expect(isWithin('/root', '/root')).toBe(true);
     expect(isWithin('/other/a.ts', '/root')).toBe(false);
   });
+});
+
+describe('isToolchainSource (#1210)', () => {
+  it.each([
+    '/u/.rustup/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs',
+    '/u/.cargo/registry/src/index.crates.io-abc/serde-1.0.0/src/lib.rs',
+    '/u/.cargo/git/checkouts/thing-abc/def/src/lib.rs',
+  ])('takes %s', (path: string) => {
+    expect(isToolchainSource(path)).toBe(true);
+  });
+
+  it.each(['/u/project/src/lib.rs', '/u/.cargo/registry/src/a/Cargo.toml', '/u/.cargo/config.rs'])(
+    'refuses %s',
+    (path: string) => {
+      expect(isToolchainSource(path)).toBe(false);
+    },
+  );
 });

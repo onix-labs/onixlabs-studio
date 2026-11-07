@@ -154,3 +154,36 @@ export function toMarkerData(
     return diagnostic.code === undefined ? marker : { ...marker, code: String(diagnostic.code) };
   });
 }
+
+/**
+ * Names a diagnostic by what it says and where, so the same one reported twice is seen as one.
+ * @param diagnostic The diagnostic.
+ * @returns Returns its identity.
+ */
+function diagnosticIdentity(diagnostic: LspDiagnostic): string {
+  return JSON.stringify([diagnostic.range, diagnostic.severity, diagnostic.message]);
+}
+
+/**
+ * Merges what a server pulled and what it pushed for one document (#1210). rust-analyzer answers a pull
+ * with what it finds itself, and pushes what `cargo check` finds: neither is the document's whole
+ * picture, and neither replaces the other. A diagnostic both say is kept once.
+ * @param pulled The document's diagnostics from its last pull.
+ * @param pushed The document's diagnostics from its last push.
+ * @returns Returns the document's diagnostics.
+ */
+export function mergeDiagnostics(
+  pulled: readonly LspDiagnostic[],
+  pushed: readonly LspDiagnostic[],
+): readonly LspDiagnostic[] {
+  if (pulled.length === 0 || pushed.length === 0) {
+    return pulled.length === 0 ? pushed : pulled;
+  }
+  const seen: Set<string> = new Set<string>(pulled.map(diagnosticIdentity));
+  return [
+    ...pulled,
+    ...pushed.filter(
+      (diagnostic: LspDiagnostic): boolean => !seen.has(diagnosticIdentity(diagnostic)),
+    ),
+  ];
+}

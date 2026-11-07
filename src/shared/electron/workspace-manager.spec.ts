@@ -589,6 +589,44 @@ describe('WorkspaceManager', () => {
     });
   });
 
+  describe('the Rust toolchain', () => {
+    const cargoHome: string | undefined = process.env['CARGO_HOME'];
+    let source: string;
+
+    beforeEach(() => {
+      process.env['CARGO_HOME'] = path.join(sandbox, 'cargo');
+      const folder: string = path.join(sandbox, 'cargo', 'registry', 'src', 'index', 'serde');
+      fs.mkdirSync(folder, { recursive: true });
+      source = path.join(folder, 'lib.rs');
+      fs.writeFileSync(source, 'pub trait Serialize {}');
+    });
+
+    afterEach(() => {
+      if (cargoHome === undefined) {
+        delete process.env['CARGO_HOME'];
+      } else {
+        process.env['CARGO_HOME'] = cargoHome;
+      }
+    });
+
+    it('openFile_ofACratesSource_opensReadOnly_andIsNotRemembered (#1210)', async () => {
+      const selection: OpenSelection = await invoke(WorkspaceChannel.OpenFile, source);
+
+      expect(selection).toMatchObject({
+        kind: 'file',
+        file: { path: source, readOnly: true, content: 'pub trait Serialize {}' },
+      });
+      expect(trusted.has(source)).toBe(false);
+    });
+
+    it('openFile_ofCargosOwnFiles_isRefused (#1210)', async () => {
+      const credentials: string = path.join(sandbox, 'cargo', 'credentials.toml');
+      fs.writeFileSync(credentials, 'token = "secret"');
+
+      expect(await invoke(WorkspaceChannel.OpenFile, credentials)).toBeNull();
+    });
+  });
+
   describe('decompiled sources', () => {
     let decompiled: string;
 

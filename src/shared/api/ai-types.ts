@@ -168,7 +168,13 @@ export type {
   AgentContextRef,
 } from './ai/ai-run-types';
 export type { GateableTool } from './ai/ai-tool-policy';
-export { GATEABLE_TOOLS, DEFAULT_TOOL_POLICY, RUN_UNSANDBOXED } from './ai/ai-tool-policy';
+export {
+  GATEABLE_TOOLS,
+  DEFAULT_TOOL_POLICY,
+  DOCKER_SOCKET,
+  LOCAL_NETWORK,
+  RUN_UNSANDBOXED,
+} from './ai/ai-tool-policy';
 export type {
   AiRunState,
   AiEventBase,
@@ -199,8 +205,10 @@ export type {
   AiBridgeRequest,
   AiBridgeScope,
   AiBridgeReply,
+  AiPermissionGrant,
   AiPermissionReply,
   AiPermissionRemember,
+  AiRevokePermissionGrant,
   AiInputReply,
   AiEditDecision,
   AiEditDecisionReply,

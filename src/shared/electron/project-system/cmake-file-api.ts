@@ -202,6 +202,25 @@ async function readJson(file: string): Promise<unknown> {
 }
 
 /**
+ * The `cmake` argument that has a configure write `compile_commands.json` into the build tree: how
+ * clangd learns each file's flags and include paths, without which every project header is missing
+ * (#1213). `-D` writes it to the tree's cache, so it stays on for every later configure.
+ */
+export const EXPORT_COMPILE_COMMANDS: string = '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON';
+
+/**
+ * Determines whether the choice to write `compile_commands.json` is still open in a build tree: its
+ * cache has no value for `CMAKE_EXPORT_COMPILE_COMMANDS`, or the empty one the Makefile and Ninja
+ * generators leave. Any value is the user's, an `OFF` included, and is left alone.
+ * @param cache The `CMakeCache.txt` content.
+ * @returns Returns true when nothing has decided.
+ */
+export function compileCommandsUndecided(cache: string): boolean {
+  const match: RegExpExecArray | null = /^CMAKE_EXPORT_COMPILE_COMMANDS:\w+=(.*)$/m.exec(cache);
+  return match === null || match[1].trim().length === 0;
+}
+
+/**
  * Reads the `cmake` that configured a build tree, from its cache's `CMAKE_COMMAND`: the most reliable
  * answer, since a GUI-launched app does not inherit the shell's `PATH`.
  * @param cache The `CMakeCache.txt` content.

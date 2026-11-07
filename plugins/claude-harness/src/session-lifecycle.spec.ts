@@ -922,6 +922,39 @@ describe('Session lifecycle', () => {
     });
   });
 
+  describe('a sandbox that changes between turns', () => {
+    it('reopensTheSession_soATightenedPermissionReachesTheShell', async () => {
+      const first: Promise<void> = (await start(turn('r1'))).done;
+      queries[0].send({ type: 'system', subtype: 'init', session_id: 'session-1' });
+      queries[0].answer();
+      await first;
+
+      const second: Promise<void> = (
+        await start({ ...turn('r2'), toolPolicies: { 'Docker socket': 'deny' } })
+      ).done;
+      queries[1].send({ type: 'system', subtype: 'init', session_id: 'session-1' });
+      queries[1].answer();
+      await second;
+
+      expect(queries).toHaveLength(2);
+      expect(queries[1].options.resume).toBe('session-1');
+      expect(queries[1].options.disallowedTools).toBeUndefined();
+    });
+
+    it('holdsTheSessionOpen_whenNothingChanged', async () => {
+      const first: Promise<void> = (await start(turn('r1'))).done;
+      queries[0].send({ type: 'system', subtype: 'init', session_id: 'session-1' });
+      queries[0].answer();
+      await first;
+
+      const second: Promise<void> = (await start(turn('r2'))).done;
+      queries[0].answer();
+      await second;
+
+      expect(queries).toHaveLength(1);
+    });
+  });
+
   describe('a reopen that fails', () => {
     it('endsTheSession_ratherThanStartingWithoutItsHistory', async () => {
       const first: Promise<void> = (await start(turn('r1'))).done;

@@ -862,7 +862,9 @@ describe('BuildRunner', () => {
       .tasks()
       .find((t: BuildTask): boolean => t.id === 'cmake:build');
     expect(build?.group).toBe('build');
-    expect(build?.command).toBe('cmake -S . -B build && cmake --build build');
+    expect(build?.command).toBe(
+      'cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build build',
+    );
   });
 
   it('runAction_clean_runsCmakeCleanForACmakeRoot', async () => {

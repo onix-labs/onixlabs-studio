@@ -800,6 +800,9 @@ export class Monaco {
           case 'implementation':
             void navigation.goToImplementation(editor);
             return;
+          case 'declaration':
+            void navigation.goToDeclaration(editor);
+            return;
           case 'typeDefinition':
             void navigation.goToTypeDefinition(editor);
             return;
@@ -811,6 +814,9 @@ export class Monaco {
             return;
           case 'typeHierarchy':
             void navigation.showHierarchy(editor, 'types');
+            return;
+          case 'sourceHeader':
+            void navigation.switchSourceHeader(editor);
             return;
         }
       },

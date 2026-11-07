@@ -75,3 +75,20 @@ export function isWithin(target: string, root: string): boolean {
 export function isMetadataAsSource(target: string): boolean {
   return normalise(target).includes('/MetadataAsSource/');
 }
+
+/**
+ * Determines whether a path looks like Rust source that belongs to the toolchain (#1210): the standard
+ * library, or a crate Cargo downloaded. Only a guess at which session a file joins: the main process
+ * decides whether it can be opened at all.
+ * @param target The path to test.
+ * @returns Returns true when it is a `.rs` file in one of those folders.
+ */
+export function isToolchainSource(target: string): boolean {
+  const path: string = normalise(target);
+  return (
+    path.endsWith('.rs') &&
+    ['/lib/rustlib/src/', '/registry/src/', '/git/checkouts/'].some((folder: string): boolean =>
+      path.includes(folder),
+    )
+  );
+}
