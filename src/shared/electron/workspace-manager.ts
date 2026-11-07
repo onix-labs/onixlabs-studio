@@ -44,7 +44,7 @@ import { ProjectSystem } from './project-system/project-system';
 import { packageManagers } from './package-management/default-package-managers';
 import { HttpFetch, PackageManager } from './package-management/package-manager';
 import { PackagePluginRoute } from './package-managers/package-plugin-route';
-import { metadataAsSourcePath } from './lsp/metadata-as-source';
+import { readOnlySourcePath } from './lsp/toolchain-source';
 import { TrustedPaths } from './trusted-paths';
 import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
@@ -624,14 +624,14 @@ export class WorkspaceManager {
    */
   private async openFile(filePath: unknown, policy: TextReadPolicy): Promise<OpenSelection | null> {
     if (!this.workspace.isWithin(filePath)) {
-      // The one exception: a language server's decompiled source for a framework or package symbol,
-      // which Go to Definition lands in (#1133). Opened to read only, and not remembered as a recent
-      // file — it is a cache the server rewrites, not something the user opened.
+      // The one exception: source a language server navigates to, for a framework or package symbol:
+      // its decompiled source (#1133), or the Rust toolchain's (#1210). Opened to read only, and not
+      // remembered as a recent file — it is not something the user opened.
       // Checked on its real path, but opened under the path asked for: that is the one the server
       // knows it by and the one navigation waits for an editor to show (on macOS the two differ —
       // `/var/…` is a link to `/private/var/…`).
-      if ((await metadataAsSourcePath(filePath)) !== null) {
-        return this.readDecompiledSource(path.resolve(filePath as string), policy);
+      if ((await readOnlySourcePath(filePath)) !== null) {
+        return this.readReadOnlySource(path.resolve(filePath as string), policy);
       }
       logger.warn('WorkspaceManager.openFile', 'Rejected file outside the workspace');
       return null;
@@ -649,12 +649,12 @@ export class WorkspaceManager {
   }
 
   /**
-   * Reads a language server's decompiled source for opening read-only.
-   * @param filePath The file's absolute path, already known to be a decompiled source.
+   * Reads source a language server navigated to outside the workspace, for opening read-only.
+   * @param filePath The file's absolute path, already known to be such a source.
    * @param policy How large a file opens as text, and how its bytes decode.
    * @returns Returns the file selection marked read-only, or null when it cannot be read as text.
    */
-  private async readDecompiledSource(
+  private async readReadOnlySource(
     filePath: string,
     policy: TextReadPolicy,
   ): Promise<OpenSelection | null> {
@@ -663,10 +663,10 @@ export class WorkspaceManager {
       if (selection.kind !== 'file') {
         return null;
       }
-      logger.info('WorkspaceManager.openFile', `Opening decompiled source ${filePath} read-only`);
+      logger.info('WorkspaceManager.openFile', `Opening source ${filePath} read-only`);
       return { kind: 'file', file: { ...selection.file, readOnly: true } };
     } catch (error: unknown) {
-      logger.debug('WorkspaceManager', 'Failed to open decompiled source', error);
+      logger.debug('WorkspaceManager', 'Failed to open read-only source', error);
       return null;
     }
   }

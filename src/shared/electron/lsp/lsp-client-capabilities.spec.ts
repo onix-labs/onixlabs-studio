@@ -1,6 +1,12 @@
 import type { ClientCapabilities } from 'vscode-languageserver-protocol';
 import { clientCapabilities } from './lsp-client-capabilities';
 
+describe('clientCapabilities: Go to Declaration (#1213)', () => {
+  it('asksForDeclarations_byPathLikeADefinition', () => {
+    expect(clientCapabilities().textDocument?.declaration).toEqual({ linkSupport: false });
+  });
+});
+
 describe('clientCapabilities', () => {
   it('workspace_asksServersWhatARenamedFileChanges (#1207)', () => {
     expect(clientCapabilities().workspace?.fileOperations).toEqual({
@@ -9,8 +15,22 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('experimental_asksAServerToSayHowItIs (#1210)', () => {
+    expect(clientCapabilities().experimental).toMatchObject({ serverStatusNotification: true });
+  });
+
+  it('workspaceEdit_tellsOnlyAServerItHasBeenTriedWith_thatAFileMayBeCreated (#1210)', () => {
+    expect(clientCapabilities('rust').workspace?.workspaceEdit?.resourceOperations).toEqual([
+      'create',
+    ]);
+    expect(clientCapabilities('typescript').workspace?.workspaceEdit?.resourceOperations).toEqual(
+      [],
+    );
+    expect(clientCapabilities().workspace?.workspaceEdit?.resourceOperations).toEqual([]);
+  });
+
   it('experimental_namesTheCommandsALensMayCarry_andNoDebuggerThereIsNot (#1210)', () => {
-    expect(clientCapabilities().experimental).toEqual({
+    expect(clientCapabilities().experimental).toMatchObject({
       commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
     });
   });

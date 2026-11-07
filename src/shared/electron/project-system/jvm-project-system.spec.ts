@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { ProjectItemNode, ProjectItems, ProjectModel } from '@shared/api/project-system';
@@ -9,6 +9,7 @@ import {
   parseMavenModules,
   parseMavenName,
 } from './jvm-project-system';
+import { gradleSourceDirectories, mavenSourceDirectories } from './jvm-source-sets';
 
 describe('parseGradleRootName', () => {
   it('readsTheDeclaredName', () => {
@@ -222,5 +223,228 @@ describe('JvmProjectSystem on disk', () => {
 
   it('isNull_forItemsOfAProjectWhoseFolderHasGone', async () => {
     expect(await provider.loadProjectItems('/no/such/place/pom.xml')).toBeNull();
+  });
+});
+
+describe('mavenSourceDirectories (#899)', () => {
+  it('readsTheSourceFolders_andEachResourceDirectory', () => {
+    const pom: string = [
+      '<project><build>',
+      '<sourceDirectory>java</sourceDirectory>',
+      '<testSourceDirectory>${project.basedir}/checks</testSourceDirectory>',
+      '<resources><resource><directory>assets</directory></resource></resources>',
+      '<testResources><testResource><directory>fixtures</directory></testResource></testResources>',
+      '</build></project>',
+    ].join('\n');
+
+    expect(mavenSourceDirectories(pom)).toEqual(['java', 'checks', 'assets', 'fixtures']);
+  });
+
+  it('leavesOutComments_andPathsBuiltFromOtherProperties', () => {
+    const pom: string = [
+      '<!-- <sourceDirectory>old</sourceDirectory> -->',
+      '<sourceDirectory>${gen.dir}/java</sourceDirectory>',
+      '<outputDirectory>target/x</outputDirectory>',
+    ].join('\n');
+
+    expect(mavenSourceDirectories(pom)).toEqual([]);
+    expect(mavenSourceDirectories(null)).toEqual([]);
+  });
+
+  it('readsAroundEveryComment_andStopsAtAnUnclosedOne', () => {
+    const pom: string = [
+      '<sourceDirectory>a</sourceDirectory>',
+      '<!-- one --><sourceDirectory>b</sourceDirectory><!-- two -->',
+      '<!-- never closed <sourceDirectory>c</sourceDirectory>',
+    ].join('\n');
+
+    expect(mavenSourceDirectories(pom)).toEqual(['a', 'b']);
+  });
+});
+
+describe('gradleSourceDirectories (#899)', () => {
+  it('readsEveryForm_inBothDsls', () => {
+    const script: string = [
+      "main { java { srcDirs = ['app', 'lib'] } }",
+      'kotlin.srcDir("kt")',
+      "test.java.srcDir 'checks'",
+      'resources.setSrcDirs(listOf("assets"))',
+    ].join('\n');
+
+    expect(gradleSourceDirectories(script)).toEqual(['app', 'lib', 'kt', 'checks', 'assets']);
+  });
+
+  it('leavesOutComments_andPathsBuiltFromVariables', () => {
+    const script: string = [
+      "// srcDir 'old'",
+      "/* srcDir 'older' */",
+      'srcDir("$buildDir/generated")',
+      'srcDir(generatedRoot)',
+    ].join('\n');
+
+    expect(gradleSourceDirectories(script)).toEqual([]);
+    expect(gradleSourceDirectories(null)).toEqual([]);
+  });
+});
+
+describe('JvmProjectSystem.loadProjectItems source sets (#899)', () => {
+  let root: string = '';
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-jvm-')));
+    write({
+      'notes.txt': '',
+      'output/run.log': '',
+      'build/classes/Main.class': '',
+      'target/classes/Main.class': '',
+      '.gradle/cache': '',
+    });
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  /**
+   * Writes files under the fixture.
+   * @param files The files' contents, by relative path.
+   */
+  function write(files: Readonly<Record<string, string>>): void {
+    for (const [name, content] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+      writeFileSync(path.join(root, name), content);
+    }
+  }
+
+  /**
+   * Reads a contents tree as slash-joined paths, folders marked with a trailing slash.
+   * @param nodes The tree.
+   * @param prefix The path so far.
+   * @returns Returns every node's path, depth-first.
+   */
+  function flat(nodes: readonly ProjectItemNode[], prefix: string = ''): string[] {
+    return nodes.flatMap((node: ProjectItemNode): string[] =>
+      node.type === 'folder'
+        ? [`${prefix}${node.name}/`, ...flat(node.children, `${prefix}${node.name}/`)]
+        : [`${prefix}${node.name}`],
+    );
+  }
+
+  /**
+   * Loads a manifest's contents, listed by {@link flat}.
+   * @param manifest The manifest's file name.
+   * @returns Returns the paths.
+   */
+  async function load(manifest: string): Promise<string[]> {
+    const items: ProjectItems | null = await new JvmProjectSystem().loadProjectItems(
+      path.join(root, manifest),
+    );
+    return flat(items!.tree);
+  }
+
+  it('listsAMavenModulesSourceSets_leavingTheRestToTheFileExplorer', async () => {
+    write({
+      'pom.xml': '<project/>',
+      'src/main/java/App.java': '',
+      'src/main/resources/app.yml': '',
+      'src/test/java/AppTest.java': '',
+    });
+
+    expect(await load('pom.xml')).toEqual([
+      'src/',
+      'src/main/',
+      'src/main/java/',
+      'src/main/java/App.java',
+      'src/main/resources/',
+      'src/main/resources/app.yml',
+      'src/test/',
+      'src/test/java/',
+      'src/test/java/AppTest.java',
+      'pom.xml',
+    ]);
+  });
+
+  it('listsAGradleModulesBuildFiles_besideItsSourceSets', async () => {
+    write({
+      'build.gradle.kts': '',
+      'settings.gradle.kts': '',
+      'gradle.properties': '',
+      'gradle/libs.versions.toml': '',
+      'gradle/wrapper/gradle-wrapper.jar': '',
+      'src/integrationTest/kotlin/AppIT.kt': '',
+    });
+
+    expect(await load('build.gradle.kts')).toEqual([
+      'gradle/',
+      'gradle/libs.versions.toml',
+      'src/',
+      'src/integrationTest/',
+      'src/integrationTest/kotlin/',
+      'src/integrationTest/kotlin/AppIT.kt',
+      'build.gradle.kts',
+      'gradle.properties',
+      'settings.gradle.kts',
+    ]);
+  });
+
+  it('keepsAPackageNamedLikeAnOutputFolder', async () => {
+    write({
+      'pom.xml': '<project/>',
+      'src/main/java/org/build/Task.java': '',
+      'src/main/java/org/bin/Tool.java': '',
+    });
+
+    expect(await load('pom.xml')).toEqual(
+      expect.arrayContaining([
+        'src/main/java/org/build/Task.java',
+        'src/main/java/org/bin/Tool.java',
+      ]),
+    );
+  });
+
+  it('stillSkipsAFrontEndsDependencies_insideASourceSet', async () => {
+    write({
+      'pom.xml': '<project/>',
+      'src/main/web/app.js': '',
+      'src/main/web/node_modules/left-pad/index.js': '',
+    });
+
+    expect(await load('pom.xml')).not.toContain('src/main/web/node_modules/');
+  });
+
+  it('readsAFolderTheManifestDeclares', async () => {
+    write({
+      'pom.xml': '<project><build><sourceDirectory>java</sourceDirectory></build></project>',
+      'java/App.java': '',
+    });
+
+    expect(await load('pom.xml')).toEqual(['java/', 'java/App.java', 'pom.xml']);
+  });
+
+  it('refusesADeclaredFolderOutsideTheModule_andDoesNotFollowALinkOutOfIt', async () => {
+    const outside: string = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-outside-')));
+    writeFileSync(path.join(outside, 'secret.java'), '');
+    symlinkSync(outside, path.join(root, 'linked'));
+    write({
+      'build.gradle': `srcDirs = ['../${path.basename(outside)}', '${outside}', 'linked', '.']`,
+      'src/main/java/App.java': '',
+    });
+
+    const listed: string[] = await load('build.gradle');
+    rmSync(outside, { recursive: true, force: true });
+
+    expect(listed).toEqual([
+      'src/',
+      'src/main/',
+      'src/main/java/',
+      'src/main/java/App.java',
+      'build.gradle',
+    ]);
+  });
+
+  it('fallsBackToTheListing_forAModuleWithNoSources', async () => {
+    write({ 'pom.xml': '<project/>' });
+
+    expect(await load('pom.xml')).toEqual(expect.arrayContaining(['notes.txt', 'output/run.log']));
   });
 });

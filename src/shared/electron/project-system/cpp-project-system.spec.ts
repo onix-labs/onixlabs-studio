@@ -1,4 +1,13 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { BuildConfiguration, ProjectItemNode, ProjectItems } from '@shared/api/project-system';
@@ -81,6 +90,101 @@ describe('CppProjectSystem.loadProjectItems without a build model (#882 follow-u
     );
 
     expect(paths(items!.tree)).toEqual(['src/', 'src/main.cpp', 'CMakeLists.txt']);
+  });
+});
+
+describe('CppProjectSystem.loadProjectItems with a configured build tree (#1213)', () => {
+  let root: string;
+  let build: string;
+  let invoked: string;
+
+  /**
+   * Writes a build tree configured by a stand-in `cmake`, which records its arguments.
+   * @param cacheEntry A line to add to the cache.
+   */
+  function configured(cacheEntry: string): void {
+    const cmake: string = path.join(root, 'fake-cmake');
+    writeFileSync(cmake, `#!/bin/sh\necho "$@" >> "${invoked}"\n`);
+    chmodSync(cmake, 0o755);
+    writeFileSync(
+      path.join(build, 'CMakeCache.txt'),
+      `CMAKE_COMMAND:INTERNAL=${cmake}\n${cacheEntry}\n`,
+    );
+  }
+
+  /**
+   * Writes the File API reply a configure would have left: one target.
+   */
+  function answered(): void {
+    const reply: string = path.join(build, '.cmake', 'api', 'v1', 'reply');
+    mkdirSync(reply, { recursive: true });
+    const write: (name: string, value: unknown) => void = (name: string, value: unknown): void =>
+      writeFileSync(path.join(reply, name), JSON.stringify(value));
+    write('index-2026-11-07T00-00-00-0000.json', {
+      objects: [{ kind: 'codemodel', version: { major: 2 }, jsonFile: 'codemodel.json' }],
+    });
+    write('codemodel.json', { configurations: [{ targets: [{ jsonFile: 'target-app.json' }] }] });
+    write('target-app.json', { name: 'app', type: 'EXECUTABLE', sources: [{ path: 'main.cpp' }] });
+  }
+
+  /**
+   * Loads the project's contents and reads what `cmake` was asked.
+   * @returns Returns the recorded command lines, and the contents.
+   */
+  async function load(): Promise<{ calls: readonly string[]; tree: readonly string[] }> {
+    const items: ProjectItems | null = await new CppProjectSystem().loadProjectItems(
+      path.join(root, 'CMakeLists.txt'),
+    );
+    const calls: readonly string[] = existsSync(invoked)
+      ? readFileSync(invoked, 'utf8').trim().split('\n')
+      : [];
+    return { calls, tree: paths(items!.tree) };
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(realpathSync(tmpdir()), 'cpp-configured-'));
+    build = path.join(root, 'build');
+    invoked = path.join(root, 'invoked');
+    mkdirSync(build);
+    writeFileSync(path.join(root, 'CMakeLists.txt'), 'project(demo)\n');
+    writeFileSync(path.join(root, 'main.cpp'), '');
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('reconfiguresOnce_soATreeWithNoDatabaseWritesOne', async () => {
+    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+    answered();
+
+    const { calls, tree } = await load();
+
+    expect(calls).toEqual([`-S ${root} -B ${build} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`]);
+    expect(tree).toContain('app (executable)/main.cpp');
+  });
+
+  it('leavesATreeAlone_thatAlreadyWritesTheDatabase', async () => {
+    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+    answered();
+    writeFileSync(path.join(build, 'compile_commands.json'), '[]');
+
+    expect((await load()).calls).toEqual([]);
+  });
+
+  it('leavesATreeAlone_whoseOwnerTurnedTheDatabaseOff', async () => {
+    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=OFF');
+    answered();
+
+    expect((await load()).calls).toEqual([]);
+  });
+
+  it('stillListsTheTargets_whenTheReconfigureFails', async () => {
+    configured('CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=');
+    answered();
+    writeFileSync(path.join(root, 'fake-cmake'), '#!/bin/sh\nexit 1\n');
+
+    expect((await load()).tree).toContain('app (executable)/main.cpp');
   });
 });
 

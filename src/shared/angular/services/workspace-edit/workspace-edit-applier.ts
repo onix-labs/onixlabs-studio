@@ -66,6 +66,21 @@ export class WorkspaceEditApplier {
     const models: ReadonlyMap<string, MonacoApi.editor.ITextModel> = this.modelsOf(monaco);
     const applied: AppliedFile[] = [];
     const skipped: SkippedEdit[] = [...edit.refused];
+    // Before anything else, and alone: moving code into a file that could not be made would lose it.
+    if (edit.creates !== undefined && edit.creates.length > 0) {
+      const response: TextEditsResponse = await this.writeToDisk([], edit.creates);
+      applied.push(
+        ...response.written.map((created: WrittenFile): AppliedFile => ({
+          path: created.path,
+          edits: 0,
+          where: 'disk',
+        })),
+      );
+      skipped.push(...response.failed.map(toSkipped));
+      if (response.failed.length > 0) {
+        return { applied, skipped };
+      }
+    }
     const disk: DiskFileEdits[] = [];
     for (const file of edit.files) {
       if (file.edits.length === 0) {
@@ -92,12 +107,7 @@ export class WorkspaceEditApplier {
       for (const written of response.written) {
         applied.push({ path: written.path, edits: written.edits, where: 'disk' });
       }
-      skipped.push(
-        ...response.failed.map((failure: ReplaceFailure): SkippedEdit => ({
-          path: failure.path,
-          reason: failure.reason,
-        })),
-      );
+      skipped.push(...response.failed.map(toSkipped));
     }
     this.log.info(
       'workspaceEdit',
@@ -110,19 +120,25 @@ export class WorkspaceEditApplier {
   /**
    * Writes edits to files on disk, every file failed when the write itself could not be asked for.
    * @param disk The files and their edits.
+   * @param creates The files to create, if any.
    * @returns Returns what was written, and what was not.
    */
-  private async writeToDisk(disk: readonly DiskFileEdits[]): Promise<TextEditsResponse> {
+  private async writeToDisk(
+    disk: readonly DiskFileEdits[],
+    creates?: readonly string[],
+  ): Promise<TextEditsResponse> {
     try {
-      return await this.search.applyTextEdits({ files: disk });
+      return await this.search.applyTextEdits({
+        files: disk,
+        ...(creates === undefined ? {} : { creates }),
+      });
     } catch (error: unknown) {
       this.log.error('workspaceEdit', 'Could not write edits to disk', error);
       return {
         written: [] as readonly WrittenFile[],
-        failed: disk.map((file: DiskFileEdits): ReplaceFailure => ({
-          path: file.path,
-          reason: 'It could not be written.',
-        })),
+        failed: [...(creates ?? []), ...disk.map((file: DiskFileEdits): string => file.path)].map(
+          (path: string): ReplaceFailure => ({ path, reason: 'It could not be written.' }),
+        ),
       };
     }
   }
@@ -149,6 +165,15 @@ export class WorkspaceEditApplier {
     }
     return models;
   }
+}
+
+/**
+ * Names a part of an edit the main process did not write.
+ * @param failure Its failure.
+ * @returns Returns the part, with why.
+ */
+function toSkipped(failure: ReplaceFailure): SkippedEdit {
+  return { path: failure.path, reason: failure.reason };
 }
 
 /**

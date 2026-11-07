@@ -157,6 +157,20 @@ describe('LspStatus', () => {
     expect(server.detail).toBeUndefined();
   });
 
+  it('setFileActivity_clearsOnlyForTheFileItWasAbout', () => {
+    register('/root::clangd', 'clangd', '/root');
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+
+    status.setFileActivity('/root::clangd', 'file:///b.cpp', null);
+    expect(status.servers()[0].activity).toBe('Parsing includes — a.cpp');
+
+    status.setFileActivity('/root::clangd', 'file:///a.cpp', null);
+    expect(status.servers()[0].activity).toBeUndefined();
+
+    status.setFileActivity('/gone::clangd', 'file:///a.cpp', 'Parsing includes — a.cpp');
+    expect(status.servers()).toHaveLength(1);
+  });
+
   it('setProgress_showsWhatAStartingServerIsDoing_andClearsOnSettle', () => {
     register('/root::csharp', 'csharp', '/root');
     status.setProgress('/root::csharp', 'Loading solution — 40%');
@@ -166,6 +180,23 @@ describe('LspStatus', () => {
     status.setState('/root::csharp', 'ready');
 
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('setProblem_staysOnTheServer_untilCleared_throughAChangeOfState (#1210)', () => {
+    status.register('/root::rust', { serverId: 'rust', rootPath: '/root', restart: vi.fn() });
+
+    status.setProblem('/root::rust', 'Failed to load workspaces.');
+    status.setState('/root::rust', 'ready');
+    expect(status.servers()[0].problem).toBe('Failed to load workspaces.');
+
+    status.setProblem('/root::rust', undefined);
+    expect(status.servers()[0].problem).toBeUndefined();
+  });
+
+  it('setProblem_whenSessionUnknown_isIgnored', () => {
+    status.setProblem('/nowhere::rust', 'Failed');
+
+    expect(status.servers()).toEqual([]);
   });
 
   it('setProgress_whenSessionUnknown_isIgnored', () => {

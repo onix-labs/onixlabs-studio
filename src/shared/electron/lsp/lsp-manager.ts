@@ -68,6 +68,12 @@ const SHUTDOWN_TIMEOUT_MS: number = 3000;
 const PROJECT_INITIALIZATION_COMPLETE: string = 'workspace/projectInitializationComplete';
 
 /**
+ * Names the notification rust-analyzer says how it is with (#1210), which a window attaching later is
+ * told again, since the server says it only when it changes.
+ */
+const SERVER_STATUS: string = 'experimental/serverStatus';
+
+/**
  * The server notifications forwarded to the renderer — exactly the set the renderer's client
  * handles. Everything else (progress, telemetry, server-specific chatter) is dropped here, before it
  * costs an IPC hop.
@@ -78,16 +84,21 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   '$/progress',
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
+  'experimental/serverStatus',
   'workspace/semanticTokens/refresh',
   'window/logMessage',
   'window/showMessage',
   // Roslyn's own "show this to the user" (a project that failed to load or restore, #1134), which it
   // sends in place of `window/showMessage`.
   'window/_roslyn_showToast',
+  // clangd's word on what it is doing with a file (#1213), which it sends once told to at start-up.
+  'textDocument/clangd.fileStatus',
   // Sent on from the server's request of the same name, for the editors to ask for hints again.
   'workspace/inlayHint/refresh',
   // Sent on from the server's request of the same name, for the editors to ask for lenses again.
   'workspace/codeLens/refresh',
+  // Sent on from the server's request of the same name, for the open documents to be pulled again.
+  'workspace/diagnostic/refresh',
 ]);
 
 /**
@@ -155,6 +166,12 @@ interface LspSession {
    * server says it only once.
    */
   loaded: boolean;
+
+  /**
+   * Holds what the server last said of how it is (`experimental/serverStatus`), or undefined for a
+   * server that has said nothing.
+   */
+  serverStatus?: unknown;
 
   /**
    * Holds whether a workspace diagnostics pull has run to its end since the server loaded the
@@ -628,6 +645,7 @@ export class LspManager {
       parsed.rootPath,
       spec,
       this.registry.pushedSettingsOf(parsed.serverId),
+      parsed.serverId,
     )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
@@ -656,6 +674,7 @@ export class LspManager {
    * @param spec The server specification, supplying initialization options.
    * @param pushed The settings to push once the server has started (#1204), or undefined for a
    * server that is not pushed them.
+   * @param serverId The server, as what a server is told can depend on which it is.
    * @returns Returns the server's initialize result.
    */
   private async initialize(
@@ -663,6 +682,7 @@ export class LspManager {
     rootPath: string,
     spec: LspServerSpec,
     pushed?: Record<string, unknown>,
+    serverId?: string,
   ): Promise<InitializeResult> {
     const rootUri: string = pathToFileURL(rootPath).href;
     const params: InitializeParams = {
@@ -670,7 +690,7 @@ export class LspManager {
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: rootPath }],
       initializationOptions: spec.initializationOptions,
-      capabilities: clientCapabilities(),
+      capabilities: clientCapabilities(serverId),
     };
     logger.trace('LspManager', `Sending initialize handshake for root ${rootPath}`);
     const result: InitializeResult = await this.withTimeout<InitializeResult>(
@@ -1001,9 +1021,14 @@ export class LspManager {
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
     // The server's diagnostics changed in a way an open workspace pull will not report (a project
-    // finished loading, the analysis scope changed): pull afresh (#1144).
+    // finished loading, the analysis scope changed): pull afresh (#1144). A server with no workspace
+    // pull has its open documents pulled again by the renderer (#1210).
     connection.onRequest('workspace/diagnostic/refresh', (): null => {
-      session.workspaceDiagnostics?.refresh();
+      if (session.workspaceDiagnostics) {
+        session.workspaceDiagnostics.refresh();
+      } else {
+        this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
+      }
       return null;
     });
     // A server sends this when its semantic classification has improved (a project finished loading)
@@ -1100,8 +1125,8 @@ export class LspManager {
 
   /**
    * Tells a window that attached to a running session what the windows before it were told and the
-   * server will not say again (#1182): that it finished loading the workspace, and the workspace's
-   * diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
+   * server will not say again (#1182): that it finished loading the workspace, how it is, and the
+   * workspace's diagnostics as they stand. Without this, a window reloaded — or a second one opened on the same
    * folder — waited on a load that had long finished, its Error List empty. Sent once the window has
    * its start answer, which it needs to take them.
    * @param sessionId The session.
@@ -1121,6 +1146,14 @@ export class LspManager {
           sessionId,
           method: PROJECT_INITIALIZATION_COMPLETE,
           params: {},
+        };
+        sender.send(LspChannel.Notification, message);
+      }
+      if (session.serverStatus !== undefined) {
+        const message: LspMessage = {
+          sessionId,
+          method: SERVER_STATUS,
+          params: session.serverStatus,
         };
         sender.send(LspChannel.Notification, message);
       }
@@ -1157,6 +1190,12 @@ export class LspManager {
       const session: LspSession | undefined = this.sessions.get(sessionId);
       if (session !== undefined) {
         session.loaded = true;
+      }
+    }
+    if (method === SERVER_STATUS) {
+      const session: LspSession | undefined = this.sessions.get(sessionId);
+      if (session !== undefined) {
+        session.serverStatus = params;
       }
     }
     if (method === PUBLISH_DIAGNOSTICS_METHOD) {

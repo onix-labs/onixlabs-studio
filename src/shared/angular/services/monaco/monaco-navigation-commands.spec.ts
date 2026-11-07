@@ -8,7 +8,9 @@ import {
   NavigationMode,
   STUDIO_FIND_REFERENCES_COMMAND,
   STUDIO_GO_TO_DEFINITION_COMMAND,
+  STUDIO_GO_TO_DECLARATION_COMMAND,
   STUDIO_GO_TO_IMPLEMENTATION_COMMAND,
+  STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
   STUDIO_GO_TO_TYPE_DEFINITION_COMMAND,
   STUDIO_CALL_HIERARCHY_COMMAND,
   STUDIO_TYPE_HIERARCHY_COMMAND,
@@ -35,6 +37,21 @@ const F12: number = 70;
  * Monaco's `KeyCode.KeyH`, as the fake instance numbers it.
  */
 const KEY_H: number = 38;
+
+/**
+ * Monaco's `KeyCode.KeyK` and `KeyCode.KeyO`, as the fake instance numbers them.
+ */
+const KEY_K: number = 41;
+const KEY_O: number = 45;
+
+/**
+ * Stands in for Monaco's `KeyMod.chord`, keeping both halves readable in a rule.
+ * @param first The first press.
+ * @param second The second press.
+ * @returns Returns the two as one number.
+ */
+const chord: (first: number, second: number) => number = (first: number, second: number): number =>
+  first + second * 65536;
 
 /**
  * Monaco's mouse-target types the specs click on.
@@ -95,8 +112,8 @@ function install(isMac: boolean, editors: readonly MonacoApi.editor.ICodeEditor[
     create: (editor: MonacoApi.editor.ICodeEditor): void => onCreate?.(editor),
   };
   const fake: typeof MonacoApi = {
-    KeyMod: KEYS,
-    KeyCode: { F12, KeyH: KEY_H },
+    KeyMod: { ...KEYS, chord },
+    KeyCode: { F12, KeyH: KEY_H, KeyK: KEY_K, KeyO: KEY_O },
     editor: {
       getEditors: (): readonly MonacoApi.editor.ICodeEditor[] => editors,
       registerCommand: (id: string, handler: () => void): void =>
@@ -283,6 +300,16 @@ describe('installNavigationCommands (#1014)', () => {
     }
   });
 
+  it('bindsSwitchHeaderSourceToCmdKCmdO_onEveryPlatform (#1213)', () => {
+    for (const isMac of [true, false]) {
+      expect(install(isMac, []).rules).toContainEqual({
+        keybinding: chord(KEYS.CtrlCmd | KEY_K, KEYS.CtrlCmd | KEY_O),
+        command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
+        when,
+      });
+    }
+  });
+
   it('theCommands_handTheFocusedEditorOn_withTheirMode_andNothingWithoutFocus', () => {
     const idle: FakeEditor = fakeEditor(false);
     const focused: FakeEditor = fakeEditor(true);
@@ -294,6 +321,8 @@ describe('installNavigationCommands (#1014)', () => {
     installed.commands.get(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND)?.();
     installed.commands.get(STUDIO_CALL_HIERARCHY_COMMAND)?.();
     installed.commands.get(STUDIO_TYPE_HIERARCHY_COMMAND)?.();
+    installed.commands.get(STUDIO_GO_TO_DECLARATION_COMMAND)?.();
+    installed.commands.get(STUDIO_SWITCH_SOURCE_HEADER_COMMAND)?.();
 
     expect(installed.navigated).toEqual([
       { editor: focused.editor, mode: 'definition' },
@@ -302,6 +331,8 @@ describe('installNavigationCommands (#1014)', () => {
       { editor: focused.editor, mode: 'typeDefinition' },
       { editor: focused.editor, mode: 'callHierarchy' },
       { editor: focused.editor, mode: 'typeHierarchy' },
+      { editor: focused.editor, mode: 'declaration' },
+      { editor: focused.editor, mode: 'sourceHeader' },
     ]);
     const unfocused: Installed = install(false, [idle.editor]);
     unfocused.commands.get(STUDIO_GO_TO_DEFINITION_COMMAND)?.();
