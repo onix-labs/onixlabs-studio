@@ -62,6 +62,7 @@ const CATALOGUE: readonly LspServerSummary[] = [
   { id: 'csharp', displayName: 'Roslyn', languages: ['csharp'], priority: 100 },
   { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
   { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
+  { id: 'rust', displayName: 'rust-analyzer', languages: ['rust'], priority: 100 },
 ];
 
 /**
@@ -1833,6 +1834,22 @@ describe('LspClient', () => {
       '/root::csharp',
     ]);
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
+  });
+
+  it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
+    // Hover and further navigation inside `Option` work only against the session that loaded it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/home/me/.rustup/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs',
+      languageId: 'rust',
+      content: 'pub enum Option<T> { None, Some(T) }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::rust',
+    ]);
   });
 
   it('syncDocument_anOrdinaryFileOutsideTheRoot_isStillIgnored', async () => {

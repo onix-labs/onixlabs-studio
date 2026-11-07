@@ -48,6 +48,7 @@ import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/wo
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import {
   isMetadataAsSource,
+  isToolchainSource,
   isWithin,
   normalise,
   parentDir,
@@ -3498,8 +3499,13 @@ export class LspClient implements OnDestroy {
       // A language server's decompiled source (#1133) lives in the temporary directory, outside the
       // workspace, but belongs to the workspace's session: the server generated it for a symbol the
       // workspace references, and answers hover and Go to Definition inside it only when it is opened
-      // against that session. (The main process decides which such files may be opened at all.)
-      if (isWithin(filePath, listing.path) || isMetadataAsSource(filePath)) {
+      // against that session. So does the Rust toolchain's source (#1210), which rust-analyzer loaded
+      // with the workspace. (The main process decides which such files may be opened at all.)
+      if (
+        isWithin(filePath, listing.path) ||
+        isMetadataAsSource(filePath) ||
+        isToolchainSource(filePath)
+      ) {
         return { root: listing.path, standalone: false };
       }
       return null;
