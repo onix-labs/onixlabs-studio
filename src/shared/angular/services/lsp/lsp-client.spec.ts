@@ -2857,6 +2857,37 @@ describe('LspClient', () => {
     expect(status.servers()[0].progress).toBeUndefined();
   });
 
+  it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    // The client does not ask which server sent it; the session this spec's stub serves will do.
+    const sessionId: string = '/root::csharp';
+    const uri: string = 'file:///root/shapes.cpp';
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri,
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    // Another file going idle says nothing about this one.
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/other.cpp',
+      state: 'idle',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.notify(sessionId, 'textDocument/clangd.fileStatus', { uri, state: 'idle' });
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
   it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {
     lsp.startResult = { success: false, error: 'no server' };
     const realNow: () => number = Date.now;

@@ -67,6 +67,8 @@ function handle(message) {
   } else if (message.method === 'initialized' && mode === 'chatty') {
     write({ method: 'telemetry/event', params: {} });
     write({ method: 'textDocument/publishDiagnostics', params: { uri: 'file:///a', diagnostics: [] } });
+  } else if (message.method === 'initialized' && mode === 'file-status') {
+    write({ method: 'textDocument/clangd.fileStatus', params: { uri: 'file:///a', state: 'idle' } });
   } else if (message.method === 'initialized' && mode === 'closes-stdout') {
     fs.closeSync(1);
   } else if (message.method === 'shutdown' && mode !== 'ignores-shutdown') {
@@ -606,6 +608,16 @@ describe.skipIf(process.platform === 'win32')('LspManager sessions', () => {
       await until((): boolean => renderer.notifications().length > 0, 'a notification');
 
       expect(renderer.notifications()).toEqual(['textDocument/publishDiagnostics']);
+    });
+
+    it('forwardsClangdsFileStatus', async () => {
+      mode = 'file-status';
+      const renderer: FakeRenderer = new FakeRenderer();
+
+      await start(renderer);
+      await until((): boolean => renderer.notifications().length > 0, 'a notification');
+
+      expect(renderer.notifications()).toEqual(['textDocument/clangd.fileStatus']);
     });
 
     it('deliversToEveryWindowHoldingTheSession', async () => {
