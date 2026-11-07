@@ -92,6 +92,8 @@ describe('session temporary folder', () => {
       deniedWritePaths: [],
       allowedNetworkLocations: [],
       deniedNetworkLocations: [],
+      permissionPosture: 'prompt',
+      toolPolicies: {},
     } as unknown as TurnRequest;
 
     expect(sandboxFor(turn, temporary).filesystem?.allowWrite).toEqual([
