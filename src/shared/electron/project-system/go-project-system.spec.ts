@@ -223,6 +223,9 @@ describe.skipIf(process.platform === 'win32')('GoProjectSystem.loadProjectItems 
   });
 
   it('fallsBackToTheListing_whenThereIsNoToolchain', async () => {
+    // Nothing but the empty folder: a machine can have a real `go` in /usr/bin.
+    vi.stubEnv('PATH', bin);
+
     const items: ProjectItems | null = await new GoProjectSystem().loadProjectItems(
       path.join(root, 'go.mod'),
     );
