@@ -1,5 +1,5 @@
 {
-  "revision": 61,
+  "revision": 62,
   "plugins": [
     {
       "id": "pyright",
@@ -517,6 +517,248 @@
             "priority": 100,
             "command": {
               "kind": "executable"
+            },
+            "settings": [
+              {
+                "section": "rust-analyzer.checkOnSave",
+                "label": "Check on Save",
+                "description": "Run Cargo over the workspace each time a file is saved, and show what it reports beside the server's own diagnostics.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.check.command",
+                "label": "Check Command",
+                "description": "The Cargo command run on save. Clippy needs the clippy component of the toolchain.",
+                "default": "check",
+                "options": [
+                  { "value": "check", "label": "Cargo Check" },
+                  { "value": "clippy", "label": "Clippy" }
+                ]
+              },
+              {
+                "section": "rust-analyzer.inlayHints.typeHints.enable",
+                "label": "Variable Types",
+                "description": "Show the type the compiler infers for a variable that does not name one.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.parameterHints.enable",
+                "label": "Parameter Names",
+                "description": "Show the name of the parameter each argument is passed to, before the argument.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.chainingHints.enable",
+                "label": "Method Chain Types",
+                "description": "Show the type at each step of a method chain that spans several lines.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.closingBraceHints.enable",
+                "label": "Closing Brace Names",
+                "description": "Show what a long block belongs to after its closing brace.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.lifetimeElisionHints.enable",
+                "label": "Elided Lifetimes",
+                "description": "Show the lifetimes the compiler fills in on a function's signature.",
+                "default": "never",
+                "options": [
+                  { "value": "never", "label": "Off" },
+                  { "value": "skip_trivial", "label": "Except trivial cases" },
+                  { "value": "always", "label": "Always" }
+                ]
+              },
+              {
+                "section": "rust-analyzer.inlayHints.closureReturnTypeHints.enable",
+                "label": "Closure Return Types",
+                "description": "Show the return type the compiler infers for a closure.",
+                "default": "never",
+                "options": [
+                  { "value": "never", "label": "Off" },
+                  { "value": "with_block", "label": "Closures with a block" },
+                  { "value": "always", "label": "Always" }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.bindingModeHints.enable",
+                "label": "Binding Modes",
+                "description": "Show the references and dereferences a pattern match adds by itself.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.reborrowHints.enable",
+                "label": "Implicit Reborrows",
+                "description": "Show where the compiler reborrows a reference by itself.",
+                "default": "never",
+                "options": [
+                  { "value": "never", "label": "Off" },
+                  { "value": "mutable", "label": "Mutable references" },
+                  { "value": "always", "label": "Always" }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.implicitDrops.enable",
+                "label": "Implicit Drops",
+                "description": "Show where values are dropped at the end of their scope.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.inlayHints.discriminantHints.enable",
+                "label": "Enum Discriminants",
+                "description": "Show the value of each enum variant.",
+                "default": "never",
+                "options": [
+                  { "value": "never", "label": "Off" },
+                  { "value": "fieldless", "label": "Enums without fields" },
+                  { "value": "always", "label": "Always" }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.lens.enable",
+                "label": "Code Lenses",
+                "description": "Show lenses above items: running them, and how often they are used.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.run.enable",
+                "label": "Run Lenses",
+                "description": "Show Run above a main function, and Run Test above a test.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.implementations.enable",
+                "label": "Implementation Counts",
+                "description": "Show how many implementations a trait, struct or enum has above it; clicking the count lists them.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.references.adt.enable",
+                "label": "Reference Counts on Types",
+                "description": "Show how many references a struct, enum or union has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.method.enable",
+                "label": "Reference Counts on Methods",
+                "description": "Show how many references a method has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.trait.enable",
+                "label": "Reference Counts on Traits",
+                "description": "Show how many references a trait has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.enumVariant.enable",
+                "label": "Reference Counts on Enum Variants",
+                "description": "Show how many references an enum variant has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.workspace.symbol.search.scope",
+                "label": "Symbol Search",
+                "description": "What Go to Symbol in Workspace searches.",
+                "default": "workspace",
+                "options": [
+                  { "value": "workspace", "label": "The workspace" },
+                  {
+                    "value": "workspace_and_dependencies",
+                    "label": "The workspace and its dependencies"
+                  }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.completion.autoimport.enable",
+                "label": "Complete Unimported Names",
+                "description": "Offer names that are not imported yet; accepting one adds its use.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.completion.callable.snippets",
+                "label": "Function Call Completion",
+                "description": "What completing a function or method name adds after it.",
+                "default": "fill_arguments",
+                "options": [
+                  { "value": "fill_arguments", "label": "Parentheses and arguments" },
+                  { "value": "add_parentheses", "label": "Parentheses" },
+                  { "value": "none", "label": "Nothing" }
+                ]
+              },
+              {
+                "section": "rust-analyzer.imports.granularity.group",
+                "label": "Import Grouping",
+                "description": "How imports added by a completion or a code action are merged into the use items already there.",
+                "default": "crate",
+                "options": [
+                  { "value": "crate", "label": "One use per crate" },
+                  { "value": "module", "label": "One use per module" },
+                  { "value": "item", "label": "One use per item" },
+                  { "value": "one", "label": "A single use" },
+                  { "value": "preserve", "label": "As they are" }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.imports.prefix",
+                "label": "Import Paths",
+                "description": "How the paths of imports added by a completion or a code action start.",
+                "default": "crate",
+                "options": [
+                  { "value": "crate", "label": "From the crate" },
+                  { "value": "self", "label": "From this module" },
+                  { "value": "plain", "label": "Shortest path" }
+                ],
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.diagnostics.enable",
+                "label": "Server Diagnostics",
+                "description": "Show the errors the server finds itself as you type, before Cargo has run.",
+                "default": true,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.diagnostics.experimental.enable",
+                "label": "Experimental Diagnostics",
+                "description": "Show diagnostics the server is still working on, which may report code that compiles.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.cargo.noDefaultFeatures",
+                "label": "No Default Features",
+                "description": "Analyse every crate without its default Cargo features.",
+                "default": false,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.cargo.buildScripts.enable",
+                "label": "Run Build Scripts",
+                "description": "Run each crate's build script while loading, so the code it generates is understood. Build scripts are programs: they run with your permissions.",
+                "default": true,
+                "advanced": true
+              },
+              {
+                "section": "rust-analyzer.procMacro.enable",
+                "label": "Expand Procedural Macros",
+                "description": "Expand procedural macros, so the code they generate is understood. Procedural macros are programs: they run with your permissions.",
+                "default": true,
+                "advanced": true
+              }
+            ],
+            "settingsDelivery": {
+              "startup": {
+                "section": "rust-analyzer"
+              }
             }
           }
         ]
