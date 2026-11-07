@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -206,5 +207,102 @@ describe('applyTextEdits (#1015)', () => {
     expect(isTextEditsRequest({ files: [{ path: '', edits: [] }] })).toBe(false);
     expect(isTextEditsRequest({ files: [{ path: '/a', edits: [{ text: 3 }] }] })).toBe(false);
     expect(isTextEditsRequest(null)).toBe(false);
+  });
+});
+
+describe('applyTextEdits: creating files (#1210)', () => {
+  let root: string;
+  let outside: string;
+  let workspace: WorkspaceContext;
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-create-')));
+    outside = realpathSync(mkdtempSync(path.join(tmpdir(), 'studio-create-outside-')));
+    workspace = new WorkspaceContext();
+    workspace.addRoot(root);
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('createsAnEmptyFile_andTheFoldersItNeeds', async () => {
+    const target: string = path.join(root, 'src', 'missing', 'mod.rs');
+
+    const response: TextEditsResponse = await applyTextEdits(
+      { files: [], creates: [target] },
+      workspace,
+    );
+
+    expect(response).toEqual({ written: [{ path: target, edits: 0 }], failed: [] });
+    expect(readFileSync(target, 'utf8')).toBe('');
+  });
+
+  it('createsAFile_thenAppliesTheEditsThatFillIt', async () => {
+    const target: string = path.join(root, 'nested.rs');
+
+    await applyTextEdits(
+      { files: [{ path: target, edits: [edit(1, 1, 1, 'pub struct Inner;')] }], creates: [target] },
+      workspace,
+    );
+
+    expect(readFileSync(target, 'utf8')).toBe('pub struct Inner;');
+  });
+
+  it('leavesAFileAlreadyThereAlone_andSaysSo', async () => {
+    const target: string = path.join(root, 'kept.rs');
+    writeFileSync(target, 'precious');
+
+    const response: TextEditsResponse = await applyTextEdits(
+      { files: [], creates: [target] },
+      workspace,
+    );
+
+    expect(response.failed).toEqual([{ path: target, reason: 'It already exists.' }]);
+    expect(readFileSync(target, 'utf8')).toBe('precious');
+  });
+
+  it('refusesAFileOutsideTheWorkspace', async () => {
+    const target: string = path.join(outside, 'escaped.rs');
+
+    const response: TextEditsResponse = await applyTextEdits(
+      { files: [], creates: [target] },
+      workspace,
+    );
+
+    expect(response.failed).toEqual([{ path: target, reason: 'It is outside the workspace.' }]);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('refusesAPathClimbingOutOfTheWorkspace', async () => {
+    const target: string = `${root}/../${path.basename(outside)}/escaped.rs`;
+
+    await applyTextEdits({ files: [], creates: [target] }, workspace);
+
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it.each([
+    ['in a folder that exists', 'link/escaped.rs'],
+    ['in a folder that does not yet', 'link/deeper/still/escaped.rs'],
+  ])('refusesALinkOutOfTheWorkspace_%s', async (_name: string, relative: string) => {
+    symlinkSync(outside, path.join(root, 'link'));
+
+    const response: TextEditsResponse = await applyTextEdits(
+      { files: [], creates: [path.join(root, relative)] },
+      workspace,
+    );
+
+    expect(response.failed[0]?.reason).toBe('It links to somewhere outside the workspace.');
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it('isAMalformedRequest_whenCreatesAreNotPaths', () => {
+    expect(isTextEditsRequest({ files: [], creates: 'a.rs' })).toBe(false);
+    expect(isTextEditsRequest({ files: [], creates: [1] })).toBe(false);
+    expect(isTextEditsRequest({ files: [], creates: [''] })).toBe(false);
+    expect(isTextEditsRequest({ files: [], creates: ['/a.rs'] })).toBe(true);
+    expect(isTextEditsRequest({ files: [] })).toBe(true);
   });
 });

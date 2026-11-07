@@ -9,6 +9,16 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('workspaceEdit_tellsOnlyAServerItHasBeenTriedWith_thatAFileMayBeCreated (#1210)', () => {
+    expect(clientCapabilities('rust').workspace?.workspaceEdit?.resourceOperations).toEqual([
+      'create',
+    ]);
+    expect(clientCapabilities('typescript').workspace?.workspaceEdit?.resourceOperations).toEqual(
+      [],
+    );
+    expect(clientCapabilities().workspace?.workspaceEdit?.resourceOperations).toEqual([]);
+  });
+
   it('diagnostics_advertiseUnnecessaryAndDeprecatedTags_pushedAndPulled', () => {
     const capabilities: ClientCapabilities = clientCapabilities();
 

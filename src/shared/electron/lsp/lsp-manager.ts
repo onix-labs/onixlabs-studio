@@ -628,6 +628,7 @@ export class LspManager {
       parsed.rootPath,
       spec,
       this.registry.pushedSettingsOf(parsed.serverId),
+      parsed.serverId,
     )
       .then((result: InitializeResult): LspStartResult => {
         this.startWorkspaceDiagnostics(parsed.sessionId, session, result);
@@ -656,6 +657,7 @@ export class LspManager {
    * @param spec The server specification, supplying initialization options.
    * @param pushed The settings to push once the server has started (#1204), or undefined for a
    * server that is not pushed them.
+   * @param serverId The server, as what a server is told can depend on which it is.
    * @returns Returns the server's initialize result.
    */
   private async initialize(
@@ -663,6 +665,7 @@ export class LspManager {
     rootPath: string,
     spec: LspServerSpec,
     pushed?: Record<string, unknown>,
+    serverId?: string,
   ): Promise<InitializeResult> {
     const rootUri: string = pathToFileURL(rootPath).href;
     const params: InitializeParams = {
@@ -670,7 +673,7 @@ export class LspManager {
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: rootPath }],
       initializationOptions: spec.initializationOptions,
-      capabilities: clientCapabilities(),
+      capabilities: clientCapabilities(serverId),
     };
     logger.trace('LspManager', `Sending initialize handshake for root ${rootPath}`);
     const result: InitializeResult = await this.withTimeout<InitializeResult>(
