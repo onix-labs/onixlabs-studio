@@ -343,7 +343,11 @@ export class QuickFixes {
       chosen.edit === null && chosen.resolve !== null ? await chosen.resolve() : chosen;
     const edit: WorkspaceTextEdits | null = action.edit;
     let changed: boolean = false;
-    if (edit !== null && (edit.files.length > 0 || edit.refused.length > 0)) {
+    // A file to create can be the whole of it: rust-analyzer's Create Module.
+    if (
+      edit !== null &&
+      (edit.files.length > 0 || edit.refused.length > 0 || (edit.creates?.length ?? 0) > 0)
+    ) {
       if (edit.files.length > 1) {
         const confirmed: boolean = await this.confirmation.ask({
           oldName: action.title,
