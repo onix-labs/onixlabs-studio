@@ -7,9 +7,11 @@ import {
   pushedSettings,
   readOnlyAtStartup,
   serversWithChangedSettings,
+  settingArguments,
   startupOptions,
   withDeclaredDefaults,
 } from './lsp-server-settings';
+import type { LspServerSettingDescriptor } from '@shared/api/lsp-channels';
 import type { LspSettingsDelivery } from './language-server-descriptor';
 
 describe('parseServerSettings (#1143)', () => {
@@ -116,6 +118,40 @@ describe('withDeclaredDefaults (#1145)', () => {
   it('leavesAServerThatDeclaresNothing_withTheUsersValuesAlone', () => {
     expect(withDeclaredDefaults(undefined, undefined)).toBeUndefined();
     expect(withDeclaredDefaults([], { a: true })).toEqual({ a: true });
+  });
+});
+
+describe('settings on the command line (#1213)', () => {
+  const declared: readonly LspServerSettingDescriptor[] = [
+    { section: 'clangd.tidy', label: 'T', description: 'd', default: true },
+    { section: 'clangd.headers', label: 'H', description: 'd', default: 'iwyu' },
+  ];
+  const delivery: LspSettingsDelivery = {
+    pull: false,
+    arguments: [
+      { section: 'clangd.tidy', flag: '--clang-tidy' },
+      { section: 'clangd.headers', flag: '--header-insertion' },
+    ],
+  };
+
+  it('settingArguments_passesOnlyWhatDiffersFromTheDefault_soTheServersOwnDefaultStands', () => {
+    expect(settingArguments(delivery, declared, { 'clangd.tidy': true })).toEqual([]);
+    expect(
+      settingArguments(delivery, declared, { 'clangd.tidy': false, 'clangd.headers': 'never' }),
+    ).toEqual(['--clang-tidy=false', '--header-insertion=never']);
+  });
+
+  it('settingArguments_isNothing_forAServerThatTakesNone', () => {
+    expect(settingArguments(undefined, declared, { 'clangd.tidy': false })).toEqual([]);
+    expect(settingArguments(delivery, declared, undefined)).toEqual([]);
+  });
+
+  it('readOnlyAtStartup_aSettingOnTheCommandLineNeedsARestart_whateverElseTheServerDoes', () => {
+    const setting: LspServerSettingDescriptor = declared[0];
+
+    expect(readOnlyAtStartup(delivery, setting)).toBe(true);
+    expect(readOnlyAtStartup({ ...delivery, pull: true }, setting)).toBe(true);
+    expect(readOnlyAtStartup({ pull: true }, setting)).toBe(false);
   });
 });
 

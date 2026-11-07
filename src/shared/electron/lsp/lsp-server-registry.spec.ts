@@ -174,6 +174,84 @@ describe('LspServerRegistry settings delivery (#1204)', () => {
   });
 });
 
+describe('LspServerRegistry: clangd (#1213)', () => {
+  /**
+   * Builds a registry holding the curated clangd, answering from a stand-in executable.
+   * @returns Returns the registry, and a way to set the user's values and arguments as Settings would.
+   */
+  function clangd(): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'clangd',
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const settings: ReturnType<typeof userSettings> = userSettings({});
+    // Any file that exists: the path override stands in for an install.
+    const manager: LspSettingsManager = {
+      ...settings.manager,
+      get: (): LspSettings => ({
+        ...settings.manager.get(),
+        serverPaths: { clangd: process.execPath },
+      }),
+    } as LspSettingsManager;
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
+      registry.register(descriptor);
+    }
+    return { registry, settings };
+  }
+
+  it('startsAsItAlwaysDid_whileEverySettingIsAtItsDefault', async () => {
+    const { registry } = clangd();
+
+    expect((await registry.resolve('clangd', '/w')).spec?.args).toEqual(['--log=error']);
+  });
+
+  it('asksForFileStatus_whichItOnlySendsToAClientThatAsks', async () => {
+    const { registry } = clangd();
+
+    expect((await registry.resolve('clangd', '/w')).spec?.initializationOptions).toEqual({
+      clangdFileStatus: true,
+    });
+  });
+
+  it('passesEachSettingTheUserChanged_onTheCommandLine', async () => {
+    const { registry, settings } = clangd();
+    settings.change({
+      clangd: {
+        'clangd.clangTidy': false,
+        'clangd.headerInsertion': 'never',
+        'clangd.backgroundIndex': false,
+      },
+    });
+
+    expect((await registry.resolve('clangd', '/w')).spec?.args).toEqual([
+      '--log=error',
+      '--clang-tidy=false',
+      '--header-insertion=never',
+      '--background-index=false',
+    ]);
+  });
+
+  it('restartsTheServer_whenASettingChanges_asItReadsThemOnlyWhenItStarts', () => {
+    const { registry, settings } = clangd();
+    const changes: LspSettingsChange[] = [];
+    registry.onConfigurationChange((list: readonly LspSettingsChange[]): void => {
+      changes.push(...list);
+    });
+
+    settings.change({ clangd: { 'clangd.clangTidy': false } });
+
+    expect(changes).toEqual([{ serverId: 'clangd', restart: true }]);
+  });
+});
+
 describe('LspServerRegistry: the web servers (#1218, #1219)', () => {
   /**
    * Builds a registry holding the curated HTML, CSS and JSON servers, as an install of
