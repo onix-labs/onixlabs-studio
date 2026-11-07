@@ -1639,10 +1639,12 @@ describe('LspClient', () => {
       await open(client);
 
       expect(features.resolver?.('/root/src/a.ts')?.navigation).toEqual({
+        declaration: false,
         implementation: true,
         typeDefinition: false,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       });
     });
 
