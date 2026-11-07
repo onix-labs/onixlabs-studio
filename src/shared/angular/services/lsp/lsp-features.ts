@@ -717,15 +717,20 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207). Names with no sensible standard equivalent —
- * punctuation, XML doc-comment parts, JSON-in-string parts — are deliberately absent, so the grammar's
- * own colour stands.
+ * method by the older name (#1207). The Rust entries are the types rust-analyzer sends by default
+ * (#1210); its finer operator and punctuation types are off until a setting turns them on. Names with
+ * no sensible standard equivalent — punctuation, XML doc-comment parts, JSON-in-string parts, a format
+ * specifier, a name that resolves to nothing — are deliberately absent, so the grammar's own colour
+ * stands.
  */
 const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   // Members.
   field: 'property',
-  // A constant takes the theme's constant colour (the one enum members use), not a local's.
+  // A constant takes the theme's constant colour (the one enum members use), not a local's. Rust's
+  // statics are named at the same level, and read the same way.
   constant: 'enumMember',
+  const: 'enumMember',
+  static: 'enumMember',
   label: 'variable',
   member: 'method',
   extensionMethod: 'method',
@@ -735,8 +740,26 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   recordStruct: 'struct',
   delegate: 'type',
   module: 'class',
-  // Keywords, comments and strings.
+  // Rust's types: an `i32` and a `type` alias are types, and a union is laid out as a struct. A
+  // lifetime and a const generic are generic parameters like any other.
+  builtinType: 'type',
+  typeAlias: 'type',
+  union: 'struct',
+  lifetime: 'typeParameter',
+  constParameter: 'typeParameter',
+  // Rust's attributes, and the derives and tool names inside them; a procedural macro is a macro.
+  attribute: 'decorator',
+  builtinAttribute: 'decorator',
+  derive: 'decorator',
+  deriveHelper: 'decorator',
+  toolModule: 'decorator',
+  procMacro: 'macro',
+  // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
   controlKeyword: 'keyword',
+  selfKeyword: 'keyword',
+  selfTypeKeyword: 'keyword',
+  boolean: 'keyword',
+  character: 'string',
   // Code inside an inactive `#if` is shown as a comment, as Visual Studio dims it.
   excludedCode: 'comment',
   stringVerbatim: 'string',
