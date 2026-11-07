@@ -250,6 +250,16 @@ describe('mavenSourceDirectories (#899)', () => {
     expect(mavenSourceDirectories(pom)).toEqual([]);
     expect(mavenSourceDirectories(null)).toEqual([]);
   });
+
+  it('readsAroundEveryComment_andStopsAtAnUnclosedOne', () => {
+    const pom: string = [
+      '<sourceDirectory>a</sourceDirectory>',
+      '<!-- one --><sourceDirectory>b</sourceDirectory><!-- two -->',
+      '<!-- never closed <sourceDirectory>c</sourceDirectory>',
+    ].join('\n');
+
+    expect(mavenSourceDirectories(pom)).toEqual(['a', 'b']);
+  });
 });
 
 describe('gradleSourceDirectories (#899)', () => {

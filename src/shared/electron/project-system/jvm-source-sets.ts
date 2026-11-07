@@ -4,6 +4,27 @@
 const MAVEN_BASE_DIRECTORY: RegExp = /^\$\{(project\.basedir|basedir)\}\/?/;
 
 /**
+ * Removes an XML document's comments, keeping only what lies outside them, so what is left can never
+ * join up into a comment that was not there. An unclosed comment runs to the end of the document.
+ * @param xml The document.
+ * @returns Returns the document without its comments.
+ */
+function withoutXmlComments(xml: string): string {
+  let result: string = '';
+  let index: number = 0;
+  while (index < xml.length) {
+    const open: number = xml.indexOf('<!--', index);
+    if (open === -1) {
+      return result + xml.slice(index);
+    }
+    result += xml.slice(index, open);
+    const close: number = xml.indexOf('-->', open + 4);
+    index = close === -1 ? xml.length : close + 3;
+  }
+  return result;
+}
+
+/**
  * Reads the source folders a Maven pom moves away from the `src` convention: `<sourceDirectory>`,
  * `<testSourceDirectory>`, and the `<directory>` of each resource. The pom is only read, never
  * evaluated, so a path built from any property but the module's own directory is left out.
@@ -14,7 +35,7 @@ export function mavenSourceDirectories(pom: string | null): readonly string[] {
   if (pom === null) {
     return [];
   }
-  const body: string = pom.replace(/<!--[\s\S]*?-->/g, '');
+  const body: string = withoutXmlComments(pom);
   const declared: string[] = [];
   for (const match of body.matchAll(
     /<(?:sourceDirectory|testSourceDirectory)>\s*([^<]+?)\s*<\//g,
