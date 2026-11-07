@@ -18,6 +18,7 @@ import { AiProviderConfigurations } from './ai-provider-configurations/ai-provid
 import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
 import { AiNetworkLocations } from './ai-network-locations/ai-network-locations';
+import { AiRememberedGrants } from './ai-remembered-grants/ai-remembered-grants';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
 
 /**
@@ -42,6 +43,7 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
     AiRemoteNotifications,
     AiToolPolicies,
     AiNetworkLocations,
+    AiRememberedGrants,
     AiWritePaths,
   ],
   templateUrl: './ai-settings.html',
