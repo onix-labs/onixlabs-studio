@@ -21,12 +21,14 @@ const COMMAND_SOURCE: string = 'app-editor-context-menu';
  */
 export type EditorContextMenuCommand =
   | 'definition'
+  | 'declaration'
   | 'typeDefinition'
   | 'sourceDefinition'
   | 'implementation'
   | 'references'
   | 'callHierarchy'
   | 'typeHierarchy'
+  | 'sourceHeader'
   | 'symbol'
   | 'line'
   | 'rename'
@@ -87,6 +89,8 @@ interface ShortcutHints {
  */
 const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   definition: { mac: 'F12', windows: 'F12' },
+  // No chord: Visual Studio's, ⌃F12, is Go to Implementation here (#1213).
+  declaration: { mac: '', windows: '' },
   // No chord: neither Visual Studio nor VS Code gives Go to Type Definition one (#1142).
   typeDefinition: { mac: '', windows: '' },
   sourceDefinition: { mac: '', windows: '' },
@@ -95,6 +99,8 @@ const SHORTCUTS: Readonly<Record<EditorContextMenuCommand, ShortcutHints>> = {
   // Rider's call hierarchy chord; its type hierarchy chord (⌃H) is delete-left in a Mac editor (#1153).
   callHierarchy: { mac: '⌃⌥H', windows: 'Ctrl+Alt+H' },
   typeHierarchy: { mac: '⌃⇧H', windows: 'Ctrl+Shift+H' },
+  // Visual Studio's chord (#1213).
+  sourceHeader: { mac: '⌘K ⌘O', windows: 'Ctrl+K Ctrl+O' },
   symbol: { mac: '⌘⇧O', windows: 'Ctrl+Shift+O' },
   line: { mac: '⌃G', windows: 'Ctrl+G' },
   rename: { mac: 'F2', windows: 'F2' },
@@ -300,6 +306,9 @@ export class EditorContextMenu {
       navigation.push(this.item('definition', 'Go to Definition'));
     }
     // Offered only where the language server answers them (#1142).
+    if (this.navigation.offersDeclarations(editor)) {
+      navigation.push(this.item('declaration', 'Go to Declaration'));
+    }
     if (this.navigation.offersTypeDefinitions(editor)) {
       navigation.push(this.item('typeDefinition', 'Go to Type Definition'));
     }
@@ -322,6 +331,9 @@ export class EditorContextMenu {
     }
     if (this.navigation.offersHierarchy(editor, 'types')) {
       navigation.push(this.item('typeHierarchy', 'Show Type Hierarchy'));
+    }
+    if (this.navigation.offersSourceHeader(editor)) {
+      navigation.push(this.item('sourceHeader', 'Switch Header/Source'));
     }
     navigation.push(this.item('symbol', 'Go to Symbol'), this.item('line', 'Go to Line'));
 
@@ -372,6 +384,9 @@ export class EditorContextMenu {
       case 'definition':
         void this.goToDefinition(editor);
         return;
+      case 'declaration':
+        void this.navigation.goToDeclaration(editor);
+        return;
       case 'typeDefinition':
         void this.navigation.goToTypeDefinition(editor);
         return;
@@ -389,6 +404,9 @@ export class EditorContextMenu {
         return;
       case 'typeHierarchy':
         void this.navigation.showHierarchy(editor, 'types');
+        return;
+      case 'sourceHeader':
+        void this.navigation.switchSourceHeader(editor);
         return;
       case 'symbol':
         this.goToRouter.open(editor, 'symbol');

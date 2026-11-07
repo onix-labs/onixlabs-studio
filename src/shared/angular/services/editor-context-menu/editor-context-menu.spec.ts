@@ -383,7 +383,20 @@ describe('EditorContextMenu (#1012)', () => {
       lsp.servesNavigation.mockReturnValue(true);
       const items: readonly MenuItem[] = menu.itemsFor(editor);
 
-      expect(idsOf(items).slice(0, 3)).toEqual(['definition', 'typeDefinition', 'implementation']);
+      expect(idsOf(items).slice(0, 4)).toEqual([
+        'definition',
+        'declaration',
+        'typeDefinition',
+        'implementation',
+      ]);
+      expect(rowOf(items, 'declaration')).toEqual({
+        id: 'declaration',
+        label: 'Go to Declaration',
+      });
+      expect(rowOf(items, 'sourceHeader')).toMatchObject({
+        label: 'Switch Header/Source',
+        shortcut: '⌘K ⌘O',
+      });
       expect(rowOf(items, 'implementation')).toMatchObject({
         label: 'Go to Implementation',
         shortcut: '⌘F12',
@@ -406,8 +419,9 @@ describe('EditorContextMenu (#1012)', () => {
       lsp.servesSourceDefinition.mockReturnValue(true);
       const items: readonly MenuItem[] = menu.itemsFor(editor);
 
-      expect(idsOf(items).slice(0, 3)).toEqual([
+      expect(idsOf(items).slice(0, 4)).toEqual([
         'definition',
+        'declaration',
         'typeDefinition',
         'sourceDefinition',
       ]);

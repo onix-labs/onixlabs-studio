@@ -301,6 +301,11 @@ export type LspRenameSupport = 'none' | 'rename' | 'prepare';
  */
 export interface LspNavigationSupport {
   /**
+   * Gets whether it answers Go to Declaration (`textDocument/declaration`, #1213).
+   */
+  readonly declaration: boolean;
+
+  /**
    * Gets whether it answers Go to Implementation (`textDocument/implementation`).
    */
   readonly implementation: boolean;
@@ -319,6 +324,12 @@ export interface LspNavigationSupport {
    * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
    */
   readonly typeHierarchy: boolean;
+
+  /**
+   * Gets whether it says which file is a file's header or source (`textDocument/switchSourceHeader`,
+   * clangd's own, #1213).
+   */
+  readonly sourceHeader: boolean;
 }
 
 /**
@@ -2773,6 +2784,42 @@ export class LspFeatures {
   }
 
   /**
+   * Asks the language server that serves a document where the symbol at a position is declared, for
+   * Go to Declaration (#1213): in C++, the line in the header where Go to Definition goes to the
+   * source file. Answered by path, like {@link definitions}.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the declarations, or null when no server serves the document or it does not
+   * answer this.
+   */
+  public declarations(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    return this.servesNavigation(model, 'declaration')
+      ? this.locationsByPath(model, position, 'textDocument/declaration')
+      : Promise.resolve(null);
+  }
+
+  /**
+   * Asks clangd which file is a document's header or source, for Switch Header/Source (#1213). It
+   * answers a URI, or nothing when the file has no counterpart.
+   * @param model The editor model.
+   * @returns Returns the counterpart's path, or null when there is none or the server does not answer
+   * this.
+   */
+  public async sourceHeaderOf(model: MonacoApi.editor.ITextModel): Promise<string | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesNavigation(model, 'sourceHeader')) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'textDocument/switchSourceHeader', {
+      uri: ref.uri,
+    });
+    return outcome.ok && typeof outcome.result === 'string' ? this.uriToPath(outcome.result) : null;
+  }
+
+  /**
    * Determines whether the language server that serves a document answers Go to Source Definition: it
    * lists the command among those it runs (#1207).
    * @param model The editor model.
@@ -2936,7 +2983,10 @@ export class LspFeatures {
     model: MonacoApi.editor.ITextModel,
     position: MonacoApi.IPosition,
     method:
-      'textDocument/definition' | 'textDocument/implementation' | 'textDocument/typeDefinition',
+      | 'textDocument/definition'
+      | 'textDocument/declaration'
+      | 'textDocument/implementation'
+      | 'textDocument/typeDefinition',
   ): Promise<readonly LspDefinition[] | null> {
     if (this.resolve(model) === null) {
       return null;

@@ -141,26 +141,32 @@ function isOffered(provider: unknown): boolean {
 
 /**
  * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
- * the code that implements it (`implementationProvider`), to the declaration of its type
- * (`typeDefinitionProvider`), and up and down its call and type hierarchies (`callHierarchyProvider`,
- * `typeHierarchyProvider`, #1153).
+ * its declaration (`declarationProvider`, #1213), to the code that implements it
+ * (`implementationProvider`), to the declaration of its type (`typeDefinitionProvider`), up and down
+ * its call and type hierarchies (`callHierarchyProvider`, `typeHierarchyProvider`, #1153), and from a
+ * file to its header or source. That last is clangd's own request, which it advertises nowhere, so it
+ * is known by the capability only clangd has: `compilationDatabase`.
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it answers.
  */
 export function navigationSupportOf(capabilities: unknown): LspNavigationSupport {
   const caps:
     | {
+        declarationProvider?: unknown;
         implementationProvider?: unknown;
         typeDefinitionProvider?: unknown;
         callHierarchyProvider?: unknown;
         typeHierarchyProvider?: unknown;
+        compilationDatabase?: unknown;
       }
     | undefined = capabilities as typeof caps;
   return {
+    declaration: isOffered(caps?.declarationProvider),
     implementation: isOffered(caps?.implementationProvider),
     typeDefinition: isOffered(caps?.typeDefinitionProvider),
     callHierarchy: isOffered(caps?.callHierarchyProvider),
     typeHierarchy: isOffered(caps?.typeHierarchyProvider),
+    sourceHeader: isOffered(caps?.compilationDatabase),
   };
 }
 
