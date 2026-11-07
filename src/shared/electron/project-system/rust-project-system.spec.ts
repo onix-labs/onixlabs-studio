@@ -442,6 +442,9 @@ describe.skipIf(process.platform === 'win32')('RustProjectSystem.loadProjectItem
   });
 
   it('fallsBackToTheListing_whenThereIsNoCargo', async () => {
+    // Nothing but the empty folder: a machine can have a real `cargo` in /usr/bin.
+    vi.stubEnv('PATH', bin);
+
     const items: ProjectItems | null = await new RustProjectSystem().loadProjectItems(
       path.join(root, 'Cargo.toml'),
     );
