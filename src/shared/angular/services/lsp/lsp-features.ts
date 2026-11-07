@@ -728,11 +728,11 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207). The Rust entries are the types rust-analyzer sends by default
- * (#1210); its finer operator and punctuation types are off until a setting turns them on. Names with
- * no sensible standard equivalent — punctuation, XML doc-comment parts, JSON-in-string parts, a format
- * specifier, a name that resolves to nothing — are deliberately absent, so the grammar's own colour
- * stands.
+ * method by the older name (#1207), and clangd's `concept` names a constraint on a type (#1213). The
+ * Rust entries are the types rust-analyzer sends by default (#1210); its finer operator and punctuation
+ * types are off until a setting turns them on. Names with no sensible standard equivalent —
+ * punctuation, XML doc-comment parts, JSON-in-string parts, a format specifier, a name that resolves to
+ * nothing — are deliberately absent, so the grammar's own colour stands.
  */
 const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   // Members.
@@ -765,6 +765,7 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   deriveHelper: 'decorator',
   toolModule: 'decorator',
   procMacro: 'macro',
+  concept: 'type',
   // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
   controlKeyword: 'keyword',
   selfKeyword: 'keyword',
