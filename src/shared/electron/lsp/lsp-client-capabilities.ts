@@ -199,5 +199,12 @@ export function clientCapabilities(): ClientCapabilities {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
     },
+    // Not in the protocol, and ignored by any server that does not know them. The client commands a
+    // server may put on a lens: rust-analyzer drops a lens whose command the client does not run, so
+    // without this it shows none at all (#1210). Debug is not among them until there is a debugger
+    // for Rust.
+    experimental: {
+      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+    },
   };
 }

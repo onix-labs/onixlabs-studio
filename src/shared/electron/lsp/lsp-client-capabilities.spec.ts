@@ -9,6 +9,12 @@ describe('clientCapabilities', () => {
     });
   });
 
+  it('experimental_namesTheCommandsALensMayCarry_andNoDebuggerThereIsNot (#1210)', () => {
+    expect(clientCapabilities().experimental).toEqual({
+      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+    });
+  });
+
   it('diagnostics_advertiseUnnecessaryAndDeprecatedTags_pushedAndPulled', () => {
     const capabilities: ClientCapabilities = clientCapabilities();
 
