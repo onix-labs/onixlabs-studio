@@ -295,6 +295,19 @@ describe('PythonProjectSystem.loadProjectItems (#899)', () => {
     ]);
   });
 
+  it('keepsASubpackageNamedLikeAnOutputFolder', async () => {
+    write({
+      'pyproject.toml': '[tool.setuptools]\npackages = ["acme"]\n',
+      'acme/build/steps.py': '',
+      'acme/env/settings.py': '',
+    });
+
+    expect(await load()).toEqual(
+      expect.arrayContaining(['acme/build/steps.py', 'acme/env/settings.py']),
+    );
+    expect(await load()).not.toContain('acme/__pycache__/');
+  });
+
   it('treatsSrcAsTheSources_forABuiltProjectDeclaringNoPackages', async () => {
     write({
       'pyproject.toml': '[build-system]\nrequires = ["setuptools"]\n',

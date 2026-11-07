@@ -67,6 +67,15 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
+ * The directories skipped inside a declared package, where `build` or `env` is a subpackage and not an
+ * output: only what no package would hold.
+ */
+const SKIPPED_PACKAGE_DIRECTORIES: ReadonlySet<string> = new Set<string>([
+  '__pycache__',
+  'node_modules',
+]);
+
+/**
  * Bounds how many files a project listing returns, so a mis-shaped project (one whose directory is
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
@@ -391,7 +400,9 @@ export class PythonProjectSystem implements ProjectSystem {
     if (kind.isFile()) {
       return [full];
     }
-    return kind.isDirectory() ? this.filesOf((await this.listDirectory(full, budget)) ?? []) : [];
+    return kind.isDirectory()
+      ? this.filesOf((await this.listDirectory(full, budget, true)) ?? [])
+      : [];
   }
 
   /**
@@ -462,11 +473,13 @@ export class PythonProjectSystem implements ProjectSystem {
    * Lists one directory level as item nodes, recursing into subdirectories.
    * @param directory The directory to list.
    * @param budget The remaining file budget, decremented as files are added.
+   * @param isPackage Whether the directory is inside a declared package.
    * @returns Returns the nodes, or null when the directory cannot be read.
    */
   private async listDirectory(
     directory: string,
     budget: { remaining: number },
+    isPackage: boolean = false,
   ): Promise<readonly ProjectItemNode[] | null> {
     let entries: Dirent[];
     try {
@@ -475,7 +488,9 @@ export class PythonProjectSystem implements ProjectSystem {
       return null;
     }
     const directories: Dirent[] = entries
-      .filter((entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name))
+      .filter(
+        (entry: Dirent): boolean => entry.isDirectory() && !this.isSkipped(entry.name, isPackage),
+      )
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const files: Dirent[] = entries
       .filter((entry: Dirent): boolean => entry.isFile())
@@ -483,7 +498,11 @@ export class PythonProjectSystem implements ProjectSystem {
     const nodes: ProjectItemNode[] = [];
     for (const child of directories) {
       const full: string = path.join(directory, child.name);
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
+      const children: readonly ProjectItemNode[] | null = await this.listDirectory(
+        full,
+        budget,
+        isPackage,
+      );
       if (children !== null && children.length > 0) {
         nodes.push({ type: 'folder', name: child.name, path: full, children });
       }
@@ -514,10 +533,14 @@ export class PythonProjectSystem implements ProjectSystem {
   /**
    * Determines whether a directory is skipped when listing the project's files.
    * @param name The directory name.
+   * @param isPackage Whether the directory is inside a declared package.
    * @returns Returns true when the directory should be skipped.
    */
-  private isSkipped(name: string): boolean {
-    return name.startsWith('.') || SKIPPED_DIRECTORIES.has(name);
+  private isSkipped(name: string, isPackage: boolean = false): boolean {
+    const skipped: ReadonlySet<string> = isPackage
+      ? SKIPPED_PACKAGE_DIRECTORIES
+      : SKIPPED_DIRECTORIES;
+    return name.startsWith('.') || skipped.has(name);
   }
 
   /**
