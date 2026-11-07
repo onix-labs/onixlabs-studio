@@ -88,6 +88,8 @@ const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
   'workspace/inlayHint/refresh',
   // Sent on from the server's request of the same name, for the editors to ask for lenses again.
   'workspace/codeLens/refresh',
+  // Sent on from the server's request of the same name, for the open documents to be pulled again.
+  'workspace/diagnostic/refresh',
 ]);
 
 /**
@@ -1001,9 +1003,14 @@ export class LspManager {
     );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
     // The server's diagnostics changed in a way an open workspace pull will not report (a project
-    // finished loading, the analysis scope changed): pull afresh (#1144).
+    // finished loading, the analysis scope changed): pull afresh (#1144). A server with no workspace
+    // pull has its open documents pulled again by the renderer (#1210).
     connection.onRequest('workspace/diagnostic/refresh', (): null => {
-      session.workspaceDiagnostics?.refresh();
+      if (session.workspaceDiagnostics) {
+        session.workspaceDiagnostics.refresh();
+      } else {
+        this.forwardNotification(sessionId, 'workspace/diagnostic/refresh', undefined);
+      }
       return null;
     });
     // A server sends this when its semantic classification has improved (a project finished loading)

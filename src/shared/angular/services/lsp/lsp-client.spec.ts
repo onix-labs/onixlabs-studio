@@ -62,6 +62,7 @@ const CATALOGUE: readonly LspServerSummary[] = [
   { id: 'csharp', displayName: 'Roslyn', languages: ['csharp'], priority: 100 },
   { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
   { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
+  { id: 'rust', displayName: 'rust-analyzer', languages: ['rust'], priority: 100 },
 ];
 
 /**
@@ -2049,6 +2050,143 @@ describe('LspClient', () => {
     await flush();
 
     expect(lsp.starts).toHaveLength(0);
+  });
+
+  describe('a server that both pushes and is pulled (#1210)', () => {
+    const SESSION: string = '/root::rust';
+    const URI: string = 'file:///root/src/lib.rs';
+    const RANGE: unknown = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
+    const NATIVE: unknown = { range: RANGE, severity: 1, message: 'from the server' };
+    const CHECK: unknown = { range: RANGE, severity: 1, message: 'from cargo check' };
+
+    /**
+     * Opens a Rust document against a server that takes diagnostic pulls.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [NATIVE] };
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/src/lib.rs',
+        languageId: 'rust',
+        content: 'fn a() {}',
+      });
+      await flush();
+    }
+
+    /**
+     * Gets the messages of the diagnostics the Error List holds.
+     * @returns Returns the messages.
+     */
+    function messages(): readonly string[] {
+      return diagnostics.emitted.map((diagnostic: Diagnostic): string => diagnostic.message);
+    }
+
+    it('aPush_doesNotWipeWhatWasPulled', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      expect(messages()).toEqual(['from the server', 'from cargo check']);
+    });
+
+    it('aPull_doesNotWipeWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'workspace/diagnostic/refresh', undefined);
+        await vi.advanceTimersByTimeAsync(1000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anEmptyPush_clearsOnlyWhatWasPushed', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, URI, []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('theCodeActionsOfADocument_seeBoth', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      const internals: {
+        resolveDocument(path: string): { diagnostics: readonly unknown[] } | null;
+      } = client as never;
+      expect(internals.resolveDocument('/root/src/lib.rs')?.diagnostics).toEqual([NATIVE, CHECK]);
+    });
+
+    it('whatItPushesForAFileNotOpen_reachesTheErrorList_located', async () => {
+      const client: LspClient = build();
+      await open(client);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      const listed: Diagnostic | undefined = diagnostics.emitted.find(
+        (diagnostic: Diagnostic): boolean => diagnostic.path === '/root/src/other.rs',
+      );
+      expect(listed).toMatchObject({ message: 'from cargo check', scope: 'workspace' });
+    });
+
+    it('anEmptyPushForAFileNotOpen_clearsIt', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', []);
+
+      expect(messages()).toEqual(['from the server']);
+    });
+
+    it('whatItPushedForADocument_isStillListedOnceTheDocumentCloses', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, URI, [CHECK]);
+
+      client.closeDocument('doc-1');
+
+      expect(messages()).toEqual(['from cargo check']);
+    });
+
+    it('anotherServersPushForAFileNotOpen_staysOut', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
+      const client: LspClient = build();
+      await open(client);
+      lsp.publishDiagnostics(SESSION, 'file:///root/src/other.rs', [CHECK]);
+
+      lsp.exit(SESSION);
+
+      expect(messages()).not.toContain('from cargo check');
+    });
   });
 
   it('publishDiagnostics_forTrackedDocument_emitsMappedDiagnostics', async () => {

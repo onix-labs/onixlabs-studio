@@ -54,7 +54,12 @@ import {
   pathToUri,
   uriToPath,
 } from './lsp-paths';
-import { isErrorListDiagnostic, toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import {
+  isErrorListDiagnostic,
+  mergeDiagnostics,
+  toDiagnostic,
+  toMarkerData,
+} from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
@@ -509,6 +514,16 @@ interface TrackedDocument {
   opened: boolean;
 
   /**
+   * Holds the document's diagnostics from its last push.
+   */
+  pushed: readonly LspDiagnostic[];
+
+  /**
+   * Holds the document's diagnostics from its last pull.
+   */
+  pulled: readonly LspDiagnostic[];
+
+  /**
    * Holds the text the document last had on disk as far as this client has been told, so a save is
    * recognised as the saved text changing rather than re-announced on every re-render. Null until the
    * first saved text is reported.
@@ -687,6 +702,13 @@ const MAX_START_ATTEMPTS: number = 3;
  * in favour of the heuristic colouring until the session settles.
  */
 const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
+
+/**
+ * The servers whose pushed diagnostics reach the Error List for files that are not open as well
+ * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
+ * otherwise show nowhere. The other servers' pushes are left to their open documents.
+ */
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
@@ -1397,7 +1419,8 @@ export class LspClient implements OnDestroy {
     if (report === null || report.kind === 'unchanged' || !Array.isArray(report.items)) {
       return;
     }
-    this.ingestDiagnostics(tracked, report.items);
+    tracked.pulled = report.items;
+    this.ingestDiagnostics(tracked);
     this.markReady(sessionId);
   }
 
@@ -1477,12 +1500,12 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Records a document's diagnostics (from a push or a pull), sets them as editor markers, and
-   * republishes the aggregate.
+   * Records a document's diagnostics, what was pushed and what was pulled together, sets them as editor
+   * markers, and republishes the aggregate.
    * @param tracked The document the diagnostics belong to.
-   * @param diagnostics The server's current diagnostics for the document (empty clears them).
    */
-  private ingestDiagnostics(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+  private ingestDiagnostics(tracked: TrackedDocument): void {
+    const diagnostics: readonly LspDiagnostic[] = mergeDiagnostics(tracked.pulled, tracked.pushed);
     this.log.info(
       'LspClient',
       `Received ${diagnostics.length} diagnostic(s) for ${tracked.uri}`,
@@ -1631,6 +1654,8 @@ export class LspClient implements OnDestroy {
         languageId: state.languageId,
         version: 1,
         opened: false,
+        pushed: [],
+        pulled: [],
         savedText: null,
         text: '',
         queue: Promise.resolve(),
@@ -2673,6 +2698,18 @@ export class LspClient implements OnDestroy {
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
     // showing them asks again (#1145).
+    // The server's diagnostics are stale and it has no workspace pull to report them through: its open
+    // documents are pulled again (#1210), once a burst of refreshes has settled.
+    if (message.method === 'workspace/diagnostic/refresh') {
+      if (this.pullCapable.has(message.sessionId)) {
+        for (const tracked of this.tracked.values()) {
+          if (tracked.opened && `${tracked.rootPath}::${tracked.serverId}` === message.sessionId) {
+            this.scheduleDiagnostics(message.sessionId, tracked);
+          }
+        }
+      }
+      return;
+    }
     // The server's code lenses are stale (a reference added elsewhere, a setting changed): every
     // editor showing them asks again (#1149).
     if (message.method === 'workspace/codeLens/refresh') {
@@ -2722,11 +2759,19 @@ export class LspClient implements OnDestroy {
     if (key === null || params === null || !Array.isArray(params.diagnostics)) {
       return;
     }
+    // Kept for an open document too, so what it reported is still listed once the document closes: the
+    // server has no reason to say it again until it next runs.
+    if (WHOLE_WORKSPACE_PUSH_SERVERS.has(this.sessionInfo.get(message.sessionId)?.serverId ?? '')) {
+      this.ingestWorkspaceDiagnostics(message.sessionId, {
+        reports: [{ uri: params.uri, kind: 'full', items: params.diagnostics }],
+      });
+    }
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
     }
-    this.ingestDiagnostics(tracked, params.diagnostics);
+    tracked.pushed = params.diagnostics;
+    this.ingestDiagnostics(tracked);
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
     // document: flip the indicator from starting to ready and re-request semantic tokens — but only
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
@@ -2844,6 +2889,10 @@ export class LspClient implements OnDestroy {
   private onExit(exit: LspExit): void {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
+    }
+    // What the server said of the whole workspace went with it: its replacement says it again.
+    if (this.workspaceDiagnostics.delete(exit.sessionId)) {
+      this.publish();
     }
     clearTimeout(this.analysisTimers.get(exit.sessionId));
     this.analysisTimers.delete(exit.sessionId);
