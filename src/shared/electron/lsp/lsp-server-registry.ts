@@ -14,6 +14,7 @@ import {
   pushedSettings,
   readOnlyAtStartup,
   serversWithChangedSettings,
+  settingArguments,
   startupOptions,
   withDeclaredDefaults,
 } from './lsp-server-settings';
@@ -187,7 +188,10 @@ export class LspServerRegistry {
     return resolution.spec === null
       ? resolution
       : {
-          spec: this.withStartupSettings(serverId, this.withExtraArgs(serverId, resolution.spec)),
+          spec: this.withStartupSettings(
+            serverId,
+            this.withExtraArgs(serverId, this.withSettingArguments(serverId, resolution.spec)),
+          ),
           error: null,
         };
   }
@@ -275,6 +279,23 @@ export class LspServerRegistry {
         sections.includes(setting.section) &&
         readOnlyAtStartup(descriptor?.settingsDelivery, setting),
     );
+  }
+
+  /**
+   * Gives a server the settings it takes on its command line (#1213), before the user's own extra
+   * arguments, so an argument typed in Settings has the last word.
+   * @param serverId The server.
+   * @param spec The resolved spawn specification.
+   * @returns Returns the specification with its settings' options added.
+   */
+  private withSettingArguments(serverId: LspServerId, spec: LspServerSpec): LspServerSpec {
+    const descriptor: LanguageServerDescriptor | undefined = this.descriptors.get(serverId);
+    const options: readonly string[] = settingArguments(
+      descriptor?.settingsDelivery,
+      descriptor?.settings,
+      this.configurationOf(serverId),
+    );
+    return options.length === 0 ? spec : { ...spec, args: [...spec.args, ...options] };
   }
 
   /**

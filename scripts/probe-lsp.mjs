@@ -155,20 +155,22 @@ const PROFILES =
 
 /**
  * Reads the manifests Studio would register language servers from, most local first as Studio merges
- * them: the index Studio fetched into the profile, then the one compiled into the application. The
- * first manifest to claim an id wins.
+ * them: as Studio does, the index with the higher revision, the one compiled in winning a tie, then the
+ * other. The first manifest to claim an id wins.
  * @param {string} profile The profile folder.
  * @returns {any[]} Returns the manifests.
  */
 function manifests(profile) {
   const merged = new Map();
-  const sources = [
-    readJson(path.join(profile, 'plugin-index.json'), null),
-    readJson(
-      path.join(REPO, 'src/shared/electron/contributions/plugins/curated-plugins.json'),
-      null,
-    ),
-  ];
+  const fetched = readJson(path.join(profile, 'plugin-index.json'), null);
+  const compiled = readJson(
+    path.join(REPO, 'src/shared/electron/contributions/plugins/curated-plugins.json'),
+    null,
+  );
+  const sources =
+    (fetched?.revision ?? -1) > (compiled?.revision ?? -1)
+      ? [fetched, compiled]
+      : [compiled, fetched];
   for (const source of sources) {
     for (const manifest of source?.plugins ?? []) {
       if (!merged.has(manifest.id)) {
@@ -627,7 +629,20 @@ function resolveContributed(profile, manifest, server, settings) {
       ? { error: 'No Python 3 runtime found.' }
       : { ...python, args: [...python.args, ...(command.args ?? [])], env: command.env, version };
   }
-  return { command: entry, args: command.args ?? [], env: command.env, version };
+  // As the registry does: the options the manifest fixes, and the settings passed on the command line
+  // that differ from their defaults.
+  const passed = (server.settingsDelivery?.arguments ?? []).flatMap(({ section, flag }) => {
+    const value = settings.serverSettings?.[server.id]?.[section];
+    const fallback = server.settings?.find((setting) => setting.section === section)?.default;
+    return value === undefined || value === fallback ? [] : [`${flag}=${value}`];
+  });
+  return {
+    command: entry,
+    args: [...(command.args ?? []), ...passed],
+    env: command.env,
+    version,
+    initializationOptions: server.initializationOptions,
+  };
 }
 
 /**
