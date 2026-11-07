@@ -166,8 +166,14 @@ import { isPackageManagerCapability, PackageManagerCapability } from './package-
  * behind: npm, NuGet and every other ecosystem become plugins, because core runs no tool of its own
  * (#907). Keyed by the **marker** files a project carries (`package.json`, `*.csproj`), and unlike
  * version control not a choice of one: every plugin whose marker a folder holds applies. Adds only.
+ *
+ * `1.26.0` adds a third way to give a language server its settings (#1213): `settingsDelivery.arguments`
+ * passes a setting on the server's command line, for a server like clangd with no other way in. It also
+ * adds a server's optional `initializationOptions`, fixed values for what it must be told at start-up
+ * whatever the user's settings, such as clangd's `clangdFileStatus`. Absent means none, as before. Adds
+ * only.
  */
-export const PLUGIN_API_VERSION: string = '1.25.0';
+export const PLUGIN_API_VERSION: string = '1.26.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -965,6 +971,12 @@ export interface ManifestLanguageServer {
   readonly entryPoint?: string;
 
   /**
+   * Gets the `initializationOptions` the server is always started with (1.26.0), or undefined for
+   * none. Settings the server takes in the same place merge over them.
+   */
+  readonly initializationOptions?: Readonly<Record<string, unknown>>;
+
+  /**
    * Gets the settings the server reads that Studio offers the user, on its language's page in
    * Settings (1.21.0), or undefined for none.
    */
@@ -1048,6 +1060,22 @@ export interface ManifestStartupSettings {
 }
 
 /**
+ * Describes a setting a contributed server is given on its command line (1.26.0).
+ */
+export interface ManifestSettingArgument {
+  /**
+   * Gets the section of the setting, one the server declares.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the option it is passed as, such as `--clang-tidy`: the server starts with
+   * `--clang-tidy=false`. Passed only while the setting differs from its default.
+   */
+  readonly flag: string;
+}
+
+/**
  * Describes how a contributed server takes its settings: asked for, pushed, at start-up, or a mix.
  */
 export interface ManifestSettingsDelivery {
@@ -1066,6 +1094,11 @@ export interface ManifestSettingsDelivery {
    * Gets where the server is given its settings at start-up, or undefined for nowhere.
    */
   readonly startup?: ManifestStartupSettings;
+
+  /**
+   * Gets the settings the server is given on its command line (1.26.0), or undefined for none.
+   */
+  readonly arguments?: readonly ManifestSettingArgument[];
 }
 
 /**
@@ -1666,6 +1699,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+        ...readInitializationOptions(entry, path, errors),
         ...readServerSettings(entry, path, errors),
       });
     },
@@ -2523,6 +2557,29 @@ function readPriority(entry: Record<string, unknown>, path: string, errors: Erro
 }
 
 /**
+ * Reads the `initializationOptions` a language server is always started with (1.26.0).
+ * @param entry The server entry.
+ * @param path The dotted path of the entry, for failures.
+ * @param errors The failure collector.
+ * @returns Returns the field when present, to spread into the server.
+ */
+function readInitializationOptions(
+  entry: Record<string, unknown>,
+  path: string,
+  errors: Errors,
+): Pick<ManifestLanguageServer, 'initializationOptions'> {
+  if (entry['initializationOptions'] === undefined) {
+    return {};
+  }
+  const options: Record<string, unknown> | null = readObject(
+    entry['initializationOptions'],
+    `${path}.initializationOptions`,
+    errors,
+  );
+  return options === null ? {} : { initializationOptions: options };
+}
+
+/**
  * Reads a language server's optional settings and how it takes them (1.21.0).
  * @param entry The server entry.
  * @param path The dotted path of the entry, for failures.
@@ -2653,6 +2710,11 @@ function readServerSetting(
 }
 
 /**
+ * Matches a command-line option a setting is passed as: a name, with no value of its own.
+ */
+const OPTION_PATTERN: RegExp = /^--?[A-Za-z0-9][A-Za-z0-9-]*$/;
+
+/**
  * Validates how a contributed server takes its settings.
  * @param value The candidate.
  * @param path The dotted path, for failures.
@@ -2697,6 +2759,27 @@ function readSettingsDelivery(
       };
     }
   }
+  let settingArguments: ManifestSettingArgument[] | undefined;
+  if (source['arguments'] !== undefined) {
+    settingArguments = [];
+    readContributionList(
+      source['arguments'],
+      `${path}.arguments`,
+      errors,
+      (entry: Record<string, unknown>, at: string): void => {
+        if (!isSection(entry['section'])) {
+          errors.add(`${at}.section`, 'must be a dotted configuration section');
+        }
+        if (typeof entry['flag'] !== 'string' || !OPTION_PATTERN.test(entry['flag'])) {
+          errors.add(`${at}.flag`, 'must be a command-line option, such as --clang-tidy');
+        }
+        settingArguments?.push({
+          section: entry['section'] as string,
+          flag: entry['flag'] as string,
+        });
+      },
+    );
+  }
   if (errors.items.length > before) {
     return null;
   }
@@ -2704,6 +2787,7 @@ function readSettingsDelivery(
     ...(pull === undefined ? {} : { pull: pull as boolean }),
     ...(push === undefined ? {} : { push: push as readonly string[] }),
     ...(startup === undefined ? {} : { startup }),
+    ...(settingArguments === undefined ? {} : { arguments: settingArguments }),
   };
 }
 

@@ -2,7 +2,11 @@ import type * as MonacoApi from 'monaco-editor';
 import { TestBed } from '@angular/core/testing';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Bridge } from '@shared/api/bridge';
-import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
+import {
+  LspChannel,
+  LspSemanticTokensLegend,
+  SEMANTIC_TOKEN_TYPES,
+} from '@shared/api/lsp-channels';
 import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -13,6 +17,7 @@ import {
   hoverContents,
   LspCodeAction,
   LspCodeActionSupport,
+  LspDefinition,
   LspFeatures,
   LspFormattingSupport,
   LspCodeLensSupport,
@@ -1897,10 +1902,12 @@ describe('LspFeatures', () => {
         },
       ];
       navigationSupport = {
+        declaration: false,
         implementation: true,
         typeDefinition: true,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
@@ -1978,10 +1985,12 @@ describe('LspFeatures', () => {
 
     it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
       navigationSupport = {
+        declaration: false,
         implementation: false,
         typeDefinition: true,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
@@ -2010,14 +2019,80 @@ describe('LspFeatures', () => {
     });
   });
 
+  describe('declarations and the header or source of a file (#1213)', () => {
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
+    const CLANGD: LspNavigationSupport = {
+      declaration: true,
+      implementation: false,
+      typeDefinition: false,
+      callHierarchy: false,
+      typeHierarchy: false,
+      sourceHeader: true,
+    };
+
+    it('declarations_areAnsweredByPath', async () => {
+      responses['textDocument/declaration'] = [
+        {
+          uri: 'file:///root/shapes.hpp',
+          range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+        },
+      ];
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      const found: readonly LspDefinition[] | null = await features.declarations(
+        owned as Parameters<LspFeatures['declarations']>[0],
+        at,
+      );
+
+      expect(found?.map((place: LspDefinition): string => place.path)).toEqual([
+        '/root/shapes.hpp',
+      ]);
+    });
+
+    it('sourceHeaderOf_readsTheUriClangdAnswers_askingWithTheDocumentsUri', async () => {
+      responses['textDocument/switchSourceHeader'] = 'file:///root/shapes.hpp';
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      expect(
+        await features.sourceHeaderOf(owned as Parameters<LspFeatures['sourceHeaderOf']>[0]),
+      ).toBe('/root/shapes.hpp');
+    });
+
+    it('sourceHeaderOf_isNull_whenTheFileHasNoCounterpart', async () => {
+      responses['textDocument/switchSourceHeader'] = null;
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      expect(
+        await features.sourceHeaderOf(owned as Parameters<LspFeatures['sourceHeaderOf']>[0]),
+      ).toBeNull();
+    });
+
+    it('neitherIsAsked_ofAServerThatDoesNotOfferThem', async () => {
+      navigationSupport = { ...CLANGD, declaration: false, sourceHeader: false };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['declarations']>[0] = owned as Parameters<
+        LspFeatures['declarations']
+      >[0];
+
+      expect(await features.declarations(model, at)).toBeNull();
+      expect(await features.sourceHeaderOf(model)).toBeNull();
+    });
+  });
+
   describe('call and type hierarchies (#1153)', () => {
     const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
     const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
     const HIERARCHIES: LspNavigationSupport = {
+      declaration: false,
       implementation: false,
       typeDefinition: false,
       callHierarchy: true,
       typeHierarchy: true,
+      sourceHeader: false,
     };
     const span: (line: number, from: number, to: number) => unknown = (
       line: number,
@@ -2213,6 +2288,132 @@ describe('LspFeatures', () => {
         column: 1,
       }),
     ).toEqual([]);
+  });
+
+  describe('clangd, as it really answers (#1213)', () => {
+    const model: Parameters<LspFeatures['codeActions']>[0] = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    } as unknown as Parameters<LspFeatures['codeActions']>[0];
+    const caret: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    } = { startLineNumber: 9, startColumn: 16, endLineNumber: 9, endColumn: 16 };
+    const TWEAK: unknown = {
+      command: {
+        arguments: [
+          {
+            file: 'file:///root/app.ts',
+            selection: { start: { line: 8, character: 15 }, end: { line: 8, character: 19 } },
+            tweakID: 'DefineInline',
+          },
+        ],
+        command: 'clangd.applyTweak',
+        title: 'Move function body to declaration',
+      },
+      kind: 'refactor',
+      title: 'Move function body to declaration',
+    };
+
+    it('inlayHints_readItsLabelParts', async () => {
+      inlayHintSupport = { resolve: false };
+      responses['textDocument/inlayHint'] = [
+        {
+          kind: 2,
+          label: [{ value: 'prec:' }],
+          paddingLeft: false,
+          paddingRight: true,
+          position: { character: 19, line: 22 },
+        },
+        {
+          kind: 1,
+          label: [{ value: ': Point' }],
+          paddingLeft: false,
+          paddingRight: false,
+          position: { character: 13, line: 37 },
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableInlayHints('cpp');
+
+      const list: { hints: unknown[] } | undefined = await captured.inlayHints
+        ?.get('cpp')
+        ?.provideInlayHints(model, caret);
+
+      expect(list?.hints).toEqual([
+        {
+          label: [{ label: 'prec:' }],
+          position: { lineNumber: 23, column: 20 },
+          kind: 2,
+          paddingRight: true,
+        },
+        { label: [{ label: ': Point' }], position: { lineNumber: 38, column: 14 }, kind: 1 },
+      ]);
+    });
+
+    it('aFixIt_carriesItsEdit_asDocumentChanges_whichStudioAsksFor', async () => {
+      codeActionSupport = 'actions';
+      responses['textDocument/codeAction'] = [
+        {
+          diagnostics: [
+            {
+              code: 'expected_semi_after_stmt',
+              message: "Expected ';' after return statement (fix available)",
+              range: { start: { line: 38, character: 2 }, end: { line: 38, character: 8 } },
+              severity: 1,
+              source: 'clang',
+            },
+          ],
+          edit: {
+            documentChanges: [
+              {
+                edits: [
+                  {
+                    newText: ';',
+                    range: { start: { line: 37, character: 12 }, end: { line: 37, character: 12 } },
+                  },
+                ],
+                textDocument: { uri: 'file:///root/app.ts', version: 1 },
+              },
+            ],
+          },
+          isPreferred: true,
+          kind: 'quickfix',
+          title: "insert ';'",
+        },
+      ];
+      const features: LspFeatures = await build();
+
+      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
+
+      expect(actions?.[0]).toMatchObject({ title: "insert ';'", kind: 'quickfix' });
+      expect(actions?.[0].isPreferred).toBe(true);
+      expect(actions?.[0].edit?.files.map((file: { path: string }): string => file.path)).toEqual([
+        '/root/app.ts',
+      ]);
+    });
+
+    it('aTweak_isACommandTheServerRuns_andCarriesItsArgumentsBackUntouched', async () => {
+      codeActionSupport = 'actions';
+      serverCommands = ['clangd.applyFix', 'clangd.applyRename', 'clangd.applyTweak'];
+      responses['textDocument/codeAction'] = [TWEAK];
+      const features: LspFeatures = await build();
+
+      const actions: readonly LspCodeAction[] | null = await features.codeActions(model, caret);
+      const tweak: LspCodeAction = actions![0];
+
+      expect(tweak).toMatchObject({ kind: 'refactor', edit: null });
+      expect(await features.executeCommand(model, tweak.command!)).toEqual({ ran: true });
+      expect(requests.at(-1)).toMatchObject({
+        method: 'workspace/executeCommand',
+        params: {
+          command: 'clangd.applyTweak',
+          arguments: (TWEAK as { command: { arguments: unknown } }).command.arguments,
+        },
+      });
+    });
   });
 
   describe('rename (#1015)', () => {
@@ -2904,6 +3105,57 @@ describe('LspFeatures', () => {
     // Fixed legend: method=13, static=3 (bit value 8).
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
   });
+
+  it.each([
+    ['builtinType', 'type'],
+    ['typeAlias', 'type'],
+    ['union', 'struct'],
+    ['lifetime', 'typeParameter'],
+    ['constParameter', 'typeParameter'],
+    ['const', 'enumMember'],
+    ['static', 'enumMember'],
+    ['attribute', 'decorator'],
+    ['builtinAttribute', 'decorator'],
+    ['derive', 'decorator'],
+    ['deriveHelper', 'decorator'],
+    ['toolModule', 'decorator'],
+    ['procMacro', 'macro'],
+    ['selfKeyword', 'keyword'],
+    ['selfTypeKeyword', 'keyword'],
+    ['boolean', 'keyword'],
+    ['character', 'string'],
+  ])('semanticTokens_coloursRustsOwn_%s_as_%s (#1210)', async (name: string, standard: string) => {
+    semanticLegend = { tokenTypes: [name], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = { data: [0, 0, 4, 0, 0] };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    expect(tokens?.data[3]).toBe(SEMANTIC_TOKEN_TYPES.indexOf(standard));
+  });
+
+  it.each(['unresolvedReference', 'formatSpecifier', 'attributeBracket', 'escapeSequence'])(
+    'semanticTokens_dropsRusts_%s_soTheGrammarsColourStands (#1210)',
+    async (name: string) => {
+      semanticLegend = { tokenTypes: [name, 'keyword'], tokenModifiers: [] };
+      responses['textDocument/semanticTokens/full'] = {
+        data: [0, 0, 4, 0, 0, 0, 5, 2, 1, 0],
+      };
+      await build();
+      const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+      const tokens: { data: Uint32Array } | undefined =
+        await captured.semantic?.provideDocumentSemanticTokens(model);
+
+      expect([...(tokens?.data ?? [])]).toEqual([
+        0,
+        5,
+        2,
+        SEMANTIC_TOKEN_TYPES.indexOf('keyword'),
+        0,
+      ]);
+    },
+  );
 
   it('semanticTokens_coloursClangdsConceptsAsTypes_itsInactiveCodeAsComments_andLeavesBrackets (#1213)', async () => {
     // Part of clangd's legend. `comment` is how it marks what the preprocessor skipped, and `bracket`

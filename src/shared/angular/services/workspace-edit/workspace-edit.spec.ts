@@ -30,6 +30,36 @@ function lspEdit(line: number, start: number, end: number, newText: string): unk
   };
 }
 
+describe('fromLspWorkspaceEdit: what a clangd tweak sends (#1213)', () => {
+  it('readsAnEditAcrossAHeaderAndItsSource', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        changes: {
+          'file:///root/shapes.hpp': [
+            {
+              newText: ' { return 1; }\n',
+              range: { start: { line: 21, character: 30 }, end: { line: 21, character: 31 } },
+            },
+          ],
+          'file:///root/shapes.cpp': [
+            {
+              newText: '\n\n',
+              range: { start: { line: 6, character: 81 }, end: { line: 10, character: 0 } },
+            },
+          ],
+        },
+      },
+      (uri: string): string => uri.slice('file://'.length),
+    );
+
+    expect(edits.files.map((file: { path: string }): string => file.path)).toEqual([
+      '/root/shapes.hpp',
+      '/root/shapes.cpp',
+    ]);
+    expect(edits.refused).toEqual([]);
+  });
+});
+
 describe('fromLspWorkspaceEdit (#1015)', () => {
   it('readsPerFileChanges_oneBased_inTheServersOrder', () => {
     const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(

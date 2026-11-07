@@ -8,6 +8,7 @@ import type {
   AiConnection,
   AiDiscoverModelsResult,
   AiEvent,
+  AiPermissionGrant,
   AiProviderInfo,
   AiSignInStatus,
 } from '@shared/api/ai-types';
@@ -1195,6 +1196,56 @@ describe('AiManager', () => {
       void context.requestPermission('Bash', 'rm -rf /');
 
       expect(eventsOf('permission')).toHaveLength(2);
+    });
+
+    it('revokingAGrant_makesTheNextUseAskAgain', async () => {
+      const [answer, permissionId]: [Promise<boolean>, string] = ask('Bash', 'npm test');
+      reply(AiChannel.PermissionReply, { permissionId, granted: true, remember: 'always' });
+      await answer;
+      const [grant]: readonly AiPermissionGrant[] = await invoke(AiChannel.ListPermissionGrants);
+      expect(grant).toMatchObject({ tool: 'Bash', command: 'npm test', workspaceRoot: null });
+
+      expect(
+        await invoke(AiChannel.RevokePermissionGrant, { key: grant.key, workspaceRoot: null }),
+      ).toBe(true);
+
+      void context.requestPermission('Bash', 'npm test');
+      expect(eventsOf('permission')).toHaveLength(2);
+      expect(await invoke(AiChannel.ListPermissionGrants)).toEqual([]);
+    });
+
+    it('revokingAGrant_takesTheToolsSessionGrantWithIt', async () => {
+      const [always, alwaysId]: [Promise<boolean>, string] = ask('Bash', 'npm test');
+      reply(AiChannel.PermissionReply, {
+        permissionId: alwaysId,
+        granted: true,
+        remember: 'always',
+      });
+      await always;
+      const [session, sessionId]: [Promise<boolean>, string] = ask('Bash', 'npm run lint');
+      reply(AiChannel.PermissionReply, {
+        permissionId: sessionId,
+        granted: true,
+        remember: 'session',
+      });
+      await session;
+      const [grant]: readonly AiPermissionGrant[] = await invoke(AiChannel.ListPermissionGrants);
+
+      await invoke(AiChannel.RevokePermissionGrant, { key: grant.key, workspaceRoot: null });
+
+      void context.requestPermission('Bash', 'npm run lint');
+      expect(eventsOf('permission')).toHaveLength(3);
+    });
+
+    it.each<[string, unknown]>([
+      ['nothing', undefined],
+      ['aString', 'Bash'],
+      ['noKey', { workspaceRoot: null }],
+      ['aKeyThatIsNotAString', { key: 3, workspaceRoot: null }],
+      ['aRootThatIsNotAString', { key: 'Bash', workspaceRoot: 3 }],
+      ['noRoot', { key: 'Bash' }],
+    ])('revokingAGrant_refuses_%s', async (_name: string, payload: unknown) => {
+      expect(await invoke(AiChannel.RevokePermissionGrant, payload)).toBe(false);
     });
 
     it('permission_aClippedCommand_cannotBeRememberedBeyondTheSession', async () => {

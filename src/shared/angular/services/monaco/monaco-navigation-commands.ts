@@ -12,10 +12,12 @@ import { FIND_PASSTHROUGH_CONTEXT_KEY, focusedEditor } from './monaco-find-comma
 export type NavigationMode =
   | 'definition'
   | 'references'
+  | 'declaration'
   | 'implementation'
   | 'typeDefinition'
   | 'callHierarchy'
-  | 'typeHierarchy';
+  | 'typeHierarchy'
+  | 'sourceHeader';
 
 /**
  * Lists every Monaco command that goes to a symbol's definition, declaration, type definition,
@@ -73,6 +75,17 @@ export const STUDIO_GO_TO_IMPLEMENTATION_COMMAND: string = 'studio.goToImplement
  * one, so it is reached from the editor's right-click menu.
  */
 export const STUDIO_GO_TO_TYPE_DEFINITION_COMMAND: string = 'studio.goToTypeDefinition';
+
+/**
+ * Names Studio's Go to Declaration (#1213). No chord: Visual Studio's, ⌃F12, is Go to Implementation
+ * here, so it is reached from the editor's right-click menu.
+ */
+export const STUDIO_GO_TO_DECLARATION_COMMAND: string = 'studio.goToDeclaration';
+
+/**
+ * Names Studio's Switch Header/Source (#1213), bound to ⌘K ⌘O (Ctrl+K Ctrl+O) as in Visual Studio.
+ */
+export const STUDIO_SWITCH_SOURCE_HEADER_COMMAND: string = 'studio.switchSourceHeader';
 
 /**
  * Names Studio's Show Call Hierarchy (#1153), bound to ⌃⌥H (Ctrl+Alt+H) as in Rider.
@@ -164,7 +177,9 @@ export function installNavigationCommands(
   monaco.editor.registerCommand(STUDIO_GO_TO_DEFINITION_COMMAND, run('definition'));
   monaco.editor.registerCommand(STUDIO_FIND_REFERENCES_COMMAND, run('references'));
   monaco.editor.registerCommand(STUDIO_GO_TO_IMPLEMENTATION_COMMAND, run('implementation'));
+  monaco.editor.registerCommand(STUDIO_GO_TO_DECLARATION_COMMAND, run('declaration'));
   monaco.editor.registerCommand(STUDIO_GO_TO_TYPE_DEFINITION_COMMAND, run('typeDefinition'));
+  monaco.editor.registerCommand(STUDIO_SWITCH_SOURCE_HEADER_COMMAND, run('sourceHeader'));
   monaco.editor.registerCommand(STUDIO_CALL_HIERARCHY_COMMAND, run('callHierarchy'));
   monaco.editor.registerCommand(STUDIO_TYPE_HIERARCHY_COMMAND, run('typeHierarchy'));
   // A lens's symbol is in the document the lens is in: the editor showing it is placed at the symbol.
@@ -246,6 +261,14 @@ export function installNavigationCommands(
     {
       keybinding: control | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
       command: STUDIO_TYPE_HIERARCHY_COMMAND,
+      when,
+    },
+    {
+      keybinding: monaco.KeyMod.chord(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO,
+      ),
+      command: STUDIO_SWITCH_SOURCE_HEADER_COMMAND,
       when,
     },
   ]);

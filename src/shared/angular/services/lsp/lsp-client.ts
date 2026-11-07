@@ -48,13 +48,19 @@ import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/wo
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import {
   isMetadataAsSource,
+  isToolchainSource,
   isWithin,
   normalise,
   parentDir,
   pathToUri,
   uriToPath,
 } from './lsp-paths';
-import { isErrorListDiagnostic, toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
+import {
+  isErrorListDiagnostic,
+  mergeDiagnostics,
+  toDiagnostic,
+  toMarkerData,
+} from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import {
   codeActionSupportOf,
@@ -509,6 +515,16 @@ interface TrackedDocument {
   opened: boolean;
 
   /**
+   * Holds the document's diagnostics from its last push.
+   */
+  pushed: readonly LspDiagnostic[];
+
+  /**
+   * Holds the document's diagnostics from its last pull.
+   */
+  pulled: readonly LspDiagnostic[];
+
+  /**
    * Holds the text the document last had on disk as far as this client has been told, so a save is
    * recognised as the saved text changing rather than re-announced on every re-render. Null until the
    * first saved text is reported.
@@ -687,6 +703,13 @@ const MAX_START_ATTEMPTS: number = 3;
  * in favour of the heuristic colouring until the session settles.
  */
 const FROZEN_TOKEN_SERVERS: ReadonlySet<string> = new Set<string>(['csharp']);
+
+/**
+ * The servers whose pushed diagnostics reach the Error List for files that are not open as well
+ * (#1210): `cargo check` reports whole crates, so an error a change causes in another file would
+ * otherwise show nowhere. The other servers' pushes are left to their open documents.
+ */
+const WHOLE_WORKSPACE_PUSH_SERVERS: ReadonlySet<string> = new Set<string>(['rust']);
 
 /**
  * How long a session's refresh signals must stay quiet before its recolour pass runs. A loading
@@ -1188,6 +1211,19 @@ export class LspClient implements OnDestroy {
   private readonly settledSessions: Set<string> = new Set<string>();
 
   /**
+   * Holds the sessions whose server has said it is still loading the workspace
+   * (`experimental/serverStatus`, #1210). A server that says so is taken at its word: answering a
+   * request meanwhile, as rust-analyzer does, is not it having finished.
+   */
+  private readonly loadingSessions: Set<string> = new Set<string>();
+
+  /**
+   * Holds the whole of what each session's server last said was wrong with it (#1210), so its log has
+   * it once, not once for every change of its status.
+   */
+  private readonly serverProblemTexts: Map<string, string> = new Map<string, string>();
+
+  /**
    * Initializes a new instance of the {@link LspClient} class, registering its diagnostics provider
    * and subscribing to server notifications when the bridge is available.
    */
@@ -1266,7 +1302,7 @@ export class LspClient implements OnDestroy {
    * @param sessionId The session that has proven ready.
    */
   private markReady(sessionId: string): void {
-    if (this.status.stateOf(sessionId) === 'ready') {
+    if (this.status.stateOf(sessionId) === 'ready' || this.loadingSessions.has(sessionId)) {
       return;
     }
     this.status.setState(sessionId, 'ready');
@@ -1397,7 +1433,8 @@ export class LspClient implements OnDestroy {
     if (report === null || report.kind === 'unchanged' || !Array.isArray(report.items)) {
       return;
     }
-    this.ingestDiagnostics(tracked, report.items);
+    tracked.pulled = report.items;
+    this.ingestDiagnostics(tracked);
     this.markReady(sessionId);
   }
 
@@ -1477,12 +1514,12 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Records a document's diagnostics (from a push or a pull), sets them as editor markers, and
-   * republishes the aggregate.
+   * Records a document's diagnostics, what was pushed and what was pulled together, sets them as editor
+   * markers, and republishes the aggregate.
    * @param tracked The document the diagnostics belong to.
-   * @param diagnostics The server's current diagnostics for the document (empty clears them).
    */
-  private ingestDiagnostics(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+  private ingestDiagnostics(tracked: TrackedDocument): void {
+    const diagnostics: readonly LspDiagnostic[] = mergeDiagnostics(tracked.pulled, tracked.pushed);
     this.log.info(
       'LspClient',
       `Received ${diagnostics.length} diagnostic(s) for ${tracked.uri}`,
@@ -1631,6 +1668,8 @@ export class LspClient implements OnDestroy {
         languageId: state.languageId,
         version: 1,
         opened: false,
+        pushed: [],
+        pulled: [],
         savedText: null,
         text: '',
         queue: Promise.resolve(),
@@ -1726,6 +1765,8 @@ export class LspClient implements OnDestroy {
         this.legends.delete(sessionId);
         this.pullCapable.delete(sessionId);
         this.settledSessions.delete(sessionId);
+        this.loadingSessions.delete(sessionId);
+        this.serverProblemTexts.delete(sessionId);
         this.clearPostLoadPulls(sessionId);
         this.clearRecolor(sessionId);
         this.sessions.delete(sessionId);
@@ -2044,6 +2085,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
+      this.loadingSessions.delete(sessionId);
+      this.serverProblemTexts.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
       this.clearRecolor(sessionId);
     }
@@ -2084,6 +2127,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(sessionId);
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
+      this.loadingSessions.delete(sessionId);
+      this.serverProblemTexts.delete(sessionId);
       this.clearPostLoadPulls(sessionId);
       this.clearRecolor(sessionId);
       this.clearStandaloneReap(sessionId);
@@ -2197,6 +2242,8 @@ export class LspClient implements OnDestroy {
     this.executeCommands.clear();
     this.serverDiagnostics.clear();
     this.pullCapable.clear();
+    this.loadingSessions.clear();
+    this.serverProblemTexts.clear();
     this.sessionInfo.clear();
     this.tracked.clear();
   }
@@ -2655,6 +2702,11 @@ export class LspClient implements OnDestroy {
       this.scheduleRecolor(message.sessionId);
       return;
     }
+    // rust-analyzer says how it is rather than sending the notification above.
+    if (message.method === 'experimental/serverStatus') {
+      this.onServerStatus(message.sessionId, message.params);
+      return;
+    }
     // The server's semantic classification improved after it last served tokens (its project or a
     // standalone file's virtual project finished loading): recompute and repaint.
     // A batch of the server's diagnostics for the whole workspace, files not open included (#1144).
@@ -2673,6 +2725,18 @@ export class LspClient implements OnDestroy {
     }
     // The server's hints are stale (a setting changed, a project finished loading): every editor
     // showing them asks again (#1145).
+    // The server's diagnostics are stale and it has no workspace pull to report them through: its open
+    // documents are pulled again (#1210), once a burst of refreshes has settled.
+    if (message.method === 'workspace/diagnostic/refresh') {
+      if (this.pullCapable.has(message.sessionId)) {
+        for (const tracked of this.tracked.values()) {
+          if (tracked.opened && `${tracked.rootPath}::${tracked.serverId}` === message.sessionId) {
+            this.scheduleDiagnostics(message.sessionId, tracked);
+          }
+        }
+      }
+      return;
+    }
     // The server's code lenses are stale (a reference added elsewhere, a setting changed): every
     // editor showing them asks again (#1149).
     if (message.method === 'workspace/codeLens/refresh') {
@@ -2722,16 +2786,64 @@ export class LspClient implements OnDestroy {
     if (key === null || params === null || !Array.isArray(params.diagnostics)) {
       return;
     }
+    // Kept for an open document too, so what it reported is still listed once the document closes: the
+    // server has no reason to say it again until it next runs.
+    if (WHOLE_WORKSPACE_PUSH_SERVERS.has(this.sessionInfo.get(message.sessionId)?.serverId ?? '')) {
+      this.ingestWorkspaceDiagnostics(message.sessionId, {
+        reports: [{ uri: params.uri, kind: 'full', items: params.diagnostics }],
+      });
+    }
     const tracked: TrackedDocument | undefined = this.tracked.get(key);
     if (tracked === undefined) {
       return;
     }
-    this.ingestDiagnostics(tracked, params.diagnostics);
+    tracked.pushed = params.diagnostics;
+    this.ingestDiagnostics(tracked);
     // Diagnostics arriving mean the server has finished loading the workspace and analysed the
     // document: flip the indicator from starting to ready and re-request semantic tokens — but only
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
     // files; refreshing on every push would fan token requests out continuously.
     this.markReady(message.sessionId);
+  }
+
+  /**
+   * Takes what a server says of how it is (`experimental/serverStatus`, #1210). A server starting up
+   * stays starting while it is loading, its progress showing; once it is done it is ready, and its open
+   * documents are pulled again. Its health is kept on its row for as long as it is not good: a server
+   * that could not load the workspace still answers what it can, so "Ready" alone would hide that it is
+   * working from nothing. The first line goes on the row; the rest, which can be Cargo's whole error,
+   * in its log.
+   * @param sessionId The session.
+   * @param params The notification parameters (`health`, `quiescent` and `message`).
+   */
+  private onServerStatus(sessionId: string, params: unknown): void {
+    const report: { health?: unknown; quiescent?: unknown; message?: unknown } | null =
+      (params as typeof report) ?? null;
+    if (report === null) {
+      return;
+    }
+    const text: string | undefined =
+      report.health !== 'ok' && typeof report.message === 'string' && report.message.length > 0
+        ? report.message
+        : undefined;
+    if (text === undefined) {
+      this.serverProblemTexts.delete(sessionId);
+    } else if (text !== this.serverProblemTexts.get(sessionId)) {
+      this.serverProblemTexts.set(sessionId, text);
+      this.appendServerLog(sessionId, { message: text });
+    }
+    this.status.setProblem(sessionId, text?.split('\n')[0]);
+    if (report.quiescent === false) {
+      this.loadingSessions.add(sessionId);
+      return;
+    }
+    // Its finishing a load, the first or a later one (a changed `Cargo.toml`), or a window attaching
+    // to a server that finished before it did.
+    const finished: boolean = this.loadingSessions.delete(sessionId);
+    if (report.quiescent === true && (finished || this.status.stateOf(sessionId) === 'starting')) {
+      this.markReady(sessionId);
+      this.pullAfterLoad(sessionId);
+    }
   }
 
   /**
@@ -2845,6 +2957,10 @@ export class LspClient implements OnDestroy {
     if (!this.sessions.delete(exit.sessionId)) {
       return;
     }
+    // What the server said of the whole workspace went with it: its replacement says it again.
+    if (this.workspaceDiagnostics.delete(exit.sessionId)) {
+      this.publish();
+    }
     clearTimeout(this.analysisTimers.get(exit.sessionId));
     this.analysisTimers.delete(exit.sessionId);
     if (exit.restarted === true) {
@@ -2855,6 +2971,8 @@ export class LspClient implements OnDestroy {
       this.legends.delete(exit.sessionId);
       this.pullCapable.delete(exit.sessionId);
       this.settledSessions.delete(exit.sessionId);
+      this.loadingSessions.delete(exit.sessionId);
+      this.serverProblemTexts.delete(exit.sessionId);
       this.clearPostLoadPulls(exit.sessionId);
       this.clearRecolor(exit.sessionId);
       this.status.setState(exit.sessionId, 'starting');
@@ -2900,6 +3018,8 @@ export class LspClient implements OnDestroy {
     }
     // The restarted server loads from scratch, so its tokens are degraded again until it re-settles.
     this.settledSessions.delete(exit.sessionId);
+    this.loadingSessions.delete(exit.sessionId);
+    this.serverProblemTexts.delete(exit.sessionId);
     this.clearPostLoadPulls(exit.sessionId);
     this.clearRecolor(exit.sessionId);
     for (const tracked of this.tracked.values()) {
@@ -3498,8 +3618,13 @@ export class LspClient implements OnDestroy {
       // A language server's decompiled source (#1133) lives in the temporary directory, outside the
       // workspace, but belongs to the workspace's session: the server generated it for a symbol the
       // workspace references, and answers hover and Go to Definition inside it only when it is opened
-      // against that session. (The main process decides which such files may be opened at all.)
-      if (isWithin(filePath, listing.path) || isMetadataAsSource(filePath)) {
+      // against that session. So does the Rust toolchain's source (#1210), which rust-analyzer loaded
+      // with the workspace. (The main process decides which such files may be opened at all.)
+      if (
+        isWithin(filePath, listing.path) ||
+        isMetadataAsSource(filePath) ||
+        isToolchainSource(filePath)
+      ) {
         return { root: listing.path, standalone: false };
       }
       return null;

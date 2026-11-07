@@ -43,6 +43,7 @@ import {
 } from './builds';
 import {
   BuildFamily,
+  CMAKE_CONFIGURE,
   commandForAction,
   commandForProjectAction,
   detectBuildFamily,
@@ -1122,7 +1123,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
         id: 'cmake:build',
         label: 'cmake --build build',
         group: 'build',
-        command: 'cmake -S . -B build && cmake --build build',
+        command: `${CMAKE_CONFIGURE} && cmake --build build`,
         cwd: root.path,
       },
     ];

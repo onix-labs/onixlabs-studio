@@ -56,10 +56,12 @@ describe('formattingSupportOf (#1141)', () => {
 
 describe('navigationSupportOf (#1142)', () => {
   const NONE: unknown = {
+    declaration: false,
     implementation: false,
     typeDefinition: false,
     callHierarchy: false,
     typeHierarchy: false,
+    sourceHeader: false,
   };
 
   it('readsImplementationTypeDefinitionAndHierarchies_asBooleansOrOptions', () => {
@@ -72,13 +74,26 @@ describe('navigationSupportOf (#1142)', () => {
         typeHierarchyProvider: {},
       }),
     ).toEqual({
+      declaration: false,
       implementation: true,
       typeDefinition: true,
       callHierarchy: true,
       typeHierarchy: true,
+      sourceHeader: false,
     });
     expect(navigationSupportOf({ implementationProvider: false })).toEqual(NONE);
     expect(navigationSupportOf(undefined)).toEqual(NONE);
+  });
+});
+
+describe('navigationSupportOf for clangd (#1213)', () => {
+  it('readsDeclarations_andKnowsHeaderSwitchingByTheCapabilityOnlyClangdHas', () => {
+    expect(
+      navigationSupportOf({
+        declarationProvider: true,
+        compilationDatabase: { automaticReload: true },
+      }),
+    ).toMatchObject({ declaration: true, sourceHeader: true });
   });
 });
 

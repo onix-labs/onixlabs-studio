@@ -40,6 +40,22 @@ export interface LspStartupSettings {
 }
 
 /**
+ * Describes a setting a server is given on its command line (#1213), for one with no other way in:
+ * clangd reads its options from there or from a project's own `.clangd`, and never from the protocol.
+ */
+export interface LspSettingArgument {
+  /**
+   * Gets the section of the setting.
+   */
+  readonly section: string;
+
+  /**
+   * Gets the option it is passed as, such as `--clang-tidy`: the server starts with `--clang-tidy=false`.
+   */
+  readonly flag: string;
+}
+
+/**
  * Describes how a server takes the settings it declares (#1204). Servers differ: Roslyn, gopls and
  * rust-analyzer ask for them through `workspace/configuration`, and only need telling that they
  * changed; typescript-language-server and jdtls never ask, and read what they are sent in
@@ -64,6 +80,13 @@ export interface LspSettingsDelivery {
    * given none at start-up.
    */
   readonly startup?: LspStartupSettings;
+
+  /**
+   * Gets the settings the server is given on its command line (#1213), or undefined for none. Each is
+   * passed only while it differs from its default, so a server left alone keeps its own default and
+   * starts as it always did.
+   */
+  readonly arguments?: readonly LspSettingArgument[];
 }
 
 /**
