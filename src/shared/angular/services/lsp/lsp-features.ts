@@ -717,9 +717,9 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207). Names with no sensible standard equivalent —
- * punctuation, XML doc-comment parts, JSON-in-string parts — are deliberately absent, so the grammar's
- * own colour stands.
+ * method by the older name (#1207), and clangd's `concept` names a constraint on a type (#1213). Names
+ * with no sensible standard equivalent — punctuation, XML doc-comment parts, JSON-in-string parts — are
+ * deliberately absent, so the grammar's own colour stands.
  */
 const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   // Members.
@@ -735,6 +735,7 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   recordStruct: 'struct',
   delegate: 'type',
   module: 'class',
+  concept: 'type',
   // Keywords, comments and strings.
   controlKeyword: 'keyword',
   // Code inside an inactive `#if` is shown as a comment, as Visual Studio dims it.

@@ -2905,6 +2905,22 @@ describe('LspFeatures', () => {
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
   });
 
+  it('semanticTokens_coloursClangdsConceptsAsTypes_itsInactiveCodeAsComments_andLeavesBrackets (#1213)', async () => {
+    // Part of clangd's legend. `comment` is how it marks what the preprocessor skipped, and `bracket`
+    // is punctuation, left to the grammar.
+    semanticLegend = { tokenTypes: ['concept', 'bracket', 'comment'], tokenModifiers: [] };
+    responses['textDocument/semanticTokens/full'] = {
+      data: [0, 0, 6, 0, 0, 0, 7, 1, 1, 0, 1, 0, 9, 2, 0],
+    };
+    await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const tokens: { data: Uint32Array } | undefined =
+      await captured.semantic?.provideDocumentSemanticTokens(model);
+
+    // Fixed legend: type=1, comment=17. The dropped bracket leaves the comment on the next line.
+    expect([...(tokens?.data ?? [])]).toEqual([0, 0, 6, 1, 0, 1, 0, 9, 17, 0]);
+  });
+
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
     semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
     await build();
