@@ -1838,6 +1838,22 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
   });
 
+  it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
+    // Hover and further navigation inside `Option` work only against the session that loaded it.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/home/me/.rustup/toolchains/stable/lib/rustlib/src/rust/library/core/src/option.rs',
+      languageId: 'rust',
+      content: 'pub enum Option<T> { None, Some(T) }',
+    });
+    await flush();
+
+    expect(lsp.starts.map((start: LspStartRequest): string => start.sessionId)).toEqual([
+      '/root::rust',
+    ]);
+  });
+
   it('syncDocument_anOrdinaryFileOutsideTheRoot_isStillIgnored', async () => {
     const client: LspClient = build();
     client.syncDocument({

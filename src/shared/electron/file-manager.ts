@@ -25,7 +25,7 @@ import {
   type TextEncoding,
 } from '@shared/api/text-encodings';
 import { realPathOf } from '@shared/electron/ai/write-confinement';
-import { metadataAsSourcePath } from '@shared/electron/lsp/metadata-as-source';
+import { readOnlySourcePath } from '@shared/electron/lsp/toolchain-source';
 import { TrustedPaths } from '@shared/electron/trusted-paths';
 import { decodeText, encodeText, type DecodedText } from '@shared/electron/text-encoding';
 import { WorkspaceContext } from '@shared/electron/workspace-context';
@@ -172,7 +172,7 @@ export class FileManager {
       logger.warn('FileManager.read', 'Rejected read for invalid path');
       return null;
     }
-    if (!this.mayWrite(filePath) && (await metadataAsSourcePath(filePath)) === null) {
+    if (!this.mayWrite(filePath) && (await readOnlySourcePath(filePath)) === null) {
       logger.warn('FileManager.read', `Refused read outside the boundary: ${filePath}`);
       return null;
     }
