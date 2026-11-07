@@ -10,6 +10,7 @@ import {
 import { FileChannel } from '@shared/api/file-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { BuildHandler, Builds } from '@shared/angular/services/tasks/builds';
 import type { LspDiagnostic } from './lsp-client';
 import {
   escapeMarkdown,
@@ -1230,6 +1231,88 @@ describe('LspFeatures', () => {
           ],
         ],
       });
+    });
+
+    it.each(['1 implementation', '3 references'])(
+      'aRustAnalyzerLens_%s_listsThePlacesItBrought (#1210)',
+      async (title: string) => {
+        codeLensSupport = { resolve: true };
+        responses['textDocument/codeLens'] = [LENS];
+        responses['codeLens/resolve'] = {
+          ...(LENS as object),
+          command: {
+            title,
+            command: 'rust-analyzer.showReferences',
+            arguments: ['file:///root/app.ts', { line: 8, character: 11 }, []],
+          },
+        };
+        const features: LspFeatures = await build();
+        features.enableCodeLens('rust');
+        const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('rust');
+        const list: { lenses: unknown[] } | undefined = await provider?.provideCodeLenses(owned);
+
+        const resolved: unknown = await provider?.resolveCodeLens(owned, list?.lenses[0]);
+
+        expect((resolved as { command: { id: string } }).command.id).toBe(
+          'studio.lsp.codeLensLocations',
+        );
+      },
+    );
+
+    it('aRustAnalyzerRunLens_runsAsARunConfigurationDoes (#1210)', async () => {
+      const runnable: unknown = {
+        label: 'test-mod tests',
+        kind: 'cargo',
+        args: { cwd: '/root', cargoArgs: ['test'], executableArgs: ['tests'] },
+      };
+      codeLensSupport = { resolve: true };
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: {
+            title: '▶︎ Run Tests',
+            command: 'rust-analyzer.runSingle',
+            arguments: [runnable],
+          },
+        },
+      ];
+      const features: LspFeatures = await build();
+      const run: ReturnType<typeof vi.fn> = vi.fn();
+      TestBed.inject(Builds).register({ runConfiguration: run } as unknown as BuildHandler);
+      features.enableCodeLens('rust');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('rust');
+      const list: { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined =
+        (await provider?.provideCodeLenses(owned)) as unknown as
+          { lenses: { command: { id: string; arguments: unknown[] } }[] } | undefined;
+
+      const command: { id: string; arguments: unknown[] } | undefined = list?.lenses[0].command;
+      expect(command?.id).toBe('studio.lsp.runLens');
+
+      captured.commands?.get('studio.lsp.runLens')?.(undefined, ...(command?.arguments ?? []));
+
+      expect(run).toHaveBeenCalledWith(
+        expect.objectContaining({ program: 'cargo', args: ['test', '--', 'tests'], cwd: '/root' }),
+        [],
+        { restart: true },
+      );
+    });
+
+    it('aRustAnalyzerRunLens_thatCannotBeRead_showsItsTitleAlone (#1210)', async () => {
+      codeLensSupport = { resolve: true };
+      responses['textDocument/codeLens'] = [
+        {
+          ...(LENS as object),
+          command: { title: '▶︎ Run', command: 'rust-analyzer.runSingle', arguments: [{}] },
+        },
+      ];
+      const features: LspFeatures = await build();
+      features.enableCodeLens('rust');
+      const provider: FakeCodeLensProvider | undefined = captured.codeLens?.get('rust');
+      const list: { lenses: { command: unknown }[] } | undefined =
+        (await provider?.provideCodeLenses(owned)) as unknown as
+          { lenses: { command: unknown }[] } | undefined;
+
+      expect(list?.lenses[0].command).toEqual({ id: '', title: '▶︎ Run' });
     });
 
     it('resolved_withNoCommandName_showsItsCountAlone (#1207)', async () => {

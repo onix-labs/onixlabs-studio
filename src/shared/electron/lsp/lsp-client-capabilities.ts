@@ -215,7 +215,13 @@ export function clientCapabilities(serverId?: string): ClientCapabilities {
     },
     // Not in the protocol, and ignored by any server that does not know them. A server may say when it
     // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
-    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210).
-    experimental: { serverStatusNotification: true },
+    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210). The client
+    // commands a server may put on a lens: rust-analyzer drops a lens whose command the client does not
+    // run, so without this it shows none at all (#1210). Debug is not among them until there is a
+    // debugger for Rust.
+    experimental: {
+      serverStatusNotification: true,
+      commands: { commands: ['rust-analyzer.runSingle', 'rust-analyzer.showReferences'] },
+    },
   };
 }
