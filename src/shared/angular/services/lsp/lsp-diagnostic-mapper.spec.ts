@@ -3,6 +3,7 @@ import {
   isErrorListDiagnostic,
   markerSeverityOf,
   markerTagsOf,
+  mergeDiagnostics,
   severityOf,
   toDiagnostic,
   toMarkerData,
@@ -124,4 +125,35 @@ describe('lsp-diagnostic-mapper', () => {
       expect(isErrorListDiagnostic({ ...diagnostic, severity, tags })).toBe(expected);
     },
   );
+});
+
+describe('mergeDiagnostics (#1210)', () => {
+  const RANGE: LspDiagnostic['range'] = {
+    start: { line: 1, character: 0 },
+    end: { line: 1, character: 4 },
+  };
+  const NATIVE: LspDiagnostic = { range: RANGE, severity: 1, message: 'from the server' };
+  const CHECK: LspDiagnostic = { range: RANGE, severity: 1, message: 'from cargo check' };
+
+  it('keepsBoth_asNeitherIsTheWholePicture', () => {
+    expect(mergeDiagnostics([NATIVE], [CHECK])).toEqual([NATIVE, CHECK]);
+  });
+
+  it('keepsTheOneThatIsThere_whenTheOtherHasNothing', () => {
+    expect(mergeDiagnostics([], [CHECK])).toEqual([CHECK]);
+    expect(mergeDiagnostics([NATIVE], [])).toEqual([NATIVE]);
+  });
+
+  it('keepsOnce_aDiagnosticBothSay', () => {
+    expect(mergeDiagnostics([NATIVE], [{ ...NATIVE }])).toEqual([NATIVE]);
+  });
+
+  it('keepsBoth_thoughTheySayTheSameThing_whenTheyAreInDifferentPlaces', () => {
+    const elsewhere: LspDiagnostic = {
+      ...NATIVE,
+      range: { start: { line: 2, character: 0 }, end: { line: 2, character: 4 } },
+    };
+
+    expect(mergeDiagnostics([NATIVE], [elsewhere])).toEqual([NATIVE, elsewhere]);
+  });
 });

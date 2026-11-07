@@ -575,6 +575,33 @@ describe('LspManager (#1015)', () => {
       expect(refreshed).toBe(1);
     });
 
+    it('aServerWithNoWorkspacePull_hasTheRefreshSentOnToTheRenderer (#1210)', async () => {
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      const forwarded: string[] = [];
+      vi.spyOn(
+        manager as unknown as { notifyRenderer(id: string, method: string): void },
+        'notifyRenderer',
+      ).mockImplementation((_id: string, method: string): void => void forwarded.push(method));
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::rust', {
+        request: { sessionId: '/root::rust', serverId: 'rust', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/diagnostic/refresh')?.(
+        undefined,
+      );
+
+      expect(answer).toBeNull();
+      expect(forwarded).toEqual(['workspace/diagnostic/refresh']);
+    });
+
     it('startsAPull_forAServerWhoseDescriptorSaysItServesThem_orWhoseCapabilitiesDo', () => {
       const pulling: (serverId: string, capabilities: unknown) => unknown[] = (
         serverId: string,
