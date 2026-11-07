@@ -621,6 +621,62 @@
                 "advanced": true
               },
               {
+                "section": "rust-analyzer.lens.enable",
+                "label": "Code Lenses",
+                "description": "Show lenses above items: running them, and how often they are used.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.run.enable",
+                "label": "Run Lenses",
+                "description": "Show Run above a main function, and Run Test above a test.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.implementations.enable",
+                "label": "Implementation Counts",
+                "description": "Show how many implementations a trait, struct or enum has above it; clicking the count lists them.",
+                "default": true
+              },
+              {
+                "section": "rust-analyzer.lens.references.adt.enable",
+                "label": "Reference Counts on Types",
+                "description": "Show how many references a struct, enum or union has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.method.enable",
+                "label": "Reference Counts on Methods",
+                "description": "Show how many references a method has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.trait.enable",
+                "label": "Reference Counts on Traits",
+                "description": "Show how many references a trait has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.lens.references.enumVariant.enable",
+                "label": "Reference Counts on Enum Variants",
+                "description": "Show how many references an enum variant has above it; clicking the count lists them.",
+                "default": false
+              },
+              {
+                "section": "rust-analyzer.workspace.symbol.search.scope",
+                "label": "Symbol Search",
+                "description": "What Go to Symbol in Workspace searches.",
+                "default": "workspace",
+                "options": [
+                  { "value": "workspace", "label": "The workspace" },
+                  {
+                    "value": "workspace_and_dependencies",
+                    "label": "The workspace and its dependencies"
+                  }
+                ],
+                "advanced": true
+              },
+              {
                 "section": "rust-analyzer.completion.autoimport.enable",
                 "label": "Complete Unimported Names",
                 "description": "Offer names that are not imported yet; accepting one adds its use.",
