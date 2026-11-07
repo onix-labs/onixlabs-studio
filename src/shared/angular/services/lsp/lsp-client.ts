@@ -47,6 +47,7 @@ import {
 import { WorkspaceEditApplier } from '@shared/angular/services/workspace-edit/workspace-edit-applier';
 import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import {
+  basename,
   isMetadataAsSource,
   isToolchainSource,
   isWithin,
@@ -100,6 +101,11 @@ const AUTOMATIC_RESTORE_SECTION: string = 'projects.dotnet_enable_automatic_rest
  * with automatic restore off, the only word it gives (#1143).
  */
 const UNRESOLVED_PROJECT: RegExp = /Project (.+?\.[a-z]+proj) has unresolved dependencies/;
+
+/**
+ * The notification in which clangd says what it is doing with a file (#1213).
+ */
+const FILE_STATUS_METHOD: string = 'textDocument/clangd.fileStatus';
 
 /**
  * The request that asks Roslyn to restore projects' packages.
@@ -2758,6 +2764,11 @@ export class LspClient implements OnDestroy {
       this.onProgress(message.sessionId, message.params);
       return;
     }
+    // clangd says what it is doing with each file (#1213): parsing, building the preamble, or idle.
+    if (message.method === FILE_STATUS_METHOD) {
+      this.onFileStatus(message.sessionId, message.params);
+      return;
+    }
     // Route the server's own logs into a per-server Output channel (created lazily on first log, so a
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
@@ -2844,6 +2855,28 @@ export class LspClient implements OnDestroy {
       this.markReady(sessionId);
       this.pullAfterLoad(sessionId);
     }
+  }
+
+  /**
+   * Shows on the session's status row what clangd says it is doing with a file (#1213). Its state reads
+   * `parsing includes, running Update`: what the file is at, then what is running behind it, of which
+   * only the first means anything to the user. `idle` clears it.
+   * @param sessionId The session the file belongs to.
+   * @param params The notification parameters (`uri` and `state`).
+   */
+  private onFileStatus(sessionId: string, params: unknown): void {
+    const { uri, state } = (params ?? {}) as { uri?: unknown; state?: unknown };
+    if (typeof uri !== 'string' || typeof state !== 'string') {
+      return;
+    }
+    const doing: string = state.split(',')[0].trim();
+    this.status.setFileActivity(
+      sessionId,
+      uri,
+      doing === 'idle' || doing.length === 0
+        ? null
+        : `${doing[0].toUpperCase()}${doing.slice(1)} — ${basename(uriToPath(uri))}`,
+    );
   }
 
   /**
