@@ -211,6 +211,32 @@ export function startupOptions(
 }
 
 /**
+ * Builds the command-line options a server's settings give it (#1213): `--flag=value` for each that
+ * differs from its default. One still at its default is left out, so the server's own default stands.
+ * @param delivery How the server takes its settings.
+ * @param declared The settings the server declares.
+ * @param values The server's values, defaults included.
+ * @returns Returns the options, in the order the delivery lists them.
+ */
+export function settingArguments(
+  delivery: LspSettingsDelivery | undefined,
+  declared: readonly LspServerSettingDescriptor[] | undefined,
+  values: LspServerSettingValues | undefined,
+): string[] {
+  const options: string[] = [];
+  for (const { section, flag } of delivery?.arguments ?? []) {
+    const value: LspServerSettingValue | undefined = values?.[section];
+    const setting: LspServerSettingDescriptor | undefined = declared?.find(
+      (candidate: LspServerSettingDescriptor): boolean => candidate.section === section,
+    );
+    if (value !== undefined && value !== setting?.default) {
+      options.push(`${flag}=${String(value)}`);
+    }
+  }
+  return options;
+}
+
+/**
  * Merges the options built from a server's settings into the `initializationOptions` its descriptor
  * resolved (the TypeScript server's `tsserver` path), object by object; the descriptor's own value
  * wins where both name the same scalar, as it says how the server is to run at all.
@@ -248,8 +274,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Determines whether a server reads a setting only when it starts (#1204), so a change to it must
- * restart the server: the setting says so, or the server neither asks for its settings nor is pushed
- * this one, leaving start-up the only time it hears of it.
+ * restart the server: the setting says so, it is passed on the command line, or the server neither
+ * asks for its settings nor is pushed this one, leaving start-up the only time it hears of it.
  * @param delivery How the server takes its settings.
  * @param setting The setting.
  * @returns Returns true when a change to it needs a restart.
@@ -258,7 +284,12 @@ export function readOnlyAtStartup(
   delivery: LspSettingsDelivery | undefined,
   setting: LspServerSettingDescriptor,
 ): boolean {
-  if (setting.startupOnly === true) {
+  if (
+    setting.startupOnly === true ||
+    delivery?.arguments?.some(
+      (argument: { section: string }): boolean => argument.section === setting.section,
+    ) === true
+  ) {
     return true;
   }
   if (delivery?.pull !== false) {

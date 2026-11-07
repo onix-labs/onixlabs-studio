@@ -626,7 +626,20 @@ function resolveContributed(profile, manifest, server, settings) {
       ? { error: 'No Python 3 runtime found.' }
       : { ...python, args: [...python.args, ...(command.args ?? [])], env: command.env, version };
   }
-  return { command: entry, args: command.args ?? [], env: command.env, version };
+  // As the registry does: the options the manifest fixes, and the settings passed on the command line
+  // that differ from their defaults.
+  const passed = (server.settingsDelivery?.arguments ?? []).flatMap(({ section, flag }) => {
+    const value = settings.serverSettings?.[server.id]?.[section];
+    const fallback = server.settings?.find((setting) => setting.section === section)?.default;
+    return value === undefined || value === fallback ? [] : [`${flag}=${value}`];
+  });
+  return {
+    command: entry,
+    args: [...(command.args ?? []), ...passed],
+    env: command.env,
+    version,
+    initializationOptions: server.initializationOptions,
+  };
 }
 
 /**

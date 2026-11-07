@@ -568,6 +568,41 @@
             "command": {
               "kind": "executable",
               "args": ["--log=error"]
+            },
+            "initializationOptions": {
+              "clangdFileStatus": true
+            },
+            "settings": [
+              {
+                "section": "clangd.clangTidy",
+                "label": "clang-tidy Checks",
+                "description": "Report what clang-tidy finds beside the compiler's own errors. The checks come from the project's .clang-tidy file. The server reads this only when it starts, so changing it restarts it.",
+                "default": true
+              },
+              {
+                "section": "clangd.headerInsertion",
+                "label": "Insert Includes",
+                "description": "Add the #include a completion needs when it is accepted. The server reads this only when it starts, so changing it restarts it.",
+                "default": "iwyu",
+                "options": [
+                  { "value": "iwyu", "label": "When a Completion Needs One" },
+                  { "value": "never", "label": "Never" }
+                ]
+              },
+              {
+                "section": "clangd.backgroundIndex",
+                "label": "Background Index",
+                "description": "Index the whole project in the background, so references and symbols are found in files that are not open. The server reads this only when it starts, so changing it restarts it.",
+                "default": true
+              }
+            ],
+            "settingsDelivery": {
+              "pull": false,
+              "arguments": [
+                { "section": "clangd.clangTidy", "flag": "--clang-tidy" },
+                { "section": "clangd.headerInsertion", "flag": "--header-insertion" },
+                { "section": "clangd.backgroundIndex", "flag": "--background-index" }
+              ]
             }
           }
         ]
