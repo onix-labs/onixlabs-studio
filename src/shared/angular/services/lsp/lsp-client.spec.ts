@@ -2413,6 +2413,124 @@ describe('LspClient', () => {
     ).toBe(true);
   });
 
+  describe('a server that says how it is (#1210)', () => {
+    const SESSION: string = '/root::typescript';
+
+    /**
+     * Opens a document against a server that has just started.
+     * @param client The client.
+     */
+    async function open(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: 'let a = 1;',
+      });
+      await flush();
+    }
+
+    it('staysStarting_whileItSaysItIsLoading_thoughDiagnosticsArrive', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('starting');
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+
+    it('isReady_onceItSaysItHasDone_andItsOpenDocumentsArePulledAgain', async () => {
+      lsp.startResult = { success: true, capabilities: { diagnosticProvider: {} } };
+      lsp.diagnosticReport = { kind: 'full', items: [] };
+      const client: LspClient = build();
+      await open(client);
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: false });
+      lsp.diagnosticReport = {
+        kind: 'full',
+        items: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+            severity: 1,
+            message: 'Only visible once the workspace has loaded',
+          },
+        ],
+      };
+
+      vi.useFakeTimers();
+      try {
+        lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+        await vi.advanceTimersByTimeAsync(5000);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(
+        diagnostics.emitted.some((diagnostic: Diagnostic): boolean =>
+          diagnostic.message.includes('Only visible once the workspace has loaded'),
+        ),
+      ).toBe(true);
+    });
+
+    it('thatCouldNotLoad_saysSoOnItsRow_inItsFirstLine_untilItCan', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'experimental/serverStatus', {
+        health: 'error',
+        quiescent: true,
+        message: 'cargo check failed\nerror: key with no value',
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+      expect(status.servers()[0].problem).toBe('cargo check failed');
+      expect(TestBed.inject(Output).snapshotOf('lsp:typescript')).toContain(
+        'error: key with no value',
+      );
+
+      lsp.notify(SESSION, 'experimental/serverStatus', { health: 'ok', quiescent: true });
+
+      expect(status.servers()[0].problem).toBeUndefined();
+    });
+
+    it('isLoggedOnce_howeverManyTimesItsStatusChanges', async () => {
+      const client: LspClient = build();
+      await open(client);
+      const said: unknown = { health: 'error', quiescent: false, message: 'Failed to load' };
+
+      lsp.notify(SESSION, 'experimental/serverStatus', said);
+      lsp.notify(SESSION, 'experimental/serverStatus', { ...(said as object), quiescent: true });
+
+      expect(
+        TestBed.inject(Output)
+          .snapshotOf('lsp:typescript')
+          .match(/Failed to load/g),
+      ).toHaveLength(1);
+    });
+
+    it('thatNeverSaysAnything_isReadyOnItsFirstDiagnostics_asBefore', async () => {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      await open(client);
+
+      lsp.notify(SESSION, 'textDocument/publishDiagnostics', {
+        uri: 'file:///root/a.ts',
+        diagnostics: [],
+      });
+
+      expect(status.stateOf(SESSION)).toBe('ready');
+    });
+  });
+
   it('crashLoop_repeatedCrashes_backOffExponentially_thenStopForGood', async () => {
     const realNow: () => number = Date.now;
     let now: number = realNow();

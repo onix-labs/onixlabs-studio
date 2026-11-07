@@ -893,6 +893,30 @@ describe('LspManager (#1015)', () => {
       );
     });
 
+    it('isToldHowTheServerLastSaidItWas_asItSaysSoOnlyWhenThatChanges (#1210)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+      const status: unknown = { health: 'error', quiescent: true, message: 'Failed to load' };
+
+      internals.forwardNotification('/root::csharp', 'experimental/serverStatus', status);
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({ method: 'experimental/serverStatus', params: status });
+    });
+
+    it('aServerThatHasSaidNothingOfHowItIs_isNotReportedOn (#1210)', async () => {
+      const internals: ManagerInternals = running(true);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
+        'experimental/serverStatus',
+      );
+    });
+
     it('theServerSayingItLoaded_isRemembered', () => {
       const internals: ManagerInternals = running(false);
 

@@ -199,5 +199,9 @@ export function clientCapabilities(): ClientCapabilities {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
     },
+    // Not in the protocol, and ignored by any server that does not know them. A server may say when it
+    // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
+    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210).
+    experimental: { serverStatusNotification: true },
   };
 }
