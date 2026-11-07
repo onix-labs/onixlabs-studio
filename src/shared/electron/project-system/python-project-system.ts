@@ -1,4 +1,4 @@
-import { Dirent } from 'node:fs';
+import { Dirent, Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -12,7 +12,9 @@ import {
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { projectInterpreter } from '../provisioning/python-environment';
+import { buildItemTree, EvaluatedItem } from './item-tree';
 import { ProjectSystem } from './project-system';
+import { declaredPackagePaths, declaresBuildSystem } from './pyproject-layout';
 import { logger } from '../logger';
 
 /**
@@ -69,6 +71,24 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>([
  * effectively the whole repository) cannot balloon the Solution Explorer.
  */
 const MAX_ITEMS: number = 5_000;
+
+/**
+ * The manifest that declares what a project packages.
+ */
+const PYPROJECT: string = 'pyproject.toml';
+
+/**
+ * The folders that hold a project's tests, which it does not declare because it does not ship them.
+ */
+const TEST_DIRECTORIES: readonly string[] = ['tests', 'test'];
+
+/**
+ * Matches the root files listed beside the declared packages: Python sources (a `main.py` is not
+ * packaged, but it is what the project runs, and a source can never crowd anything out), and the files
+ * that pin what is installed.
+ */
+const ROOT_FILE_PATTERN: RegExp =
+  /\.py$|^(requirements.*\.txt|Pipfile\.lock|poetry\.lock|pdm\.lock|uv\.lock)$/;
 
 /**
  * Reads a Python project's name from a `pyproject.toml`, from `[project].name` (PEP 621) or
@@ -155,7 +175,8 @@ export function parseSetupCfgName(setupCfg: string | null): string | null {
 /**
  * Models a Python project: a single root package identified by its manifest (PEP 621 / Poetry
  * `pyproject.toml`, setuptools `setup.py`/`setup.cfg`, or a bare `requirements.txt`/`Pipfile` layout).
- * Its files are listed straight from the root, skipping virtual-environment, cache, and build folders.
+ * Its contents are the packages and modules its `pyproject.toml` declares, or its files listed straight
+ * from the root, skipping virtual-environment, cache, and build folders, when it declares none.
  * Deliberately language-server-agnostic, like the other providers; the workspace view prestarts Pyright
  * for `python` models. As an interpreted ecosystem it declares no build actions and no target axis, so
  * the ribbon's gated controls disappear entirely — the acceptance test for the capability abstraction.
@@ -214,12 +235,6 @@ export class PythonProjectSystem implements ProjectSystem {
     };
   }
 
-  /**
-   * Lists the project's files straight from the root directory, skipping virtual-environment, cache,
-   * and build folders.
-   * @param projectPath The absolute path of the project manifest.
-   * @returns Returns the contents, or null when the directory cannot be read.
-   */
   /**
    * Resolves a run configuration into a Python launch target: the script to run, and the interpreter to
    * run it under.
@@ -286,11 +301,128 @@ export class PythonProjectSystem implements ProjectSystem {
     return null;
   }
 
+  /**
+   * Loads what the project is made of (#899): the packages and modules its `pyproject.toml` declares,
+   * its tests, its root Python files, and its manifests, so outputs and assets that share the tree stay
+   * out of the Solution Explorer; the File Explorer shows everything. The manifest is only read: a
+   * `setup.py` is never run and no build backend is called, so what a backend would have to compute
+   * counts as undeclared. A project declaring nothing that exists has its files listed straight from
+   * the root instead, skipping virtual-environment, cache, and build folders.
+   * @param projectPath The absolute path of the project manifest.
+   * @returns Returns the contents, or null when the directory cannot be read.
+   */
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
-    const budget: { remaining: number } = { remaining: MAX_ITEMS };
-    const tree: readonly ProjectItemNode[] | null = await this.listDirectory(directory, budget);
+    const tree: readonly ProjectItemNode[] | null =
+      (await this.declaredTree(projectPath, directory)) ??
+      (await this.listDirectory(directory, { remaining: MAX_ITEMS }));
     return tree === null ? null : { projectPath, tree };
+  }
+
+  /**
+   * Builds the project's contents from what its `pyproject.toml` declares. The declared packages are
+   * listed in full, data files included, since a package ships what sits in it.
+   * @param projectPath The absolute path of the project manifest.
+   * @param directory The project's directory.
+   * @returns Returns the contents, or null when nothing declared exists.
+   */
+  private async declaredTree(
+    projectPath: string,
+    directory: string,
+  ): Promise<readonly ProjectItemNode[] | null> {
+    const toml: string | null = await this.readFile(path.join(directory, PYPROJECT));
+    if (toml === null) {
+      return null;
+    }
+    const declared: readonly string[] = declaredPackagePaths(toml);
+    const candidates: readonly string[] =
+      declared.length > 0 || !declaresBuildSystem(toml) ? declared : ['src'];
+    const budget: { remaining: number } = { remaining: MAX_ITEMS };
+    const sources: string[] = [];
+    for (const candidate of candidates) {
+      sources.push(...(await this.declaredFiles(directory, candidate, budget)));
+    }
+    if (sources.length === 0) {
+      return null;
+    }
+    const tests: string[] = [];
+    for (const name of TEST_DIRECTORIES) {
+      tests.push(...(await this.declaredFiles(directory, name, budget)));
+    }
+    const files: readonly string[] = [...(await this.rootFiles(directory)), ...sources, ...tests];
+    logger.debug(
+      'PythonProjectSystem',
+      `Listed ${sources.length} declared file(s) for '${projectPath}' from its pyproject.toml.`,
+    );
+    return buildItemTree(
+      projectPath,
+      files.map((file: string): EvaluatedItem => ({
+        identity: path.relative(directory, file),
+        link: '',
+      })),
+    );
+  }
+
+  /**
+   * Lists what a declared path holds. The path comes from a file in the workspace, so one that leaves
+   * the project, or is the project itself, holds nothing.
+   * @param directory The project's directory.
+   * @param declared The declared path, relative to the project.
+   * @param budget The remaining file budget.
+   * @returns Returns the absolute paths of its files.
+   */
+  private async declaredFiles(
+    directory: string,
+    declared: string,
+    budget: { remaining: number },
+  ): Promise<readonly string[]> {
+    const full: string = path.resolve(directory, declared);
+    const relative: string = path.relative(directory, full);
+    if (relative.length === 0 || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return [];
+    }
+    let kind: Stats;
+    try {
+      // Not followed, as the listing does not follow one: a link could lead out of the project.
+      kind = await fs.lstat(full);
+    } catch {
+      return [];
+    }
+    if (kind.isFile()) {
+      return [full];
+    }
+    return kind.isDirectory() ? this.filesOf((await this.listDirectory(full, budget)) ?? []) : [];
+  }
+
+  /**
+   * Finds the files listed from the project's root: its manifests, lock files and Python sources.
+   * @param directory The project's directory.
+   * @returns Returns the absolute paths.
+   */
+  private async rootFiles(directory: string): Promise<readonly string[]> {
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    return entries
+      .filter(
+        (entry: Dirent): boolean =>
+          entry.isFile() && (MANIFESTS.includes(entry.name) || ROOT_FILE_PATTERN.test(entry.name)),
+      )
+      .map((entry: Dirent): string => path.join(directory, entry.name));
+  }
+
+  /**
+   * Flattens a listing into its files.
+   * @param nodes The listing.
+   * @returns Returns the absolute paths.
+   */
+  private filesOf(nodes: readonly ProjectItemNode[]): readonly string[] {
+    return nodes.flatMap((node: ProjectItemNode): readonly string[] =>
+      node.type === 'file' ? [node.path] : this.filesOf(node.children),
+    );
   }
 
   /**
