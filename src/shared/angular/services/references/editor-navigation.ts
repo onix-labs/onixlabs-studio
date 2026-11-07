@@ -156,6 +156,27 @@ export class EditorNavigation {
   }
 
   /**
+   * Determines whether Go to Declaration can answer for a document: the language server serving it
+   * answers `textDocument/declaration` (#1213).
+   * @param editor The editor.
+   * @returns Returns true when it does.
+   */
+  public offersDeclarations(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'declaration');
+  }
+
+  /**
+   * Determines whether Switch Header/Source can answer for a document: clangd serves it (#1213).
+   * @param editor The editor.
+   * @returns Returns true when it can.
+   */
+  public offersSourceHeader(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesNavigation(model, 'sourceHeader');
+  }
+
+  /**
    * Determines whether Go to Implementation can answer for a document: the language server serving it
    * answers `textDocument/implementation` (#1142).
    * @param editor The editor.
@@ -270,6 +291,55 @@ export class EditorNavigation {
           return uri !== undefined && this.editors.locate(uri)?.documentId === documentId;
         }) ?? null
     );
+  }
+
+  /**
+   * Goes to where the symbol at the caret is declared (#1213) — in C++, the header, where Go to
+   * Definition goes to the source file: straight there when there is one, listed when there are several.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the declaration is shown, or found not to be.
+   */
+  public goToDeclaration(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).declarations(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Goes from a C or C++ file to its header or source (#1213). Going back to a file shown in an editor
+   * leaves its caret where it was, so the two can be flipped between; otherwise it opens at the top.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once the file is shown, or found to have no counterpart.
+   */
+  public async switchSourceHeader(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    if (model === null) {
+      return;
+    }
+    const path: string | null = await this.injector.get(LspFeatures).sourceHeaderOf(model);
+    if (path === null) {
+      this.log.debug('navigation', 'The file has no header or source to switch to');
+      return;
+    }
+    const caret: MonacoApi.IPosition = instanceOf(editor)
+      ?.editor.getEditors()
+      .find((candidate: MonacoApi.editor.ICodeEditor): boolean => {
+        const shown: MonacoApi.editor.ITextModel | null = candidate.getModel();
+        return shown !== null && this.shows(shown, path);
+      })
+      ?.getPosition() ?? { lineNumber: 1, column: 1 };
+    await this.goTo(editor, {
+      path,
+      range: {
+        startLineNumber: caret.lineNumber,
+        startColumn: caret.column,
+        endLineNumber: caret.lineNumber,
+        endColumn: caret.column,
+      },
+    });
   }
 
   /**

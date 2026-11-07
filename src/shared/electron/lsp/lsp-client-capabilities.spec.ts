@@ -1,6 +1,12 @@
 import type { ClientCapabilities } from 'vscode-languageserver-protocol';
 import { clientCapabilities } from './lsp-client-capabilities';
 
+describe('clientCapabilities: Go to Declaration (#1213)', () => {
+  it('asksForDeclarations_byPathLikeADefinition', () => {
+    expect(clientCapabilities().textDocument?.declaration).toEqual({ linkSupport: false });
+  });
+});
+
 describe('clientCapabilities', () => {
   it('workspace_asksServersWhatARenamedFileChanges (#1207)', () => {
     expect(clientCapabilities().workspace?.fileOperations).toEqual({

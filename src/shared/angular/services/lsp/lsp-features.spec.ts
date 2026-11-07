@@ -17,6 +17,7 @@ import {
   hoverContents,
   LspCodeAction,
   LspCodeActionSupport,
+  LspDefinition,
   LspFeatures,
   LspFormattingSupport,
   LspCodeLensSupport,
@@ -1901,10 +1902,12 @@ describe('LspFeatures', () => {
         },
       ];
       navigationSupport = {
+        declaration: false,
         implementation: true,
         typeDefinition: true,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
@@ -1982,10 +1985,12 @@ describe('LspFeatures', () => {
 
     it('areNull_andNeverAsked_whereTheServerDoesNotOfferThem_orNoServerServes', async () => {
       navigationSupport = {
+        declaration: false,
         implementation: false,
         typeDefinition: true,
         callHierarchy: false,
         typeHierarchy: false,
+        sourceHeader: false,
       };
       const features: LspFeatures = await build();
       const model: Parameters<LspFeatures['implementations']>[0] = owned as Parameters<
@@ -2014,14 +2019,80 @@ describe('LspFeatures', () => {
     });
   });
 
+  describe('declarations and the header or source of a file (#1213)', () => {
+    const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
+    const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
+    const CLANGD: LspNavigationSupport = {
+      declaration: true,
+      implementation: false,
+      typeDefinition: false,
+      callHierarchy: false,
+      typeHierarchy: false,
+      sourceHeader: true,
+    };
+
+    it('declarations_areAnsweredByPath', async () => {
+      responses['textDocument/declaration'] = [
+        {
+          uri: 'file:///root/shapes.hpp',
+          range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+        },
+      ];
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      const found: readonly LspDefinition[] | null = await features.declarations(
+        owned as Parameters<LspFeatures['declarations']>[0],
+        at,
+      );
+
+      expect(found?.map((place: LspDefinition): string => place.path)).toEqual([
+        '/root/shapes.hpp',
+      ]);
+    });
+
+    it('sourceHeaderOf_readsTheUriClangdAnswers_askingWithTheDocumentsUri', async () => {
+      responses['textDocument/switchSourceHeader'] = 'file:///root/shapes.hpp';
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      expect(
+        await features.sourceHeaderOf(owned as Parameters<LspFeatures['sourceHeaderOf']>[0]),
+      ).toBe('/root/shapes.hpp');
+    });
+
+    it('sourceHeaderOf_isNull_whenTheFileHasNoCounterpart', async () => {
+      responses['textDocument/switchSourceHeader'] = null;
+      navigationSupport = CLANGD;
+      const features: LspFeatures = await build();
+
+      expect(
+        await features.sourceHeaderOf(owned as Parameters<LspFeatures['sourceHeaderOf']>[0]),
+      ).toBeNull();
+    });
+
+    it('neitherIsAsked_ofAServerThatDoesNotOfferThem', async () => {
+      navigationSupport = { ...CLANGD, declaration: false, sourceHeader: false };
+      const features: LspFeatures = await build();
+      const model: Parameters<LspFeatures['declarations']>[0] = owned as Parameters<
+        LspFeatures['declarations']
+      >[0];
+
+      expect(await features.declarations(model, at)).toBeNull();
+      expect(await features.sourceHeaderOf(model)).toBeNull();
+    });
+  });
+
   describe('call and type hierarchies (#1153)', () => {
     const owned: unknown = { uri: { toString: (): string => MODEL_URI } };
     const at: { lineNumber: number; column: number } = { lineNumber: 11, column: 20 };
     const HIERARCHIES: LspNavigationSupport = {
+      declaration: false,
       implementation: false,
       typeDefinition: false,
       callHierarchy: true,
       typeHierarchy: true,
+      sourceHeader: false,
     };
     const span: (line: number, from: number, to: number) => unknown = (
       line: number,
