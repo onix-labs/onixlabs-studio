@@ -304,6 +304,55 @@ export class EditorNavigation {
   }
 
   /**
+   * Determines whether Go to Parent Module can answer for a document (#1210).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersParentModule(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesParentModule(model);
+  }
+
+  /**
+   * Goes to what declares the module the caret is in (#1210): its `mod` item, or at a crate's root its
+   * `Cargo.toml`. Straight there when there is one place, listed when a file is in several crates.
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public goToParentModule(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel, position: MonacoApi.Position) =>
+        (await this.injector.get(LspFeatures).parentModules(model, position)) ?? [],
+    );
+  }
+
+  /**
+   * Determines whether Open Cargo.toml can answer for a document (#1210).
+   * @param editor The editor.
+   * @returns Returns true when the language server serving it does.
+   */
+  public offersCargoManifest(editor: MonacoApi.editor.ICodeEditor): boolean {
+    const model: MonacoApi.editor.ITextModel | null = editor.getModel();
+    return model !== null && this.injector.get(LspFeatures).servesCargoManifest(model);
+  }
+
+  /**
+   * Opens the `Cargo.toml` of the crate a document is in (#1210).
+   * @param editor The editor.
+   * @returns Returns a promise that resolves once it is shown, or found not to be.
+   */
+  public openCargoManifest(editor: MonacoApi.editor.ICodeEditor): Promise<void> {
+    return this.goToFound(
+      editor,
+      'definitions',
+      async (model: MonacoApi.editor.ITextModel) =>
+        (await this.injector.get(LspFeatures).cargoManifests(model)) ?? [],
+    );
+  }
+
+  /**
    * Goes to the source behind the symbol at the caret (#1207) — from a package's `.d.ts` to its
    * JavaScript or TypeScript: straight there when there is one, listed when there are several.
    * @param editor The editor.

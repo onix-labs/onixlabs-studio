@@ -142,8 +142,9 @@ function isOffered(provider: unknown): boolean {
 /**
  * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
  * the code that implements it (`implementationProvider`), to the declaration of its type
- * (`typeDefinitionProvider`), and up and down its call and type hierarchies (`callHierarchyProvider`,
- * `typeHierarchyProvider`, #1153).
+ * (`typeDefinitionProvider`), up and down its call and type hierarchies (`callHierarchyProvider`,
+ * `typeHierarchyProvider`, #1153), and rust-analyzer's own, from a file to its parent module and to its
+ * `Cargo.toml` (`experimental`, #1210).
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it answers.
  */
@@ -154,6 +155,7 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
         typeDefinitionProvider?: unknown;
         callHierarchyProvider?: unknown;
         typeHierarchyProvider?: unknown;
+        experimental?: { parentModule?: unknown; openCargoToml?: unknown };
       }
     | undefined = capabilities as typeof caps;
   return {
@@ -161,6 +163,8 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
     typeDefinition: isOffered(caps?.typeDefinitionProvider),
     callHierarchy: isOffered(caps?.callHierarchyProvider),
     typeHierarchy: isOffered(caps?.typeHierarchyProvider),
+    ...(caps?.experimental?.parentModule === true ? { parentModule: true } : {}),
+    ...(caps?.experimental?.openCargoToml === true ? { cargoManifest: true } : {}),
   };
 }
 

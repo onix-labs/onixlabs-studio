@@ -250,6 +250,8 @@ describe('EditorContextMenu (#1012)', () => {
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
     servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
+    servesParentModule: Mock<LspFeatures['servesParentModule']>;
+    servesCargoManifest: Mock<LspFeatures['servesCargoManifest']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -294,6 +296,8 @@ describe('EditorContextMenu (#1012)', () => {
       sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
+      servesParentModule: vi.fn<LspFeatures['servesParentModule']>((): boolean => false),
+      servesCargoManifest: vi.fn<LspFeatures['servesCargoManifest']>((): boolean => false),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -414,6 +418,28 @@ describe('EditorContextMenu (#1012)', () => {
       expect(rowOf(items, 'sourceDefinition')).toEqual({
         id: 'sourceDefinition',
         label: 'Go to Source Definition',
+      });
+    });
+
+    it('rustAnalyzersOwnNavigations_shownWhereTheServerAnswersThem_andNowhereElse (#1210)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'rust' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'parentModule')).toBeUndefined();
+      expect(rowOf(menu.itemsFor(editor), 'cargoManifest')).toBeUndefined();
+
+      lsp.servesParentModule.mockReturnValue(true);
+      lsp.servesCargoManifest.mockReturnValue(true);
+      const items: readonly MenuItem[] = menu.itemsFor(editor);
+
+      expect(rowOf(items, 'parentModule')).toEqual({
+        id: 'parentModule',
+        label: 'Go to Parent Module',
+      });
+      expect(rowOf(items, 'cargoManifest')).toEqual({
+        id: 'cargoManifest',
+        label: 'Open Cargo.toml',
       });
     });
 

@@ -2905,6 +2905,77 @@ describe('LspFeatures', () => {
     expect([...(tokens?.data ?? [])]).toEqual([0, 0, 4, 13, 8]);
   });
 
+  describe("rust-analyzer's own navigations (#1210)", () => {
+    const POSITION: { lineNumber: number; column: number } = { lineNumber: 3, column: 5 };
+    const MODEL: unknown = {
+      uri: { toString: (): string => MODEL_URI },
+      getValue: (): string => '',
+    };
+
+    it('parentModules_asksByDocumentAndPosition_takingALocationOrALink', async () => {
+      navigationSupport = {
+        implementation: false,
+        typeDefinition: false,
+        callHierarchy: false,
+        typeHierarchy: false,
+        parentModule: true,
+      };
+      responses['experimental/parentModule'] = [
+        {
+          targetUri: 'file:///root/Cargo.toml',
+          targetRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          targetSelectionRange: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          },
+        },
+      ];
+      const features: LspFeatures = await build();
+
+      const places: unknown = await features.parentModules(MODEL as never, POSITION);
+
+      expect(places).toMatchObject([{ path: '/root/Cargo.toml' }]);
+      expect(requests.at(-1)?.params).toEqual({
+        textDocument: { uri: 'file:///root/app.ts' },
+        position: { line: 2, character: 4 },
+      });
+    });
+
+    it('cargoManifests_asksByDocument', async () => {
+      navigationSupport = {
+        implementation: false,
+        typeDefinition: false,
+        callHierarchy: false,
+        typeHierarchy: false,
+        cargoManifest: true,
+      };
+      responses['experimental/openCargoToml'] = {
+        uri: 'file:///root/Cargo.toml',
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      };
+      const features: LspFeatures = await build();
+
+      expect(await features.cargoManifests(MODEL as never)).toMatchObject([
+        { path: '/root/Cargo.toml' },
+      ]);
+    });
+
+    it('anotherServer_isAskedNeither', async () => {
+      navigationSupport = {
+        implementation: true,
+        typeDefinition: true,
+        callHierarchy: true,
+        typeHierarchy: true,
+      };
+      const features: LspFeatures = await build();
+
+      expect(features.servesParentModule(MODEL as never)).toBe(false);
+      expect(features.servesCargoManifest(MODEL as never)).toBe(false);
+      expect(await features.parentModules(MODEL as never, POSITION)).toBeNull();
+      expect(await features.cargoManifests(MODEL as never)).toBeNull();
+    });
+  });
+
   it('suppressesHeuristicTokens_forAModelAServerServes', async () => {
     semanticLegend = { tokenTypes: ['type'], tokenModifiers: [] };
     await build();

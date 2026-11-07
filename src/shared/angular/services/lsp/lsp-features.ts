@@ -316,6 +316,18 @@ export interface LspNavigationSupport {
   readonly callHierarchy: boolean;
 
   /**
+   * Gets whether it answers Go to Parent Module (rust-analyzer's `experimental/parentModule`, #1210);
+   * undefined for a server with no such thing.
+   */
+  readonly parentModule?: boolean;
+
+  /**
+   * Gets whether it answers Open Cargo.toml (rust-analyzer's `experimental/openCargoToml`, #1210);
+   * undefined for a server with no such thing.
+   */
+  readonly cargoManifest?: boolean;
+
+  /**
    * Gets whether it shows a type's base and derived types (`textDocument/prepareTypeHierarchy`).
    */
   readonly typeHierarchy: boolean;
@@ -325,6 +337,16 @@ export interface LspNavigationSupport {
  * Names a navigation a server may answer beyond Go to Definition (#1142).
  */
 export type LspNavigationKind = keyof LspNavigationSupport;
+
+/**
+ * rust-analyzer's own request for the module that declares a file's (#1210).
+ */
+const PARENT_MODULE_METHOD: string = 'experimental/parentModule';
+
+/**
+ * rust-analyzer's own request for the `Cargo.toml` of a file's crate (#1210).
+ */
+const CARGO_MANIFEST_METHOD: string = 'experimental/openCargoToml';
 
 /**
  * Describes how a server formats code (#1141).
@@ -2770,6 +2792,65 @@ export class LspFeatures {
     return this.servesNavigation(model, 'implementation')
       ? this.locationsByPath(model, position, 'textDocument/implementation')
       : Promise.resolve(null);
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Go to Parent Module (#1210).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesParentModule(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.navigation?.parentModule === true;
+  }
+
+  /**
+   * Asks the language server that serves a document for what declares the module at a position, for
+   * Go to Parent Module (#1210): the `mod` item, or at a crate's root its `Cargo.toml`.
+   * @param model The editor model.
+   * @param position The one-based position.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async parentModules(
+    model: MonacoApi.editor.ITextModel,
+    position: MonacoApi.IPosition,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesParentModule(model)) {
+      return null;
+    }
+    await ref.sync?.(model.getValue());
+    const outcome: LspOutcome = await this.ask(ref, PARENT_MODULE_METHOD, {
+      textDocument: { uri: ref.uri },
+      position: { line: position.lineNumber - 1, character: position.column - 1 },
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
+  }
+
+  /**
+   * Determines whether the language server that serves a document answers Open Cargo.toml (#1210).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesCargoManifest(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model)?.navigation?.cargoManifest === true;
+  }
+
+  /**
+   * Asks the language server that serves a document for the `Cargo.toml` of its crate (#1210).
+   * @param model The editor model.
+   * @returns Returns the places, or null when the server does not answer this.
+   */
+  public async cargoManifests(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesCargoManifest(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, CARGO_MANIFEST_METHOD, {
+      textDocument: { uri: ref.uri },
+    });
+    return outcome.ok ? this.toPlaces(outcome.result) : null;
   }
 
   /**
