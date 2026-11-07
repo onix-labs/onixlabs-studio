@@ -2598,7 +2598,7 @@ describe('LspFeatures', () => {
           refused: [
             {
               path: '/root/greet.ts',
-              reason: "Creating, renaming or deleting files isn't supported yet.",
+              reason: "Renaming or deleting files isn't supported yet.",
             },
           ],
         },

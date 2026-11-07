@@ -189,6 +189,12 @@ export interface TextEditsRequest {
    * Gets the files and their edits.
    */
   readonly files: readonly DiskFileEdits[];
+
+  /**
+   * Gets the absolute paths of files to create empty, with the folders they need (#1210), or undefined
+   * for none. One that already exists is not touched, and is a failure.
+   */
+  readonly creates?: readonly string[];
 }
 
 /**

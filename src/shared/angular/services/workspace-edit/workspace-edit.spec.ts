@@ -3,6 +3,7 @@ import {
   FileTextEdits,
   fromLspWorkspaceEdit,
   movedEdits,
+  SkippedEdit,
   WorkspaceTextEdits,
 } from './workspace-edit';
 
@@ -112,7 +113,7 @@ describe('fromLspWorkspaceEdit (#1015)', () => {
             edits: [{ ...(lspEdit(2, 1, 5, 'id') as object), annotationId: 'rename' }],
           },
           { kind: 'rename', oldUri: 'file:///ws/old.ts', newUri: 'file:///ws/new.ts' },
-          { kind: 'create', uri: 'file:///ws/made.ts' },
+          { kind: 'delete', uri: 'file:///ws/made.ts' },
         ],
       },
       toPath,
@@ -186,5 +187,63 @@ describe('movedEdits (#1207)', () => {
     );
 
     expect(moved.files[0].path).toBe('C:\\root\\lib\\a.ts');
+  });
+});
+
+describe('fromLspWorkspaceEdit: creating a file (#1210)', () => {
+  it('readsAFileToCreate_besideTheEditsThatFillIt', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        documentChanges: [
+          { kind: 'create', uri: 'file:///w/src/nested.rs' },
+          {
+            textDocument: { uri: 'file:///w/src/nested.rs', version: null },
+            edits: [
+              {
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                newText: 'pub struct Inner;\n',
+              },
+            ],
+          },
+        ],
+      },
+      toPath,
+    );
+
+    expect(edits.creates).toEqual(['/w/src/nested.rs']);
+    expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+      '/w/src/nested.rs',
+    ]);
+    expect(edits.refused).toEqual([]);
+  });
+
+  it.each([{ overwrite: true }, { ignoreIfExists: true }])(
+    'refusesACreateThatAsks_%j_asAFileThereIsLeftAlone',
+    (options: object) => {
+      const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+        { documentChanges: [{ kind: 'create', uri: 'file:///w/a.rs', options }] },
+        toPath,
+      );
+
+      expect(edits.creates).toBeUndefined();
+      expect(edits.refused).toEqual([{ path: '/w/a.rs', reason: FILE_OPERATION_REFUSED }]);
+    },
+  );
+
+  it('stillRefusesRenamingAndDeleting', () => {
+    const edits: WorkspaceTextEdits = fromLspWorkspaceEdit(
+      {
+        documentChanges: [
+          { kind: 'rename', oldUri: 'file:///w/a.rs', newUri: 'file:///w/b.rs' },
+          { kind: 'delete', uri: 'file:///w/c.rs' },
+        ],
+      },
+      toPath,
+    );
+
+    expect(edits.refused.map((skipped: SkippedEdit): string => skipped.path)).toEqual([
+      '/w/a.rs',
+      '/w/c.rs',
+    ]);
   });
 });
