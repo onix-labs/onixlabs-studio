@@ -62,6 +62,16 @@ interface ServerEntry {
   readonly progress?: string;
 
   /**
+   * Gets what the server is doing with a file right now (#1213), or undefined.
+   */
+  readonly activity?: string;
+
+  /**
+   * Gets the file {@link activity} is about.
+   */
+  readonly activityUri?: string;
+
+  /**
    * Gets whether the server has been starting for longer than the watchdog allows.
    */
   readonly stalled: boolean;
@@ -118,10 +128,17 @@ export interface LspServer {
   readonly detail?: string;
 
   /**
-   * Gets what the server last reported it was doing (its work-done progress), or undefined. Only
-   * meaningful while starting: a loading server names what it is loading.
+   * Gets what the server last reported it was doing (its work-done progress), or undefined: a loading
+   * server names what it is loading, and a ready one what it still has under way, such as clangd's
+   * background index (#1213).
    */
   readonly progress?: string;
+
+  /**
+   * Gets what the server is doing with a file right now (#1213), or undefined: `Parsing includes —
+   * shapes.cpp`. Only a server that reports it (clangd) has one.
+   */
+  readonly activity?: string;
 
   /**
    * Gets whether the server has been starting for longer than the readiness watchdog allows, so the
@@ -219,6 +236,7 @@ export class LspStatus {
         state: entry.state,
         detail: entry.detail,
         progress: entry.progress,
+        activity: entry.activity,
         stalled: entry.stalled,
         notice: entry.notice,
         analysis: entry.analysis,
@@ -265,6 +283,30 @@ export class LspStatus {
     }
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     next.set(sessionId, { ...current, progress: progress ?? undefined });
+    this.entries.set(next);
+  }
+
+  /**
+   * Records what a server is doing with a file (#1213). A file going idle clears only what was said
+   * about that file: the server may have moved on to another. Ignored when the session is not tracked.
+   * @param sessionId The session reporting.
+   * @param uri The file.
+   * @param activity What it is doing, or null when it has finished.
+   */
+  public setFileActivity(sessionId: string, uri: string, activity: string | null): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || (activity === null && current.activityUri !== uri)) {
+      return;
+    }
+    if (current.activity === (activity ?? undefined)) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, {
+      ...current,
+      activity: activity ?? undefined,
+      activityUri: activity === null ? undefined : uri,
+    });
     this.entries.set(next);
   }
 

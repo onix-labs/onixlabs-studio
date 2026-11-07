@@ -56,6 +56,21 @@ describe('StatusStripLspMenu', () => {
     expect(trigger?.getAttribute('title')).toBe('Language Servers');
   });
 
+  it('statusText_aReadyServerSaysWhatItStillHasUnderWay', () => {
+    const text: (server: Partial<LspServer>) => string = (server: Partial<LspServer>): string =>
+      (
+        fixture.componentInstance as unknown as { statusText(server: LspServer): string }
+      ).statusText({ state: 'ready', ...server } as LspServer);
+
+    expect(text({})).toBe('Ready');
+    expect(text({ progress: 'indexing — 2/3 — 66%' })).toBe('indexing — 2/3 — 66%');
+    // Work on a file is the more immediate, and a notice is only there for a few seconds.
+    expect(text({ progress: 'indexing', activity: 'Parsing includes — a.cpp' })).toBe(
+      'Parsing includes — a.cpp',
+    );
+    expect(text({ activity: 'Parsing includes — a.cpp', notice: 'Said once' })).toBe('Said once');
+  });
+
   it('restart_delegatesToTheStatusRegistry', () => {
     let calls: number = 0;
     status.register('/root::java', {
