@@ -1,0 +1,12 @@
+// The remembered-grant list sits at the end of the Security page, so it grows with its rows rather than
+// scrolling inside the page; a long command is cut off and shown whole on hover.
+.remembered-grants {
+  display: block;
+  margin-block-end: 12px;
+
+  &__cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

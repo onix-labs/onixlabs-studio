@@ -10,7 +10,7 @@ vi.mock('electron', () => ({
 const { LspServerRegistry } = await import('./lsp-server-registry');
 const { parsePluginManifest } = await import('@shared/api/plugin-manifest');
 const { toLanguageServerDescriptors } = await import('../contributions/plugins/plugin-loader');
-const { answerConfiguration } = await import('./lsp-server-settings');
+const { answerConfiguration, startupOptions } = await import('./lsp-server-settings');
 const { default: CURATED } = await import('../contributions/plugins/curated-plugins.json');
 type LanguageServerDescriptor = import('./lsp-server-registry').LanguageServerDescriptor;
 type LspSettingsChange = import('./lsp-server-registry').LspSettingsChange;
@@ -174,6 +174,84 @@ describe('LspServerRegistry settings delivery (#1204)', () => {
   });
 });
 
+describe('LspServerRegistry: clangd (#1213)', () => {
+  /**
+   * Builds a registry holding the curated clangd, answering from a stand-in executable.
+   * @returns Returns the registry, and a way to set the user's values and arguments as Settings would.
+   */
+  function clangd(): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'clangd',
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const settings: ReturnType<typeof userSettings> = userSettings({});
+    // Any file that exists: the path override stands in for an install.
+    const manager: LspSettingsManager = {
+      ...settings.manager,
+      get: (): LspSettings => ({
+        ...settings.manager.get(),
+        serverPaths: { clangd: process.execPath },
+      }),
+    } as LspSettingsManager;
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      manager,
+    );
+    for (const descriptor of toLanguageServerDescriptors(manifest!)) {
+      registry.register(descriptor);
+    }
+    return { registry, settings };
+  }
+
+  it('startsAsItAlwaysDid_whileEverySettingIsAtItsDefault', async () => {
+    const { registry } = clangd();
+
+    expect((await registry.resolve('clangd', '/w')).spec?.args).toEqual(['--log=error']);
+  });
+
+  it('asksForFileStatus_whichItOnlySendsToAClientThatAsks', async () => {
+    const { registry } = clangd();
+
+    expect((await registry.resolve('clangd', '/w')).spec?.initializationOptions).toEqual({
+      clangdFileStatus: true,
+    });
+  });
+
+  it('passesEachSettingTheUserChanged_onTheCommandLine', async () => {
+    const { registry, settings } = clangd();
+    settings.change({
+      clangd: {
+        'clangd.clangTidy': false,
+        'clangd.headerInsertion': 'never',
+        'clangd.backgroundIndex': false,
+      },
+    });
+
+    expect((await registry.resolve('clangd', '/w')).spec?.args).toEqual([
+      '--log=error',
+      '--clang-tidy=false',
+      '--header-insertion=never',
+      '--background-index=false',
+    ]);
+  });
+
+  it('restartsTheServer_whenASettingChanges_asItReadsThemOnlyWhenItStarts', () => {
+    const { registry, settings } = clangd();
+    const changes: LspSettingsChange[] = [];
+    registry.onConfigurationChange((list: readonly LspSettingsChange[]): void => {
+      changes.push(...list);
+    });
+
+    settings.change({ clangd: { 'clangd.clangTidy': false } });
+
+    expect(changes).toEqual([{ serverId: 'clangd', restart: true }]);
+  });
+});
+
 describe('LspServerRegistry: the web servers (#1218, #1219)', () => {
   /**
    * Builds a registry holding the curated HTML, CSS and JSON servers, as an install of
@@ -259,5 +337,88 @@ describe('LspServerRegistry: the web servers (#1218, #1219)', () => {
       json: { validate: { enable: false } },
       http: { proxyStrictSSL: true },
     });
+  });
+});
+
+describe('LspServerRegistry: rust-analyzer (#1210)', () => {
+  /**
+   * Builds a registry holding the curated rust-analyzer server, as its install contributes it.
+   * @returns Returns the registry, the server's descriptor, and a way to change the user's values.
+   */
+  function rustAnalyzer(): {
+    readonly registry: InstanceType<typeof LspServerRegistry>;
+    readonly descriptor: LanguageServerDescriptor;
+    readonly settings: ReturnType<typeof userSettings>;
+  } {
+    const entry: unknown = (CURATED.plugins as readonly { id: string }[]).find(
+      (plugin: { id: string }): boolean => plugin.id === 'rust-analyzer',
+    );
+    const manifest: ReturnType<typeof parsePluginManifest>['manifest'] =
+      parsePluginManifest(entry).manifest;
+    const descriptor: LanguageServerDescriptor = toLanguageServerDescriptors(manifest!)[0];
+    const settings: ReturnType<typeof userSettings> = userSettings({});
+    const registry: InstanceType<typeof LspServerRegistry> = new LspServerRegistry(
+      '/electron',
+      settings.manager,
+    );
+    registry.register(descriptor);
+    return { registry, descriptor, settings };
+  }
+
+  it('startup_givesTheServerItsSettingsWithoutTheSection_asItOnlyAsksOnceToldOfAChange', () => {
+    // Started with nothing, rust-analyzer ignores every setting until the first change: it sends no
+    // `workspace/configuration` of its own at start-up.
+    const { registry, descriptor, settings } = rustAnalyzer();
+    settings.change({ rust: { 'rust-analyzer.check.command': 'clippy' } });
+
+    const options: Record<string, unknown> | undefined = startupOptions(
+      descriptor.settingsDelivery,
+      registry.configurationOf('rust'),
+    );
+
+    expect(options).toMatchObject({
+      check: { command: 'clippy' },
+      checkOnSave: true,
+      inlayHints: { typeHints: { enable: true } },
+    });
+    expect(options).not.toHaveProperty('rust-analyzer');
+  });
+
+  it('asking_isAnsweredWithTheWholeSectionNested', () => {
+    const { registry, settings } = rustAnalyzer();
+    settings.change({ rust: { 'rust-analyzer.inlayHints.typeHints.enable': false } });
+
+    const [answer]: unknown[] = answerConfiguration(registry.configurationOf('rust'), [
+      { section: 'rust-analyzer' },
+    ]);
+
+    expect(answer).toMatchObject({ inlayHints: { typeHints: { enable: false } } });
+  });
+
+  it('aChange_needsNoRestart_asTheServerAsksAgain', () => {
+    const { registry, settings } = rustAnalyzer();
+    const heard: (readonly LspSettingsChange[])[] = [];
+    registry.onConfigurationChange(
+      (changes: readonly LspSettingsChange[]): void => void heard.push(changes),
+    );
+
+    expect(registry.pullsSettings('rust')).toBe(true);
+
+    settings.change({ rust: { 'rust-analyzer.checkOnSave': false } });
+
+    expect(heard).toEqual([[{ serverId: 'rust', restart: false }]]);
+  });
+
+  it('settings_haveTitleCaseLabels_andChoicesHoldingTheirDefault', () => {
+    const { descriptor } = rustAnalyzer();
+
+    for (const setting of descriptor.settings ?? []) {
+      expect(setting.label).toMatch(/^[A-Z][a-z]*(?: (?:on|of|[A-Z][a-z]*))*$/);
+      if (setting.options !== undefined) {
+        expect(
+          setting.options.map((option: { value: unknown }): unknown => option.value),
+        ).toContain(setting.default);
+      }
+    }
   });
 });

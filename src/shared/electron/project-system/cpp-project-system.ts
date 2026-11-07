@@ -11,7 +11,14 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
-import { cmakeFromCache, CmakeTarget, readTargets, writeCodeModelQuery } from './cmake-file-api';
+import {
+  cmakeFromCache,
+  CmakeTarget,
+  compileCommandsUndecided,
+  EXPORT_COMPILE_COMMANDS,
+  readTargets,
+  writeCodeModelQuery,
+} from './cmake-file-api';
 import { buildItemTree, EvaluatedItem } from './item-tree';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
@@ -58,6 +65,12 @@ const MAKEFILE_PATTERN: RegExp = /^(GNUmakefile|[Mm]akefile)$/;
  * from. A single-config generator (Make, Ninja) places an executable at `<BUILD_DIR>/<target>`.
  */
 const BUILD_DIR: string = 'build';
+
+/**
+ * The compilation database a configure writes into the build tree, where clangd finds it unprompted:
+ * it looks in each folder above a file, and in the `build` folder of each.
+ */
+const COMPILE_COMMANDS: string = 'compile_commands.json';
 
 /**
  * The directories skipped when listing a project's files: build outputs, CMake's own metadata, and
@@ -281,9 +294,10 @@ export class CppProjectSystem implements ProjectSystem {
   /**
    * Reads a CMake project's targets from its build tree's File API reply. The tree must already be
    * configured — Studio never creates one — and Studio's code-model query is put in place on first
-   * read; when no configure has answered it yet, the tree is reconfigured once (which regenerates the
-   * build files and builds nothing). After that, CMake answers on every configure, including the ones a
-   * build runs when a `CMakeLists.txt` changes, so the reply stays current without Studio's help.
+   * read; when no configure has answered it yet, or the tree does not write `compile_commands.json` and
+   * nobody has said it should not, the tree is reconfigured once (which regenerates the build files and
+   * builds nothing). After that, CMake answers on every configure, including the ones a build runs when
+   * a `CMakeLists.txt` changes, so the reply stays current without Studio's help.
    * @param root The project's top-level source directory.
    * @returns Returns the targets, or null when the project has no configured build tree, or CMake
    * cannot be run to answer.
@@ -296,26 +310,29 @@ export class CppProjectSystem implements ProjectSystem {
       return null;
     }
     const existing: readonly CmakeTarget[] | null = await readTargets(buildDir);
-    if (existing !== null) {
+    const needsExport: boolean =
+      compileCommandsUndecided(cache) &&
+      (await this.readFile(path.join(buildDir, COMPILE_COMMANDS))) === null;
+    if (existing !== null && !needsExport) {
       return existing;
     }
     if (!(await writeCodeModelQuery(buildDir))) {
-      return null;
+      return existing;
     }
     const cmake: string = cmakeFromCache(cache) ?? 'cmake';
     logger.info('CppProjectSystem', `Configuring '${buildDir}' to read its CMake targets.`);
     try {
-      await execFileAsync(cmake, ['-S', root, '-B', buildDir], {
+      await execFileAsync(cmake, ['-S', root, '-B', buildDir, EXPORT_COMPILE_COMMANDS], {
         timeout: CONFIGURE_TIMEOUT_MS,
         killSignal: 'SIGKILL',
       });
     } catch (error: unknown) {
       logger.warn(
         'CppProjectSystem',
-        `Configuring '${buildDir}' failed; listing sources instead.`,
+        `Configuring '${buildDir}' failed; listing what was there instead.`,
         error,
       );
-      return null;
+      return existing;
     }
     return readTargets(buildDir);
   }

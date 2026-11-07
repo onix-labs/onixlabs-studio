@@ -575,6 +575,33 @@ describe('LspManager (#1015)', () => {
       expect(refreshed).toBe(1);
     });
 
+    it('aServerWithNoWorkspacePull_hasTheRefreshSentOnToTheRenderer (#1210)', async () => {
+      const manager: InstanceType<typeof LspManager> = new LspManager(
+        (): BrowserWindow | null => null,
+        new WorkspaceContext(),
+        {} as LspServerRegistry,
+        new LspApplyEditForwarder(),
+      );
+      const forwarded: string[] = [];
+      vi.spyOn(
+        manager as unknown as { notifyRenderer(id: string, method: string): void },
+        'notifyRenderer',
+      ).mockImplementation((_id: string, method: string): void => void forwarded.push(method));
+      const connection: FakeConnection = fakeConnection();
+      (manager as unknown as ManagerInternals).answerServerRequests(connection, '/root::rust', {
+        request: { sessionId: '/root::rust', serverId: 'rust', rootPath: '/root' },
+        clients: new Map<WebContents, number>(),
+        watcher: { register: (): void => undefined, unregister: (): void => undefined },
+      });
+
+      const answer: unknown = await connection.handlers.get('workspace/diagnostic/refresh')?.(
+        undefined,
+      );
+
+      expect(answer).toBeNull();
+      expect(forwarded).toEqual(['workspace/diagnostic/refresh']);
+    });
+
     it('startsAPull_forAServerWhoseDescriptorSaysItServesThem_orWhoseCapabilitiesDo', () => {
       const pulling: (serverId: string, capabilities: unknown) => unknown[] = (
         serverId: string,
@@ -890,6 +917,30 @@ describe('LspManager (#1015)', () => {
 
       expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
         'workspace/projectInitializationComplete',
+      );
+    });
+
+    it('isToldHowTheServerLastSaidItWas_asItSaysSoOnlyWhenThatChanges (#1210)', async () => {
+      const internals: ManagerInternals = running(false);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+      const status: unknown = { health: 'error', quiescent: true, message: 'Failed to load' };
+
+      internals.forwardNotification('/root::csharp', 'experimental/serverStatus', status);
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent).toContainEqual({ method: 'experimental/serverStatus', params: status });
+    });
+
+    it('aServerThatHasSaidNothingOfHowItIs_isNotReportedOn (#1210)', async () => {
+      const internals: ManagerInternals = running(true);
+      const late: { contents: WebContents; sent: { method: string; params: unknown }[] } = window();
+
+      await internals.start(START, late.contents);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(late.sent.map((entry: { method: string }): string => entry.method)).not.toContain(
+        'experimental/serverStatus',
       );
     });
 

@@ -23,9 +23,11 @@ import type {
   AiRemoteControlMode,
   AiInputReply,
   AiModelInfo,
+  AiPermissionGrant,
   AiPermissionPosture,
   AiPermissionReply,
   AiProviderInfo,
+  AiRevokePermissionGrant,
   AiRunRequest,
   AiToolPolicy,
   AiRunState,
@@ -85,6 +87,7 @@ import {
   PermissionRuleStore,
   permissionRuleKey,
   permissionRuleScope,
+  permissionRuleTool,
   permissionSessionKey,
 } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
@@ -584,6 +587,17 @@ export class AiManager {
         this.resolvePermission(reply);
       }
     });
+    ipcMain.handle(AiChannel.ListPermissionGrants, (): readonly AiPermissionGrant[] =>
+      this.rules.list(),
+    );
+    ipcMain.handle(
+      AiChannel.RevokePermissionGrant,
+      (_event: IpcMainInvokeEvent, request: unknown): boolean =>
+        this.isGrantRevocation(request) ? this.revokeGrant(request) : false,
+    );
+    ipcMain.handle(AiChannel.TakeNarrowedGrants, (): readonly string[] =>
+      this.rules.takeNarrowed(),
+    );
     ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
       logger.trace('AiManager.register', 'InputReply received');
       if (this.isInputReply(reply)) {
@@ -2191,6 +2205,18 @@ export class AiManager {
   }
 
   /**
+   * Revokes a remembered grant, with any session grant for its tool: a session grant covers the whole
+   * tool, so leaving one behind would let the next use through with no prompt after the user had just
+   * asked for one (#1164).
+   * @param request The grant to revoke.
+   * @returns Returns false when the revocation could not be saved.
+   */
+  private revokeGrant(request: AiRevokePermissionGrant): boolean {
+    this.sessionAllowed.delete(permissionRuleTool(request.key));
+    return this.rules.revoke(request.key, request.workspaceRoot);
+  }
+
+  /**
    * Asks the user a question on the agent's behalf by emitting an input-request event and awaiting the
    * renderer's answer. Resolves to null if the user declines to answer or the run aborts first.
    * @param requestId The run the question belongs to.
@@ -2378,6 +2404,22 @@ export class AiManager {
       typeof record['requestId'] === 'string' &&
       typeof record['text'] === 'string' &&
       record['text'].length > 0
+    );
+  }
+
+  /**
+   * Narrows an untrusted IPC payload to a {@link AiRevokePermissionGrant}.
+   * @param value The payload.
+   * @returns Returns true when it names a grant.
+   */
+  private isGrantRevocation(value: unknown): value is AiRevokePermissionGrant {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+    const record: Record<string, unknown> = value as Record<string, unknown>;
+    return (
+      typeof record['key'] === 'string' &&
+      (record['workspaceRoot'] === null || typeof record['workspaceRoot'] === 'string')
     );
   }
 

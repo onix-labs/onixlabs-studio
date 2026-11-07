@@ -182,6 +182,23 @@ describe('LspStatus', () => {
     expect(status.servers()[0].progress).toBeUndefined();
   });
 
+  it('setProblem_staysOnTheServer_untilCleared_throughAChangeOfState (#1210)', () => {
+    status.register('/root::rust', { serverId: 'rust', rootPath: '/root', restart: vi.fn() });
+
+    status.setProblem('/root::rust', 'Failed to load workspaces.');
+    status.setState('/root::rust', 'ready');
+    expect(status.servers()[0].problem).toBe('Failed to load workspaces.');
+
+    status.setProblem('/root::rust', undefined);
+    expect(status.servers()[0].problem).toBeUndefined();
+  });
+
+  it('setProblem_whenSessionUnknown_isIgnored', () => {
+    status.setProblem('/nowhere::rust', 'Failed');
+
+    expect(status.servers()).toEqual([]);
+  });
+
   it('setProgress_whenSessionUnknown_isIgnored', () => {
     status.setProgress('/root::csharp', 'x');
 

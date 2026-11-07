@@ -650,6 +650,29 @@ describe('FileManager', () => {
       });
     });
 
+    it('read_ofACratesSource_opensForGoToDefinition_andAWriteToItIsRefused (#1210)', async () => {
+      const cargoHome: string | undefined = process.env['CARGO_HOME'];
+      process.env['CARGO_HOME'] = path.join(outside, 'cargo');
+      try {
+        const folder: string = path.join(outside, 'cargo', 'registry', 'src', 'index', 'serde');
+        fs.mkdirSync(folder, { recursive: true });
+        const file: string = path.join(folder, 'lib.rs');
+        fs.writeFileSync(file, 'pub trait Serialize {}');
+
+        expect(await invoke<FileInfo>(FileChannel.Read, file)).toMatchObject({
+          content: 'pub trait Serialize {}',
+        });
+        expect(await invoke(FileChannel.Write, file, 'changed')).toMatchObject({ success: false });
+        expect(fs.readFileSync(file, 'utf8')).toBe('pub trait Serialize {}');
+      } finally {
+        if (cargoHome === undefined) {
+          delete process.env['CARGO_HOME'];
+        } else {
+          process.env['CARGO_HOME'] = cargoHome;
+        }
+      }
+    });
+
     it('write_ofADecompiledSource_isRefused', async () => {
       process.env['TMPDIR'] = outside;
       const folder: string = path.join(outside, 'MetadataAsSource', 'abc');

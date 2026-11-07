@@ -2,7 +2,8 @@
 // Require OS Sandbox and Auto-Allow Sandboxed Shell Commands. Kept apart from the gate so they can be
 // read, and tested, as the small decisions they are.
 
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 /**
@@ -15,6 +16,28 @@ export const SHELL_TOOL: string = 'Bash';
  * know it. Its own name is the point: nothing granted to `Bash` reaches it.
  */
 export const RUN_UNSANDBOXED: string = 'Run outside the sandbox';
+
+/**
+ * Names the permission for sandboxed commands to bind and connect to ports on this machine (#1162), as
+ * Studio's policy map knows it.
+ */
+export const LOCAL_NETWORK: string = 'Local network';
+
+/**
+ * Names the permission for sandboxed commands to reach the container engine's socket (#1162), as
+ * Studio's policy map knows it.
+ */
+export const DOCKER_SOCKET: string = 'Docker socket';
+
+/**
+ * Lists the permissions Studio's policy map carries that are not tools, so a Deny of one never reaches
+ * the SDK's list of tools to withhold.
+ */
+export const SANDBOX_PERMISSIONS: readonly string[] = [
+  RUN_UNSANDBOXED,
+  LOCAL_NETWORK,
+  DOCKER_SOCKET,
+];
 
 /**
  * Names the input that asks the SDK's shell to leave the sandbox.
@@ -85,6 +108,182 @@ export interface SandboxScope {
 }
 
 /**
+ * Describes where one opening in the sandbox stands for a session: open, closed until the user allows
+ * it, or closed because the user said so.
+ */
+export type ReachLevel = 'allow' | 'ask' | 'deny';
+
+/**
+ * Describes what a session's sandbox may reach beyond its usual limits (#1162).
+ */
+export interface SandboxReach {
+  /**
+   * Gets where ports on this machine stand.
+   */
+  readonly localPorts: ReachLevel;
+
+  /**
+   * Gets where the container engine's socket stands.
+   */
+  readonly dockerSocket: ReachLevel;
+}
+
+/**
+ * Describes the turn's settings that decide a {@link SandboxReach}.
+ */
+export interface ReachSettings {
+  /**
+   * Gets the run's posture.
+   */
+  readonly permissionPosture: 'prompt' | 'auto-edits' | 'auto-all';
+
+  /**
+   * Gets the permission levels, by name.
+   */
+  readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+}
+
+/**
+ * The sandbox as Studio has always opened it: nothing beyond its usual limits.
+ */
+const NO_REACH: SandboxReach = { localPorts: 'ask', dockerSocket: 'ask' };
+
+/**
+ * Decides one opening, in the design note's order: Denied, then the posture, then the level.
+ *
+ * Prompt All keeps an Allowed opening closed, because it asks for everything that isn't Denied (D4,
+ * #1158) and these have no prompt yet. Allow All opens an Ask only because it may leave the sandbox
+ * anyway, so opening it gives nothing away. It does not when leaving the sandbox is itself Denied: the
+ * Docker socket reaches a daemon that can mount the host, so a user who keeps agents in the sandbox
+ * must not have that opened for them by a posture.
+ *
+ * Only macOS has these knobs. The SDK ignores both on Linux, where the sandbox has no local network and
+ * cannot filter sockets by path, so nothing opens there and the agent must not be told otherwise.
+ * @param level The permission's level.
+ * @param settings The turn's settings.
+ * @param platform The platform, as Node names it.
+ * @returns Returns where the opening stands.
+ */
+function reachLevel(
+  level: 'allow' | 'ask' | 'deny',
+  settings: ReachSettings,
+  platform: NodeJS.Platform,
+): ReachLevel {
+  if (level === 'deny') {
+    return 'deny';
+  }
+  if (platform !== 'darwin' || settings.permissionPosture === 'prompt') {
+    return 'ask';
+  }
+  const posture: boolean =
+    settings.permissionPosture === 'auto-all' && settings.toolPolicies[RUN_UNSANDBOXED] !== 'deny';
+  return level === 'allow' || posture ? 'allow' : 'ask';
+}
+
+/**
+ * Decides what a session's sandbox may reach (#1162). Nothing granted to the shell has any part in
+ * this: these are permissions of their own.
+ * @param settings The turn's settings.
+ * @param platform The platform, as Node names it.
+ * @returns Returns where each opening stands.
+ */
+export function sandboxReach(
+  settings: ReachSettings,
+  platform: NodeJS.Platform = process.platform,
+): SandboxReach {
+  return {
+    localPorts: reachLevel(settings.toolPolicies[LOCAL_NETWORK] ?? 'ask', settings, platform),
+    dockerSocket: reachLevel(settings.toolPolicies[DOCKER_SOCKET] ?? 'ask', settings, platform),
+  };
+}
+
+/**
+ * Resolves a path to the socket it finally names.
+ *
+ * 🔥 A sandbox rule matches the real path and does not follow a link, so naming `/var/run/docker.sock`
+ * opens nothing: on macOS it is a link to the engine's own socket. And a rule is a subpath, so a
+ * directory would open every socket beneath it, which is why only a socket is accepted. Both were
+ * checked against the CLI.
+ * @param path The path.
+ * @returns Returns the real path, or null when it does not end at a socket.
+ */
+export function realSocket(path: string): string | null {
+  try {
+    const real: string = realpathSync(path);
+    return statSync(real).isSocket() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Finds the sockets the Docker client talks to: the system's path, Docker Desktop's own, and the one
+ * the user named in `DOCKER_HOST`. A socket published only through a `docker` context is not found, and
+ * one that isn't there yet is picked up by the first turn after it appears.
+ * @param env The environment.
+ * @param home The user's home directory.
+ * @param resolve Resolves a path to the socket it names.
+ * @returns Returns the sockets, each once.
+ */
+export function dockerSocketPaths(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+  resolve: (path: string) => string | null = realSocket,
+): readonly string[] {
+  const named: string = env['DOCKER_HOST'] ?? '';
+  const candidates: readonly string[] = [
+    '/var/run/docker.sock',
+    join(home, '.docker', 'run', 'docker.sock'),
+    ...(named.startsWith('unix:///') ? [named.slice('unix://'.length)] : []),
+  ];
+  return [
+    ...new Set<string>(
+      candidates
+        .map((candidate: string): string | null => resolve(candidate))
+        .filter((socket: string | null): socket is string => socket !== null),
+    ),
+  ];
+}
+
+/**
+ * Tells the agent where local ports stand, so it does not reach for the flag to find out.
+ * @param level Where they stand.
+ * @returns Returns the line.
+ */
+function localPortsLine(level: ReachLevel): string {
+  switch (level) {
+    case 'allow':
+      return '- Local ports: commands may bind and connect to ports on this machine.';
+    case 'deny':
+      return (
+        '- Local ports are denied by the user: a connection to localhost fails. Do not try, and do ' +
+        'not leave the sandbox to reach one.'
+      );
+    default:
+      return '- Local ports cannot be reached: a connection to localhost fails.';
+  }
+}
+
+/**
+ * Tells the agent where the Docker socket stands, so it does not reach for the flag to find out.
+ * @param level Where it stands.
+ * @returns Returns the line.
+ */
+function dockerSocketLine(level: ReachLevel): string {
+  switch (level) {
+    case 'allow':
+      return '- Docker: commands may reach the container engine through its socket.';
+    case 'deny':
+      return (
+        '- The Docker socket is denied by the user: `docker` commands fail. Do not try, and do not ' +
+        'leave the sandbox to reach it.'
+      );
+    default:
+      return '- The Docker socket cannot be reached: `docker` commands fail.';
+  }
+}
+
+/**
  * Lists paths or hosts for a sentence of the guidance.
  * @param entries The entries.
  * @returns Returns them, comma separated.
@@ -110,9 +309,14 @@ function listed(entries: readonly string[]): string {
  * Codex declines to leave its sandbox at all, and a run with no shell has nothing to be told.
  * @param scope What the sandbox was opened with.
  * @param sandboxAvailable Whether this machine has an OS sandbox.
+ * @param reach What the sandbox may reach beyond its usual limits.
  * @returns Returns the guidance.
  */
-export function sandboxGuidance(scope: SandboxScope, sandboxAvailable: boolean): string {
+export function sandboxGuidance(
+  scope: SandboxScope,
+  sandboxAvailable: boolean,
+  reach: SandboxReach = NO_REACH,
+): string {
   if (!sandboxAvailable) {
     return scope.requireSandbox === false
       ? 'This machine has no OS sandbox, so your shell commands run with no confinement beyond the ' +
@@ -136,14 +340,16 @@ export function sandboxGuidance(scope: SandboxScope, sandboxAvailable: boolean):
       (scope.deniedNetworkLocations.length > 0
         ? ` Never: ${listed(scope.deniedNetworkLocations)}.`
         : ''),
-    '- Local ports cannot be reached: a connection to localhost fails.',
+    localPortsLine(reach.localPorts),
+    dockerSocketLine(reach.dockerSocket),
     '',
     'Run commands in the sandbox. Do not set `dangerouslyDisableSandbox` because you expect a command',
     "to fail: try it first. Leaving the sandbox is the user's decision, not a routine step, and it",
     'removes the limits above. When a command does fail because of the sandbox, tell the user what was',
-    'refused. They can widen the write paths and network locations under Settings > Artificial',
-    'Intelligence > Security & Permissions. Set the flag only when they ask you to, or when the refusal',
-    'shows the command cannot work in the sandbox, and say why you are doing it.',
+    'refused. They can widen the write paths, network locations, local ports and the Docker socket',
+    'under Settings > Artificial Intelligence > Security & Permissions. Set the flag only when they ask',
+    'you to, or when the refusal shows the command cannot work in the sandbox, and say why you are',
+    'doing it.',
   ].join('\n');
 }
 

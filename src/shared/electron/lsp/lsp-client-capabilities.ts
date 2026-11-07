@@ -93,6 +93,9 @@ export function clientCapabilities(): ClientCapabilities {
       rangeFormatting: { dynamicRegistration: false },
       onTypeFormatting: { dynamicRegistration: false },
       definition: { linkSupport: false },
+      // Go to Declaration (#1213), where a language tells the two apart: a C++ function declared in a
+      // header and defined in a source file.
+      declaration: { linkSupport: false },
       // Go to Implementation and Go to Type Definition (#1142), answered by path like a definition.
       implementation: { linkSupport: false },
       typeDefinition: { linkSupport: false },
@@ -199,5 +202,9 @@ export function clientCapabilities(): ClientCapabilities {
       workDoneProgress: true,
       showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
     },
+    // Not in the protocol, and ignored by any server that does not know them. A server may say when it
+    // has finished loading and what stops it loading (`experimental/serverStatus`): rust-analyzer has
+    // no other way of saying a broken `Cargo.toml` stopped the workspace loading (#1210).
+    experimental: { serverStatusNotification: true },
   };
 }

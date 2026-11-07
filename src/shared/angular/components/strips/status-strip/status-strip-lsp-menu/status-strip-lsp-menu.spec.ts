@@ -56,6 +56,22 @@ describe('StatusStripLspMenu', () => {
     expect(trigger?.getAttribute('title')).toBe('Language Servers');
   });
 
+  it('statusText_ofAReadyServerThatSaysSomethingIsWrong_saysWhat (#1210)', () => {
+    const server: LspServer = {
+      sessionId: '/root::rust',
+      serverId: 'rust',
+      name: 'rust-analyzer',
+      rootPath: '/root',
+      state: 'ready',
+      stalled: false,
+      problem: 'Failed to load workspaces.',
+    };
+    const menu: { statusText(server: LspServer): string } = fixture.componentInstance as never;
+
+    expect(menu.statusText(server)).toBe('Failed to load workspaces.');
+    expect(menu.statusText({ ...server, problem: undefined })).toBe('Ready');
+  });
+
   it('statusText_aReadyServerSaysWhatItStillHasUnderWay', () => {
     const text: (server: Partial<LspServer>) => string = (server: Partial<LspServer>): string =>
       (

@@ -1335,6 +1335,7 @@ describe('language server settings (1.21.0, #1204)', () => {
 
     expect(server).not.toHaveProperty('settings');
     expect(server).not.toHaveProperty('settingsDelivery');
+    expect(server).not.toHaveProperty('initializationOptions');
   });
 
   it('refusesAMalformedSetting_orDelivery', () => {
@@ -1362,6 +1363,15 @@ describe('language server settings (1.21.0, #1204)', () => {
     ]);
     expect(paths({ settingsDelivery: { push: 'yaml' } })).toEqual([
       'contributes.languageServers[0].settingsDelivery.push',
+    ]);
+    expect(paths({ initializationOptions: 'yes' })).toEqual([
+      'contributes.languageServers[0].initializationOptions',
+    ]);
+    expect(
+      paths({ settingsDelivery: { arguments: [{ section: 'yaml.x', flag: 'not an option' }] } }),
+    ).toEqual(['contributes.languageServers[0].settingsDelivery.arguments[0].flag']);
+    expect(paths({ settingsDelivery: { arguments: [{ flag: '--x' }] } })).toEqual([
+      'contributes.languageServers[0].settingsDelivery.arguments[0].section',
     ]);
     expect(paths({ settingsDelivery: { pull: 'no', startup: { key: 'x' } } })).toEqual([
       'contributes.languageServers[0].settingsDelivery.pull',
