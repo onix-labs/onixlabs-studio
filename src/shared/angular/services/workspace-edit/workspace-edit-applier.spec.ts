@@ -170,14 +170,12 @@ describe('WorkspaceEditApplier (#1015)', () => {
         { path: 'inmemory://model/gone', edits: [edit(1, 1, 2, 'x')] },
         { path: '/elsewhere/b.ts', edits: [edit(1, 1, 2, 'x')] },
       ],
-      refused: [
-        { path: '/ws/old.ts', reason: "Creating, renaming or deleting files isn't supported yet." },
-      ],
+      refused: [{ path: '/ws/old.ts', reason: "Renaming or deleting files isn't supported yet." }],
     });
 
     expect(outcome.applied).toEqual([]);
     expect(outcome.skipped).toEqual([
-      { path: '/ws/old.ts', reason: "Creating, renaming or deleting files isn't supported yet." },
+      { path: '/ws/old.ts', reason: "Renaming or deleting files isn't supported yet." },
       { path: '/ws/a.ts', reason: 'Its edits overlap.' },
       { path: 'inmemory://model/gone', reason: "It isn't open, and has no file on disk." },
       { path: '/elsewhere/b.ts', reason: 'It is outside the workspace.' },
