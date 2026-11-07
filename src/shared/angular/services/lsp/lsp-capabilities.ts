@@ -143,9 +143,10 @@ function isOffered(provider: unknown): boolean {
  * Reads which of the navigations beyond Go to Definition a server answers (#1142): from a symbol to
  * its declaration (`declarationProvider`, #1213), to the code that implements it
  * (`implementationProvider`), to the declaration of its type (`typeDefinitionProvider`), up and down
- * its call and type hierarchies (`callHierarchyProvider`, `typeHierarchyProvider`, #1153), and from a
- * file to its header or source. That last is clangd's own request, which it advertises nowhere, so it
- * is known by the capability only clangd has: `compilationDatabase`.
+ * its call and type hierarchies (`callHierarchyProvider`, `typeHierarchyProvider`, #1153), from a file
+ * to its header or source, and rust-analyzer's own, from a file to its parent module and to its
+ * `Cargo.toml` (`experimental`, #1210). The header or source request is clangd's own, which it
+ * advertises nowhere, so it is known by the capability only clangd has: `compilationDatabase`.
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns which it answers.
  */
@@ -158,6 +159,7 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
         callHierarchyProvider?: unknown;
         typeHierarchyProvider?: unknown;
         compilationDatabase?: unknown;
+        experimental?: { parentModule?: unknown; openCargoToml?: unknown };
       }
     | undefined = capabilities as typeof caps;
   return {
@@ -167,6 +169,8 @@ export function navigationSupportOf(capabilities: unknown): LspNavigationSupport
     callHierarchy: isOffered(caps?.callHierarchyProvider),
     typeHierarchy: isOffered(caps?.typeHierarchyProvider),
     sourceHeader: isOffered(caps?.compilationDatabase),
+    ...(caps?.experimental?.parentModule === true ? { parentModule: true } : {}),
+    ...(caps?.experimental?.openCargoToml === true ? { cargoManifest: true } : {}),
   };
 }
 

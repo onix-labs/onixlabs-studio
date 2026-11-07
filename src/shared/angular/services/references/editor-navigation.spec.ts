@@ -133,6 +133,8 @@ describe('EditorNavigation (#1014)', () => {
     typeDefinitions: Mock<LspFeatures['typeDefinitions']>;
     servesSourceDefinition: Mock<LspFeatures['servesSourceDefinition']>;
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
+    parentModules: Mock<LspFeatures['parentModules']>;
+    cargoManifests: Mock<LspFeatures['cargoManifests']>;
     hierarchy: Mock<LspFeatures['hierarchy']>;
   };
   let opener: Mock<(path: string) => Promise<boolean>>;
@@ -182,6 +184,12 @@ describe('EditorNavigation (#1014)', () => {
       ),
       servesSourceDefinition: vi.fn<LspFeatures['servesSourceDefinition']>((): boolean => false),
       sourceDefinitions: vi.fn<LspFeatures['sourceDefinitions']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      parentModules: vi.fn<LspFeatures['parentModules']>(
+        (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
+      ),
+      cargoManifests: vi.fn<LspFeatures['cargoManifests']>(
         (): Promise<readonly LspDefinition[] | null> => Promise.resolve(null),
       ),
       hierarchy: vi.fn<LspFeatures['hierarchy']>((): Promise<HierarchySource | null> =>
@@ -399,6 +407,41 @@ describe('EditorNavigation (#1014)', () => {
       lsp.sourceDefinitions.mockResolvedValue(null);
 
       await navigation.goToSourceDefinition(fake.editor);
+
+      expect(shown).toEqual([]);
+      expect(fake.calls).not.toContain('focus');
+    });
+
+    it('aParentModule_goesStraightThere_askingAtTheCaret (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      TestBed.inject(Editors).register(MODEL_URI, {
+        documentId: 'doc-1',
+        path: '/root/app.ts',
+        name: 'app.ts',
+      });
+      lsp.parentModules.mockResolvedValue([{ path: '/root/app.ts', range: span(1, 7, 14) }]);
+
+      await navigation.goToParentModule(fake.editor);
+
+      expect(lsp.parentModules).toHaveBeenCalledWith(fake.model, { lineNumber: 2, column: 4 });
+      expect(fake.calls.some((call: string): boolean => call.includes('1:7'))).toBe(true);
+    });
+
+    it('theCargoManifest_opens (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+      lsp.cargoManifests.mockResolvedValue([{ path: '/root/Cargo.toml', range: span(1, 1, 1) }]);
+
+      await navigation.openCargoManifest(fake.editor);
+
+      expect(lsp.cargoManifests).toHaveBeenCalledWith(fake.model);
+      expect(opener).toHaveBeenCalledWith('/root/Cargo.toml');
+    });
+
+    it('noAnswerToEither_goesNowhere (#1210)', async () => {
+      const navigation: EditorNavigation = build();
+
+      await navigation.goToParentModule(fake.editor);
+      await navigation.openCargoManifest(fake.editor);
 
       expect(shown).toEqual([]);
       expect(fake.calls).not.toContain('focus');

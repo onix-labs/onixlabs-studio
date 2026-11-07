@@ -64,6 +64,12 @@ describe('navigationSupportOf (#1142)', () => {
     sourceHeader: false,
   };
 
+  it('readsRustAnalyzersOwnNavigations_fromWhatItCallsExperimental (#1210)', () => {
+    expect(
+      navigationSupportOf({ experimental: { parentModule: true, openCargoToml: true, ssr: true } }),
+    ).toEqual({ ...(NONE as object), parentModule: true, cargoManifest: true });
+  });
+
   it('readsImplementationTypeDefinitionAndHierarchies_asBooleansOrOptions', () => {
     // What Roslyn 5.13 advertises (#1153).
     expect(
