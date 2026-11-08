@@ -20,14 +20,24 @@ import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
 import { DockMinimums } from '@shared/angular/services/dock-layout/dock-minimums';
-import { DockNode, mkStack, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DockNode,
+  mkSplit,
+  mkStack,
+  StackNode,
+} from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelAvailability } from '@shared/angular/services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
-import { collectPanelIds, findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  collectPanelIds,
+  findPrimaryStack,
+  findStackOfPanel,
+  firstStackOfRole,
+} from '@shared/angular/services/dock-layout/dock-tree';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelPopout } from './panel-popout';
@@ -49,6 +59,13 @@ class StubPanel {
  */
 function tool(id: string): DockPanel {
   return { id, title: id, icon: Icon.LIST_ALL, role: 'tool', component: StubPanel };
+}
+
+/**
+ * A document panel.
+ */
+function documentPanel(id: string): DockPanel {
+  return { ...tool(id), role: 'document' };
 }
 
 /**
@@ -135,6 +152,7 @@ describe('PanelPopout', () => {
   let popped: PopoutPanels;
   let drops: ExternalDropHandler[];
   let liveDrops: Set<ExternalDropHandler>;
+  let seed: (() => DockNode) | null;
 
   /**
    * Lets the windows' membership watchers run.
@@ -165,6 +183,7 @@ describe('PanelPopout', () => {
 
   beforeEach((): void => {
     windows = new FakeWindows();
+    seed = null;
     drops = [];
     liveDrops = new Set<ExternalDropHandler>();
     const original: DockDrag['registerExternalDrop'] =
@@ -203,15 +222,20 @@ describe('PanelPopout', () => {
         {
           provide: DOCK_BLUEPRINT,
           useValue: {
-            panels: ['files', 'search', 'errors', 'agent', 'logs'].map(tool),
+            panels: [
+              ...['files', 'search', 'errors', 'agent', 'logs'].map(tool),
+              documentPanel('readme'),
+              documentPanel('notes'),
+            ],
             createLayout: (): DockNode =>
+              seed?.() ??
               ({
                 kind: 'split',
                 id: 'split',
                 orientation: 'horizontal',
                 children: [left, right],
                 sizes: [1, 1],
-              }) as unknown as DockNode,
+              } as unknown as DockNode),
           },
         },
       ],
@@ -562,6 +586,165 @@ describe('PanelPopout', () => {
       opened(1).close();
 
       expect(stackOf('search')?.panels.slice(0, 2)).toEqual(['files', 'search']);
+    });
+  });
+
+  describe('keeping the panel kind on the way home', () => {
+    /**
+     * Seeds the main dock with a fresh layout.
+     */
+    function layout(build: () => DockNode): void {
+      seed = build;
+      state.reset();
+    }
+
+    /**
+     * Seeds the main dock with a tool filling the centre on its own (no document well), tool groups
+     * on the left and at the bottom — the arrangement of an agent docked over the whole main area.
+     */
+    function toolFillsTheCentre(): void {
+      layout((): DockNode =>
+        mkSplit('row', [
+          mkStack('tool', ['files']),
+          mkSplit('col', [
+            { ...mkStack('tool', ['agent']), primary: true },
+            mkStack('tool', ['errors', 'logs']),
+          ]),
+        ]),
+      );
+    }
+
+    /**
+     * Seeds the main dock with a document well in the centre beside a tool group.
+     */
+    function documentsInTheCentre(panels: readonly string[]): void {
+      layout((): DockNode =>
+        mkSplit('row', [mkStack('tool', ['files']), mkStack('document', panels, true)]),
+      );
+    }
+
+    /**
+     * Reads the window's own drop handler.
+     */
+    function windowDrop(index: number): ExternalDropHandler {
+      const handler: ExternalDropHandler | undefined = drops[index + 1];
+      if (handler === undefined) {
+        throw new Error(`No drop handler for window ${index}`);
+      }
+      return handler;
+    }
+
+    it('toolFillingTheCentre_poppedOut_leavesAnEmptyDocumentWell', async () => {
+      toolFillsTheCentre();
+
+      popout.popOut('agent');
+      await flush();
+
+      // The precondition of the bug: the centre outlives the tool, flipped to a document well.
+      expect(findPrimaryStack(state.layout())).toMatchObject({ role: 'document', panels: [] });
+    });
+
+    it('toolFillingTheCentre_windowClosed_comesBackAsATool', async () => {
+      toolFillsTheCentre();
+      const centre: string = stackOf('agent')?.id ?? '';
+      popout.popOut('agent');
+      await flush();
+
+      opened(0).close();
+
+      expect(stackOf('agent')).toMatchObject({
+        id: centre,
+        role: 'tool',
+        primary: true,
+        panels: ['agent'],
+        active: 'agent',
+      });
+      expect(firstStackOfRole(state.layout(), 'document')).toBeNull();
+    });
+
+    it('toolFillingTheCentre_draggedBackOverTheMainWindow_comesBackAsATool', async () => {
+      toolFillsTheCentre();
+      popout.popOut('agent');
+      await flush();
+
+      windowDrop(0)(tool('agent'), drop(-1, 5, window.screenX + 1, window.screenY + 1));
+      await flush();
+
+      expect(stackOf('agent')).toMatchObject({ role: 'tool', primary: true, panels: ['agent'] });
+      expect(firstStackOfRole(state.layout(), 'document')).toBeNull();
+    });
+
+    it('toolFillingTheCentre_movedToAnotherWindowThenClosed_comesBackAsATool', async () => {
+      toolFillsTheCentre();
+      popout.popOut('agent');
+      popout.popOut('logs');
+      await flush();
+      opened(1).over = true;
+      windowDrop(0)(tool('agent'), drop(-1, 5, 500, 300));
+      await flush();
+
+      opened(1).close();
+
+      expect(stackOf('agent')).toMatchObject({ role: 'tool', primary: true, panels: ['agent'] });
+      expect(stackOf('logs')?.role).toBe('tool');
+    });
+
+    it('toolFillingTheCentre_documentOpenedMeanwhile_docksBesideItAsATool', async () => {
+      toolFillsTheCentre();
+      popout.popOut('agent');
+      await flush();
+      const well: StackNode | null = findPrimaryStack(state.layout());
+      state.tabInto(well?.id ?? '', 'readme');
+
+      opened(0).close();
+
+      expect(stackOf('agent')?.role).toBe('tool');
+      expect(stackOf('agent')?.panels).toEqual(['agent']);
+      expect(stackOf('readme')).toMatchObject({ role: 'document', panels: ['readme'] });
+    });
+
+    it('toolInAGroup_windowClosed_staysATool', async () => {
+      toolFillsTheCentre();
+      popout.popOut('logs');
+      await flush();
+
+      opened(0).close();
+
+      expect(stackOf('logs')).toMatchObject({ role: 'tool', panels: ['errors', 'logs'] });
+    });
+
+    it('document_windowClosed_comesBackToTheWell', async () => {
+      documentsInTheCentre(['readme', 'notes']);
+      popout.popOut('notes');
+      await flush();
+
+      opened(0).close();
+
+      expect(stackOf('notes')).toMatchObject({ role: 'document', panels: ['readme', 'notes'] });
+    });
+
+    it('lastDocument_windowClosed_comesBackToTheWell', async () => {
+      documentsInTheCentre(['readme']);
+      popout.popOut('readme');
+      await flush();
+
+      opened(0).close();
+
+      expect(stackOf('readme')).toMatchObject({ role: 'document', primary: true });
+    });
+
+    it('lastDocument_toolTookTheCentreMeanwhile_comesBackAsADocument', async () => {
+      documentsInTheCentre(['readme']);
+      popout.popOut('readme');
+      await flush();
+      const well: StackNode | null = findPrimaryStack(state.layout());
+      state.removeFromLayout('files');
+      state.occupyWell(well?.id ?? '', 'files');
+
+      opened(0).close();
+
+      expect(stackOf('readme')).toMatchObject({ role: 'document', panels: ['readme'] });
+      expect(stackOf('files')?.role).toBe('tool');
     });
   });
 

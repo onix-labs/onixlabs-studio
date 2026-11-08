@@ -22,7 +22,12 @@ import {
 } from '@shared/angular/components/popout-dock-host/popout-dock-host';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
-import { DockNode, StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DockNode,
+  isStackNode,
+  StackNode,
+  StackRole,
+} from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
@@ -30,7 +35,9 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   collectPanelIds,
+  findDocumentWell,
   findNode,
+  findPrimaryStack,
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
@@ -592,8 +599,12 @@ export class PanelPopout implements OnDestroy {
   }
 
   /**
-   * Restores a panel to the main dock: to the stack and tab index it left when they still exist,
-   * otherwise docked to the bottom edge.
+   * Restores a panel to the main dock, keeping its kind: to the stack and tab index it left when
+   * that stack still exists and still holds panels of the same role, otherwise docked to the bottom
+   * edge. The origin stack can outlive the panel with a DIFFERENT role: a tool filling the centre
+   * empties it on leaving, and the centre reverts to an empty document well under the same id. A
+   * tool coming home to that well occupies it again — flipping it back to a tool slot — rather than
+   * becoming a tab in it, which would give the tool a document's chrome and behaviour.
    * @param panelId The panel identifier.
    * @param origin The dock position the panel left, or null when unknown.
    */
@@ -602,8 +613,20 @@ export class PanelPopout implements OnDestroy {
     if (findStackOfPanel(tree, panelId) !== null) {
       return;
     }
-    const originStack: DockNode | null = origin === null ? null : findNode(tree, origin.stackId);
-    if (origin !== null && originStack !== null && originStack.kind === 'stack') {
+    const role: StackRole = this.registry.get(panelId)?.role ?? 'tool';
+    const found: DockNode | null = origin === null ? null : findNode(tree, origin.stackId);
+    const originStack: StackNode | null = found !== null && isStackNode(found) ? found : null;
+    if (
+      origin !== null &&
+      originStack !== null &&
+      originStack.role === 'document' &&
+      originStack.panels.length === 0 &&
+      role === 'tool'
+    ) {
+      this.dockState.occupyWell(origin.stackId, panelId);
+      return;
+    }
+    if (origin !== null && originStack !== null && originStack.role === role) {
       this.dockState.tabInto(origin.stackId, panelId);
       const placed: DockNode | null = findNode(this.dockState.layout(), origin.stackId);
       if (placed !== null && placed.kind === 'stack') {
@@ -613,8 +636,29 @@ export class PanelPopout implements OnDestroy {
           this.dockState.reorderTab(origin.stackId, from, to);
         }
       }
+    } else if (role === 'document') {
+      this.restoreDocument(panelId);
     } else {
       this.dockState.dockEdge(panelId, 'bottom');
+    }
+  }
+
+  /**
+   * Restores a document whose origin well is gone or no longer a well: into the layout's document
+   * well, or, when a tool holds the centre and no well exists, a fresh well split beside it — never
+   * an edge dock, which would make the document a tool group.
+   * @param panelId The document panel identifier.
+   */
+  private restoreDocument(panelId: string): void {
+    const tree: DockNode = this.dockState.layout();
+    const well: StackNode | null = findDocumentWell(tree);
+    if (well !== null) {
+      this.dockState.tabInto(well.id, panelId);
+      return;
+    }
+    const centre: StackNode | null = findPrimaryStack(tree) ?? firstStackOfRole(tree, 'tool');
+    if (centre !== null) {
+      this.dockState.openWellBeside(centre.id, panelId);
     }
   }
 
