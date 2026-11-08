@@ -1,0 +1,25 @@
+/* TypeScript configuration for the .NET test adapter.
+   The plugin is a separate program from Studio: it runs as its own process and talks to it only over
+   the test-adapter protocol. It shares no code with the app — the protocol, and the serve loop and
+   report readers every test adapter uses, live in `plugins/protocol/testing/` — which is the point, and
+   this config is what keeps that true rather than letting it reach back into `src/`.
+   The build is done by esbuild (see build.mjs); this config is `tsc --noEmit` only. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "rootDir": "..",
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "importHelpers": false,
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts", "../protocol/testing/*.ts"],
+  /* The specs run in Studio's unit suite, which supplies their test runner's types. */
+  "exclude": ["src/**/*.spec.ts", "../protocol/**/*.spec.ts"]
+}
