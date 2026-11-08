@@ -252,6 +252,7 @@ describe('EditorContextMenu (#1012)', () => {
     sourceDefinitions: Mock<LspFeatures['sourceDefinitions']>;
     servesParentModule: Mock<LspFeatures['servesParentModule']>;
     servesCargoManifest: Mock<LspFeatures['servesCargoManifest']>;
+    servesProjectConfiguration: Mock<LspFeatures['servesProjectConfiguration']>;
   };
   let opener: { openPath: Mock<(path: string) => Promise<boolean>> };
 
@@ -298,6 +299,9 @@ describe('EditorContextMenu (#1012)', () => {
       ),
       servesParentModule: vi.fn<LspFeatures['servesParentModule']>((): boolean => false),
       servesCargoManifest: vi.fn<LspFeatures['servesCargoManifest']>((): boolean => false),
+      servesProjectConfiguration: vi.fn<LspFeatures['servesProjectConfiguration']>(
+        (): boolean => false,
+      ),
     };
     opener = {
       openPath: vi.fn<(path: string) => Promise<boolean>>((): Promise<boolean> =>
@@ -432,6 +436,21 @@ describe('EditorContextMenu (#1012)', () => {
       expect(rowOf(items, 'sourceDefinition')).toEqual({
         id: 'sourceDefinition',
         label: 'Go to Source Definition',
+      });
+    });
+
+    it('goToProjectConfiguration_shownWhereTheServerAnswersIt (#1207)', () => {
+      const menu: EditorContextMenu = build('darwin');
+      const { editor } = fakeEditor({ language: 'typescript' });
+      lsp.servesDocument.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toBeUndefined();
+
+      lsp.servesProjectConfiguration.mockReturnValue(true);
+
+      expect(rowOf(menu.itemsFor(editor), 'projectConfiguration')).toEqual({
+        id: 'projectConfiguration',
+        label: 'Go to Project Configuration',
       });
     });
 

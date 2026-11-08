@@ -12,7 +12,12 @@ import { Bridge } from '@shared/api/bridge';
 import type { RunConfiguration } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 import { Builds } from '@shared/angular/services/tasks/builds';
-import { type FoldingProvider, Settings } from '@shared/angular/services/settings/settings';
+import {
+  type FoldingProvider,
+  type LanguageOverrides,
+  Settings,
+} from '@shared/angular/services/settings/settings';
+import { codeLensKind, CodeLensSwitches, showsCodeLensKind } from './code-lens-kinds';
 import { BUILT_IN_FORMATTER_LANGUAGES } from '@shared/angular/services/settings/settings-registry';
 import {
   LspChannel,
@@ -462,6 +467,28 @@ const SHOW_REFERENCES_COMMAND: string = 'editor.action.showReferences';
 const RUST_SHOW_REFERENCES_COMMAND: string = 'rust-analyzer.showReferences';
 
 /**
+ * The client command jdtls gives a reference lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}. It is not among the commands jdtls runs itself.
+ */
+const JAVA_SHOW_REFERENCES_COMMAND: string = 'java.show.references';
+
+/**
+ * The client command jdtls gives an implementation lens (#1208), with the same arguments as
+ * {@link SHOW_REFERENCES_COMMAND}.
+ */
+const JAVA_SHOW_IMPLEMENTATIONS_COMMAND: string = 'java.show.implementations';
+
+/**
+ * The client commands that hand a lens the places it counted, for Studio to list itself.
+ */
+const LOCATIONS_LENS_COMMANDS: ReadonlySet<string> = new Set<string>([
+  SHOW_REFERENCES_COMMAND,
+  RUST_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_REFERENCES_COMMAND,
+  JAVA_SHOW_IMPLEMENTATIONS_COMMAND,
+]);
+
+/**
  * The client command rust-analyzer gives a Run lens (#1210): its argument says what to run.
  */
 const RUST_RUN_SINGLE_COMMAND: string = 'rust-analyzer.runSingle';
@@ -484,6 +511,18 @@ const ROSLYN_RUN_TESTS: string = 'dotnet.test.run';
  * wherever a server lists this command. Its arguments are the document's URI and the position.
  */
 const SOURCE_DEFINITION_COMMAND: string = '_typescript.goToSourceDefinition';
+
+/**
+ * typescript-language-server's command that hands a request to tsserver as it is, through which Go to
+ * Project Configuration asks which `tsconfig.json` a file belongs to (#1207).
+ */
+const TSSERVER_REQUEST_COMMAND: string = 'typescript.tsserverRequest';
+
+/**
+ * Where tsserver says an inferred project's configuration is: there is none, as no `tsconfig.json` or
+ * `jsconfig.json` is above the file.
+ */
+const INFERRED_PROJECT: string = '/dev/null/';
 
 /**
  * The Monaco command a Run Test lens runs (#1150): it hands the lens's argument to the session that
@@ -770,7 +809,9 @@ const SEMANTIC_LEGEND: { tokenTypes: string[]; tokenModifiers: string[] } = {
  * Most entries are Roslyn's: for classifications the standard set has no name for, it sends custom
  * types (`recordClass`, `extensionMethod`, …). Dropping them is how a `record` came to be painted in
  * the plain text colour instead of as a type (#1137). typescript-language-server's `member` is a
- * method by the older name (#1207), and clangd's `concept` names a constraint on a type (#1213). The
+ * method by the older name (#1207), clangd's `concept` names a constraint on a type (#1213), and
+ * jdtls names annotations and records (#1208); its own modifiers (`public`, `generic`, `constructor`,
+ * …) have no standard counterpart and are dropped, as any unknown modifier is. The
  * Rust entries are the types rust-analyzer sends by default (#1210); its finer operator and punctuation
  * types are off until a setting turns them on. Names with no sensible standard equivalent —
  * punctuation, XML doc-comment parts, JSON-in-string parts, a format specifier, a name that resolves to
@@ -808,6 +849,12 @@ const TOKEN_TYPE_ALIASES: Readonly<Record<string, string>> = {
   toolModule: 'decorator',
   procMacro: 'macro',
   concept: 'type',
+  // Java's (#1208): an annotation is a decorator, and its members are declared as methods; a record
+  // is a class, and its components are its fields, coloured as jdtls colours them in the body.
+  annotation: 'decorator',
+  annotationMember: 'method',
+  record: 'class',
+  recordComponent: 'property',
   // Keywords, comments and strings. `self`, `Self`, `true` and `false` are keywords in Rust.
   controlKeyword: 'keyword',
   selfKeyword: 'keyword',
@@ -1077,6 +1124,19 @@ export class LspFeatures {
     effect((): void => {
       this.settings.defaultFormatterChoices();
       this.applyDefaultFormatter();
+    });
+    // A code-lens switch changed (#1215), globally or for a language: every editor asks again, and
+    // the lenses it shows are filtered afresh.
+    let lensChoices: string | undefined;
+    effect((): void => {
+      const choices: string = codeLensChoices(
+        this.settings.globalTextEditor(),
+        this.settings.languageOverrides(),
+      );
+      if (lensChoices !== undefined && choices !== lensChoices) {
+        this.refreshCodeLenses();
+      }
+      lensChoices = choices;
     });
   }
 
@@ -1397,6 +1457,13 @@ export class LspFeatures {
     if (ref === null || this.bridge === undefined || ref.codeLens === undefined) {
       return undefined;
     }
+    // Lenses switched off for the language are not asked for at all (#1215).
+    const switches: CodeLensSwitches = this.settings.resolveSettingsForLanguage(
+      model.getLanguageId(),
+    );
+    if (!switches.codeLens) {
+      return undefined;
+    }
     await ref.sync?.(model.getValue());
     let result: unknown;
     try {
@@ -1414,7 +1481,7 @@ export class LspFeatures {
     const lenses: MonacoApi.languages.CodeLens[] = [];
     for (const candidate of Array.isArray(result) ? (result as readonly unknown[]) : []) {
       const range: LspRange | undefined = (candidate as { range?: LspRange } | null)?.range;
-      if (range === undefined) {
+      if (range === undefined || !this.showsLens(switches, candidate)) {
         continue;
       }
       const command: { command?: MonacoApi.languages.Command } | null = this.lensCommand(
@@ -1464,7 +1531,26 @@ export class LspFeatures {
     } catch {
       return lens;
     }
+    // A lens comes filled in as a kind switched off (#1215): the server had no switch of its own to
+    // leave it out by, so it shows nothing.
+    if (!this.showsLens(this.settings.resolveSettingsForLanguage(model.getLanguageId()), result)) {
+      return { ...lens, command: { id: '', title: '' } };
+    }
     return { ...lens, ...(this.lensCommand(model, ref, result) ?? {}) };
+  }
+
+  /**
+   * Determines whether a lens is of a kind its language shows (#1215). A lens not yet filled in has no
+   * kind yet, and is shown until it is.
+   * @param switches The language's code-lens switches.
+   * @param lens The server's lens, untrusted.
+   * @returns Returns true when it is shown.
+   */
+  private showsLens(switches: CodeLensSwitches, lens: unknown): boolean {
+    const command: LspCommand | null = toCommand((lens as { command?: unknown } | null)?.command);
+    return (
+      command === null || showsCodeLensKind(switches, codeLensKind(command.command, command.title))
+    );
   }
 
   /**
@@ -1540,21 +1626,22 @@ export class LspFeatures {
             : { id: STUDIO_RUN_LENS_COMMAND, title: command.title, arguments: [configuration] },
       };
     }
-    if (
-      command.command === SHOW_REFERENCES_COMMAND ||
-      command.command === RUST_SHOW_REFERENCES_COMMAND
-    ) {
+    if (LOCATIONS_LENS_COMMANDS.has(command.command)) {
       const position: unknown =
         command.arguments?.[1] ?? (lens as { range?: LspRange } | null)?.range?.start;
       return {
         command: {
           id: STUDIO_LOCATIONS_LENS_COMMAND,
           title: command.title,
-          // Both kinds of lens send this one command: only the count's wording tells them apart.
+          // Most servers send both kinds of lens one command, so only the count's wording tells them
+          // apart; jdtls gives each its own.
           arguments: [
             model.uri.toString(),
             position,
-            /implementation/i.test(command.title) ? 'implementations' : 'references',
+            command.command === JAVA_SHOW_IMPLEMENTATIONS_COMMAND ||
+            /implementation/i.test(command.title)
+              ? 'implementations'
+              : 'references',
             this.lensPlaces(command.arguments?.[2]),
           ],
         },
@@ -1566,6 +1653,22 @@ export class LspFeatures {
           id: STUDIO_LSP_COMMAND,
           title: command.title,
           arguments: [ref.sessionId, command],
+        },
+      };
+    }
+    // A reference count with no command of its own — lua-language-server's, Svelte's — lists the
+    // references of the symbol it sits on, as any other reference count does (#1215). A count of none
+    // (TypeScript's) has nothing to list, and shows its title alone.
+    if (
+      command.command === '' &&
+      codeLensKind('', command.title) === 'references' &&
+      !/^\s*0\b/.test(command.title)
+    ) {
+      return {
+        command: {
+          id: STUDIO_REFERENCES_LENS_COMMAND,
+          title: command.title,
+          arguments: [model.uri.toString(), (lens as { range?: LspRange } | null)?.range?.start],
         },
       };
     }
@@ -2970,6 +3073,50 @@ export class LspFeatures {
   }
 
   /**
+   * Determines whether the language server that serves a document answers Go to Project Configuration:
+   * it lists tsserver's pass-through command among those it runs (#1207).
+   * @param model The editor model.
+   * @returns Returns true when it does.
+   */
+  public servesProjectConfiguration(model: MonacoApi.editor.ITextModel): boolean {
+    return (this.resolve(model)?.commands ?? []).includes(TSSERVER_REQUEST_COMMAND);
+  }
+
+  /**
+   * Asks the language server that serves a document which `tsconfig.json` or `jsconfig.json` its
+   * project is configured by, for Go to Project Configuration (#1207), as tsserver's `projectInfo`
+   * says. A file with none above it is in an inferred project, which has no configuration to go to.
+   * @param model The editor model.
+   * @returns Returns the configuration's place, none for an inferred project, or null when the server
+   * does not answer this.
+   */
+  public async projectConfigurations(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly LspDefinition[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || !this.servesProjectConfiguration(model)) {
+      return null;
+    }
+    const outcome: LspOutcome = await this.ask(ref, 'workspace/executeCommand', {
+      command: TSSERVER_REQUEST_COMMAND,
+      arguments: ['projectInfo', { file: ref.uri, needFileNameList: false }],
+    });
+    if (!outcome.ok) {
+      return null;
+    }
+    const config: unknown = (outcome.result as { body?: { configFileName?: unknown } } | null)?.body
+      ?.configFileName;
+    return typeof config === 'string' && config.length > 0 && !config.startsWith(INFERRED_PROJECT)
+      ? [
+          {
+            path: config,
+            range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+          },
+        ]
+      : [];
+  }
+
+  /**
    * Determines whether the language server that serves a document answers Go to Source Definition: it
    * lists the command among those it runs (#1207).
    * @param model The editor model.
@@ -3823,6 +3970,32 @@ function toCommand(raw: unknown): LspCommand | null {
     command: entry.command,
     ...(Array.isArray(entry.arguments) ? { arguments: entry.arguments as unknown[] } : {}),
   };
+}
+
+/**
+ * Sums up every code-lens switch, globally and for each language that overrides one (#1215), so a
+ * change to any of them is seen as one.
+ * @param global The global code settings.
+ * @param overrides Every language's overrides.
+ * @returns Returns the summary.
+ */
+function codeLensChoices(global: CodeLensSwitches, overrides: LanguageOverrides): string {
+  const pick: (from: Partial<CodeLensSwitches>) => unknown[] = (
+    from: Partial<CodeLensSwitches>,
+  ): unknown[] => [
+    from.codeLens,
+    from.codeLensReferences,
+    from.codeLensImplementations,
+    from.codeLensTests,
+    from.codeLensOther,
+  ];
+  return JSON.stringify([
+    pick(global),
+    Object.entries(overrides).map(([language, own]: [string, Partial<CodeLensSwitches>]) => [
+      language,
+      pick(own),
+    ]),
+  ]);
 }
 
 /**

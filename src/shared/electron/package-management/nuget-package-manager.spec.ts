@@ -179,6 +179,7 @@ describe('NuGetPackageManager', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     rmSync(fakeHome.tmp, { recursive: true, force: true });
     fakeHome.path = null;
   });
@@ -540,26 +541,44 @@ describe('NuGetPackageManager', () => {
       expect(toPublic.every((request) => request.authorization === undefined)).toBe(true);
     });
 
-    it('appliesARepositorysFeed_withTheUsersCredential', async () => {
-      // The usual arrangement: the repository names the feed, and the password stays out of it.
+    it('appliesARepositorysFeed_withTheUsersCredentialSavedBesideTheSameUrl', async () => {
+      // Arrange
       project('App.csproj', [['Serilog', '1.0.0']]);
       config(root, 'nuget.config', 'https://feed.example/v3/index.json', null);
-      config(fakeHome.path ?? '', userConfig(), null, 'secret');
+      config(fakeHome.path ?? '', userConfig(), 'https://feed.example/v3/index.json', 'secret');
 
+      // Act
       await load();
 
+      // Assert
       expect(
         received.find((request: Received): boolean => request.url.includes('feed.example'))
           ?.authorization,
       ).toBe(basic('secret'));
     });
 
-    // 🔥 For Matthew to rule on. Credentials are matched to a source by name after the configs merge,
-    // so a cloned repository's nuget.config that repoints a feed the user has credentials for receives
-    // those credentials the moment the workspace loads, with no prompt. Pinning a credential to the
-    // URL it was saved beside would break the arrangement in the test above, which is the normal one
-    // (a repository naming a feed whose password lives in the user's config), so it is a design call.
-    it.fails('keepsAUsersCredential_fromAFeedARepositoryRepointed', async () => {
+    it('load_userCredentialSavedWithoutItsFeed_isSentToNoFeedARepositoryNames', async () => {
+      // Arrange: a credential saved with no URL beside it cannot be told apart from one a repository
+      // is fishing for, so it goes nowhere.
+      project('App.csproj', [['Serilog', '1.0.0']]);
+      config(root, 'nuget.config', 'https://feed.example/v3/index.json', null);
+      config(fakeHome.path ?? '', userConfig(), null, 'secret');
+
+      // Act
+      await load();
+
+      // Assert
+      const toFeed: readonly Received[] = received.filter((request: Received): boolean =>
+        request.url.includes('feed.example'),
+      );
+      expect(toFeed.length).toBeGreaterThan(0);
+      expect(
+        toFeed.every((request: Received): boolean => request.authorization === undefined),
+      ).toBe(true);
+    });
+
+    // #1365: a credential is bound to the URL its source had in the config that saved it.
+    it('keepsAUsersCredential_fromAFeedARepositoryRepointed', async () => {
       project('App.csproj', [['Serilog', '1.0.0']]);
       config(fakeHome.path ?? '', userConfig(), 'https://feed.example/v3/index.json', 'secret');
       config(root, 'nuget.config', 'https://attacker.example/v3/index.json', null);
@@ -570,6 +589,69 @@ describe('NuGetPackageManager', () => {
         received.find((request: Received): boolean => request.url.includes('attacker.example'))
           ?.authorization,
       ).toBeUndefined();
+    });
+
+    it('load_repositoryConfigReferencesAnEnvironmentVariable_sendsNoCredential', async () => {
+      // Arrange
+      vi.stubEnv('STUDIO_SPEC_NUGET_TOKEN', 'from-environment');
+      project('App.csproj', [['Serilog', '1.0.0']]);
+      config(
+        root,
+        'nuget.config',
+        'https://attacker.example/v3/index.json',
+        '%STUDIO_SPEC_NUGET_TOKEN%',
+      );
+
+      // Act
+      await load();
+
+      // Assert
+      const toAttacker: readonly Received[] = received.filter((request: Received): boolean =>
+        request.url.includes('attacker.example'),
+      );
+      expect(toAttacker.length).toBeGreaterThan(0);
+      expect(
+        toAttacker.every((request: Received): boolean => request.authorization === undefined),
+      ).toBe(true);
+    });
+
+    it('load_userConfigReferencesAnEnvironmentVariable_sendsIt', async () => {
+      // Arrange
+      vi.stubEnv('STUDIO_SPEC_NUGET_TOKEN', 'from-environment');
+      project('App.csproj', [['Serilog', '1.0.0']]);
+      config(
+        fakeHome.path ?? '',
+        userConfig(),
+        'https://feed.example/v3/index.json',
+        '%STUDIO_SPEC_NUGET_TOKEN%',
+      );
+
+      // Act
+      await load();
+
+      // Assert
+      expect(
+        received.find((request: Received): boolean => request.url.includes('feed.example'))
+          ?.authorization,
+      ).toBe(basic('from-environment'));
+    });
+
+    it('load_plainHttpFeed_sendsNoCredential', async () => {
+      // Arrange
+      project('App.csproj', [['Serilog', '1.0.0']]);
+      config(root, 'nuget.config', 'http://feed.example/v3/index.json', 'secret');
+
+      // Act
+      await load();
+
+      // Assert
+      const toFeed: readonly Received[] = received.filter((request: Received): boolean =>
+        request.url.startsWith('http://feed.example/'),
+      );
+      expect(toFeed.length).toBeGreaterThan(0);
+      expect(
+        toFeed.every((request: Received): boolean => request.authorization === undefined),
+      ).toBe(true);
     });
 
     it('goesWithoutThePublicFeed_whenAConfigClearsIt', async () => {
