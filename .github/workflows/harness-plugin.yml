@@ -40,6 +40,7 @@ on:
         'plugin-neo4j-engine-v*',
         'plugin-npm-v*',
         'plugin-nuget-v*',
+        'plugin-go-modules-v*',
         'plugin-dotnet-tests-v*',
         'plugin-js-tests-v*',
         'plugin-python-tests-v*',
