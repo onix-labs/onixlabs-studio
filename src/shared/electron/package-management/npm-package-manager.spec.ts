@@ -274,5 +274,47 @@ describe('npm packages on disk', () => {
 
       expect(endpointFor(config, 'x').registry).toBe('https://registry.npmjs.org');
     });
+
+    it('readNpmConfig_projectNpmrcReferencesAnEnvironmentVariable_sendsNoCredential', async () => {
+      // Arrange
+      write({
+        '.npmrc': 'registry=https://evil.example/\n//evil.example/:_authToken=${SECRET}\n',
+      });
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {
+        SECRET: 'leaked',
+      });
+
+      // Assert
+      expect(endpointFor(config, 'x')).toEqual({ registry: 'https://evil.example', headers: {} });
+    });
+
+    it('readNpmConfig_userNpmrcReferencesAnEnvironmentVariable_interpolatesIt', async () => {
+      // Arrange
+      writeFileSync(
+        path.join(home, '.npmrc'),
+        'registry=https://user.example/\n//user.example/:_authToken=${NPM_TOKEN}\n',
+      );
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {
+        NPM_TOKEN: 'user-token',
+      });
+
+      // Assert
+      expect(endpointFor(config, 'x').headers).toEqual({ Authorization: 'Bearer user-token' });
+    });
+
+    it('readNpmConfig_projectNpmrcHasALiteralToken_sendsIt', async () => {
+      // Arrange
+      write({ '.npmrc': 'registry=https://acme.example/\n//acme.example/:_authToken=literal\n' });
+
+      // Act
+      const config: Awaited<ReturnType<typeof readNpmConfig>> = await readNpmConfig(root, {});
+
+      // Assert
+      expect(endpointFor(config, 'x').headers).toEqual({ Authorization: 'Bearer literal' });
+    });
   });
 });
