@@ -1,4 +1,4 @@
-import { DestroyRef, effect, inject, OnDestroy, Service, untracked } from '@angular/core';
+import { DestroyRef, effect, inject, Injector, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
@@ -8,6 +8,7 @@ import {
   LspAttachDebuggerRequest,
   LspIndentationReply,
   LspIndentationRequest,
+  LspShowDocumentRequest,
   LspShowMessageReply,
   LspShowMessageRequest,
   LspBraceStyle,
@@ -90,6 +91,8 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import { LspStatus } from './lsp-status';
 import { completionSupportOf, signatureHelpSupportOf } from './lsp-completion';
 
@@ -1203,6 +1206,22 @@ export class LspClient implements OnDestroy {
   private showMessageDisposer: (() => void) | null = null;
 
   /**
+   * Disposes the subscription to a server's pages and files to show (#1211), or null when not subscribed.
+   */
+  private showDocumentDisposer: (() => void) | null = null;
+
+  /**
+   * Holds the opener of a server's web pages, which asks first when the user's settings say to.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the injector the editor navigation is resolved from as it is needed: it reaches the language
+   * features, which reach back here.
+   */
+  private readonly injector: Injector = inject(Injector);
+
+  /**
    * Holds the toast key of each server question waiting for the user (#1154), by request identifier.
    */
   private readonly questions: Map<string, string> = new Map<string, string>();
@@ -1359,6 +1378,10 @@ export class LspClient implements OnDestroy {
     );
     this.indentationDisposer = this.bridge.on(LspChannel.Indentation, (...args: unknown[]): void =>
       this.onIndentation(args[0] as LspIndentationRequest),
+    );
+    this.showDocumentDisposer = this.bridge.on(
+      LspChannel.ShowDocument,
+      (...args: unknown[]): void => this.onShowDocument(args[0] as LspShowDocumentRequest),
     );
     this.featuresDisposer = this.features.registerDocuments((path: string): LspDocumentRef | null =>
       this.resolveDocument(path),
@@ -2271,6 +2294,7 @@ export class LspClient implements OnDestroy {
     this.attachDebuggerDisposer?.();
     this.showMessageDisposer?.();
     this.indentationDisposer?.();
+    this.showDocumentDisposer?.();
     for (const timer of this.analysisTimers.values()) {
       clearTimeout(timer);
     }
@@ -3296,6 +3320,41 @@ export class LspClient implements OnDestroy {
       route: 'toast-only',
       onDismiss: (): void => this.answerQuestion(request.requestId, null),
     });
+  }
+
+  /**
+   * Shows what a server asked to (#1211): a web page in the browser — gopls's Browse Documentation
+   * serves one of its own — through the same opener as any link from content, so it asks first when
+   * the user's settings say to; a file in an editor, its range selected. A session another client owns
+   * is left to it.
+   * @param request The server's request, from the main process.
+   */
+  private onShowDocument(request: LspShowDocumentRequest): void {
+    if (!this.ownsSession(request.sessionId)) {
+      return;
+    }
+    if (request.external) {
+      void this.shell.openExternal(request.uri, 'content');
+      return;
+    }
+    const start: { line: number; character: number } = request.selection?.start ?? {
+      line: 0,
+      character: 0,
+    };
+    const end: { line: number; character: number } = request.selection?.end ?? start;
+    void this.injector.get(EditorNavigation).goTo(
+      null,
+      {
+        path: uriToPath(request.uri),
+        range: {
+          startLineNumber: start.line + 1,
+          startColumn: start.character + 1,
+          endLineNumber: end.line + 1,
+          endColumn: end.character + 1,
+        },
+      },
+      request.selection !== undefined,
+    );
   }
 
   /**
