@@ -1,5 +1,5 @@
 {
-  "revision": 62,
+  "revision": 64,
   "plugins": [
     {
       "id": "pyright",
@@ -48,10 +48,65 @@
             "id": "pyright",
             "displayName": "Pyright",
             "languages": ["python"],
-            "priority": 100,
+            "priority": 50,
             "command": {
               "kind": "node"
-            }
+            },
+            "settings": [
+              {
+                "section": "python.pythonPath",
+                "label": "Python Interpreter",
+                "description": "The interpreter whose installed packages Pyright resolves imports from. The default is the workspace's own .venv; when there is none, Pyright uses the Python on your PATH.",
+                "default": "${workspaceFolder}/.venv/bin/python"
+              },
+              {
+                "section": "python.analysis.typeCheckingMode",
+                "label": "Type Checking",
+                "description": "How strictly Pyright checks types: Off reports only syntax and import errors, Strict everything it can.",
+                "default": "standard",
+                "options": [
+                  {
+                    "value": "off",
+                    "label": "Off"
+                  },
+                  {
+                    "value": "basic",
+                    "label": "Basic"
+                  },
+                  {
+                    "value": "standard",
+                    "label": "Standard"
+                  },
+                  {
+                    "value": "strict",
+                    "label": "Strict"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files Pyright checks for the Error List: the files you have open, or every file in the workspace, open or not.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ]
+              },
+              {
+                "section": "python.analysis.autoImportCompletions",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen.",
+                "default": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -103,10 +158,56 @@
             "id": "ty",
             "displayName": "ty (Astral)",
             "languages": ["python"],
-            "priority": 50,
+            "priority": 100,
             "command": {
               "kind": "executable",
               "args": ["server"]
+            },
+            "settings": [
+              {
+                "section": "ty.diagnosticMode",
+                "label": "Errors and Warnings",
+                "description": "Which files ty checks for the Error List: the files you have open, or every file in the workspace, open or not. ty reads this only when it starts, so changing it restarts the server.",
+                "default": "openFilesOnly",
+                "options": [
+                  {
+                    "value": "openFilesOnly",
+                    "label": "Open files"
+                  },
+                  {
+                    "value": "workspace",
+                    "label": "Whole workspace"
+                  }
+                ],
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.variableTypes",
+                "label": "Variable Types",
+                "description": "Show the type ty infers for a variable that does not name one, after its name. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.inlayHints.callArgumentNames",
+                "label": "Parameter Names",
+                "description": "Show the name of the parameter each argument is passed to, before the argument. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true
+              },
+              {
+                "section": "ty.completions.autoImport",
+                "label": "Auto-Import Suggestions",
+                "description": "Suggest names from modules the file does not import yet, adding the import when one is chosen. ty reads this only when it starts, so changing it restarts the server.",
+                "default": true,
+                "startupOnly": true,
+                "advanced": true
+              }
+            ],
+            "settingsDelivery": {
+              "startup": {
+                "section": "ty"
+              }
             }
           }
         ]
@@ -162,7 +263,21 @@
             "priority": 100,
             "command": {
               "kind": "executable"
-            }
+            },
+            "settings": [
+              {
+                "section": "Lua.hint.enable",
+                "label": "Inlay Hints",
+                "description": "Show the server's hints in the code: parameter names, and the types of locals and returns.",
+                "default": true
+              },
+              {
+                "section": "Lua.diagnostics.enable",
+                "label": "Check Lua",
+                "description": "Report syntax errors, undefined globals and the like in the Error List.",
+                "default": true
+              }
+            ]
           }
         ]
       }
@@ -206,6 +321,9 @@
             "priority": 100,
             "command": {
               "kind": "executable"
+            },
+            "settingsDelivery": {
+              "pull": false
             }
           }
         ]
@@ -302,7 +420,28 @@
             "priority": 100,
             "command": {
               "kind": "node"
-            }
+            },
+            "settings": [
+              {
+                "section": "yaml.format.enable",
+                "label": "Formatting",
+                "description": "Let Format Document and Format Selection lay out YAML files.",
+                "default": true
+              },
+              {
+                "section": "yaml.validate",
+                "label": "Check YAML",
+                "description": "Report syntax errors, and values a file's schema does not allow.",
+                "default": true
+              },
+              {
+                "section": "yaml.schemaStore.enable",
+                "label": "Schemas From SchemaStore",
+                "description": "Match well-known files, such as GitHub workflows and Compose files, to their schemas from schemastore.org, which needs the network.",
+                "default": true,
+                "advanced": true
+              }
+            ]
           }
         ]
       }
@@ -355,6 +494,9 @@
             "priority": 100,
             "command": {
               "kind": "node"
+            },
+            "settingsDelivery": {
+              "pull": false
             }
           }
         ]
@@ -903,6 +1045,60 @@
               "kind": "executable",
               "args": ["--interpreter=vscode"]
             }
+          }
+        ]
+      }
+    },
+    {
+      "id": "codelldb",
+      "name": "Rust Debugger (CodeLLDB)",
+      "description": "Debug Rust programs and tests.",
+      "version": "1.12.3",
+      "apiVersion": "1.0.0",
+      "detail": "Vadim Chugunov’s MIT-licensed LLDB front end, with its own LLDB build. On macOS it uses Apple’s debugserver, from Xcode or the Command Line Tools.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-darwin-arm64.vsix",
+            "sha256": "2f114a990e1b368dd1dbd33c80c0e719767af2d228391ec0df0571c957f9ac91",
+            "archive": "zip",
+            "executablePath": "extension/adapter/codelldb"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-darwin-x64.vsix",
+            "sha256": "e25cc716b94c62c07fec268ff2785d2b797245b160502baef8b9c970a0c4d8e8",
+            "archive": "zip",
+            "executablePath": "extension/adapter/codelldb"
+          },
+          "linux-x64": {
+            "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-linux-x64.vsix",
+            "sha256": "1cd7f386598022b51a5b93b9ffa23e812b23f519cfe1833384ec4bef4bfd1be1",
+            "archive": "zip",
+            "executablePath": "extension/adapter/codelldb"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-linux-arm64.vsix",
+            "sha256": "0887f67d440554617894266f80706b700907c36b95e6e49d23b95a0e05318101",
+            "archive": "zip",
+            "executablePath": "extension/adapter/codelldb"
+          },
+          "win32-x64": {
+            "url": "https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-win32-x64.vsix",
+            "sha256": "a916e509308dac817732f63ca604a8b93ed29cd16f38a2fa9f0b64ed58e8f51a",
+            "archive": "zip",
+            "executablePath": "extension/adapter/codelldb.exe"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "codelldb",
+            "displayName": "Rust (CodeLLDB)",
+            "languages": ["rust"],
+            "priority": 100,
+            "command": { "kind": "executable" }
           }
         ]
       }

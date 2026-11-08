@@ -74,7 +74,8 @@ describe('RustProjectSystem', () => {
       provider.capabilities.buildConfigurations.map((c: { id: string }): string => c.id),
     ).toEqual(['dev', 'release']);
     expect(provider.capabilities.target?.kind).toBe('target-triple');
-    expect(provider.capabilities.debug).toBeNull();
+    // CodeLLDB, which the Plugin Manager installs (#1210).
+    expect(provider.capabilities.debug).toEqual({ adapter: 'codelldb' });
   });
 
   it('ownsCargoManifestsOnly', () => {

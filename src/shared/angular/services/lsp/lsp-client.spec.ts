@@ -5,6 +5,7 @@ import {
 } from '@shared/angular/services/settings/settings-registry';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
@@ -36,8 +37,11 @@ import type {
   WorkspaceTextEdits,
 } from '@shared/angular/services/workspace-edit/workspace-edit';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { CodeLensServerSync } from './code-lens-server-sync';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DebugAttachRouter } from '@shared/angular/services/debug-attach/debug-attach-router';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { EditorNavigation } from '@shared/angular/services/references/editor-navigation';
 import {
   Notification,
   NotificationAction,
@@ -47,6 +51,8 @@ import {
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus, NOTICE_MS } from './lsp-status';
 import { EditorConfigs } from '@shared/angular/services/editor-config/editor-configs';
+import { Editors } from '@shared/angular/services/editors/editors';
+import type * as MonacoApi from 'monaco-editor';
 
 /**
  * The registered servers these tests run against, standing in for the catalogue the real settings
@@ -103,6 +109,12 @@ class FakeLsp implements Bridge {
 
   public attachDebugger(request: unknown): void {
     this.attachListener?.(request);
+  }
+
+  private showDocumentListener: ((...args: unknown[]) => void) | null = null;
+
+  public showDocument(request: unknown): void {
+    this.showDocumentListener?.(request);
   }
 
   public ask(request: unknown): void {
@@ -204,6 +216,12 @@ class FakeLsp implements Bridge {
       this.attachListener = listener;
       return (): void => {
         this.attachListener = null;
+      };
+    }
+    if (channel === (LspChannel.ShowDocument as string)) {
+      this.showDocumentListener = listener;
+      return (): void => {
+        this.showDocumentListener = null;
       };
     }
     if (channel === (LspChannel.ShowMessage as string)) {
@@ -409,6 +427,8 @@ describe('LspClient', () => {
             },
           },
         },
+        // The servers' own lens switches are kept in step elsewhere (#1215).
+        { provide: CodeLensServerSync, useValue: {} },
         {
           provide: LspSettings,
           useValue: {
@@ -450,6 +470,79 @@ describe('LspClient', () => {
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  describe('pages and files a server asks to show (#1211)', () => {
+    /**
+     * Opens a C# document, starting the Roslyn session.
+     * @param client The client.
+     */
+    async function openCsharp(client: LspClient): Promise<void> {
+      client.syncDocument({
+        documentId: 'a',
+        path: '/root/A.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+    }
+
+    it('aWebPage_opensThroughTheShell_asContent', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'http://127.0.0.1:6060/gopls/pkg',
+        external: true,
+      });
+
+      expect(open).toHaveBeenCalledWith('http://127.0.0.1:6060/gopls/pkg', 'content');
+    });
+
+    it('aFile_opensInAnEditor_withItsRangeSelected', async () => {
+      const client: LspClient = build();
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({
+        sessionId: '/root::csharp',
+        uri: 'file:///root/B.cs',
+        external: false,
+        selection: { start: { line: 2, character: 4 }, end: { line: 2, character: 9 } },
+      });
+
+      expect(goTo).toHaveBeenCalledWith(
+        null,
+        {
+          path: '/root/B.cs',
+          range: { startLineNumber: 3, startColumn: 5, endLineNumber: 3, endColumn: 10 },
+        },
+        true,
+      );
+    });
+
+    it('aRequestForASessionThisWindowDoesNotHold_isLeftAlone', async () => {
+      const client: LspClient = build();
+      const open: MockInstance<Shell['openExternal']> = vi
+        .spyOn(TestBed.inject(Shell), 'openExternal')
+        .mockResolvedValue(undefined);
+      const goTo: MockInstance<EditorNavigation['goTo']> = vi
+        .spyOn(TestBed.inject(EditorNavigation), 'goTo')
+        .mockResolvedValue(undefined);
+      await openCsharp(client);
+
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'https://go.dev', external: true });
+      lsp.showDocument({ sessionId: '/elsewhere::go', uri: 'file:///x.go', external: false });
+
+      expect(open).not.toHaveBeenCalled();
+      expect(goTo).not.toHaveBeenCalled();
+    });
   });
 
   describe('server questions and notices (#1154)', () => {
@@ -1838,6 +1931,21 @@ describe('LspClient', () => {
     expect(lsp.notificationsTo('didOpen')).toHaveLength(1);
   });
 
+  it('syncDocument_aViewStudioWroteFromAServersAnswer_isNoServersBusiness (#1210)', async () => {
+    // A macro's expansion, read by rust-analyzer as a file of its own, would only be a stray file.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/tmp/x/MetadataAsSource/StudioViews/1a2b/square! expanded.rs',
+      languageId: 'csharp',
+      content: 'side * side',
+    });
+    await flush();
+
+    expect(lsp.starts).toEqual([]);
+    expect(lsp.notificationsTo('didOpen')).toEqual([]);
+  });
+
   it('syncDocument_rustsStandardLibraryOutsideTheRoot_joinsTheWorkspaceSession (#1210)', async () => {
     // Hover and further navigation inside `Option` work only against the session that loaded it.
     const client: LspClient = build();
@@ -2070,6 +2178,23 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(0);
   });
 
+  it('theTypescriptTheServerSaysItRunsWith_showsOnItsRow (#1207)', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: '5.9.3', source: 'bundled' });
+    lsp.notify('/root::typescript', '$/typescriptVersion', { version: 42 });
+
+    expect(status.servers()[0].version).toBe('5.9.3');
+  });
+
   describe('a server that both pushes and is pulled (#1210)', () => {
     const SESSION: string = '/root::rust';
     const URI: string = 'file:///root/src/lib.rs';
@@ -2185,6 +2310,21 @@ describe('LspClient', () => {
       const client: LspClient = build();
       client.syncDocument({
         documentId: 'doc-2',
+        path: '/root/A.java',
+        languageId: 'java',
+        content: '',
+      });
+      await flush();
+
+      lsp.publishDiagnostics('/root::java', 'file:///root/B.java', [CHECK]);
+
+      expect(diagnostics.emitted).toEqual([]);
+    });
+
+    it('typescriptsPushForAFileNotOpen_reachesTheErrorList_asItsProjectsAreChecked (#1207)', async () => {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-2',
         path: '/root/a.ts',
         languageId: 'typescript',
         content: '',
@@ -2193,7 +2333,9 @@ describe('LspClient', () => {
 
       lsp.publishDiagnostics('/root::typescript', 'file:///root/b.ts', [CHECK]);
 
-      expect(diagnostics.emitted).toEqual([]);
+      expect(diagnostics.emitted).toEqual([
+        expect.objectContaining({ path: '/root/b.ts', scope: 'workspace' }),
+      ]);
     });
 
     it('whatItSaidOfTheWorkspace_goesWhenItExits', async () => {
@@ -2288,15 +2430,16 @@ describe('LspClient', () => {
   });
 
   it('closeDocument_afterOpen_sendsDidCloseAndClearsDiagnostics', async () => {
+    // A server whose pushes stand for its open documents alone, unlike TypeScript's and Rust's.
     const client: LspClient = build();
     client.syncDocument({
       documentId: 'doc-1',
-      path: '/root/a.ts',
-      languageId: 'typescript',
+      path: '/root/A.java',
+      languageId: 'java',
       content: '',
     });
     await flush();
-    lsp.publishDiagnostics('/root::typescript', 'file:///root/a.ts', [
+    lsp.publishDiagnostics('/root::java', 'file:///root/A.java', [
       { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: 'x' },
     ]);
     expect(diagnostics.emitted).toHaveLength(1);
@@ -2855,6 +2998,232 @@ describe('LspClient', () => {
 
     lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
     expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeARestart_isForgotten_soTheNewServerNeverShowsIt', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'begin', title: 'Indexing' },
+    });
+    expect(status.servers()[0].progress).toBe('Indexing');
+
+    await client.restart('/root::csharp');
+    await flush();
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'begin', title: 'Loading' },
+    });
+    lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+    // The old server's indexing ended with it, so nothing is left to show.
+    expect(status.servers()[0].progress).toBeUndefined();
+    // A report on a token the new server never began has no title to read under.
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'index',
+      value: { kind: 'report', message: '3/9' },
+    });
+    expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('progress_begunBeforeACrash_isForgotten', async () => {
+    const realNow: () => number = Date.now;
+    let now: number = realNow();
+    vi.spyOn(Date, 'now').mockImplementation((): number => now);
+    try {
+      const client: LspClient = build();
+      const status: LspStatus = TestBed.inject(LspStatus);
+      const base: { documentId: string; path: string; languageId: string; content: string } = {
+        documentId: 'doc-1',
+        path: '/root/a.ts',
+        languageId: 'typescript',
+        content: '',
+      };
+      client.syncDocument(base);
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'index',
+        value: { kind: 'begin', title: 'Indexing' },
+      });
+      lsp.exit('/root::typescript');
+      expect(status.servers()[0].progress).toBeUndefined();
+
+      now += 5_001;
+      client.syncDocument({ ...base, content: 'x' });
+      await flush();
+      lsp.notify('/root::typescript', '$/progress', {
+        token: 'load',
+        value: { kind: 'begin', title: 'Loading' },
+      });
+      lsp.notify('/root::typescript', '$/progress', { token: 'load', value: { kind: 'end' } });
+
+      expect(lsp.starts).toHaveLength(2);
+      expect(status.servers()[0].progress).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('fileStatus_isCleared_whenTheServerStops', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+    lsp.notify('/root::csharp', 'textDocument/clangd.fileStatus', {
+      uri: 'file:///root/shapes.cpp',
+      state: 'parsing includes, running Update',
+    });
+    expect(status.servers()[0].activity).toBe('Parsing includes — shapes.cpp');
+
+    lsp.exit('/root::csharp');
+
+    expect(status.servers()[0].activity).toBeUndefined();
+  });
+
+  describe('inactive regions (#1213)', () => {
+    /** The decorations a stand-in model holds, by id. */
+    let shown: Map<string, MonacoApi.editor.IModelDeltaDecoration>;
+
+    /**
+     * Gives the client a Monaco with one model, for `/root/shapes.cpp`, holding three lines.
+     */
+    function withModel(): void {
+      shown = new Map<string, MonacoApi.editor.IModelDeltaDecoration>();
+      let next: number = 0;
+      const model: Partial<MonacoApi.editor.ITextModel> = {
+        getLineCount: (): number => 3,
+        getLineMaxColumn: (line: number): number => line * 10,
+        deltaDecorations: (
+          old: string[],
+          added: MonacoApi.editor.IModelDeltaDecoration[],
+        ): string[] => {
+          old.forEach((id: string): boolean => shown.delete(id));
+          return added.map((decoration: MonacoApi.editor.IModelDeltaDecoration): string => {
+            const id: string = `d${++next}`;
+            shown.set(id, decoration);
+            return id;
+          });
+        },
+      };
+      const api: unknown = {
+        Uri: { parse: (value: string): string => value },
+        editor: {
+          getModel: (uri: string): unknown => (uri === 'inmemory://shapes' ? model : null),
+          TrackedRangeStickiness: { NeverGrowsWhenTypingAtEdges: 1 },
+        },
+      };
+      (monaco as unknown as { getMonaco: () => unknown }).getMonaco = (): unknown => api;
+      vi.spyOn(TestBed.inject(Editors), 'modelUriForPath').mockImplementation(
+        (path: string): string | undefined =>
+          path === '/root/shapes.cpp' ? 'inmemory://shapes' : undefined,
+      );
+    }
+
+    /**
+     * Reads the ranges faded, in the order shown.
+     * @returns Returns the ranges.
+     */
+    function faded(): MonacoApi.IRange[] {
+      return [...shown.values()].map(
+        (decoration: MonacoApi.editor.IModelDeltaDecoration): MonacoApi.IRange => {
+          expect(decoration.options.inlineClassName).toBe('lsp-inactive-region');
+          return decoration.range;
+        },
+      );
+    }
+
+    /**
+     * Opens a document and makes the stand-in model available.
+     * @returns Returns the session the document is served by.
+     */
+    async function open(): Promise<string> {
+      const client: LspClient = build();
+      client.syncDocument({
+        documentId: 'doc-1',
+        path: '/root/Program.cs',
+        languageId: 'csharp',
+        content: '',
+      });
+      await flush();
+      withModel();
+      return '/root::csharp';
+    }
+
+    it('fadesTheWholeLinesOfEachRegion_andAReportReplacesTheLast', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [
+          { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } },
+          // Past the end of the document: cut at its last line.
+          { start: { line: 2, character: 0 }, end: { line: 9, character: 0 } },
+        ],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 20 },
+        { startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 30 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      expect(faded()).toEqual([
+        { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 10 },
+      ]);
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [],
+      });
+      expect(faded()).toEqual([]);
+    });
+
+    it('aFileWithNoEditor_orAMalformedReport_isIgnored', async () => {
+      const sessionId: string = await open();
+
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/other.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }],
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: 'all of it',
+      });
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 2 }, end: { line: 1 } }, null, { start: { line: -1 } }],
+      });
+
+      expect(faded()).toEqual([]);
+    });
+
+    it('stopsFading_whenTheServerExits', async () => {
+      const sessionId: string = await open();
+      lsp.notify(sessionId, 'textDocument/inactiveRegions', {
+        textDocument: { uri: 'file:///root/shapes.cpp' },
+        regions: [{ start: { line: 0, character: 0 }, end: { line: 1, character: 0 } }],
+      });
+      expect(faded()).toHaveLength(1);
+
+      lsp.exit(sessionId);
+
+      expect(faded()).toEqual([]);
+    });
   });
 
   it('fileStatus_showsWhatClangdIsDoing_andClearsWhenTheFileGoesIdle', async () => {
@@ -3473,6 +3842,112 @@ describe('LspClient', () => {
       await expect(client.fileRenameEdits('/root/a.ts', '/root/b.ts')).resolves.toEqual({
         files: [],
         refused: [],
+      });
+    });
+
+    describe('rust-analyzer (#1210)', () => {
+      /**
+       * The file operations rust-analyzer 2026-07-13 offers: its `.rs` files, and every folder.
+       */
+      const RUST_OFFERED: unknown = {
+        workspace: {
+          fileOperations: {
+            willRename: {
+              filters: [
+                { scheme: 'file', pattern: { glob: '**/*.rs', matches: 'file' } },
+                { scheme: 'file', pattern: { glob: '**', matches: 'folder' } },
+              ],
+            },
+          },
+        },
+      };
+
+      /**
+       * Builds an edit replacing the text on one line.
+       * @param line The zero-based line.
+       * @param from The first character.
+       * @param to The character after the last.
+       * @param newText The text put in.
+       * @returns Returns the LSP edit.
+       */
+      function rename(line: number, from: number, to: number, newText: string): unknown {
+        return {
+          range: { start: { line, character: from }, end: { line, character: to } },
+          newText,
+        };
+      }
+
+      it('renamingAModuleFile_renamesItsModItem_andTheUseOfIt', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/circle.rs` → `disk.rs`, `mod.rs` not open (so no version).
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: null, uri: 'file:///root/src/geometry/mod.rs' },
+              edits: [rename(0, 8, 14, 'disk'), rename(2, 8, 14, 'disk')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry/circle.rs',
+          '/root/src/geometry/disk.rs',
+        );
+
+        expect(edits.refused).toEqual([]);
+        expect(edits.files).toEqual([
+          {
+            path: '/root/src/geometry/mod.rs',
+            edits: [
+              {
+                range: { startLineNumber: 1, startColumn: 9, endLineNumber: 1, endColumn: 15 },
+                text: 'disk',
+              },
+              {
+                range: { startLineNumber: 3, startColumn: 9, endLineNumber: 3, endColumn: 15 },
+                text: 'disk',
+              },
+            ],
+          },
+        ]);
+      });
+
+      it('renamingAModuleFolder_renamesItsModItem_andThePathsThroughItInOtherCrates', async () => {
+        lsp.startResult = { success: true, capabilities: RUST_OFFERED };
+        // What it answered for `geometry/` → `geom/`: the `mod` in `lib.rs`, and `app`'s `use`.
+        lsp.requestAnswers['workspace/willRenameFiles'] = {
+          documentChanges: [
+            {
+              textDocument: { version: 1, uri: 'file:///root/src/lib.rs' },
+              edits: [rename(0, 8, 16, 'geom')],
+            },
+            {
+              textDocument: { version: 1, uri: 'file:///root/app/src/main.rs' },
+              edits: [rename(0, 12, 20, 'geom')],
+            },
+          ],
+        };
+        const client: LspClient = build();
+        openDocument(client);
+        await flush();
+
+        const edits: WorkspaceTextEdits = await client.fileRenameEdits(
+          '/root/src/geometry',
+          '/root/src/geom',
+        );
+
+        expect(asked()).toEqual([
+          {
+            files: [{ oldUri: 'file:///root/src/geometry', newUri: 'file:///root/src/geom' }],
+          },
+        ]);
+        expect(edits.files.map((file: FileTextEdits): string => file.path)).toEqual([
+          '/root/src/lib.rs',
+          '/root/app/src/main.rs',
+        ]);
       });
     });
 
